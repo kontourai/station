@@ -12,14 +12,35 @@ topic before creating another one. Update that owner with the behavior change.
 | Contributor or operator task | `docs/guides/` | Setup, implementation, operation, and verification |
 | Contract details | `docs/reference/` | Inputs, outputs, defaults, and errors |
 | Module ownership | `docs/architecture/` | Interfaces, composition, and source routing |
-| Proposal or decision | `docs/design/` or `docs/adr/` | Alternatives, rationale, and decision status |
+| Proposal | `docs/design/` | Alternatives, rationale, and status |
+| Decision | `docs/decisions/<slug>.md` | The current answer for one subject; see [Record a decision](#record-a-decision) |
 | Execution plan | `docs/plans/` | Implementation sequence for an issue |
 | Runnable example | `examples/` | Buildable extension with explicit prerequisites |
 
 Use lowercase, hyphen-separated names for new prose files. Keep established
 entry-point names such as `README.md`, `AGENTS.md`, and `CONTEXT.md`, and the
-numbered ADR convention. Prefer topic names over `new`, `final`, or bare issue
+existing numbered ADR filenames. Prefer topic names over `new`, `final`, or bare issue
 numbers. Link new guides from the documentation map or their owning guide.
+
+## Record a decision
+
+The numbered ADRs in `docs/adr/` are frozen history. Do not add, rename, or
+renumber one; fix only a typo or a broken link in an existing ADR. Record a new
+decision, or a changed answer to an old one, as `docs/decisions/<slug>.md` in
+[Corpus's decision record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md):
+frontmatter with a `status` of `current`, `superseded`, `merged`, or
+`needs-decision`, a one-line `subject`, the `decided` date, and `evidence`.
+Cite an ADR the record builds on or replaces as `adr` evidence whose `ref` is
+the ADR's path. ADR status words such as `accepted` are refused.
+
+Run `npm run gen:decisions-index` to regenerate `docs/decisions/index.md`, and
+`npm run check:decisions` to validate the records and the index. `ci:fast` runs
+that check in the required `fast-checks` lane against the pull request's or
+merge group's base, so a file added under `docs/adr/` fails there. Locally the
+base is `origin/main`, and only committed files are compared. Corpus is not on
+npm: both commands fetch it with `npm exec` from the commit that
+`scripts/corpus-decisions.mjs` pins. The Docs kit gate and Pages bundle use the
+reviewed Corpus source selected in their owning workflows.
 
 ## Make authority explicit
 
@@ -99,10 +120,23 @@ npm run docs:review:record -- --advance-baseline
 
 The command checks strict coverage before moving the baseline to HEAD. Run it
 after a catch-up audit, and periodically (for example weekly) when strict is
-green, to bound history cost. It refuses dirty trees and unavailable history;
-it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
-fetch remote main before retrying if that ref is missing or stale. PR-only
-commits cannot become the baseline because a squash merge does not retain them.
+green, to bound history cost. Nothing runs it automatically: the Nightly
+freshness sweep reports gaps but never edits the ledger. It refuses dirty trees
+and unavailable history; it cannot erase outstanding gaps. HEAD must be
+reachable from `origin/main`; fetch remote main before retrying if that ref is
+missing or stale. PR-only commits cannot become the baseline because a squash
+merge does not retain them.
+
+The same run compacts landed notes (#3394). Every loose note that was already
+in the tree at the previous baseline moves into one archive,
+`notes/archive/<previous-baseline>.json`, which keeps each note's file name and
+exact bytes; the loose files are deleted in the same batch write. A note counts
+by its file name, so a note that a later migration rewrote under a new name
+stays loose until a baseline at or after that rewrite is the previous one.
+Notes added since the previous baseline stay loose, so freshness, which reads
+only notes in a change's range or after the baseline, never depends on an
+archived note.
+Commit `docs/learn/review-ledger` with the index.
 
 The scoped PR check enforces the same rule on a direct edit: a change that
 alters `coverageBaseline` blocks unless the new value is a commit reachable from
@@ -198,11 +232,18 @@ unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
 `--verify-bindings` applies only to legacy digest records; path-only records
 have no bindings to verify.
 
-A cited JSON value can still use a JSON Pointer, for example
+A cited JSON or YAML value can use a JSON Pointer, for example
 `package.json#/scripts/docs:truth:gate`. Git comparisons compute the value's
 change at runtime; unrelated committed manifest edits do not require a review
-of that value. No value digest is stored in a record. Other formats use whole
-file paths. Notes document review decisions, not automated semantic approval.
+of that value. A lock citation can name a reviewed resolution, for example
+`pnpm-lock.yaml#/packages/yaml@2.9.1/resolution/integrity`, without citing unrelated
+workspace version labels. YAML value bindings refuse malformed documents,
+duplicate keys, aliases, unsupported tags, non-string mapping keys and non-JSON
+values. Missing or unreadable values stay stale and cannot be recorded as
+reviewed. No value digest is stored in a path-only record. Other formats use
+whole file paths. Narrow a citation only after reviewing the claim it supports;
+retain version fields when the claim actually depends on that version.
+Notes document review decisions, not automated semantic approval.
 
 ### Ledger layout and merges
 
@@ -214,6 +255,7 @@ GitHub uses Git's default text merge; this layout needs no local merge driver.
 | `records/<document>.json` | Path, kind, state, summary, limits, source path list and retained historical checks |
 | `captures/<capture>.json` | Source path list and retained historical review notes; image identity stays in `media.json` |
 | `notes/<time>-<hash>.json` | Context revision and reviews: document/capture path, note text and covered inputs |
+| `notes/archive/<baseline>.json` | Immutable: notes landed at or before that coverage baseline, by file name, with their exact bytes |
 
 Each source path occupies its own line, separated from the next by a blank
 line. Ordinary source reviews leave all record and capture files untouched.
@@ -222,14 +264,29 @@ files; neither rewrites shared derived data. Real concurrent edits to the same
 human decision or additions at the same place in a dependency list can still
 conflict and need a human resolution. The loader requires canonical bytes and
 rejects edited notes or unexpected files. The name hash detects accidental
-changes; it is not protection against forgery.
+changes; it is not protection against forgery. Every reader (compiled checks,
+impact and catch-up, the learning reader) loads archived and loose notes as one
+store in file-name order, so compaction changes no compiled output; a note
+stored both loose and archived is refused with `duplicate-note`, and an archive
+whose bytes are not the serializer's with `not-canonical`.
 
-Four guards sit on top of the layout (#3036):
+Five guards sit on top of the layout (#3036, #3394):
 
 - **Notes are append-only.** Scoped freshness compares the note files at the
   merge base with the working tree and blocks with `note-removed` for each one
   that is gone, whether deleted outright or rewritten under a new hash name.
-  Re-record with `docs:review:record` instead; that adds a note.
+  Re-record with `docs:review:record` instead; that adds a note. The one
+  exception is compaction: a removed note passes only when the archive the
+  advance writes holds it. The merge base fully determines that archive, so
+  any other added archive blocks with `archive-unbacked`: it must be named for
+  the merge base's coverage baseline, the same change must advance
+  `coverageBaseline` (the new value is judged as above), and it must hold
+  exactly the merge base's loose notes that were in the tree at that baseline,
+  with their exact merge-base bytes. No PR can therefore take the name the
+  next advance will write.
+- **Archives are immutable.** An archive at the merge base must keep its exact
+  bytes in HEAD and the working tree; a modified or removed archive blocks with
+  `archive-changed`.
 - **A missing merge base never skips that check.** In a pull request context
   (a `pull_request` event or `STATION_CI_FAST_BASE`) an unresolvable base
   blocks with `append-only-unverified` (the version 3 layout only; older layouts
@@ -253,8 +310,11 @@ request context `docs:freshness:check` then prints `Append-only notes: not
 checked (<mode>)`. The path budget applies to the working tree and to what the
 record command writes, not to merge-base or history reads, so a pull request
 can still delete an over-budget record that reached `main`. Notes are never
-pruned: the notes of a removed document stay in `notes/` forever, because
-deleting them would fail `note-removed`. The gate proves that a covering
+discarded: the notes of a removed document stay in the store, loose until a
+baseline advance archives them, because deleting them would fail
+`note-removed`. A branch cut before a compaction merges `main` cleanly: it
+never modifies landed notes, so `main`'s deletions and added archive apply
+without conflict. The gate proves that a covering
 note exists for each touched input, not that its prose is accurate. All consumers
 use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including
@@ -317,7 +377,12 @@ behavior.
 A purpose-classified release-note file under `.changeset/` may become absent
 without invalidating the retained classification. It must have no behavioral
 source/check claims; absence does not prove that a release consumed it. The
-README, current guides, malformed records and missing behavioral dependencies
+ordinary `docs:review:record` command can record a reviewed, committed deletion
+of a previously tracked note. Declared checks remain separate from appended
+review notes, so recording the deletion does not invent a new check claim.
+Any existing check claim needs an explicit reviewed reclassification first.
+The review records absence, not release consumption or publication.
+The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
 claims that need source review. New generated owners need their own reviewed
 contract and refusal tests; `kind: generated` alone never exempts a file.
@@ -482,6 +547,17 @@ documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report
 runtime steps not exercised. New Pages content must be explicitly admitted in
 `docs/pages/public-docs.json`; creating a guide does not publish it there.
+The root `corpus.json` must track `public-docs.json` (same sources, sections
+and order): the Pages workflow publishes its `docs-bundle.json`, which feeds the
+[Kontour docs hub](https://kontourai.github.io/) and the shared `corpus mcp`
+server. It also lists the [shipped manual](../reference/station-docs.md) as a
+bundle-only document (`"publish": false`, so it gets no page) and mirrors the
+`docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
+answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
+fails when either drifts. `PR: Docs kit` runs `corpus check` on pull
+requests, merge-queue entries and main as an advisory, non-required check; run
+`npx -y github:kontourai/corpus#<sha> check` locally for faster
+feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory

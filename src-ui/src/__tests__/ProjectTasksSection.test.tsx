@@ -409,20 +409,68 @@ describe('ProjectTasksSection', () => {
       starter: 'start-task',
       starterLink: 'not-verified',
     });
+    const listInvalidation = invalidateQueries.mock.calls.findIndex(
+      ([filters]) =>
+        JSON.stringify(filters.queryKey) ===
+        JSON.stringify(['tasks', 'project-alpha']),
+    );
+    expect(listInvalidation).toBeGreaterThanOrEqual(0);
+    expect(
+      invalidateQueries.mock.invocationCallOrder[listInvalidation],
+    ).toBeLessThan(navigate.mock.invocationCallOrder[0]);
     remove.mockRestore();
     window.history.pushState({}, '', '/');
   });
 
-  test('creates a bound task, opens it, and preserves dispatch behavior', async () => {
-    createTask.mockImplementation(async () => {
-      const task = {
-        ...tasks[0],
-        id: 'task-2',
-        title: 'New task',
-      };
-      tasks = [task, ...tasks];
-      return task;
+  test('New Task offers shaping in the exact project without creating a Task', () => {
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
+    render(<ProjectTasksSection slug="project-alpha" agents={['agent-one']} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toEqual({
+      projectSlug: 'project-alpha',
     });
+    expect(createTask).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Task title')).toBeNull();
+    window.removeEventListener('station:shape-task', listener);
+  });
+
+  test.each([undefined, '  '])(
+    'disables Dispatch with a reason when the Task has no agent (%s)',
+    (agentId) => {
+      tasks[0] = { ...tasks[0], agentId };
+      render(<ProjectTasksSection slug="project-alpha" />);
+
+      const button = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Dispatch',
+      });
+      expect(button.disabled).toBe(true);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Dispatch needs an agent, and this Task has none.',
+      );
+      const reason = screen.getByRole('status');
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(reason.textContent).toContain('See Project settings › Agents.');
+      fireEvent.click(button);
+      expect(dispatchTask).not.toHaveBeenCalled();
+      expect(tasks[0].status).toBe('todo');
+      const settingsLink = screen.getByRole('link', {
+        name: 'Project settings › Agents',
+      });
+      expect(settingsLink.getAttribute('href')).toBe(
+        '/projects/project-alpha/edit?section=agents',
+      );
+      fireEvent.click(settingsLink, { metaKey: true });
+      expect(navigate).not.toHaveBeenCalled();
+      fireEvent.click(settingsLink);
+      expect(navigate).toHaveBeenCalledWith('/projects/project-alpha/edit', {
+        section: 'agents',
+      });
+    },
+  );
+
+  test('opens an existing Task and preserves dispatch behavior', async () => {
     dispatchTask.mockResolvedValue({
       task: {
         ...tasks[0],
@@ -451,39 +499,15 @@ describe('ProjectTasksSection', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('Task title'), {
-      target: { value: 'New task' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-
-    await waitFor(() =>
-      expect(createTask).toHaveBeenCalledWith({
-        projectId: 'project-alpha',
-        title: 'New task',
-        agentId: 'agent-one',
-        createdBy: 'user',
-        workspaceBinding: {
-          workingDirectory: '/tmp/project-alpha',
-          repoRoot: '/tmp/project-alpha-worktree',
-          worktreePath: '/tmp/project-alpha-worktree',
-          branch: 'feature/task-workspace',
-          sourceSurface: 'ui',
-        },
-      }),
-    );
-
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/tasks/task-2'));
-
-    navigate.mockReset();
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
-    expect(navigate).toHaveBeenCalledWith('/tasks/task-2');
+    expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
 
     await screen.findByRole('button', { name: 'Dispatch' });
     fireEvent.click(screen.getByRole('button', { name: 'Dispatch' }));
 
     await waitFor(() =>
       expect(dispatchTask).toHaveBeenCalledWith({
-        taskId: 'task-2',
+        taskId: 'task-1',
         dispatch: {
           agentId: 'agent-one',
           skillName: undefined,
@@ -495,41 +519,6 @@ describe('ProjectTasksSection', () => {
     expect(screen.getByText(/spawned session/)).toBeTruthy();
   });
 
-  test('keeps non-repository values unavailable while retaining the exact working directory', async () => {
-    createTask.mockResolvedValue(tasks[0]);
-
-    render(
-      <ProjectTasksSection
-        slug="project-alpha"
-        projectWorkingDirectory="/tmp/project-alpha"
-        gitStatus={{ isRepo: false }}
-      />,
-    );
-
-    expect(screen.getByText('Git top-level')).toBeTruthy();
-    expect(screen.getAllByText('Unavailable')).toHaveLength(4);
-
-    fireEvent.change(screen.getByLabelText('Task title'), {
-      target: { value: 'No repo task' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-
-    await waitFor(() =>
-      expect(createTask).toHaveBeenCalledWith({
-        projectId: 'project-alpha',
-        title: 'No repo task',
-        agentId: undefined,
-        createdBy: 'user',
-        workspaceBinding: {
-          workingDirectory: '/tmp/project-alpha',
-          repoRoot: undefined,
-          worktreePath: undefined,
-          branch: undefined,
-          sourceSurface: 'ui',
-        },
-      }),
-    );
-  });
   test('shows a compact workflow line, tagged "matched by title", on a title-heuristic match', async () => {
     workflowTasks = [
       {

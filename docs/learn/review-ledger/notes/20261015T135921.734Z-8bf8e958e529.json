@@ -1,0 +1,7 @@
+{
+  "revision": "2c19922953a8def9cb30e24f565c8d47dfabf89b",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed the Tools journey against the shared create/copy/edit form, AgentToolPicker, selection helpers, probe metadata persistence and engine passthrough paths. Search/category selection, future-tool opt-in and whole-source limits match implementation; focused picker and adapter suites passed. No live provider-run qualification claimed.","inputs":["docs/guides/agents.md","src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/utils.ts"]}
+  ]
+}

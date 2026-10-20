@@ -1,3 +1,5 @@
+export const CONNECTION_SETUP_RETURN_EVENT = 'station:connection-setup-return';
+
 export const OPEN_CONNECTIONS_MODAL_EVENT = 'station:open-connections-modal';
 
 export type OpenConnectionsModalDetail = {
@@ -9,7 +11,17 @@ export type OpenConnectionsModalDetail = {
    *   The connection indicator uses this: a device whose credential has gone
    *   stale needs the one exchange that replaces it, not a list to navigate.
    */
-  mode?: 'list' | 'pair-device' | 'request-access' | 'devices' | 'pair-host';
+  /** Correlation for a mounted Project caller; carries no draft or authority. */
+  setupRequestId?: string;
+  projectName?: string;
+  peerOnly?: boolean;
+  mode?:
+    | 'connect-station'
+    | 'list'
+    | 'pair-device'
+    | 'request-access'
+    | 'devices'
+    | 'pair-host';
 };
 
 let pendingOpen: OpenConnectionsModalDetail | null = null;

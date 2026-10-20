@@ -6,16 +6,29 @@ import {
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
 import { FilePartPreview } from '../FilePartPreview';
+import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
+import { PublishedHtmlReply } from '../PublishedHtmlReply';
 import { ReasoningSection } from '../ReasoningSection';
+import {
+  SubagentCardsForCalls,
+  SubagentTranscriptCard,
+} from '../SubagentTranscriptCard';
 import { ChatErrorDetails } from '../SystemEventMessage';
 import {
   ToolCallBatchBoundary,
   usePreloadToolCallBatch,
 } from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
-import { splitToolCallRuns } from '../tool-call-runs';
+import { TranscriptAppTools } from '../TranscriptAppTools';
+import {
+  foldTurnWork,
+  isToolCallPart,
+  splitToolCallRuns,
+} from '../tool-call-runs';
+import { useTranscriptChildBlocks } from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
+import { uiBlockIdentity } from '../ui-block-identity';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
@@ -31,11 +44,20 @@ export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
   contentParts?: MessageContentPart[];
+  messageKey?: string;
   textContent: string;
   chatFontSize: number;
   showReasoning: boolean;
   showToolDetails: boolean;
   isStreamingMessage: boolean;
+  /**
+   * Phone transcript, settled turn: all of the turn's tool work — and the
+   * narration between calls — collapses to one summary row where the first
+   * call was (`foldTurnWork`); the outcome after the last call stays. The
+   * caller decides settledness; a live turn keeps the per-run shape it
+   * streamed with so it does not change shape until it settles.
+   */
+  foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
     action: 'once' | 'trust' | 'deny',
@@ -44,19 +66,32 @@ interface MessageContentProps {
 
 function MessageContentComponent({
   contentParts,
+  messageKey = 'message',
   textContent,
   chatFontSize,
   showReasoning,
   showToolDetails,
   isStreamingMessage,
+  foldWork = false,
   onToolApproval,
-}: MessageContentProps) {
+  appTools,
+}: MessageContentProps & { appTools: ReadonlySet<string> }) {
   // Consecutive tool-call parts collapse into one batch (`LazyToolCallBatch`);
   // any other part in between — prose, reasoning, a file, a UI block —
   // breaks the run, so the agent's words between tool calls are never
   // buried inside a collapsed summary. Only the structural split runs
   // eagerly here; classification/summary happens inside the lazy chunk.
-  const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  const baseBlocks = useMemo(() => {
+    const parts: MessageContentPart[] = contentParts?.length
+      ? contentParts
+      : textContent
+        ? [{ type: 'text', content: textContent }]
+        : [];
+    return foldWork
+      ? foldTurnWork(parts, appTools)
+      : splitToolCallRuns(parts, appTools);
+  }, [contentParts, textContent, foldWork, appTools]);
+  const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -91,34 +126,75 @@ function MessageContentComponent({
     />
   );
 
-  if (contentParts && contentParts.length > 0) {
+  const renderInterlude = (part: MessageContentPart, index: number) => (
+    <LazyMarkdown key={`interlude:${index}`}>{part.content ?? ''}</LazyMarkdown>
+  );
+
+  if (
+    contentParts?.length ||
+    blocks.some((block) => block.type === 'subagent')
+  ) {
     return (
       <>
         {blocks.map((block) => {
+          if (block.type === 'html-reply')
+            return (
+              <PublishedHtmlReply key={block.key} reference={block.reference} />
+            );
+          if (block.type === 'subagent')
+            return (
+              <SubagentTranscriptCard key={block.key} child={block.child} />
+            );
           if (block.type === 'tool-call-run') {
             // A solo call stays an inline row. Two or more consecutive
             // calls collapse to one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
             // change shape when the turn completes.
-            if (block.calls.length <= INLINE_RUN_LIMIT) {
-              return block.calls.map(({ part, index }) =>
-                renderToolCall(part, index),
-              );
-            }
-            const inlineRows = block.calls.map(({ part, index }) =>
-              renderToolCall(part, index),
+            // A subagent a call spawned is drawn after the run, outside any
+            // collapsed summary, so a folded turn never hides it.
+            const subagents = (
+              <SubagentCardsForCalls
+                key={`subagents:${block.key}`}
+                calls={block.calls}
+              />
             );
-            return (
+            if (block.calls.length <= INLINE_RUN_LIMIT) {
+              return [
+                ...block.calls.map(({ part, index }) =>
+                  renderToolCall(part, index),
+                ),
+                subagents,
+              ];
+            }
+            // Until (or unless) the batch chunk loads, a folded run falls
+            // back to its parts in original order — narration included — so
+            // a load failure never drops the prose the fold moved.
+            const inlineRows = [
+              ...block.calls.map(({ part, index }) => ({
+                index,
+                node: renderToolCall(part, index),
+              })),
+              ...(block.interludes ?? []).map(({ part, index }) => ({
+                index,
+                node: renderInterlude(part, index),
+              })),
+            ]
+              .sort((a, b) => a.index - b.index)
+              .map((row) => row.node);
+            return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                renderInterlude={renderInterlude}
                 pending={inlineRows}
-              />
-            );
+              />,
+              subagents,
+            ];
           }
 
           const { index, part } = block;
+          if (isToolCallPart(part)) return renderToolCall(part, index);
           if (part.type === 'reasoning' && part.content) {
             // #2211: reasoning is the STREAMING row's follow-along surface.
             // Once a row settles, the reasoning record opens from the turn's
@@ -165,7 +241,11 @@ function MessageContentComponent({
             }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
-            return <LazyMarkdown key={index}>{part.content}</LazyMarkdown>;
+            return (
+              <LazyMarkdown key={block.key ?? index}>
+                {part.content}
+              </LazyMarkdown>
+            );
           }
           if (part.type === 'file') {
             return (
@@ -177,7 +257,26 @@ function MessageContentComponent({
             );
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            return <UIBlockRenderer key={index} block={part.uiBlock} />;
+            const identity = uiBlockIdentity(
+              contentParts ?? [],
+              index,
+              messageKey,
+            );
+            return (
+              <UIBlockRenderer
+                key={identity}
+                instanceKey={identity}
+                block={part.uiBlock}
+              />
+            );
+          }
+          if (part.type === 'input-request' && part.inputRequestRecord) {
+            return (
+              <InputRequestRecordRow
+                key={index}
+                record={part.inputRequestRecord}
+              />
+            );
           }
           return null;
         })}
@@ -212,11 +311,17 @@ function areMessageContentPropsEqual(
     previous.showReasoning === next.showReasoning &&
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
+    previous.foldWork === next.foldWork &&
     previous.onToolApproval === next.onToolApproval
   );
 }
 
-export const MessageContent = memo(
-  MessageContentComponent,
-  areMessageContentPropsEqual,
-);
+export const MessageContent = memo(function MessageContentWithApps(
+  props: MessageContentProps,
+) {
+  return (
+    <TranscriptAppTools calls={props.contentParts ?? []}>
+      {(appTools) => <MessageContentComponent {...props} appTools={appTools} />}
+    </TranscriptAppTools>
+  );
+}, areMessageContentPropsEqual);

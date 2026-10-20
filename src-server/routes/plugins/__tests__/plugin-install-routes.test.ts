@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
@@ -71,8 +72,8 @@ afterEach(async () => {
 });
 
 function createApp(projectHomeDir: string) {
-  const app = new Hono();
-  registerPluginInstallRoutes(app, {
+  const routes = new Hono();
+  registerPluginInstallRoutes(routes, {
     projectVisiblePlugins: () => (installed) => installed,
     agentsDir: join(projectHomeDir, 'agents'),
     logger: {
@@ -84,7 +85,8 @@ function createApp(projectHomeDir: string) {
     pluginsDir: join(projectHomeDir, 'plugins'),
     projectHomeDir,
   });
-  return app;
+  // Installing takes the operator in person; a bare mount is refused.
+  return withOperatorPrincipal(routes);
 }
 
 describe('plugin-install-routes', () => {

@@ -1,0 +1,25 @@
+{
+  "revision": "0e8c83fab1936b16bbe0bdac8a72091aba4a6f36",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed the package-boundary and SDK paragraphs against the additive form-only Shared subpath and moved MCP execution client. Canonical contracts stay in Contracts; helpers remain explicit subpaths; root SDK request exports are preserved. No runtime, native or hosted qualification claim changes.","inputs":["docs/architecture.md","packages/shared/package.json","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed the Shared installation, Node24 source-loader, build helper and package-boundary recipes against the added browser-safe form reader export. Existing buildPlugin/parsers exports and externalization rules are unchanged; the new subpath needs no authoring recipe change and does not claim npm publication.","inputs":["docs/guides/build-your-first-plugin.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the Kontour UI versus Station adopter boundary and dialog/sheet ownership against the additive Shared form-only helper export. No UI package dependency, token, primitive, viewport or dismissal code changed. Existing responsive claims remain accurate; no new physical UI proof.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/agentAdmin.ts","packages/shared/package.json"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the package adopter and token/theme cascade claims against the Shared export-map-only delta. No style entry, CSS, UI dependency or brand/token selection changed. The parser export does not alter theming or establish rendered contrast proof.","inputs":["docs/guides/theming.md","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/agentAdmin.ts","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed refactoring/public-helper guidance against the form reader and MCP prompt client extraction. Domain effects, credential policy, typed admission and refusal stay at the same owners; Shared uses an explicit form-only subpath. No backend authorization, lifecycle or persistence rule changes.","inputs":["docs/patterns/backend.md","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/agentAdmin.ts","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed SDK query organization and package-boundary guidance against unchanged listing hook and moved execution client, plus explicit form-only Shared imports in event and pending readers. React Query remains the query owner; no asynchronous admission/cache-authority shift or plugin internal-import exception is introduced.","inputs":["docs/patterns/frontend.md","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/agentAdmin.ts","packages/shared/package.json"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed source entrypoint/runtime requirements and the explicit-subpath inventory against the additive mcp-elicitation-form export. The new reader is browser-safe; existing mcp-elicitation facade exports remain available, Node helper requirements and build externalization unchanged. Source export addition is not an npm-publication claim.","inputs":["packages/shared/README.md","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed tool preview, session-grant, malformed payload and current-source-owner claims against event projection and pending-card changes. They still synchronously apply typed stored-form admission and use the same grant/preview readers; form parsing grants no standing tool authority. Alternate session transcript/attached detail callers share the same projection. No engine policy or live-provider proof changes.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts","src-ui/src/hooks/orchestration/pendingRequestRows.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed direct canonical stored-field admission and request-only schema adapter after the split: field kinds, bounds, option uniqueness/label fallback, defaults and refusal remain explicit; no unchecked form is rendered. Public facade retains request/content/result exports; form-only subpath serves synchronous event/pending readers. Answer validation and schema conversion are separate from those eager consumers. Executed caller controls follow on the final source.","inputs":["docs/reference/shared.md","packages/shared/package.json","packages/shared/src/mcp-elicitation-form.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed MCP prompt API claims against the moved client/mcp-prompts implementation and root/query barrel exports. runAgentMcpPrompt arguments, authenticated POST, deadline handling, JSON refusal and returned text are unchanged; listing remains React Query-owned. No new public subpath or prompt authority is added.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/agentAdmin.ts"]}
+  ]
+}

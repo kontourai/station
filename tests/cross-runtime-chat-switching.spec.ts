@@ -1415,20 +1415,24 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Station', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Claude Runtime',
-      }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Claude Runtime', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Codex Runtime',
-      }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Codex Runtime', { exact: true }) }),
     ).toHaveCount(0);
     await alphaAgents.press('Escape');
     await expect(alphaAgents).toHaveCount(0);
@@ -1452,24 +1456,29 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .click();
     const betaAgents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Codex Runtime',
-      }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Codex Runtime', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Station', { exact: true }) }),
     ).toHaveCount(0);
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Claude Runtime',
-      }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Claude Runtime', { exact: true }) }),
     ).toHaveCount(0);
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toHaveCount(0);
 
     await betaAgents
-      .locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' })
+      .locator('.new-chat-modal__agent')
+      .filter({ has: page.getByText('Codex Runtime', { exact: true }) })
       .click();
     await expect(
       dockComposer(page).getByRole('button', {
@@ -1581,10 +1590,14 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const agents = await openNewChatModal(page);
 
     await expect(
-      agents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      agents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      agents.locator('.new-chat-modal__agent', { hasText: 'other-cli' }),
+      agents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('other-cli', { exact: true }) }),
     ).toHaveCount(0);
   });
 });
@@ -1691,37 +1704,48 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // instead of landing behind the dock.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
 
-    // #2059 retired the sidebar footer's "N open chats" summary button (it
-    // restated the panel's own Open chats section from a second read of the
-    // same store). What that assertion PROVED — a Switch preserves the open
-    // conversation inventory, where an Open navigates away from it — is
-    // asserted here against the surviving surface, and against the identities
-    // rather than a count: a switch that swapped one open chat for another
-    // would have held the count constant.
-    const openChatRows = page.locator('#sidebar-open-chats .sidebar-chat-drop');
-    await expect(openChatRows.first()).toBeVisible();
+    await page
+      .getByRole('region', { name: 'Dock', exact: true })
+      .getByRole('button', { name: 'Show Chat', exact: true })
+      .click();
+    await expect(chatList).toBeVisible();
+    // Close actions identify open conversations, excluding unopened history.
+    // Compare identities so replacing a chat cannot hide behind an equal count.
+    const openChatRows = chatList.getByRole('button', { name: /^Close / });
+    await expect(openChatRows).toHaveCount(5);
     const readOpenChats = () =>
       openChatRows.evaluateAll((rows) =>
-        rows.map((row) => row.getAttribute('aria-label')),
+        rows.map((row) => row.getAttribute('aria-label')).sort(),
       );
     const sessionsBeforeSwitch = await readOpenChats();
-    expect(sessionsBeforeSwitch.length).toBeGreaterThan(0);
+    expect(sessionsBeforeSwitch).toEqual([
+      'Close Claude Alpha Chat',
+      'Close Codex Beta Chat',
+      'Close Station Chat',
+      'Close Unbound Station Chat',
+      'Close kiro-cli Chat',
+    ]);
     const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
     expect(activeChatBeforeSwitch).toBeTruthy();
     await badge.click();
     await page
       .getByRole('dialog', { name: 'Projects' })
-      .getByRole('button', { name: 'Switch to Beta Project' })
+      .getByRole('button', { name: 'Switch to Alpha Project' })
       .click();
-    await expect(badge).toContainText('Beta Project');
+    await expect(badge).toContainText('Alpha Project');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
     await expect.poll(readOpenChats).toEqual(sessionsBeforeSwitch);
     expect(new URL(page.url()).searchParams.get('chat')).toBe(
       activeChatBeforeSwitch,
     );
     await expect(page.locator('.chat-dock__project-context')).toContainText(
-      'Beta Project',
+      'Alpha Project',
     );
+    await expect(
+      page.getByRole('log').getByText('Claude Alpha transcript loaded.', {
+        exact: true,
+      }),
+    ).toBeVisible();
   });
 
   for (const width of [320, 390, 412]) {

@@ -45,6 +45,11 @@ an at-rest Session; a terminal Session, ended/error engine binding, unsupported
 per-turn model switch, or explicit handoff can require a reserved successor.
 The [lineage owner](../../../src-server/services/orchestration/conversation-session-lineage.ts)
 records that relationship. Reserving a child does not prove its engine started.
+Compatible built-in returns can resume an earlier native identity with bounded
+intervening context. Durable native ownership prevents old Session aliases from
+mutating the transferred thread, and transfer requires confirmed retirement.
+Provider handoffs retain the Conversation; explicit forks create a new one.
+The compact history contract reports these boundaries to tool and SDK callers.
 A model change on a Session that never ran a turn stops that predecessor's engine
 once the successor has started. The stop runs detached, so it neither delays
 nor fails the send. It is decided again when it runs, under the Session's

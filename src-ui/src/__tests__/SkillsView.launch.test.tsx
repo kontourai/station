@@ -4,9 +4,11 @@ import {
   ConnectionStore,
   ConnectionsProvider,
 } from '@kontourai/station-connect';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { _setApiBase } from '@kontourai/station-sdk';
+import type { ForegroundMessageReceipt } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -69,14 +71,25 @@ const fetchMock = vi.fn(
       if (refuseSend)
         return json({ success: false, error: 'Engine sign-in required' }, 403);
       const body: { conversationId: string } = JSON.parse(String(init?.body));
-      return json({
-        success: true,
-        data: {
-          conversationId: body.conversationId,
-          sessionId: 'execution-session',
-          providerTurnId: 'provider-turn',
+      const receipt: ForegroundMessageReceipt = {
+        conversationId: body.conversationId,
+        sessionId: 'execution-session',
+        providerTurnId: 'provider-turn',
+        target: { kind: 'agent', id: agentId('codex') },
+        resolution: {
+          schemaVersion: 'station.execution-resolution/v1',
+          resolvedAt: '2026-10-09T00:00:00.000Z',
+          environmentId: environmentId('test-station'),
+          agentId: agentId('codex'),
+          engine: { kind: 'station' },
+          provider: engineId('codex'),
+          modelLaunchPlan: {
+            kind: 'engine-selected',
+            evidence: 'adapter-declared',
+          },
         },
-      });
+      };
+      return json({ success: true, data: receipt });
     }
     if (path === '/api/skills/release-check/run')
       return json({

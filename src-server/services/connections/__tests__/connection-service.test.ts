@@ -302,6 +302,10 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { ModelCatalogHttpError } from '../../../providers/registries/catalog-http.js';
 import { credentialProfileApplication } from '../../../telemetry/metrics.js';
@@ -980,6 +984,133 @@ describe('ConnectionService', () => {
     ]);
     // Static: no Adapter probe ran.
     expect(getPrerequisites).not.toHaveBeenCalled();
+  });
+
+  test('names the Adapter whose identity threw, at debug level (#3355)', async () => {
+    const captured = captureLoggerLines('debug');
+    try {
+      const broken = { provider: 'muse' };
+      Object.defineProperty(broken, 'metadata', {
+        get: () => {
+          throw new Error('plugin metadata unavailable');
+        },
+      });
+      const service = createConnectionServiceForTest(
+        {
+          listProviderConnections: vi.fn(() => []),
+          saveProviderConnection: vi.fn(),
+          deleteProviderConnection: vi.fn(),
+          checkHealth: vi.fn(),
+        } as any,
+        () => [broken] as any,
+        async () => [],
+        () => ({ connections: [] }),
+        async () => ({}) as any,
+        vi.fn(),
+      );
+
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        [],
+      );
+      const lines = captured
+        .at('debug')
+        .filter((line) => line.adapter === 'muse');
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.msg).toContain('Engine identity unavailable');
+      expect(String(lines[0]?.error)).toContain('plugin metadata unavailable');
+    } finally {
+      stopLoggerCaptures();
+    }
+  });
+
+  /**
+   * #3355: an ACP connection stored with a native engine's id (before the ACP
+   * routes refused it) resolves to the native engine's public connection. The
+   * native engine keeps the id — otherwise every native Agent read as `acp` —
+   * the read still succeeds, and the collision is logged once per id.
+   */
+  test('keeps the native engine when a stored ACP connection shares its id (#3355)', async () => {
+    const captured = captureLoggerLines();
+    try {
+      const registry: AgentRegistry = {
+        version: 2,
+        revision: 0,
+        engineConnections: ['codex', 'kiro'].map((id) => ({
+          id: engineConnectionId(id),
+        })),
+        defaultAgents: [],
+      };
+      const service = createConnectionServiceForTest(
+        {
+          listProviderConnections: vi.fn(() => []),
+          saveProviderConnection: vi.fn(),
+          deleteProviderConnection: vi.fn(),
+          checkHealth: vi.fn(),
+        } as any,
+        () =>
+          [
+            {
+              provider: 'codex',
+              metadata: {
+                displayName: 'Codex',
+                description: 'runtime',
+                capabilities: ['agent-runtime'],
+                connectionId: 'codex',
+                engineId: 'codex',
+              },
+            },
+          ] as any,
+        // The normalized shape the ACP routes persist (`normalizeACPConnection`).
+        async () => [
+          {
+            id: 'codex',
+            name: 'Codex bridge',
+            command: 'codex-acp',
+            args: [],
+            icon: '🔌',
+            enabled: true,
+          },
+          {
+            id: 'kiro',
+            name: 'Kiro',
+            command: 'kiro-cli',
+            args: ['acp'],
+            icon: 'K',
+            enabled: true,
+          },
+        ],
+        () => ({ connections: [] }),
+        async () => ({}) as any,
+        vi.fn(),
+        undefined,
+        undefined,
+        [],
+        undefined,
+        { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
+      );
+
+      const expected = [
+        { id: 'codex', engineId: 'codex', type: 'codex' },
+        { id: 'kiro', engineId: 'acp', type: 'acp' },
+      ];
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        expected,
+      );
+      await expect(service.listEngineConnectionIdentities()).resolves.toEqual(
+        expected,
+      );
+      const warnings = captured
+        .at('warn')
+        .filter((line) => line.connectionId === 'codex');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.msg).toContain('shares its id with a native engine');
+      // No rename exists (an update pins the id), so the advice is delete-and-re-add.
+      expect(warnings[0]?.msg).toContain(
+        'Delete the ACP connection and add it again under a different id',
+      );
+    } finally {
+      stopLoggerCaptures();
+    }
   });
 
   test('reports the active launchable inventory without exposing connection secrets', async () => {
@@ -2939,6 +3070,67 @@ describe('ConnectionService', () => {
     expect(unregister).toHaveBeenCalledWith('claude');
   });
 
+  test('a deliberate connection check can recover from a retained authentication failure, but never skips a missing CLI', async () => {
+    let prerequisites = [
+      {
+        id: 'codex-auth',
+        name: 'Codex login',
+        description: 'Sign in',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    const adapter = {
+      provider: 'codex',
+      metadata: {
+        displayName: 'Codex',
+        description: 'Codex',
+        capabilities: ['agent-runtime'],
+        builtin: true,
+        modelLaunch: { defaultAtStart: 'engine-selected' },
+      },
+      getPrerequisites: async () => prerequisites,
+      listModels: async () => [],
+    };
+    const service = createConnectionServiceForTest(
+      { listProviderConnections: () => [] } as any,
+      () => [adapter] as any,
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({ defaultModel: 'gpt-6.1-sol' }) as any,
+      vi.fn(),
+      {
+        getFailure: () => ({
+          provider: 'codex',
+          observedAt: '2026-09-30T00:00:00Z',
+          expiresAt: '2026-09-30T00:01:00Z',
+        }),
+        dispose: vi.fn(),
+      } as any,
+    );
+    const runner = vi.fn().mockResolvedValue({ ok: true, durationMs: 10 });
+    service.setSmokeRunner(runner);
+    const recovered = await service.smokeConnection('codex', {
+      confirmed: true,
+    });
+    expect(recovered.smoke.status, JSON.stringify(recovered)).toBe('passed');
+    expect(runner).toHaveBeenCalledTimes(1);
+    prerequisites = [
+      {
+        id: 'codex-cli',
+        name: 'Codex CLI',
+        description: 'Install',
+        status: 'missing',
+        category: 'required',
+      },
+    ];
+    expect(
+      (await service.smokeConnection('codex', { confirmed: true })).smoke
+        .reasonCode,
+    ).toBe('missing-prerequisites');
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
   test('persists a confirmed one-turn smoke without upgrading untested inventory', async () => {
     const providerService = {
       listProviderConnections: vi.fn(() => []),
@@ -3418,17 +3610,22 @@ describe('ConnectionService', () => {
       | 'restart_resume'
       | 'unsupported' = 'restart_resume',
     protocol?: ReturnType<EventStore['createCredentialApplicationFactory']>,
+    profiles: Array<{
+      ref: string;
+      label?: string;
+      env?: Record<string, string>;
+    }> = [
+      { ref: 'profile-a', label: 'Primary account' },
+      { ref: 'canary-profile-ref', label: 'Canary Account Label' },
+      { ref: 'profile-c', label: 'Superseding account' },
+    ],
   ) {
     let appConfig: any = {
       defaultModel: 'model-a',
       agentConnections: {
         codex: {
           credentialRecovery: {
-            profiles: [
-              { ref: 'profile-a', label: 'Primary account' },
-              { ref: 'canary-profile-ref', label: 'Canary Account Label' },
-              { ref: 'profile-c', label: 'Superseding account' },
-            ],
+            profiles,
             group: {
               profileRefs: ['profile-a', 'canary-profile-ref', 'profile-c'],
               enrolledProfileRefs: ['canary-profile-ref', 'profile-c'],
@@ -3688,6 +3885,113 @@ describe('ConnectionService', () => {
       store.close();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  describe('#2966 automatic candidate selection honors routing env', () => {
+    const routed = { OPENAI_BASE_URL: 'http://127.0.0.1:9000' };
+    const exhausted = {
+      kind: 'capacity' as const,
+      scope: 'account' as const,
+      timing: {},
+    };
+
+    test('skips an enrolled candidate that routes differently and stages the first matching one', async () => {
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a', env: routed },
+          { ref: 'canary-profile-ref' },
+          { ref: 'profile-c', env: routed },
+        ],
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+
+      const attempt = await service.stageAutomaticCredentialProfileApplication(
+        'codex',
+        exhausted,
+      );
+
+      expect(attempt?.candidateProfileRef).toBe('profile-c');
+      expect(
+        getAppConfig().agentConnections.codex.credentialRecovery.profiles,
+      ).toContainEqual({ ref: 'profile-a', env: routed });
+    });
+
+    test('an unrelated registry write persists an invalid saved overlay only as its value-free marker, which the projection flags by name', async () => {
+      const tampered = {
+        ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+        ANTHROPIC_API_KEY: 'sk-live-canary',
+      };
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a' },
+          { ref: 'canary-profile-ref', env: tampered },
+          { ref: 'profile-c' },
+        ],
+      );
+
+      const projected = await service.upsertCredentialProfile('codex', {
+        ref: 'profile-a',
+        label: 'Relabelled',
+      });
+
+      const persisted =
+        getAppConfig().agentConnections.codex.credentialRecovery;
+      expect(persisted.profiles).toContainEqual({
+        ref: 'canary-profile-ref',
+        envInvalid: { names: ['ANTHROPIC_API_KEY'] },
+      });
+      expect(JSON.stringify(getAppConfig())).not.toContain('sk-live-canary');
+      expect(
+        projected.profiles.find(
+          (profile) => profile.ref === 'canary-profile-ref',
+        ),
+      ).toEqual({
+        ref: 'canary-profile-ref',
+        envInvalid: { names: ['ANTHROPIC_API_KEY'] },
+      });
+      expect(JSON.stringify(projected)).not.toContain('sk-live-canary');
+    });
+
+    test('refuses as environment_mismatch when no enrolled candidate routes like the active profile', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        undefined,
+        [
+          { ref: 'profile-a', env: routed },
+          { ref: 'canary-profile-ref' },
+          {
+            ref: 'profile-c',
+            env: { OPENAI_BASE_URL: 'http://elsewhere.example.internal' },
+          },
+        ],
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+      const metricAdd = vi.spyOn(credentialProfileApplication, 'add');
+      try {
+        await expect(
+          service.stageAutomaticCredentialProfileApplication(
+            'codex',
+            exhausted,
+          ),
+        ).resolves.toBeUndefined();
+        expect(metricAdd).toHaveBeenCalledWith(1, {
+          source: 'recovery',
+          capability: 'restart_resume',
+          outcome: 'rejected',
+          scope: 'account',
+          reason: 'environment_mismatch',
+        });
+      } finally {
+        metricAdd.mockRestore();
+      }
+    });
   });
 
   test('refuses to enable automatic credential recovery when the adapter is unsupported', async () => {

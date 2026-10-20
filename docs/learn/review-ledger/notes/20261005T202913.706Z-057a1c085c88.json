@@ -1,0 +1,7 @@
+{
+  "revision": "e8ed3e747a8092969560e2c76a0ab88a6663a7ea",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"#3411 fix round: re-reviewed the probe-session paragraphs against acp-probe.ts reattachableProbeSession and acp-probe-session.ts. Removed the session/list recovery claim (that code was removed); stated the four fresh-session triggers (user-initiated probe, agent name/version change, six-hour age, restart/re-registration) and that a changed default can lag up to six hours without Reconnect; disclosed remaining growth (a few sessions/day/connection, ~670 B per Grok resume, ~160 KB/day vs ~30 MB/day before). Fixture evidence (acp-probe-session-reuse.test.ts) plus the reviewer's executed Grok 1.0.46 observation; no live Station run.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-probe-session.ts","src-server/services/acp/acp-probe.ts"]}
+  ]
+}

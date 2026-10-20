@@ -1,0 +1,7 @@
+{
+  "revision": "e6c8640191398988856756bf809ef5e9c16d2245",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Round 2: the failed-verb rule is now stated for every screen size (ToolCallDisplay/callLabel are shared), and the summary rule matches summarizeCalls: a write/delete/other kind whose every call failed takes the noun inventory ('2 file edits'), one success keeps the completed phrase plus the failed count, commands/reads/searches keep the completed verb. Meta time wording now says 'readable envelope time' (MessageBubble shows none for a missing or unparseable observedAt). Earlier ledger notes' claims about the phone fold, retries and steer dividers still hold; the earlier note's tense sentence is superseded by this wording.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/tool-call-groups.ts","src-ui/src/components/chat/tool-call-labels.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "dec44debba37a5de839ee1622ed2b16e6d5ff403",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Recorded the owner's 2026-10-06 decisions in section 9 (polling first, relay-forwarded push later via the broker mailbox with end-to-end signature verification, human merge, no ambient write credentials, CI issue-and-alert fallback, the name Automations) and updated the reading-status banner; the rest of the proposal is unchanged.","inputs":["docs/design/automations.md"]}
+  ]
+}

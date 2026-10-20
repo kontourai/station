@@ -14,6 +14,10 @@ export function engineDisplayLabel(engineId: EngineId): string | null {
       return 'Codex';
     case 'muse':
       return 'Muse Code';
+    // Read-only attached OpenCode sessions (`OpenCodeSessionSource`). An
+    // OpenCode connection Station drives itself is an ACP engine instead.
+    case 'opencode':
+      return 'OpenCode';
     case 'acp':
       return 'Custom engine';
     default:

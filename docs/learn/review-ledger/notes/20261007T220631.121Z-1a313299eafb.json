@@ -1,0 +1,9 @@
+{
+  "revision": "a9f028e960757f26035b3c3b54188073ef377d78",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed configured-before-started launch ordering observed in the live Codex check. The metadata fold now accumulates ordered observed fields so Station's later partial session.started fact cannot erase adapter-reported native binding. The scripted production-service handoff fixture reproduced the failure (2 native-return variants failed) and passes all 4 after the fix; independent source review found no concrete regression. Existing bounded-context and observed-identity claims remain accurate. This repairs binding discovery; full live cross-provider return remains blocked by Claude weekly quota and is not claimed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed configured-before-started launch ordering observed in the live Codex check. The metadata fold now accumulates ordered observed fields so Station's later partial session.started fact cannot erase adapter-reported native binding. The scripted production-service handoff fixture reproduced the failure (2 native-return variants failed) and passes all 4 after the fix; independent source review found no concrete regression. Existing bounded-context and observed-identity claims remain accurate. This repairs binding discovery; full live cross-provider return remains blocked by Claude weekly quota and is not claimed.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

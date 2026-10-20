@@ -18,6 +18,7 @@ import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -162,11 +163,23 @@ export function handleTurnStartedEvent(
     )
   ) {
     userMessages = [...(userMessages ?? [])];
-    const pending = currentChat?.pendingClientTurnId
-      ? [...userMessages]
-          .reverse()
-          .find((message) => message.role === 'user' && message.clientId)
-      : undefined;
+    // Station stamps the send's key on its turn, and this client's bubble
+    // carries the same key: an exact match. A keyed turn whose key names no
+    // bubble here was sent elsewhere (another device), so it is never pinned
+    // on this client's newest message. Only an event from before the key
+    // existed falls back to the newest composer row while a send is pending.
+    const pending = event.clientTurnId
+      ? userMessages.find(
+          (message) =>
+            message.role === 'user' &&
+            message.clientId === event.clientTurnId &&
+            !message.turnId,
+        )
+      : currentChat?.pendingClientTurnId
+        ? [...userMessages]
+            .reverse()
+            .find((message) => message.role === 'user' && message.clientId)
+        : undefined;
     if (pending) {
       const index = userMessages.indexOf(pending);
       userMessages[index] = {
@@ -208,6 +221,13 @@ export function handleTurnStartedEvent(
     reconciledEphemerals.length < ephemerals.length &&
     (currentChat?.input ?? '') === event.prompt;
   store.updateChat(event.threadId, {
+    ...(event.clientTurnId &&
+    currentChat?.messages?.some(
+      (message) =>
+        message.role === 'user' && message.clientId === event.clientTurnId,
+    )
+      ? withDeliveryCheck(currentChat, event.clientTurnId, 'started')
+      : {}),
     ...(userMessages !== currentChat?.messages
       ? { messages: userMessages }
       : {}),
@@ -222,7 +242,12 @@ export function handleTurnStartedEvent(
     // window it named is over. #2324: a turn the engine opened on its own
     // came from no dispatch — a send this client still has in flight keeps
     // its pre-start window and its optimistic send window.
-    ...(isProviderTriggeredTurn(event)
+    ...(isProviderTriggeredTurn(event) ||
+    // A keyed turn that is not this client's pending send (another device's)
+    // leaves this send's window open.
+    (event.clientTurnId !== undefined &&
+      currentChat?.pendingClientTurnId !== undefined &&
+      event.clientTurnId !== currentChat.pendingClientTurnId)
       ? {}
       : {
           pendingClientTurnId: undefined,

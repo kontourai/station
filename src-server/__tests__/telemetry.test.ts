@@ -1,18 +1,37 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import * as os from 'node:os';
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
+import { metrics, trace } from '@opentelemetry/api';
+import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ensureStationHomeSchemaSync } from '../domain/home-schema-gate.js';
 
 const homes: string[] = [];
 const renameHook: { afterRename?: () => Promise<void> } = {};
 const readPaths: string[] = [];
+const identityDelay: { beforeMkdir?: () => Promise<void> } = {};
+const sdkRequire = createRequire(
+  createRequire(import.meta.url).resolve('@opentelemetry/sdk-node'),
+);
+const { logs } = sdkRequire('@opentelemetry/api-logs') as {
+  logs: {
+    getLogger(name: string): { emit(record: { body: string }): void };
+    disable(): void;
+  };
+};
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
     default: actual,
+    mkdir: async (...args: Parameters<typeof actual.mkdir>) => {
+      await identityDelay.beforeMkdir?.();
+      return actual.mkdir(...args);
+    },
     readFile: (...args: Parameters<typeof actual.readFile>) => {
       readPaths.push(String(args[0]));
       return actual.readFile(...args);
@@ -28,6 +47,10 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
   renameHook.afterRename = undefined;
+  identityDelay.beforeMkdir = undefined;
+  metrics.disable();
+  trace.disable();
+  logs.disable();
   readPaths.length = 0;
   await Promise.all(
     homes.splice(0).map((home) => rm(home, { recursive: true, force: true })),
@@ -35,20 +58,23 @@ afterEach(async () => {
 });
 
 async function home(): Promise<string> {
-  const value = await mkdtemp(join(os.tmpdir(), 'station-otel-'));
+  const value = await createStationTempDir('otel');
   homes.push(value);
+  ensureStationHomeSchemaSync(value);
   return value;
 }
 
 async function telemetry() {
   vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', '');
+  vi.stubEnv('STATION_HOME', await home());
+  vi.stubEnv('STATION_ROOT', '');
   return import('../telemetry.js');
 }
 
 /** Starts configured OTel for one home and returns what reached the SDK. */
 async function sdkAttributes(homeDir: string) {
   const { initializeTelemetry } = await telemetry();
-  let captured: Record<string, string> | undefined;
+  let captured: Record<string, string | Promise<string>> | undefined;
   await initializeTelemetry({
     env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
     homeDir,
@@ -59,10 +85,457 @@ async function sdkAttributes(homeDir: string) {
     log: () => {},
   });
   if (!captured) throw new Error('initializeTelemetry never created an SDK');
-  return captured;
+  return Object.fromEntries(
+    await Promise.all(
+      Object.entries(captured).map(async ([key, value]) => [key, await value]),
+    ),
+  );
 }
 
 describe('OTel installation identity', () => {
+  test.each([
+    'authorized',
+    'wrong-transport',
+    'revoked',
+    'inherited-headers',
+  ] as const)(
+    'saved collector bootstrap registers first and exports only with %s instance authority',
+    async (authority) => {
+      const root = await home();
+      vi.stubEnv('STATION_HOME', root);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://unselected-env.test');
+      vi.stubEnv('STATION_OTEL_API_KEY', 'unselected-env-key');
+      vi.stubEnv('STATION_PRODUCT_TELEMETRY_KEY', 'product-only-key');
+      vi.stubEnv('SAVED_OTEL_KEY', 'saved-otel-material');
+      vi.stubEnv(
+        'OTEL_EXPORTER_OTLP_HEADERS',
+        authority === 'inherited-headers'
+          ? 'authorization=unselected-environment-material'
+          : '',
+      );
+      vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_HEADERS', '');
+      vi.stubEnv('OTEL_EXPORTER_OTLP_METRICS_HEADERS', '');
+      vi.stubEnv('OTEL_LOGS_EXPORTER', 'none');
+      vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
+      const requests: Array<{
+        path?: string;
+        key?: string | string[];
+        body: string;
+      }> = [];
+      const server = createServer(async (request, response) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        requests.push({
+          path: request.url,
+          key: request.headers['x-api-key'],
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+        response
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end('{}');
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('collector did not listen');
+      const destination = `http://127.0.0.1:${address.port}`;
+      const { FileSecretBindingAdministration } = await import(
+        '../services/secrets/secret-binding-administration.js'
+      );
+      const bindings = new FileSecretBindingAdministration(root);
+      await bindings.create({
+        id: 'otel-source',
+        name: 'Collector key',
+        authRef: { env: 'SAVED_OTEL_KEY' },
+      });
+      await bindings.grant({
+        id: 'otel-source',
+        expectedRevision: 1,
+        grant: {
+          kind: 'instance-telemetry-destination',
+          transport: authority === 'wrong-transport' ? 'product' : 'otel',
+          destination,
+        },
+      });
+      if (authority === 'revoked')
+        await bindings.revoke({ id: 'otel-source', expectedRevision: 2 });
+      await mkdir(join(root, 'config'), { recursive: true, mode: 0o700 });
+      await writeFile(
+        join(root, 'config', 'app.json'),
+        JSON.stringify({
+          defaultModel: 'configured-model',
+          invokeModel: 'configured-model',
+          structureModel: 'configured-model',
+          otelTelemetryEndpoint: destination,
+          otelTelemetryKeyRef: 'otel-source',
+        }),
+        { mode: 0o600 },
+      );
+      // Provisioning is a prior process; the new bootstrap must create fresh instruments.
+      vi.resetModules();
+      metrics.disable();
+      trace.disable();
+      logs.disable();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const module = await import('../telemetry.js');
+      try {
+        const provider = metrics.getMeterProvider();
+        expect(provider).toBeInstanceOf(MeterProvider);
+        if (!(provider instanceof MeterProvider))
+          throw new Error('saved provider was not registered synchronously');
+        const { chatRequests, tracer } = await import(
+          '../telemetry/metrics.js'
+        );
+        chatRequests.add(3);
+        tracer.startSpan('saved-collector-control').end();
+        await expect(provider.forceFlush()).resolves.toBeUndefined();
+        await module
+          .configuredTelemetryShutdownTask()
+          ?.shutdown(new AbortController().signal);
+        const { getOtelTelemetryDeliveryStatus } = await import(
+          '../telemetry-delivery-state.js'
+        );
+        const status = getOtelTelemetryDeliveryStatus();
+        if (authority === 'authorized') {
+          expect(
+            requests.some((request) => request.path === '/v1/metrics'),
+          ).toBe(true);
+          expect(
+            requests.some((request) => request.path === '/v1/traces'),
+          ).toBe(true);
+          expect(
+            requests.every((request) => request.key === 'saved-otel-material'),
+          ).toBe(true);
+          expect(status.metrics.accepted).toBeGreaterThan(0);
+          expect(status.traces.accepted).toBeGreaterThan(0);
+        } else {
+          expect(requests).toEqual([]);
+          expect(status.metrics.accepted).toBe(0);
+          expect(status.traces.accepted).toBe(0);
+          expect(status.metrics.failed).toBeGreaterThan(0);
+        }
+        expect(status.downstreamDelivery).toBe('unverified');
+        const serialized = JSON.stringify(status);
+        expect(serialized).not.toContain(destination);
+        expect(serialized).not.toContain('saved-otel-material');
+      } finally {
+        await module
+          .configuredTelemetryShutdownTask()
+          ?.shutdown(new AbortController().signal);
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+        log.mockRestore();
+      }
+    },
+  );
+
+  test.each(['persisted', 'failed'] as const)(
+    'records during identity I/O and exports only with %s identity',
+    async (outcome) => {
+      const root = await home();
+      vi.stubEnv('STATION_HOME', root);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv('STATION_TELEMETRY_API_KEY', '');
+      vi.stubEnv('STATION_OTEL_API_KEY', 'canonical-otel-only-key');
+      vi.stubEnv('STATION_PRODUCT_TELEMETRY_KEY', 'product-only-key');
+      vi.stubEnv('OTEL_LOGS_EXPORTER', '');
+      vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const started = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const requests: Array<{
+        path: string | undefined;
+        body: string;
+        key: string | string[] | undefined;
+      }> = [];
+      const server = createServer(async (request, response) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        requests.push({
+          path: request.url,
+          key: request.headers['x-api-key'],
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end('{}');
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const address = server.address();
+      if (address === null || typeof address === 'string')
+        throw new Error('collector has no TCP address');
+      let releaseIdentity = () => {};
+      const delayed = new Promise<void>((resolve) => {
+        releaseIdentity = resolve;
+      });
+      let markEntered = () => {};
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve;
+      });
+      identityDelay.beforeMkdir = async () => {
+        markEntered();
+        await delayed;
+        if (outcome === 'failed')
+          throw new Error('identity persistence refused');
+      };
+      metrics.disable();
+      vi.stubEnv(
+        'OTEL_EXPORTER_OTLP_ENDPOINT',
+        `http://127.0.0.1:${address.port}`,
+      );
+      vi.stubEnv(
+        'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT',
+        `http://127.0.0.1:${address.port}/v1/logs`,
+      );
+      vi.stubEnv('OTEL_EXPORTER_OTLP_LOGS_PROTOCOL', 'http/json');
+      const {
+        configuredTelemetryShutdownTask,
+        OTEL_INSTALLATION_ID_ATTRIBUTE,
+      } = await import('../telemetry.js');
+      const { getOtelTelemetryDeliveryStatus } = await import(
+        '../telemetry-delivery-state.js'
+      );
+      try {
+        await entered;
+        expect(getOtelTelemetryDeliveryStatus()).toMatchObject({
+          scope: 'current-process',
+          phase: 'initialized',
+          identity: 'pending',
+          downstreamDelivery: 'unverified',
+        });
+        const { chatRequests, tracer } = await import(
+          '../telemetry/metrics.js'
+        );
+        const provider = metrics.getMeterProvider();
+        if (!(provider instanceof MeterProvider))
+          throw new Error(
+            'configured meter was not registered during identity I/O',
+          );
+        chatRequests.add(7);
+        tracer.startSpan('station.identity-pending-control').end();
+        logs
+          .getLogger('station.undeclared-signal-control')
+          .emit({ body: 'not an enabled export signal' });
+        const pendingExport = provider.forceFlush();
+        expect(requests).toEqual([]);
+        releaseIdentity();
+        await pendingExport;
+        if (outcome === 'failed') {
+          await configuredTelemetryShutdownTask()?.shutdown(
+            new AbortController().signal,
+          );
+          expect(warn).toHaveBeenCalledWith(
+            '[telemetry] OTel did not start; Station continues without it:',
+            'identity persistence refused',
+          );
+          expect(requests).toEqual([]);
+          expect(getOtelTelemetryDeliveryStatus()).toMatchObject({
+            phase: 'failed',
+            identity: 'failed',
+            downstreamDelivery: 'unverified',
+            metrics: { accepted: 0, lastResult: 'failed' },
+          });
+          expect(
+            getOtelTelemetryDeliveryStatus().metrics.failed,
+          ).toBeGreaterThan(0);
+          return;
+        }
+        expect(warn).not.toHaveBeenCalled();
+        chatRequests.add(17);
+        await provider.forceFlush();
+        await configuredTelemetryShutdownTask()?.shutdown(
+          new AbortController().signal,
+        );
+        const persisted = (
+          await readFile(join(root, 'config', 'otel-installation-id'), 'utf8')
+        ).trim();
+        const hash = createHash('sha256').update(persisted).digest('hex');
+        const observations = requests
+          .filter((request) => request.path === '/v1/metrics')
+          .flatMap(({ body }) => {
+            const payload = JSON.parse(body) as {
+              resourceMetrics: Array<{
+                resource: {
+                  attributes: Array<{
+                    key: string;
+                    value: { stringValue?: string };
+                  }>;
+                };
+                scopeMetrics: Array<{
+                  metrics: Array<{
+                    name: string;
+                    sum?: {
+                      dataPoints: Array<{ asInt?: string; asDouble?: number }>;
+                    };
+                  }>;
+                }>;
+              }>;
+            };
+            return payload.resourceMetrics.flatMap((resource) => {
+              expect(
+                resource.resource.attributes.find(
+                  (item) => item.key === OTEL_INSTALLATION_ID_ATTRIBUTE,
+                )?.value.stringValue,
+              ).toBe(hash);
+              return resource.scopeMetrics.flatMap((scope) =>
+                scope.metrics
+                  .filter((metric) => metric.name === 'station.chat.requests')
+                  .flatMap(
+                    (metric) =>
+                      metric.sum?.dataPoints.map((point) =>
+                        Number(point.asInt ?? point.asDouble),
+                      ) ?? [],
+                  ),
+              );
+            });
+          });
+        expect(observations).toEqual([7, 17]);
+        const traces = requests
+          .filter((request) => request.path === '/v1/traces')
+          .flatMap(({ body }) => {
+            const payload = JSON.parse(body) as {
+              resourceSpans: Array<{
+                resource: {
+                  attributes: Array<{
+                    key: string;
+                    value: { stringValue?: string };
+                  }>;
+                };
+                scopeSpans: Array<{ spans: Array<{ name: string }> }>;
+              }>;
+            };
+            return payload.resourceSpans.flatMap((resource) => {
+              expect(
+                resource.resource.attributes.find(
+                  (item) => item.key === OTEL_INSTALLATION_ID_ATTRIBUTE,
+                )?.value.stringValue,
+              ).toBe(hash);
+              return resource.scopeSpans.flatMap((scope) =>
+                scope.spans.map((span) => span.name),
+              );
+            });
+          });
+        expect(traces).toContain('station.identity-pending-control');
+        expect(requests.some((request) => request.path === '/v1/logs')).toBe(
+          false,
+        );
+        expect(
+          requests.every(
+            (request) => request.key === 'canonical-otel-only-key',
+          ),
+        ).toBe(true);
+        const delivery = getOtelTelemetryDeliveryStatus();
+        expect(delivery).toMatchObject({
+          scope: 'current-process',
+          phase: 'stopped',
+          identity: 'ready',
+          downstreamDelivery: 'unverified',
+          metrics: { lastResult: 'accepted', failed: 0 },
+          traces: { lastResult: 'accepted', failed: 0 },
+        });
+        expect(delivery.metrics.accepted).toBeGreaterThanOrEqual(2);
+        expect(delivery.traces.accepted).toBeGreaterThanOrEqual(1);
+      } finally {
+        releaseIdentity();
+        await vi.waitFor(() => {
+          if (outcome === 'failed') {
+            expect(warn).toHaveBeenCalledWith(
+              '[telemetry] OTel did not start; Station continues without it:',
+              'identity persistence refused',
+            );
+          } else {
+            expect(started).toHaveBeenCalledWith(
+              '[telemetry] OTel exporters initialized (installation identity configured)',
+            );
+          }
+        });
+        await configuredTelemetryShutdownTask()?.shutdown(
+          new AbortController().signal,
+        );
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+        warn.mockRestore();
+        started.mockRestore();
+      }
+    },
+  );
+
+  test('refuses an incompatible home before identity writes or provider creation', async () => {
+    const root = await createStationTempDir('otel-incompatible');
+    homes.push(root);
+    await writeFile(join(root, 'unclaimed-history.ndjson'), '{}\n');
+    const { initializeTelemetry } = await telemetry();
+    const createSdk = vi.fn();
+    await expect(
+      initializeTelemetry({
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+        homeDir: root,
+        createSdk,
+      }),
+    ).rejects.toMatchObject({ code: 'STATION_HOME_RESET_REQUIRED' });
+    expect(createSdk).not.toHaveBeenCalled();
+    expect(await readFile(join(root, 'unclaimed-history.ndjson'), 'utf8')).toBe(
+      '{}\n',
+    );
+    await expect(
+      readFile(join(root, 'config', 'otel-installation-id'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test.each(['absent home with writable parent', 'public home'] as const)(
+    'automatic telemetry import refuses hosted %s before writes',
+    async (scenario) => {
+      const parent = await createStationTempDir('otel-hosted-boundary');
+      homes.push(parent);
+      const root = scenario === 'public home' ? parent : join(parent, 'home');
+      await chmod(parent, scenario === 'public home' ? 0o755 : 0o777);
+      vi.stubEnv('STATION_HOME', root);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv(
+        'STATION_HOSTED_TENANT_REGISTRY_FILE',
+        '/deployment/registry.json',
+      );
+      vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', 'https://collector.test');
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      metrics.disable();
+      let telemetryModule: typeof import('../telemetry.js') | undefined;
+      try {
+        telemetryModule = await import('../telemetry.js');
+        const { configuredTelemetryShutdownTask } = telemetryModule;
+        await vi.waitFor(() =>
+          expect(warn).toHaveBeenCalledWith(
+            '[telemetry] OTel did not start; Station continues without it:',
+            expect.stringContaining('private Station persistence boundary'),
+          ),
+        );
+        expect(configuredTelemetryShutdownTask()).toBeUndefined();
+        for (const path of [
+          '.station-home-schema.json',
+          'config/otel-installation-id',
+        ]) {
+          await expect(stat(join(root, path))).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+        }
+        expect((await stat(parent)).mode & 0o777).toBe(
+          scenario === 'public home' ? 0o755 : 0o777,
+        );
+        if (scenario !== 'public home')
+          await expect(stat(root)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await telemetryModule
+          ?.configuredTelemetryShutdownTask()
+          ?.shutdown(new AbortController().signal);
+        warn.mockRestore();
+      }
+    },
+  );
+
   test('IDENTITY STORAGE DEFECT: a fresh OTel install persists a UUID and emits its hash', async () => {
     const root = await home();
     const { OTEL_INSTALLATION_ID_ATTRIBUTE } = await telemetry();
@@ -146,9 +619,11 @@ describe('OTel installation identity', () => {
     const second = await home();
     const { OTEL_INSTALLATION_ID_ATTRIBUTE, initializeTelemetry } =
       await telemetry();
-    const captured: Record<string, string>[] = [];
-    const createSdk = (resourceAttributes: Record<string, string>) => {
-      captured.push({ ...resourceAttributes });
+    const pendingCaptured: Record<string, string | Promise<string>>[] = [];
+    const createSdk = (
+      resourceAttributes: Record<string, string | Promise<string>>,
+    ) => {
+      pendingCaptured.push({ ...resourceAttributes });
       return { start: () => {}, shutdown: async () => {} };
     };
     const run = (homeDir: string) =>
@@ -162,6 +637,18 @@ describe('OTel installation identity', () => {
     await run(first);
     await run(second);
     await run(first);
+    const captured = await Promise.all(
+      pendingCaptured.map(async (attributes) =>
+        Object.fromEntries(
+          await Promise.all(
+            Object.entries(attributes).map(async ([key, value]) => [
+              key,
+              await value,
+            ]),
+          ),
+        ),
+      ),
+    );
 
     expect(
       captured.length,
@@ -213,5 +700,124 @@ describe('OTel installation identity', () => {
     await task?.shutdown(new AbortController().signal);
     expect(shutdown).toHaveBeenCalledOnce();
     expect(configuredTelemetryShutdownTask()).toBeUndefined();
+  });
+
+  test('shutdown expiry refuses a collector acknowledgement arriving after the runtime budget', async () => {
+    const root = await home();
+    vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
+    vi.stubEnv('OTEL_EXPORTER_OTLP_HEADERS', '');
+    vi.stubEnv('OTEL_EXPORTER_OTLP_TRACES_HEADERS', '');
+    vi.stubEnv('OTEL_EXPORTER_OTLP_METRICS_HEADERS', '');
+    const module = await telemetry();
+    const { getOtelTelemetryDeliveryStatus } = await import(
+      '../telemetry-delivery-state.js'
+    );
+    let releaseResponse = () => {};
+    let receivedPath: string | undefined;
+    let receivedBody: string | undefined;
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      receivedPath = request.url;
+      receivedBody = Buffer.concat(chunks).toString('utf8');
+      releaseResponse = () => {
+        releaseResponse = () => {};
+        response
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end('{}');
+      };
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('collector did not listen');
+    const controller = new AbortController();
+    let pendingExport: Promise<void> | undefined;
+    try {
+      await module.initializeTelemetry({
+        env: {
+          OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${address.port}`,
+        },
+        homeDir: root,
+        log: () => {},
+      });
+      const { chatRequests } = await import('../telemetry/metrics.js');
+      const provider = metrics.getMeterProvider();
+      if (!(provider instanceof MeterProvider))
+        throw new Error('configured meter was not registered');
+      chatRequests.add(1);
+      pendingExport = provider.forceFlush();
+      await vi.waitFor(() => expect(receivedPath).toBe('/v1/metrics'));
+      expect(receivedBody).toContain('station.chat.requests');
+      const task = module.configuredTelemetryShutdownTask();
+      if (!task) throw new Error('configured SDK has no shutdown task');
+      const shutdown = task.shutdown(controller.signal);
+      controller.abort();
+      await shutdown;
+      expect(getOtelTelemetryDeliveryStatus()).toMatchObject({
+        phase: 'stopped',
+        metrics: { accepted: 0 },
+      });
+      releaseResponse();
+      await expect(pendingExport).resolves.toBeUndefined();
+      expect(getOtelTelemetryDeliveryStatus().metrics.accepted).toBe(0);
+      expect(getOtelTelemetryDeliveryStatus().metrics.failed).toBeGreaterThan(
+        0,
+      );
+    } finally {
+      controller.abort();
+      releaseResponse();
+      await module
+        .configuredTelemetryShutdownTask()
+        ?.shutdown(controller.signal);
+      server.closeAllConnections();
+      await pendingExport;
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  test('shutdown owns the configured SDK while identity is pending and cannot announce export after stopping', async () => {
+    const root = await home();
+    const { initializeTelemetry, configuredTelemetryShutdownTask } =
+      await telemetry();
+    let releaseIdentity = () => {};
+    const delayed = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    identityDelay.beforeMkdir = () => delayed;
+    let releaseShutdown = () => {};
+    const pendingShutdown = new Promise<void>((resolve) => {
+      releaseShutdown = resolve;
+    });
+    const shutdown = vi.fn(() => pendingShutdown);
+    const log = vi.fn();
+    const initializing = initializeTelemetry({
+      env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+      homeDir: root,
+      createSdk: () => ({ start: () => {}, shutdown }),
+      log,
+    });
+    try {
+      const task = configuredTelemetryShutdownTask();
+      expect(task).toBeDefined();
+      const controller = new AbortController();
+      controller.abort();
+      await task?.shutdown(controller.signal);
+      await task?.shutdown(controller.signal);
+      expect(shutdown).toHaveBeenCalledOnce();
+      const { getOtelTelemetryDeliveryStatus } = await import(
+        '../telemetry-delivery-state.js'
+      );
+      expect(getOtelTelemetryDeliveryStatus().phase).toBe('stopped');
+    } finally {
+      releaseShutdown();
+      releaseIdentity();
+      await initializing;
+    }
+    expect(log).not.toHaveBeenCalled();
   });
 });

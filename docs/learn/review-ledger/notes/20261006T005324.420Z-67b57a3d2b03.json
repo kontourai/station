@@ -1,0 +1,7 @@
+{
+  "revision": "0bc9c15d1aafa5a9591ea28516ede3c9563707f4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#3391 merge and dock-icon pin: NewChatModal now requires projectIconBySlug, which ChatDock passes through ChatDockModalStack (pinned in ChatWorkspacePaneComposerDraft.test.tsx). The chip claims (icon else accent, runsAt folder, not checked yet) still hold.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

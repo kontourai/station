@@ -41,7 +41,9 @@ New chat opens the start composer (Agent and project chips, Start) and recent
 chats from the selected workspace. A setup helper appears when the
 selected Agent cannot respond. It shows server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or Model setup.
-Installation commands are display guidance, never automatic execution. The
+For the built-in Station assistant, **Choose AI for Station** opens the existing
+engine chooser, including ready external apps, before requiring a new Model
+account. Installation commands are display guidance, never automatic execution. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.
@@ -68,6 +70,30 @@ Consequences:
 - Detected providers may appear in the overview as **Found, not connected** or **Setup required**. Detection means Station observed a provider-specific setup signal on this computer: an executable, a reachable local service, or a credential chain. It does not prove that credentials are authorized for that provider; a connection is separate Station configuration.
   A detected row is still only a suggestion: it creates no Station connection until the
   user takes its explicit action.
+
+## Connect an engine through a saved proxy
+
+In **Connections → Engines**, Claude Code and Codex offer **Connect through**. Choose
+**Your account** or an enabled OpenAI-compatible connection already saved under **Models**.
+The saved model connection owns the address and key; the engine stores only its connection
+reference. Choosing a route explicitly replaces custom connection environment/config-home
+overrides. Station never edits the user's global CLI configuration.
+
+Save the connection to discover its models, choose a **Default model**, and use **Check
+connection**. The check sends one short, potentially billable message. It can retry an old
+authentication failure, but cannot bypass missing binaries or other prerequisites. A failed
+or timed-out check leaves failure evidence; only a proven successful turn restores runtime
+health. **Refresh models** re-reads the connection catalog and does not send a chat turn.
+
+Claude uses the proxy's Messages root. Codex uses child-process provider overrides and its
+native model catalog, preserving the existing config home and resume history. A selected
+proxy that is missing, disabled, or lacks a key refuses launch rather than falling back to
+the direct account. Credential rotation is read from the saved model connection on the next
+launch and invalidates the prior connection-check receipt.
+
+New execution sessions capture a safe route label and endpoint. Chat headers, engine
+choices and work lists show **via <proxy name>**; later configuration changes do not rename
+an idle session's recorded route. A relaunched execution records the route it actually uses. Older sessions without a captured route keep their existing labels.
 
 ## 1.1 Engine config ownership: the overlay model
 
@@ -129,7 +155,16 @@ copies only when the caller sets `includeCredentials: true` (a separate, explici
 in the UI) — on macOS, Claude Code's OAuth credentials actually live in the system
 Keychain. Current saved-profile launches and enrolment bind its secure-store
 namespace to the profile config directory; file absence alone does not establish
-authentication. The engine-account page asks the CLI for status. Connection readiness does too (#3303): with no API-key env and no `.credentials.json`, and only when the config dir exists, it runs the installed CLI's `auth status --json` (only on an installed Claude CLI of 2.1.41 or newer, where the command exists) under the connection env; a failed, timed-out or unparseable probe is `unknown` (the login prerequisite then reports an error, which still blocks), never authenticated. Always refused, never on any allowlist: `projects/`, `todos/`,
+authentication. The engine-account page asks the CLI for status. Connection
+readiness first checks explicit token environment overrides and, on macOS, the
+selected Keychain namespace before its credential file. Unreadable or malformed
+secure-store state remains `unknown`; another namespace's login cannot supply
+readiness. When the selected entry and file are absent, an installed Claude CLI
+of 2.1.41 or newer can answer `auth status --json` under the connection env
+(#3303). Both the selected storage directory and the CLI config directory must
+already exist: a readiness check must not create them. A failed, timed-out or
+unparseable probe is `unknown` (the login prerequisite then reports an error,
+which still blocks), never authenticated. Always refused, never on any allowlist: `projects/`, `todos/`,
 `statsig/`, `shell-snapshots/`, anything not listed above, any symlink anywhere in a
 copied tree (refuse, never follow — same posture as the skills-materialization module
 below), and a file whose opened descriptor reports more than 5 MiB before reading.
@@ -244,7 +279,11 @@ failure mode instead of an adapter-level design choice.
 
 Credential profiles extend the app-home boundary without turning it into a second
 credential vault. The persisted connection record carries only an opaque profile `ref`,
-an optional display label, explicit group/enrollment metadata, default-off
+an optional **management-only** label, an optional non-secret env overlay (#2966;
+credential-shaped names and values are refused by a heuristic, except an empty
+masking value — see the
+[connections guide](../guides/connections.md#give-a-credential-profile-its-own-routing)),
+explicit group/enrollment metadata, default-off
 automatic policy, and the current non-secret application projection. The dedicated
 engine sign-in read exposes only refs, labels, auth state and observed device-code
 support to an explicitly granted device; management metadata stays restricted. Credential material
@@ -260,8 +299,13 @@ profile home. Routes and UI return the ref/label only, never the profile directo
 keeps a profile usable even when the legacy `config.useAppHome` toggle is off: an active
 credential profile has precedence for ordinary future starts; only if there is no active
 profile does Station use the legacy base app-home opt-in or the engine's global config.
-An explicit selected-profile environment failure fails closed rather than silently falling
-back to global credentials.
+A selected-profile environment failure — an explicit ref or the connection's active
+profile, including an invalid persisted env overlay — fails closed rather than silently
+falling back to global credentials. Normalization reduces an invalid saved overlay to a
+value-free `envInvalid` marker holding the offending variable names only: its values are
+not retained by the next registry write or a `PUT /config/app` that includes the
+profiles, and the marker keeps the profile refused (an unrelated write cannot silently
+un-route it) until a valid overlay replaces it.
 
 **Capability matrix and application.** Capability is adapter-declared, never inferred
 from a provider name. Codex currently declares `restart_resume` and does not claim
@@ -291,6 +335,7 @@ adoption. Active or pending/enrolled refs cannot be deleted.
 be explicitly enrolled before it can be considered. Selection is fail-closed: only an
 *observed*, account-scoped `rate-limit` or `capacity` failure may stage a different
 enrolled profile; authentication, provider/server/unknown scope, a same-profile candidate,
+a candidate whose env overlay differs from the active profile's (`environment_mismatch`),
 or an unsupported adapter all refuse. The selected recovery restart/resume follows the
 same stage → commit-on-live-success / rollback-on-failure protocol as manual adoption.
 

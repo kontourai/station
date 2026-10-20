@@ -111,7 +111,22 @@ class StationWindowsOwnedGuard {
     return monitor.State == CONTROL_RESUME;
   }
 
+  static int ReadIdentity(string value) {
+    int pid;
+    if (!Int32.TryParse(value, out pid) || pid < 1) return Fail("identity-pid");
+    IntPtr process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+    if (process == IntPtr.Zero) return FailWin32("identity-open");
+    try {
+      if (WaitForSingleObject(process, 0) != WAIT_TIMEOUT) return Fail("identity-not-alive");
+      string creation = CreationIsoAtMicrosecondPrecision(process);
+      if (String.IsNullOrEmpty(creation)) return FailWin32("identity-read");
+      Send(Console.Out, creation);
+      return 0;
+    } finally { CloseHandle(process); }
+  }
+
   static int Main(string[] args) {
+    if (args.Length == 2 && args[0] == "--identity") return ReadIdentity(args[1]);
     if (args.Length < 3) return 125;
     int parentPid; if (!Int32.TryParse(args[0], out parentPid)) return 125;
     IntPtr parent = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, parentPid);

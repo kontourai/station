@@ -1,0 +1,7 @@
+{
+  "revision": "05548e53e0d1c37af772dcbe59e60a01ed0fd5e5",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"#3149 only adds native-platform:ratchet to the ci:fast static list; fast-checks-statics still runs test:e2e:pr-smoke as the page states.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts"]}
+  ]
+}

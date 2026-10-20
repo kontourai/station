@@ -866,6 +866,58 @@ export async function materializeStationAgent(
   return { created: false, healed: healedRecord !== null };
 }
 
+/** The two reads `findEngineAgent` makes of an Agent store. */
+export interface EngineAgentCatalog {
+  listAgents(): ReturnType<ConfigLoader['listAgents']>;
+  loadAgent(slug: string): Promise<AgentSpec>;
+}
+
+/**
+ * The FIND half of `materializeEngineAgent`: the slug of the Agent that IS
+ * this engine's Agent (`selectEngineAgentAdoption`), or null. It writes
+ * nothing, so a caller that must not create an Agent as a side effect (a
+ * continued attached conversation choosing the Agent it runs as, #3429)
+ * gets exactly the Agent New Chat's Enable would select.
+ */
+export async function findEngineAgent(
+  configLoader: EngineAgentCatalog,
+  id: string,
+  name: string,
+): Promise<string | null> {
+  const connectionId = engineConnectionId(id);
+  const metadata = await configLoader.listAgents();
+  // The listing does not carry `provenance`, and tier 1 needs it. Load only
+  // the files that are actually bound to this engine — never the catalog.
+  const candidates = await Promise.all(
+    metadata
+      .filter((agent) => agent.execution?.agentConnectionId === connectionId)
+      .map(async (agent) => {
+        let provenance: AgentSpec['provenance'];
+        try {
+          provenance = (await configLoader.loadAgent(String(agent.slug)))
+            .provenance;
+        } catch {
+          // Mid-write or unreadable: it simply cannot prove tier 1. The
+          // other tiers still apply, and a missing file drops out below.
+        }
+        return {
+          slug: String(agent.slug),
+          name: agent.name,
+          ...(agent.project !== undefined ? { project: agent.project } : {}),
+          ...(agent.plugin !== undefined ? { plugin: agent.plugin } : {}),
+          execution: agent.execution,
+          ...(provenance ? { provenance } : {}),
+        } as EngineAgentCandidate;
+      }),
+  );
+  const { adopted } = selectEngineAgentAdoption(candidates, {
+    id,
+    connectionId: String(connectionId),
+    displayName: name,
+  });
+  return adopted?.slug ?? null;
+}
+
 /**
  * Make the registry identity usable. The resulting file is deliberately an
  * ordinary Agent: users can edit, add skills to, or delete it like any other.
@@ -888,39 +940,7 @@ export async function materializeEngineAgent(
   name: string,
 ): Promise<{ slug: string; created: boolean }> {
   const connectionId = engineConnectionId(id);
-  const resolveExisting = async (): Promise<string | null> => {
-    const metadata = await configLoader.listAgents();
-    // The listing does not carry `provenance`, and tier 1 needs it. Load only
-    // the files that are actually bound to this engine — never the catalog.
-    const candidates = await Promise.all(
-      metadata
-        .filter((agent) => agent.execution?.agentConnectionId === connectionId)
-        .map(async (agent) => {
-          let provenance: AgentSpec['provenance'];
-          try {
-            provenance = (await configLoader.loadAgent(String(agent.slug)))
-              .provenance;
-          } catch {
-            // Mid-write or unreadable: it simply cannot prove tier 1. The
-            // other tiers still apply, and a missing file drops out below.
-          }
-          return {
-            slug: String(agent.slug),
-            name: agent.name,
-            ...(agent.project !== undefined ? { project: agent.project } : {}),
-            ...(agent.plugin !== undefined ? { plugin: agent.plugin } : {}),
-            execution: agent.execution,
-            ...(provenance ? { provenance } : {}),
-          } as EngineAgentCandidate;
-        }),
-    );
-    const { adopted } = selectEngineAgentAdoption(candidates, {
-      id,
-      connectionId: String(connectionId),
-      displayName: name,
-    });
-    return adopted?.slug ?? null;
-  };
+  const resolveExisting = () => findEngineAgent(configLoader, id, name);
 
   const adoptedSlug = await resolveExisting();
   if (adoptedSlug) return { slug: adoptedSlug, created: false };

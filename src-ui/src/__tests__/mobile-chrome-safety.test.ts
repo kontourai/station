@@ -664,7 +664,7 @@ describe('dock-owned view classification (#2636, station#4460)', () => {
     const dock = read('components/chat-dock/ChatDock.tsx');
     expect(app).toMatch(/isDockOwnedView:\s*isDockOwnedViewType\(/);
     expect(dock).toMatch(
-      /isDockOwnedView:\s*isFullscreenPlacement \|\|\s*isDockOwnedViewType\(/,
+      /isDockOwnedView:[\s\S]*?isDockOwnedViewType\(resolveViewFromPath\(pathname\)\.type\)/,
     );
   });
 });

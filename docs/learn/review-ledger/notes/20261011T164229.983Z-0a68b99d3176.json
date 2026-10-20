@@ -1,0 +1,7 @@
+{
+  "revision": "9357cb58eaa5f24274257fe80fb34267393c1546",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"This round changes picker row layout (engine on the name line), the read-failure alert's retry handling and the transport phrase anchor; the guide's New Chat, setup and continuation steps make no claim about these and remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

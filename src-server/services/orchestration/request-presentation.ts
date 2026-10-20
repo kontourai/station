@@ -1,5 +1,10 @@
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import {
+  boundedDisplayText,
+  displayMultilineText,
+  truncateDisplay,
+} from '@kontourai/station-shared/display-text';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
@@ -14,19 +19,32 @@ import {
  * tool call is waiting" from "the agent asked a question" — rather than the
  * coarser lifecycle flag or the notification's own (pre-scrubbed) copy.
  */
-export function presentOpenRequest(request: RequestOpenedEvent): {
+/** The fields of a `request.opened` event the presentation reads. */
+export type PresentableOpenRequest = Pick<
+  RequestOpenedEvent,
+  'requestType' | 'title' | 'description' | 'payload'
+>;
+
+export function presentOpenRequest(request: PresentableOpenRequest): {
   title: string;
   body?: string;
 } {
   const rawTitle = request.title?.trim() || undefined;
-  const questionnaire = readHarnessQuestionnaire(
-    request.payload?.questionnaire,
-  );
-  if (questionnaire)
+  const inputRequest = inputRequestFromRequestEvent(request);
+  if (inputRequest?.source.startsWith('harness:'))
     return presentAskRequest(
       'The agent asked questions',
       rawTitle,
-      questionnaire.questions[0].prompt,
+      inputRequest.body.fields[0]
+        ? (inputRequest.body.fields[0].title ??
+            inputRequest.body.fields[0].name)
+        : inputRequest.message,
+    );
+  if (inputRequest)
+    return presentAskRequest(
+      'A tool server needs your input',
+      rawTitle,
+      inputRequest.message,
     );
 
   switch (request.requestType) {
@@ -72,11 +90,14 @@ function presentToolRequest(
   description: string | undefined,
   toolSummary: { toolName?: string; preview?: string } | null,
 ): { title: string; body?: string } {
+  // Everything here is shown beside the approval's preview, which is
+  // sanitised (`toolRequestPreview`), so it gets the same display form: an
+  // RLO in a Codex title (the literal command) must not reorder the row.
   const boundedRawTitle = rawTitle
-    ? truncateRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
+    ? displayRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
     : undefined;
   const toolName = toolSummary?.toolName
-    ? truncateRequestText(toolSummary.toolName, MAX_RAW_TITLE_LENGTH)
+    ? displayRequestText(toolSummary.toolName, MAX_RAW_TITLE_LENGTH)
     : boundedRawTitle;
   const title = toolName
     ? `Tool call awaiting approval: ${toolName}`
@@ -84,7 +105,7 @@ function presentToolRequest(
 
   const bodyParts: string[] = [];
   if (description)
-    bodyParts.push(truncateRequestText(description, MAX_DESCRIPTION_LENGTH));
+    bodyParts.push(displayRequestText(description, MAX_DESCRIPTION_LENGTH));
   if (boundedRawTitle && boundedRawTitle !== toolName)
     bodyParts.push(boundedRawTitle);
   if (toolSummary?.preview) bodyParts.push(toolSummary.preview);
@@ -101,12 +122,19 @@ function presentAskRequest(
   rawTitle: string | undefined,
   description: string | undefined,
 ): { title: string; body?: string } {
-  const title = rawTitle ? `${label}: ${rawTitle}` : label;
+  // #3382: the ask's own title and description are engine text shown
+  // beside its answer, so they are read in display form (no bidi or
+  // invisible characters); the description keeps its line breaks.
+  const shownTitle = rawTitle
+    ? displayRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
+    : undefined;
+  const title = shownTitle ? `${label}: ${shownTitle}` : label;
+  const body = description
+    ? displayRequestMultilineText(description, MAX_DESCRIPTION_LENGTH)
+    : undefined;
   return {
     title,
-    ...(description
-      ? { body: truncateRequestText(description, MAX_DESCRIPTION_LENGTH) }
-      : {}),
+    ...(body ? { body } : {}),
   };
 }
 
@@ -151,6 +179,17 @@ function summarizeToolPayload(
     ...(toolName ? { toolName } : {}),
     ...(preview ? { preview } : {}),
   };
+}
+
+/** `truncateRequestText` in display form: one line, a multi-line value's
+ * lines kept apart and counted when cut (`boundedDisplayText`). */
+export function displayRequestText(text: string, max: number): string {
+  return boundedDisplayText(redactSecrets(text), max);
+}
+
+/** `truncateRequestText` in display form, keeping line breaks. */
+export function displayRequestMultilineText(text: string, max: number): string {
+  return truncateDisplay(displayMultilineText(redactSecrets(text)), max);
 }
 
 export function truncateRequestText(text: string, max: number): string {

@@ -47,6 +47,84 @@ routes do not depend on it, and disabling it does not remove an existing root.
 The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
+## Settings presentation
+
+The current [topic navigation](../../src-ui/src/views/settings/settings-pages.ts)
+keeps General, Appearance, Chat, Notifications & voice, Keyboard shortcuts,
+Devices, Privacy & sharing, My knowledge, and Advanced in one Settings surface.
+Storage scope remains separate from those topics.
+
+[Settings styles](../../src-ui/src/views/SettingsView.css) use the shared UI
+control and supporting-text tokens, consistent card insets, and wrapping controls
+on phones. Row summaries keep operational details under **Details**; account
+sync and approval precedence sit under **About these preferences**. Notification
+sound choices open under **Notification sounds** and still save and preview on
+this device. These presentation changes do not change settings persistence,
+permissions, or runtime defaults.
+
+## Account preferences and device settings
+
+Personal display choices now belong to the authenticated person on this Station:
+theme, accent, chat font and reasoning/tool visibility, answer delivery, diff
+style/wrapping, auto-hide, model-picker preferences, the conversation-delete
+confirmation and Developer navigation. The account preference contract is
+[`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
+The device registry remains the defaults and legacy-storage owner for those
+keys; an active account overlays it without copying account values into the
+browser's device envelope.
+
+Device scope retains microphone and output providers, push permission, haptics,
+Return behavior, keyboard shortcuts, panel dimensions/placement and navigation
+state, connection credentials and device grants. Project model/workspace defaults
+and shared Station configuration retain their existing ownership. A stored
+preference never grants execution access.
+
+`GET/PATCH /api/me/preferences` resolves the person through the canonical request
+principal owner. A verified local operator has operator preferences; an unbound
+paired Device or a tenant without a person keeps device-local preferences.
+Storage partitions the exact principal by the trusted tenant boundary, uses
+bounded schema validation and serialized atomic field patches, and reads fresh
+on requests. Composite model-picker replacements require the revision returned by
+the latest read; conflicting changes return 409 rather than overwrite another
+device. The client projects pending actions locally and rolls them back on
+failure. A conflicting composite save names the other-device change and offers
+a reload. Offline mutations wait in memory and say they are not saved yet;
+closing the page can lose those pending changes. Errors belong to the authority
+that initiated the save. The client refreshes on activation, focus and reconnect.
+It reports loading and save failure separately from saved values. Account changes retire
+the in-memory overlay; late responses cannot populate the replacement authority.
+There is no cross-Station cloud synchronization.
+
+Migration is an explicit **Import previous preferences** action in Settings →
+General → Your account. It copies only portable choices that remain unset under
+the server's mutation lock. It keeps the old device record and never imports
+execution permissions, grants, hardware selection or geometry. Device reset
+excludes account preferences while an account is active. Per-setting resets
+use **Use default** to remove the account value and use the registry default,
+including both fields of Answer delivery. Approval defaults offer **Use inherited
+default**, which resumes the Agent → Station → engine chain.
+
+Each supported engine has an optional personal approval default for new
+interactive chats. Resolution is explicit chat choice → Agent default → personal
+engine preference → Station default → engine configuration. The first human
+send carries the selected personal preference through the existing recorded
+approval decision path, including durable outbox replay. Inherited queued defaults retain their account
+namespace and are retired when that account changes; explicit chat picks remain
+separate. Existing chats,
+unattended starts and remote-Station execution do not inherit the initiating
+Station's personal preference. Engine capability and device authorization still
+apply. The composer distinguishes startup intent, confirmed engine mode,
+next-turn requests and restart-required refusal. Its picker changes this chat;
+**Save as my … default** is a separate explicit action.
+
+Implementation owners: [account store](../../src-server/services/identity/account-preferences.ts),
+[personal route](../../src-server/routes/me/account-preferences.ts),
+[authority-bound client](../../src-ui/src/contexts/AccountPreferencesProvider.tsx),
+[device facade](../../src-ui/src/lib/device-settings-store.ts), and
+[first-send caller](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts).
+The earlier sections below retain their dated design context where they describe
+all browser preferences as device-only.
+
 ## 1. The problem
 
 Station's settings grew page-by-page, not model-first. The audit found:
@@ -125,6 +203,20 @@ feature flags (env-derived ones shown **read-only with provenance**, e.g.
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
+Per-publisher product-telemetry choices also use S1. Settings shows effective
+DNT/disclosure status alongside the stored choice, and resets preserve those
+choices. Telemetry destinations and SecretBinding references also use S1. Product
+observations need their own disclosure; operator metrics/traces use a separate
+collector configuration. Saved references require explicit instance destination
+grants and never store key material in `app.json`. Product changes fence the
+old queue and requests; collector changes fence old exports and activate after
+restart. Current-process health and connection checks are derived status rows,
+not additional persisted settings. Their queries retain the connected Station's
+authority and withdraw cached success during refresh or failure. The
+[config reference](../reference/config.md#telemetry-destinations) and
+[usage guide](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
+own these contracts and evidence limits.
+
 ### S2. Defaults — workspace-wide fallbacks that entities override
 Default model, default region, default system prompt, template variables — the
 current "Agent defaults" section, kept distinct from S1 because these are not
@@ -178,6 +270,11 @@ Notifications & voice, Keyboard shortcuts, Devices, Privacy & sharing,
 My knowledge, and Advanced. General is the default. The topic inventory in
 [`settings-pages.ts`](../../src-ui/src/views/settings/settings-pages.ts) groups
 existing sections without changing their row identities or persistence scopes.
+Settings and Developer share [SectionNavigation](../../src-ui/src/components/SectionNavigation.tsx),
+including the desktop rail and narrow-screen selector. Search keeps its selected
+topic while suppressing the active-link highlight. Longer registry explanations
+remain in expandable Details beneath a concise consequence sentence; the full
+definition is retained by [SettingDescription](../../src-ui/src/views/settings/SettingDescription.tsx).
 Existing leaf-section URLs still work, and `?view=overview` retains the full
 inventory. Search spans all topics; clearing it returns to the selected topic.
 The project selector appears only alongside model/workspace defaults and
@@ -185,9 +282,13 @@ permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
 The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work. Customize opens Agents,
-Skills, Engines & Models, and Plugins at their existing routes. Developer joins
-that chooser when enabled on this device. The footer replaces its command-palette chip and duplicate notification bell; the header bell and command-palette shortcut remain available.
+live work in one compact row. A collapsed workspace map puts these utilities
+in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
+no longer appear in Appearance; existing device values remain compatible.
+Customize opens Agents, Skills, Connections, and Plugins at their existing
+routes. Developer joins that chooser when enabled. The footer replaces its
+command-palette chip and duplicate notification bell; the header bell and
+command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings
 gear remains available from management screens. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible

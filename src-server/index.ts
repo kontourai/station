@@ -138,6 +138,7 @@ async function main() {
     buildProvenanceSnapshot,
     ...(connector
       ? {
+          relayInvitationOwner: connector.invitationOwner,
           virtualApplication: connector.virtualApplication,
           selfHostedBrokerConnector: connector.selfHostedBrokerConnector,
         }

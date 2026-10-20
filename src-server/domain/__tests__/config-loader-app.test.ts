@@ -83,6 +83,7 @@ describe('config-loader-app', () => {
       readFileSync(join(tempDir, 'config', 'app.json'), 'utf-8'),
     );
     expect(written.firstRun).toEqual({ status: 'pending' });
+    expect(written.attachedSessionsOutsideProjects).toBe(false);
   });
 
   it('never back-fills first-run onto a home that already exists', async () => {
@@ -101,6 +102,7 @@ describe('config-loader-app', () => {
     const config = await loadAppConfigFile(tempDir);
 
     expect(config.firstRun).toBeUndefined();
+    expect(config.attachedSessionsOutsideProjects).toBeUndefined();
     const written = JSON.parse(
       readFileSync(join(configDir, 'app.json'), 'utf-8'),
     );

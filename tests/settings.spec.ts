@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   openHeaderSettings,
@@ -241,6 +242,44 @@ test.describe('Settings', () => {
       page.getByRole('heading', { name: 'Agent runs', exact: true }),
     ).toBeVisible();
   });
+
+  for (const width of [320, 390]) {
+    test(`keeps the phone frame visible while Settings content scrolls (${width}px)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto('/settings?view=advanced');
+      await expect(page.locator('#section-system')).toBeInViewport();
+      const frame = page.locator('.app__main');
+      const content = page.locator('.content-view');
+      await expect
+        .poll(() => frame.evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await expect
+        .poll(() =>
+          frame.evaluate((element) => element.getBoundingClientRect().bottom),
+        )
+        .toBeLessThanOrEqual(844.1);
+      await expect(page.locator('.app-toolbar')).toBeInViewport();
+      await expect
+        .poll(() =>
+          content.evaluate(
+            (element) => element.scrollHeight - element.clientHeight,
+          ),
+        )
+        .toBeGreaterThan(0);
+      const before = await content.evaluate((element) => element.scrollTop);
+      await content.hover();
+      await page.mouse.wheel(0, 350);
+      await expect
+        .poll(() => content.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(before);
+      await expect
+        .poll(() => frame.evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await expect(page.locator('.app-toolbar')).toBeInViewport();
+    });
+  }
 
   test('legacy section deep links remain supported', async ({ page }) => {
     await page.goto('/settings?section=knowledge');

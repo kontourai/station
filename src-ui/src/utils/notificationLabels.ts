@@ -25,6 +25,7 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   'gate-review': 'Gate review',
   // #2323 S5: an agent asked a person to install, update or remove a plugin.
   'plugin-lifecycle-proposal': 'Plugin proposal',
+  'tool-request': 'Tool request',
 };
 
 export function notificationCategoryLabel(category: string): string {

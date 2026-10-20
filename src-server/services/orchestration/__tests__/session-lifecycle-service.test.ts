@@ -1812,6 +1812,20 @@ describe('a recorded turn outcome survives the engine process (AW-R8)', () => {
     expect(projection.blockedReason).toContain('engine process is gone');
   });
 
+  // A start the engine refused leaves an `error` binding and no turn; the
+  // reason must not claim one ran.
+  test('a failed binding with no turn in the log does not claim a turn was running', () => {
+    const projection = projectSessionLifecycle({
+      session: { ...session, status: 'error' },
+      events: [],
+    });
+    expect(projection.lifecycleState).toBe('failed');
+    expect(projection.blockedReason).toBe(
+      "This session's engine binding is in an error state.",
+    );
+    expect(projection.blockedReason).not.toContain('turn');
+  });
+
   test('a recorded cause still wins over the binding status', () => {
     const projection = projectSessionLifecycle({
       session: { ...session, status: 'dead' },

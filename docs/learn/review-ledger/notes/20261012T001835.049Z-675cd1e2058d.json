@@ -1,0 +1,7 @@
+{
+  "revision": "c339bea329b2573f0f5d084b77d64d5b4f79565d",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Test-only change: the atlas browser test's path search now requires at least one document match and clicks the manual's own result link instead of pinning '1 documents match' (#3576 added two more documents mentioning the path). Re-read the README's search/history and browser-test claims (lines 44, 156-164); they still hold, no prose change.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
+  ]
+}

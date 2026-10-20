@@ -1,0 +1,13 @@
+{
+  "revision": "14e8a72cb515117afa18a9965382d1571caa9ec0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the dependency on the MCP Apps design after its client version record is corrected to the installed2.2.0 graph. The documented prompt/elicitation request, SDK root export and shared input-request ownership remain accurate; no Apps CSP/browser/native capability is added. Raw transport refusal precedes vendor normalization, while typed stored-form/content validation stays canonical. Version correction does not upgrade any prior runtime/provider/hosted receipt.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the dependency on the MCP Apps design after its client version record is corrected to the installed2.2.0 graph. The documented prompt/elicitation request, SDK root export and shared input-request ownership remain accurate; no Apps CSP/browser/native capability is added. Raw transport refusal precedes vendor normalization, while typed stored-form/content validation stays canonical. Version correction does not upgrade any prior runtime/provider/hosted receipt.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the dependency on the MCP Apps design after its client version record is corrected to the installed2.2.0 graph. The documented prompt/elicitation request, SDK root export and shared input-request ownership remain accurate; no Apps CSP/browser/native capability is added. Raw transport refusal precedes vendor normalization, while typed stored-form/content validation stays canonical. Version correction does not upgrade any prior runtime/provider/hosted receipt.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the dependency on the MCP Apps design after its client version record is corrected to the installed2.2.0 graph. The documented prompt/elicitation request, SDK root export and shared input-request ownership remain accurate; no Apps CSP/browser/native capability is added. Raw transport refusal precedes vendor normalization, while typed stored-form/content validation stays canonical. Version correction does not upgrade any prior runtime/provider/hosted receipt.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]}
+  ]
+}

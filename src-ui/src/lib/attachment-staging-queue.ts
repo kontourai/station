@@ -6,6 +6,7 @@ import {
   attachmentKindForMimeType,
   type ChatAttachmentInput,
 } from '@kontourai/station-contracts/chat-attachment';
+import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   type AttachmentStageUploadTransport,
@@ -37,6 +38,8 @@ export type ComposerAttachmentStageUpdate = {
   error?: string;
   /** The server refused a new stage: this login already holds its maximum. */
   capacityFull?: boolean;
+  /** The server could not tell who is uploading (#545); retrying cannot help. */
+  callerUnresolved?: boolean;
 };
 
 function inputFor(
@@ -163,18 +166,23 @@ export async function stageComposerAttachments(
         // `stage_capacity` is not a transient failure: retrying asks for yet
         // another stage from a login that already holds its maximum, and
         // fails the same way until one is sent, removed or expires.
-        const capacityFull =
-          (failure as { code?: unknown }).code === 'stage_capacity';
+        const code = (failure as { code?: unknown }).code;
+        const capacityFull = code === 'stage_capacity';
+        // `principal_unresolved` (#545) is not transient either: the Station
+        // could not tell who is asking, and asking again does not change that.
+        const callerUnresolved = code === PRINCIPAL_UNRESOLVED_CODE;
+        const permanent = capacityFull || callerUnresolved;
         observer?.({
           clientAttachmentId: input.clientAttachmentId,
           state: signal?.aborted
             ? 'cancelled'
-            : capacityFull
+            : permanent
               ? 'failed'
               : 'retryable',
           progress: 0,
           error: signal?.aborted ? undefined : failure.message,
           ...(capacityFull ? { capacityFull: true } : {}),
+          ...(callerUnresolved ? { callerUnresolved: true } : {}),
         });
       }
     }

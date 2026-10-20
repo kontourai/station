@@ -15,7 +15,10 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const stop of cleanup.splice(0).reverse()) await stop();
 });
-function readerFixture() {
+function readerFixture(
+  readCurrentEnvironmentId: () => Promise<string | undefined> = async () =>
+    'current-environment',
+) {
   const home = mkdtempSync(join(tmpdir(), 'station-open-execution-'));
   const store = new EventStore(join(home, 'events.sqlite'));
   const adapter = new GateTestAdapter();
@@ -24,6 +27,7 @@ function readerFixture() {
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: new EventBus(),
     eventStore: store,
+    readCurrentEnvironmentId,
     logger: { debug: vi.fn(), warn: vi.fn() },
   });
   cleanup.push(async () => {
@@ -34,102 +38,144 @@ function readerFixture() {
   return { store, service };
 }
 
-test('opening a durable conversation observes its current Claude child and recorded connection after a Codex handoff', async () => {
-  const { store, service } = readerFixture();
-  const root = 'durable-codex-conversation',
-    child = 'claude-current-child';
-  store.upsertSession({
-    threadId: root,
-    provider: 'codex',
-    status: 'closed',
-    model: 'gpt-predecessor',
-    resumeCursor: { cursor: 'predecessor-vendor-secret' },
-    createdAt: '2026-09-01T00:00:00Z',
-    updatedAt: '2026-09-01T00:01:00Z',
-  });
-  store.appendEvent({
-    eventId: 'root-configured',
-    threadId: root,
-    sessionId: root,
-    provider: 'codex',
-    method: 'session.configured',
-    metadata: {
-      userId: 'owner',
-      agentSlug: 'codex-agent',
-      projectSlug: 'original-project',
-    },
-    createdAt: '2026-09-01T00:00:01Z',
-  });
-  store.reserveConversationHandoff({
-    conversationId: root,
-    predecessorSessionId: root,
-    sessionId: child,
-    idempotencyKey: 'other-client-handoff',
-    targetAgentId: 'claude-agent',
-    targetEnvironmentId: 'current-environment',
-    targetConnectionId: 'claude-connection',
-    messageDigest: 'controlled-handoff',
-    createdAt: '2026-09-01T00:02:00Z',
-  });
-  store.upsertSession({
-    threadId: child,
-    provider: 'claude',
-    status: 'ready',
-    model: 'opus-current',
-    resumeCursor: { cursor: 'child-vendor-secret' },
-    createdAt: '2026-09-01T00:02:00Z',
-    updatedAt: '2026-09-01T00:03:00Z',
-  });
-  store.appendEvent({
-    eventId: 'child-started',
-    threadId: child,
-    sessionId: child,
-    provider: 'claude',
-    method: 'session.started',
-    metadata: {
-      userId: 'owner',
-      agentSlug: 'claude-agent',
-      projectSlug: 'original-project',
-      connectionId: 'claude-connection',
-    },
-    createdAt: '2026-09-01T00:02:01Z',
-  });
-  const result = await service.resolveConversationOpen(
-    root,
-    sessionReadAuthorityFromRequest('owner', undefined, undefined),
-  );
-  expect(result).toMatchObject({
-    status: 'resolved',
-    currentSessionId: child,
-    conversation: {
-      agentSlug: 'claude-agent',
-      projectSlug: 'original-project',
-    },
-    execution: {
+test.each([
+  {
+    label: 'verified current owner',
+    environmentId: 'current-environment',
+    identityAvailable: true,
+    pinned: true,
+  },
+  {
+    label: 'missing owner',
+    environmentId: undefined,
+    identityAvailable: true,
+    pinned: false,
+  },
+  {
+    label: 'foreign owner',
+    environmentId: 'foreign-environment',
+    identityAvailable: true,
+    pinned: false,
+  },
+  {
+    label: 'unavailable receiver identity',
+    environmentId: 'current-environment',
+    identityAvailable: false,
+    pinned: false,
+  },
+])(
+  'opening a durable conversation observes its current child and $label',
+  async ({ environmentId, identityAvailable, pinned }) => {
+    const { store, service } = readerFixture(async () => {
+      if (!identityAvailable) throw new Error('Identity record unavailable');
+      return 'current-environment';
+    });
+    const root = 'durable-codex-conversation',
+      child = 'claude-current-child';
+    store.upsertSession({
+      threadId: root,
+      provider: 'codex',
+      status: 'closed',
+      model: 'gpt-predecessor',
+      resumeCursor: { cursor: 'predecessor-vendor-secret' },
+      createdAt: '2026-09-01T00:00:00Z',
+      updatedAt: '2026-09-01T00:01:00Z',
+    });
+    store.appendEvent({
+      eventId: 'root-configured',
+      threadId: root,
+      sessionId: root,
+      provider: 'codex',
+      method: 'session.configured',
+      metadata: {
+        userId: 'owner',
+        agentSlug: 'codex-agent',
+        environmentId: 'current-environment',
+        projectSlug: 'original-project',
+      },
+      createdAt: '2026-09-01T00:00:01Z',
+    });
+    store.reserveConversationHandoff({
+      conversationId: root,
+      predecessorSessionId: root,
       sessionId: child,
-      agentId: 'claude-agent',
+      idempotencyKey: 'other-client-handoff',
+      targetAgentId: 'claude-agent',
+      targetEnvironmentId: 'current-environment',
+      targetConnectionId: 'claude-connection',
+      messageDigest: 'controlled-handoff',
+      createdAt: '2026-09-01T00:02:00Z',
+    });
+    store.upsertSession({
+      threadId: child,
       provider: 'claude',
-      engineConnectionId: 'claude-connection',
+      status: 'ready',
       model: 'opus-current',
-    },
-  });
-  // Both Sessions hold a vendor resume cursor; neither may reach the client.
-  expect(store.readSessions().map((session) => session.resumeCursor)).toEqual(
-    expect.arrayContaining([
-      { cursor: 'predecessor-vendor-secret' },
-      { cursor: 'child-vendor-secret' },
-    ]),
-  );
-  const serialized = JSON.stringify(result);
-  expect(serialized).not.toContain('vendor-secret');
-  expect(serialized).not.toContain('resumeCursor');
-  await expect(
-    service.resolveConversationOpen(
+      resumeCursor: { cursor: 'child-vendor-secret' },
+      createdAt: '2026-09-01T00:02:00Z',
+      updatedAt: '2026-09-01T00:03:00Z',
+    });
+    store.appendEvent({
+      eventId: 'child-started',
+      threadId: child,
+      sessionId: child,
+      provider: 'claude',
+      method: 'session.started',
+      metadata: {
+        userId: 'owner',
+        agentSlug: 'claude-agent',
+        projectSlug: 'original-project',
+        connectionId: 'claude-connection',
+        executionAgentId: 'claude',
+        ...(environmentId ? { environmentId } : {}),
+        expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+      },
+      createdAt: '2026-09-01T00:02:01Z',
+    });
+    const result = await service.resolveConversationOpen(
       root,
-      sessionReadAuthorityFromRequest('other-user', undefined, undefined),
-    ),
-  ).resolves.toBeNull();
-});
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    );
+    expect(result).toMatchObject({
+      status: 'resolved',
+      currentSessionId: child,
+      conversation: {
+        agentSlug: 'claude-agent',
+        projectSlug: 'original-project',
+      },
+      execution: {
+        sessionId: child,
+        agentId: 'claude-agent',
+        provider: 'claude',
+        engineConnectionId: 'claude-connection',
+        executionAgentId: 'claude',
+        expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+        model: 'opus-current',
+      },
+    });
+    if (result?.status !== 'resolved')
+      throw new Error('Expected resolved conversation');
+    if (pinned)
+      expect(result.execution?.environment).toEqual({ kind: 'current' });
+    else expect(result.execution).not.toHaveProperty('environment');
+    // Both Sessions hold a vendor resume cursor; neither may reach the client.
+    expect(store.readSessions().map((session) => session.resumeCursor)).toEqual(
+      expect.arrayContaining([
+        { cursor: 'predecessor-vendor-secret' },
+        { cursor: 'child-vendor-secret' },
+      ]),
+    );
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('vendor-secret');
+    expect(serialized).not.toContain('resumeCursor');
+    await expect(
+      service.resolveConversationOpen(
+        root,
+        sessionReadAuthorityFromRequest('other-user', undefined, undefined),
+      ),
+    ).resolves.toBeNull();
+  },
+);
 
 test('an initial native launch plan is not relabeled as current model-connection evidence', async () => {
   const { store, service } = readerFixture();

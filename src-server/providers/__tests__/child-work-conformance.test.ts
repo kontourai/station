@@ -32,7 +32,7 @@ import {
   type SubagentSignal,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import { mapAcpExtensionNotification } from '../adapters/acp-adapter-events.js';

@@ -1,59 +1,8 @@
 name: "PR: Desktop clean checkout"
 
 on:
+  workflow_call:
   workflow_dispatch:
-  pull_request_target:
-    paths:
-      - '.github/workflows/desktop-clean-checkout.yml'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'src-desktop/**'
-      - 'config/channel-ports.json'
-      - 'scripts/channel-ports.mjs'
-      - 'scripts/verify-desktop-clean-checkout.mjs'
-      - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
-      - 'scripts/stage-desktop-server-runtime.mjs'
-      - 'scripts/build-desktop.mjs'
-      - 'scripts/build-desktop-resources.mjs'
-      - 'scripts/build-windows-nightly.ps1'
-      - 'scripts/windows-nightly-config.mjs'
-      - 'scripts/verify-windows-updater.mjs'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/desktop-build-command.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/windows-nightly.mjs'
-      - 'scripts/lib/nightly-build-identity.mjs'
-      - 'scripts/lib/native-release-config.mjs'
-      - 'esbuild.config.mjs'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/desktop-clean-checkout.yml'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'patches/**'
-      - 'src-desktop/**'
-      - 'config/channel-ports.json'
-      - 'scripts/channel-ports.mjs'
-      - 'scripts/verify-desktop-clean-checkout.mjs'
-      - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
-      - 'scripts/stage-desktop-server-runtime.mjs'
-      - 'scripts/build-desktop.mjs'
-      - 'scripts/build-desktop-resources.mjs'
-      - 'scripts/build-windows-nightly.ps1'
-      - 'scripts/windows-nightly-config.mjs'
-      - 'scripts/verify-windows-updater.mjs'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/desktop-build-command.mjs'
-      - 'scripts/lib/desktop-server-runtime.mjs'
-      - 'scripts/lib/windows-nightly.mjs'
-      - 'scripts/lib/nightly-build-identity.mjs'
-      - 'scripts/lib/native-release-config.mjs'
-      - 'esbuild.config.mjs'
 
 permissions:
   contents: read
@@ -73,10 +22,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -105,9 +54,9 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, package-manager-cache: false }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }

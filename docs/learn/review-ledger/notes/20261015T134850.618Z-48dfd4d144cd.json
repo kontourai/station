@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed telemetry-delivery and usage-export export mappings against pure contract modules and documented current-process/unknown-history limitations. Both new subpaths match package exports; server ownership and absence of analytics capability/sync/restore authority remain accurate. Focused sender/export/broker controls passed; actual deployment remains unverified.","inputs":["docs/reference/contracts.md","packages/contracts/package.json#/exports"]}
+  ]
+}

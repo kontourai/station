@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed #3405 definite-refusal recovery: ordinary form sends still fail the existing visual-skill draft guard before transport. The optional observer restores form editing so removing the selection allows an explicit later send. Skill identity, reviewed start inputs, authority binding, attachment assignment, source-start payload and API remain unchanged. Existing skill-experience reference remains accurate; focused refusal/removal regression executed in the real sender.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

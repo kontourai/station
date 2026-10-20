@@ -1,0 +1,7 @@
+{
+  "revision": "9281b930f3c3128a9674cc333d11a1aa086ea632",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Round 5 for #3391: added the Not checked sentence against ContextPickerOptions.tsx and the hint text; Start stays enabled (HomeStartComposer canStart does not read the hint) and the start resolves the folder.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts"]}
+  ]
+}

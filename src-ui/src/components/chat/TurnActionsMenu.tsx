@@ -12,6 +12,7 @@ import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
+import { MoreActionsGlyph } from './MoreActionsGlyph';
 import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './TurnActionsMenu.css';
@@ -90,7 +91,12 @@ function useFixedMenuPlacement(
 }
 
 export interface TurnActionsMenuProps {
-  taskTarget?: { sessionId: string; turnId: string; projectId?: string };
+  taskTarget?: {
+    sessionId: string;
+    turnId: string;
+    projectId?: string;
+    excerpt?: string;
+  };
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /**
@@ -106,8 +112,6 @@ export interface TurnActionsMenuProps {
     accountableHuman?: string | null;
     /** Share affordance, composed by the row and mounted only in the dialog. */
     shareContent?: React.ReactNode;
-    /** Basis affordance, composed by the row and mounted only in the dialog. */
-    basisContent?: React.ReactNode;
   };
   reasoning?: { content: string };
 }
@@ -196,7 +200,7 @@ export default function TurnActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* The menu portals to the document — see `useFixedMenuPlacement` for
           why an in-bubble anchor cannot hold it. The picker and the #2211
@@ -288,7 +292,6 @@ export default function TurnActionsMenu({
                 statedInRow={provenance.statedInRow}
                 accountableHuman={provenance.accountableHuman}
                 shareContent={provenance.shareContent}
-                basisContent={provenance.basisContent}
                 defaultOpen
               />
             </Dialog>
@@ -323,18 +326,29 @@ export default function TurnActionsMenu({
 }
 
 export interface UserMessageActionsMenuProps {
-  onCopy?: () => void;
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
+  /**
+   * The message was not sent: its Discard lives here, beside the bubble's
+   * other actions, rather than in a second overflow on the bubble.
+   */
+  onDiscardUnsent?: () => void;
+  /**
+   * Already inside a surface of its own (the phone's message sheet): the rows
+   * render in place, with no second ⋯ to open.
+   */
+  inline?: boolean;
 }
 
-/** Overflow for a user bubble: Copy plus fork or a new-chat seed (#2216). */
+/** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
+ * bubble's own icon button, never a second entry here. */
 export function UserMessageActionsMenu({
-  onCopy,
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onDiscardUnsent,
+  inline = false,
 }: UserMessageActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -342,7 +356,7 @@ export function UserMessageActionsMenu({
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
   const rowCount =
-    (onCopy ? 1 : 0) + (canFork ? 1 : onNewChatFromMessage ? 1 : 0);
+    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) + (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
@@ -353,6 +367,56 @@ export function UserMessageActionsMenu({
     close,
   );
 
+  // In the ⋯ popup the rows are menu items (with the menu's arrow-key
+  // focus); inline in the phone's sheet they are plain buttons in a group,
+  // since nothing there gives them menu keyboard behaviour.
+  const rows = (close: () => void, itemRole?: 'menuitem') => (
+    <>
+      {canFork && forkSource && onForkFromTurn && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onForkFromTurn(forkSource);
+          }}
+        >
+          Fork from here…
+        </button>
+      )}
+      {!canFork && onNewChatFromMessage && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onNewChatFromMessage();
+          }}
+        >
+          New chat from this message
+        </button>
+      )}
+      {onDiscardUnsent && (
+        <button
+          type="button"
+          role={itemRole}
+          className="turn-footer__overflow-item--danger"
+          onClick={() => {
+            close();
+            onDiscardUnsent();
+          }}
+        >
+          Discard unsent message
+        </button>
+      )}
+    </>
+  );
+  if (inline)
+    return (
+      <fieldset className="message-details__menu" aria-label="Message actions">
+        {rows(() => {})}
+      </fieldset>
+    );
   return (
     <span className="turn-footer__actions-menu">
       <button
@@ -364,7 +428,7 @@ export function UserMessageActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* Portalled for the same reason as the answer menu above. */}
       {open &&
@@ -383,42 +447,7 @@ export function UserMessageActionsMenu({
               }
             }}
           >
-            {onCopy && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onCopy();
-                }}
-              >
-                Copy
-              </button>
-            )}
-            {canFork && forkSource && onForkFromTurn && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onForkFromTurn(forkSource);
-                }}
-              >
-                Fork from here…
-              </button>
-            )}
-            {!canFork && onNewChatFromMessage && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onNewChatFromMessage();
-                }}
-              >
-                New chat from this message
-              </button>
-            )}
+            {rows(close, 'menuitem')}
           </div>,
           document.body,
         )}

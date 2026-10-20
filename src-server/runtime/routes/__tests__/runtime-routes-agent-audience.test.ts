@@ -170,7 +170,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(memberRole: 'contributor' | 'admin' = 'contributor') {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-agent-audience-');
 
@@ -246,7 +246,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       enabled.scope,
       {
         email: null,
-        role: 'contributor',
+        role: memberRole,
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
       },
       asOperatorAuthority,
@@ -336,6 +336,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       approvalInboxProvider: approvalInbox,
     };
     const app = new Hono();
+    const mcpProbe = vi.fn();
     const context = deepStub({
       approvalRegistry,
       projectMembership: membership.service,
@@ -350,10 +351,13 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       port: 4321,
       appConfig: {},
       eventBus,
-      configLoader: {
-        getProjectHomeDir: () => home,
-        loadAppConfig: () => ({}),
-      },
+      configLoader,
+      mcpService: deepStub({
+        listIntegrations: () => configLoader.listIntegrations(),
+        getIntegration: (id: string) => configLoader.loadIntegration(id),
+        probeIntegration: mcpProbe,
+        getMCPToolCatalog: () => [],
+      }),
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService,
@@ -363,6 +367,16 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       providerService: deepStub({ listProviderConnections: () => [] }),
       connectionService: deepStub({
         checkGatedModelConnectionIds: () => new Set<string>(),
+        listRuntimeConnections: async () => [
+          {
+            id: 'claude',
+            name: 'Claude Code',
+            engineId: 'claude',
+            kind: 'agent',
+            enabled: true,
+            capabilities: ['agent-runtime'],
+          },
+        ],
       }),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
@@ -421,6 +435,8 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       approvalRegistry,
       bProject,
       notificationService,
+      configLoader,
+      mcpProbe,
     };
   }
 
@@ -491,6 +507,114 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     description: 'Answers client questions',
     project: 'b-project',
   };
+
+  test.each(['claude', 'station'])(
+    'Project admins author scoped %s agents and My access reflects current standing without promoting Station authority',
+    async (engineId) => {
+      const { base, bProject, revokeB, home, configLoader, mcpProbe } =
+        await setup('admin');
+      const access = await asAccount(base, '/api/tool-library/access');
+      expect(access.status).toBe(200);
+      expect(access.body.data.station.operator).toBe(false);
+      expect(access.body.data.projects).toEqual([
+        expect.objectContaining({
+          id: bProject.id,
+          role: 'admin',
+          canManageAgents: true,
+          canManageTools: false,
+        }),
+      ]);
+      const catalog = await asAccount(
+        base,
+        '/api/tool-library/catalog?project=b-project',
+      );
+      expect(catalog.body.data.engines).toContainEqual({
+        id: 'station',
+        name: 'Station',
+        engineId: 'station',
+      });
+      const saved = await asAccount(
+        base,
+        '/api/tool-library/projects/b-project/agents',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            projectId: bProject.id,
+            expectedActor: B_REF.id,
+            draft: {
+              name: 'Project helper',
+              prompt: 'Help this Project',
+              engineId,
+              tools: { mcpServers: [], available: [] },
+            },
+          }),
+        },
+      );
+      expect(saved.status).toBe(200);
+      const persisted = JSON.parse(
+        readFileSync(
+          join(home, 'agents', saved.body.data.slug, 'agent.json'),
+          'utf8',
+        ),
+      );
+      expect(persisted.execution.approvalMode).toBe('ask');
+      expect(persisted.execution.agentConnectionId).toBe(
+        engineId === 'station' ? undefined : engineId,
+      );
+      expect(persisted.tools.browser).toBe(false);
+      const listed = await asAccount(
+        base,
+        '/api/tool-library/projects/b-project/agents',
+      );
+      expect(listed.body.data).toEqual([
+        expect.objectContaining({
+          slug: saved.body.data.slug,
+          projectId: bProject.id,
+          spec: expect.objectContaining({
+            name: 'Project helper',
+            project: 'b-project',
+            prompt: 'Help this Project',
+            execution:
+              engineId === 'station' ? {} : { agentConnectionId: engineId },
+          }),
+        }),
+      ]);
+      expect(
+        (await asAccount(base, '/api/tool-library/projects/a-project/agents'))
+          .status,
+      ).toBe(403);
+      await configLoader.saveIntegration('disabled-reports', {
+        id: 'disabled-reports',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+        enabled: false,
+      });
+      const discovery = await asAccount(
+        base,
+        '/api/tool-library/sources/disabled-reports/discover',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            project: 'b-project',
+            projectId: bProject.id,
+            expectedActor: B_REF.id,
+          }),
+        },
+      );
+      expect(discovery.status).toBe(403);
+      expect(mcpProbe).not.toHaveBeenCalled();
+      await revokeB();
+      expect(
+        (await asAccount(base, '/api/tool-library/projects/b-project/agents'))
+          .status,
+      ).toBe(403);
+      const after = await asAccount(base, '/api/tool-library/access');
+      expect(after.body.data.projects).toEqual([]);
+    },
+  );
 
   test('a member’s account request lists only the admitted Agent, as a member view', async () => {
     const { base } = await setup();
@@ -666,6 +790,66 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       success: false,
       error: 'Agent not found',
     });
+  });
+
+  test('#3284 MCP prompts: a member gets the uniform not-found for a hidden Agent and no list or run on an admitted one; the operator reaches the routes', async () => {
+    // Only B's own account request: no station-control tool maps to these
+    // routes, so a tool call is refused before this gate.
+    const { base } = await setup();
+    const run = (): RequestInit => ({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        serverId: 'private-crm',
+        name: 'summarize',
+        arguments: {},
+      }),
+    });
+    const unknown = await asAccount(base, '/api/agents/no-such-agent');
+    expect(unknown.status).toBe(404);
+    for (const slug of HIDDEN) {
+      for (const [path, init] of [
+        [`/agents/${slug}/mcp-prompts`, {}],
+        [`/agents/${slug}/mcp-prompts/run`, run()],
+      ] as const) {
+        const refused = await asAccount(base, path, init);
+        // Byte-identical to an Agent that does not exist.
+        expect([path, refused.status, refused.body]).toEqual([
+          path,
+          unknown.status,
+          unknown.body,
+        ]);
+        expect(refused.cacheControl).toBe('no-store');
+      }
+    }
+    // An admitted Agent: the prompt list names the Agent's MCP servers, which
+    // a member never receives, and running a prompt reads it with the Agent's
+    // server connection to feed a turn, so both follow the member-turn rule.
+    for (const [path, init] of [
+      ['/agents/concierge/mcp-prompts', {}],
+      ['/agents/concierge/mcp-prompts/run', run()],
+    ] as const) {
+      const refused = await asAccount(base, path, init);
+      expect([path, refused.status, refused.body?.code]).toEqual([
+        path,
+        403,
+        'member_agent_turns_unavailable',
+      ]);
+      expect(JSON.stringify(refused.body)).not.toMatch(/private-crm/);
+    }
+    // The operator is not gated: the prompt routes themselves answer (this
+    // composition activates no Agent, so their own "not active" refusal).
+    for (const [path, init] of [
+      ['/agents/ops-only/mcp-prompts', {}],
+      ['/agents/ops-only/mcp-prompts/run', run()],
+    ] as const) {
+      const reached = await asOperator(base, path, init);
+      expect([path, reached.status, reached.body]).toEqual([
+        path,
+        404,
+        { success: false, error: "Agent 'ops-only' is not active." },
+      ]);
+    }
   });
 
   const send = (method: string, body?: unknown): RequestInit => ({

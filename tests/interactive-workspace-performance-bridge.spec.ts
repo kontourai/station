@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -12,19 +11,20 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { promisify } from 'node:util';
 import {
   type Browser,
   type BrowserContext,
+  test as base,
   expect,
   type Page,
-  test,
 } from '@playwright/test';
 import {
   evaluateInteractiveWorkspacePerformance,
   performanceReportReceipt,
   referenceEvaluatorExitFailure,
+  referenceHostGate,
 } from '../scripts/interactive-workspace-performance.mjs';
+import { executeOwnedProcess } from '../scripts/lib/owned-process.mjs';
 import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
 import {
@@ -44,7 +44,6 @@ import {
 } from './helpers/live-station-task';
 import { referenceBrowserProvisioningOwner } from './helpers/reference-browser-lifecycle';
 
-const execFileAsync = promisify(execFile);
 const IMPLEMENTED_FIXTURES = [
   'local-input-apply',
   'remote-apply',
@@ -128,6 +127,104 @@ interface AggregatedReport {
 
 type SpatialBoardSeed = { readonly revision: number };
 
+const DEFAULT_CONFIG_PATH =
+  'scripts/fixtures/interactive-workspace/performance-contract.json';
+
+/**
+ * #577: decided once, at load, before any fixture exists. On a host that
+ * cannot produce reference evidence the bridge test is skipped before
+ * Playwright sets up its `browser` fixture, so no Station is provisioned and
+ * no browser is launched; the gate test below emits the NOT_VERIFIED receipt
+ * that skipped run stands for.
+ */
+const HOST_GATE = referenceHostGate(
+  JSON.parse(readFileSync(DEFAULT_CONFIG_PATH, 'utf8')) as PerformanceConfig,
+);
+
+interface OwnedExecution {
+  readonly completion: Promise<{
+    status: number | null;
+    signal: NodeJS.Signals | null;
+    error?: Error;
+  }>;
+  terminate(): Promise<void>;
+}
+
+/**
+ * What a run has started and not yet released: nested Station daemons and the
+ * evaluator's process tree (evaluator, adapter, measured browser). A killed
+ * run used to leave both behind (#577), because the test body's `finally`
+ * never runs when Playwright interrupts or abandons a test.
+ */
+interface ReferenceOwnership {
+  readonly stations: Set<LiveStation>;
+  evaluator?: OwnedExecution;
+}
+
+async function releaseStation(
+  owner: ReferenceOwnership,
+  live: LiveStation,
+): Promise<void> {
+  try {
+    await stopStation(live);
+  } finally {
+    owner.stations.delete(live);
+  }
+}
+
+const test = base.extend<{ referenceOwnership: ReferenceOwnership }>({
+  // Fixture teardown, unlike the test body's `finally`, also runs when
+  // Playwright stops a test early: a timeout, an interrupted run (Ctrl-C), or
+  // a worker whose runner went away (its graceful close tears fixtures down).
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring
+  referenceOwnership: async ({}, use) => {
+    const owner: ReferenceOwnership = { stations: new Set() };
+    try {
+      await use(owner);
+    } finally {
+      // The evaluator owns a process group (POSIX) or a taskkill-able tree
+      // (Windows), so this reaches the adapter and its browser too.
+      await owner.evaluator?.terminate().catch(() => {});
+      for (const live of [...owner.stations]) {
+        await releaseStation(owner, live).catch(() => {});
+        rmSync(live.home, { recursive: true, force: true });
+      }
+    }
+  },
+});
+
+/**
+ * Runs the reference evaluator as an owned process tree and returns its exit
+ * status, or -1 when it was killed or could not start. `timeoutMs` terminates
+ * the whole tree, not just the evaluator.
+ */
+async function runOwnedEvaluator(
+  owner: ReferenceOwnership,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<number> {
+  const execution = executeOwnedProcess(
+    process.execPath,
+    args,
+    undefined,
+    'interactive-workspace performance evaluator',
+    { cwd: process.cwd(), env, stdio: 'ignore' },
+  ) as OwnedExecution;
+  owner.evaluator = execution;
+  const timer = setTimeout(() => {
+    void execution.terminate().catch(() => {});
+  }, timeoutMs);
+  try {
+    const result = await execution.completion;
+    if (result.error) return -1;
+    return typeof result.status === 'number' ? result.status : -1;
+  } finally {
+    clearTimeout(timer);
+    owner.evaluator = undefined;
+  }
+}
+
 async function seedAndOpenWorkBoard(
   page: Page,
   live: LiveStation,
@@ -138,7 +235,7 @@ async function seedAndOpenWorkBoard(
     data?: { id?: string };
   }>(page, `/api/projects/${encodeURIComponent(projectSlug)}`);
   if (!project.success || !project.data?.id)
-    throw new Error('Work Board Project identity is unavailable');
+    throw new Error('Work Board Project name is unavailable');
   let revision = (
     await apiJson<{ success: boolean; data?: SpatialBoardSeed }>(
       page,
@@ -286,6 +383,7 @@ async function settleFirstRunBeforeBrowsing(
 }
 
 async function runFixtureTarget(input: {
+  owner: ReferenceOwnership;
   browser: Browser;
   fixtureRoot: string;
   controlParent: string;
@@ -315,6 +413,9 @@ async function runFixtureTarget(input: {
     ? dirname(resolve(process.env.STATION_PERFORMANCE_REPORT_OUTPUT))
     : input.fixtureRoot;
   mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
+  // Owned before it starts: `station start` launches a daemon that outlives a
+  // failed readiness wait.
+  input.owner.stations.add(live);
   const bootstrapToken = await startStation(live, true, {
     performanceReference: true,
     logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
@@ -464,50 +565,36 @@ async function runFixtureTarget(input: {
     const target = isWorkBoardFixture(input.fixture.id)
       ? await seedAndOpenWorkBoard(page, live, 'performance-reference')
       : `${live.ui}/tasks/${encodeURIComponent(taskId)}?station-performance-reference=interactive-workspace-v3`;
-    let exitCode = 0;
-    await provisioning.run(async () => {
-      try {
-        await execFileAsync(
-          process.execPath,
-          [
-            'scripts/interactive-workspace-performance.mjs',
-            '--mode=reference',
-            `--config=${configPath}`,
-            `--output=${reportPath}`,
-            '--json',
-          ],
-          {
-            cwd: process.cwd(),
-            windowsHide: true,
-            env: {
-              ...process.env,
-              STATION_PERFORMANCE_UI_URL: target,
-              STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
-              STATION_PERFORMANCE_STORAGE_STATE: storageState,
-              STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
-              STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
-              STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
-              STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
-              STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
-              STATION_PERFORMANCE_FILE_TASK_ID: taskId,
-              STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
-            },
-            timeout:
-              input.fixture.id === 'work-board-one-hour-v1'
-                ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
-                : input.fixture.id === ONE_HOUR_FIXTURE
-                  ? ONE_HOUR_REFERENCE_TIMEOUT_MS
-                  : 2_700_000,
-            maxBuffer: 10 * 1024 * 1024,
-          },
-        );
-      } catch (error) {
-        exitCode =
-          error && typeof error === 'object' && 'code' in error
-            ? Number(error.code)
-            : -1;
-      }
-    });
+    const exitCode = await provisioning.run(() =>
+      runOwnedEvaluator(
+        input.owner,
+        [
+          'scripts/interactive-workspace-performance.mjs',
+          '--mode=reference',
+          `--config=${configPath}`,
+          `--output=${reportPath}`,
+          '--json',
+        ],
+        {
+          ...process.env,
+          STATION_PERFORMANCE_UI_URL: target,
+          STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
+          STATION_PERFORMANCE_STORAGE_STATE: storageState,
+          STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
+          STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
+          STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
+          STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
+          STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
+          STATION_PERFORMANCE_FILE_TASK_ID: taskId,
+          STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
+        },
+        input.fixture.id === 'work-board-one-hour-v1'
+          ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
+          : input.fixture.id === ONE_HOUR_FIXTURE
+            ? ONE_HOUR_REFERENCE_TIMEOUT_MS
+            : 2_700_000,
+      ),
+    );
     const report = JSON.parse(
       readFileSync(reportPath, 'utf8'),
     ) as FixtureReport;
@@ -564,15 +651,41 @@ async function runFixtureTarget(input: {
       await provisioning.close();
     } finally {
       if (!succeeded) {
-        await stopStation(live).catch(() => {});
+        await releaseStation(input.owner, live).catch(() => {});
         rmSync(live.home, { recursive: true, force: true });
       }
     }
   }
 }
 
+test.describe('Interactive workspace reference host gate (#577)', () => {
+  test.skip(HOST_GATE.runs, 'this host can produce reference evidence');
+
+  test('reports NOT_VERIFIED without provisioning a Station or launching a browser', () => {
+    if (HOST_GATE.runs) throw new Error('unreachable: skipped above');
+    const receipt = performanceReportReceipt(HOST_GATE.report);
+    console.info(
+      `[interactive-workspace-performance] host=${process.platform} skipped=${HOST_GATE.reason} receipt=${JSON.stringify(receipt)}`,
+    );
+    const retainedReport = process.env.STATION_PERFORMANCE_REPORT_OUTPUT;
+    if (retainedReport) {
+      mkdirSync(dirname(retainedReport), { recursive: true });
+      writeFileSync(
+        retainedReport,
+        `${JSON.stringify(HOST_GATE.report, null, 2)}\n`,
+      );
+    }
+    expect(receipt).toMatchObject({
+      status: 'NOT_VERIFIED',
+      reasonCodes: ['REFERENCE_OS_MISMATCH'],
+    });
+  });
+});
+
 test.describe
   .serial('Interactive workspace production bridge (#2892)', () => {
+    // Before the `browser` fixture: a skipped test never launches one.
+    test.skip(!HOST_GATE.runs, HOST_GATE.runs ? '' : HOST_GATE.reason);
     test.setTimeout(
       ONE_HOUR_REFERENCE_ENABLED
         ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.oneHour
@@ -583,6 +696,7 @@ test.describe
 
     test('executes isolated real Station targets and aggregates one build receipt', async ({
       browser,
+      referenceOwnership,
     }) => {
       const fixtureRoot = realpathSync(
         mkdtempSync(join(tmpdir(), 'station-performance-bridge-')),
@@ -593,10 +707,7 @@ test.describe
           : realpathSync(mkdtempSync(join(tmpdir(), 'station-perf-control-')));
       if (process.platform !== 'win32') chmodSync(controlParent, 0o700);
       const defaultConfig = JSON.parse(
-        readFileSync(
-          'scripts/fixtures/interactive-workspace/performance-contract.json',
-          'utf8',
-        ),
+        readFileSync(DEFAULT_CONFIG_PATH, 'utf8'),
       ) as PerformanceConfig;
       const requestedFixtures =
         process.env.STATION_PERFORMANCE_E2E_FIXTURES?.split(',').filter(
@@ -631,6 +742,7 @@ test.describe
           isImplementedFixture(candidate.id),
         )) {
           const provisioned = await runFixtureTarget({
+            owner: referenceOwnership,
             browser,
             fixtureRoot,
             controlParent,
@@ -644,6 +756,8 @@ test.describe
           homes.push(active.home);
           reports.push(provisioned.report);
           if (previous) {
+            // `station start --force` on the shared instance replaced it.
+            referenceOwnership.stations.delete(previous);
             rmSync(previous.home, { recursive: true, force: true });
             homes.splice(homes.indexOf(previous.home), 1);
           }
@@ -793,13 +907,14 @@ test.describe
             reasonCodes: ['ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'],
           });
         if (active) {
-          await stopStation(active);
+          await releaseStation(referenceOwnership, active);
           rmSync(active.home, { recursive: true, force: true });
           homes.splice(homes.indexOf(active.home), 1);
           active = undefined;
         }
       } finally {
-        if (active) await stopStation(active).catch(() => {});
+        if (active)
+          await releaseStation(referenceOwnership, active).catch(() => {});
         for (const home of homes)
           rmSync(home, { recursive: true, force: true });
         if (process.env.STATION_PERFORMANCE_REPORT_OUTPUT) {

@@ -1,15 +1,19 @@
-import { memo, useCallback } from 'react';
+import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
+import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { PauseGlyph } from '../icons/Glyph';
+import { CopyGlyph, PauseGlyph } from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -19,13 +23,20 @@ import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
+import {
+  type DeliveryNotice,
+  MessageDeliveryNote,
+} from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
+  resolveTurnEngineId,
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
+import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own
@@ -38,8 +49,10 @@ const loadConnectedAttachUserInputToTaskButton = () =>
     default: module.ConnectedAttachUserInputToTaskButton,
   }));
 
+// The Basis chip mounts on every eligible settled answer, so it loads its
+// own small chunk rather than the Task picker's.
 const loadConnectedAnswerBasisAffordance = () =>
-  import('./AttachAnswerToTaskButton').then((module) => ({
+  import('./ConnectedAnswerBasisAffordance').then((module) => ({
     default: module.ConnectedAnswerBasisAffordance,
   }));
 
@@ -91,6 +104,17 @@ export interface MessageBubbleSession {
   /** The host's status pill presents activity and approvals; see
    * `ChatMessageList.statusShownElsewhere`. */
   activityShownElsewhere?: boolean;
+  /**
+   * The phone transcript folds a SETTLED assistant row's tool work into one
+   * row (`MessageContent`'s `foldWork`). Only a caller that knows which row
+   * is still the open turn sets this; without it no row folds.
+   */
+  foldSettledWork?: boolean;
+  /** The open turn's id while a turn is live (`isTurnStreamLive`). */
+  liveTurnId?: string;
+  /** The live turn renders as the transcript's last row rather than in the
+   * streaming shell (`ChatMessageList`'s `suppressStreamingRow`). */
+  liveTailRow?: boolean;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -102,6 +126,34 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 // this placeholder — see the `agent={agent ?? null}` call further down.
 const FALLBACK_AGENT: { name: string } = { name: 'AI' };
 
+/**
+ * Accessible names for an answer's Basis controls: each starts with its
+ * visible text (so voice control can say what it sees), then says which
+ * answer, by its opening words or, wordless, its settle time.
+ */
+export function answerBasisLabels(
+  text: string,
+  settledAt: number,
+): { chip: string; retry: string } {
+  const words = text.replace(/\s+/g, ' ').trim();
+  const at = absoluteTime(settledAt);
+  const answer = words
+    ? `the answer “${words.length > 48 ? `${words.slice(0, 47).trimEnd()}…` : words}”`
+    : at
+      ? `the answer at ${at}`
+      : 'this answer';
+  return {
+    chip: `Basis for ${answer}`,
+    retry: `Basis didn’t load · Retry for ${answer}`,
+  };
+}
+
+/** A fixed, ordered list of optional slots (never reordered), so its index
+ * is a stable key. */
+function renderList(items: readonly ReactNode[]) {
+  return items.map((item, index) => <Fragment key={index}>{item}</Fragment>);
+}
+
 interface MessageBubbleProps {
   msg: ChatMessage;
   idx: number;
@@ -112,6 +164,9 @@ interface MessageBubbleProps {
   showToolDetails: boolean;
   onCopy: (text: string) => void;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  /** The previous row belongs to the same turn (a steer, or the rest of a
+   * steered answer): no exchange starts here. */
+  continuesTurn?: boolean;
   /** #2216: nearest preceding completed assistant turn, if any. */
   userForkSource?: ForkTurnSource | null;
   onNewChatFromMessage?: (text: string) => void;
@@ -145,6 +200,7 @@ function MessageBubbleComponent({
   showToolDetails,
   onCopy,
   onForkFromTurn,
+  continuesTurn = false,
   userForkSource,
   onNewChatFromMessage,
   onToolApproval,
@@ -155,6 +211,42 @@ function MessageBubbleComponent({
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
+  // The user's own message until the agent has it (`messageDeliveryState`).
+  // Hoisted above the early returns below: hooks run unconditionally.
+  const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const undelivered =
+    msg.role === 'user' &&
+    msg.clientId !== undefined &&
+    deliveryState !== undefined &&
+    deliveryState !== 'delivered'
+      ? deliveryState
+      : undefined;
+  // Discard of a not-sent message runs from the bubble's ⋯ menu; its result
+  // is reported on the bubble's delivery line.
+  const [deliveryNotice, setDeliveryNotice] = useState<DeliveryNotice | null>(
+    null,
+  );
+  const discardUnsent =
+    undelivered === 'not-sent' && msg.clientId
+      ? () => {
+          const key = msg.clientId!;
+          setDeliveryNotice(null);
+          void import('../../lib/messageDeliveryActions')
+            .then(async ({ discardMessage, ALREADY_DELIVERED }) => {
+              if (
+                (await discardMessage(activeSession.id, key, 'not-sent')) ===
+                'delivered'
+              )
+                setDeliveryNotice({ text: ALREADY_DELIVERED, error: false });
+            })
+            .catch((error: unknown) =>
+              setDeliveryNotice({
+                text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+                error: true,
+              }),
+            );
+        }
+      : undefined;
 
   // Hoisted above the flowPart early-return (hooks can't be called
   // conditionally) and stabilized so the memoized MessageContent below
@@ -218,11 +310,34 @@ function MessageBubbleComponent({
   if (contextBoundary) {
     return <ConversationContextBoundary boundary={contextBoundary} />;
   }
+  const transcriptMarker = transcriptMarkerLabel(msg.contentParts);
+  if (transcriptMarker) {
+    return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
+  }
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
+  // A row is the open turn when it carries the live turn's id, or when the
+  // live turn renders as the last row instead of the streaming shell.
+  const rowIsLiveTurn =
+    (activeSession.liveTurnId !== undefined &&
+      msg.turnId === activeSession.liveTurnId) ||
+    (activeSession.liveTailRow === true && isLastMessage);
+  const foldWork =
+    isMobile &&
+    isAssistant &&
+    activeSession.foldSettledWork === true &&
+    !rowIsLiveTurn;
+  // The meta row's time is the turn's own terminal event time, read from the
+  // turn's envelope: `msg.timestamp` can be a client-clock fill-in on some
+  // load paths, and a historical row must never state one as its time.
+  const envelope =
+    isAssistant && isSupportedTurnProvenanceEnvelope(msg.provenance)
+      ? msg.provenance
+      : undefined;
+  const settledAt = envelope ? Date.parse(envelope.observedAt) : Number.NaN;
   const hasTurnFooter =
     msg.role === 'assistant' &&
     (msg.provenance !== undefined || msg.turnId !== undefined);
@@ -237,6 +352,13 @@ function MessageBubbleComponent({
       (activeSession.conversationId === undefined
         ? activeSession.id
         : undefined));
+  const taskProposal =
+    msg.role === 'assistant' &&
+    msg.answerEligible === true &&
+    msg.turnId &&
+    answerSessionId
+      ? readTaskProposal(textContent)
+      : null;
   // An execution Session is immutable history once it has produced a turn.
   // A conversation can point at another current Session after a handoff, so
   // resolving this row through `activeSession.agentSlug` would relabel old
@@ -259,7 +381,7 @@ function MessageBubbleComponent({
   const registeredRowAgent = rowAgentSlug
     ? agents.find((candidate) => candidate.slug === rowAgentSlug)
     : undefined;
-  const rowAgent =
+  const resolvedRowAgent =
     (msg.agentDisplayName
       ? { slug: rowAgentSlug, name: msg.agentDisplayName, icon: msg.agentIcon }
       : registeredRowAgent) ??
@@ -277,6 +399,16 @@ function MessageBubbleComponent({
               : `Deleted Agent “${rowAgentSlug}”`,
         }
       : undefined);
+  // #3355: the avatar's engine mark is the engine that ran THIS turn, read
+  // from the turn's own envelope (`resolveTurnEngineId`), in every branch
+  // above — so a Codex turn draws the Codex mark rather than initials, and a
+  // rebound agent cannot relabel history (archive#1424). A row without an
+  // envelope keeps whatever the branch already carried.
+  const turnEngineId = isAssistant ? resolveTurnEngineId(msg) : undefined;
+  const rowAgent =
+    resolvedRowAgent && turnEngineId
+      ? { ...resolvedRowAgent, engineId: turnEngineId }
+      : resolvedRowAgent;
   const avatarContent = isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
   ) : (
@@ -331,71 +463,131 @@ function MessageBubbleComponent({
       ? activeSession.agentName
       : undefined);
 
-  const metadataBefore = (
+  // Every copy control on a message is one icon button, named for what it
+  // copies; no menu repeats it as text. On a phone it sits inline beside the
+  // row's ⋯ trigger (`inlineCopy` below), so none of the desktop sites renders
+  // there: one copy per row, never a second one inside the sheet.
+  const copyLabel =
+    msg.role === 'user'
+      ? 'Copy your message'
+      : isAssistant
+        ? 'Copy answer'
+        : 'Copy message';
+  const desktopCopy =
+    !isMobile && textContent ? (
+      <button
+        type="button"
+        onClick={() => onCopy(textContent)}
+        className="message__copy-btn"
+        title={copyLabel}
+        aria-label={copyLabel}
+      >
+        <CopyGlyph />
+      </button>
+    ) : null;
+  // Gated on exactly what the menu can list (TurnActionsMenu's
+  // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
+  // would draw a ⋯ that opens an empty menu.
+  const userMessageMenu =
+    msg.role === 'user' &&
+    textContent &&
+    ((userForkSource && onForkFromTurn) ||
+      onNewChatFromMessage ||
+      discardUnsent) ? (
+      <LazyBoundary
+        load={loadUserMessageActionsMenu}
+        componentProps={{
+          forkSource: userForkSource,
+          onForkFromTurn,
+          onNewChatFromMessage: onNewChatFromMessage
+            ? () => onNewChatFromMessage(textContent)
+            : undefined,
+          onDiscardUnsent: discardUnsent,
+          // The phone already opens a sheet for the row: its actions are
+          // listed there, not behind a second ⋯ inside it.
+          inline: isMobile,
+        }}
+        pending={null}
+        // In the phone sheet a failed load must not leave an empty sheet
+        // behind its ⋯; the desktop corner simply omits the menu.
+        unavailable={(retry) =>
+          isMobile ? (
+            <span className="task-picker__status" role="alert">
+              Message actions unavailable.{' '}
+              <button type="button" onClick={retry}>
+                Retry
+              </button>
+            </span>
+          ) : null
+        }
+      />
+    ) : null;
+  const traceLink =
+    developerToolsEnabled && msg.traceId && !hasTurnFooter ? (
+      <a
+        href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="message__trace"
+        title={`Trace: ${msg.traceId}`}
+      >
+        {msg.traceId.slice(-8)}
+      </a>
+    ) : null;
+  // Only a rehydrated, durable authored input has the exact identity needed
+  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
+  // carry no surrogate action.
+  const userTaskAction =
+    !replaying &&
+    msg.role === 'user' &&
+    msg.sourceEventId &&
+    msg.sessionId &&
+    msg.turnId ? (
+      <div className="message__task-input-action">
+        <LazyBoundary
+          load={loadConnectedAttachUserInputToTaskButton}
+          componentProps={{
+            sessionId: msg.sessionId,
+            eventId: msg.sourceEventId,
+            excerpt: textContent,
+            projectId: activeSession.projectSlug,
+          }}
+          pending={
+            <span
+              className="task-picker__status"
+              role="status"
+              aria-busy="true"
+              aria-label="Task action pending"
+            >
+              <Skeleton variant="line" />
+            </span>
+          }
+          unavailable={(retry) => (
+            <span className="task-picker__status" role="alert">
+              Task action unavailable.{' '}
+              <button type="button" onClick={retry}>
+                Retry
+              </button>
+            </span>
+          )}
+        />
+      </div>
+    ) : null;
+  const metadataControls = (
     <>
-      {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
-        <a
-          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="message__trace"
-          title={`Trace: ${msg.traceId}`}
-        >
-          {msg.traceId.slice(-8)}
-        </a>
-      )}
+      {traceLink}
 
-      {isMobile && msg.role === 'user' && textContent && (
-        <button
-          type="button"
-          onClick={() => onCopy(textContent)}
-          className="message__copy-btn"
-          aria-label="Copy message"
-        >
-          Copy message
-        </button>
+      {/* Desktop: the user's bubble carries the same copy icon as an
+          answer, sharing its corner with the overflow menu. */}
+      {msg.role === 'user' && desktopCopy ? (
+        <div className="message__user-actions">
+          {desktopCopy}
+          {userMessageMenu}
+        </div>
+      ) : (
+        userMessageMenu
       )}
-      {msg.role === 'user' &&
-        textContent &&
-        (userForkSource || onNewChatFromMessage) && (
-          <LazyBoundary
-            load={loadUserMessageActionsMenu}
-            componentProps={{
-              onCopy: isMobile ? undefined : () => onCopy(textContent),
-              forkSource: userForkSource,
-              onForkFromTurn,
-              onNewChatFromMessage: onNewChatFromMessage
-                ? () => onNewChatFromMessage(textContent)
-                : undefined,
-            }}
-            pending={null}
-            unavailable={() => null}
-          />
-        )}
-      {msg.role === 'assistant' && textContent && !hasTurnFooter && (
-        <button
-          type="button"
-          onClick={() => onCopy(textContent)}
-          className="message__copy-btn"
-          title="Copy message"
-          aria-label="Copy message"
-        >
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-        </button>
-      )}
+      {msg.role === 'assistant' && !hasTurnFooter && desktopCopy}
 
       {msg.role === 'assistant' &&
         textContent &&
@@ -409,7 +601,13 @@ function MessageBubbleComponent({
             agentSlug={rowAgentSlug}
           />
         )}
-
+    </>
+  );
+  // The row's identity facts. The phone sheet states them first, above its
+  // actions; the desktop bubble keeps its original order (controls, then
+  // identity) so nothing there moves.
+  const metadataIdentity = (
+    <>
       {isAssistant && (
         <MessageAttribution
           agent={attributionAgentName ? { name: attributionAgentName } : null}
@@ -462,45 +660,128 @@ function MessageBubbleComponent({
         )}
     </>
   );
+  // #1536 B3: the same precondition the Basis route applies. A turn whose
+  // envelope records an aborted outcome can only ever be answered 404, so it
+  // gets no Basis entry; nor does the still-streaming last answer.
+  // Every answer's chip reads "Basis"; its accessible name says WHICH answer,
+  // by the answer's opening words (or, wordless, its settle time), so a
+  // screen reader's list of buttons is not a column of identical "Basis".
+  const basisLabels = answerBasisLabels(textContent, settledAt);
+  const basisChip =
+    isAssistant &&
+    msg.turnId &&
+    answerSessionId &&
+    msg.answerEligible === true &&
+    turnCompletedNormally(msg) &&
+    (!isLastMessage || !activeSession.isThinking) ? (
+      <LazyBoundary
+        load={loadConnectedAnswerBasisAffordance}
+        componentProps={{
+          projectSlug: activeSession.projectSlug,
+          chatStoreId: activeSession.id,
+          sessionId: answerSessionId,
+          turnId: msg.turnId,
+          label: basisLabels.chip,
+        }}
+        pending={null}
+        shareAcrossMounts
+        // A chunk that failed to load leaves a visible, retryable chip
+        // rather than an answer that silently lost its Basis entry.
+        unavailable={(retry) => (
+          <button
+            type="button"
+            className="answer-basis-chip answer-basis-chip--unavailable"
+            // Visible text first, then which answer (as the chip itself).
+            aria-label={basisLabels.retry}
+            onClick={retry}
+          >
+            Basis didn’t load · Retry
+          </button>
+        )}
+      />
+    ) : null;
+  // A settled answer's per-turn actions: the desktop footer row, or the phone
+  // sheet's action group.
+  const footerActions = (
+    <>
+      {developerToolsEnabled && msg.traceId && (
+        <a
+          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="message__trace"
+          title={`Trace: ${msg.traceId}`}
+        >
+          {msg.traceId.slice(-8)}
+        </a>
+      )}
+      {desktopCopy}
+      {((msg.turnId &&
+        answerSessionId &&
+        msg.answerEligible === true &&
+        (!isLastMessage || !activeSession.isThinking)) ||
+        (turnForkSource && onForkFromTurn) ||
+        msg.provenance !== undefined ||
+        reasoningContent !== undefined) && (
+        <LazyBoundary
+          load={loadTurnActionsMenu}
+          componentProps={{
+            taskTarget:
+              msg.turnId &&
+              answerSessionId &&
+              msg.answerEligible === true &&
+              (!isLastMessage || !activeSession.isThinking)
+                ? {
+                    sessionId: answerSessionId,
+                    turnId: msg.turnId,
+                    excerpt: textContent,
+                    projectId: activeSession.projectSlug,
+                  }
+                : undefined,
+            forkSource: turnForkSource,
+            onForkFromTurn,
+            provenance:
+              msg.provenance !== undefined
+                ? {
+                    envelope: msg.provenance,
+                    statedInRow: {
+                      engine: engine !== null,
+                      model:
+                        modelIdentity.source === 'envelope' &&
+                        modelIdentity.claims.length > 0,
+                    },
+                    accountableHuman,
+                    shareContent: (
+                      <LazyBoundary
+                        load={loadShareAnswerButton}
+                        componentProps={{ provenance: msg.provenance }}
+                        pending={null}
+                      />
+                    ),
+                  }
+                : undefined,
+            reasoning:
+              reasoningContent !== undefined
+                ? { content: reasoningContent }
+                : undefined,
+          }}
+          pending={null}
+          unavailable={() => null}
+        />
+      )}
+      {textContent && feedbackConversationId && rowAgentSlug && (
+        <MessageRating
+          conversationId={feedbackConversationId}
+          messageIndex={idx}
+          messagePreview={textContent.slice(0, 200)}
+          agentSlug={rowAgentSlug}
+        />
+      )}
+    </>
+  );
   const metadataAfter = (
     <>
-      {/* Only a rehydrated, durable authored input has the exact identity
-            needed for an explicit Task pin. Optimistic/content-reconciled rows
-            deliberately carry no surrogate action. */}
-      {!replaying &&
-        msg.role === 'user' &&
-        msg.sourceEventId &&
-        msg.sessionId &&
-        msg.turnId && (
-          <div className="message__task-input-action">
-            <LazyBoundary
-              load={loadConnectedAttachUserInputToTaskButton}
-              componentProps={{
-                sessionId: msg.sessionId,
-                eventId: msg.sourceEventId,
-                projectId: activeSession.projectSlug,
-              }}
-              pending={
-                <span
-                  className="task-picker__status"
-                  role="status"
-                  aria-busy="true"
-                  aria-label="Task action pending"
-                >
-                  <Skeleton variant="line" />
-                </span>
-              }
-              unavailable={(retry) => (
-                <span className="task-picker__status" role="alert">
-                  Task action unavailable.{' '}
-                  <button type="button" onClick={retry}>
-                    Retry
-                  </button>
-                </span>
-              )}
-            />
-          </div>
-        )}
+      {!isMobile && userTaskAction}
 
       {msg.role === 'assistant' && msg.changedFiles && (
         <details className="message__changed-files">
@@ -569,154 +850,130 @@ function MessageBubbleComponent({
             meta affordance — icon-weight, muted, so the answer above stays
             the loudest thing in the column; provenance and reasoning open
             from the overflow as dialogs (#2211). */}
-      {hasTurnFooter && (
+      {hasTurnFooter && !isMobile && (
         <div className="turn-footer">
-          <div className="turn-footer__actions">
-            {developerToolsEnabled && msg.traceId && (
-              <a
-                href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="message__trace"
-                title={`Trace: ${msg.traceId}`}
-              >
-                {msg.traceId.slice(-8)}
-              </a>
-            )}
-            {textContent && (
-              <button
-                type="button"
-                onClick={() => onCopy(textContent)}
-                className="message__copy-btn"
-                title="Copy message"
-                aria-label="Copy message"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              </button>
-            )}
-            {((msg.turnId &&
-              answerSessionId &&
-              msg.answerEligible === true &&
-              (!isLastMessage || !activeSession.isThinking)) ||
-              (turnForkSource && onForkFromTurn) ||
-              msg.provenance !== undefined ||
-              reasoningContent !== undefined) && (
-              <LazyBoundary
-                load={loadTurnActionsMenu}
-                componentProps={{
-                  taskTarget:
-                    msg.turnId &&
-                    answerSessionId &&
-                    msg.answerEligible === true &&
-                    (!isLastMessage || !activeSession.isThinking)
-                      ? {
-                          sessionId: answerSessionId,
-                          turnId: msg.turnId,
-                          projectId: activeSession.projectSlug,
-                        }
-                      : undefined,
-                  forkSource: turnForkSource,
-                  onForkFromTurn,
-                  provenance:
-                    msg.provenance !== undefined
-                      ? {
-                          envelope: msg.provenance,
-                          statedInRow: {
-                            engine: engine !== null,
-                            model:
-                              modelIdentity.source === 'envelope' &&
-                              modelIdentity.claims.length > 0,
-                          },
-                          accountableHuman,
-                          shareContent: (
-                            <LazyBoundary
-                              load={loadShareAnswerButton}
-                              componentProps={{ provenance: msg.provenance }}
-                              pending={null}
-                            />
-                          ),
-                          basisContent:
-                            msg.turnId &&
-                            answerSessionId &&
-                            msg.answerEligible === true &&
-                            // #1536 B3: the same precondition the Basis route
-                            // applies. A turn whose envelope records an aborted
-                            // outcome can only ever be answered 404, and the
-                            // affordance rendered that refusal as
-                            // "Basis · Unavailable" on a healthy instance.
-                            turnCompletedNormally(msg) &&
-                            (!isLastMessage || !activeSession.isThinking) ? (
-                              <LazyBoundary
-                                load={loadConnectedAnswerBasisAffordance}
-                                componentProps={{
-                                  projectSlug: activeSession.projectSlug,
-                                  chatStoreId: activeSession.id,
-                                  sessionId: answerSessionId,
-                                  turnId: msg.turnId,
-                                }}
-                                pending={null}
-                                unavailable={() => null}
-                              />
-                            ) : null,
-                        }
-                      : undefined,
-                  reasoning:
-                    reasoningContent !== undefined
-                      ? { content: reasoningContent }
-                      : undefined,
-                }}
-                pending={null}
-                unavailable={() => null}
-              />
-            )}
-            {textContent && feedbackConversationId && rowAgentSlug && (
-              <MessageRating
-                conversationId={feedbackConversationId}
-                messageIndex={idx}
-                messagePreview={textContent.slice(0, 200)}
-                agentSlug={rowAgentSlug}
-              />
-            )}
+          {/* #926 amendment (owner, 2026-10): Basis stays visible at rest,
+              beside the hover-revealed row rather than inside it. */}
+          <div className="turn-footer__bar">
+            {basisChip}
+            <div className="turn-footer__actions">{footerActions}</div>
           </div>
         </div>
       )}
     </>
   );
 
+  // The phone sheet's content, as the one list it renders from: its summary
+  // row's start (facts, or the user's Task pin) and end (actions), and what
+  // follows. A user row whose lists are empty (copy moved inline) gets no ⋯
+  // rather than a trigger for an empty sheet.
+  const sheetStart =
+    msg.role === 'user' ? [userTaskAction] : [metadataIdentity];
+  const sheetEnd =
+    msg.role === 'user'
+      ? [traceLink, userMessageMenu]
+      : [metadataControls, hasTurnFooter ? footerActions : null];
+  const sheetAfter = msg.role === 'user' ? null : metadataAfter;
+  // Only a user row's slots can all be empty; an answer's always carry its
+  // identity and footer fragments, so it keeps its ⋯ as before.
+  const sheetHasContent =
+    msg.role !== 'user' ||
+    [...sheetStart, ...sheetEnd, sheetAfter].some((item) => item !== null);
+  const details =
+    isMobile && sheetHasContent ? (
+      <MessageDetails
+        label={
+          msg.role === 'user'
+            ? 'Your message actions'
+            : 'Answer details and actions'
+        }
+      >
+        {/* Identity left, actions right, on one row when both fit; the
+            actions wrap to their own row only when they do not. */}
+        <div className="message-details__summary">
+          <div className="message-details__lead">{renderList(sheetStart)}</div>
+          <div className="message-details__actions">{renderList(sheetEnd)}</div>
+        </div>
+        {sheetAfter}
+      </MessageDetails>
+    ) : null;
+  // Copy is the action a phone reaches for most, so it sits beside the ⋯
+  // instead of one sheet deep, for the user's words and the answer alike.
+  const inlineCopy =
+    isMobile && textContent ? (
+      <button
+        type="button"
+        className="message-details__copy"
+        onClick={() => onCopy(textContent)}
+        title={copyLabel}
+        aria-label={copyLabel}
+      >
+        <CopyGlyph />
+      </button>
+    ) : null;
+  const time =
+    isMobile && Number.isFinite(settledAt)
+      ? messageTime(settledAt, Date.now())
+      : '';
+  // An answer's copy and ⋯ share one quiet row with the turn's settle time;
+  // the user's bubble keeps its controls beside it.
+  const mobileDetails = isAssistant ? (
+    <div className="message-meta">
+      {time && envelope && (
+        <time
+          className="message-meta__time"
+          dateTime={envelope.observedAt}
+          title={absoluteTime(settledAt)}
+        >
+          {time}
+        </time>
+      )}
+      {basisChip}
+      {inlineCopy}
+      {details}
+    </div>
+  ) : inlineCopy || details ? (
+    <div className="message-actions">
+      {inlineCopy}
+      {details}
+    </div>
+  ) : null;
+  // 44px per control plus the compact row's 8px gap.
+  const userControlCount = (inlineCopy ? 1 : 0) + (details ? 1 : 0);
+
   return (
     <div
-      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}`}
+      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}${
+        // Phone: a thin rule opens every exchange after the first. A steer is
+        // more input on the same turn, not a new exchange.
+        isMobile && msg.role === 'user' && idx > 0 && !continuesTurn
+          ? ' message-row--exchange-start'
+          : ''
+      }`}
       data-chat-message-key={anchorKey}
     >
       {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
       <div
         style={{
           position: 'relative',
-          // On a phone only the user's bubble keeps the reserved column for
-          // its ⋯ trigger; an answer spends the full width on its words and
-          // carries the trigger below it (chat.css `.message-row--compact`).
+          // On a phone only the user's bubble keeps a reserved column for its
+          // copy and ⋯ controls; an answer spends the full width on its words
+          // and carries them below it (chat.css `.message-row--compact`).
           maxWidth: isMobile
-            ? msg.role === 'user'
-              ? 'calc(100% - 52px)'
+            ? msg.role === 'user' && userControlCount > 0
+              ? `calc(100% - ${8 + 44 * userControlCount}px)`
               : undefined
             : '70%',
         }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${
+          // Outlined, not filled, until the agent has the message.
+          undelivered
+            ? ` message--undelivered message--delivery-${undelivered}`
+            : ''
+        }`}
       >
-        {!isMobile && metadataBefore}
+        {!isMobile && metadataControls}
+        {!isMobile && metadataIdentity}
         <div
           data-quote-source-message={
             msg.role === 'assistant' &&
@@ -728,22 +985,63 @@ function MessageBubbleComponent({
           }
         >
           <MessageContent
-            contentParts={msg.contentParts}
-            textContent={textContent}
+            contentParts={
+              taskProposal
+                ? msg.contentParts?.map((part) =>
+                    part.type === 'text'
+                      ? {
+                          ...part,
+                          content: part.content?.replace(
+                            /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                            '',
+                          ),
+                        }
+                      : part,
+                  )
+                : msg.contentParts
+            }
+            messageKey={anchorKey}
+            textContent={
+              taskProposal
+                ? textContent.replace(
+                    /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                    '',
+                  )
+                : textContent
+            }
             chatFontSize={chatFontSize}
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
             isStreamingMessage={isStreamingMessage}
+            foldWork={foldWork}
             onToolApproval={
               onToolApproval ? handleContentToolApproval : undefined
             }
           />
+          {taskProposal && msg.turnId && answerSessionId && (
+            <TaskProposalCard
+              proposal={taskProposal}
+              sessionId={answerSessionId}
+              conversationId={activeSession.conversationId}
+              turnId={msg.turnId}
+              projectId={activeSession.projectSlug}
+            />
+          )}
         </div>
         {msg.role === 'user' && msg.steerInterruptedRun && (
           <div className="message__steer-note">
             Sent by stopping the step that was running
           </div>
         )}
+        {undelivered && msg.clientId ? (
+          <MessageDeliveryNote
+            chatKey={activeSession.id}
+            clientTurnId={msg.clientId}
+            state={undelivered}
+            text={textContent}
+            notice={deliveryNotice}
+          />
+        ) : null}
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
@@ -778,18 +1076,7 @@ function MessageBubbleComponent({
           </>
         )}
       </div>
-      {isMobile && (
-        <MessageDetails
-          label={
-            msg.role === 'user'
-              ? 'Your message actions'
-              : 'Answer details and actions'
-          }
-        >
-          {metadataBefore}
-          {metadataAfter}
-        </MessageDetails>
-      )}
+      {isMobile && mobileDetails}
     </div>
   );
 }

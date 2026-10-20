@@ -141,9 +141,11 @@ export interface CooperativeStopDeps {
  * pending-interrupt map, and their timers all live here, with every write
  * internal to this module.
  *
- * `settleCompletedTurn` is the C2 spine's settle-read and MUST be called in
- * `publishCanonicalEvent` BEFORE the quarantine gate (T5) — pinned by a
- * source invariant in the orchestration suite.
+ * `settleCompletedTurn` is the C2 spine's settle-read. `publishCanonicalEvent`
+ * MUST reach it for every event, including one the quarantine gate declines
+ * (T5), and for a published event only after its append commits and before
+ * the in-memory observers run (#3561) — pinned by a source invariant in the
+ * orchestration suite.
  *
  * The `'stall'` `initiatedBy` arm is DORMANT plumbing (archive#2959): stall
  * detection is observe-only by review decision, and the only live callers
@@ -174,11 +176,13 @@ export class CooperativeStop {
   constructor(private readonly deps: CooperativeStopDeps) {}
 
   /**
-   * The C2 spine's settle-read (epic archive#4024): MUST be called in
-   * `publishCanonicalEvent` BEFORE the quarantine gate — a stop must settle
-   * even for an event the gate declines, or a stop on a quarantined thread
-   * never settles and rides its full budget into a forced teardown of a
-   * turn that had already completed. Pinned by a source invariant in the
+   * The C2 spine's settle-read (epic archive#4024). `publishCanonicalEvent`
+   * MUST reach it even for an event the quarantine gate declines, or a stop
+   * on a quarantined thread never settles and rides its full budget into a
+   * forced teardown of a turn that had already completed. For a published
+   * event it runs only after that event's append commits (#3561), so a failed
+   * append leaves the stop pending, and before the in-memory observers, so
+   * one that throws cannot strand it. Pinned by a source invariant in the
    * orchestration suite; exactly one dispatch file-wide.
    */
   settleCompletedTurn(

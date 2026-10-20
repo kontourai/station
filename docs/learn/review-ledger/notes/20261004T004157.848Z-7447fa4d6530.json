@@ -1,0 +1,19 @@
+{
+  "revision": "073809b712cc4bd3a9791fed0504d83d2c1454a3",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the changed detector against the app-home/env table and selected Keychain namespace explanation. The detector now reads macOS secure storage first and permits selected-file fallback only for a proven absent entry. Profile launch/enrolment and adoption limits remain accurate and unchanged."},
+
+    {"path":"docs/guides/connections.md","note":"Updated the runtime-env readiness explanation: selected secure-store override precedes config home; absent entry permits selected file; unreadable/malformed state is unknown and cannot borrow global login. Presence is not token validity. Account allowance and credential-management permission remain separate. Detector 10 and adapter 332 cases passed; two clean-commit mutations caught omitted observation and global namespace borrowing."},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed the auth detector delta against engine setup and canonical question/approval claims. This repair changes credential-presence prerequisites only; Agent tools, AskUserQuestion events and approval delivery remain unchanged. No real model delivery or physical-device claim follows from focused auth checks."},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the auth delta against ready-worker setup, dispatch authority and provider boundaries. Selected credential presence changes admission readiness only, not delegation grants, tool selection or execution receipts. No source or prose correction required for those claims."},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the example setup, approval boundaries and its explicit no-live-model/authentication qualification limit. The detector repair does not turn its sandbox workflow into authenticated execution; those limits remain accurate."},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the adapter fixture change: only node:os platform is set to Linux to prevent real host Keychain contamination; the detector is not replaced. Selected MCP tools, engine permissions, callback delivery and conformance limits are unchanged. 332 real adapter keeper cases passed; no broad runtime proof is inferred."},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the changed Connections readiness paragraph against pairing, remote execution and native broker-route authority distinctions. It only explains local Claude credential presence; Device scopes, Project authority, routing and sharing claims remain unchanged."}
+  ]
+}

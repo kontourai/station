@@ -82,6 +82,7 @@ export type NativeCommandName =
   | 'commit-renderer-mount'
   | 'commit-startup-readiness'
   | 'commit-startup-recovery-ui'
+  | 'startup-window-admitted'
   | 'review-consent-natively'
   | 'agent-activity-status'
   | 'agent-activity-push-token'
@@ -463,6 +464,13 @@ export interface NativePlatformAdapter {
     ticket: NativeStartupReadinessTicket,
   ): Promise<NativeCommandResult<void>>;
   commitStartupRecoveryUi(): Promise<NativeCommandResult<void>>;
+  /**
+   * Whether this WebView is already shown to the user: a non-main window, or
+   * the main window after native startup readiness admitted it. On macOS this
+   * also observes that the cover is gone and WebView opacity is restored.
+   * Read-only; a readiness phase alone does not establish visible content.
+   */
+  isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>>;
   subscribeToStartupReadinessRetry(
     listener: () => void,
   ): NativeEventSubscription;

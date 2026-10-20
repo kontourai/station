@@ -1,3 +1,4 @@
+import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ConversationHandoffReceipt } from '@kontourai/station-sdk/client';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ChatUIState } from '../../contexts/active-chats-state';
@@ -46,9 +47,11 @@ export function acceptConversationHandoffUiState(
   state: ChatUIState | undefined,
   target: AgentData | undefined,
   receipt: ConversationHandoffReceipt,
+  executionTarget?: AgentData,
 ): Partial<ChatUIState> {
-  const execution = target
-    ? resolveAgentExecution(target)
+  const binding = receipt.target.executionAgentId ? executionTarget : target;
+  const execution = binding
+    ? resolveAgentExecution(binding)
     : {
         executionMode: undefined,
         executionScope: undefined,
@@ -65,6 +68,20 @@ export function acceptConversationHandoffUiState(
       };
   return {
     ...execution,
+    executionAgentId: receipt.target.executionAgentId,
+    executionOnCurrentStation: true,
+    expectedDefinitionFingerprint: receipt.target.executionAgentId
+      ? receipt.target.expectedDefinitionFingerprint
+      : undefined,
+    executionMode:
+      receipt.target.engine.kind === 'station'
+        ? EXECUTION_MODE.STATION
+        : EXECUTION_MODE.EXTERNAL,
+    provider: receipt.target.provider ?? execution.provider,
+    agentConnectionId:
+      receipt.target.engine.kind === 'connection'
+        ? receipt.target.engine.connectionId
+        : undefined,
     agentSlug: receipt.target.agentId,
     agentName: target?.name ?? `Deleted Agent (${receipt.target.agentId})`,
     currentSessionId: receipt.currentSessionId,

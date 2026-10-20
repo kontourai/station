@@ -16,12 +16,25 @@
  */
 
 import type { RunStatus, RunSummary } from '@kontourai/station-contracts/runs';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const { navigate, schedulerJobs } = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  schedulerJobs: vi.fn<() => { data: SchedulerJob[] }>(() => ({ data: [] })),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate }),
+}));
+beforeEach(() => {
+  navigate.mockReset();
+  schedulerJobs.mockReturnValue({ data: [] });
+});
 
 vi.mock('../hooks/useScheduler', () => ({
   useRunsQuery: () => ({ data: (globalThis as any).__jobDetailRuns__ ?? [] }),
-  useSchedulerJobs: () => ({ data: [] }),
+  useSchedulerJobs: schedulerJobs,
   useRestartJobMonitor: () => ({ mutate: vi.fn(), isPending: false }),
   useFetchRunOutputRef: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // Added when useScheduler gained it and JobDetail adopted it. This
@@ -120,3 +133,38 @@ describe('JobDetail run-history status column', () => {
     expect(failLabels.sort()).toEqual(['Cancelled', 'Failed']);
   });
 });
+
+test.each([false, true])(
+  'opens the monitor Task with canonical navigation only for a plain click (metaKey=%s)',
+  (metaKey) => {
+    schedulerJobs.mockReturnValue({
+      data: [
+        {
+          name: JOB_NAME,
+          provider: 'station',
+          prompt: '',
+          enabled: true,
+          monitor: {
+            kind: 'github-pull-request',
+            objective: 'review-ready',
+            target: 'https://github.com/kontourai/station/pull/1',
+            projectId: 'project-alpha',
+            agentId: 'reviewer',
+          },
+          monitorState: { triggeredTaskId: 'task with space' },
+        },
+      ],
+    });
+    renderWithRuns([]);
+    const link = screen.getByRole('link', { name: 'task with space' });
+    expect(link.getAttribute('href')).toBe('/tasks/task%20with%20space');
+    fireEvent.click(link, { metaKey });
+    if (metaKey) {
+      expect(navigate).not.toHaveBeenCalled();
+      return;
+    }
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(
+      '/tasks/task%20with%20space',
+    );
+  },
+);

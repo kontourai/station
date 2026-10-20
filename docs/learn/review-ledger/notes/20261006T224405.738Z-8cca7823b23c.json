@@ -1,0 +1,7 @@
+{
+  "revision": "4285c2062e452a942a8f09b9db71a8885d7de561",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed home backup checkpoint and integrity semantics against automation ledger default home/automation/automation.sqlite and the explicit state-root/SQLite registry additions. Archive already checkpoints every included .sqlite file independently; registry repair completes declared inventory and preserves fail-closed corrupt/busy/WAL handling, exclusions and limits. Registry, archive, update-backup and automation store/ledger focused suites passed 94/94; removal control caught the named missing SQLite declaration and exact restoration passed. Existing CLI explanation remains accurate; no new CLI/native/hosted execution claim.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

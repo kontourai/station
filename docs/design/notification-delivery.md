@@ -21,6 +21,39 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## External transcripts
+
+Threads followed from another app (`controlMode: read-only-attached`) do not
+raise Station completion or approval notifications. The
+[completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
+and [approval producer](../../src-server/services/approvals/approval-inbox.ts)
+check Station's recorded ownership before scheduling a notification, so those
+transcript events produce no notification popup, sound, desktop alert, Web Push,
+or native mobile alert. External transcripts are also excluded from Android
+activity cards and iOS Live Activities by the
+[shared card phase selector](../../src-server/services/notifications/agent-activity-card.ts),
+using ownership carried by the
+[publisher's summary projection](../../src-server/services/notifications/agent-activity-publisher.ts).
+
+They remain available in Activity and the imported conversation reader. A
+Station-owned session using an external engine, or a new Station-owned
+continuation of an external transcript, keeps its ordinary notification
+behavior. Automation triggers are separate from this notification policy.
+
+## Approval actions in the running client
+
+The in-app approval toast sends the selected decision and opens its originating
+conversation. An accepted approval action in notification history or Attention
+also opens that conversation; a runtime Activity link is converted to the chat
+dock for this decision action. Ordinary Open session links keep their original
+destination. These client actions do not add approval buttons to native push or
+change background delivery guarantees.
+
+Failed decisions remain visible with a short explanation and disclosed details.
+An uncertain answer must be inspected before sending another decision. See
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery)
+for the shared request binding and send deadlines.
+
 ## Five historical approaches and their observed limits
 
 The following observations describe the builds and probes that motivated push.
@@ -231,9 +264,15 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   agent activity is turned on again on the phone. The package must be one the
   gateway delivers to, and the route sits on the `/api/system` operate tier.
   `DELETE /api/system/native-push` clears the caller's own registration only.
+  `GET /api/system/native-push` (`/api/system` read tier) answers
+  `{ registered, registrationId }` for the caller's own device, with no token
+  or key, and 503 when a registration file is unreadable; it is not gated on
+  the gateway URL. The phone's refresh uses it to notice a registration the
+  Station dropped (a gateway "unregistered" answer clears it, and a device
+  paired again is a new device with none).
   Revoking or replacing a device drops its registration, and a registration
   whose device is no longer active is never listed. Hosted-tenant mode
-  disables both routes, as it does Web Push; an invalid gateway URL, or a
+  disables these routes, as it does Web Push; an invalid gateway URL, or a
   corrupt key or registration file, makes registration answer 503.
 - **Sealed card.** Only routing data travels in clear: the FCM data is
   `{ station_kind: 'agent_activity', device_id: <registrationId>, sealed }`,
@@ -314,8 +353,14 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   (the session the record names, the one its audience was limited by; none
   for a path target). There is no link: a tap opens that session through the
   card's tap-nonce ledger, never a URL. `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`
-  is its known-answer vector. When the phone's surface asked to hide content,
-  the title and body are replaced with generic copy before sealing. Station
+  is its known-answer vector. The title and body are sealed in display form
+  (#3382): bidi controls and invisible characters removed, controls turned
+  into spaces, the title on one line with a multi-line title's lines joined
+  by " ⏎ ", the body keeping its line breaks. Every cut to the size budget
+  re-bounds the original text, so it ends in "…" and keeps a title's
+  "(+N lines)" count. When the phone's surface asked
+  to hide content, the title and body are replaced with generic copy before
+  sealing. Station
   notifications carry no FCM collapse key: FCM keeps at most four collapse
   keys per offline or dozing device and drops the rest without saying so,
   which would lose alerts, retracts or card updates, so each message is kept
@@ -776,7 +821,7 @@ the route answers 503. The gateway is deployed by hand
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
 | Station notifications on Android (#2588: gateway kind, `FcmAlertChannel`, `StationNotifications.kt`) | built; the channel is tested through the production delivery wiring against the gateway's own verifier and request parser, and the phone opens the shared known-answer vector in a JVM unit test. Not yet verified on a device or emulator. The gateway change is deployed |
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
-| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when the host reports `remote-push` enabled: an Android build with all four `STATION_FIREBASE_*` values, or an iOS build with the Live Activity plugin (`STATION_IOS_LIVE_ACTIVITY=1`), where it also stays hidden until the plugin's `status` reports the build signed for push (`pushConfigured`) on iOS 18. iOS registers `{ token, packageName, platform: 'ios', apnsEnvironment }` from the plugin's push-to-start token and the environment it names, and asks for no notification permission. Registrations are kept per Station; the card key goes from the Station's response straight to the plugin (on iOS, into the keychain group shared with the widget) and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token (or its APNs environment) changed or the registration is a day old. The iOS path is unit-tested against the plugin's reply shapes only; no device has run it |
+| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when the host reports `remote-push` enabled: an Android build with all four `STATION_FIREBASE_*` values, or an iOS build with the Live Activity plugin (`STATION_IOS_LIVE_ACTIVITY=1`), where it also stays hidden until the plugin's `status` reports the build signed for push (`pushConfigured`) on iOS 18. iOS registers `{ token, packageName, platform: 'ios', apnsEnvironment }` from the plugin's push-to-start token and the environment it names, and asks for no notification permission. Registrations are kept per Station; the card key goes from the Station's response straight to the plugin (on iOS, into the keychain group shared with the widget) and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token (or its APNs environment) changed, the registration is a day old, or the Station's `GET /api/system/native-push` reports no registration or a different `registrationId`; a Station without that route (404/405) or one that cannot answer leaves the first two rules. The iOS path is unit-tested against the plugin's reply shapes only; no device has run it |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
 | APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation. The Durable Object is chosen for correctness (a strongly consistent single writer: Workers KV's eventual consistency could let the sweep miss a fresh record and delete a live channel); the sweep's cadence and per-run caps are shaped by the Workers Free plan's 50-subrequest limit, and Free's CPU limit is not yet verified. The ledger also keeps a guard of six accepted starts per device per UTC day against a runaway honest Station (not an abuse bound; the per-key and global limiters are); an end may carry the fixed alert. Live on a gateway deployed with the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets set, dark without them; the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only |
 | iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |

@@ -2,13 +2,16 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   DEFAULT_PROJECT_HOME,
   isGitUrl,
@@ -17,6 +20,10 @@ import {
 } from '../commands/helpers.js';
 
 afterEach(() => vi.unstubAllEnvs());
+
+// Directories the fallback tests create are removed in an after-hook even when
+// an assertion fails first (#2421).
+const makeTempDir = trackTempDirs();
 
 // Homes and roots named below used to be fixed paths in the shared system temp
 // directory (`/tmp/explicit-home`, `/tmp/station-helper-root`, ...). Any other
@@ -136,6 +143,205 @@ describe('channel lifecycle homes', () => {
       rmSync(fixture, { recursive: true, force: true });
     }
   });
+
+  // Station hands every agent it spawns `TMPDIR=<instance>/tmp/engine-spawn`.
+  // An agent that then runs `./station start --temp-home` (the screenshot
+  // harness does) used to mint its throwaway home inside that instance tree,
+  // which the runtime-home guard rightly refuses as a non-leaf instance path.
+  it.skipIf(process.platform === 'win32')(
+    'mints an admissible temporary home when TMPDIR is inside a Station instance tree',
+    () => {
+      const sharedRoot = realpathSync(
+        makeTempDir('station-cli-agent-tmpdir-root-'),
+      );
+      const engineSpawnTmp = join(
+        sharedRoot,
+        'instances',
+        'default',
+        'tmp',
+        'engine-spawn',
+      );
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', sharedRoot);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        // Precondition: the ambient temp root really is inside the tree.
+        expect(tmpdir()).toBe(engineSpawnTmp);
+        const target = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        });
+        projectHome = target.projectHome;
+        expect(target.source).toBe('--temp-home');
+        expect(projectHome.startsWith(`${sharedRoot}/`)).toBe(false);
+        expect(normalizeHomePath(projectHome, process.env)).toBe(projectHome);
+        expect(existsSync(projectHome)).toBe(true);
+        // The rejected candidate is not left behind in the instance tree.
+        expect(
+          existsSync(join(engineSpawnTmp, 'station'))
+            ? readdirSync(join(engineSpawnTmp, 'station'))
+            : [],
+        ).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(sharedRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // A parent Station on a self-rooted home (`--home`, `--temp-home`) hands its
+  // agents STATION_HOME=<home> and TMPDIR=<home>/tmp/engine-spawn. A temp
+  // home minted there passes admission (no protected container), but the
+  // parent's engine-spawn reaper deletes it by age while it may be in use.
+  it.skipIf(process.platform === 'win32')(
+    'mints the temporary home outside a self-rooted parent home whose engine-spawn TMPDIR it inherits',
+    () => {
+      const parentHome = realpathSync(
+        makeTempDir('station-cli-self-rooted-parent-'),
+      );
+      const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', undefined);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        expect(tmpdir()).toBe(engineSpawnTmp);
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${parentHome}/`)).toBe(false);
+        expect(projectHome.startsWith(realpathSync('/tmp'))).toBe(true);
+        expect(
+          existsSync(join(engineSpawnTmp, 'station'))
+            ? readdirSync(join(engineSpawnTmp, 'station'))
+            : [],
+        ).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(parentHome, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'reports the refused /tmp retry alongside the original temp-home refusal',
+    () => {
+      // A Station root whose `config` container is a regular file refuses
+      // every home it would own, so both the ambient candidate and the
+      // /tmp/station retry are refused by admission.
+      const brokenRoot = realpathSync(makeTempDir('station-cli-broken-root-'));
+      writeFileSync(join(brokenRoot, 'config'), 'not a directory');
+      const ambientTmp = realpathSync(makeTempDir('station-cli-retry-tmp-'));
+      vi.stubEnv('STATION_ROOT', brokenRoot);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', ambientTmp);
+      try {
+        let thrown: unknown;
+        try {
+          const home = resolveLifecycleHomeTarget({
+            tempHome: true,
+            env: process.env,
+          }).projectHome;
+          rmSync(home, { recursive: true, force: true });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain(`${ambientTmp}/station/dev-home-`);
+        expect(message).toMatch(
+          /shared Station container is unsafe: config; retrying under \/tmp\/station was also refused: .*\/tmp\/station\/dev-home-.*shared Station container is unsafe: config/,
+        );
+        expect(readdirSync(join(ambientTmp, 'station'))).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(brokenRoot, { recursive: true, force: true });
+        rmSync(ambientTmp, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps a temp home under a Station root at /tmp/station with the default TMPDIR',
+    () => {
+      const systemTmp = realpathSync('/tmp');
+      const stationRoot = join(systemTmp, 'station');
+      vi.stubEnv('STATION_ROOT', stationRoot);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', systemTmp);
+      let projectHome: string | undefined;
+      try {
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${stationRoot}/dev-home-`)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses the engine-spawn tree of an explicit STATION_HOME outside an explicit STATION_ROOT',
+    () => {
+      const fixture = realpathSync(makeTempDir('station-cli-split-root-home-'));
+      const stationRoot = join(fixture, 'root');
+      const parentHome = join(fixture, 'home');
+      const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
+      mkdirSync(stationRoot);
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', stationRoot);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${parentHome}/`)).toBe(false);
+        expect(projectHome.startsWith(realpathSync('/tmp'))).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'honors a STATION_TEMP_ROOT inside STATION_HOME but outside its tmp tree',
+    () => {
+      const parentHome = realpathSync(makeTempDir('station-cli-scratch-home-'));
+      const scratch = join(parentHome, 'scratch');
+      vi.stubEnv('STATION_ROOT', undefined);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', scratch);
+      try {
+        const projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${scratch}/dev-home-`)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(parentHome, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('rejects shared-root and container selections before CLI lifecycle work', () => {
     const sharedRoot = mkdtempSync(join(tmpdir(), 'station-cli-shared-root-'));

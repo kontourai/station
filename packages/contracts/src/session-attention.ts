@@ -1,3 +1,4 @@
+import type { OrchestrationSessionSummary } from './orchestration.js';
 import type { ProviderSession } from './provider.js';
 import type { SessionLifecycleState } from './session-lifecycle.js';
 
@@ -114,4 +115,172 @@ export function sessionAttentionDisposition(
     return { state: 'awaiting', via: 'blocked' };
   }
   return { state: 'active' };
+}
+
+/**
+ * The canonical states a session can be in, as this product words them:
+ * exactly what {@link orchestrationLifecycleLabel} can return (a strict subset
+ * of the UI's `HomeLifecycleLabel`; `Current`/`Recent` belong to chat and
+ * durable-task items, which are not sessions).
+ */
+export type SessionStateLabel =
+  | 'Needs attention'
+  | 'Failed'
+  | 'Stopped'
+  | 'Running'
+  | 'Ready'
+  | 'Draft'
+  | 'Unanswerable'
+  | 'Completed';
+
+/**
+ * WHAT STATE A SESSION IS IN: the one derivation, and the only one (moved here
+ * from `src-ui/src/utils/session-state.ts`, which re-exports it, so the
+ * station-control `list_project_activity` tool answers with the very word the
+ * UI shows and not a second table; station#3413).
+ *
+ * It starts from {@link sessionAttentionDisposition} and deliberately
+ * overrides `lifecycleState` in five places; each override is a fixed defect:
+ *
+ * | shape | `lifecycleState` says | this says |
+ * |---|---|---|
+ * | `running`, `hasActiveTurn: false` | Running | **Ready** (archive#1069) |
+ * | `pendingReview`, `running` | Running | **Needs attention** |
+ * | `status: 'closed'`, `running` | Running | **Completed** (archive#1296) |
+ * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (archive#1783) |
+ * | `queued`/`running`, `hasActiveTurn: false`, `draft: true` | Queued/Running | **Draft** (#2310) |
+ *
+ * `answerability` is consulted only inside the awaiting arm (a detached
+ * `completed` session takes the finished arm, so an ungated check would
+ * relabel the finished inventory after a restart). `hasActiveTurn` gates
+ * "Running": `session.configured` moves `lifecycleState` to `running` for every
+ * resumed session, and only `turn.completed` moves it off. `draft` is the
+ * server's lineage-aware fold, read and never re-derived; only the active arm
+ * refines to it.
+ */
+export function orchestrationLifecycleLabel(
+  session: OrchestrationSessionSummary,
+): SessionStateLabel {
+  const disposition = sessionAttentionDisposition(session);
+  const currentChildWork =
+    session.conversationActivity?.currentThreadId === session.threadId &&
+    session.conversationActivity.runningChildWork !== undefined;
+  // A completed or stopped parent turn may leave reported children running.
+  // Keep the attention fold unchanged: background work is not a request to
+  // the user. A closed or failed session retains its terminal outcome.
+  // `idle` is how an ordinary turn ends since #2540; without it a session
+  // whose turn finished while its sub-agents kept running read Completed.
+  if (
+    (session.lifecycleState === 'idle' ||
+      session.lifecycleState === 'completed' ||
+      session.lifecycleState === 'canceled') &&
+    session.status !== 'closed' &&
+    currentChildWork &&
+    disposition.state === 'finished'
+  )
+    return 'Running';
+  // The shared fold files a canceled turn under `finished`. Refine that
+  // recorded outcome to Stopped when no child work remains.
+  if (session.lifecycleState === 'canceled') return 'Stopped';
+  switch (disposition.state) {
+    case 'failed':
+      return 'Failed';
+    case 'finished':
+      return 'Completed';
+    case 'awaiting':
+      return session.answerability.answerable
+        ? 'Needs attention'
+        : 'Unanswerable';
+    case 'active':
+      if (session.hasActiveTurn || currentChildWork) return 'Running';
+      return session.draft === true ? 'Draft' : 'Ready';
+  }
+}
+
+/**
+ * WHAT an awaiting session is waiting on (#3042), read off the same shared
+ * fold plus the summary's own transition facts. Meaningful only for a session
+ * {@link orchestrationLifecycleLabel} calls `Needs attention`.
+ *
+ * - `review_pending` is the server's fold of every open request that is not
+ *   an `input` request (approval, permission, confirmation), and of the
+ *   `pendingReview` flag: an approval.
+ * - `needs_input` reached through `input_requested` is an open question.
+ * - `needs_input` stamped by interrupted-turn recovery carries
+ *   `transitionReason: 'runtime_exit'`: the turn was cut short.
+ * - any other `needs_input` says only that the session waits on the user.
+ *
+ * A turn interrupted by a restart while an approval was open reads
+ * Interrupted: recovery's abort settles the request the dead turn opened
+ * (#3071), so the server no longer reports it `review_pending`.
+ */
+export function sessionAttentionKind(
+  session: Pick<
+    OrchestrationSessionSummary,
+    | 'lifecycleState'
+    | 'status'
+    | 'pendingReview'
+    | 'terminalAttribution'
+    | 'transitionReason'
+  >,
+): 'approval' | 'answer' | 'interrupted' | 'blocked' | 'waiting' {
+  const disposition = sessionAttentionDisposition(session);
+  if (disposition.state !== 'awaiting') return 'waiting';
+  if (disposition.via === 'review_pending') return 'approval';
+  if (disposition.via === 'blocked') return 'blocked';
+  if (session.transitionReason === 'input_requested') return 'answer';
+  if (session.transitionReason === 'runtime_exit') return 'interrupted';
+  return 'waiting';
+}
+
+/**
+ * THE STATUS LADDER'S WORDS (#3042), the only place they are spelled: every
+ * list, card, row and tool that names a session's state reads one of these.
+ * `src-ui/src/views/home/work-status.ts` builds its rungs from this table and
+ * adds only what needs UI facts (sub-agent counts, the no-progress marker).
+ */
+export const SESSION_STATUS_WORDS = {
+  approval: 'Needs approval',
+  answer: 'Needs answer',
+  waiting: 'Waiting on you',
+  queued: 'Queued to send',
+  blocked: 'Blocked',
+  interrupted: 'Interrupted',
+  failed: 'Failed',
+  stopped: 'Stopped',
+  elsewhere: 'Elsewhere',
+  running: 'Running',
+  draft: 'Draft',
+  done: 'Done',
+  idle: 'Idle',
+} as const;
+
+/**
+ * The ladder's word for a session summary alone, as `workStatus(item, now)`
+ * words it without UI facts: the lane is the same with or without them, and
+ * the facts only refine words inside the Running rung.
+ */
+export function sessionLadderWord(
+  session: OrchestrationSessionSummary,
+): (typeof SESSION_STATUS_WORDS)[keyof typeof SESSION_STATUS_WORDS] {
+  if (session.controlMode === 'read-only-attached')
+    return SESSION_STATUS_WORDS.elsewhere;
+  switch (orchestrationLifecycleLabel(session)) {
+    case 'Needs attention':
+      return SESSION_STATUS_WORDS[sessionAttentionKind(session)];
+    case 'Failed':
+      return SESSION_STATUS_WORDS.failed;
+    case 'Stopped':
+      return SESSION_STATUS_WORDS.stopped;
+    case 'Unanswerable':
+      return SESSION_STATUS_WORDS.elsewhere;
+    case 'Running':
+      return SESSION_STATUS_WORDS.running;
+    case 'Draft':
+      return SESSION_STATUS_WORDS.draft;
+    case 'Completed':
+      return SESSION_STATUS_WORDS.done;
+    case 'Ready':
+      return SESSION_STATUS_WORDS.idle;
+  }
 }

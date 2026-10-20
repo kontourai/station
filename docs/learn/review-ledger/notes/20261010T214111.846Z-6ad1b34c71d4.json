@@ -1,0 +1,7 @@
+{
+  "revision": "dcb9254467b94d011b7acfc00fd512a53e702661",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the isolated telemetry identity fixture-read classification after reproducing the hosted path-read gate failure locally. All path reads in this test address temporary Station homes and direct telemetry imports retain source selection; no repository text read is exempted. The unchanged addition-only gate still classifies unreported suites; its 43 focused checks pass. This disposition does not qualify Windows execution or deployment.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

@@ -21,6 +21,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { StartupHandoff } from '../components/StartupHandoff';
+import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
@@ -437,29 +439,45 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.dataset.appChannel = profile?.channel ?? 'stable';
     root.classList.toggle('is-dev-build', profile?.isDevBuild === true);
+    // Remember which mark this install shows, so public/startup-theme.js can
+    // put it on the next launch's splash before the host report arrives.
+    if (profile) {
+      const mark = profile.isDevBuild ? 'dev' : (profile.channel ?? 'stable');
+      root.dataset.startupMark = mark;
+      try {
+        localStorage.setItem('station-startup-mark', mark);
+      } catch {
+        // Storage can be unavailable in a WebView; the splash then shows
+        // the stable mark until the report arrives, as on a first launch.
+      }
+    }
     return () => {
       delete root.dataset.appChannel;
       root.classList.remove('is-dev-build');
+      delete root.dataset.startupMark;
     };
   }, [profile]);
 
   if (profileBootstrapError) {
     return (
-      <FullScreenLoader
-        label="Station"
-        message="Station couldn’t finish starting"
-        action={
-          <div role="alert" aria-label="Station couldn’t finish starting">
-            <pre>{profileBootstrapError}</pre>
-            <button type="button" onClick={() => window.location.reload()}>
-              Reload Station
-            </button>
-          </div>
-        }
-      />
+      <>
+        <StartupHandoff recovery />
+        <FullScreenLoader
+          label="Station"
+          message="Station couldn’t finish starting"
+          action={
+            <div role="alert" aria-label="Station couldn’t finish starting">
+              <pre>{profileBootstrapError}</pre>
+              <button type="button" onClick={() => window.location.reload()}>
+                Reload Station
+              </button>
+            </div>
+          }
+        />
+      </>
     );
   }
-  if (!profile) return <FullScreenLoader label="Station" />;
+  if (!profile) return <StartupScreen message="Preparing this device" />;
 
   return (
     <PlatformProfileContext.Provider value={profile}>

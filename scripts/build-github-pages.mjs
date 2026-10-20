@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { headingId } from './lib/documentation-model.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const repoRoot = path.resolve(
@@ -35,6 +36,7 @@ const EXPLICIT_PUBLIC_REFERENCE_SOURCES = new Set([
   'reference/contributor-commands.md',
   'reference/product-laws.md',
 ]);
+const BARE_RELATIVE_HREF = /^[\w-][\w./-]*(?:#[\w-]*)?$/;
 const PUBLIC_SOURCE = /^(?:user|guides)\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
 export function isAllowedPublicDocSource(source) {
@@ -220,6 +222,7 @@ function extractDescription(source) {
 export function renderMarkdown(source) {
   const lines = source.split('\n');
   const html = [];
+  const headingIds = new Set();
   let inFence = false;
   let inTable = false;
   let tableRows = [];
@@ -311,12 +314,28 @@ export function renderMarkdown(source) {
       continue;
     }
 
-    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       closeParagraph();
       closeList();
       const level = heading[1].length;
-      html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      const content = renderInline(heading[2]);
+      // Remove generated tags before decoding the entities escapeHtml emits.
+      const title = content
+        .replace(/<[^>]*>/g, '')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;', '&');
+      const base = headingId(title);
+      let id = base;
+      let suffix = 0;
+      while (headingIds.has(id)) id = `${base}-${++suffix}`;
+      headingIds.add(id);
+      html.push(
+        `<h${level} id="${escapeAttribute(id)}">${content}</h${level}>`,
+      );
       continue;
     }
 
@@ -415,9 +434,14 @@ export function renderInline(value) {
         : href.endsWith('.md')
           ? href.replace(/\.md$/, '.html')
           : href.replace(/\.md#/, '.html#');
-      const safeHref = /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized)
-        ? normalized
-        : '#';
+      // A bare sibling path (`concepts.md`) is as relative as `./concepts.md`;
+      // it once fell through to `#` and shipped as a dead link. Its character
+      // set admits no scheme, so `javascript:` still lands on `#`.
+      const safeHref =
+        /^(?:https?:|mailto:|#|\/|\.\.?\/)/i.test(normalized) ||
+        BARE_RELATIVE_HREF.test(normalized)
+          ? normalized
+          : '#';
       return `<a href="${escapeAttribute(safeHref)}">${label}</a>`;
     });
 }

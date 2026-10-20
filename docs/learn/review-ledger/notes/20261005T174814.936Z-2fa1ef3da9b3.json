@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"#3386 fix round: generated registry gained the attached-sessions-outside-projects row (section host-runtime); the URL shape and failure rules described here apply unchanged. No prose change.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
+  ]
+}

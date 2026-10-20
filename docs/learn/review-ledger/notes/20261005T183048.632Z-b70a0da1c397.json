@@ -1,0 +1,7 @@
+{
+  "revision": "5da3acf6e028548aece8e20ec5a71934b10c8ad3",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"#3386 delta round: attachedSessionsOutsideProjects row now says off also stops updates to already-listed transcripts (poll skips unattributed before follow) and removes nothing from Activity, search or paired-device reach. Checked against attached-session-follow-service.ts poll loop.","inputs":["docs/reference/config.md"]}
+  ]
+}

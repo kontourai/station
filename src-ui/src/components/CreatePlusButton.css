@@ -1,0 +1,15 @@
+.button.create-plus-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--k-elevation-overlay);
+}
+.create-plus-button svg {
+  width: 20px;
+  height: 20px;
+}

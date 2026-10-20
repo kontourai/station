@@ -1,0 +1,7 @@
+{
+  "revision": "070b8d80ee12845dd724b8f97d64a0873af5654c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round: added that the last narration stays visible when no text follows the last call, recovered retries need recorded arguments, failed edits/deletes/other tools keep the bare verb while commands/reads/searches keep the completed verb, and a steer starts no exchange. Checked against foldTurnWork, recoveredFailures, callLabel RAN_EVEN_WHEN_FAILED, MessageBubble continuesTurn and the live-turn id from conversationActivity.openTurn; each pinned by ChatMessageList.mobileTurnFold / unit tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/tool-call-groups.ts","src-ui/src/components/chat/tool-call-labels.ts","src-ui/src/components/chat/tool-call-runs.ts"]}
+  ]
+}

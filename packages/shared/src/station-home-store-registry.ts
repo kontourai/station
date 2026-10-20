@@ -57,10 +57,14 @@ export const STATION_HOME_ROOTS: Readonly<
   analytics: 'state',
   'app-homes': 'state',
   authentication: 'state',
+  automation: 'state',
   browser: 'state',
   'checkpoint-restores.json': 'state',
   'checkpoint-retention.json': 'state',
   config: 'state',
+  // #2494: Seatbelt-confined engine config homes and any credential enrolled
+  // for confined use; like app-homes, product state.
+  'confined-homes': 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
@@ -88,6 +92,7 @@ export const STATION_HOME_ROOTS: Readonly<
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
+  'pull-request-guides': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
@@ -207,6 +212,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
   Object.freeze([
     ['data', 'orchestration.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
+    ['automation', 'automation.sqlite'],
     ['authentication', 'application-sessions.sqlite'],
     ['authentication', 'local-accounts.sqlite'],
     ['authentication', 'local-account-authority.sqlite'],

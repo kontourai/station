@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -55,6 +55,168 @@ export function removeEmptyRender(source) {
   return source.slice(0, start) + 'null' + source.slice(end);
 }
 export const MUTATIONS = [
+  {
+    id: 'worktree-diff-untracked-inclusion',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+    failure:
+      'literal quoted, newline, Unicode and shell-looking names parse as distinct additions, including no final newline',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return patch;',
+            "  return await git(['diff', '--no-color'], MAX_PATCH_BYTES);",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'worktree-diff-hardlink-refusal',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+    failure: 'refuses hardlink entries rather than reporting no changes',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) => exactReplace(source, ' || before.nlink !== 1', ''),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-decline-pending-full',
+    test: 'src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx',
+    failure:
+      'declining pending Full through the real dialog and routes persists Off before acknowledgement and never sends',
+    files: [
+      {
+        path: 'src-ui/src/components/UsageTelemetryDisclosure.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    updateProtected.mutate(\n',
+            '    if (!next) { acknowledgeProtected.mutate(data.inventoryRevision); return; }\n    updateProtected.mutate(\n',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-tier-only-authority',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'tier-only raises require consent authority',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(",
+            'const writesTelemetryChoice = [].some(',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-standard-withdrawal',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'a standard paired device can lower Full',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (writesTelemetryChoice) {',
+            "          if (writesTelemetryChoice && !mayRaiseTelemetry) throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');\n          if (writesTelemetryChoice) {",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-hosted-first-write',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'automatic telemetry import refuses hosted absent home with writable parent before writes',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  assertHostedPersistenceBeforeSchemaSync(homeDir, env);',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-implicit-log-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(source, '    logRecordProcessors: [],', ''),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-provider-registration',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with persisted identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+            '  await identity;\n  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-unidentified-export',
+    test: 'src-server/__tests__/telemetry.test.ts',
+    failure:
+      'records during identity I/O and exports only with failed identity',
+    files: [
+      {
+        path: 'src-server/telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  const identity = Promise.resolve(\n    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],\n  );',
+            "  const identity = Promise.resolve('bypassed');",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-completed-startup-boundary',
+    test: 'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
+    failure:
+      'restores disclosure and emits completed startup only after policy publication: failed (#2015/#2833)',
+    files: [
+      {
+        path: 'src-server/runtime/bootstrap/station-runtime.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              '      void this.usageTelemetry?.stationStarted();',
+              '',
+            ),
+            '    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+            '    void this.usageTelemetry.stationStarted();\n    this.observeRuntimeConfigurationSources();\n    // This is the last awaited startup step.',
+          ),
+      },
+    ],
+  },
   {
     id: 'ci-health-concurrency-threshold',
     test: 'scripts/__tests__/ci-health.test.ts',

@@ -46,30 +46,6 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Store-index freshness lacks two identities
-
-The [sqlite-vec index](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
-records vector width but not the embedding model/configuration that produced
-it. Its [migration caller](../../src-server/knowledge-index/migrate-pre-index-knowledge.ts)
-also treats matching width as sufficient for vector reuse. A different model
-with the same width can therefore be mixed with existing vectors without a
-dimension error.
-
-Tracked in [#2727: embedding configuration identity](https://github.com/kontourai/station/issues/2727).
-
-The [store search route](../../src-server/routes/knowledge/knowledge-index-routes.ts)
-rechecks access and record existence, but returns the index's old excerpt
-beside the record's current title/category. It does not compare a record-body
-revision. This differs from the older document API's content-hash validation
-through [KnowledgeFileTransactions](module-map.md#knowledgefiletransactions).
-
-Tracked separately in [#2728: source-content freshness](https://github.com/kontourai/station/issues/2728).
-
-Next design review: give index entries explicit source-content and embedding
-configuration identity, then decide how callers should see stale results and
-rebuild requirements. Matching dimensions and a readable record are useful
-checks, but neither establishes the meaning or freshness of an embedding.
-
 ### Personal Knowledge scope and the Settings card disagree
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
@@ -190,12 +166,18 @@ queries with actual names, labels, and recording populations;
 [#2752](https://github.com/kontourai/station/issues/2752) addresses failed chat
 spans finalized as successful; and
 [#2755](https://github.com/kontourai/station/issues/2755) addresses instruments
-created before asynchronous provider registration. The last two have bounded
-in-memory exporter/reader probes, not production collector measurements.
+created before asynchronous provider registration. Configured startup now
+registers providers synchronously and defers identity to resource resolution.
+Its regression observes the actual exported chat counter at a loopback OTLP
+receiver, including records during delayed identity I/O and refused export on
+identity failure. That is transport evidence, not production collector/storage
+qualification. #2752 retains its separate in-memory exporter probe.
 
-Insights also logs and skips unreadable rows/files before returning successful
-totals. [#2758](https://github.com/kontourai/station/issues/2758) proposes an
-explicit completeness result through the route, SDK, and visible view. A
+Insights now reports retained-scan integrity through its route, typed SDK and
+existing dashboard ([#2758](https://github.com/kontourai/station/issues/2758)).
+Readable omissions show partial totals; unknown history and failed refreshes
+hide totals. Coverage decisions follow user/tenant admission for attributable
+rows. A clean scan still does not prove retention or producer delivery. A
 generated [metric catalog](../reference/metrics.md) prevents declaration drift;
 it cannot establish that observations were recorded, exported, or complete.
 
@@ -296,12 +278,15 @@ install a plugin or run a live Agent.
 
 ### Library tests can miss a broken release command
 
-The release workflow calls an assembly CLI whose `sbomContext` function uses
-an unimported filesystem reader. The actual command exits before producing an
-inventory, while nearby tests exercise its library or scan the workflow text.
-[#2783](https://github.com/kontourai/station/issues/2783) records the reproduction
-and requires a regression through both real assembly and validation commands.
-This is a local caller failure, not an observed hosted release attempt.
+The release workflow's assembly CLI used an unimported filesystem reader, and
+its validation step compared the sorted-key inventory against the
+writer-ordered container descriptor byte for byte. Both commands would have
+failed on every release while the nearby tests exercised only the library or
+scanned the workflow text.
+[#2783](https://github.com/kontourai/station/issues/2783) fixed both and added a
+regression that runs the real assemble and validate commands with
+`release.yml`'s arguments. That evidence is local; no hosted tagged release
+has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
@@ -361,9 +346,10 @@ discovery loses completeness across the checker, route, SDK and management view
 ([#2858](https://github.com/kontourai/station/issues/2858)). These are traced
 caller contracts; no directory outage or missed installed update was observed.
 The fix belongs in those owners, with distinct complete, partial and unavailable
-outcomes where needed. Insights has separate placeholder values
-([#463](https://github.com/kontourai/station/issues/463)); neither invented zeroes
-nor successful empty responses establish an observation.
+outcomes where needed. Insights and monitoring stats used to carry placeholder
+zeroes for per-Agent tokens and cost; they now omit what nothing measures
+([#463](https://github.com/kontourai/station/issues/463)). Neither invented
+zeroes nor successful empty responses establish an observation.
 
 ### Durable operations need an operation-level outcome
 

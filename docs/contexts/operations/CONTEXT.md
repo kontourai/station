@@ -52,6 +52,13 @@ _Avoid_: shell if Station tracks lifecycle
 OpenTelemetry counters, histograms, traces and attributes describing observed operations. Defining an instrument does not prove a caller records it or an exporter delivered it.
 _Avoid_: logging when the signal is intended for metrics
 
+Disclosed product observations are a separate optional path with their own
+inventory, destination, source credential and commit receipt. They do not
+become a person's usage accounting; that uses canonical usage receipts.
+Current-process delivery health and content-free connection checks describe
+their declared boundary, not complete downstream collection. See
+[Usage telemetry](../../reference/usage-telemetry.md) for the contract.
+
 **Verification lane**:
 A named command or test group that checks specified behavior. Its result proves
 only what the selected checks actually exercised.
@@ -90,6 +97,8 @@ _Avoid_: source doc unless it is intended for review
 | Stored notifications and source actions | [NotificationService](../../../src-server/services/notifications/notification-service.ts) | [Notification delivery design](../../design/notification-delivery.md), with its stated implementation limits |
 | Desktop alert delivery | [Native feed consumer](../../../src-desktop/src/notification_feed.rs) | [Desktop alerts](../../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden); OS results and user attention remain distinct |
 | Voice session lifecycle | [VoiceSession](../../../src-server/voice/voice-session.ts) | [Voice examples](../../../examples/README.md) |
+| Disclosed product observations and local delivery health | [UsageTelemetryService](../../../src-server/services/usage-telemetry-service.ts) | [Usage telemetry](../../reference/usage-telemetry.md) |
+| Durable product ingestion and received-observation trends | [Product receiver](../../../packages/telemetry-broker/src/store.ts) | [Receiver operation and qualification limits](../../../packages/telemetry-broker/README.md) |
 | Verification selection and completion | [Lane registry](../../../scripts/verification-lanes.mjs) | [Testing](../../guides/testing.md) |
 
 Storage, dispatch, and physical delivery have different evidence. A queued

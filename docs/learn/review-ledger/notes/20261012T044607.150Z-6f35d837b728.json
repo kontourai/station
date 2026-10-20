@@ -1,0 +1,7 @@
+{
+  "revision": "28e824e856b1d160adae03edb47fa548681c2fe5",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#3564 re-review: the guide's NDJSON and tear-safe/fsync passages describe monitoring events and the session-coverage record, not agent file-memory transcripts. Transcript appends now fsync and repair a torn tail into <conversation>.ndjson.torn, which the usage scan skips (it reads only .ndjson). Retained file-memory messages are still counted as stated; no prose change needed.","inputs":["docs/guides/monitoring.md","src-server/adapters/file/memory-adapter-messages.ts"]}
+  ]
+}

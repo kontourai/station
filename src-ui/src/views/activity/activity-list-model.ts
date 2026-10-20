@@ -75,9 +75,39 @@ export const ACTIVITY_KIND_OPTIONS: ReadonlyArray<{
   { value: 'tasks', label: 'Tasks' },
 ];
 
+/**
+ * #3386: the Project filter's value for a session no project claims — a
+ * direct chat started with No project, or a conversation started outside
+ * Station in a folder that belongs to no project. The words are the ones Home
+ * and the start composer use for the same absence. As a value it cannot be
+ * mistaken for a project: a project slug is lowercase with no spaces
+ * (`slugifyProjectName`).
+ */
+const NO_PROJECT_FILTER = 'No project';
+
+/**
+ * The Project filter predicate: {@link NO_PROJECT_FILTER} matches exactly the
+ * sessions with no project key; anything else is `matchesProjectFilter`. An
+ * ambiguous session names projects, so it is never under No project, even
+ * when its candidate list was cut short.
+ */
+export function matchesActivityProject(
+  session: OrchestrationSessionSummary,
+  filter: string | null,
+): boolean {
+  if (filter === NO_PROJECT_FILTER)
+    return sessionProjectKeys(session).length === 0;
+  return matchesProjectFilter(session, filter);
+}
+
+function activityProjectKeys(session: OrchestrationSessionSummary): string[] {
+  const keys = sessionProjectKeys(session);
+  return keys.length > 0 ? keys : [NO_PROJECT_FILTER];
+}
+
 export interface ActivityFilters {
   kind: ActivityKindFilter;
-  /** A project key from `sessionProjectKeys`, or null for every project. */
+  /** A project key from `sessionProjectKeys`, {@link NO_PROJECT_FILTER}, or null for every project. */
   project: string | null;
   /** An `activityOriginKey` value, or null for every origin. */
   origin: string | null;
@@ -166,17 +196,25 @@ function countedOptions(
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/** Project options, matched by the same predicate the Project filter uses. */
+/**
+ * Project options, matched by the same predicate the Project filter uses,
+ * with No project listed last whenever a session has none.
+ */
 export function activityProjectOptions(
   sessions: readonly OrchestrationSessionSummary[],
   pinnedThreadId: string | null = null,
 ): ActivityFilterOption[] {
-  return countedOptions(
+  const options = countedOptions(
     sessions,
-    sessionProjectKeys,
-    (session, value) => matchesProjectFilter(session, value),
+    activityProjectKeys,
+    matchesActivityProject,
     pinnedThreadId,
   );
+  // After every named project, not alphabetised among them.
+  return [
+    ...options.filter((option) => option.value !== NO_PROJECT_FILTER),
+    ...options.filter((option) => option.value === NO_PROJECT_FILTER),
+  ];
 }
 
 export function activityOriginOptions(

@@ -1,4 +1,9 @@
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import {
+  approvalDecisionBody,
+  decisionOptionResponse,
+  inputRequestFromRequestEvent,
+  inputRequestOutcome,
+} from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   toolRequestDisplayName,
@@ -12,8 +17,14 @@ import {
   activeChatsStore,
   type ChatUIState,
 } from '../../contexts/active-chats-store';
+import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { isChatInForeground } from './chatForeground';
 import { isReplayThread } from './replay/replay-registry';
+import {
+  openInputRequestRecordPart,
+  settleInputRequestRecordPart,
+} from './streamHandlers';
 import type { OrchestrationEvent } from './types';
 
 export function handleRequestOpenedEvent(
@@ -22,6 +33,9 @@ export function handleRequestOpenedEvent(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  // The record is written for an asynchronous question too, as the
+  // projection does; only the pending bookkeeping below is for blocking ones.
+  openLiveInputRequestRecord(event);
 
   if (event.blocking === false) return;
 
@@ -56,6 +70,50 @@ export function handleRequestOpenedEvent(
 }
 
 /**
+ * #3390: the open turn's record of this request, mirroring the projection's
+ * rule: every form, and an approval no call on the shell carries.
+ */
+function openLiveInputRequestRecord(
+  event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+) {
+  // The record names the exact opened event; a frame without one has
+  // nothing to name, and the projection writes the row once it is durable.
+  if (!event.eventId) return;
+  const form = inputRequestFromRequestEvent(event);
+  const base = {
+    requestId: event.requestId,
+    threadId: event.threadId,
+    eventId: event.eventId,
+    outcome: 'pending' as const,
+  };
+  if (form) {
+    openInputRequestRecordPart(event, {
+      ...base,
+      kind: 'form',
+      requester: form.requester,
+      message: form.message,
+    });
+    return;
+  }
+  if (event.requestType !== 'approval' && event.requestType !== 'permission')
+    return;
+  const toolCallId = event.payload?.toolCallId;
+  openInputRequestRecordPart(
+    event,
+    {
+      ...base,
+      kind: 'decision',
+      requester:
+        toolRequestDisplayName(
+          toolRequestFromPayload(event.payload).toolName,
+        ) || 'A tool call',
+      message: event.title,
+    },
+    typeof toolCallId === 'string' ? toolCallId : undefined,
+  );
+}
+
+/**
  * The toast a `request.opened` raises, without the chat state the live event
  * also writes. A reload rebuilds the toasts of requests a snapshot reports
  * open (`hydrateOpenApprovalToasts`), and must not replay the state: the
@@ -68,7 +126,8 @@ export function raiseRequestOpenedToast(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
+  // A form has no one-click answer; the pending-requests card collects it.
+  if (inputRequestFromRequestEvent(event)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -84,7 +143,14 @@ export function raiseRequestOpenedToast(
   // argument bag, handled by `toolRequestPreviewFromPayload`'s fallback.
   const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
   const displayName = toolRequestDisplayName(payloadToolName);
-  const toolName = String(displayName || event.title || 'Tool request');
+  // The title fallback is adapter display text (Codex: the literal command),
+  // so it is shown in the same sanitised, bounded form as a tool name (#3382).
+  const toolName =
+    displayName ||
+    (typeof event.title === 'string'
+      ? toolRequestDisplayName(event.title)
+      : undefined) ||
+    'Tool request';
   const purpose = toolPurposeView(event) ?? toolPurposeView(event.payload);
   const preview = toolRequestPreviewFromPayload(event.payload);
   const toolPreview = [purpose ? `Why: ${purpose}` : '', preview]
@@ -130,6 +196,19 @@ function showApprovalToast(
   view: ApprovalToastView,
 ) {
   const answer = (decision: 'accept' | 'acceptForSession' | 'decline') => {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    if (
+      !isChatInForeground({
+        chatKey: activeChatsStore.getChatKeyForExecutionSession(event.threadId),
+        threadId: event.threadId,
+        conversationId: chat?.conversationId,
+      })
+    ) {
+      navigationStore.navigate('/', {
+        chat: chat?.conversationId ?? event.threadId,
+        dock: 'open',
+      });
+    }
     void answerFromToast(apiBase, event, view, decision);
   };
   const toastId = toastStore.showToolApproval({
@@ -139,26 +218,20 @@ function showApprovalToast(
     ...(view.toolPreview ? { toolPreview: view.toolPreview } : {}),
     agentName: view.agentName,
     conversationTitle: view.conversationTitle,
-    actions: [
-      {
-        label: 'Allow Once',
-        variant: 'primary',
-        onClick: () => answer('accept'),
-      },
-      ...(view.grantLabel
-        ? [
-            {
-              // Says what the grant covers: "Allow for Session" reads as a
-              // grant for this one call, and it is a standing grant for every
-              // later call to the same tool in this session.
-              label: view.grantLabel,
-              variant: 'secondary' as const,
-              onClick: () => answer('acceptForSession'),
-            },
-          ]
-        : []),
-      { label: 'Deny', variant: 'danger', onClick: () => answer('decline') },
-    ],
+    // #3390: the approval's decision body, the same options the inline card
+    // and the sheet render. The session option's label says what the grant
+    // covers: "Allow for Session" reads as a grant for this one call, and it
+    // is a standing grant for every later call to the same tool.
+    actions: approvalDecisionBody(view.grantLabel).options.map((option) => ({
+      label: option.label,
+      variant:
+        option.effect === 'deny'
+          ? ('danger' as const)
+          : option.scope === 'session'
+            ? ('secondary' as const)
+            : ('primary' as const),
+      onClick: () => answer(decisionOptionResponse(option)),
+    })),
   });
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -222,10 +295,15 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
-    // Not delivered: the request waits on the user again.
+    const unconfirmed =
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'approval_delivery_unconfirmed';
     setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
-      `Your decision on ${view.toolName} was not delivered: ${reason}`,
+      unconfirmed
+        ? `Delivery of your decision on ${view.toolName} is not confirmed: ${reason}`
+        : `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
       9000,
       undefined,
@@ -283,8 +361,16 @@ export function handleRequestDeliveryEvent(
 export function handleRequestResolvedEvent(
   event: Extract<OrchestrationEvent, { method: 'request.resolved' }>,
 ) {
+  void import('./answerRequest')
+    .then(({ forgetApprovalAnswer }) =>
+      forgetApprovalAnswer(event.threadId, event.requestId),
+    )
+    .catch(() => undefined);
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  settleInputRequestRecordPart(event, (kind) =>
+    inputRequestOutcome(kind, event.status),
+  );
 
   const pendingApprovals = (chat.pendingApprovals || []).filter(
     (id) => id !== event.requestId,

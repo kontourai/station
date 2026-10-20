@@ -13,6 +13,7 @@ import {
   useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
@@ -39,6 +40,7 @@ import {
   subscribeRemotePluginBundleConsent,
 } from '../core/remotePluginBundleConsent';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
 import {
   installedDependencyPermissions,
@@ -54,8 +56,14 @@ function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
 
 export function RegistryView({
   initialTab,
+  toolPicker = false,
+  onInstalled,
+  installTarget,
 }: {
   initialTab?: RegistryCatalogTab;
+  toolPicker?: boolean;
+  onInstalled?: () => void;
+  installTarget?: string;
 } = {}) {
   const { navigate } = useNavigation();
   const { showToast } = useToast();
@@ -77,10 +85,10 @@ export function RegistryView({
   }, [initialTab]);
   const selectTab = (tab: RegistryCatalogTab) => {
     setActiveTab(tab);
-    navigate(`/registry/${tab}`);
+    if (!toolPicker) navigate(`/registry/${tab}`);
   };
   const [message, setMessage] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(installTarget ?? '');
   const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
@@ -253,6 +261,7 @@ export function RegistryView({
   ) => ({
     onError: (error: Error) => setMessage(error.message),
     onSuccess: () => {
+      if (!isInstalled && tab === 'integrations') onInstalled?.();
       const installationKey = registryInstallationKey(tab, itemId);
       setInstallationOverrides((current) => {
         const next = new Map(current);
@@ -465,6 +474,7 @@ export function RegistryView({
         // the new layout components register without depending on that
         // connection being up.
         await pluginRegistry.reload();
+        onInstalled?.();
       },
     };
     const variables = {
@@ -540,67 +550,125 @@ export function RegistryView({
   return (
     <div className="registry-view">
       {remoteIsolationActive && remoteBundlesSection}
-      <MarketplaceSources
-        selected={selectedSource}
-        onSelect={setSelectedSource}
-      />
-      <RegistryCatalog
-        model={{
-          activeTab,
-          search,
-          message,
-          isLoading: loadingAvailable && availableData === undefined,
-          loadError: availableError as Error | null,
-          isCheckingInstalled:
-            (loadingInstalled && installedData === undefined) ||
-            !!installedError,
-          installedStatusError: installedError as Error | null,
-          available,
-          filtered,
-          installedIds,
-          installationOverrides,
-          selectedItem,
-          selectedItemId,
-          selectedInstalled,
-          selectedActionPending:
-            (mutationPending && pendingId === selectedItemId) ||
-            (previewMutation.isPending &&
-              previewMutation.variables === selectedItemId),
-          layoutPendingId: layoutMutation.variables?.id,
-          layoutPending: layoutMutation.isPending,
-        }}
-        actions={{
-          setActiveTab: selectTab,
-          setSearch,
-          clearMessage: () => setMessage(null),
-          select: (id) => {
-            setSelectedId(id);
-            const item = available.find(
-              (item) => getRegistryItemId(item) === id,
-            );
-            if (item) setInspectedSelection({ tab: activeTab, item });
-          },
-          runAction,
-          runLayoutAction,
-          onUseLayout: (id) => {
-            setSelectedId(id);
-            setMessage(
-              'Choose a project, then select Add Layout to apply this ready layout.',
-            );
-          },
-          openSkill: (name) =>
-            navigate(`/guidance/${encodeURIComponent(name)}`, {
-              tab: 'skills',
-            }),
-          manageSkills: () => navigate('/guidance?tab=skills'),
-          managePlugins: () => navigate('/plugins'),
-          openProjects: () => showSurface('home'),
-          retryInstalled: () => {
-            void refetchInstalled();
-          },
-          renderKits: () => <KitCatalog />,
-        }}
-      />
+      {pluginRegistryStatus.state === 'degraded' &&
+        pluginRegistryStatus.failure !== 'remote-isolation' && (
+          <div className="page__message" role="alert">
+            <p>
+              {pluginRegistryStatus.failedPluginNames.length
+                ? `Couldn't load extensions: ${pluginRegistryStatus.failedPluginNames.join(', ')}.`
+                : "Couldn't load extensions for this Station."}
+            </p>
+            <Button onClick={() => void pluginRegistry.reload()}>
+              Retry extensions
+            </Button>
+          </div>
+        )}
+      {!toolPicker && (
+        <MarketplaceSources
+          selected={selectedSource}
+          onSelect={setSelectedSource}
+        />
+      )}
+      {installTarget ? (
+        <div>
+          <Button
+            variant="primary"
+            disabled={
+              previewMutation.isPending || mutationPending || !selectedItem
+            }
+            onClick={() => {
+              if (selectedItem)
+                runAction(
+                  selectedItem,
+                  getRegistryItemId(selectedItem),
+                  isInstalled(selectedItem, getRegistryItemId(selectedItem)),
+                );
+            }}
+          >
+            Review {selectedItem?.displayName || 'tool'} permissions
+          </Button>
+          {message && <p role="status">{message}</p>}
+        </div>
+      ) : toolPicker ? (
+        <AgentToolCatalog
+          tab={activeTab}
+          onTab={selectTab}
+          search={search}
+          onSearch={setSearch}
+          source={selectedSource}
+          onSource={setSelectedSource}
+          items={filtered}
+          loading={loadingAvailable && availableData === undefined}
+          error={availableError as Error | null}
+          message={message}
+          installed={isInstalled}
+          pendingId={
+            previewMutation.isPending ? previewMutation.variables : pendingId
+          }
+          pending={mutationPending || previewMutation.isPending}
+          onInstall={runAction}
+        />
+      ) : (
+        <RegistryCatalog
+          model={{
+            activeTab,
+            search,
+            message,
+            isLoading: loadingAvailable && availableData === undefined,
+            loadError: availableError as Error | null,
+            isCheckingInstalled:
+              (loadingInstalled && installedData === undefined) ||
+              !!installedError,
+            installedStatusError: installedError as Error | null,
+            available,
+            filtered,
+            installedIds,
+            installationOverrides,
+            selectedItem,
+            selectedItemId,
+            selectedInstalled,
+            selectedActionPending:
+              (mutationPending && pendingId === selectedItemId) ||
+              (previewMutation.isPending &&
+                previewMutation.variables === selectedItemId),
+            layoutPendingId: layoutMutation.variables?.id,
+            layoutPending: layoutMutation.isPending,
+          }}
+          actions={{
+            setActiveTab: selectTab,
+            setSearch,
+            clearMessage: () => setMessage(null),
+            select: (id) => {
+              setSelectedId(id);
+              const item = available.find(
+                (item) => getRegistryItemId(item) === id,
+              );
+              if (item) setInspectedSelection({ tab: activeTab, item });
+            },
+            runAction,
+            runLayoutAction,
+            onUseLayout: (id) => {
+              setSelectedId(id);
+              setMessage(
+                'Choose a project, then select Add Layout to apply this ready layout.',
+              );
+            },
+            openSkill: (name) =>
+              navigate(`/guidance/${encodeURIComponent(name)}`, {
+                tab: 'skills',
+              }),
+            manageSkills: () => navigate('/guidance?tab=skills'),
+            managePlugins: () => {
+              if (!toolPicker) navigate('/plugins');
+            },
+            openProjects: () => showSurface('home'),
+            retryInstalled: () => {
+              void refetchInstalled();
+            },
+            renderKits: () => <KitCatalog />,
+          }}
+        />
+      )}
       {!remoteIsolationActive && remoteBundlesSection}
       {pluginInstallPreview && (
         <InstallPreviewModal

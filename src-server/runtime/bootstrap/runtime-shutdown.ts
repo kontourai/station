@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-shared/mcp';
 import { closeBrowserCodeLogins } from '../../services/connections/browser-code-login.js';
 import { cancelSharedDeviceCodeLogins } from '../../services/connections/device-code-login.js';
+import { closeSharedAttachedPathProbe } from '../../services/orchestration/attached-session-path-probe.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { stopLiveGitProcessGroups } from '../../utils/git-exec.js';
 import {
@@ -135,6 +136,9 @@ export async function shutdownRuntimeServices({
       ? () => attachedSessionFollowService.stop()
       : undefined,
   );
+  // #3406: the attached-session path probe's helper, including one stuck in
+  // a read on a hung mount, which would never see this process go away.
+  await attempt('attachedPathProbe.close', closeSharedAttachedPathProbe);
   // archive#1093 Part B fix round (HIGH): the coalescing worker backing
   // this service now owns a real (unref'd, but still real) batch timer —
   // `stop()` disposes it so nothing outlives shutdown.

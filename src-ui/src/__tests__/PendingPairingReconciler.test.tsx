@@ -141,6 +141,9 @@ describe('PendingPairingReconciler', () => {
         connectionId: target.id,
         endpoint: 'https://target.example.test',
         name: target.name,
+        activate: undefined,
+        bindApprovedEndpoint: false,
+        preserveSelectedStation: undefined,
       },
       { ...result, endpoint: 'https://target.example.test' },
     );

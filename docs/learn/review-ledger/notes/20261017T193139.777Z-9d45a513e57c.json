@@ -1,0 +1,9 @@
+{
+  "revision": "f62a1bc21d659632c050add8256b6308c8829a92",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the contract package ownership and importable module inventory against packages/contracts/package.json at f62a1bc after the normal main597 merge. The PR delta changes only the package version from 0.8.0 to 0.9.0; every export, source entry, script and other manifest field equals main. Existing package-boundary and module claims remain accurate, including the documented 0.9.0 deprecation. This records source review only; registry publication, installed-consumer availability and current-head execution remain separate.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed SDK package entrypoint, source-distribution and public subpath claims against packages/sdk/package.json at f62a1bc after the normal main597 merge. The PR delta changes only the package version to 0.9.0 and the existing Contracts/Shared dependency ranges from ^0.8.0 to ^0.9.0. The complete export map and every remaining manifest field equal main, so no subpath, API, distribution mode or runtime authority is added by this manifest delta. Existing reference claims remain accurate; source release metadata does not prove registry publication or current-head runtime/CI qualification.","inputs":["docs/reference/sdk.md","packages/sdk/package.json"]}
+  ]
+}

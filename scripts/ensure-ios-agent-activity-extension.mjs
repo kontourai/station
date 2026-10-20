@@ -2,7 +2,7 @@
 
 // Adds the Live Activity widget extension (#2513) to a Tauri-rendered
 // XcodeGen spec: the StationAgentActivity app-extension target, its embed
-// in the app, a weak ActivityKit link (the app still deploys below iOS 16.1),
+// in the app, a weak ActivityKit link (the plugin package declares iOS 13),
 // and the app's keychain groups (default first, then the group shared with
 // the widget).
 //
@@ -114,7 +114,7 @@ function notificationServiceExtensionTarget(appBundleId) {
   return {
     type: 'app-extension',
     platform: 'iOS',
-    deploymentTarget: '14.0',
+    deploymentTarget: '16.4',
     sources: [
       {
         path: '../../ios/StationNotificationService',

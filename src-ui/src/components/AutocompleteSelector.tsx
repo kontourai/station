@@ -1,16 +1,16 @@
 import {
-  type CSSProperties,
   type ReactNode,
   type RefObject,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
-import { createPortal } from 'react-dom';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 
 export interface AutocompleteItem {
   id: string;
+  disabled?: boolean;
+  leading?: ReactNode;
   title: string;
   description?: string;
   metadata?: any;
@@ -45,60 +45,7 @@ export function AutocompleteSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  const [popupStyle, setPopupStyle] = useState<CSSProperties>();
-  useLayoutEffect(() => {
-    const anchor = anchorRef?.current;
-    if (!anchor) return;
-    const surface = anchor.closest('.chat-input__capsule') ?? anchor;
-    const viewport = window.visualViewport;
-    const place = () => {
-      const rect = surface.getBoundingClientRect();
-      const top = viewport?.offsetTop ?? 0;
-      const left = viewport?.offsetLeft ?? 0;
-      const width = viewport?.width ?? window.innerWidth;
-      const height = viewport?.height ?? window.innerHeight;
-      const above = Math.max(0, rect.top - top - 16);
-      const below = Math.max(0, top + height - rect.bottom - 16);
-      const placeAbove = above >= 160 || above >= below;
-      const popupWidth = Math.min(rect.width, Math.max(0, width - 16));
-      setPopupStyle({
-        position: 'fixed',
-        zIndex: 'calc(var(--layer-dock, 9200) + 1)',
-        top: placeAbove ? rect.top - 8 : rect.bottom + 8,
-        left: Math.max(
-          left + 8,
-          Math.min(rect.left, left + width - popupWidth - 8),
-        ),
-        width: popupWidth,
-        right: 'auto',
-        bottom: 'auto',
-        marginBottom: 0,
-        transform: placeAbove ? 'translateY(-100%)' : undefined,
-        maxHeight: Math.min(300, placeAbove ? above : below),
-      });
-    };
-    place();
-    const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
-    observer?.observe(surface);
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    viewport?.addEventListener('resize', place);
-    viewport?.addEventListener('scroll', place);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-      viewport?.removeEventListener('resize', place);
-      viewport?.removeEventListener('scroll', place);
-    };
-  }, [anchorRef]);
-  const renderPopup = (content: ReactNode) =>
-    anchorRef
-      ? popupStyle
-        ? createPortal(content, document.body)
-        : null
-      : content;
+  const { popupStyle, renderPopup } = useAnchoredPopup(anchorRef);
 
   // Update refs
   selectedIndexRef.current = selectedIndex;
@@ -106,7 +53,7 @@ export function AutocompleteSelector({
 
   // Reset selection when items change
   useEffect(() => {
-    setSelectedIndex(items.length ? 0 : -1);
+    setSelectedIndex(items.findIndex((item) => !item.disabled));
   }, [items]);
 
   // Scroll selected item into view
@@ -136,16 +83,24 @@ export function AutocompleteSelector({
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) =>
-          Math.min(prev + 1, itemsRef.current.length - 1),
-        );
+        setSelectedIndex((prev) => {
+          for (let next = prev + 1; next < itemsRef.current.length; next++) {
+            if (!itemsRef.current[next].disabled) return next;
+          }
+          return prev;
+        });
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         e.stopPropagation();
-        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        setSelectedIndex((prev) => {
+          for (let next = prev - 1; next >= 0; next--) {
+            if (!itemsRef.current[next].disabled) return next;
+          }
+          return prev;
+        });
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         const item = itemsRef.current[selectedIndexRef.current];
-        if (item) {
+        if (item && !item.disabled) {
           e.preventDefault();
           e.stopPropagation();
           onSelect(item);
@@ -217,18 +172,22 @@ export function AutocompleteSelector({
           role="option"
           tabIndex={-1}
           aria-selected={idx === selectedIndex}
+          aria-disabled={item.disabled || undefined}
           ref={(el) => {
             if (el) itemRefs.current.set(idx, el);
             else itemRefs.current.delete(idx);
           }}
           onMouseDown={(e) => {
             e.preventDefault(); // Prevent blur
-            onSelect(item);
+            if (!item.disabled) onSelect(item);
           }}
-          onMouseEnter={() => setSelectedIndex(idx)}
+          onMouseEnter={() => {
+            if (!item.disabled) setSelectedIndex(idx);
+          }}
           style={{
             padding: '10px 12px',
-            cursor: 'pointer',
+            cursor: item.disabled ? 'not-allowed' : 'pointer',
+            opacity: item.disabled ? 0.6 : 1,
             background:
               idx === selectedIndex ? 'var(--bg-hover)' : 'transparent',
             borderBottom:
@@ -244,8 +203,10 @@ export function AutocompleteSelector({
             gap: '12px',
           }}
         >
-          {(renderIcon || item.icon) &&
-            (renderIcon ? (
+          {(item.leading || renderIcon || item.icon) &&
+            (item.leading ? (
+              item.leading
+            ) : renderIcon ? (
               renderIcon(item)
             ) : (
               <div

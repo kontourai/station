@@ -1,0 +1,7 @@
+{
+  "revision": "40d86217d5f42789082e131e372a9ee2a0a93dda",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the existing Project behavior claims against corrected typed UI fixtures: Knowledge roots include required creation timestamps and Project forms explicitly inherit workspace defaults. Native client-retirement fixtures now register temp-directory cleanup before loading clients.30 affected tests, UI typecheck and the temp-directory ratchet pass. These fixture changes add no product behavior or new release/device qualification.","inputs":["docs/guides/knowledge.md","src-ui/src/views/project-page/__tests__/ProjectKnowledgeStores.test.tsx","src-ui/src/views/project-settings/__tests__/ToolsSection.test.tsx","src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts"]}
+  ]
+}

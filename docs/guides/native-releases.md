@@ -15,13 +15,11 @@ attests the complete public release again, derives a bounded same-channel
 previous-public-release range, and advances only the implicated issue labels.
 It has no release, package, or image mutation permission.
 
-**Current implementation blocker:** the `assemble` CLI in
-[`release-artifacts.mjs`](../../scripts/release-artifacts.mjs) calls
-`readFileSync` without importing it. A bounded synthetic CLI invocation fails
-before inventory output. The workflow contract below describes the intended
-stage/publish sequence; it is not a claim that this checkout can currently
-complete draft assembly. [#2783](https://github.com/kontourai/station/issues/2783)
-tracks the import repair and a regression through the actual CLI entry point.
+The `assemble` and `validate` commands in
+[`release-artifacts.mjs`](../../scripts/release-artifacts.mjs) are exercised
+as real child processes with the same arguments `release.yml` passes, against
+a synthetic asset set ([#2783](https://github.com/kontourai/station/issues/2783)).
+That proves the command entry points, not a hosted tagged release.
 
 ## Supported inventory
 
@@ -134,12 +132,11 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` runs daily, keeps the source gate and exact-source qualification receipt, and
+`nightly.yml` checks cadence hourly, requires an exact-source usability gate, and
 runs the native work as two reusable phases, both only on `refs/heads/main`
 when the gated SHA is the workflow event SHA.
 
-Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
-parallel with the full-regression receipt (#1453): it reserves the cohort
+Phase one, `nightly-native-stage.yml`, needs the source usability gate: it reserves the cohort
 identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
 macOS downloads, a Windows NSIS installer with a mandatory Tauri updater signature
 (Authenticode is optional for Nightly), one shared desktop
@@ -152,8 +149,7 @@ is what the protected verifier checks staged bytes against. Rust dependency
 compilation is cached per platform (`Swatinem/rust-cache`, restored on every
 ref, saved only from `main`, #1455).
 
-Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
-full-regression receipt, and phase one, and receives the reserved identity as
+Phase two, `nightly-native-cohort.yml`, needs the exact-SHA source usability gate and phase one, and receives the reserved identity as
 inputs. It admits the staged bytes against their stage receipts, creates the
 promotion fence, and then publishes **per platform** (#1774): Android (Play
 internal), the shared macOS/Windows desktop prerelease, and the already-audited iOS package
@@ -277,6 +273,10 @@ completion remains `NOT_VERIFIED`.
 is a separate build/smoke matrix for platform-specific server archives. The
 [builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
 Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It also stages the bundled Station catalog and its declared local packages,
+including the curated engineering Skills, from tracked source files. The archive
+smoke starts a fresh server and checks that the catalog resolves the collection
+inside that extracted archive. Listing it does not install it or grant tools.
 It refuses a target that differs from the build host's platform and architecture,
 because native dependencies come from that host's install.
 It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.
@@ -314,10 +314,13 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is a Nightly started by a passing main qualification run for
-the commit it qualified, at most about once a day, or the scheduled Nightly
-build, which fires daily at 06:43 UTC. Either uses its run's workflow event
-SHA, never stages a source its published markers already contain, and skips
+Normal operation is an independent scheduled Nightly with an hourly cadence
+decision, a six-hour default minimum publication interval and its serialized
+delivery lease. It checks cadence before expensive source tests or builds.
+Manual dispatch remains available for recovery. Both entry points require the
+same exact-source lint/typecheck/native-boundary/browser-smoke gate and retain
+signing, inventory, attestation and provider admission. They use their workflow event SHA,
+never stage a source their published markers already contain, and skip
 native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior
@@ -393,7 +396,7 @@ at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
 server and dependencies under `usr/share/Station`, but the
 [native host](../../src-desktop/src/lib.rs) currently joins both the registry
 bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
-The pinned `tauri-utils` 2.9.3 resolves the AppImage resource directory under
+The pinned `tauri-utils` 2.10.1 resolves the AppImage resource directory under
 `usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
 callers. Package-layout checks alone therefore do not establish a working
 AppImage startup; this source mismatch needs repair and an actual Linux launch.

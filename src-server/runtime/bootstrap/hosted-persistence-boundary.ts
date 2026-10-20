@@ -9,7 +9,7 @@ import {
   type Stats,
 } from 'node:fs';
 import { dirname } from 'node:path';
-import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
+import { isHostedTenantExecutionRequired } from './hosted-tenant-mode.js';
 
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;

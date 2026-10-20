@@ -5,9 +5,9 @@
   flex-direction: column;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: calc(var(--k-space-5) * 9);
+  min-width: calc(var(--k-space-5) * 9);
+  max-width: calc(var(--k-space-5) * 9);
   transition:
     width var(--motion-fast) var(--ease-standard),
     min-width var(--motion-fast) var(--ease-standard),
@@ -15,9 +15,9 @@
 }
 
 .sidebar--collapsed {
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
+  width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
+  min-width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
+  max-width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
 }
 
 /* Header */
@@ -29,26 +29,28 @@
   border-bottom: 1px solid var(--border-primary);
   cursor: pointer;
   flex-shrink: 0;
-  min-height: 44px;
+  min-height: var(--app-toolbar-height);
+  height: var(--app-toolbar-height);
 }
 
 .sidebar--collapsed .sidebar__header {
+  height: var(--app-toolbar-height);
   justify-content: center;
   flex-direction: column;
-  padding: 12px 4px;
+  padding: var(--k-space-2) var(--k-space-1);
   cursor: pointer;
   gap: 4px;
   text-align: center;
 }
 
 .sidebar--collapsed .sidebar__logo {
-  width: 32px;
-  height: 32px;
+  width: var(--k-space-5);
+  height: var(--k-space-5);
 }
 
 /* Desktop shell (macOS overlay title bar): the native traffic lights float
    over the top-left of the window, so inset the sidebar header around them.
-   Collapsed, the sidebar (48px) is narrower than the traffic-light cluster
+   Collapsed, the sidebar (52px) is narrower than the traffic-light cluster
    (~72px) — drop the logo below the lights and pad the toolbar so its content
    clears them too. */
 :root.is-desktop-mac .sidebar__header {
@@ -56,6 +58,7 @@
 }
 
 :root.is-desktop-mac .sidebar--collapsed .sidebar__header {
+  height: auto;
   padding-left: 4px;
   padding-top: 36px;
 }
@@ -65,15 +68,16 @@
 }
 
 /* Mobile/column layout (archive#3316): a closed drawer also carries
-   `sidebar--collapsed`, but there is no 48px rail occupying the corner —
+   `sidebar--collapsed`, but there is no 52px rail occupying the corner —
    the toolbar sits at the window edge, so the 34px rail offset above left
    its first control under the traffic lights. Same specificity, later in
    this file, so it wins at mobile widths; --titlebar-inset-left is stamped
    by PlatformBootstrap on the macOS desktop shell only. */
 .sidebar__brand-name {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  gap: var(--k-space-1);
+  align-items: center;
   line-height: 1.1;
   min-width: 0;
   overflow: hidden;
@@ -90,7 +94,7 @@
    block itself is what leaked the wordmark into the 48px rail (#1795). */
 .sidebar__channel-badge {
   display: block;
-  margin-top: 2px;
+  margin-top: 0;
   color: var(--k-brand);
   font-size: var(--text-xs);
   text-transform: capitalize;
@@ -107,7 +111,6 @@
 }
 
 .sidebar__home-button,
-.sidebar__collapse-button,
 .sidebar__mobile-close {
   border: none;
   border-radius: 4px;
@@ -124,30 +127,6 @@
   gap: 8px;
   padding: 0;
   color: inherit;
-}
-
-.sidebar__collapse-button {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  padding: 0;
-  color: var(--text-muted);
-}
-
-.sidebar__collapse-button:hover,
-.sidebar__collapse-button:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.sidebar--collapsed .sidebar__collapse-button {
-  width: 36px;
-  height: 36px;
-  margin-left: 0;
 }
 
 .sidebar__home-button:hover,
@@ -180,9 +159,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 4px 12px;
+  margin: var(--k-space-6) var(--k-space-2) var(--k-space-2);
+  padding: 0;
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   /* --text-tertiary for the same measured reason as the chips (#2150). */
@@ -193,73 +173,6 @@
   display: none;
 }
 
-/* #3314: Open chats / Drafts disclosure headers — the nav groups' toggle
-   anatomy (aria-expanded button + chevron) in section-label clothing, plus a
-   hover/focus-revealed remove affordance. */
-.sidebar__section-label--disclosure {
-  padding: 0 4px 0 0;
-}
-
-.sidebar__section-toggle {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 28px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 4px 4px 12px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sidebar__section-toggle:hover,
-.sidebar__section-toggle:focus-visible {
-  color: var(--text-primary);
-}
-
-.sidebar__section-remove {
-  display: inline-flex;
-  flex-shrink: 0;
-  min-width: 24px;
-  min-height: 24px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.sidebar__section-label--disclosure:hover .sidebar__section-remove,
-.sidebar__section-label--disclosure:focus-within .sidebar__section-remove {
-  opacity: 1;
-}
-
-.sidebar__section-remove:hover,
-.sidebar__section-remove:focus-visible {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.sidebar--collapsed .sidebar__open-chats {
-  display: none;
-}
-
-.sidebar__recent-more span {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
 /* The Projects header carries the "New Project" action (archive#1300), so
    unlike the other (purely decorative) section labels it stays reachable
    when the sidebar is collapsed — icon-only, matching how every other
@@ -267,7 +180,8 @@
 .sidebar--collapsed .sidebar__section-label--projects {
   display: flex;
   justify-content: center;
-  padding: 6px 0;
+  margin: var(--k-space-3) 0 var(--k-space-1);
+  padding: var(--k-space-1) 0;
 }
 
 .sidebar--collapsed .sidebar__section-label-text {
@@ -322,7 +236,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 4px;
+  padding: var(--k-space-3) var(--k-space-2);
 }
 
 .sidebar--collapsed .sidebar__body {
@@ -343,39 +257,32 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 12px;
+  min-height: calc(var(--k-space-6) + var(--k-space-1));
+  padding: var(--k-space-2);
   background: transparent;
   border: none;
   color: var(--text-primary);
   cursor: pointer;
-  font-size: var(--text-md);
+  font-size: var(--k-text-sm);
   text-align: left;
   border-radius: 4px;
 }
 
-.sidebar__project-accent {
-  width: 3px;
-  height: 22px;
-  flex: 0 0 3px;
-  border-radius: 999px;
-}
-
-/* Every expanded row holds the icon's 18px slot, icon or not, so project
-   names start at one x. An icon-less project's slot stays empty; the bar
-   beside it carries the colour. */
+/* Every project has a mark; missing artwork uses its neutral initials tile. */
 .sidebar__project-icon-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  color: var(--k-text-muted);
 }
 
-.sidebar--collapsed .sidebar__project-accent {
-  position: absolute;
-  left: 2px;
-  height: 28px;
+.sidebar__project-icon-slot .project-icon--initials {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 30%, var(--k-line));
+  background: var(--k-panel-raised);
 }
 
 .sidebar__project-btn:hover {
@@ -383,16 +290,23 @@
 }
 
 .sidebar__project-btn--active {
-  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
-  border-left: 2px solid var(--accent-primary);
-  /* The 2px border comes out of the left padding, so the active row's bar
-     and name stay at the same x as every other row's. */
-  padding-left: 10px;
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
+}
+
+.sidebar__project-row .sidebar__project-btn--active {
+  background: transparent;
+  color: var(--k-text);
+  font-weight: 500;
+}
+
+.sidebar--collapsed .sidebar__project-row .sidebar__project-btn--active {
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
 }
 
 .sidebar--collapsed .sidebar__project-btn {
   justify-content: center;
-  padding: 10px 0;
+  padding: var(--k-space-2) 0;
 }
 
 .sidebar__project-name {
@@ -500,6 +414,17 @@
     inset: -13px;
   }
 
+  .sidebar .sidebar__project-disclosure {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar
+    .sidebar__project-row-main:has(.sidebar__project-disclosure)
+    .sidebar__project-btn {
+    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
+  }
+
   .sidebar__reorder-handle {
     opacity: 1;
     width: 28px;
@@ -568,94 +493,120 @@
   box-shadow: 0 2px 0 0 var(--accent-primary);
 }
 
-.sidebar__collapsed-chats {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  min-height: 44px;
-  margin: 0 auto 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.sidebar__collapsed-chats:hover,
-.sidebar__collapsed-chats:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-/* Layout chips (#2063, design record D3). A wrapping row, not a list: the
-   chips are the project's children and read as one band under its name. They
-   wrap rather than scroll or truncate, because the tree they replace showed
-   every layout and a hidden chip is a layout a reader cannot reach from the
-   panel at all.
-
-   No `.sidebar--collapsed` rule: the row's own gate already covers it. The
-   class and the row's `collapsed` prop are the same value
-   (`effectiveCollapsed`, which is `!mobileOpen` on a phone), so a collapsed
-   rail and a closed drawer both render no chip row to hide. */
+/* Project views are a vertical composite: one tab stop, with Up/Down inside. */
 .sidebar__layout-chips {
   display: flex;
-  /* One row that scrolls, not a wrap (#2150). Four layouts wrapped to two
-     lines at the panel's 240px and five to three; the design record left
-     "the visual" undecided and this decides it: the chip row is a single
-     line, like `.region-tabs`, and overflow scrolls sideways with the
-     scrollbar hidden. The roving tab stop is unaffected -- every chip is
-     still in the DOM, so Arrow keys reach the off-screen ones and the
-     browser scrolls them into view on focus. */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  gap: 4px;
-  padding: 2px 12px 4px 30px;
-}
-
-.sidebar__layout-chips::-webkit-scrollbar {
-  display: none;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: var(--k-space-1) 0 var(--k-space-2)
+    calc(var(--k-space-4) + var(--k-space-1));
+  padding-left: var(--k-space-2);
+  border-left: 1px solid var(--k-line);
 }
 
 .sidebar__layout-chip {
-  /* Flex, not the default inline box, so the phone-drawer floor below can
-     grow the chip to 44px without the label drifting off its centre. */
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 3px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid transparent;
-  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme
-     when this was chosen, --text-muted (#707782) was 4.33:1 on the chip's
-     own fill -- under the 4.5:1 text floor -- and 4.52:1 on the panel.
-     @kontourai/ui 1.17 retinted it to #6a707b, which is 4.77:1 and 4.98:1.
-     --text-tertiary (#5b626b) is 5.9:1 and 6.2:1. Scoped to the panel's rows
-     rather than darkening --text-muted's 500 consumers. */
-  color: var(--text-tertiary);
+  gap: var(--k-space-2);
+  min-height: var(--k-space-6);
+  width: 100%;
+  padding: var(--k-space-1) var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
-  font-size: var(--text-sm);
-  line-height: 1.4;
-  border-radius: 999px;
-  white-space: nowrap;
-  flex: 0 0 auto;
 }
 
 .sidebar__layout-chip:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
 }
 
-.sidebar__layout-chip--current {
-  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
-  color: var(--accent-primary);
+.sidebar__layout-chip--current,
+.sidebar__layout-chip--current:hover {
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
   font-weight: 500;
 }
 
-.sidebar__layout-chip--current:hover {
-  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+.sidebar__layout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  flex: 0 0 var(--k-space-4);
+}
+
+.sidebar__layout-icon .brand-icon {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.sidebar__project-disclosure {
+  position: absolute;
+  right: var(--k-space-6);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--k-space-5);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+
+.sidebar__project-row-main:has(.sidebar__project-disclosure)
+  .sidebar__project-btn {
+  padding-right: calc(var(--k-space-6) * 2);
+}
+
+.sidebar__views-message {
+  margin: var(--k-space-2) var(--k-space-3);
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+.sidebar__popover {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  width: calc(var(--k-space-6) * 8);
+  max-width: calc(100vw - var(--k-space-4));
+  max-height: calc(100dvh - var(--k-space-4));
+  overflow-y: auto;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel);
+  color: var(--k-text);
+  box-shadow: var(--shadow-menu);
+}
+
+.sidebar__popover-heading {
+  padding: var(--k-space-1) var(--k-space-2) var(--k-space-2);
+  font-size: var(--k-text-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.sidebar__popover-project-action {
+  margin-top: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+  border-radius: 0;
+}
+
+.sidebar__popover .sidebar__layout-chips {
+  margin: var(--k-space-2) 0 0;
+  padding: 0;
+  border-left: 0;
 }
 
 /* WHERE a chip's "Open in <region>" menu sits, and nothing else (#2158).
@@ -693,14 +644,15 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 12px;
+  min-height: var(--k-space-6);
+  padding: var(--k-space-2);
   background: transparent;
   border: none;
   /* --text-tertiary (#2150): the Activity row measured 4.52:1 on light with
      --text-muted -- at the AA floor, not above it. Same rung as the labels. */
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: var(--text-md);
+  font-size: var(--k-text-sm);
   text-align: left;
   border-radius: 4px;
 }
@@ -710,17 +662,10 @@
   color: var(--text-primary);
 }
 
-/* The current page reads the same on every place row: Home's current
-   treatment (`.sidebar__project-btn--active`) — accent-tinted fill and a
-   left accent bar — so Home and Activity, the panel's two places, cannot
-   look current in two different ways. */
+/* Current destinations share the quiet accent fill used by project views. */
 .sidebar__nav-btn--active {
-  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
-  border-left: 2px solid var(--accent-primary);
-  color: var(--text-primary);
-  /* As on a current project row: the border comes out of the padding, so a
-     current Activity's icon and label do not move. */
-  padding-left: 10px;
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
 }
 
 .sidebar__nav-btn[aria-disabled="true"] {
@@ -769,6 +714,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sidebar__nav-icon,
+.sidebar__nav-btn > svg {
+  display: inline-flex;
+  width: 22px;
+  height: var(--k-space-4);
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* The section toggles' caret is the shared disclosure caret
@@ -831,12 +786,15 @@
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }
 
-  /* No hover on touch: the remove affordance is always visible, at the
-     44px floor the rest of the mobile sidebar controls use. */
-  .sidebar__section-remove {
-    min-width: 44px;
-    min-height: 44px;
-    opacity: 1;
+  .sidebar .sidebar__project-disclosure {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar
+    .sidebar__project-row-main:has(.sidebar__project-disclosure)
+    .sidebar__project-btn {
+    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
   }
 
   .sidebar__nav-btn {

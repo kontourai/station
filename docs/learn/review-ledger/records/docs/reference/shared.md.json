@@ -48,7 +48,7 @@
 
     "packages/sdk/src/api-agent-runtime.ts",
 
-    "packages/shared/package.json",
+    "packages/shared/package.json#/exports/.~1native-relay-link",
 
     "packages/shared/src/__tests__/build.test.ts",
 
@@ -74,13 +74,15 @@
 
     "packages/shared/src/mcp.ts",
 
+    "packages/shared/src/native-relay-link.ts",
+
     "packages/shared/src/notification-envelope.ts",
 
     "packages/shared/src/parsers.ts",
 
-    "packages/shared/src/types.ts",
+    "packages/shared/src/skill-experience-author.ts",
 
-    "pnpm-lock.yaml",
+    "packages/shared/src/types.ts",
 
     "src-server/routes/agents/invoke-agent.ts",
 
@@ -110,7 +112,29 @@
 
     "src-ui/src/core/pluginSharedRuntime.ts",
 
-    "packages/shared/src/skill-experience-author.ts"
+    "packages/shared/src/usage-semantics.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/mcp-elicitation-form.ts",
+
+    "packages/shared/src/product-telemetry.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "packages/shared/package.json#/engines",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/shared/src/mcp-app-result.ts",
+
+    "packages/shared/src/delegation-files.ts"
   ],
 
   "checks": [

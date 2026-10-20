@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"claude-adapter delta is this PR's app-home env overlay plumbing and a formatter pass on its tests; this document's tool-policy delivery claims were checked against the merged adapter; the overlay does not alter tool policy delivery.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

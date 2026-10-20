@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useWorkObservation } from '../../contexts/work-observation';
 import {
   publishHistoryForCapture,
   removeHistoryForCapture,
@@ -69,7 +70,7 @@ interface SessionEventWindowReader {
   error?: Error;
 }
 
-async function readConversationWindow(
+async function fetchConversationWindow(
   conversationId: string,
   apiBase: string,
   input: { cursor?: string; turnLimit?: number },
@@ -108,6 +109,49 @@ async function readConversationWindow(
   }
 }
 
+// JSON history reads expose no progress callback. Allow slow remote reads well
+// beyond 30 seconds, but never hold a recovery control indefinitely.
+const HISTORY_READ_DEADLINE_MS = 120_000;
+
+async function readConversationWindow(
+  ...args: Parameters<typeof fetchConversationWindow>
+) {
+  const parentSignal = args[3].signal;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel: () => void = () => {};
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    cancel = () => {
+      controller.abort(parentSignal.reason);
+      reject(parentSignal.reason);
+    };
+    parentSignal.addEventListener('abort', cancel, { once: true });
+    timer = setTimeout(() => {
+      const error = new Error(
+        'Session history read timed out after 120 seconds. Try Resync again.',
+      );
+      controller.abort(error);
+      reject(error);
+    }, HISTORY_READ_DEADLINE_MS);
+  });
+  try {
+    parentSignal.throwIfAborted();
+    return await Promise.race([
+      fetchConversationWindow(
+        args[0],
+        args[1],
+        args[2],
+        { signal: controller.signal },
+        args[4],
+      ),
+      cancelled,
+    ]);
+  } finally {
+    clearTimeout(timer);
+    parentSignal.removeEventListener('abort', cancel);
+  }
+}
+
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
 export function useSessionEventWindow(
   apiBase: string,
@@ -115,6 +159,7 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
+  const observation = useWorkObservation(threadId);
   const readerKey = threadId
     ? JSON.stringify([apiBase, threadId, legacySessionId])
     : undefined;
@@ -159,16 +204,32 @@ export function useSessionEventWindow(
     }
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const read = observation?.read(
+      threadId,
+      'history',
+      () =>
+        requestGeneration === generation.current &&
+        requestSerial === requestSerialRef.current,
+      activeChatsStore.getChatForExecutionSession(threadId)
+        ?.conversationActivity?.asOfSequence,
+    );
+
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
-    setError(undefined);
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
+      if (
+        requestGeneration !== generation.current ||
+        requestSerial !== requestSerialRef.current ||
+        controller.signal.aborted
+      )
+        return;
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
+        read?.failed();
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(
@@ -203,6 +264,8 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      if (read?.current() === false) return;
+      read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
       activeChatsStore.applyConversationActivity(
@@ -227,6 +290,7 @@ export function useSessionEventWindow(
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
+      setError(undefined);
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (
@@ -234,6 +298,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      read?.failed();
       const failure = cause instanceof Error ? cause : new Error(String(cause));
       setError(failure);
       setUpgradeRequired(false);
@@ -250,13 +315,23 @@ export function useSessionEventWindow(
         setSettledRevision(revisionAtStart);
       }
     }
-  }, [apiBase, legacySessionId, threadId]);
+  }, [apiBase, legacySessionId, observation, threadId]);
 
   const loadOlder = useCallback(async () => {
     const pageCursor = cursorRef.current;
     if (!threadId || !pageCursor) return;
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const read = observation?.read(
+      threadId,
+      'older-history',
+      () =>
+        requestGeneration === generation.current &&
+        requestSerial === requestSerialRef.current,
+      activeChatsStore.getChatForExecutionSession(threadId)
+        ?.conversationActivity?.asOfSequence,
+    );
+
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
@@ -274,6 +349,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      if (read?.current() === false) return;
       activeChatsStore.applyConversationActivity(
         page.session?.conversationActivity,
       );
@@ -281,6 +357,8 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
+      read?.observed(page.watermark);
+      setError(undefined);
       if (page.watermark !== watermarkRef.current) {
         await reload();
         return;
@@ -291,6 +369,7 @@ export function useSessionEventWindow(
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (requestGeneration !== generation.current) return;
+      read?.failed();
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     } finally {
       if (
@@ -299,7 +378,7 @@ export function useSessionEventWindow(
       )
         setLoading(false);
     }
-  }, [apiBase, legacySessionId, reload, threadId]);
+  }, [apiBase, legacySessionId, observation, reload, threadId]);
 
   useEffect(() => {
     if (readerKeyRef.current === readerKey) return;
@@ -326,6 +405,7 @@ export function useSessionEventWindow(
     setSettledRevision(undefined);
     if (threadId) void reload();
     return () => {
+      generation.current += 1;
       requestControllerRef.current?.abort();
       if (recoveryTimerRef.current !== undefined) {
         clearTimeout(recoveryTimerRef.current);

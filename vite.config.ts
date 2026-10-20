@@ -36,6 +36,12 @@ const TAURI_NONCE_TOKEN = '__TAURI_SCRIPT_NONCE__';
 export interface StationBuildIdentity {
   version: string;
   commit: string;
+  /**
+   * A release pipeline stamped this build's version (STATION_BUILD_VERSION).
+   * Only then is `version` a client release identity a client may compare
+   * with its host; a local or dev build carries the bare package version.
+   */
+  release?: boolean;
 }
 
 /**
@@ -58,6 +64,14 @@ export function buildVersion(
   return effective;
 }
 
+/** A production build whose version a release pipeline stamped. */
+export function isReleaseStampedBuild(
+  command: 'build' | 'serve',
+  override = process.env.STATION_BUILD_VERSION,
+): boolean {
+  return command === 'build' && Boolean(override?.trim());
+}
+
 function escapeHtmlAttribute(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -78,9 +92,12 @@ export function injectBuildIdentity(
   }
   const version = escapeHtmlAttribute(identity.version);
   const commit = escapeHtmlAttribute(identity.commit);
+  const release = identity.release
+    ? '\n  <meta name="station-build-release" content="true">'
+    : '';
   return html.replace(
     /<\/head>/i,
-    `  <meta name="station-build-version" content="${version}">\n  <meta name="station-build-commit" content="${commit}">\n</head>`,
+    `  <meta name="station-build-version" content="${version}">\n  <meta name="station-build-commit" content="${commit}">${release}\n</head>`,
   );
 }
 
@@ -273,6 +290,7 @@ export default defineConfig(({ command }) => {
   const buildIdentity: StationBuildIdentity = {
     version: buildVersion(pkg.version),
     commit: gitShortSha(),
+    release: isReleaseStampedBuild(command),
   };
   const performanceReferenceBuild =
     process.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1';
@@ -408,6 +426,7 @@ export default defineConfig(({ command }) => {
         ]),
     },
     build: {
+      manifest: true,
       sourcemap: process.env.STATION_JOURNEY_PROFILE_DIR ? 'hidden' : false,
       outDir: `../${process.env.STATION_BUILD_UI_DIR || 'dist-ui'}`,
       emptyOutDir: true,

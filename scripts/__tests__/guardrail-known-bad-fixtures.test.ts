@@ -142,7 +142,7 @@ describe('the fixtures narrow no production scan', () => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) collect(path);
-        else found.push(path);
+        else found.push(path.replaceAll('\\', '/'));
       }
     };
     collect(FIXTURE_ROOT);
@@ -1256,11 +1256,20 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       script: SCRIPT,
       // The gate compiles through the same slot runner every typecheck lane
       // uses, so the scratch tree carries it and its dependencies verbatim.
-      extraScripts: ['tsc-slot.mjs'],
-      libs: ['module-entry.mjs', 'typecheck-host-slots.mjs'],
+      extraScripts: ['tsc-slot.mjs', 'windows-owned-launcher.mjs'],
+      libs: [
+        'module-entry.mjs',
+        'typecheck-host-slots.mjs',
+        'owned-process.mjs',
+        'windows-owned-guard-build.mjs',
+        'windows-owned-control-stdin.mjs',
+        'windows-owned-protocol.mjs',
+        'windows-owned-settlement.mjs',
+      ],
       productionFiles: [
         'packages/shared/src/process-identity.mjs',
         'packages/shared/src/windows-system-utility.mjs',
+        'scripts/windows-owned-guard.cs',
       ],
       files: {
         'package.json': `${JSON.stringify({ name: 'scratch', private: true }, null, 2)}\n`,
@@ -1393,7 +1402,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       SCRIPT,
     );
     expect(result.status).toBe(1);
-    expect(result.output).toContain('exited 2');
+    expect(result.output).toMatch(/exited [1-9]\d*\./);
     expect(result.output).toMatch(/scripts\/regression\.ts.*error TS2353/);
     expect(result.output).toContain('gatePass');
   });

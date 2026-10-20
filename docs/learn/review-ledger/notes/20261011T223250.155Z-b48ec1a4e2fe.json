@@ -1,0 +1,7 @@
+{
+  "revision": "ac4387efe2d7f98bab2f30b7a27bfc0c34b28289",
+
+  "notes": [
+    {"path":"docs/adr/0005-require-a-second-consumer-before-extraction.md","note":"Delta round on #3577: the motivating case now states that a passing #3574 probe stands in place of the second-consumer requirement for this case only. It keeps that a Station-written probe is not a consumer and that the other CONTEXT.md Tier 2 criteria still apply. No other text changed.","inputs":["docs/adr/0005-require-a-second-consumer-before-extraction.md"]}
+  ]
+}

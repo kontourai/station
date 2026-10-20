@@ -17,8 +17,8 @@ describe('insightsDashboardUtils', () => {
           high: { calls: 4, errors: 1 },
         },
         agentUsage: {
-          alpha: { chats: 1, tokens: 20 },
-          beta: { chats: 3, tokens: 50 },
+          alpha: { chats: 1 },
+          beta: { chats: 3 },
         },
       }),
     ).toEqual(
@@ -30,8 +30,8 @@ describe('insightsDashboardUtils', () => {
           ['low', { calls: 1, errors: 0 }],
         ],
         agents: [
-          ['beta', { chats: 3, tokens: 50 }],
-          ['alpha', { chats: 1, tokens: 20 }],
+          ['beta', { chats: 3 }],
+          ['alpha', { chats: 1 }],
         ],
       }),
     );

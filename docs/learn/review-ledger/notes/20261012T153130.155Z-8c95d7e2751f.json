@@ -1,0 +1,7 @@
+{
+  "revision": "dae37ce484954293ac6bd3a9d0d99cd611b33f8c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3563 delta round: merged #3613's typed-scan RecoveryLedger text and kept the #3563 fire-time fence sentence, adding that the recovery claim's compare-and-set carries the same source-terminal rule (event-store.ts claimRecoveryDispatch: AND NOT RECOVERY_SOURCE_TERMINATED). Checked against event-store.ts and session-recovery-coordinator.ts at this head.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/session-recovery-coordinator.ts"]}
+  ]
+}

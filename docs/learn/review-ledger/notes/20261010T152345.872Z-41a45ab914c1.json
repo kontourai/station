@@ -1,0 +1,7 @@
+{
+  "revision": "609992bd10ea695f05b9e7b548f9c97d5d837023",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Windows compiler pipe correction: inherit mode let IPC completion race ChildProcess close, producing a false surviving-process fence after status0. Real desktop-win causal probes showed inherit cleanup failing after4s and piped/drained output settling with compiler status0 in528ms. The runner now forwards both pipe streams and preserves the shared Job and wrapper-close barriers. POSIX execution and Bun project/version checks are unchanged.","inputs":["docs/guides/testing.md","scripts/tsc-slot.mjs"]}
+  ]
+}

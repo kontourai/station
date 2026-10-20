@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed the monitoring guide delta against this investigation guide: Profile disclosure mounting and cost-presence markers do not change the named responsibility/authority boundaries or historical findings. Shared analytics polling remains explicit; no investigation status or broader architecture verdict changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

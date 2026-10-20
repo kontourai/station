@@ -1,0 +1,7 @@
+{
+  "revision": "0517007f7541d644a94dc78eac29e9b20ef73407",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed superseded PR check lifecycle against the trusted workflow checkout, explicit verification allowlist, live-head and attempt checks, and five loopback API CLI cases. Current-head guard mutation failed by cancelling run 2; exact restoration passed all five cases. Other verification and promotion contracts unchanged. Hosted cancellation and throughput improvement not yet observed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs","scripts/pr-ci-supersession.mjs",".github/workflows/pr-ci-supersession.yml","scripts/__tests__/pr-ci-supersession.test.ts"]}
+  ]
+}

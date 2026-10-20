@@ -45,6 +45,135 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each(['codex', 'acp'])(
+    'refuses %s execution when the saved profile requires unsupported per-tool prompts',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      await expect(resolver(baseInput({ provider }))).rejects.toThrow(
+        'cannot enforce',
+      );
+    },
+  );
+
+  test('delivers explicit Ask me rules to Claude even with no authored automatic grants', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({
+          tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+        }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const input = await resolver(baseInput({ provider: 'claude' }));
+    expect(input.agent?.askBeforeUse).toEqual(['reports_write']);
+  });
+  test.each(['claude', 'station-agent'])(
+    'verified %s execution rechecks the freshly loaded authored definition before delivering it',
+    async (provider) => {
+      let prompt = 'Keep my profile';
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ prompt }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      const input = baseInput({
+        provider,
+        metadata: {
+          agentSlug: 'writer',
+          executionAgentId: provider === 'station-agent' ? 'station' : 'claude',
+          expectedDefinitionFingerprint:
+            'sha256:07e2f1010053306310f0e32b8a29e56261d824ef38ed1242506656d5a531ebbd',
+        },
+      });
+      const result = await resolver(input);
+      if (provider === 'station-agent')
+        expect(result.metadata?.agentSlug).toBe('writer');
+      else expect(result.agent?.systemPrompt).toBe('Keep my profile');
+      prompt = 'Changed after catalog discovery';
+      await expect(resolver(input)).rejects.toThrow(
+        'definition changed before execution',
+      );
+    },
+  );
+
+  test('an engine override refuses a missing authored skill instead of starting a reduced profile', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ prompt: 'Keep my profile', skills: ['required-skill'] }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    await expect(
+      resolver(
+        baseInput({
+          provider: 'claude',
+          metadata: { agentSlug: 'writer', executionAgentId: 'claude' },
+        }),
+      ),
+    ).rejects.toThrow('skills:required-skill (not-found)');
+  });
+
+  test.each([
+    {
+      tools: { mcpServers: [], mcpMode: 'add' as const, available: [] },
+      mode: 'add',
+      allowed: [],
+    },
+    {
+      tools: {
+        mcpServers: ['base'],
+        mcpMode: 'replace' as const,
+        available: ['read'],
+        autoApprove: ['base_read'],
+      },
+      mode: 'replace',
+      allowed: ['read'],
+    },
+  ])(
+    'Project additions preserve Agent restrictions and mode $mode',
+    async ({ tools, mode, allowed }) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ tools }),
+        resolveProjectToolServers: async () => ['weather'],
+        resolveToolServer: async (id) => ({
+          id,
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'fixture',
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-03T00:00:00Z',
+            toolCount: 2,
+            toolNames: ['read', 'write'],
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(
+        baseInput({
+          provider: 'codex',
+          metadata: { agentSlug: 'reader', projectSlug: 'demo' },
+        }),
+      );
+      expect(result.agent?.toolServerMode).toBe(mode);
+      expect(
+        result.agent?.toolServers?.find((server) => server.id === 'weather')
+          ?.allowedTools,
+      ).toEqual(allowed);
+      expect(result.agent?.autoApprove ?? []).not.toContain('weather_read');
+      expect(result.agent?.toolServers?.map((server) => server.id)).toEqual(
+        mode === 'replace' ? ['base', 'weather'] : ['weather'],
+      );
+    },
+  );
+
   test.each([
     { available: ['weather_read'], allowed: ['read'] },
     { available: ['read'], allowed: ['read'] },
@@ -81,6 +210,38 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
+  test.each(['claude', 'codex', 'acp'])(
+    'does not export a personal-account endpoint to %s without principal credential delivery',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ tools: { mcpServers: ['personal-reports'] } }),
+        resolveToolServer: async () => ({
+          id: 'personal-reports',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://reports.example/mcp',
+          credentialOwnership: { owner: 'principal' },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(baseInput({ provider }));
+      expect(result.agent?.toolServers).toEqual([]);
+      expect(
+        result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+      ).toMatchObject({
+        toolServers: {
+          undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'personal-reports',
+              reason: 'engine-unsupported',
+            },
+          ],
+        },
+      });
+    },
+  );
   test('the session resolver excludes a disabled tool server from external-engine delivery', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>

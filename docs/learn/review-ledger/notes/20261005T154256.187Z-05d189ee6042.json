@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"examples/enterprise-layout/README.md","note":"Re-read the README's project route usage against projects.ts; the diff only adds runsAt to the operator project list, which the example neither reads nor documents.","inputs":["examples/enterprise-layout/README.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a64fe8b6dcf2bcf2e87cfaccce126c0096fb31a4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the 'Held follow-ups (#3568)' paragraph against thread-inbox.ts after its helpers (the kernel table binding, the digest, the entry projection) became module-private: the paragraph names ThreadInboxDelivery's behaviour only, and every claim still holds. Delta reviewed: export visibility only, no behaviour change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

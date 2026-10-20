@@ -40,7 +40,39 @@
 
     "scripts/__tests__/qualification-evidence.test.ts",
 
-    "scripts/__tests__/qualification-repair.test.ts"
+    "scripts/__tests__/qualification-repair.test.ts",
+
+    "scripts/merge-queue-dequeue.mjs",
+
+    ".github/workflows/qualification-health.yml",
+
+    "scripts/qualification-health.mjs",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/actionlint-gate.test.ts",
+
+    "scripts/__tests__/merge-queue-dequeue.test.ts",
+
+    "scripts/version-pr-operation.mjs",
+
+    "scripts/__tests__/version-pr-operation.test.ts",
+
+    "scripts/nightly-qualification-decide.mjs",
+
+    "scripts/pr-delivery-plan.mjs",
+
+    "scripts/pr-delivery-paths.json",
+
+    ".github/workflows/delivery-validation.yml",
+
+    ".github/workflows/source-verification-policy.yml",
+
+    "scripts/source-verification-policy.mjs",
+
+    "scripts/release-pipeline.mjs",
+
+    ".github/workflows/hosted-capacity-probe.yml"
   ],
 
   "checks": [

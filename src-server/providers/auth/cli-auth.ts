@@ -371,7 +371,7 @@ export async function runCliCommand(
       encoding: 'utf-8',
       // User-managed launchers may resolve the real CLI through mise/npx.
       // Keep the probe bounded, but allow that indirection to finish on a
-      // cold cache (observed at ~6s on the brian-media dogfood host).
+      // cold cache (observed at ~6s on the media-server dogfood host).
       timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
       ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
       ...(bounds?.killSignal ? { killSignal: bounds.killSignal } : {}),

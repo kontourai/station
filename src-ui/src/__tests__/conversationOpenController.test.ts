@@ -52,6 +52,25 @@ function resolved(
 }
 
 describe('#749 conversation open controller', () => {
+  test.each([true, false])(
+    'reopen derives the current Station pin only from the authoritative execution Environment (%s)',
+    (current) => {
+      const resolution: ConversationOpenResolution = {
+        ...resolved(),
+        execution: {
+          sessionId: 'conversation-749:child:2',
+          agentId: conversation.agentSlug,
+          provider: 'codex',
+          ...(current ? { environment: { kind: 'current' } as const } : {}),
+        },
+      };
+      const patch = conversationOpenPatch(resolution, {
+        executionOnCurrentStation: true,
+      });
+      expect(patch.executionOnCurrentStation).toBe(current ? true : undefined);
+    },
+  );
+
   test('superseded request authority refuses hydration before any navigation or tab creation', async () => {
     const open = vi.fn();
     const findTab = vi.fn();

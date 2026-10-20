@@ -58,7 +58,12 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['toolPolicyDelivery'];
   availableModels: ComponentProps<typeof ChatDockBody>['availableModels'];
+  executionModels?: ComponentProps<typeof ChatDockBody>['executionModels'];
+  onExecutionModelSelect?: ComponentProps<
+    typeof ChatDockBody
+  >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -117,8 +122,11 @@ function ChatDockContentAreaImpl({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  executionModels,
+  onExecutionModelSelect,
   modelsLoading,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -249,8 +257,11 @@ function ChatDockContentAreaImpl({
               stationApprovalModeDefault={stationApprovalModeDefault}
               toolPolicyDelivery={toolPolicyDelivery}
               availableModels={availableModels}
+              executionModels={executionModels}
+              onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}
               chatInput={chatInput}
+              onComposerEnabledChange={onComposerEnabledChange}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}

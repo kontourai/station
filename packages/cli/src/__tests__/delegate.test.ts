@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { DelegationAttemptView } from '@kontourai/station-sdk/client';
 import {
   afterEach,
   beforeEach,
@@ -99,6 +100,8 @@ describe('station delegate over HTTP', () => {
   const conversations = new Map<string, ConversationRecord>();
   const sessionReads: string[] = [];
   let nextTaskSeq = 1;
+  let attemptView: DelegationAttemptView | undefined;
+  let attemptDenied = false;
   // station#978: captures every POST body this mock server receives, keyed
   // by pathname, so tests can assert the CLI's exact request shape (not
   // just the response) for modelOptions/cwd forwarding.
@@ -154,6 +157,8 @@ describe('station delegate over HTTP', () => {
       target: { kind: 'agent', id: 'default' },
     });
     nextTaskSeq = 1;
+    attemptView = undefined;
+    attemptDenied = false;
     createDeliveryFixture = undefined;
     statusDeliveryFixture = undefined;
 
@@ -177,6 +182,21 @@ describe('station delegate over HTTP', () => {
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(payload));
       };
+
+      if (
+        method === 'GET' &&
+        url.pathname.startsWith('/api/orchestration/delegations/attempts/')
+      ) {
+        if (attemptDenied) {
+          sendJson(403, {
+            success: false,
+            error: 'Current delegation peer grant required.',
+          });
+        } else {
+          sendJson(200, { success: true, data: attemptView });
+        }
+        return;
+      }
 
       if (
         method === 'POST' &&
@@ -234,7 +254,7 @@ describe('station delegate over HTTP', () => {
                   "Open the Station desktop app on the Station's host.",
                   'Select the Station name (top right), then Paired devices.',
                   'Select the device by its name, then Change access.',
-                  'Turn on Allow full access, then Apply.',
+                  'Turn on Skip approval prompts, then Apply.',
                 ],
                 cli: 'station environment access scope ffb80147 --add approval:full-access',
               },
@@ -778,6 +798,221 @@ describe('station delegate over HTTP', () => {
     expect(payload.data).not.toHaveProperty('resumable');
   });
 
+  test.each([40, 64])(
+    'prepared create sends a full %i-character source version and attempt through the SDK',
+    async (length) => {
+      const { runCli } = await import('../cli.js');
+      const commit = 'a'.repeat(length);
+      await runCli([
+        'delegate',
+        '--agent=codex',
+        '--on=env-worker',
+        '--portable-project=project-identity',
+        '--resource=source',
+        `--source-commit=${commit}`,
+        '--attempt-id=review:1',
+        '--json',
+        'Review this revision',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(requestBodies).toEqual([
+        {
+          pathname: '/api/orchestration/delegations',
+          body: {
+            prompt: 'Review this revision',
+            target: {
+              environment: { kind: 'saved', id: 'env-worker' },
+              agent: 'codex',
+              workspace: {
+                kind: 'project-portable-prepared',
+                portableProjectId: 'project-identity',
+                resourceId: 'source',
+                preparation: {
+                  protocol: 'station.execution-preparation/v1',
+                  mode: 'existing-realization',
+                  version: { scheme: 'git-commit', value: commit },
+                  guarantees: ['version-matched-when-checked'],
+                },
+              },
+            },
+            attemptId: 'review:1',
+          },
+        },
+      ]);
+    },
+  );
+
+  test.each([
+    ['--portable-project=project-identity'],
+    ['--resource=source'],
+    [`--source-commit=${'a'.repeat(40)}`],
+    ['--attempt-id=review:1'],
+    ['--portable-project'],
+    ['--resource='],
+  ])('incomplete prepared flags refuse before HTTP: %s', async (...flags) => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli([
+        'delegate',
+        '--agent=codex',
+        ...flags,
+        'Review',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow();
+    expect(requestLog).toEqual([]);
+  });
+
+  test.each([
+    ['--project=station'],
+    ['--project-path=/work'],
+    ['--cwd=/work'],
+    ['--source-commit=abc123'],
+    [`--source-commit=${'A'.repeat(40)}`],
+    ['--attempt-id=bad/id'],
+    [`--attempt-id=${'a'.repeat(129)}`],
+    [`--portable-project=${'p'.repeat(513)}`],
+    [`--resource=${'r'.repeat(513)}`],
+  ])('invalid prepared flags refuse before HTTP: %s', async (...flags) => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli([
+        'delegate',
+        '--agent=codex',
+        '--portable-project=project-identity',
+        '--resource=source',
+        `--source-commit=${'a'.repeat(40)}`,
+        '--attempt-id=review:1',
+        ...flags,
+        'Review',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow();
+    expect(requestLog).toEqual([]);
+  });
+
+  test.each([
+    ['--session=conversation:ordinary', 'Continue'],
+    ['continue', 'task:1', 'Continue'],
+    ['status', 'task:1'],
+    ['events', 'task:1'],
+    ['interrupt', 'task:1'],
+    ['targets'],
+    ['wait', 'task:1'],
+    ['respond', 'task:1', 'req:1', 'accept'],
+    ['attempt', 'review:1'],
+  ])('prepared flags are create-only: %s', async (...args) => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli([
+        'delegate',
+        ...args,
+        '--attempt-id=review:1',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('create-only');
+    expect(requestLog).toEqual([]);
+  });
+
+  test.each([
+    { attemptId: 'review:1', state: 'none' },
+    { attemptId: 'review:1', state: 'preparing', taskId: 'task:reserved' },
+    {
+      attemptId: 'review:1',
+      state: 'accepted',
+      taskId: 'task:accepted',
+      turnId: 'turn:1',
+    },
+    { attemptId: 'review:1', state: 'unresolved', taskId: 'task:uncertain' },
+    {
+      attemptId: 'review:1',
+      state: 'refused',
+      taskId: 'task:refused',
+      refusalCode: 'execution_preparation_version_mismatch',
+    },
+  ] satisfies DelegationAttemptView[])(
+    'attempt lookup preserves $state without dispatch',
+    async (view) => {
+      const { runCli } = await import('../cli.js');
+      attemptView = view;
+      await runCli([
+        'delegate',
+        'attempt',
+        'review:1',
+        '--json',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(requestLog).toEqual([
+        {
+          method: 'GET',
+          pathname: '/api/orchestration/delegations/attempts/review%3A1',
+        },
+      ]);
+      expect(JSON.parse(consoleLog.mock.calls[0][0])).toEqual({
+        ok: true,
+        kind: 'delegate.attempt',
+        data: view,
+      });
+    },
+  );
+
+  test('human attempt lookup shows refusal and warns against replay', async () => {
+    const { runCli } = await import('../cli.js');
+    attemptView = {
+      attemptId: 'review:1',
+      state: 'refused',
+      taskId: 'task:1',
+      refusalCode: 'execution_preparation_version_mismatch',
+    };
+    await runCli(['delegate', 'attempt', 'review:1', `--api-base=${apiBase}`]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Attempt review:1: refused');
+    expect(printed).toContain('Task: task:1');
+    expect(printed).toContain(
+      'Refusal: execution_preparation_version_mismatch',
+    );
+    expect(printed).toContain('does not authorize resending');
+    expect(requestLog).toHaveLength(1);
+  });
+
+  test.each([['--on=env-worker'], ['bad/id'], []])(
+    'invalid receiver lookup refuses before HTTP: %s',
+    async (...args) => {
+      const { runCli } = await import('../cli.js');
+      const lookupArgs =
+        args.length === 0
+          ? []
+          : args[0].startsWith('--')
+            ? ['review:1', ...args]
+            : args;
+      await expect(
+        runCli(['delegate', 'attempt', ...lookupArgs, `--api-base=${apiBase}`]),
+      ).rejects.toThrow();
+      expect(requestLog).toEqual([]);
+    },
+  );
+
+  test('attempt denial stays a rejection without fallback or dispatch', async () => {
+    const { runCli } = await import('../cli.js');
+    attemptDenied = true;
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    await expect(
+      runCli(['delegate', 'attempt', 'review:1', `--api-base=${apiBase}`]),
+    ).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(3);
+    expect(consoleError.mock.calls.flat().join(' ')).toContain(
+      'Current delegation peer grant required.',
+    );
+    expect(requestLog).toEqual([
+      {
+        method: 'GET',
+        pathname: '/api/orchestration/delegations/attempts/review%3A1',
+      },
+    ]);
+  });
+
   /**
    * #2459: Station can only say a delegation was "Started from the CLI" if
    * the CLI says so. It declares its surface through the SDK's client-origin
@@ -1228,7 +1463,7 @@ describe('station delegate over HTTP', () => {
     await runCli([
       'delegate',
       '--agent=codex',
-      '--on=env-brian-media',
+      '--on=env-home-media',
       '--model=gpt-5.6-sol',
       '--project=station',
       'Run the focused tests',
@@ -1240,7 +1475,7 @@ describe('station delegate over HTTP', () => {
     );
     expect(request?.body).toMatchObject({
       target: {
-        environment: { kind: 'saved', id: 'env-brian-media' },
+        environment: { kind: 'saved', id: 'env-home-media' },
         agent: 'codex',
         model: { override: 'gpt-5.6-sol' },
         workspace: { kind: 'project', projectSlug: 'station' },
@@ -1370,7 +1605,7 @@ Ask the operator to allow full access for device "[Grant here](https://evil.exam
     1. Open the Station desktop app on the Station's host.
     2. Select the Station name (top right), then Paired devices.
     3. Select the device by its name, then Change access.
-    4. Turn on Allow full access, then Apply.
+    4. Turn on Skip approval prompts, then Apply.
 
 Nothing was sent at another approval mode.`);
     expect(printed).not.toContain('\x1b');

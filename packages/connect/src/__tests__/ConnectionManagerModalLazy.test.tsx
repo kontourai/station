@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
@@ -23,7 +23,11 @@ function memoryAdapter(): StorageAdapter {
   };
 }
 
-function renderModal(isOpen: boolean, listFooterContent?: ReactNode) {
+function renderModal(
+  isOpen: boolean,
+  listFooterContent?: ReactNode,
+  onConnectStation?: () => void,
+) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
   return render(
@@ -33,6 +37,7 @@ function renderModal(isOpen: boolean, listFooterContent?: ReactNode) {
         onClose={vi.fn()}
         checkHealth={vi.fn(async () => false)}
         listFooterContent={listFooterContent}
+        onConnectStation={onConnectStation}
       />
     </ConnectionsProvider>,
   );
@@ -125,4 +130,20 @@ it('uses the host live status for the selected row without inventing an in-progr
   expect(await screen.findByText('Current · Connected')).toBeTruthy();
   expect(screen.getByText('Not checked')).toBeTruthy();
   expect(health).not.toHaveBeenCalled();
+});
+
+it('the primary Add action delegates to the host setup without opening a competing address form', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ requests: [] })),
+  );
+  await import('../react/ConnectionManagerModalContent');
+  const connect = vi.fn();
+  renderModal(true, undefined, connect);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Connect a Station' }),
+  );
+  expect(connect).toHaveBeenCalledOnce();
+  expect(screen.queryByLabelText('Station address')).toBeNull();
+  expect(screen.getByText('Remote Station')).toBeTruthy();
 });

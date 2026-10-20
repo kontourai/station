@@ -1,0 +1,7 @@
+{
+  "revision": "2bc998fc2fc6043c8fada67dad672ad36d539bea",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Rechecked after the docs-index-reachability.test.ts per-test timeout change: no claim here names that test's timeout or behaviour; the test still asserts the same freshness result and record counts.","inputs":["docs/guides/code-quality.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

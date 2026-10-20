@@ -15,8 +15,13 @@
  * second terminal mutation.
  */
 
+import {
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  type TurnDeliveryInspection,
+  type TurnDeliveryOutcome,
+} from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { createStore, get, set, update } from 'idb-keyval';
+import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
 
 export type OutboundDispatchStatus =
@@ -30,7 +35,15 @@ export interface QueuedOutboundTurn {
   clientTurnId: string;
   sessionId: string;
   agentSlug: string;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   conversationId?: string;
+  /**
+   * The Project the chat was sending in, so a chat restored from this row
+   * alone (its tab's state lost with the app) sends to the same place.
+   */
+  projectSlug?: string;
   content: string;
   attachments?: FileAttachment[];
   ambientContext?: string;
@@ -43,11 +56,43 @@ export interface QueuedOutboundTurn {
   status: OutboundDispatchStatus;
   lastError?: string;
   lastAttemptAt?: number;
+  /**
+   * When a send of it last hit a temporary gate (`deferred`, typically a
+   * turn still running). A flush leaves it alone for
+   * `OUTBOUND_DEFER_RETRY_MS` after that, whatever starts the flush.
+   */
+  deferredAt?: number;
   /** Private claim facts are persisted only so another tab cannot replay. */
   dispatchBootId?: string;
   claimedAt?: number;
   /** Provider turn identity, only when the transport can prove it. */
   providerTurnId?: string;
+  /**
+   * `live`: a send the user made from the composer while Station looked
+   * reachable, recorded `invoking` BEFORE its request so the text survives the
+   * app closing mid-send. Rows without it entered as offline intents.
+   */
+  origin?: 'live';
+  /**
+   * The newest answer Station's delivery lookup gave for this row's key. An
+   * observation, kept with the row so a restarted app can say what it last
+   * learned; never a reason to send by itself.
+   */
+  deliveryCheck?: { outcome: TurnDeliveryOutcome; checkedAt: number };
+  /**
+   * The Station this row was written for. A row is only ever sent to, or
+   * asked about at, that same Station; for another it waits, visibly.
+   * Absent on rows written before it existed (they keep the old behaviour).
+   */
+  station?: OutboundStationIdentity;
+  /**
+   * A pending row the renderer `bootId` is holding in its chat's local queue
+   * behind a running turn: the durable copy of a held follow-up. Nothing
+   * sends it automatically: that renderer's queue drain does (under the same
+   * key), or, once no live queue holds it, the user does (`sendHeld`), after
+   * seeing it listed. A copy is never released by a timer or a guess.
+   */
+  heldBy?: { bootId: string; heldAt: number };
   /**
    * The original pending rows collapsed into this opt-in text merge. Keeping
    * their complete pre-send records makes the merge reversible until this row
@@ -73,7 +118,35 @@ export {
 export type OutboundDispatchTurn = Omit<
   QueuedOutboundTurn,
   'dispatchBootId' | 'claimedAt'
->;
+> & {
+  /**
+   * A live send this renderer is still waiting on. Its message is already on
+   * screen as the optimistic bubble, so a projection must not list it again.
+   */
+  liveInFlight?: true;
+  /**
+   * A held copy this renderer's own queue holds (its queue shows it). A held
+   * copy without it belongs to another window or a closed one: listed, with
+   * Send.
+   */
+  heldHere?: true;
+  /**
+   * A send that got no answer, released by its own renderer for Station's
+   * delivery lookup (`unanswered`), or claimed by a renderer proven gone (its
+   * Web Lock is no longer held): nothing sends it until the lookup says
+   * Station never received it, then it goes once with its key. Either can be
+   * withdrawn with `dismissUnconfirmed`.
+   */
+  awaitingLookup?: true;
+  /**
+   * An `invoking` row whose send is under way: claimed by another renderer
+   * proven running (its Web Lock is held), or by a pass of this renderer's
+   * own flush that is still in its transport call. Without it the row waits
+   * for Station's delivery lookup: its owner is gone, unknown, or (a claim of
+   * this renderer's that no pass holds) never finished writing back.
+   */
+  sendUnderWay?: true;
+};
 
 export interface OutboundDispatchIntent
   extends Omit<
@@ -83,6 +156,7 @@ export interface OutboundDispatchIntent
     | 'createdAt'
     | 'lastError'
     | 'lastAttemptAt'
+    | 'deferredAt'
     | 'dispatchBootId'
     | 'claimedAt'
     | 'providerTurnId'
@@ -145,7 +219,11 @@ export interface OutboundDispatchModule {
   >;
   flush(
     transport: OutboundDispatchTransport,
-    options?: { blockedSessionIds?: ReadonlySet<string> },
+    options?: {
+      blockedSessionIds?: ReadonlySet<string>;
+      /** Only rows written for this Station are sent (see `station`). */
+      station?: OutboundStationIdentity;
+    },
   ): Promise<OutboundFlushOutcome>;
   /**
    * A terminal event may remove an accepted head only when it names the same
@@ -156,6 +234,61 @@ export interface OutboundDispatchModule {
     providerTurnId: string,
   ): Promise<void>;
   discard(clientTurnId: string): Promise<void>;
+  /**
+   * The user's explicit "I checked, discard it" for a row that may have
+   * reached the agent: `may-have-started`, or a send that got no answer and
+   * waits for the delivery lookup (`awaitingLookup`). Never automatic:
+   * `discard` refuses such a row, and nothing else removes it. The row goes and its
+   * key is retired in one write, so no window can send it again. Refuses
+   * every other status (a send still in flight, an accepted one, or a row
+   * whose dispatch state this renderer could not record).
+   */
+  dismissUnconfirmed(clientTurnId: string): Promise<void>;
+  /** The status of this key's row, if the outbox holds one. */
+  rowStatus(clientTurnId: string): Promise<OutboundDispatchStatus | undefined>;
+  /**
+   * Keys finished with in any window: discarded by the user, or accepted by
+   * Station (its answer, or the delivery lookup's `started`). Bounded, as the
+   * retired list is.
+   */
+  retiredKeys(): Promise<{ discarded: string[]; accepted: string[] }>;
+  /**
+   * Records a live send `invoking` before its request is made, so its text is
+   * durable while it is in flight. Rejects when storage is unavailable; the
+   * caller then sends without the durability (and keeps the draft).
+   */
+  beginLive(intent: OutboundDispatchIntent): Promise<LiveOutboundDispatch>;
+  /**
+   * Settles `invoking` rows whose renderer is gone (the app was closed or
+   * crashed mid-send) by asking Station what became of each key:
+   * `not-received` → pending (sent again with the SAME key), `started` →
+   * removed (delivered), `received` → left to ask again later,
+   * `indeterminate`/`expired` → may-have-started (never resent). A lookup
+   * that fails leaves the row as it is. Returns how many rows Station still
+   * reports as received, so the caller can ask again with backoff.
+   */
+  reconcile(
+    lookup: OutboundDeliveryLookup,
+    options?: { station?: OutboundStationIdentity },
+  ): Promise<{ received: number }>;
+  /**
+   * Makes this renderer's held follow-ups (`heldBy`) exactly `intents`:
+   * writes the new, updates the changed, removes the ones no longer held.
+   * Touches only pending rows this renderer holds.
+   */
+  syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void>;
+  /** The user sends a listed held copy (see `heldBy`). */
+  sendHeld(clientTurnId: string): Promise<void>;
+  /**
+   * The user's explicit check of one unconfirmed or orphaned row. Like
+   * {@link reconcile}, except `not-received` on a row that may have started
+   * becomes `failed` (not sent; the user retries it with the same key)
+   * instead of being resent automatically.
+   */
+  check(
+    clientTurnId: string,
+    lookup: OutboundDeliveryLookup,
+  ): Promise<TurnDeliveryOutcome | undefined>;
   edit(clientTurnId: string, content: string): Promise<OutboundDispatchTurn>;
   reorder(
     clientTurnId: string,
@@ -168,6 +301,103 @@ export interface OutboundDispatchModule {
   unmerge(clientTurnId: string): Promise<void>;
   retry(clientTurnId: string): Promise<void>;
 }
+
+/** Which Station a row belongs to: its API base and its environment id. */
+export interface OutboundStationIdentity {
+  apiBase: string;
+  /** The Station's public environment id, once this renderer verified it. */
+  environmentId?: string;
+}
+
+function normalizedBase(apiBase: string): string {
+  return apiBase.replace(/\/+$/, '');
+}
+
+/**
+ * Whether a row may be sent to, or settled by, `current`. A row that names
+ * an environment id needs the same verified one; a legacy row with no
+ * Station recorded keeps the old any-Station behaviour.
+ */
+export function rowBelongsToStation(
+  row: { station?: OutboundStationIdentity },
+  current: OutboundStationIdentity | undefined,
+): boolean {
+  if (!row.station) return true;
+  if (!current) return false;
+  // A verified Station identity decides, whatever address reaches it now (a
+  // tunnel port or host can change); an address alone decides only when the
+  // row never learned which Station it was.
+  if (row.station.environmentId !== undefined)
+    return row.station.environmentId === current.environmentId;
+  return (
+    normalizedBase(row.station.apiBase) === normalizedBase(current.apiBase)
+  );
+}
+
+let currentStation: OutboundStationIdentity | undefined;
+
+/** The Station this renderer talks to now; stamped on rows written here. */
+export function noteCurrentStation(
+  station: OutboundStationIdentity | undefined,
+): void {
+  currentStation = station;
+}
+
+export function currentOutboundStation(): OutboundStationIdentity | undefined {
+  return currentStation;
+}
+
+/** One follow-up held in a chat's local queue (see `heldBy`). */
+export type HeldOutboundIntent = Omit<OutboundDispatchIntent, 'createdAt'>;
+
+/** Station's delivery lookup for one row (`getTurnDelivery`). */
+export type OutboundDeliveryLookup = (
+  turn: Readonly<OutboundDispatchTurn>,
+) => Promise<TurnDeliveryInspection>;
+
+/** The live send's hold on its own row; see `beginLive`. */
+export interface LiveOutboundDispatch {
+  readonly clientTurnId: string;
+  /** Station answered with the turn: the transcript holds it now. */
+  accepted(): Promise<void>;
+  /** Station refused it before anything ran; the composer has the text back. */
+  refused(): Promise<void>;
+  /** No answer came back: keep it for replay with the same key. */
+  undeliverable(error: unknown): Promise<void>;
+  /**
+   * It may have reached the agent: keep it as evidence, never resend. With
+   * `listed`, the row is shown in the chat's outbox list at once (the caller
+   * has no message of its own on screen for it).
+   */
+  indeterminate(reason: string, options?: { listed?: boolean }): Promise<void>;
+  /** Records a lookup answer observed while the request is still out. */
+  observed(outcome: TurnDeliveryOutcome): Promise<void>;
+  /**
+   * No answer, and nothing proves which way it went: release the row for
+   * Station's delivery lookup to settle (never resent without its answer).
+   */
+  unanswered(): Promise<void>;
+  /** Moved back into the chat's local queue: keep it durable, held, same key. */
+  hold(): Promise<void>;
+  /** Station refused it for good: keep it durable as not sent. */
+  notSent(reason: string): Promise<void>;
+}
+
+/**
+ * How long another renderer's `invoking` row is presumed alive when the
+ * platform cannot report renderer liveness (no Web Locks). A Station request
+ * outlives this only during an unusually long session start, and the lookup
+ * then answers `received`, which leaves the row alone.
+ */
+export const OUTBOUND_ORPHAN_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * The backstop against a send loop: a row whose send was deferred is not
+ * claimed again for this long. A trigger that fires sooner (a turn ending
+ * right after) finds it skipped, so the flush hook schedules one retry for
+ * when the wait ends (`deferredAt` is public on each row).
+ */
+export const OUTBOUND_DEFER_RETRY_MS = 1_500;
 
 /** Oldest-first ordinary-cache ceiling. Protected evidence is never evicted. */
 export const OUTBOUND_QUEUE_MAX_ENTRIES = 50;
@@ -188,6 +418,59 @@ export interface OutboundQueueStorage {
   getItem(key: string): Promise<unknown>;
   setItem(key: string, value: unknown): Promise<void>;
   updateItem?(key: string, updater: (value: unknown) => unknown): Promise<void>;
+  /**
+   * Reads and writes the queue record and the retired-key list in ONE
+   * transaction, so neither can be saved without the other.
+   */
+  updateWithRetired?(
+    updater: (
+      record: unknown,
+      retired: unknown,
+    ) => { record: unknown; retired: unknown },
+  ): Promise<void>;
+}
+
+/**
+ * One readwrite transaction over the queue's object store: both keys are
+ * read, the updater decides, and both are put before the transaction
+ * commits. An updater that throws writes nothing.
+ */
+export function updateRecordAndRetired(
+  objectStore: Pick<IDBObjectStore, 'get' | 'put' | 'transaction'>,
+  updater: (
+    record: unknown,
+    retired: unknown,
+  ) => { record: unknown; retired: unknown },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const record = objectStore.get(STORAGE_KEY);
+    const retired = objectStore.get(RETIRED_STORAGE_KEY);
+    let pending = 2;
+    const both = () => {
+      pending -= 1;
+      if (pending > 0) return;
+      try {
+        const next = updater(record.result, retired.result);
+        objectStore.put(next.record, STORAGE_KEY);
+        if (next.retired !== retired.result)
+          objectStore.put(next.retired, RETIRED_STORAGE_KEY);
+        resolve(promisifyRequest(objectStore.transaction));
+      } catch (error) {
+        // Neither key is kept: a record put before a failing retired put
+        // would otherwise commit alone.
+        try {
+          objectStore.transaction.abort();
+        } catch {
+          // Already finished: nothing of this call was committed.
+        }
+        reject(error);
+      }
+    };
+    record.onsuccess = both;
+    retired.onsuccess = both;
+    record.onerror = () => reject(record.error);
+    retired.onerror = () => reject(retired.error);
+  });
 }
 
 interface TerminalEvidence {
@@ -202,6 +485,76 @@ interface OutboundQueueState {
   terminalEvidence: TerminalEvidence[];
   /** Bounded exact tombstones ignore a replayed terminal after completion. */
   completedTerminals: TerminalEvidence[];
+  /**
+   * Keys whose message is finished with: discarded by the user, or accepted
+   * by Station. A held copy is never re-created for one, and no send of one
+   * is started again, in any window. Bounded, newest kept.
+   */
+  retired?: RetiredKey[];
+}
+
+interface RetiredKey {
+  clientTurnId: string;
+  /** `discarded` or `accepted`; any other value still means retired. */
+  reason: string;
+  at: number;
+}
+
+/**
+ * Kept apart from the queue's own record, under its own key: a build that
+ * predates retirement rewrites the queue record without knowing this list,
+ * and must not erase it.
+ */
+const RETIRED_STORAGE_KEY = 'station-outbound-retired-v1';
+/** Per reason, newest kept: many deliveries never push out a Discard. */
+const RETIRED_KEYS_PER_REASON_MAX = 512;
+
+function parseRetired(stored: unknown): RetiredKey[] {
+  if (!Array.isArray(stored)) return [];
+  // Unreadable entries are skipped, never a reason to stop the outbox.
+  return stored.filter(
+    (entry): entry is RetiredKey =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as RetiredKey).clientTurnId === 'string' &&
+      typeof (entry as RetiredKey).reason === 'string' &&
+      typeof (entry as RetiredKey).at === 'number',
+  );
+}
+
+function withRetired(
+  state: OutboundQueueState,
+  clientTurnId: string,
+  reason: 'discarded' | 'accepted',
+): OutboundQueueState {
+  const others = (state.retired ?? []).filter(
+    (entry) => entry.clientTurnId !== clientTurnId,
+  );
+  const sameReason = others.filter((entry) => entry.reason === reason);
+  const dropped = new Set(
+    sameReason.slice(
+      0,
+      Math.max(0, sameReason.length + 1 - RETIRED_KEYS_PER_REASON_MAX),
+    ),
+  );
+  return {
+    ...state,
+    retired: [
+      ...others.filter((entry) => !dropped.has(entry)),
+      { clientTurnId, reason, at: Date.now() },
+    ],
+  };
+}
+
+function retiredReason(
+  state: OutboundQueueState,
+  clientTurnId: string,
+): 'discarded' | 'accepted' | undefined {
+  const reason = state.retired?.find(
+    (entry) => entry.clientTurnId === clientTurnId,
+  )?.reason;
+  if (reason === undefined) return undefined;
+  return reason === 'discarded' ? 'discarded' : 'accepted';
 }
 
 /** Legacy array reads remain supported; all writes use this private state. */
@@ -237,7 +590,7 @@ export function readForeground(error: unknown):
     detail?: { session?: { threadId?: unknown } };
   };
   if (
-    candidate.code !== 'foreground_message_indeterminate' ||
+    candidate.code !== FOREGROUND_MESSAGE_INDETERMINATE_CODE ||
     candidate.outcome !== 'indeterminate'
   ) {
     return undefined;
@@ -301,6 +654,9 @@ export type UndeliverableSendCause =
 export function classifyUndeliverableSend(
   error: unknown,
 ): UndeliverableSendCause | null {
+  // Something other than Station answered: the send may or may not have
+  // reached it, exactly like a request that threw.
+  if (hasNonStationResponse(error)) return 'send-unconfirmed';
   if (hasResponseEvidence(error)) return null;
   if (error instanceof TypeError) {
     // Both are true at once when the browser reports offline AND the fetch
@@ -329,6 +685,18 @@ function hasResponseEvidence(error: unknown): boolean {
   return typeof status === 'number' && Number.isFinite(status);
 }
 
+/**
+ * A response that is not Station's own answer: a proxy's or tunnel's
+ * 502/503/504, or a body without Station's envelope. The address answered,
+ * but Station's decision about the send is unknown.
+ */
+function hasNonStationResponse(error: unknown): boolean {
+  return (
+    hasResponseEvidence(error) &&
+    (error as { stationEnvelope?: unknown }).stationEnvelope === false
+  );
+}
+
 function createIdbOutboundQueueStorage(): OutboundQueueStorage {
   if (typeof indexedDB === 'undefined') {
     return {
@@ -345,14 +713,56 @@ function createIdbOutboundQueueStorage(): OutboundQueueStorage {
     getItem: (key) => get<OutboundQueuePersisted>(key, store),
     setItem: (key, value) => set(key, value, store),
     updateItem: (key, updater) => update(key, updater, store),
+    updateWithRetired: (updater) =>
+      store('readwrite', (objectStore) =>
+        updateRecordAndRetired(objectStore, updater),
+      ),
   };
 }
 
 let storage: OutboundQueueStorage = createIdbOutboundQueueStorage();
+
+/** Where the retired-key list is kept (see RETIRED_STORAGE_KEY). */
+export interface OutboundRetiredStorage {
+  get(): Promise<unknown>;
+  set(value: unknown): Promise<void>;
+}
+
+/** The same IndexedDB store as the queue, under the list's own key. */
+function storeRetiredBeside(
+  queue: OutboundQueueStorage,
+): OutboundRetiredStorage {
+  return {
+    get: () => queue.getItem(RETIRED_STORAGE_KEY),
+    set: (value) => queue.setItem(RETIRED_STORAGE_KEY, value),
+  };
+}
+
+function memoryRetiredStorage(): OutboundRetiredStorage {
+  let value: unknown;
+  return {
+    get: async () => value,
+    set: async (next) => {
+      value = next;
+    },
+  };
+}
+
+let retiredStorage: OutboundRetiredStorage = storeRetiredBeside(storage);
 let mutationTail: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 /** A same-renderer safety net when a post-effect IndexedDB transition fails. */
 const unavailableClaims = new Set<string>();
+/** Live sends this renderer is still waiting on (see `liveInFlight`). */
+const liveOwned = new Set<string>();
+/** Keys a flush pass of this renderer has claimed and not yet let go. */
+const drainInFlight = new Set<string>();
+/**
+ * The claim each live send of this renderer currently holds, by key: an
+ * abandoned attempt (its write landed late and a re-send adopted the row)
+ * must not clear the flag of the attempt that adopted it.
+ */
+const liveClaimOf = new Map<string, number>();
 
 function queueState(stored: unknown): OutboundQueueState {
   if (stored === undefined || stored === null) {
@@ -512,6 +922,17 @@ function mutationRefusal(
   }
 }
 
+/**
+ * A held copy is the durable shadow of a message a chat's queue holds (in
+ * this window or another): changing the copy would not change what that
+ * queue sends. Only Send or Discard act on it.
+ */
+function heldCopyRefusal(action: 'edited' | 'reordered' | 'merged'): Error {
+  return new Error(
+    `This message is held in a chat's queue and cannot be ${action} here. Send it, or edit it where it is queued.`,
+  );
+}
+
 function reorderBarrier(
   moved: QueuedOutboundTurn,
   neighbour: QueuedOutboundTurn | undefined,
@@ -525,13 +946,73 @@ function reorderBarrier(
   );
 }
 
-function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
+/** This renderer's boot id once the lease module is loaded (sync reads). */
+let knownBootId: string | undefined;
+
+function publicTurn(
+  entry: QueuedOutboundTurn,
+  underWay: ReadonlySet<string> = new Set(),
+  ownerGone: ReadonlySet<string> = new Set(),
+): OutboundDispatchTurn {
   const {
     dispatchBootId: _dispatchBootId,
     claimedAt: _claimedAt,
     ...turn
   } = entry;
-  return Object.freeze(turn);
+  return Object.freeze({
+    ...turn,
+    ...(liveOwned.has(entry.clientTurnId)
+      ? { liveInFlight: true as const }
+      : {}),
+    ...(entry.heldBy && entry.heldBy.bootId === knownBootId
+      ? { heldHere: true as const }
+      : {}),
+    ...(awaitingLookup(entry) || ownerGone.has(entry.clientTurnId)
+      ? { awaitingLookup: true as const }
+      : {}),
+    ...(underWay.has(entry.clientTurnId)
+      ? { sendUnderWay: true as const }
+      : {}),
+  });
+}
+
+/**
+ * The stored rows as callers see them. Whether a claimed send is still under
+ * way is read now. This renderer's own claim counts only while a flush pass
+ * of its holds it (one whose write-back failed is not "sending" for ever).
+ * Another renderer's counts while it is proven running; one proven gone is
+ * released like an unanswered send; an unknown one is neither.
+ */
+async function publicTurns(): Promise<OutboundDispatchTurn[]> {
+  const rows = await readStored();
+  const self = await rendererBootId();
+  const underWay = new Set<string>();
+  const ownerGone = new Set<string>();
+  for (const row of rows) {
+    if (
+      row.status !== 'invoking' ||
+      row.dispatchBootId === undefined ||
+      liveOwned.has(row.clientTurnId)
+    )
+      continue;
+    if (row.dispatchBootId === self) {
+      if (drainInFlight.has(row.clientTurnId)) underWay.add(row.clientTurnId);
+      continue;
+    }
+    const live = await ownerLiveness(row.dispatchBootId);
+    if (live === true) underWay.add(row.clientTurnId);
+    else if (live === false) ownerGone.add(row.clientTurnId);
+  }
+  return rows.map((row) => publicTurn(row, underWay, ownerGone));
+}
+
+/** An `invoking` row no renderer holds a claim on: released for the lookup. */
+function awaitingLookup(entry: QueuedOutboundTurn): boolean {
+  return (
+    entry.status === 'invoking' &&
+    entry.dispatchBootId === undefined &&
+    !liveOwned.has(entry.clientTurnId)
+  );
 }
 
 function mergedContent(entries: readonly QueuedOutboundTurn[]): string {
@@ -645,7 +1126,21 @@ async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
 
 async function rendererBootId(): Promise<string> {
   const { rendererBootId } = await import('./outboundQueueLease');
+  knownBootId = rendererBootId;
   return rendererBootId;
+}
+
+/** Called before this renderer writes any `invoking` row it then owns. */
+async function holdRendererLiveness(): Promise<void> {
+  const { ensureRendererLiveness } = await import('./outboundQueueLease');
+  await ensureRendererLiveness();
+}
+
+async function ownerLiveness(
+  bootId: string | undefined,
+): Promise<boolean | undefined> {
+  const { rendererLiveness } = await import('./outboundQueueLease');
+  return rendererLiveness(bootId);
 }
 
 function serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -703,31 +1198,58 @@ async function mutateState<T>(
     result: T;
     changed: boolean;
   },
+  /** The caller already holds the queue lock (it is not re-entrant). */
+  options: { locked?: boolean } = {},
 ): Promise<T> {
+  const locked = <R>(run: () => Promise<R>) =>
+    options.locked ? run() : withQueueLock(run);
   let result!: T;
   let changed = false;
-  const apply = () =>
-    storage.updateItem!(STORAGE_KEY, (stored) => {
-      const outcome = operation(queueState(stored));
+  // The retired list is read and written beside the queue record, inside
+  // the same lock (see RETIRED_STORAGE_KEY).
+  const persisted = (state: OutboundQueueState) => {
+    const { retired: _retired, ...rest } = state;
+    void _retired;
+    return { ...rest, turns: prune(state.turns, Date.now()) };
+  };
+  const applyAtomic = () =>
+    storage.updateWithRetired!((stored, storedRetired) => {
+      const retired = parseRetired(storedRetired);
+      const outcome = operation({ ...queueState(stored), retired });
       result = outcome.result;
       changed = outcome.changed;
+      const nextRetired = outcome.state.retired ?? retired;
       return {
-        ...outcome.state,
-        turns: prune(outcome.state.turns, Date.now()),
+        record: persisted(outcome.state),
+        retired: nextRetired === retired ? storedRetired : nextRetired,
       };
     });
-  if (storage.updateItem) {
-    await withQueueLock(apply);
+  const apply = async () => {
+    const retired = parseRetired(await retiredStorage.get());
+    let nextRetired = retired;
+    await storage.updateItem!(STORAGE_KEY, (stored) => {
+      const outcome = operation({ ...queueState(stored), retired });
+      result = outcome.result;
+      changed = outcome.changed;
+      nextRetired = outcome.state.retired ?? retired;
+      return persisted(outcome.state);
+    });
+    if (nextRetired !== retired) await retiredStorage.set(nextRetired);
+  };
+  if (storage.updateWithRetired) {
+    await locked(applyAtomic);
+  } else if (storage.updateItem) {
+    await locked(apply);
   } else {
     await serialize(async () => {
-      const outcome = operation(await readState());
+      const retired = parseRetired(await retiredStorage.get());
+      const outcome = operation({ ...(await readState()), retired });
       result = outcome.result;
       changed = outcome.changed;
       if (changed) {
-        await storage.setItem(STORAGE_KEY, {
-          ...outcome.state,
-          turns: prune(outcome.state.turns, Date.now()),
-        });
+        await storage.setItem(STORAGE_KEY, persisted(outcome.state));
+        if ((outcome.state.retired ?? retired) !== retired)
+          await retiredStorage.set(outcome.state.retired ?? retired);
       }
     });
   }
@@ -852,7 +1374,19 @@ async function settle(
         }
       }
       return {
-        state: { ...state, turns: next, terminalEvidence, completedTerminals },
+        state:
+          status === 'accepted'
+            ? withRetired(
+                {
+                  ...state,
+                  turns: next,
+                  terminalEvidence,
+                  completedTerminals,
+                },
+                claimed.clientTurnId,
+                'accepted',
+              )
+            : { ...state, turns: next, terminalEvidence, completedTerminals },
         result: 'applied' as const,
         changed: true,
       };
@@ -936,6 +1470,7 @@ async function releaseDeferred(
       next[index] = {
         ...next[index]!,
         status: 'pending',
+        deferredAt: Date.now(),
         dispatchBootId: undefined,
         claimedAt: undefined,
       };
@@ -976,31 +1511,63 @@ function claimCapability(claimed: QueuedOutboundTurn): InternalClaim {
 
 async function claimNext(
   blockedSessions: ReadonlySet<string>,
+  station: OutboundStationIdentity | undefined,
 ): Promise<QueuedOutboundTurn | undefined> {
   const bootId = await rendererBootId();
+  await holdRendererLiveness();
   const claimedAt = Date.now();
-  return mutate((entries) => {
-    const candidate = entries.find(
-      (entry, index) =>
-        entry.status === 'pending' &&
-        !blockedSessions.has(entry.sessionId) &&
-        !entries
-          .slice(0, index)
-          .some((earlier) => earlier.sessionId === entry.sessionId),
-    );
-    if (!candidate) return { entries, result: undefined, changed: false };
-    const index = entries.indexOf(candidate);
-    const claimed = {
-      ...candidate,
-      status: 'invoking' as const,
-      dispatchBootId: bootId,
-      claimedAt,
-      lastAttemptAt: claimedAt,
-    };
-    const next = [...entries];
-    next[index] = claimed;
-    return { entries: next, result: claimed, changed: true };
-  });
+  let marked: string | undefined;
+  try {
+    return await mutate((entries) => {
+      const candidate = entries.find(
+        (entry, index) =>
+          entry.status === 'pending' &&
+          !entry.heldBy &&
+          rowBelongsToStation(entry, station) &&
+          !blockedSessions.has(entry.sessionId) &&
+          // Deferred moments ago: whatever retriggered this pass, wait.
+          !(
+            entry.deferredAt !== undefined &&
+            claimedAt - entry.deferredAt < OUTBOUND_DEFER_RETRY_MS
+          ) &&
+          !entries.slice(0, index).some(
+            (earlier) =>
+              earlier.sessionId === entry.sessionId &&
+              // An unconfirmed row is evidence, not a send in progress, and a
+              // held copy waits on its queue or on the user: neither holds back
+              // the messages written after it.
+              earlier.status !== 'may-have-started' &&
+              !earlier.heldBy,
+          ),
+      );
+      if (!candidate) {
+        if (marked) drainInFlight.delete(marked);
+        marked = undefined;
+        return { entries, result: undefined, changed: false };
+      }
+      const index = entries.indexOf(candidate);
+      const claimed = {
+        ...candidate,
+        status: 'invoking' as const,
+        dispatchBootId: bootId,
+        claimedAt,
+        lastAttemptAt: claimedAt,
+      };
+      const next = [...entries];
+      next[index] = claimed;
+      // In flight here before the claim's write is announced, so a projection
+      // that change prompts already reads it as this renderer's send under way.
+      if (marked !== candidate.clientTurnId) {
+        if (marked) drainInFlight.delete(marked);
+        marked = candidate.clientTurnId;
+        drainInFlight.add(marked);
+      }
+      return { entries: next, result: claimed, changed: true };
+    });
+  } catch (error) {
+    if (marked) drainInFlight.delete(marked);
+    throw error;
+  }
 }
 
 async function enqueue(
@@ -1009,11 +1576,21 @@ async function enqueue(
 ): Promise<OutboundDispatchTurn> {
   // Runtime callers can still be untyped JavaScript. Provider terminal
   // evidence is produced only by an accepted transport result, never trusted
-  // from an enqueue intent.
-  const { providerTurnId: _ignoredProviderTurnId, ...safeIntent } =
-    intent as OutboundDispatchIntent & { providerTurnId?: unknown };
+  // from an enqueue intent; nor is a deferral, which only a release records.
+  const {
+    providerTurnId: _ignoredProviderTurnId,
+    deferredAt: _ignoredDeferredAt,
+    ...safeIntent
+  } = intent as OutboundDispatchIntent & {
+    providerTurnId?: unknown;
+    deferredAt?: unknown;
+  };
   const now = safeIntent.createdAt ?? Date.now();
-  return mutate((entries) => {
+  return mutateState((state) => {
+    // A message already delivered or discarded is not queued again.
+    const retired = retiredReason(state, safeIntent.clientTurnId);
+    if (retired) throw new OutboundKeyRetiredError(retired);
+    const entries = prune(state.turns, Date.now());
     const index = entries.findIndex(
       (entry) => entry.clientTurnId === safeIntent.clientTurnId,
     );
@@ -1041,6 +1618,7 @@ async function enqueue(
         (entry) => !evicted.has(entry.clientTurnId),
       );
       const next: QueuedOutboundTurn = {
+        ...(currentStation ? { station: currentStation } : {}),
         ...safeIntent,
         createdAt: now,
         attempts: 1,
@@ -1048,11 +1626,15 @@ async function enqueue(
         lastError,
         lastAttemptAt: now,
       };
-      return { entries: [...retained, next], result: next, changed: true };
+      return {
+        state: { ...state, turns: [...retained, next] },
+        result: next,
+        changed: true,
+      };
     }
     const existing = entries[index]!;
     if (protectedEvidence(existing)) {
-      return { entries, result: existing, changed: false };
+      return { state, result: existing, changed: false };
     }
     const attempts = existing.attempts + 1;
     const next: QueuedOutboundTurn = {
@@ -1069,29 +1651,103 @@ async function enqueue(
     };
     const replacement = [...entries];
     replacement[index] = next;
-    return { entries: replacement, result: next, changed: true };
+    return {
+      state: { ...state, turns: replacement },
+      result: next,
+      changed: true,
+    };
   }).then(publicTurn);
 }
 
 async function discard(clientTurnId: string): Promise<void> {
-  await mutate((entries) => {
-    const entry = entries.find(
+  await mutateState((state) => {
+    const entry = state.turns.find(
       (candidate) => candidate.clientTurnId === clientTurnId,
     );
-    if (!entry) return { entries, result: undefined, changed: false };
+    if (!entry) return { state, result: undefined, changed: false };
     if (protectedEvidence(entry)) {
       throw new Error(
         'Queued turn may have started and cannot be withdrawn. Inspect the session instead.',
       );
     }
+    // Discarded for good, in every window: a queue still holding it (another
+    // window's) neither re-creates its copy nor sends it.
     return {
-      entries: entries.filter(
-        (candidate) => candidate.clientTurnId !== clientTurnId,
+      state: withRetired(
+        {
+          ...state,
+          turns: state.turns.filter(
+            (candidate) => candidate.clientTurnId !== clientTurnId,
+          ),
+        },
+        clientTurnId,
+        'discarded',
       ),
       result: undefined,
       changed: true,
     };
   });
+}
+
+async function dismissUnconfirmed(clientTurnId: string): Promise<void> {
+  // Under the queue lock throughout: a claim is withdrawn only if its owner
+  // is proven gone at the moment of the write, never on an earlier reading.
+  await withQueueLock(async () => {
+    const row = (await readStored()).find(
+      (candidate) => candidate.clientTurnId === clientTurnId,
+    );
+    const goneClaim =
+      row?.status === 'invoking' &&
+      row.dispatchBootId !== undefined &&
+      !liveOwned.has(clientTurnId) &&
+      (await ownerLiveness(row.dispatchBootId)) === false
+        ? row.dispatchBootId
+        : undefined;
+    await mutateState((state) => dismissal(state, clientTurnId, goneClaim), {
+      locked: true,
+    });
+  });
+}
+
+function dismissal(
+  state: OutboundQueueState,
+  clientTurnId: string,
+  goneClaim: string | undefined,
+): { state: OutboundQueueState; result: undefined; changed: boolean } {
+  // Rechecked inside the write: a claim since re-taken by another renderer
+  // is no longer the one proven gone.
+  const entry = state.turns.find(
+    (candidate) => candidate.clientTurnId === clientTurnId,
+  );
+  if (!entry) return { state, result: undefined, changed: false };
+  const claimedByGone =
+    goneClaim !== undefined &&
+    entry.status === 'invoking' &&
+    entry.dispatchBootId === goneClaim;
+  if (
+    (entry.status !== 'may-have-started' &&
+      !awaitingLookup(entry) &&
+      !claimedByGone) ||
+    unavailableClaims.has(clientTurnId)
+  ) {
+    throw new Error(
+      'Only a message that may have reached the agent can be dismissed this way.',
+    );
+  }
+  return {
+    state: withRetired(
+      {
+        ...state,
+        turns: state.turns.filter(
+          (candidate) => candidate.clientTurnId !== clientTurnId,
+        ),
+      },
+      clientTurnId,
+      'discarded',
+    ),
+    result: undefined,
+    changed: true,
+  };
 }
 
 async function edit(
@@ -1108,6 +1764,7 @@ async function edit(
     if (protectedEvidence(entries[index]!)) {
       throw mutationRefusal(entries[index]!, 'edited');
     }
+    if (entries[index]!.heldBy) throw heldCopyRefusal('edited');
     const edited = {
       ...entries[index]!,
       clientTurnId: randomCorrelationId(),
@@ -1130,6 +1787,7 @@ async function reorder(
     if (index === -1) throw new Error('Queued turn no longer exists');
     const moved = entries[index]!;
     if (protectedEvidence(moved)) throw mutationRefusal(moved, 'reordered');
+    if (moved.heldBy) throw heldCopyRefusal('reordered');
     const target = direction === 'up' ? index - 1 : index + 1;
     if (target < 0 || target >= entries.length) {
       return { entries, result: entries[index]!, changed: false };
@@ -1163,6 +1821,7 @@ async function merge(
     if (current.status !== 'pending') throw mutationRefusal(current, 'merged');
     if (nextTurn.status !== 'pending')
       throw mutationRefusal(nextTurn, 'merged');
+    if (current.heldBy || nextTurn.heldBy) throw heldCopyRefusal('merged');
     if (current.sessionId !== nextTurn.sessionId) {
       throw new Error('Only messages from the same session can be merged.');
     }
@@ -1227,14 +1886,18 @@ async function retry(clientTurnId: string): Promise<void> {
 
 async function flush(
   transport: OutboundDispatchTransport,
-  options?: { blockedSessionIds?: ReadonlySet<string> },
+  options?: {
+    blockedSessionIds?: ReadonlySet<string>;
+    station?: OutboundStationIdentity;
+  },
 ): Promise<OutboundFlushOutcome> {
   const blockedSessions = new Set(options?.blockedSessionIds);
+  const station = options?.station ?? currentStation;
   let unavailable = false;
   while (true) {
     let claimed: QueuedOutboundTurn | undefined;
     try {
-      claimed = await claimNext(blockedSessions);
+      claimed = await claimNext(blockedSessions, station);
     } catch {
       // Storage cannot prove a claim was not durably written. A later flush
       // must inspect the retained row; this pass simply makes no transport
@@ -1243,6 +1906,7 @@ async function flush(
     }
     if (!claimed) return unavailable ? 'unavailable' : 'drained';
     const capability = claimCapability(claimed);
+    // claimNext marked it in flight before announcing the claim.
     try {
       const result = await transport(publicTurn(claimed), capability.public);
       if (!capability.settled()) {
@@ -1280,6 +1944,8 @@ async function flush(
         );
         unavailable ||= settled === 'unavailable';
       }
+    } finally {
+      drainInFlight.delete(claimed.clientTurnId);
     }
     const state = capability.state();
     unavailable ||= capability.outcome() === 'unavailable';
@@ -1403,15 +2069,530 @@ async function reconcileAcceptedTerminals(): Promise<void> {
   });
 }
 
+/**
+ * Room for one more row, evicting the oldest ordinary drafts as `enqueue`
+ * does; fenced evidence is never a victim.
+ */
+function admitOne(entries: QueuedOutboundTurn[]): QueuedOutboundTurn[] {
+  const requiredEvictions = Math.max(
+    0,
+    entries.length - OUTBOUND_QUEUE_MAX_ENTRIES + 1,
+  );
+  const evicted = new Set(
+    entries
+      .filter(
+        (entry) => entry.status === 'pending' || entry.status === 'failed',
+      )
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(0, requiredEvictions)
+      .map((entry) => entry.clientTurnId),
+  );
+  if (evicted.size !== requiredEvictions)
+    throw new OutboundDispatchCapacityError();
+  return entries.filter((entry) => !evicted.has(entry.clientTurnId));
+}
+
+/**
+ * `beginLive` refused: a row with this key is already on its way, or may
+ * already have reached the agent. Sending it now would bypass that row; the
+ * caller must not send.
+ */
+export class OutboundRowInFlightError extends Error {
+  constructor() {
+    super('This message is already on its way.');
+    this.name = 'OutboundRowInFlightError';
+  }
+}
+
+/**
+ * `beginLive` refused: this key's message was discarded or already accepted
+ * (in this window or another). It is never sent again.
+ */
+export class OutboundKeyRetiredError extends Error {
+  constructor(readonly reason: 'discarded' | 'accepted') {
+    super(
+      reason === 'discarded'
+        ? 'This message was discarded.'
+        : 'This message was already delivered.',
+    );
+    this.name = 'OutboundKeyRetiredError';
+  }
+}
+
+async function beginLive(
+  intent: OutboundDispatchIntent,
+): Promise<LiveOutboundDispatch> {
+  const {
+    providerTurnId: _ignoredProviderTurnId,
+    deferredAt: _ignoredDeferredAt,
+    ...safeIntent
+  } = intent as OutboundDispatchIntent & {
+    providerTurnId?: unknown;
+    deferredAt?: unknown;
+  };
+  const bootId = await rendererBootId();
+  await holdRendererLiveness();
+  const claimedAt = Date.now();
+  const clientTurnId = safeIntent.clientTurnId;
+  // Before the write: the write notifies observers, and a projection must
+  // never list this send a second time beside its own bubble.
+  liveOwned.add(clientTurnId);
+  let claimed: QueuedOutboundTurn;
+  try {
+    claimed = await mutateState((state) => {
+      const retired = retiredReason(state, clientTurnId);
+      if (retired) throw new OutboundKeyRetiredError(retired);
+      const entries = prune(state.turns, Date.now());
+      const existing = entries.find(
+        (entry) => entry.clientTurnId === clientTurnId,
+      );
+      // This renderer's own earlier claim of the key (a durable write that
+      // landed after its send went without it) is not another send: the
+      // message is being sent again here, so the row is adopted, never left
+      // for the abandoned attempt's cleanup to delete.
+      const ownAbandoned =
+        existing?.status === 'invoking' && existing.dispatchBootId === bootId;
+      if (existing && protectedEvidence(existing) && !ownAbandoned)
+        throw new OutboundRowInFlightError();
+      const { heldBy: _held, ...withoutHold } = existing ?? {};
+      void _held;
+      const next: QueuedOutboundTurn = {
+        ...(currentStation ? { station: currentStation } : {}),
+        ...(existing?.station ? { station: existing.station } : {}),
+        ...(existing ? withoutHold : {}),
+        ...safeIntent,
+        createdAt: existing?.createdAt ?? safeIntent.createdAt ?? claimedAt,
+        attempts: (existing?.attempts ?? 0) + 1,
+        status: 'invoking',
+        origin: 'live',
+        dispatchBootId: bootId,
+        // Distinct from an adopted claim's, even within one millisecond, so
+        // that attempt's own transitions can never touch this one.
+        claimedAt: Math.max(claimedAt, (existing?.claimedAt ?? 0) + 1),
+        lastAttemptAt: claimedAt,
+      };
+      const retained = existing
+        ? entries.filter((entry) => entry !== existing)
+        : admitOne(entries);
+      return {
+        state: { ...state, turns: [...retained, next] },
+        result: next,
+        changed: true,
+      };
+    });
+  } catch (error) {
+    // Only when no attempt of this renderer holds the key's claim.
+    if (!liveClaimOf.has(clientTurnId)) liveOwned.delete(clientTurnId);
+    throw error;
+  }
+  liveClaimOf.set(clientTurnId, claimed.claimedAt!);
+  /** Clears the in-flight flag only while this attempt is the current one. */
+  const releaseLive = () => {
+    if (liveClaimOf.get(clientTurnId) !== claimed.claimedAt) return;
+    liveClaimOf.delete(clientTurnId);
+    liveOwned.delete(clientTurnId);
+  };
+  const transition = async (
+    change: (entry: QueuedOutboundTurn) => QueuedOutboundTurn | undefined,
+  ): Promise<void> => {
+    try {
+      await mutate((entries) => {
+        const index = entries.findIndex((entry) => exact(entry, claimed));
+        if (index === -1) return { entries, result: undefined, changed: false };
+        const next = change(entries[index]!);
+        const replaced = [...entries];
+        if (next) replaced[index] = next;
+        else replaced.splice(index, 1);
+        return { entries: replaced, result: undefined, changed: true };
+      });
+    } catch {
+      // Best effort: a row left `invoking` is reconciled by the delivery
+      // lookup after this renderer is gone, never replayed blindly.
+    }
+  };
+  return {
+    clientTurnId,
+    accepted: async () => {
+      // One operation: the row goes and its key is retired together (one
+      // IndexedDB transaction in production), so no window can see the
+      // message gone yet still sendable.
+      try {
+        await mutateState((state) => ({
+          state: withRetired(
+            {
+              ...state,
+              turns: state.turns.filter(
+                (entry) => entry.clientTurnId !== clientTurnId,
+              ),
+            },
+            clientTurnId,
+            'accepted',
+          ),
+          result: undefined,
+          changed: true,
+        }));
+      } catch {
+        // Best effort, as every live transition: a row left `invoking` is
+        // settled by the delivery lookup, which answers `started`.
+      }
+      releaseLive();
+    },
+    refused: async () => {
+      await transition(() => undefined);
+      releaseLive();
+    },
+    undeliverable: async (error) => {
+      releaseLive();
+      // Back to waiting for the connection: whatever Station said about the
+      // attempt that just ended describes nothing pending now (as `hold`).
+      await transition(({ deliveryCheck: _stale, ...entry }) => ({
+        ...entry,
+        status: 'pending',
+        lastError: error instanceof Error ? error.message : undefined,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+    indeterminate: async (reason, options) => {
+      // Still this renderer's unless listed: the chat already says so, and
+      // the row is otherwise listed once this renderer is gone.
+      if (options?.listed) releaseLive();
+      await transition((entry) => ({
+        ...entry,
+        status: 'may-have-started',
+        lastError: `Dispatch may have started: ${reason}`,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+    observed: async (outcome) => {
+      await transition((entry) => ({
+        ...entry,
+        deliveryCheck: { outcome, checkedAt: Date.now() },
+      }));
+    },
+    unanswered: async () => {
+      // Released for the lookup: with no claim left, `reconcile` settles it by
+      // Station's answer at the next pass instead of waiting out a renderer.
+      releaseLive();
+      await transition((entry) => ({
+        ...entry,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+        lastAttemptAt: Date.now(),
+      }));
+    },
+    hold: async () => {
+      releaseLive();
+      // Back in the queue, to be sent again: whatever Station said about the
+      // attempt that just ended (a `received` while it waited on a starting
+      // session) describes nothing pending now.
+      await transition(({ deliveryCheck: _stale, ...entry }) => ({
+        ...entry,
+        status: 'pending',
+        heldBy: { bootId: claimed.dispatchBootId!, heldAt: Date.now() },
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+    notSent: async (reason) => {
+      // Still this renderer's while it shows the refusal itself.
+      await transition((entry) => ({
+        ...entry,
+        status: 'failed',
+        lastError: reason,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+  };
+}
+
+const NOT_RECEIVED_RESEND =
+  'Station had not received this message; it is being sent again.';
+const NOT_RECEIVED_STOPPED =
+  'Station never received this message. Send it again when you are ready.';
+const POSSIBLE_EFFECT =
+  'Dispatch may have started: Station cannot confirm whether this message reached the agent. It was not sent again.';
+
+/**
+ * Applies one lookup answer to the row exactly as it was observed (same
+ * status and claim), so a row another tab moved meanwhile is left alone.
+ */
+async function applyDeliveryAnswer(
+  observed: QueuedOutboundTurn,
+  outcome: TurnDeliveryOutcome,
+  notReceived: 'resend' | 'stop',
+): Promise<void> {
+  await mutateState((state) => {
+    const entries = state.turns;
+    const index = entries.findIndex(
+      (entry) =>
+        entry.clientTurnId === observed.clientTurnId &&
+        entry.status === observed.status &&
+        entry.dispatchBootId === observed.dispatchBootId &&
+        entry.claimedAt === observed.claimedAt,
+    );
+    if (index === -1) return { state, result: undefined, changed: false };
+    const entry = entries[index]!;
+    // The same answer again changes nothing (and wakes no observer).
+    if (outcome === 'received' && entry.deliveryCheck?.outcome === 'received')
+      return { state, result: undefined, changed: false };
+    const deliveryCheck = { outcome, checkedAt: Date.now() };
+    const released = {
+      ...entry,
+      deliveryCheck,
+      dispatchBootId: undefined,
+      claimedAt: undefined,
+    };
+    let next: QueuedOutboundTurn | undefined;
+    switch (outcome) {
+      case 'started':
+        next = undefined;
+        break;
+      case 'received':
+        next = { ...entry, deliveryCheck };
+        break;
+      case 'indeterminate':
+      case 'expired':
+      case 'unknown':
+        next = {
+          ...released,
+          status: 'may-have-started',
+          lastError: POSSIBLE_EFFECT,
+        };
+        break;
+      case 'not-received':
+        next =
+          notReceived === 'resend'
+            ? { ...released, status: 'pending', lastError: NOT_RECEIVED_RESEND }
+            : {
+                ...released,
+                status: 'failed',
+                lastError: NOT_RECEIVED_STOPPED,
+              };
+        break;
+      // #3568: Station holds the message in the conversation's inbox. This
+      // queue never hands a send to the inbox, so it cannot meet one of its
+      // own keys there yet: like an unknown answer, change nothing.
+      case 'queued':
+        return { state, result: undefined, changed: false };
+      default: {
+        // An answer this build does not know proves nothing: change nothing.
+        const unhandled: never = outcome;
+        void unhandled;
+        return { state, result: undefined, changed: false };
+      }
+    }
+    const replaced = [...entries];
+    if (next) replaced[index] = next;
+    else replaced.splice(index, 1);
+    unavailableClaims.delete(entry.clientTurnId);
+    const settled = { ...state, turns: replaced };
+    return {
+      // Station started it: delivered, so never sent again from anywhere.
+      state:
+        outcome === 'started'
+          ? withRetired(settled, entry.clientTurnId, 'accepted')
+          : settled,
+      result: undefined,
+      changed: true,
+    };
+  });
+}
+
+async function askStation(
+  row: QueuedOutboundTurn,
+  lookup: OutboundDeliveryLookup,
+): Promise<TurnDeliveryOutcome | undefined> {
+  try {
+    const answer = await lookup(publicTurn(row));
+    // The answer must be about this exact key, never a near match.
+    return answer.clientTurnId === row.clientTurnId
+      ? answer.outcome
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function reconcile(
+  lookup: OutboundDeliveryLookup,
+  options?: { station?: OutboundStationIdentity },
+): Promise<{ received: number }> {
+  const now = Date.now();
+  const station = options?.station ?? currentStation;
+  let received = 0;
+  for (const row of await readStored()) {
+    if (liveOwned.has(row.clientTurnId)) continue;
+    // Held copies are never released here: a live queue sends them, or the
+    // user does once they are listed (`sendHeld`).
+    if (row.heldBy) continue;
+    if (row.status !== 'invoking') continue;
+    // Only the Station a row was written for can say what became of it.
+    if (!rowBelongsToStation(row, station)) continue;
+    // A row released without a claim (its request got no answer) is the
+    // lookup's at once; a claimed row waits until its renderer is gone.
+    if (row.dispatchBootId !== undefined) {
+      const live = await ownerLiveness(row.dispatchBootId);
+      if (live === true) continue;
+      if (
+        live === undefined &&
+        now - (row.claimedAt ?? row.lastAttemptAt ?? row.createdAt) <
+          OUTBOUND_ORPHAN_GRACE_MS
+      )
+        continue;
+    }
+    const outcome = await askStation(row, lookup);
+    if (!outcome) continue;
+    await applyDeliveryAnswer(row, outcome, 'resend');
+    if (outcome === 'received') received += 1;
+  }
+  return { received };
+}
+
+/**
+ * The user's Send on a held copy no live queue of theirs shows (another
+ * window's, or a closed one's): it becomes an ordinary pending row and the
+ * flush sends it with its own key.
+ */
+async function sendHeld(clientTurnId: string): Promise<void> {
+  await mutate((entries) => {
+    const index = entries.findIndex(
+      (entry) => entry.clientTurnId === clientTurnId && entry.heldBy,
+    );
+    if (index === -1) return { entries, result: undefined, changed: false };
+    const { heldBy: _released, ...pending } = entries[index]!;
+    void _released;
+    const replaced = [...entries];
+    replaced[index] = { ...pending, status: 'pending', attempts: 0 };
+    return { entries: replaced, result: undefined, changed: true };
+  });
+}
+
+async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
+  const bootId = await rendererBootId();
+  await holdRendererLiveness();
+  const now = Date.now();
+  const wanted = new Map(
+    intents.map((intent) => [intent.clientTurnId, intent]),
+  );
+  await mutateState((state) => {
+    // A finished key (discarded or accepted) is never held again.
+    for (const key of wanted.keys())
+      if (retiredReason(state, key)) wanted.delete(key);
+    const entries = prune(state.turns, Date.now());
+    let changed = false;
+    const next: QueuedOutboundTurn[] = [];
+    for (const entry of entries) {
+      if (entry.heldBy?.bootId !== bootId || entry.status !== 'pending') {
+        next.push(entry);
+        continue;
+      }
+      const intent = wanted.get(entry.clientTurnId);
+      if (!intent) {
+        // No longer held here (sent, removed, or edited under a new key).
+        changed = true;
+        continue;
+      }
+      wanted.delete(entry.clientTurnId);
+      if (entry.content !== intent.content) {
+        changed = true;
+        next.push({ ...entry, ...intent, heldBy: { bootId, heldAt: now } });
+      } else next.push(entry);
+    }
+    let retained = next;
+    for (const intent of wanted.values()) {
+      const index = retained.findIndex(
+        (entry) => entry.clientTurnId === intent.clientTurnId,
+      );
+      if (index !== -1) {
+        const existing = retained[index]!;
+        // The same message held again here, typically by the queue this tab
+        // restored after a reload: its earlier copy (another renderer's held
+        // row, or one already released to pending) becomes this renderer's,
+        // with the queue's current text. One message, one sender. A row
+        // that is on its way or settled is left alone.
+        if (
+          existing.status === 'pending' &&
+          existing.heldBy?.bootId !== bootId
+        ) {
+          retained = [...retained];
+          retained[index] = {
+            ...existing,
+            ...intent,
+            // A verified Station identity is never traded for an address.
+            ...(existing.station?.environmentId &&
+            !intent.station?.environmentId
+              ? { station: existing.station }
+              : {}),
+            heldBy: { bootId, heldAt: now },
+          };
+          changed = true;
+        }
+        continue;
+      }
+      retained = admitOne(retained);
+      retained.push({
+        ...(currentStation ? { station: currentStation } : {}),
+        ...intent,
+        createdAt: now,
+        attempts: 0,
+        status: 'pending',
+        heldBy: { bootId, heldAt: now },
+      });
+      changed = true;
+    }
+    return {
+      state: { ...state, turns: retained },
+      result: undefined,
+      changed,
+    };
+  });
+}
+
+async function check(
+  clientTurnId: string,
+  lookup: OutboundDeliveryLookup,
+): Promise<TurnDeliveryOutcome | undefined> {
+  const row = (await readStored()).find(
+    (entry) => entry.clientTurnId === clientTurnId,
+  );
+  if (!row) return undefined;
+  if (row.status !== 'may-have-started' && row.status !== 'invoking')
+    return undefined;
+  // A send this renderer still has out is not checked; its answer is coming.
+  if (row.status === 'invoking' && liveOwned.has(clientTurnId))
+    return undefined;
+  if (
+    row.status === 'invoking' &&
+    row.dispatchBootId !== undefined &&
+    (await ownerLiveness(row.dispatchBootId))
+  )
+    return undefined;
+  if (!rowBelongsToStation(row, currentStation)) return undefined;
+  const outcome = await askStation(row, lookup);
+  if (!outcome) return undefined;
+  await applyDeliveryAnswer(
+    row,
+    outcome,
+    row.status === 'invoking' ? 'resend' : 'stop',
+  );
+  return outcome;
+}
+
 export const outboundDispatch: OutboundDispatchModule = {
   enqueue,
   open: async () => {
     await reconcileAcceptedTerminals();
-    return (await readStored()).map(publicTurn);
+    // Known before projecting: which held copies are this renderer's own.
+    await rendererBootId();
+    return publicTurns();
   },
   snapshot: async () => {
     await reconcileAcceptedTerminals();
-    return (await readStored()).map(publicTurn);
+    await rendererBootId();
+    return publicTurns();
   },
   fenceConversationHandoff,
   subscribe: (listener) => {
@@ -1422,6 +2603,26 @@ export const outboundDispatch: OutboundDispatchModule = {
   flush,
   completeAcceptedTurn,
   discard,
+  dismissUnconfirmed,
+  rowStatus: async (clientTurnId) =>
+    (await readStored()).find((entry) => entry.clientTurnId === clientTurnId)
+      ?.status,
+  retiredKeys: async () => {
+    const retired = parseRetired(await retiredStorage.get());
+    return {
+      discarded: retired
+        .filter((entry) => entry.reason === 'discarded')
+        .map((entry) => entry.clientTurnId),
+      accepted: retired
+        .filter((entry) => entry.reason !== 'discarded')
+        .map((entry) => entry.clientTurnId),
+    };
+  },
+  beginLive,
+  reconcile,
+  syncHeld,
+  sendHeld,
+  check,
   edit,
   reorder,
   merge,
@@ -1430,10 +2631,18 @@ export const outboundDispatch: OutboundDispatchModule = {
 };
 
 /** Test-only private-Adapter composition seam. */
-export function _setOutboundQueueStorage(next: OutboundQueueStorage): void {
+export function _setOutboundQueueStorage(
+  next: OutboundQueueStorage,
+  /** A test's shared retired list (several renderers); else a fresh one. */
+  retired: OutboundRetiredStorage = memoryRetiredStorage(),
+): void {
   storage = next;
+  retiredStorage = retired;
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
+  liveOwned.clear();
+  drainInFlight.clear();
+  liveClaimOf.clear();
 }
 
 /** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
@@ -1445,6 +2654,15 @@ export function _resetOutboundQueueChangeChannel(): void {
 /** Test-only reset to the production IndexedDB Adapter. */
 export function _resetOutboundQueueStorage(): void {
   storage = createIdbOutboundQueueStorage();
+  retiredStorage = storeRetiredBeside(storage);
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
+  liveOwned.clear();
+  drainInFlight.clear();
+  liveClaimOf.clear();
+}
+
+/** Test-only: as if this renderer had not yet learned its own boot id. */
+export function _forgetKnownBootId(): void {
+  knownBootId = undefined;
 }

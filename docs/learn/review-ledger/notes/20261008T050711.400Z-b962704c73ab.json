@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"config.ts and station-runtime.ts deltas: main's Project tool defaults section and this PR's credentialRecovery.profiles projection through the registry; checked the merged config route projects profiles with the envInvalid marker only; the table's claims hold.","inputs":["docs/reference/config.md","src-server/routes/system/config.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

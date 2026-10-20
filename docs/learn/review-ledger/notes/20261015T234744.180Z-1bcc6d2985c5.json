@@ -1,0 +1,13 @@
+{
+  "revision": "e91d389a268d505896b0db6fe9a9724d1ba96d8d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the cross-runtime browser-test delta at e91d389: only the desktop project-switcher inventory assertion moves from retired sidebar rows to the surviving dock inbox. Mobile primary project/chat controls, edge-sheet sizing, creation and navigation actions are unchanged. The final action now changes Beta to Alpha and verifies the active transcript and exact open-chat identities. Existing mobile contract prose remains accurate.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the cross-runtime browser-test delta at e91d389 against shared surface and mobile picker claims. The test reopens the collapsed desktop Chat via its ordinary Show Chat control, compares open inbox identities, and performs Beta to Alpha switching. No responsive primitive, geometry, mobile branch, typography, action, or publication contract changes; no prose update needed.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed e91d389: the same seven specs, same 37 browser cases, one worker and zero retries remain in PR smoke. Only the desktop project-switcher case replaces a removed sidebar selector with the surviving dock inbox, preserving exact open-chat identity, active URL, no new-chat modal, and transcript assertions. Focused baseline passed; temporary production fault closing Codex on Alpha switch failed at exact inventory equality, and was byte-identically restored. Full smoke is pending; no hosted or provider qualification asserted.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the sole cross-runtime browser-test delta at e91d389 against new-chat Project binding and workspace-map guidance. Desktop switching still changes the Project for future chats while existing chats retain their original bindings. The revised test performs Beta to Alpha, preserves all five open conversation labels and current transcript, and asserts no New Chat modal. Start composer and approved workspace-map behavior are unchanged; no user prose change needed.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

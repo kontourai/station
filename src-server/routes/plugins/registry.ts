@@ -2,6 +2,7 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -75,6 +76,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
@@ -86,6 +88,7 @@ import {
 } from './plugin-person-approval.js';
 
 interface RegistryRouteDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /**
    * Caller resolution for the operator-only plugin-catalog routes (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -151,6 +154,18 @@ function stripDisplayNameQualifiers(value: string): string {
   return parts.join('').trim();
 }
 
+/**
+ * Who may install a plugin from the registry: a person (not Station's own
+ * agent tools or another Station), and, because installing runs the package's
+ * code, one with the authority to run commands.
+ */
+function refusePluginInstallCaller(c: Context): Response | undefined {
+  return (
+    refuseInternalControlCaller(c, 'install a plugin') ??
+    refuseUngrantedCommandChoice(c)
+  );
+}
+
 export function createRegistryRoutes(
   configLoader: ConfigLoader,
   refreshACPModes: () => Promise<void>,
@@ -161,6 +176,28 @@ export function createRegistryRoutes(
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
   const sources = registrySourceManager(projectHomeDir);
+  app.use('*', async (c, next) => {
+    if (
+      c.req.method === 'POST' &&
+      ['/integrations/install', '/plugins/install', '/agents/install'].includes(
+        c.req.path.replace(/^\/api\/registry/, ''),
+      ) &&
+      deps?.authorizeOperator
+    ) {
+      try {
+        await deps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can install sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
   app.get(
     '/sources',
@@ -566,6 +603,12 @@ export function createRegistryRoutes(
         }
       }
 
+      // This provider's install copies a plugin tree into the plugins
+      // directory (`json-manifest-registry.ts` `install`, which the agent
+      // face delegates to), so it is code Station will load: the same
+      // authority as installing a plugin.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
@@ -698,14 +741,25 @@ export function createRegistryRoutes(
     '/integrations/install',
     validate(registryInstallSchema),
     async (c) => {
+      // A registry entry is stored as a tool server with the command its
+      // manifest names (a marketplace source can be a device's choice).
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
-      const result = await getIntegrationRegistryProvider().install(id);
+      const provider = getIntegrationRegistryProvider();
+      const installed = provider.installWithDefinition
+        ? await provider.installWithDefinition(id)
+        : {
+            result: await provider.install(id),
+            definition: (await provider.getToolDef(id)) ?? undefined,
+          };
+      const result = installed.result;
       if (!result.success) return c.json(result, 500);
 
       // Auto-generate integration.json from provider metadata
-      const toolDef = await getIntegrationRegistryProvider().getToolDef(id);
+      const toolDef = installed.definition;
       if (toolDef) {
         let existing:
           | Awaited<ReturnType<ConfigLoader['loadIntegration']>>
@@ -730,6 +784,12 @@ export function createRegistryRoutes(
         // binding authority. It can never author a reference.
         delete persisted.secretEnvRefs;
         await configLoader.saveIntegration(toolDef.id, persisted);
+        if ('origin' in installed && installed.origin)
+          recordIntegrationOrigin(
+            configLoader.getProjectHomeDir(),
+            persisted,
+            installed.origin,
+          );
       }
 
       return c.json(result);
@@ -1213,7 +1273,7 @@ export function createRegistryRoutes(
   ) => {
     // #2323 S5: the plugin install path for both catalog faces, so the
     // person-only refusal lives here rather than on each route.
-    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    const refused = refusePluginInstallCaller(c);
     if (refused) return refused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {

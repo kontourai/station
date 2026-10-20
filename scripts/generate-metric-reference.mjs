@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { publishMetricReference } from './lib/metric-reference-output.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';

@@ -1,3 +1,7 @@
+import {
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+  EXECUTION_ENGINE_CHANGED_CODE,
+} from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
@@ -5,9 +9,14 @@ import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+  SESSION_START_INDETERMINATE_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
 /**
@@ -247,15 +256,9 @@ export function describeInternalStreamFailure(text: string): string | null {
  */
 const TERMINAL_SESSION_PATTERN = /no conversation found with session id/i;
 
-const CONTINUATION_WORKSPACE_CODES = new Set([
-  'continuation_workspace_project_context_missing',
-  'continuation_workspace_corrupt_worktree_binding',
-  'continuation_workspace_worktree_gone',
-  'continuation_workspace_different_project',
-  'continuation_workspace_worktree_moved',
-  'continuation_workspace_direct_mismatch',
-  'continuation_workspace_unbound',
-]);
+const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+);
 
 /**
  * Translates a raw chat/provider error into targeted, non-raw copy.
@@ -312,7 +315,8 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *      assertion — a stale credential does not improve on retry).
  */
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
-export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
+export { SESSION_START_INDETERMINATE_CODE };
+
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
 
@@ -398,6 +402,37 @@ export function translateChatError(
       // or Station's earlier takeover, makes Default apply a mode too), so
       // the server's sentence says it; this hint claims nothing about it.
       hint: 'Change the OpenCode setting or mode named above.',
+      retryable: false,
+    };
+  }
+
+  // The Agent now runs on a different engine than the one the composer showed
+  // when this chat was started: refused before anything ran. The client has
+  // re-read the Agent, so the chips now show the engine it is on; resending
+  // blindly would run there without the user having looked, so there is no
+  // Retry and the hint asks for the look. Not a terminal chat: nothing started.
+  if (code === EXECUTION_ENGINE_CHANGED_CODE) {
+    return {
+      title: 'This Agent now runs somewhere else',
+      body: `${text || "The Agent's engine changed after it was shown."} Nothing was sent.`,
+      hint: 'Station has re-read the Agent. Check the engine and model shown, then send again.',
+      retryable: false,
+    };
+  }
+
+  // The engine this chat resolved to refused the model the composer showed.
+  // The adapter ended the refused session (with this as its cause), and the
+  // conversation continues in a successor session on the next send (the
+  // continuation seam starts it with the model then requested), so this is not
+  // a terminal chat: the user picks another model and sends again. Deterministic (the same model is refused
+  // again), so no "temporary" hint and no Retry. This is also what a composer
+  // working from a stale snapshot looks like once the engine behind an Agent
+  // changed; the client re-reads those snapshots.
+  if (code === MODEL_NOT_ADVERTISED_CODE) {
+    return {
+      title: "This engine doesn't offer that model",
+      body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
+      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
       retryable: false,
     };
   }
@@ -574,7 +609,7 @@ export function translateChatError(
       };
   }
 
-  if (code === 'resource_engine_start_capacity') {
+  if (code === RESOURCE_ENGINE_START_CAPACITY_CODE) {
     return {
       title: 'Another engine is starting',
       body: text || 'Another engine start still owns the start slot.',

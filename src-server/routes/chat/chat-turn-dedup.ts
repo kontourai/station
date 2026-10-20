@@ -7,7 +7,13 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 export { TURN_DEDUP_MAX_ENTRIES as CHAT_TURN_DEDUP_MAX_ENTRIES } from '../../services/orchestration/event-store.js';
 export type ChatTurnDedupClaim =
   | { claimed: true }
-  | { claimed: false; conversationId: string | null };
+  | { claimed: false; conversationId: string | null }
+  /**
+   * The agent may already have run this turn and its result cannot be
+   * replayed: a dead owner passed its invocation point (`indeterminate`), or
+   * retention evicted the resolved row (`expired`, #3559). Never run it again.
+   */
+  | { claimed: false; outcome: 'indeterminate' | 'expired' };
 
 export class ChatTurnDedupStore {
   private readonly eventStore: EventStore;
@@ -24,9 +30,16 @@ export class ChatTurnDedupStore {
   }
   claim(clientTurnId: string): ChatTurnDedupClaim {
     const claim = this.eventStore.claimChatTurn(clientTurnId);
-    return claim.claimed
-      ? { claimed: true }
-      : { claimed: false, conversationId: claim.conversationId ?? null };
+    if (claim.claimed) return { claimed: true };
+    if ('outcome' in claim) return { claimed: false, outcome: claim.outcome };
+    return { claimed: false, conversationId: claim.conversationId ?? null };
+  }
+  /**
+   * #3581: durably records that the agent may now see this turn. Call it
+   * before the agent call and do not call the agent if it throws.
+   */
+  beginInvocation(clientTurnId: string): void {
+    this.eventStore.beginChatTurnInvocation(clientTurnId);
   }
   resolve(clientTurnId: string, conversationId: string): void {
     this.eventStore.resolveChatTurn(clientTurnId, conversationId);

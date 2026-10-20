@@ -1,0 +1,7 @@
+{
+  "revision": "d1e8f0ad4e917a824c9274a8674b911a40854b72",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3552 follow-up: the connecting-state copy reads 'Connecting to this Station…' (vocabulary rule). No documented claim names that string; continuation behaviour unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

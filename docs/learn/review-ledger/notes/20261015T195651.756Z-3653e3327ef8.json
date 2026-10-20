@@ -1,0 +1,7 @@
+{
+  "revision": "236da2b7338eb40434c59612ae9e410aaea5066a",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed compact source details, named description disclosures, inline approval selectors and separate operator sharing controls against AgentToolLibrary. Approval defaults and access checks are unchanged; browser checks remain separate from provider proof.","inputs":["docs/guides/agents.md","src-ui/src/views/agent-editor/AgentToolLibrary.tsx","src-ui/src/views/agent-editor/AgentToolPicker.css"]}
+  ]
+}

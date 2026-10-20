@@ -1,0 +1,7 @@
+{
+  "revision": "05548e53e0d1c37af772dcbe59e60a01ed0fd5e5",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"#3149 changes only the ci:fast static list (native-platform:ratchet) and changed-test selection; checkout setup, dependency lifecycle and workflow claims are unaffected.","inputs":["docs/guides/development.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

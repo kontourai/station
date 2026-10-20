@@ -175,6 +175,36 @@ async function openNewChat(page: Page) {
   return modal;
 }
 
+/**
+ * Wait for the sheet's entrance to finish. `.responsive-surface-panel` enters
+ * with `responsive-surface-panel-enter` (translateY 4px to 0), so a rectangle
+ * read while it runs sits up to 4px low and can cross the viewport's bottom
+ * edge (#3465). The panel may be the dialog or an ancestor of it, so this
+ * settles the dialog's subtree and every ancestor's own animations, then
+ * proves nothing finite is still running there.
+ */
+async function settleSheetEntrance(sheet: Locator) {
+  const stillRunning = await sheet.evaluate(async (dialog) => {
+    const running = () => {
+      const animations = dialog.getAnimations({ subtree: true });
+      for (let el = dialog.parentElement; el; el = el.parentElement)
+        animations.push(...el.getAnimations());
+      return animations.filter(
+        (animation) =>
+          animation.playState === 'running' &&
+          animation.effect?.getTiming().iterations !== Infinity,
+      );
+    };
+    await Promise.all(
+      running().map((animation) => animation.finished.catch(() => {})),
+    );
+    return running().map(
+      (animation) => (animation as CSSAnimation).animationName ?? 'unnamed',
+    );
+  });
+  expect(stillRunning).toEqual([]);
+}
+
 /** The dock composer's project chip, which opens the project list. */
 function projectChip(modal: Locator) {
   return modal.getByRole('button', { name: /^Project: / });
@@ -201,6 +231,7 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     await expect(modal.locator('.new-chat-modal__dropdown')).toHaveCount(0);
     const sheet = page.getByRole('dialog', { name: 'Choose project' });
     await expect(sheet).toBeVisible();
+    await settleSheetEntrance(sheet);
 
     // The sheet sits fixed above the whole modal, inside the viewport.
     const sheetBox = await sheet.boundingBox();
@@ -289,5 +320,55 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     // Escape closed only the sheet, not the whole New chat modal.
     await expect(modal).toBeVisible();
     await expect(chip).toHaveAttribute('aria-label', selectionBefore ?? '');
+  });
+});
+
+/**
+ * The start sheet has one scroll region: the body. Its header holds only the
+ * title row, and on a phone it used to shrink alongside an overflowing body
+ * until it was a few pixels short of its own content, so the sheet showed a
+ * second scrollbar beside the title. A keyboard-height viewport makes the
+ * body overflow with the composer alone.
+ */
+test.describe('New chat start sheet scroll regions (390x560)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 560 });
+    await page.addInitScript(() => {
+      localStorage.removeItem('lastProject');
+      localStorage.removeItem('recentAgents');
+    });
+    await seedRoutes(page);
+  });
+
+  test('scrolls the body only; the header keeps its full height', async ({
+    page,
+  }, testInfo) => {
+    const modal = await openNewChat(page);
+    const header = modal.locator('.new-chat-modal__header');
+    const body = modal.locator('.chat-start__body');
+    await expect(body).toBeVisible();
+    await settleSheetEntrance(page.getByRole('dialog', { name: 'New chat' }));
+
+    const metrics = (locator: Locator) =>
+      locator.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+    // Reachability first: the body must actually overflow, or the header
+    // assertion below would pass without the squeeze ever being possible.
+    const bodyBox = await metrics(body);
+    expect(bodyBox.scrollHeight).toBeGreaterThan(bodyBox.clientHeight);
+    const headerBox = await metrics(header);
+    await page.screenshot({
+      path: testInfo.outputPath('new-chat-start-390x560.png'),
+    });
+    expect(headerBox.scrollHeight).toBeLessThanOrEqual(headerBox.clientHeight);
+
+    // Scrolling the body moves it and leaves the header where it was.
+    await body.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect
+      .poll(() => body.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await header.evaluate((el) => el.scrollTop)).toBe(0);
   });
 });

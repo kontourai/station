@@ -16,6 +16,7 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
+import { toastStore } from '../contexts/ToastContext';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 
 interface DeferredCapabilityCopy {
@@ -75,8 +76,10 @@ export function DeferredCapabilityBoundary({
   copy,
   id,
   load,
+  failurePresentation = 'banner',
 }: {
   children?: ReactNode;
+  failurePresentation?: 'banner' | 'notification';
   copy: DeferredCapabilityCopy;
   /** Stable instance id; sibling boundaries must never overwrite each other. */
   id: string;
@@ -99,6 +102,19 @@ export function DeferredCapabilityBoundary({
       return;
     }
 
+    if (failurePresentation === 'notification') {
+      bannerStore.dismiss(bannerId);
+      const noticeId = toastStore.show(
+        `${copy.failureTitle}. ${copy.failure}`,
+        undefined,
+        9000,
+        [{ label: 'Reload Station', onClick: () => window.location.reload() }],
+        undefined,
+        'warning',
+      );
+      return () => toastStore.dismiss(noticeId);
+    }
+
     bannerStore.present({
       id: bannerId,
       priority: BANNER_PRIORITY.capabilityFailure,
@@ -116,7 +132,15 @@ export function DeferredCapabilityBoundary({
     });
 
     return () => bannerStore.dismiss(bannerId);
-  }, [attempt, bannerId, copy.failure, copy.failureTitle, failure, id]);
+  }, [
+    attempt,
+    bannerId,
+    copy.failure,
+    copy.failureTitle,
+    failure,
+    id,
+    failurePresentation,
+  ]);
 
   useLayoutEffect(() => {
     if (!connectionHealthy || failure !== 'consequence') return;

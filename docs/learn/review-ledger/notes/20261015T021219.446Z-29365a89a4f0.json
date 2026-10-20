@@ -1,0 +1,7 @@
+{
+  "revision": "e49f067d24980faae23d8a84688af5fc24becc7b",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Fix round 1 source delta: explicit Resync delegates parked auth refusals to the existing ensure retry floor and deferred timer. Live restart, authenticated fetch-SSE ownership and cursor/replay handling are unchanged. The ADR remains frozen; no connection census, pool-saturation or native guarantee follows from local retry tests.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-sdk",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "description": "SDK for Station plug-in UI and headless Agent development",
   "type": "module",
   "main": "./src/index.ts",
@@ -9,9 +9,14 @@
     "*.css"
   ],
   "exports": {
+    "./tool-library": "./src/tool-library.ts",
+    "./relay-management": "./src/relay-management.ts",
     "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",
+    "./station-usage-query": "./src/query-domains/stationUsage.ts",
+    "./usage-rollup-query": "./src/query-domains/usageRollup.ts",
+    "./usage-export-query": "./src/query-domains/usageExport.ts",
     ".": "./src/index.ts",
     "./core-update-restart-status": "./src/core-update-restart-status.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
@@ -36,6 +41,7 @@
     "./client/checkpoint-restore": "./src/client/checkpoint-restore.ts",
     "./client/plugin-command-effects": "./src/client/plugin-command-effects.ts",
     "./client": "./src/client/index.ts",
+    "./personal-board": "./src/personal-board.ts",
     "./setup-imports": "./src/client/setup-imports.ts",
     "./setup-imports-query": "./src/query-domains/setupImports.ts",
     "./plugin-local-sources-query": "./src/query-domains/pluginLocalSources.ts",
@@ -103,23 +109,24 @@
   },
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
-    "@kontourai/flow": "5.1.1",
+    "@kontourai/flow": "5.2.1",
     "@kontourai/flow-agents": "6.5.1",
-    "@kontourai/station-contracts": "^0.8.0",
-    "@kontourai/station-shared": "^0.8.0",
-    "@kontourai/surface": "^3.2.0",
+    "@kontourai/station-contracts": "^0.10.0",
+    "@kontourai/station-shared": "^0.10.0",
+    "@kontourai/surface": "^6.1.0",
     "@kontourai/thread": "0.5.0",
-    "@kontourai/ui": "^1.18.0",
-    "zod": "^4.6.5"
+    "@kontourai/ui": "^1.19.0",
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.90.12",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@tanstack/react-query": "^5.103.2",
+    "@tanstack/react-query": "^5.104.3",
     "@types/react": "^19.3.0",
-    "typescript": "^5.9.3",
+    "typescript": "7.0.2",
+    "typescript-api": "npm:typescript@5.9.3",
     "vitest": "4.1.11"
   },
   "overrides": {

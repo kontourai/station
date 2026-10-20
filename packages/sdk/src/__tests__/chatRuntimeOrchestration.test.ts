@@ -85,9 +85,15 @@ describe('chatRuntimeOrchestration', () => {
     await expect(fetchOrchestrationSessions()).resolves.toEqual([
       { threadId: 'thread-1', answerability: { answerable: true } },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/sessions/read-model',
+      {
+        headers: { 'X-Station-Client-Protocol': '2' },
+        signal: expect.any(AbortSignal),
+      },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('fetches loaded orchestration sessions through the loaded route', async () => {
@@ -96,9 +102,12 @@ describe('chatRuntimeOrchestration', () => {
     await expect(fetchLoadedOrchestrationSessions()).resolves.toEqual([
       { threadId: 'thread-2', answerability: { answerable: true } },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/sessions/loaded',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('fetches one orchestration session detail', async () => {
@@ -111,9 +120,12 @@ describe('chatRuntimeOrchestration', () => {
       session: { threadId: 'thread-3', answerability: { answerable: true } },
       events: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/sessions/thread-3',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches commands with receipt metadata while preserving result-only compatibility', async () => {
@@ -437,17 +449,23 @@ describe('chatRuntimeOrchestration', () => {
     await expect(
       fetchOrchestrationCommandReceipts({ threadId: 'thread-5' }),
     ).resolves.toEqual([receipt]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/commands/receipts?threadId=thread-5',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
 
     mockJsonResponse({ success: true, data: receipt });
     await expect(fetchOrchestrationCommandReceipt('cmd-5')).resolves.toEqual(
       receipt,
     );
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/orchestration/commands/receipts/cmd-5',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('fetches terminal process summaries and detail', async () => {
@@ -455,9 +473,12 @@ describe('chatRuntimeOrchestration', () => {
     await expect(fetchTerminalProcesses()).resolves.toEqual([
       { sessionId: 'demo:t1' },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/processes/terminals',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
 
     mockJsonResponse({
       success: true,
@@ -467,9 +488,12 @@ describe('chatRuntimeOrchestration', () => {
       process: { sessionId: 'demo:t1' },
       history: '',
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('cleans up a terminal process through the delete route', async () => {
@@ -478,9 +502,11 @@ describe('chatRuntimeOrchestration', () => {
     await expect(
       cleanupTerminalProcess({ sessionId: 'demo:t1' }),
     ).resolves.toBeUndefined();
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
-      { method: 'DELETE' },
+      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

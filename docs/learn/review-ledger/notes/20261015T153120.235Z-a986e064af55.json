@@ -1,0 +1,13 @@
+{
+  "revision": "759053c268b2ee7f22726d95af8b230a37cfd8ce",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the scoped documentation evidence paragraphs against the resolver change at 759053: per-resolver immutable comparison reuse and exact-base state reuse preserve mode selection, changed-input scope, append-only protection and stale-record blocking. No readiness authority, evidence selection or advisory queue policy changed; prose remains accurate. Source review only; prior candidate controls are separate from current-head CI.","inputs":[".veritas/README.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the documentation-checks paragraph against the resolver change at 759053. Immutable comparison reuse within one call and reuse of an identical full-SHA base state leave scoped stale-input failures and advisory merge-queue behavior unchanged. No check, deadline or policy was weakened; prose remains accurate. This review does not claim current-head CI or hosted qualification.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed history replay, scoped freshness and JSON/YAML value-binding claims against both changed modules at 759053. The resolver caches immutable commit/path blobs and content/full-selector digests only for its invocation, rereads mutable refs, retains missing/malformed-as-changed semantics and returns fresh comparison arrays. Literal base==mergeBase reuses an unmodified captured state. Human decisions, dirty inputs, note reachability, append-only rules and history replay remain unchanged. Prose remains accurate; candidate semantic/fault controls are prior-head evidence, not current CI.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed review-status and maintenance claims against both changed modules at 759053. Per-resolver immutable blob/value reuse preserves Git-derived freshness, changed-input coverage, later-edit invalidation and missing-value failures; mutable refs remain fresh and no review decisions or source bytes are persisted by the comparison. Reader snapshots and capture identity are unchanged. Prose remains accurate; no current-head browser, CI or hosted proof is claimed.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs"]}
+  ]
+}

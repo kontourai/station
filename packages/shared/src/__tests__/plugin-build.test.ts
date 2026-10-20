@@ -14,10 +14,11 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { buildPlugin } from '../build.js';
 
 const cleanupDirs: string[] = [];
-// esbuild startup and filesystem containment checks can exceed 15 seconds on a
-// busy shared host. Keep these security assertions bounded without letting
-// host contention turn a correct rejection into a false timeout.
-const SUBPROCESS_TEST_TIMEOUT_MS = 30_000;
+// A hang guard for cases that start esbuild's service child. The file runs in
+// the bounded process-heavy pool (scripts/vitest-resource-manifest.mjs, #699),
+// not the ordinary four-worker corpus, which is what kept esbuild startup
+// from exceeding this under canonical load; the bound is not widened for it.
+const SUBPROCESS_TEST_TIMEOUT_MS = 15_000;
 const workspaceRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../..',

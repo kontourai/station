@@ -1,0 +1,7 @@
+{
+  "revision": "b78bbae26f830fd4bea150b8ce718479ca229e5d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed for #3158 review round 4 (b78bbae26f): station-docs-content.ts was regenerated with docs:mcp:generate; the only content change is module-map.md's DelegationResultDelivery paragraph (suppression of a normally completed turn, and matching an interrupt that arrived before its turn was logged) and the content digest. This reference describes how the station-docs MCP serves compiled topics and makes no claim about delegated-result suppression; its recorded scope is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

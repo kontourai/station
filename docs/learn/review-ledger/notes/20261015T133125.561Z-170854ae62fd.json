@@ -1,0 +1,7 @@
+{
+  "revision": "623a7a34af161358b86ea65c7bb282499aa3bce1",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-read after tests/android/mobile-layout.spec.ts narrowed its touch-target exemption to visually hidden controls (aria-hidden ancestor, tabIndex -1, and clipped to 1px or smaller). This document's coverage claims for the Android mobile layout sweep are unchanged; the sweep still measures every visible interactive control, including a visible aria-hidden one that can be tapped.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

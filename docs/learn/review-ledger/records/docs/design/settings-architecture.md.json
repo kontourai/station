@@ -40,7 +40,39 @@
 
     "src-ui/src/views/settings/settings-catalog.ts",
 
-    "src-ui/src/views/settings/settings-pages.ts"
+    "src-ui/src/views/settings/settings-pages.ts",
+
+    "src-ui/src/components/SectionNavigation.tsx",
+
+    "packages/contracts/src/account-preferences.ts",
+
+    "src-server/services/identity/account-preferences.ts",
+
+    "src-server/routes/me/account-preferences.ts",
+
+    "src-ui/src/contexts/AccountPreferencesContext.tsx",
+
+    "src-ui/src/lib/account-preference-values.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/views/settings/SettingsPageRow.tsx",
+
+    "src-ui/src/views/settings/AccountPreferencesSection.tsx",
+
+    "src-ui/src/views/settings/AccentColorPicker.tsx",
+
+    "src-server/domain/settings-environment.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
+    "src-ui/src/contexts/AccountPreferencesProvider.tsx",
+
+    "src-ui/src/views/settings/composite-editors.tsx"
   ],
 
   "checks": [

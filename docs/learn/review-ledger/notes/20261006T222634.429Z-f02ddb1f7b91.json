@@ -1,0 +1,7 @@
+{
+  "revision": "5b955678339ad94c8f08eb0b7be9bd078259b3be",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the S1 model location paragraph against the absent automation contract and validator paths in this S0 tree. Both locations are proposed additions, not current implementation; existing contracts/src and services parent directories resolve. Kept the proposal status and original source-inspection limits. The unchanged live-doc reference gate passes 285 maintained documents; no S1 behavior or hosted publication proof is claimed.","inputs":["docs/design/automations.md"]}
+  ]
+}

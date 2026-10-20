@@ -1324,6 +1324,318 @@ describe('lifecycle instance state', () => {
     }
   });
 
+  describe('on Windows (#2675)', () => {
+    // The real Windows fingerprint probe, with PowerShell replaced by a fake
+    // that answers from a process table. Before #2675 the probe had no
+    // Windows branch and read `ps`, so every Windows record was written
+    // without a fingerprint and stopped on the PID alone.
+    const NODE = 'C:\\Station\\versions\\1.0.0\\runtime\\node.exe';
+    type Entry = { birth: string; image: string };
+    async function windowsProbe(table: Map<number, Entry>) {
+      const real = await vi.importActual<PlatformModule>(
+        '../commands/platform.js',
+      );
+      const exec = (_command: string, args: string[]) => {
+        const pid = Number(
+          /GetProcessById\((\d+)\)/.exec(args.at(-1) ?? '')?.[1],
+        );
+        const entry = table.get(pid);
+        if (!entry) throw Object.assign(new Error('exited 1'), { status: 1 });
+        return `${entry.birth}\r\n${Buffer.from(entry.image, 'utf8').toString('base64')}\r\n`;
+      };
+      const inspect = (pid: number) =>
+        real.inspectProcessFingerprint(pid, {
+          platform: 'win32',
+          exec: exec as never,
+        });
+      const capture = (pid: number) =>
+        real.captureStableProcessFingerprint(pid, {
+          platform: 'win32',
+          inspect,
+        });
+      return { inspect, capture };
+    }
+
+    it('a stop by record does not end a recorded PID Windows reused for another process', async () => {
+      ensureDir(TEST_CWD);
+      const table = new Map<number, Entry>([
+        [47001, { birth: '2026-10-11T09:15:02.1234560Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const recorded = probe.capture(47001);
+      expect(recorded).not.toBeNull();
+      // Unmanaged: no journal, as the record a launcher's `station stop` by
+      // record finds after the supervisor's own stop.
+      const statePath = writeInstanceState({
+        instanceName: 'win-reused',
+        serverPid: 47001,
+        uiPid: null,
+        serverFingerprint: recorded!,
+      });
+      let alive = true;
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal?: NodeJS.Signals | number,
+      ) => {
+        if (signal === 0 && pid === 47001 && !alive) throw new Error('gone');
+        return true;
+      }) as typeof process.kill);
+      const killProcessTree = vi.fn(() => {
+        alive = false;
+      });
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // The server exited and Windows gave its PID to a later process.
+        table.set(47001, {
+          birth: '2026-10-11T10:02:44.5000000Z',
+          image: NODE,
+        });
+        // Proven to be another process, so forgetting the record is safe.
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-reused' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47001: it no longer matches',
+        );
+        expect(refusal).toContain(`remove ${statePath} to forget`);
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+
+        // Control: the recorded process itself is ended.
+        table.set(47001, {
+          birth: '2026-10-11T09:15:02.1234560Z',
+          image: NODE,
+        });
+        lifecycle.stop({ instanceName: 'win-reused' });
+        expect(killProcessTree).toHaveBeenCalledWith(47001);
+        expect(existsSync(statePath)).toBe(false);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a stop by record that cannot read a live process keeps it and never says to forget it', async () => {
+      ensureDir(TEST_CWD);
+      const table = new Map<number, Entry>([
+        [47021, { birth: '2026-10-11T09:15:02.1234560Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const recorded = probe.capture(47021);
+      expect(recorded).not.toBeNull();
+      const statePath = writeInstanceState({
+        instanceName: 'win-unread',
+        serverPid: 47021,
+        uiPid: null,
+        serverFingerprint: recorded!,
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Still alive by signal 0, but the probe now fails (a blocked or
+        // timed-out PowerShell, access refused).
+        table.delete(47021);
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47021: it is running, but its identity could not be read',
+        );
+        expect(refusal).toContain('Run `station stop` again.');
+        expect(refusal).not.toContain('remove');
+        expect(refusal).not.toContain(statePath);
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a supervised stop of a record with no fingerprint says unverified, not mismatch', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-unrecorded-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47031, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-unrecorded',
+        serverPid: 47031,
+        uiPid: null,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unrecorded' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47031 is running, but its identity could not be verified (its start recorded no fingerprint to check it against)',
+        );
+        expect(refusal).not.toContain('mismatch');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a supervised stop names every process it could not verify', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-both-unread-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47041, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+        [47042, { birth: '2026-10-11T09:15:02.3000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-both-unread',
+        serverPid: 47041,
+        uiPid: 47042,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: probe.capture(47041) ?? undefined,
+        uiFingerprint: probe.capture(47042) ?? undefined,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Both still alive, neither readable now.
+        table.clear();
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-both-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47041 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain(
+          'its ui PID 47042 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain('Check what PID 47041 and PID 47042 are');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it("a supervised stop proves its server and UI and ends both (#3361's refusal)", async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-supervised-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47011, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+        [47012, { birth: '2026-10-11T09:15:02.3000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-supervised',
+        serverPid: 47011,
+        uiPid: 47012,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: probe.capture(47011) ?? undefined,
+        uiFingerprint: probe.capture(47012) ?? undefined,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const alive = new Set([47011, 47012]);
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal?: NodeJS.Signals | number,
+      ) => {
+        if (signal === 0 && (pid === 47011 || pid === 47012) && !alive.has(pid))
+          throw new Error('gone');
+        return true;
+      }) as typeof process.kill);
+      const killProcessTree = vi.fn((pid: number) => {
+        alive.delete(pid);
+      });
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        lifecycle.stop({ instanceName: 'win-supervised' });
+        expect(killProcessTree).toHaveBeenCalledWith(47011);
+        expect(killProcessTree).toHaveBeenCalledWith(47012);
+        expect(existsSync(statePath)).toBe(false);
+        expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+          type: 'stop_result',
+          result: 'completed',
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+  });
+
   it('still reclaims state when every tracked pid is confirmed dead despite a null fingerprint observation', async () => {
     // The companion case: liveness (not the fingerprint) is what must gate
     // `already_absent`, but a genuinely dead process must still reclaim —

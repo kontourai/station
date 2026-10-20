@@ -156,7 +156,7 @@ function createBudgetHarness(
  * different module copies of the adapter, the middleware's `new Request(...)`
  * cannot recognize this object through the adapter's own unwrap symbol, and
  * undici's cross-construction reads the missing `#state` slot and throws
- * (archive#1881 — every body-reading POST 500'd in the brian-media deploy).
+ * (archive#1881 — every body-reading POST 500'd in the media-server deploy).
  */
 function createLightweightAdapterRequest(backing: Request): Request {
   const proto: Record<string, unknown> = {

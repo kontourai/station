@@ -53,13 +53,66 @@ sits on, including the raised panel rows and the sidebar hover fill.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
-## Device preference and accents
+## Personal preference and device startup
 
-[main.tsx](../../src-ui/src/main.tsx) resolves the saved device theme before
-render and sets `data-theme` on the document element.
+[startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
+light/dark preference before the entry HTML paints, reading the device-settings
+envelope before the legacy theme key and falling back to dark if storage is
+unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
+accent and cached branding before React renders. The initial HTML and
+[StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
+startup artwork through platform and authority resolution. One launch presentation
+survives React bootstrap handoffs outside the application root. The lightweight
+[boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
+app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
+bundle budget still counts the immediately loaded app's static JS/CSS closure
+through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
+then moves left while Fraunces reveals `tation`, using the river as the S. The
+selected wordmark uses the Original spacing from the reviewed motion study.
+Water falls into a track and spreads across it, then remains an indeterminate
+activity signal. It does not claim a percentage. If the intro has visibly
+started, a ready application finishes the mark/name reveal (950 ms of visible
+animation time), then fades through to the app over 150 ms. Readiness never
+waits for the water or loading activity to complete a cycle. If the app is
+ready before the first animation frame, the intro is skipped.
+
+[startup-animation.ts](../../src-ui/src/lib/startup-animation.ts) keeps the
+visible intro time for the one launch presentation, so bootstrap handoffs do
+not replay it. Pending
+platform setup, shared-Project entry and authority observation supply their own
+current stage text; labels use Hanken Grotesk and a small entrance transition.
+There is no timer-driven sequence of invented loading stages. Reduced motion
+uses the completed static lockup and track without waiting or fading. Hidden
+documents pause the intro clock. Desktop observation starts the animation only
+after the native startup window is admitted; time behind the native cover does
+not count. A ready hidden or covered app skips the unseen intro. Native readiness
+continues to own window reveal and its Restart/Quit recovery.
+Startup failures dismiss branding immediately. While the intro covers the app,
+the modal top layer covers dock/dialog stacking and makes body portals inert;
+the underlying root is also hidden from assistive technology. Handoff
+restores access and removes the animation and observers.
+The mobile detail view retains its initial Back-button focus request until
+handoff restores interaction; unmounting the view cancels that request.
+Later connection, authority and route waits use state primitives and do not replay the launch
+intro. Warm resume of the same document does not recreate it. Route-level waits still use the state
+primitives. The imagery remains the committed Station mark, in the install's channel
+colours: the host reports the channel only after the app loads, so
+[startup-theme.js](../../src-ui/public/startup-theme.js) applies the mark the
+install last reported before first paint (a first launch shows the stable
+mark until the report arrives); this splash choice
+does not finalize the broader Kontour wordmark decision.
+
+The native OS launch surface follows OS appearance; it cannot read the
+WebView's saved device preference. iOS stages a centered mark and appearance-aware
+background after Tauri init; Android's channel overlay supplies a dark splash
+background in night mode, plus a centered native window mark behind the
+initially transparent WebView. A different OS and saved app preference can still
+produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
-sync with the device-settings store. The selected light/dark preference belongs
-to the Device; changing a server or Project is not a separate theme choice.
+sync with the settings facade. After account verification, the account preference
+on this Station replaces the device startup theme. Without a person, the theme
+remains local. Different accounts or Stations can have different themes; Project
+selection does not change it. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 The [accent helper](../../src-ui/src/lib/accent-contrast.ts) applies a custom
 accent together with its foreground contrast partner and hover treatment.

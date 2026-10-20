@@ -1,9 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import {
+  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -30,6 +33,7 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const shimPath = join(repoRoot, 'scripts', 'station-dev.mjs');
+const installerPath = join(repoRoot, 'scripts', 'install-station-dev.mjs');
 
 import { resolveNpmCli } from '../lib/npm-cli.mjs';
 
@@ -371,6 +375,28 @@ describe('station-dev as a real subprocess', () => {
     expect(result.stdout).toContain('Station CLI (@kontourai/station-cli)');
   });
 
+  // #554: a CLI killed by a signal has no exit status, and the shim used to
+  // report that as 1. POSIX-only: Windows has no SIGTERM delivery to a child.
+  it.skipIf(process.platform === 'win32')(
+    'exits 128 + signal (143) when the delegated CLI is killed by SIGTERM',
+    () => {
+      const root = makeFakeCheckout();
+      writeFileSync(
+        join(root, 'packages', 'cli', 'dist', 'station.mjs'),
+        "process.kill(process.pid, 'SIGTERM');\n",
+      );
+      const result = spawnSync('node', [shimPath, 'agents', 'list'], {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      // The shim reached the delegation step (its identification line).
+      expect(result.stderr).toMatch(/^station-dev: .+\n$/);
+      expect(result.signal).toBeNull();
+      expect(result.status, result.stderr).toBe(143);
+    },
+  );
+
   it('exits 1 with the npx pointer when run from outside any checkout', () => {
     const outside = makeTempDir('station-dev-subprocess-outside-');
     const result = spawnSync('node', [shimPath, '--help'], {
@@ -502,3 +528,70 @@ describe('install-station-dev: install (filesystem)', () => {
     expect(second.stamp).toBe(first.stamp);
   });
 });
+
+/**
+ * #554: the installer followed a symlink at its destination. A link to a
+ * marker-bearing file (another checkout's `scripts/station-dev.mjs`, the
+ * npm-link migration case) had that file overwritten and stayed a link; a
+ * dangling link had its target created. Run as the real CLI entry, the way
+ * `npm run station-dev:install` runs it. POSIX-only: creating a symlink on
+ * Windows needs a privilege the test cannot assume.
+ */
+describe.skipIf(process.platform === 'win32')(
+  'install-station-dev as a real subprocess: symlink destinations',
+  () => {
+    function runInstaller(destDir: string) {
+      return spawnSync('node', [installerPath], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+        env: { ...process.env, STATION_DEV_BIN: destDir },
+      });
+    }
+
+    it('refuses a symlink to a marker-bearing file and leaves its target unchanged', () => {
+      const destDir = makeTempDir('station-dev-install-link-');
+      const otherCheckout = makeTempDir('station-dev-install-link-target-');
+      const target = join(otherCheckout, 'station-dev.mjs');
+      const targetBytes =
+        '#!/usr/bin/env node\n// station-dev-shim-marker: v1\n// another checkout\n';
+      writeFileSync(target, targetBytes);
+      const destPath = join(destDir, 'station-dev');
+      symlinkSync(target, destPath);
+
+      const result = runInstaller(destDir);
+
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain('the destination is a symlink');
+      expect(readFileSync(target, 'utf8')).toBe(targetBytes);
+      expect(lstatSync(destPath).isSymbolicLink()).toBe(true);
+    });
+
+    it('refuses a dangling symlink and creates nothing at its target', () => {
+      const destDir = makeTempDir('station-dev-install-dangling-');
+      const elsewhere = makeTempDir('station-dev-install-dangling-target-');
+      const missingTarget = join(elsewhere, 'created-by-installer');
+      symlinkSync(missingTarget, join(destDir, 'station-dev'));
+
+      const result = runInstaller(destDir);
+
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain('the destination is a symlink');
+      expect(existsSync(missingTarget)).toBe(false);
+    });
+
+    it('still installs a regular executable copy when nothing is there', () => {
+      const destDir = makeTempDir('station-dev-install-fresh-');
+      const result = runInstaller(destDir);
+
+      expect(result.status, result.stderr).toBe(0);
+      const destPath = join(destDir, 'station-dev');
+      const installed = lstatSync(destPath);
+      expect(installed.isFile()).toBe(true);
+      expect(installed.mode & 0o111).not.toBe(0);
+      expect(readFileSync(destPath, 'utf8')).toContain(
+        '// station-dev-shim-marker: v1',
+      );
+    });
+  },
+);

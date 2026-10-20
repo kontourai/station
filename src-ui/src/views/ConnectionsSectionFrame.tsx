@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Button } from '../components/Button';
+import { PageCreateAction } from '../components/PageCreateAction';
 import {
   PageEyebrowTrail,
-  PageFrameActions,
   PageHeaderScope,
   usePageHeader,
 } from '../components/page-frame';
@@ -98,16 +97,9 @@ function ConnectionsSectionFrameInner({
   };
   return (
     <div className="pane-host connections-section-frame">
-      <PageFrameActions>
-        {/* archive#4463 (Button): was a bespoke `button button--primary`
-            with no size modifier, rendering at the base 10px/16px scale while
-            every other primary page action (Agents/Plugins/Skills/Schedule)
-            renders through the shared `Button` at `size="sm"` — the audit's
-            "outsized" Models action. Same primitive, same scale now. */}
-        <Button variant="primary" size="sm" onClick={add}>
-          {section.addLabel}
-        </Button>
-      </PageFrameActions>
+      {/* archive#4463: the same shared primary scale as every other page
+          action on desktop; on a phone it floats instead of taking a row. */}
+      <PageCreateAction label={section.addLabel} onClick={add} />
       <Tabs
         id={TABS_ID}
         aria-label="Connection sections"

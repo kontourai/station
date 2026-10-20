@@ -4,12 +4,20 @@ import type {
   UIFormBlock,
 } from '@kontourai/station-contracts/ui-block';
 import { Badge } from '@kontourai/ui/react';
-import { useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { useSyntaxHighlighter } from '../../contexts/SyntaxHighlighterContext';
 import { useUIBlockActions } from './UIBlockActionsContext';
 
 interface UIBlockRendererProps {
   block: UIBlock;
+  instanceKey?: string;
 }
 
 /**
@@ -48,25 +56,23 @@ function UnattestedBadge({ block }: { block: UIBlock }) {
   );
 }
 
-/** Stable key for a form block — its id, or a derived fallback when absent. */
-function formKey(block: UIFormBlock, fallback: string): string {
-  return (
-    block.id ||
-    `${block.title || 'form'}:${block.fields.map((f) => f.name).join(',')}:${fallback}`
-  );
-}
-
 /**
  * Renders a `form` UIBlock as host-owned controlled inputs. On submit the values
  * re-enter the conversation as a new user turn (via UIBlockActionsContext) — the
  * agent run has already ended, so this is a follow-up turn, not a pending-call
  * resolution. Safe by construction: no agent-supplied markup is executed.
  */
-function UIFormBlockView({ block }: { block: UIFormBlock }) {
-  const { submitForm, submittedBlockIds, readOnly } = useUIBlockActions();
+function UIFormBlockView({
+  block,
+  instanceKey,
+}: {
+  block: UIFormBlock;
+  instanceKey?: string;
+}) {
+  const { submitForm, formScope, readOnly } = useUIBlockActions();
   const reactId = useId();
-  const key = formKey(block, reactId);
-  const [values, setValues] = useState<Record<string, string | boolean>>(() => {
+  const key = instanceKey ?? block.id ?? 'form';
+  const defaults = useMemo<Record<string, string | boolean>>(() => {
     const initial: Record<string, string | boolean> = {};
     for (const f of block.fields) {
       initial[f.name] =
@@ -75,10 +81,30 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
           : (f.defaultValue ?? '');
     }
     return initial;
-  });
+  }, [block.fields]);
+  const draft = useSyncExternalStore(
+    useCallback(
+      (listener) => chatFormDraftsStore.subscribe(formScope, listener),
+      [formScope],
+    ),
+    useCallback(
+      () => chatFormDraftsStore.get(formScope, key),
+      [formScope, key],
+    ),
+  );
+  const values = draft?.values ?? defaults;
   const [error, setError] = useState<string | null>(null);
-  const submitted = submittedBlockIds.has(key);
-  const locked = submitted || readOnly === true;
+  const submitted = draft?.status === 'submitted';
+  const sending = draft?.status === 'sending';
+  const unconfirmed = draft?.status === 'unconfirmed';
+  const locked = submitted || sending || unconfirmed || readOnly === true;
+  const setValue = (name: string, value: string | boolean) => {
+    if (!formScope || locked) return;
+    chatFormDraftsStore.set(formScope, key, {
+      values: { ...values, [name]: value },
+      status: 'editing',
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,15 +121,18 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
       return;
     }
     setError(null);
-    submitForm({
-      blockId: key,
-      title: block.title,
-      values: block.fields.map((f) => ({
-        name: f.name,
-        label: f.label,
-        value: values[f.name] ?? (f.type === 'checkbox' ? false : ''),
-      })),
-    });
+    submitForm(
+      {
+        blockId: block.id ?? key,
+        title: block.title,
+        values: block.fields.map((f) => ({
+          name: f.name,
+          label: f.label,
+          value: values[f.name] ?? (f.type === 'checkbox' ? false : ''),
+        })),
+      },
+      key,
+    );
   };
 
   return (
@@ -127,9 +156,7 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
                   id={fieldId}
                   checked={values[field.name] === true}
                   disabled={locked}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [field.name]: e.target.checked }))
-                  }
+                  onChange={(e) => setValue(field.name, e.target.checked)}
                 />
                 <span>{field.label}</span>
               </label>
@@ -149,18 +176,14 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
                   value={String(values[field.name] ?? '')}
                   placeholder={field.placeholder}
                   disabled={locked}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [field.name]: e.target.value }))
-                  }
+                  onChange={(e) => setValue(field.name, e.target.value)}
                 />
               ) : field.type === 'select' ? (
                 <select
                   id={fieldId}
                   value={String(values[field.name] ?? '')}
                   disabled={locked}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [field.name]: e.target.value }))
-                  }
+                  onChange={(e) => setValue(field.name, e.target.value)}
                 >
                   <option value="">Select…</option>
                   {(field.options ?? []).map((opt) => (
@@ -176,23 +199,31 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
                   value={String(values[field.name] ?? '')}
                   placeholder={field.placeholder}
                   disabled={locked}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [field.name]: e.target.value }))
-                  }
+                  onChange={(e) => setValue(field.name, e.target.value)}
                 />
               )}
             </div>
           );
         })}
       </div>
-      {error && <p className="ui-block__form-error">{error}</p>}
+      {(error || draft?.error) && (
+        <p className="ui-block__form-error" role="alert">
+          {error || draft?.error}
+        </p>
+      )}
       <div className="ui-block__form-actions">
         <button
           type="submit"
           className="ui-block__form-submit"
           disabled={locked}
         >
-          {submitted ? 'Submitted' : block.submitLabel || 'Submit'}
+          {submitted
+            ? 'Submitted'
+            : sending
+              ? 'Sending…'
+              : unconfirmed
+                ? 'Check send status'
+                : block.submitLabel || 'Submit'}
         </button>
       </div>
     </form>
@@ -244,13 +275,13 @@ function UICodeBlockView({ block }: { block: UICodeBlock }) {
   );
 }
 
-export function UIBlockRenderer({ block }: UIBlockRendererProps) {
+export function UIBlockRenderer({ block, instanceKey }: UIBlockRendererProps) {
   if (block.type === 'code') {
     return <UICodeBlockView block={block} />;
   }
 
   if (block.type === 'form') {
-    return <UIFormBlockView block={block} />;
+    return <UIFormBlockView block={block} instanceKey={instanceKey} />;
   }
 
   if (block.type === 'card') {

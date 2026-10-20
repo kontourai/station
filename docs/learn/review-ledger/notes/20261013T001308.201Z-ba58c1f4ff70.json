@@ -1,0 +1,15 @@
+{
+  "revision": "03149a0f981c1732af855b41ac38074e52ebeb35",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The PlatformProfileContext delta only removes data-startup-mark in the identity effect's teardown, alongside data-app-channel and is-dev-build; the page makes no claim about that teardown.","inputs":["docs/guides/responsive-ui.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"The PlatformProfileContext delta only removes data-startup-mark in the identity effect's teardown, alongside data-app-channel and is-dev-build; the page makes no claim about that teardown.","inputs":["docs/patterns/backend.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The PlatformProfileContext delta only removes data-startup-mark in the identity effect's teardown, alongside data-app-channel and is-dev-build; the page makes no claim about that teardown.","inputs":["docs/patterns/frontend.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"PlatformProfileContext delta: teardown now also removes data-startup-mark. The page's first-paint mark claim is unchanged and still holds: a stable report overwrites a remembered channel mark, and unknown stored values are ignored. EXECUTED in PlatformProfile.test.tsx and startup-splash-channel.test.ts, with fault injection of the writer, the reader allowlist and the teardown.","inputs":["docs/guides/theming.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"src-desktop/icons/README.md","note":"The manifest now pins every committed file the generator writes, including the tauri icon fan-out (ico, icns, PNGs, Android mipmaps, iOS app-icon sets), excluding the tray state icons it does not generate. The README sentence was narrowed to say exactly that. EXECUTED: regeneration was byte-identical apart from the manifest; appending a byte to icons/icon.ico or icons/nightly/32x32.png fails station-icon.test.ts.","inputs":["src-desktop/icons/README.md","scripts/__tests__/station-icon.test.ts","scripts/generate-app-icons.mjs"]}
+  ]
+}

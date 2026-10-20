@@ -1,0 +1,7 @@
+{
+  "revision": "ce0938deaebab99eab50b76235cf2f2f77440019",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3429 round 2: station-docs-content.ts was regenerated from the canonical docs changed in this branch (getting-started continuation paragraph and module-map's admitted-folder sentence); the reference's description of how topics are generated and served is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

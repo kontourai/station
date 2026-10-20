@@ -1,0 +1,7 @@
+{
+  "revision": "b75ddb3259845f80422fcacabf9793740f8e292e",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3406 review round: rewrote the discovery paragraph against attached-session-path-probe.ts at the fix round: unread folders take no part in matching (cwd unattributed, Project not matched), missing folders keep the lexical path, 60 s back-off plus no retry while the stuck helper lives, at most four stuck helpers (DEFAULT_MAX_STUCK_CHILDREN). Added the disclosure that adoptSession still resolves synchronously (attached-session-adoption.ts resolveAttachedProjectRoot -> canonicalPath realpathSync.native). Executed attached-session-path-probe.test.ts (10 tests) and injections. Limit: no real hung NFS mount.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

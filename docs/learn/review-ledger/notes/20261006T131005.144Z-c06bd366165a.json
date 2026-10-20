@@ -1,0 +1,7 @@
+{
+  "revision": "18e5462fb91967f4f4d15b125895d94e8b3b2449",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home now also mocks GET /api/projects/run-locations with an empty map, so the start composer falls back to each project's stored folder. The matrix's Home row (continuation, first steps, deep links, loading and retry, mobile geometry, composer reachability, many Home responses mocked) still describes the spec accurately; no prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

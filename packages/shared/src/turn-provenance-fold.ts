@@ -19,7 +19,7 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
-import { providerUsageScope } from './usage-fold.js';
+import { providerUsageScope } from './usage-semantics.js';
 
 /**
  * Pure, deterministic fold of a durable `CanonicalRuntimeEvent` stream (the

@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
+import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type {
   OAuthClientInformationContext,
@@ -10,6 +12,7 @@ import type {
 } from '@modelcontextprotocol/client';
 
 import {
+  principalToolServerCredentialBucket,
   TOOL_SERVER_OAUTH_CREDENTIAL_KEYS,
   ToolServerCredentialStore,
 } from './tool-server-credential-store.js';
@@ -24,7 +27,8 @@ export type ToolServerOperation =
   | 'probe'
   | 'connect'
   | 'resource-read'
-  | 'tool-call';
+  | 'tool-call'
+  | 'prompt-read';
 
 const TOOL_SERVER_OPERATION_MESSAGES: Record<ToolServerOperation, string> = {
   authorize: 'Tool server authorization could not be started',
@@ -33,6 +37,7 @@ const TOOL_SERVER_OPERATION_MESSAGES: Record<ToolServerOperation, string> = {
   connect: 'Tool server connection failed',
   'resource-read': 'MCP UI resource read failed',
   'tool-call': 'MCP tool call failed',
+  'prompt-read': 'MCP prompt read failed',
 };
 
 export class ToolServerOperationError extends Error {
@@ -387,6 +392,99 @@ export async function removeToolServerOAuthCredentials(
   }
 }
 
+export const INSTANCE_CREDENTIAL_OWNER: CredentialOwner = Object.freeze({
+  kind: 'instance',
+});
+
+const MAX_OWNER_ID_LENGTH = 512;
+const PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/**
+ * #3279: the credential-store bucket for one server and one owner. The
+ * instance bucket is the bare server id, exactly as before, so every existing
+ * record keeps working with no rewrite. A person's bucket lives in the
+ * separate principal document and is keyed by the whole owner tuple; two
+ * principals can never share it, and neither reaches the instance bucket.
+ */
+function toolServerCredentialBucket(
+  serverId: string,
+  owner: CredentialOwner,
+): string {
+  return owner.kind === 'instance'
+    ? serverId
+    : principalToolServerCredentialBucket(serverId, owner);
+}
+
+/** The store document that holds this owner's buckets. */
+export function toolServerCredentialStoreFor(
+  homeDir: string,
+  owner: CredentialOwner,
+): ToolServerCredentialStore {
+  return new ToolServerCredentialStore(
+    homeDir,
+    owner.kind === 'instance' ? 'instance' : 'principal',
+  );
+}
+
+/**
+ * Builds a principal-owned credential owner from server-resolved facts. The
+ * id is an existing human `PrincipalRef.id` from request or turn authority
+ * (see `connected-account-owner.ts`), never a request body or a new id; an
+ * optional Project narrows it.
+ */
+export function principalCredentialOwner(
+  principalId: string,
+  projectSlug?: string,
+): CredentialOwner {
+  if (
+    typeof principalId !== 'string' ||
+    principalId.length > MAX_OWNER_ID_LENGTH ||
+    !principalIdMatchesKind(principalId, 'human')
+  )
+    throw new StationOwnedToolServerError('Credential owner is invalid');
+  if (projectSlug === undefined) return { kind: 'principal', principalId };
+  if (typeof projectSlug !== 'string' || !PROJECT_SLUG.test(projectSlug))
+    throw new StationOwnedToolServerError('Credential Project is invalid');
+  return { kind: 'principal-project', principalId, projectSlug };
+}
+
+/**
+ * #3279 R2: the owners whose credential a turn may use, most specific first.
+ * This is the same shape as the engine credential order
+ * (`AgentExecutionConfig.credentialProfileRef`): a narrower explicit selection
+ * wins, a person's selection never silently degrades to someone else's, and
+ * the shared default is reached only when it is explicitly allowed. An
+ * instance-owned integration (no `credentialOwnership`) keeps its single
+ * shared credential.
+ */
+export function toolServerCredentialCandidates(
+  def: Pick<ToolDef, 'credentialOwnership'>,
+  principalId: string | undefined,
+  projectSlug?: string,
+): CredentialOwner[] {
+  const ownership = def.credentialOwnership;
+  if (!ownership) return [INSTANCE_CREDENTIAL_OWNER];
+  const candidates: CredentialOwner[] = [];
+  if (principalId) {
+    if (projectSlug)
+      candidates.push(principalCredentialOwner(principalId, projectSlug));
+    candidates.push(principalCredentialOwner(principalId));
+  }
+  if (ownership.allowInstanceFallback === true)
+    candidates.push(INSTANCE_CREDENTIAL_OWNER);
+  return candidates;
+}
+
+/** A person-owned integration has no usable credential for this turn. */
+export class ConnectAccountRequiredError extends StationOwnedToolServerError {
+  override name = 'ConnectAccountRequiredError';
+  constructor(readonly serverId: string) {
+    super(
+      `Connect your account for integration '${serverId}' to use its tools. Station does not use another person's or the shared account for it.`,
+    );
+  }
+}
+
 function readJson<T>(
   store: ToolServerCredentialStore,
   id: string,
@@ -402,16 +500,25 @@ function readJson<T>(
 
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
   private authorizationUrl?: URL;
+  /** The only key this provider reads or writes; see `toolServerCredentialBucket`. */
+  readonly bucket: string;
   constructor(
     private readonly store: ToolServerCredentialStore,
-    private readonly serverId: string,
+    serverId: string,
     private readonly resourceIdentity: string,
     readonly redirectUrl: string,
     private readonly events?: {
       tokensSaved?(refresh: boolean): void;
       authorizationRedirect?(afterRefresh: boolean): void;
     },
-  ) {}
+    readonly owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
+  ) {
+    // A person's tokens never enter the shared instance document, and the
+    // instance credential is never read through a person's provider.
+    if (store.scope !== (owner.kind === 'instance' ? 'instance' : 'principal'))
+      throw new Error('Tool-server credential store does not match its owner');
+    this.bucket = toolServerCredentialBucket(serverId, owner);
+  }
 
   get clientMetadata(): OAuthClientMetadata {
     return {
@@ -437,7 +544,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   }
   async consumeState(): Promise<string | undefined> {
     const state = await this.expectedState();
-    await this.store.remove(this.serverId, KEYS.state);
+    await this.store.remove(this.bucket, KEYS.state);
     return state;
   }
   async clientInformation(ctx?: OAuthClientInformationContext) {
@@ -491,7 +598,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery',
   ): Promise<void> {
     if (scope === 'all') {
-      await removeToolServerOAuthCredentials(this.store, this.serverId);
+      await removeToolServerOAuthCredentials(this.store, this.bucket);
       return;
     }
     const key =
@@ -502,11 +609,11 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
           : scope === 'verifier'
             ? KEYS.verifier
             : KEYS.discovery;
-    await this.store.remove(this.serverId, key);
+    await this.store.remove(this.bucket, key);
   }
 
   async clearCredentials(): Promise<void> {
-    await removeToolServerOAuthCredentials(this.store, this.serverId);
+    await removeToolServerOAuthCredentials(this.store, this.bucket);
   }
 
   private resolveIssuer(
@@ -530,14 +637,14 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       ...(expiresAt ? { expiresAt } : {}),
       value,
     };
-    await this.store.upsert(this.serverId, key, JSON.stringify(record));
+    await this.store.upsert(this.bucket, key, JSON.stringify(record));
   }
 
   private async readBound<T>(
     key: string,
     ctx?: OAuthClientInformationContext,
   ): Promise<T | undefined> {
-    const record = readJson<BoundRecord<T>>(this.store, this.serverId, key);
+    const record = readJson<BoundRecord<T>>(this.store, this.bucket, key);
     if (!record) return undefined;
     if (
       record.schemaVersion !== 1 ||
@@ -548,7 +655,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       return undefined;
     }
     if (record.expiresAt !== undefined && record.expiresAt <= Date.now()) {
-      await this.store.remove(this.serverId, key);
+      await this.store.remove(this.bucket, key);
       return undefined;
     }
     if (ctx && (!record.issuer || record.issuer !== ctx.issuer))

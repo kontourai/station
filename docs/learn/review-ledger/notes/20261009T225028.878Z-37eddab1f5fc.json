@@ -1,0 +1,7 @@
+{
+  "revision": "d5cd7806a32674911e21d95893ec9629d513eb72",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the maintained reading-status and chat-native form sections against ChatMessageList at d5cd7806 after normal main245 integration. The changed approval-sheet selection now excludes canonical inputRequest forms. Those forms remain on PendingApprovalStrip to InputRequestRequest, with scoped host authority and exact thread/request/opened-event content submission; the actual form-exclusion mutation blocked the phone form behind an approval overlay and exact restoration passed all24 input-request/mobile-sheet journeys. This is separate from UIBlockActionsContext form submission: its beginSubmit, normal sendMessage, onAdmission and retry ownership remain intact. The guide still correctly distinguishes the June proposal from current renderer/sender ownership, retains its in-memory UIBlock draft lifecycle and uncertain-send limits, and does not describe the proposed ui-state endpoint as current. No guide prose or sender behavior changed. Reaffirming the existing ChatMessageList citation records this inspected in-range input without changing the citation relationship. Scope is this source boundary, not unrelated historical sources, complete native/provider execution or the separate main version audit.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

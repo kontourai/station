@@ -4,6 +4,7 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
+import type { InputRequestContent } from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -43,6 +44,13 @@ export interface OrchestrationSendTurnInput
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * The key the CLIENT named this send by, when Station deduplicates it under
+   * a key of its own (a handoff's `handoff:<digest>` `clientTurnId`). Station
+   * stamps this one on the turn's `turn.started`, so the client matches its
+   * message exactly. Server-composed only; never forwarded to an adapter.
+   */
+  clientKey?: string;
 }
 
 /**
@@ -52,7 +60,11 @@ export interface OrchestrationSendTurnInput
  */
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
-  'credentialProfileRef' | 'reviewIsolation' | 'confinement'
+  | 'credentialProfileRef'
+  | 'reviewIsolation'
+  | 'confinement'
+  | 'requireNativeResumeIdentity'
+  | 'nativeResumeBindingKey'
 >;
 
 /** Public wire discriminant guarantees old servers refuse before any provider effect. */
@@ -64,12 +76,32 @@ export interface ReceiptProtectedSteerCommand {
   clientInputId: string;
 }
 
+/**
+ * #3386: where the continuation of a conversation that belongs to no project
+ * runs. A conversation a project claims (by folder, or by repository from a
+ * worktree) always continues in its own folder under that project, and
+ * needs no target.
+ *
+ * - `project`: continue it under this project. Station accepts it only when
+ *   the conversation's folder is inside the project's folder or in a genuine
+ *   worktree of the project's repository; it never moves a conversation to
+ *   another folder.
+ * - `own-folder`: continue it as a No project chat confined to its own
+ *   folder. Refused for a folder too broad to confine an agent to (the home
+ *   folder, the filesystem root, and the like).
+ */
+export type AdoptSessionTarget =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'own-folder' };
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
       type: 'adoptSession';
       sourceThreadId: string;
       idempotencyKey?: string;
+      /** #3386: where a conversation no project claims continues. */
+      target?: AdoptSessionTarget;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -112,6 +144,17 @@ export type OrchestrationCommand =
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      /**
+       * #3390: accepted content for a form input request (a harness question
+       * or a tool server's elicitation), keyed by field name. Only with
+       * `accept`; the server validates it against the exact opened event.
+       */
+      content?: InputRequestContent;
+      /**
+       * @deprecated since 0.9.0; retained for compatibility. A pre-#3390 harness
+       * answer, translated to `content` and validated the same way. Send
+       * `content` instead; never both.
+       */
       answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
@@ -217,7 +260,55 @@ export interface ApprovalFullAccessRefusalDetails {
     readonly uiSteps: readonly string[];
     /** The operator command, run on the Station's own host. */
     readonly cli?: string;
+    /**
+     * #3557: the device is tied to a person whose Station group does not
+     * allow full access. The operator must make them Admin first (the
+     * `uiSteps`); `groupLimited.cli`, when present, is still needed AFTER
+     * that: both, not either.
+     *
+     * The command travels HERE, never as the top-level `cli`, so a client
+     * that predates this field (and renders `cli` as an alternative to
+     * `uiSteps`) cannot offer the two steps as options. For that client the
+     * last `uiSteps` entry is the command as a step
+     * ({@link groupLimitedCommandStep}); a client that reads this field
+     * shows that entry as the command instead ({@link groupLimitedPeopleSteps}).
+     */
+    readonly groupLimited?: {
+      readonly group: 'member';
+      readonly cli?: string;
+    };
   } | null;
+}
+
+/**
+ * #3557: the step a group-limited refusal appends to `uiSteps` for its host
+ * command, so a client that does not read `groupLimited` still lists the
+ * command after the People steps.
+ */
+export function groupLimitedCommandStep(cli: string): string {
+  return `Then, on the Station's host, run: ${cli}`;
+}
+
+/**
+ * The longest `groupLimited.cli` kept: its appended step must also fit the
+ * 256-character step bound, or the whole refusal would fail to parse.
+ */
+export const GROUP_LIMITED_CLI_MAX_LENGTH =
+  256 - groupLimitedCommandStep('').length;
+
+/**
+ * #3557: a group-limited refusal's People steps, without the appended
+ * command step (a client that reads `groupLimited.cli` shows that itself).
+ */
+export function groupLimitedPeopleSteps(
+  grant: NonNullable<ApprovalFullAccessRefusalDetails['grant']>,
+): readonly string[] {
+  const cli = grant.groupLimited?.cli;
+  // Indexed, not `.at()`: the contracts compile for older library targets.
+  const last = grant.uiSteps[grant.uiSteps.length - 1];
+  return cli !== undefined && last === groupLimitedCommandStep(cli)
+    ? grant.uiSteps.slice(0, -1)
+    : grant.uiSteps;
 }
 
 /** The longest device name a refusal carries, after sanitizing. */
@@ -256,6 +347,22 @@ export function sanitizeRefusalDeviceName(name: string): string {
 
 const isBoundedString = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max;
+
+/** Only the one known group; anything else is dropped, not trusted. */
+function parseGroupLimited(value: unknown): {
+  groupLimited?: { group: 'member'; cli?: string };
+} {
+  const raw = value as { group?: unknown; cli?: unknown } | undefined | null;
+  if (!raw || typeof raw !== 'object' || raw.group !== 'member') return {};
+  return {
+    groupLimited: {
+      group: 'member',
+      ...(isBoundedString(raw.cli, GROUP_LIMITED_CLI_MAX_LENGTH)
+        ? { cli: raw.cli }
+        : {}),
+    },
+  };
+}
 
 /**
  * Reads a refusal's `details` from an untrusted envelope, or `undefined` when
@@ -316,6 +423,7 @@ export function parseApprovalFullAccessRefusalDetails(
       scope: 'approval:full-access',
       uiSteps: [...(rawGrant.uiSteps as string[])],
       ...(typeof rawGrant.cli === 'string' ? { cli: rawGrant.cli } : {}),
+      ...parseGroupLimited(rawGrant.groupLimited),
     },
   };
 }
@@ -564,6 +672,22 @@ export interface OrchestrationPeerPendingRequest {
   type?: CanonicalRequestType;
   /** The paired Station's request title, bounded. */
   title?: string;
+  /**
+   * `delegatedInputAnswers`: the request's own `request.opened` event id and
+   * the paired Station's Session it is open on (its `currentSessionId`), so
+   * an answer can be bound to exactly this request. Present only when the
+   * paired Station reported them.
+   */
+  eventId?: string;
+  threadId?: string;
+  /** The question as the paired Station presents it, bounded. */
+  body?: string;
+  /**
+   * The paired Station's own check of THIS Station's credential on the
+   * route that answers the request. Absent when it did not report one (an
+   * older Station).
+   */
+  callerCanRespond?: boolean;
   /** When this Station observed it on the paired Station's status read. */
   observedAt: string;
 }
@@ -1290,6 +1414,7 @@ export interface OrchestrationConversationEventWindow
    */
   sessionLineage?: Array<{
     sessionId: string;
+    provider?: EngineId;
     agentSlug?: AgentId;
     /** Immutable presentation snapshot captured with the execution Session. */
     agentDisplayName?: string;
@@ -1319,7 +1444,8 @@ export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
 ] as const);
 
 export type ConversationHandoffCarriedField =
-  (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number];
+  | (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number]
+  | 'nativeSession';
 export type ConversationHandoffResetField =
   (typeof CONVERSATION_HANDOFF_RESET_FIELDS)[number];
 
@@ -1334,6 +1460,7 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
   authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
+  nativeSession: 'Earlier native engine conversation',
   providerNativeCursor: 'Provider-native cursor',
   toolState: 'Tool state',
   sessionApprovals: 'Session approvals',
@@ -1352,10 +1479,16 @@ export interface ConversationHandoffProjection {
   idempotencyKey: string;
   targetAgentId: string;
   targetConnectionId?: string;
+  targetExecutionAgentId?: string;
+  /** Actual persisted successor binding, absent before that Session starts. */
+  targetProvider?: EngineId;
+  expectedDefinitionFingerprint?: string;
   targetModelId?: string;
   createdAt: string;
   carried: readonly ConversationHandoffCarriedField[];
   reset: readonly ConversationHandoffResetField[];
+  /** A requested native return; provider acceptance remains a separate fact. */
+  nativeReturn?: { sourceSessionId: string };
 }
 
 export type ConversationHandoffEffectStatus =
@@ -1372,6 +1505,184 @@ export interface ConversationHandoffStatusProjection {
   status: ConversationHandoffEffectStatus;
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
+  nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+}
+
+/**
+ * What Station knows about one foreground send, looked up by the idempotency
+ * key the sender minted (`clientTurnId`) inside the conversation it named.
+ * Read-only: the lookup never claims, releases or dispatches anything.
+ *
+ * - `not-received`: nothing on this Station holds the key for this caller —
+ *   no request carrying it is being handled, and no turn claim exists in any
+ *   Session of the conversation (or only one whose owner died before it began
+ *   invoking, which the next send of the same key reclaims). Sending again
+ *   with the SAME key is safe. Also the answer for a conversation the caller
+ *   may not read: the two are deliberately indistinguishable.
+ * - `received`: a request carrying the key is being handled now (the session
+ *   may still be starting), or a live owner holds its claim. Wait; do not send
+ *   again.
+ * - `queued` (#3568): Station holds the message in the conversation's inbox
+ *   (`ConversationInboxEntry`) behind a running turn, and sends it itself when
+ *   that turn ends. It is safe to close the app. Do not send again; cancel it
+ *   through the inbox instead.
+ * - `started`: the engine accepted the turn. `turnId` is the provider turn and
+ *   `sessionId` the execution Session that holds it.
+ * - `indeterminate`: the owner died after it may have handed the turn to the
+ *   engine. Never send again; inspect the conversation.
+ * - `expired`: the turn was sent, and retention evicted its record. Never send
+ *   again.
+ * - `unknown`: this Station cannot see where the conversation's turns are
+ *   recorded (it forwards them to another Station or Environment), so it can
+ *   prove nothing either way. Never send again on this answer; treat it like
+ *   `indeterminate`.
+ */
+export type TurnDeliveryInspection =
+  | {
+      outcome:
+        | 'not-received'
+        | 'received'
+        | 'queued'
+        | 'indeterminate'
+        | 'expired'
+        | 'unknown';
+      conversationId: string;
+      clientTurnId: string;
+    }
+  | {
+      outcome: 'started';
+      conversationId: string;
+      clientTurnId: string;
+      sessionId: string;
+      turnId: string;
+    };
+
+export type TurnDeliveryOutcome = TurnDeliveryInspection['outcome'];
+
+/**
+ * #3568: where one message held in a conversation's inbox stands. The inbox
+ * keeps a follow-up sent while the conversation's turn was running and sends
+ * it itself when that turn ends, one at a time, in the order received.
+ *
+ * - `queued`: waiting for the running turn to end.
+ * - `sending`: Station is sending it now (or was, when it last stopped).
+ * - `sent`: the agent has it; `turnId` is the turn it started.
+ * - `unconfirmed`: it may have reached the agent and nothing can prove which
+ *   way. Never sent again. Later messages wait behind it until it is
+ *   dismissed (cancelled).
+ * - `refused`: Station could not send it, and nothing was sent; `reasonCode`
+ *   says why. Later messages are not held behind it.
+ * - `cancelled`: withdrawn before it was sent, or dismissed.
+ */
+export type ConversationInboxEntryState =
+  | 'queued'
+  | 'sending'
+  | 'sent'
+  | 'unconfirmed'
+  | 'refused'
+  | 'cancelled';
+
+export interface ConversationInboxEntry {
+  conversationId: string;
+  /**
+   * The send's idempotency key; resending the same body answers this entry.
+   * Absent on someone else's entry that may still be sent (`queued`,
+   * `sending`, `unconfirmed`). A send under such a key (`/chat` or
+   * `/chat/:id/continue`) is refused `inbox_key_held`. While Station is
+   * sending an entry, a live send of its key is refused `client_turn_in_flight`
+   * to its own sender, or to anyone once the entry is dismissed (until that
+   * send answers or Station restarts).
+   */
+  clientTurnId?: string;
+  /** Only follow-ups today; steer and display-only kinds may follow. */
+  kind: 'follow-up';
+  state: ConversationInboxEntryState;
+  /** 1 for the next to be sent, among entries still waiting; absent once settled. */
+  position?: number;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  /** The turn it started, once `sent`. */
+  turnId?: string;
+  /** The execution Session it was sent to, once Station picked one. */
+  sessionId?: string;
+  /**
+   * Why it was `refused` or is `unconfirmed`, one of a closed set:
+   * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
+   * `start_deadline`, `unreadable_entry`, `session_ended`,
+   * `execution_engine_changed`, `provider_session_start_failed`,
+   * `model_not_advertised`, `continuation_workspace_unbound`,
+   * `continuation_workspace_direct_mismatch`,
+   * `continuation_workspace_project_context_missing`,
+   * `continuation_workspace_corrupt_worktree_binding`,
+   * `continuation_workspace_worktree_gone`,
+   * `continuation_workspace_different_project`,
+   * `continuation_workspace_worktree_moved`, or `start_refused` for any
+   * other refusal.
+   */
+  reasonCode?: string;
+  /** A fixed message for `reasonCode`; never the raw refusal text. */
+  reason?: string;
+}
+
+/**
+ * What `POST /chat` answers when the conversation's inbox has the message
+ * (`whenBusy: 'queue'`). `entry` is where it stands now. The same send made
+ * again while the conversation is still busy (or holds other messages)
+ * answers this entry again, `sent` with its `turnId` once Station sent it;
+ * made when the conversation is idle and holds nothing, it takes the live
+ * path, whose turn claim answers with the turn already started. Either way it
+ * is not sent twice.
+ */
+export interface ConversationInboxQueuedReceipt {
+  outcome: 'queued';
+  conversationId: string;
+  clientTurnId: string;
+  entry: ConversationInboxEntry;
+}
+
+/** Bounded agent-facing transcript rows; missing attribution stays unknown. */
+export interface ConversationReadMessage {
+  index: number;
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  sessionId?: string;
+  model?: { id: string; source: 'provider-reported' | 'selected' };
+  textTruncated?: { originalBytes: number };
+  tools?: string[];
+  createdAt?: string;
+}
+
+export type ConversationReadProvenance =
+  | { protocolVersion: 1; status: 'unavailable' }
+  | {
+      protocolVersion: 1;
+      status: 'available';
+      currentSessionId: string;
+      sessions: NonNullable<
+        OrchestrationConversationEventWindow['sessionLineage']
+      >;
+      handoffs: ConversationHandoffProjection[];
+      /** A parent reference is provenance, not permission to read the parent. */
+      forkedFrom?: {
+        sourceConversationId: string;
+        sourceSessionId?: string;
+        branchPointTurnId?: string;
+        continuation?: 'native' | 'replay-seed';
+      };
+    };
+
+export interface ConversationReadPage {
+  conversationId: string;
+  access: 'own' | 'scope' | 'reference' | 'person';
+  notice: string;
+  messageCount: number;
+  messages: ConversationReadMessage[];
+  prevCursor: string | null;
+  nextCursor: string | null;
+  /** Older servers omit this; absence does not mean there were no handoffs. */
+  provenance?: ConversationReadProvenance;
 }
 
 export type AgentRunStatus = RunStatus;
@@ -1552,7 +1863,11 @@ export interface ConversationListItem {
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
   sessionId: string;
+  /** Present only when this receiver verified the persisted execution owner as itself. */
+  environment?: { kind: 'current' };
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   provider: EngineId;
   engineConnectionId?: string;
   model?: string;

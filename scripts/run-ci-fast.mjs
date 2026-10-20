@@ -2,6 +2,10 @@
 
 import { spawnSync } from 'node:child_process';
 import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
+import {
+  assertVerificationHost,
+  LiveServiceVerificationError,
+} from './lib/live-service-verification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
@@ -151,6 +155,21 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the native platform boundary scans every renderer source for Tauri
+  // access outside the adapter. Its only pull-request test spawns it among
+  // thirty other gates, and no path edge can select that for any src-ui change,
+  // so #3114 first failed it in scheduled qualification. Under a second.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
+  // #3565: @kontourai/monument is a Tier 1 package (ADR 0005) and may import
+  // nothing of Station's, and Station reaches it only through its entry
+  // points. Its cost is reading every Station source file to find the ones
+  // that name the package, then parsing those: ~1s idle, ~5-7s at load ~30.
+  // Here so a planted import fails the pull request, not only the merge
+  // queue.
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
@@ -183,6 +202,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // Numbered ADRs in docs/adr are frozen; decisions are records in
+  // docs/decisions, checked by Corpus. This is the required lane for both:
+  // the shared Docs kit gate also runs them but is advisory. The check reads
+  // the same base as this lane, so a new ADR file fails here, and an invalid
+  // record or stale index fails with or without a base.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`
@@ -243,7 +268,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // exactly as they do locally. The "0 files changed -> no matched nodes"
   // line printed on a clean tree reports changed-node routing, not these
   // rules — reading it as "nothing was checked" is the trap.
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
   // through `packages/connect/dist`; without it that lane reports a bogus
@@ -437,13 +465,16 @@ export function runCiFastCli({
     const status = run();
     if (status === CI_FAST_INFRASTRUCTURE_EXIT_CODE)
       error(
-        `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+        `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
       );
     return status;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    if (caught instanceof CiFastInfrastructureError) {
-      error(`${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
+    if (
+      caught instanceof CiFastInfrastructureError ||
+      caught instanceof LiveServiceVerificationError
+    ) {
+      error(`\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
       return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     }
     error(`${message}\n`);
@@ -451,4 +482,10 @@ export function runCiFastCli({
   }
 }
 
-if (invokedDirectly(import.meta.url)) process.exitCode = runCiFastCli();
+if (invokedDirectly(import.meta.url))
+  process.exitCode = runCiFastCli({
+    run: () => {
+      assertVerificationHost('ci:fast');
+      return runCiFast();
+    },
+  });

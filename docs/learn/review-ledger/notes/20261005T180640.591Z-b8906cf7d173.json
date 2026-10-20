@@ -1,0 +1,9 @@
+{
+  "revision": "1e98f656e604d10d1e93f291e99b3d41815bbc08",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#3394 follow-up: review-ledger-store.mjs only made listCommittedNoteFilesAt module-private (no caller outside the store; code-health flagged the unused export). Behaviour and the guide's archive, guard and one-store claims are unchanged.","inputs":["docs/guides/documentation.md","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"#3394 follow-up: review-ledger-store.mjs only made listCommittedNoteFilesAt module-private; archived notes still count as committed in history, so Review out of date behaves as described.","inputs":["docs/learn/README.md","scripts/lib/review-ledger-store.mjs"]}
+  ]
+}

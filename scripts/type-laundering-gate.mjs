@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { mergeBaseWith } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASELINE_PATH = 'scripts/type-laundering-baseline.json';
@@ -115,11 +116,18 @@ function readJsonFile(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
+/**
+ * The baseline this change started from: the one at the merge base with
+ * origin/main, not at origin/main's tip. Against the tip, an unmerged branch
+ * still listing an entry that main has since removed would read as adding it
+ * (#3101). The tip is the fallback only when no merge base resolves.
+ */
 function readUpstreamBaseline() {
+  const ref = mergeBaseWith(UPSTREAM_BASELINE_REF) ?? UPSTREAM_BASELINE_REF;
   try {
     const stdout = execFileSyncBounded(
       'git',
-      ['show', `${UPSTREAM_BASELINE_REF}:${BASELINE_PATH}`],
+      ['show', `${ref}:${BASELINE_PATH}`],
       {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],

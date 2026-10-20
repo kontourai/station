@@ -37,12 +37,29 @@ the process; a shell change does not reconfigure an already running service.
 
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(none)_ | OTLP HTTP collector base URL; Station appends `/v1/traces` and `/v1/metrics`. Unset means this OpenTelemetry SDK/export path stays inactive. Local monitoring and direct product usage telemetry are separate. | `src-server/telemetry.ts` |
+| `DO_NOT_TRACK` | _(none)_ | Any value except empty or `0` forces every product publisher Off, overriding saved consent. OTLP diagnostics retain their separate configuration. | `src-server/domain/telemetry-configuration.ts` |
+| `STATION_TELEMETRY_TIER` | `lite` | `off`, `lite`, or `full` policy default for absent publisher choices; `full` is capped at Lite and never grants consent. Reports reason `environment`. The existing sender supports only operator Full; Lite and author sending are later lanes. | `src-server/domain/telemetry-configuration.ts` |
+| `STATION_AUTHOR_TELEMETRY_ENDPOINT` | empty | Public build-time input from the owner-gated repository Actions variable in official release producers. Empty means no author sink. Source execution ignores the runtime value; builds reject non-official contexts and invalid HTTPS URLs. See [official build activation](../guides/release-rings.md#author-telemetry-in-official-builds). This does not enable an author sender. | `esbuild.config.mjs`, `src-server/domain/telemetry-build-constants.ts` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(none)_ | OTLP HTTP collector base URL; Station appends `/v1/traces` and `/v1/metrics`. Used when no saved collector address exists; without either address, this SDK/export path stays inactive. Local monitoring and direct product usage telemetry are separate. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
 | `OTEL_SERVICE_NAME` | `station` | Service name reported in traces and metrics | `src-server/telemetry.ts` |
-| `STATION_TELEMETRY_API_KEY` | _(none)_ | Optional `x-api-key` sent only with OTLP exports to `OTEL_EXPORTER_OTLP_ENDPOINT`. It is never used for direct product usage telemetry. | `src-server/telemetry.ts` |
-| `STATION_TELEMETRY_ENABLED` | `true` | Product-usage fallback only when `app.json.telemetryEnabled` is absent. `false`, `off`, `0`, or `disabled` means off; `true`, `on`, `1`, or `enabled` means on (trimmed, case-insensitive). A saved setting wins. Emission also requires an endpoint and a disclosure receipt for the current inventory revision. | `src-server/services/usage-telemetry-service.ts` |
-| `STATION_TELEMETRY_ENDPOINT` | _(none)_ | Direct HTTP ingestion endpoint for product usage telemetry. Unset by default: no usage telemetry is buffered, timed, or sent. | `src-server/services/usage-telemetry-service.ts` |
-| `STATION_USAGE_TELEMETRY_KEY` | _(none)_ | Optional `x-api-key` sent only to `STATION_TELEMETRY_ENDPOINT` for direct product usage telemetry. This is deliberately separate from the OTLP export credential. | `src-server/services/usage-telemetry-service.ts` |
+| `STATION_OTEL_API_KEY` | _(none)_ | Optional `x-api-key` for the environment collector. A saved collector address or key reference suppresses this environment key. Never used for product observations. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
+| `STATION_PRODUCT_TELEMETRY_ENABLED` | _(none)_ | Legacy fallback after saved per-publisher choices and `STATION_TELEMETRY_TIER`. False/off/0/disabled means Off; true/on/1/enabled supplies Lite, even with an existing Full receipt (trimmed, case-insensitive). DNT wins. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
+| `STATION_PRODUCT_TELEMETRY_ENDPOINT` | _(none)_ | Full product ingestion POST address when no saved address exists. Station appends no path. Without either address, no product observation is buffered, timed, or sent. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
+| `STATION_PRODUCT_TELEMETRY_KEY` | _(none)_ | Optional `x-api-key` for the environment product destination. A saved address or key reference suppresses this environment key. Never resolved from an OTLP key. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
+| `STATION_TELEMETRY_API_KEY` | _(none)_ | Legacy same-destination alias for `STATION_OTEL_API_KEY`. | `src-server/domain/telemetry-configuration.ts` |
+| `STATION_TELEMETRY_ENABLED` | _(none)_ | Legacy same-destination alias for `STATION_PRODUCT_TELEMETRY_ENABLED`. | `src-server/domain/telemetry-configuration.ts`, `packages/contracts/src/settings-registry.ts` |
+| `STATION_TELEMETRY_ENDPOINT` | _(none)_ | Legacy same-destination alias for `STATION_PRODUCT_TELEMETRY_ENDPOINT`. Existing full-POST addresses retain their meaning. | `src-server/domain/telemetry-configuration.ts` |
+| `STATION_USAGE_TELEMETRY_KEY` | _(none)_ | Legacy same-destination alias for `STATION_PRODUCT_TELEMETRY_KEY`. | `src-server/domain/telemetry-configuration.ts` |
+
+A valid nonempty canonical value wins over its legacy alias. Blank values are
+absent. Invalid boolean values are ignored before trying the alias and default;
+effective values and Settings provenance use the same resolver. Bootstrap
+notices name invalid, legacy or conflicting variables without their values.
+Aliases remain supported until a separate release decision removes them.
+Product and OTLP keys never cross destinations; product consent remains
+independent of OTLP configuration or connection checks.
+Saved addresses and SecretBinding references are described in
+[Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks).
 
 ## Frontend
 
@@ -55,6 +72,7 @@ the process; a shell change does not reconfigure an already running service.
 - [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.
 - [Native recovery](../user/native-recovery.md#check-the-local-diagnosis): `STATION_DESKTOP_LOG_LEVEL` and the shell's separate logs.
+- [Conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station): `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT` select the folders Activity reads Claude Code, Codex, Grok and OpenCode history from, instead of `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and OpenCode's `XDG_DATA_HOME` data folder and their defaults ([details](session-api.md), [OpenCode source](../../src-server/providers/sessions/opencode-session-source.ts)).
 - [Testing](../guides/testing.md): test prerequisites, fixture paths, transfer baselines, and verification timeouts.
 - [Deployment authentication](../guides/deployment-authentication.md) and [Web Push](../guides/web-push-notifications.md): deployment-specific identity and notification setup.
 

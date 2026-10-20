@@ -56,6 +56,7 @@ function applyUpdate(
       error: _error,
       expired: _expired,
       capacityFull: _capacityFull,
+      callerUnresolved: _callerUnresolved,
       ...withoutError
     } = snapshot;
     return {
@@ -67,6 +68,7 @@ function applyUpdate(
       ...(update.delivery ? { delivery: update.delivery } : {}),
       ...(update.error ? { error: update.error } : {}),
       ...(update.capacityFull ? { capacityFull: true } : {}),
+      ...(update.callerUnresolved ? { callerUnresolved: true } : {}),
       needsFile: false,
     };
   });
@@ -239,24 +241,23 @@ export function useComposerAttachments(options: {
             const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
-            // The queue throws an AggregateError with no code of its own; the
-            // capacity refusal is on the stage it already reported before
-            // throwing, and that explanation must win over the generic "did
-            // not complete" sentence.
-            const capacityFull = current?.capacityFull === true;
-            if (current?.state !== 'complete' && !current?.capacityFull) {
+            // The queue throws an AggregateError with no code of its own. A
+            // stage it already reported as `failed` (a full capacity, or an
+            // unresolvable caller, #545) carries the real explanation and is
+            // not worth a Retry, so it must win over the generic "did not
+            // complete" sentence.
+            const reportedFailed = current?.state === 'failed';
+            if (current?.state !== 'complete' && !reportedFailed) {
               update({
                 clientAttachmentId,
-                state:
-                  capacityFull || message.includes('does not advertise')
-                    ? 'failed'
-                    : 'retryable',
+                state: message.includes('does not advertise')
+                  ? 'failed'
+                  : 'retryable',
                 progress: 0,
                 error: message,
-                ...(capacityFull ? { capacityFull: true } : {}),
               });
             }
-            setError(capacityFull ? null : message);
+            setError(reportedFailed ? null : message);
           }
         } finally {
           owned.running.current.delete(clientAttachmentId);
@@ -632,17 +633,19 @@ export function useComposerAttachments(options: {
         ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
         : options.stages.some((stage) => stage.capacityFull)
           ? 'Upload limit reached: 5 unsent uploads at a time. Remove some (here or in another chat) or wait up to 10 minutes.'
-          : hasRetryableStage
-            ? options.stages.some(
-                (stage) => stage.state === 'retryable' && stage.expired,
-              )
-              ? 'An upload expired before it was sent. Upload it again or remove it.'
-              : 'An upload did not finish. Retry it or remove it before sending.'
-            : hasUnavailableStage
-              ? 'Choose the file again or remove it before sending.'
-              : hasInFlightStage
-                ? 'Wait until every selected file finishes staging before sending.'
-                : undefined;
+          : options.stages.some((stage) => stage.callerUnresolved)
+            ? "This Station couldn't confirm who is uploading. Remove the attachment, then reconnect or pair this device again."
+            : hasRetryableStage
+              ? options.stages.some(
+                  (stage) => stage.state === 'retryable' && stage.expired,
+                )
+                ? 'An upload expired before it was sent. Upload it again or remove it.'
+                : 'An upload did not finish. Retry it or remove it before sending.'
+              : hasUnavailableStage
+                ? 'Choose the file again or remove it before sending.'
+                : hasInFlightStage
+                  ? 'Wait until every selected file finishes staging before sending.'
+                  : undefined;
 
   return {
     error,
@@ -658,6 +661,9 @@ export function useComposerAttachments(options: {
     /** Removing the attachments is what unblocks this send. */
     removalUnblocksSend:
       imagesRefused ||
-      options.stages.some((stage) => stage.capacityFull === true),
+      options.stages.some(
+        (stage) =>
+          stage.capacityFull === true || stage.callerUnresolved === true,
+      ),
   };
 }

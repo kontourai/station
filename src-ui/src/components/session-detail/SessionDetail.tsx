@@ -18,14 +18,16 @@ export function SessionDetail({
   session,
   onTaskChanged,
   onAdopted,
-  onOpenInChat,
+  onContinueInChat,
   getSelectionIntent,
   evidenceReveal,
   presentation = 'inspector',
   openingContinuation,
   continuationCreated,
 }: {
-  onOpenInChat?: () => void;
+  /** Activity hands an external conversation's message to the dock. */
+  onContinueInChat?: (draft: string) => void;
+  /** Where the detail is hosted: Activity's pane, or the chat dock. */
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
   continuationCreated?: boolean;
@@ -36,7 +38,7 @@ export function SessionDetail({
   onAdopted: (
     session: AdoptedSessionResult,
     intent: number,
-    message?: string,
+    message: string,
   ) => void;
   getSelectionIntent: () => number;
   evidenceReveal?: SessionEvidenceReveal | null;
@@ -51,6 +53,8 @@ export function SessionDetail({
     historyRetrying,
     elidedHistory,
     liveStreamStoppedTerminal,
+    connectionInterrupted,
+    historyLoaded,
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,
@@ -104,37 +108,28 @@ export function SessionDetail({
             because it is NOT among the props handed to
             `AttachedSessionDetail`: nothing downstream can render it a second
             time, and these two branches are mutually exclusive anyway. */}
-        {presentation !== 'chat' && (hasMore || elidedHistoryNotice) && (
-          <div className="session-history-controls">
-            {hasMore && (
-              <button
-                type="button"
-                className="button button--secondary session-history-controls__more"
-                onClick={() => void loadOlder()}
-              >
-                Show older messages
-              </button>
-            )}
-            {elidedHistoryNotice}
-          </div>
+        {presentation !== 'chat' && elidedHistoryNotice && (
+          <div className="session-history-controls">{elidedHistoryNotice}</div>
         )}
         <AttachedSessionDetail
           key={session.threadId}
           apiBase={apiBase}
-          presentation={presentation}
+          showHeader={presentation !== 'chat'}
           chatFontSize={chatFontSize}
           openingContinuation={openingContinuation}
           continuationCreated={continuationCreated}
           onLoadOlder={hasMore ? loadOlder : undefined}
           session={session}
           onAdopted={onAdopted}
-          onOpenInChat={onOpenInChat}
+          onContinueInChat={onContinueInChat}
           getSelectionIntent={getSelectionIntent}
           events={events}
           connected={connected}
           upgradeRequired={upgradeRequired}
           streamError={error}
           liveStreamStoppedTerminal={liveStreamStoppedTerminal}
+          connectionInterrupted={connectionInterrupted}
+          historyLoaded={historyLoaded}
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={retryCapabilityRecovery}

@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"codex-adapter.ts delta is this PR's env-overlay resolution at spawn; tape replay claims were checked: the overlay only prepares the spawn environment and does not change recorded turn replay semantics.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

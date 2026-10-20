@@ -44,6 +44,7 @@ interface ConversationHandoffDialogProps {
   conversationId: string;
   sessionId: string;
   currentAgentId: string;
+  executionPreset?: { executionAgentId?: string; modelId?: string };
   projectSlug?: string;
   agents: AgentData[];
   projects: ProjectMetadata[];
@@ -60,6 +61,8 @@ interface PendingHandoffIntent {
   idempotencyKey: string;
   targetId: string;
   connectionId?: string;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
   modelId?: string;
   message: string;
 }
@@ -87,6 +90,15 @@ function readPendingIntent(
           message: parsed.message,
           ...(typeof parsed.connectionId === 'string'
             ? { connectionId: parsed.connectionId }
+            : {}),
+          ...(typeof parsed.executionAgentId === 'string'
+            ? { executionAgentId: parsed.executionAgentId }
+            : {}),
+          ...(typeof parsed.expectedDefinitionFingerprint === 'string'
+            ? {
+                expectedDefinitionFingerprint:
+                  parsed.expectedDefinitionFingerprint,
+              }
             : {}),
           ...(typeof parsed.modelId === 'string'
             ? { modelId: parsed.modelId }
@@ -131,6 +143,7 @@ export function ConversationHandoffDialog({
   conversationId,
   sessionId,
   currentAgentId,
+  executionPreset,
   projectSlug,
   agents,
   projects,
@@ -158,26 +171,40 @@ export function ConversationHandoffDialog({
         agentConnections: selection.agentConnections,
         selectedProjectSlug: projectSlug,
         selectedProjectAgentFilter: selection.selectedProjectConfig?.agents,
-      }).filter((agent) => agent.slug !== currentAgentId),
+      }).filter((agent) =>
+        executionPreset
+          ? agent.slug === currentAgentId
+          : agent.slug !== currentAgentId,
+      ),
     [
       agents,
       currentAgentId,
+      executionPreset,
       projectSlug,
       selection.agentConnections,
       selection.selectedProjectConfig?.agents,
     ],
   );
   const [targetId, setTargetId] = useState<string | undefined>(
-    restoredIntent?.targetId,
+    restoredIntent?.targetId ?? (executionPreset ? currentAgentId : undefined),
   );
   const target = agents.find((candidate) => candidate.slug === targetId);
+  const executionAgentId = restoredIntent
+    ? restoredIntent.executionAgentId
+    : executionPreset?.executionAgentId;
+  const executionTarget = executionAgentId
+    ? agents.find((agent) => agent.slug === executionAgentId)
+    : target;
+  const retainedIntent = useRef<PendingHandoffIntent | null>(restoredIntent);
   const targetName = target?.name ?? `deleted Agent “${targetId}”`;
-  const targetModels = target ? selection.modelsForAgent(target) : [];
-  const defaultModel = target
-    ? selection.defaultEffectiveModelForAgent(target).id
+  const targetModels = executionTarget
+    ? selection.modelsForAgent(executionTarget)
+    : [];
+  const defaultModel = executionTarget
+    ? selection.defaultEffectiveModelForAgent(executionTarget).id
     : undefined;
   const [modelId, setModelId] = useState<string | undefined>(
-    restoredIntent?.modelId,
+    restoredIntent?.modelId ?? executionPreset?.modelId,
   );
   const [message, setMessage] = useState(
     restoredIntent?.message ?? initialMessage,
@@ -197,12 +224,20 @@ export function ConversationHandoffDialog({
   const closeLocked = state === 'pending';
   const retryEligible = Boolean(
     target &&
+      executionTarget &&
       (!restoredIntent?.connectionId ||
-        target.execution?.agentConnectionId === restoredIntent.connectionId) &&
+        executionTarget.execution?.agentConnectionId ===
+          restoredIntent.connectionId) &&
       (!modelId || targetModels.some((model) => model.id === modelId)),
   );
 
+  const inheritsAgentDefaults = Boolean(
+    executionPreset &&
+      !executionPreset.executionAgentId &&
+      !executionPreset.modelId,
+  );
   useEffect(() => {
+    if (mutationLocked || inheritsAgentDefaults) return;
     if (!target) {
       setModelId(undefined);
       return;
@@ -215,7 +250,13 @@ export function ConversationHandoffDialog({
           ? (defaultModel ?? undefined)
           : targetModels[0]?.id,
     );
-  }, [defaultModel, target, targetModels]);
+  }, [
+    defaultModel,
+    inheritsAgentDefaults,
+    mutationLocked,
+    target,
+    targetModels,
+  ]);
 
   const runHandoff = async () => {
     if (!targetId || !message.trim() || state === 'pending') return;
@@ -229,12 +270,18 @@ export function ConversationHandoffDialog({
       setFeedback('Send or remove attachments before changing Agent.');
       return;
     }
-    const intent: PendingHandoffIntent = {
+    const intent: PendingHandoffIntent = retainedIntent.current ?? {
       idempotencyKey: idempotencyKey.current,
       targetId,
       message: message.trim(),
-      ...(target?.execution?.agentConnectionId
-        ? { connectionId: target.execution.agentConnectionId }
+      ...(executionAgentId
+        ? {
+            executionAgentId,
+            expectedDefinitionFingerprint: target?.definitionFingerprint,
+          }
+        : {}),
+      ...(executionTarget?.execution?.agentConnectionId
+        ? { connectionId: executionTarget.execution.agentConnectionId }
         : {}),
       ...(modelId ? { modelId } : {}),
     };
@@ -250,6 +297,7 @@ export function ConversationHandoffDialog({
       );
       return;
     }
+    retainedIntent.current = intent;
     const clientTurnId = `handoff:${idempotencyKey.current}`;
     setState('pending');
     setFeedback(undefined);
@@ -266,13 +314,27 @@ export function ConversationHandoffDialog({
               idempotencyKey: idempotencyKey.current,
               target: {
                 environment: { kind: 'current' },
-                agent: agentId(targetId),
+                agent: intent.executionAgentId
+                  ? {
+                      kind: 'agent-execution-override',
+                      agent: agentId(intent.targetId),
+                      executionAgent: agentId(intent.executionAgentId),
+                      ...(intent.expectedDefinitionFingerprint
+                        ? {
+                            expectedDefinitionFingerprint:
+                              intent.expectedDefinitionFingerprint,
+                          }
+                        : {}),
+                    }
+                  : agentId(intent.targetId),
                 ...(projectSlug
                   ? { workspace: { kind: 'project', projectSlug } as const }
                   : {}),
-                ...(modelId ? { model: { override: modelId } } : {}),
+                ...(intent.modelId
+                  ? { model: { override: intent.modelId } }
+                  : {}),
               },
-              message: message.trim(),
+              message: intent.message,
               clientTurnId,
             },
           );
@@ -300,6 +362,7 @@ export function ConversationHandoffDialog({
         );
       } else {
         clearPendingIntent(apiBase, conversationId);
+        retainedIntent.current = null;
         onDefiniteFailure(clientTurnId);
         setState('error');
         setFeedback(
@@ -337,6 +400,22 @@ export function ConversationHandoffDialog({
             outcome: 'existing',
             target: {
               agentId: agentId(result.marker.targetAgentId),
+              ...(result.marker.targetExecutionAgentId
+                ? {
+                    executionAgentId: agentId(
+                      result.marker.targetExecutionAgentId,
+                    ),
+                  }
+                : {}),
+              ...(result.marker.targetProvider
+                ? { provider: result.marker.targetProvider }
+                : {}),
+              ...(result.marker.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      result.marker.expectedDefinitionFingerprint,
+                  }
+                : {}),
               engine: result.marker.targetConnectionId
                 ? {
                     kind: 'connection',
@@ -372,14 +451,22 @@ export function ConversationHandoffDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel="Continue with another Agent"
+      ariaLabel={
+        executionPreset
+          ? 'Change conversation engine'
+          : 'Continue with another Agent'
+      }
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
         <div>
-          <h3>Continue with…</h3>
+          <h3>
+            {executionPreset
+              ? 'Change engine for this conversation'
+              : 'Continue with…'}
+          </h3>
           <p>
             Keep this conversation and workspace; replace its execution Session.
           </p>
@@ -391,7 +478,15 @@ export function ConversationHandoffDialog({
         />
       </div>
 
-      {candidates.length === 0 ? (
+      {executionPreset ? (
+        <p>
+          Keep {targetName}; use{' '}
+          {executionTarget?.engineDisplayName ??
+            executionTarget?.name ??
+            'the selected engine'}{' '}
+          for this conversation.
+        </p>
+      ) : candidates.length === 0 ? (
         <Empty
           variant="compact"
           label="Nothing available"
@@ -440,8 +535,13 @@ export function ConversationHandoffDialog({
               <select
                 value={modelId ?? ''}
                 disabled={mutationLocked}
-                onChange={(event) => setModelId(event.target.value)}
+                onChange={(event) =>
+                  setModelId(event.target.value || undefined)
+                }
               >
+                {inheritsAgentDefaults && (
+                  <option value="">Agent default</option>
+                )}
                 {targetModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name}

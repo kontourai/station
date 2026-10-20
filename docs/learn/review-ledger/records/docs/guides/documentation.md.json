@@ -36,7 +36,11 @@
 
     "scripts/lib/review-history.mjs",
 
-    "scripts/lib/review-git.mjs"
+    "scripts/lib/review-git.mjs",
+
+    ".github/workflows/docs-kit.yml",
+
+    "corpus.json"
   ],
 
   "checks": [

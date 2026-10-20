@@ -41,6 +41,7 @@ import {
   type RunningLauncher,
   readState,
   startLauncher,
+  TEST_TIMINGS,
   waitFor,
 } from './fixtures/service-launcher-harness.js';
 
@@ -1018,5 +1019,330 @@ describe('an update keeps moving when its pieces fail (#2675 D review F1, F4-F7)
     );
     expect(fixtureLog(install)).not.toContain('1.0.0 update-home backup');
     expect(fixtureLog(install)).not.toContain('1.1.0 run trial');
+  });
+});
+
+/**
+ * Task Scheduler neither restarts a launcher that exits nor signals one to
+ * stop (#2675 W3), so on Windows the launcher supervises itself. These run
+ * the same mode here (STATION_LAUNCHER_TEST_SELF_SUPERVISED=1); the Windows
+ * install-smoke leg runs it under a real scheduled task.
+ */
+describe('a self-supervised launcher, as on Windows (#2675 W3)', {
+  timeout: 120_000,
+}, () => {
+  const SELF = {
+    STATION_LAUNCHER_TEST_SELF_SUPERVISED: '1',
+    STATION_LAUNCHER_TEST_TIMINGS: JSON.stringify({
+      ...TEST_TIMINGS,
+      relaunchDelayMs: 100,
+      relaunchMaxDelayMs: 400,
+      parentPollMs: 100,
+    }),
+  };
+
+  const runs = (install: LauncherInstall, line: string) =>
+    fixtureLog(install).filter((entry) => entry === line).length;
+
+  it('starts the active version again, in the same process, when it exits on its own', async () => {
+    const crash = join(makeTempDir('station-launcher-crash-'), 'crash');
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      {
+        ...SELF,
+        STATION_FIXTURE_ACTIVE_EXIT: crash,
+      },
+    );
+    writeFileSync(crash, '');
+    await waitFor(
+      'v1 relaunched',
+      () => runs(install, '1.0.0 ready') === 2,
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(launcher.process.exitCode).toBeNull();
+    const log = fixtureLog(install);
+    // The exited version's own stop runs before it starts again.
+    expect(log.indexOf('1.0.0 stop')).toBeGreaterThan(
+      log.indexOf('1.0.0 active-exit'),
+    );
+    expect(launcher.output()).toContain('relaunching in 100 ms');
+    // A stop it is asked for is not followed by a relaunch.
+    launcher.process.kill('SIGTERM');
+    expect(await launcher.exited).toEqual({ code: 0, signal: null });
+    expect(runs(install, '1.0.0 run active')).toBe(2);
+  });
+
+  it('without self-supervision exits instead, for systemd or launchd to restart', async () => {
+    const crash = join(makeTempDir('station-launcher-crash-'), 'crash');
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      {
+        STATION_FIXTURE_ACTIVE_EXIT: crash,
+      },
+    );
+    writeFileSync(crash, '');
+    expect((await launcher.exited).code).toBe(4);
+    expect(runs(install, '1.0.0 run active')).toBe(1);
+  });
+
+  it('stops its child by closing their channel, and commits an update that way', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      {},
+      SELF,
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const update = await waitFor(
+      'the update to finish',
+      () => {
+        const update = finished(install);
+        if (
+          update?.status === 'committed' &&
+          currentVersion(install) !== update.targetVersion
+        )
+          return undefined;
+        return update;
+      },
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(update.status).toBe('committed');
+    const log = fixtureLog(install);
+    // Windows has no SIGTERM: the old version saw its channel close.
+    expect(log).not.toContain('1.0.0 term');
+    expect(log.indexOf('1.0.0 launcher-gone')).toBeGreaterThanOrEqual(0);
+    // ...and its own `stop` by record follows, before the home is backed up.
+    expect(log.indexOf('1.0.0 stop')).toBeGreaterThan(
+      log.indexOf('1.0.0 launcher-gone'),
+    );
+    expect(log.indexOf('1.0.0 update-home backup')).toBeGreaterThan(
+      log.indexOf('1.0.0 stop'),
+    );
+    expect(currentVersion(install)).toBe('1.1.0');
+  });
+
+  it('retries a failing restore by relaunching, and ends in needs-operator without exiting', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'exit', homeSchemaVersion: 99 },
+      {},
+      { ...SELF, STATION_FIXTURE_RESTORE_FAIL: '1' },
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    const stuck = await waitFor(
+      'needs-operator',
+      () => {
+        const update = readState(install)?.update;
+        return update?.status === 'needs-operator' ? update : undefined;
+      },
+      60_000,
+      diagnostics(install, launcher),
+    );
+    expect(stuck).toMatchObject({
+      reason: 'candidate-exited:3',
+      restoreAttempts: 3,
+    });
+    expect(runs(install, '1.0.0 update-home restore')).toBe(3);
+    // One launcher process did all of it, and it waits, serving nothing.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(launcher.process.exitCode).toBeNull();
+    expect(runs(install, '1.0.0 run active')).toBe(1);
+  });
+
+  it('stops in order when its parent, the task wrapper, is gone', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '1.0.0');
+    pointCurrent(install, '1.0.0');
+    const { STATION_CHANNEL: _channel, ...inherited } = process.env;
+    // The wrapper stands in for the task's cmd.exe: it starts the launcher
+    // and is then ended the way `schtasks /End` ends it.
+    const wrapper = spawn(
+      process.execPath,
+      [
+        '-e',
+        [
+          "const { spawn } = require('node:child_process');",
+          'const [launcher, ...args] = process.argv.slice(1);',
+          "spawn(process.execPath, [launcher, ...args], { stdio: 'ignore' });",
+          'setInterval(() => {}, 1000);',
+        ].join('\n'),
+        install.launcher,
+        'service',
+        'run',
+        `--instance=${INSTANCE}`,
+        `--base=${install.home}`,
+      ],
+      {
+        env: { ...inherited, ...SELF, STATION_FIXTURE_LOG: install.log },
+        stdio: 'ignore',
+      },
+    );
+    try {
+      await waitFor(
+        'v1 ready',
+        () => fixtureLog(install).includes('1.0.0 ready'),
+        30_000,
+        diagnostics(install),
+      );
+      const holder = JSON.parse(readFileSync(lockPath(install), 'utf8')) as {
+        pid: number;
+      };
+      wrapper.kill('SIGKILL');
+      await waitFor(
+        'the launcher to stop and release its lock',
+        () => !existsSync(lockPath(install)),
+        30_000,
+        diagnostics(install),
+      );
+      await waitFor('the launcher process to exit', () => {
+        try {
+          process.kill(holder.pid, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      });
+      expect(fixtureLog(install)).toContain('1.0.0 launcher-gone');
+      expect(runs(install, '1.0.0 run active')).toBe(1);
+    } finally {
+      wrapper.kill('SIGKILL');
+    }
+  });
+});
+
+describe('the Windows switch of `current` is install.ps1’s (#2675 W3)', () => {
+  type Layout = 'current' | 'next' | 'both' | 'neither';
+  type Rules = {
+    point: (installRoot: string, version: string) => void;
+    recover: (installRoot: string) => void;
+  };
+
+  function layout(kind: Layout): string {
+    const installRoot = makeTempDir('station-current-');
+    for (const version of ['1.0.0', '1.1.0'])
+      mkdirSync(join(installRoot, 'versions', version), { recursive: true });
+    const link = (name: string, version: string) =>
+      symlinkSync(
+        join(installRoot, 'versions', version),
+        join(installRoot, name),
+        'junction',
+      );
+    if (kind === 'current' || kind === 'both') link('current', '1.0.0');
+    if (kind === 'next' || kind === 'both') link('current.next', '1.1.0');
+    return installRoot;
+  }
+
+  function observe(installRoot: string) {
+    const read = (name: string) => {
+      try {
+        return readlinkSync(join(installRoot, name)).split(/[\\/]/).at(-1);
+      } catch {
+        return null;
+      }
+    };
+    return { current: read('current'), next: read('current.next') };
+  }
+
+  async function rules(): Promise<Record<'launcher' | 'installer', Rules>> {
+    const launcher = (await launcherModule()) as LauncherModule & {
+      pointCurrentAt: (root: string, version: string, platform: string) => void;
+      recoverCurrent: (root: string) => void;
+    };
+    const installer = await import(
+      '../../packages/shared/src/installer/full-install.js'
+    );
+    return {
+      launcher: {
+        point: (root, version) =>
+          launcher.pointCurrentAt(root, version, 'win32'),
+        recover: launcher.recoverCurrent,
+      },
+      installer: {
+        point: (root, version) =>
+          installer.pointCurrentAt(root, join(root, 'versions', version)),
+        recover: installer.recoverCurrent,
+      },
+    };
+  }
+
+  it.each(['current', 'next', 'both', 'neither'] as const)(
+    'recovers a %s layout the same way',
+    async (kind) => {
+      const both = await rules();
+      const outcomes = Object.values(both).map((rule) => {
+        const root = layout(kind);
+        rule.recover(root);
+        return observe(root);
+      });
+      expect(outcomes[0]).toEqual(outcomes[1]);
+      expect(outcomes[0]).toEqual(
+        {
+          current: { current: '1.0.0', next: null },
+          next: { current: '1.1.0', next: null },
+          both: { current: '1.0.0', next: null },
+          neither: { current: null, next: null },
+        }[kind],
+      );
+    },
+  );
+
+  it('retries a refused rename exactly as install.ps1 does (#3363)', async () => {
+    type Retrying = (
+      source: string,
+      destination: string,
+      options: {
+        platform?: string;
+        rename?: (source: string, destination: string) => void;
+        wait?: (milliseconds: number) => void;
+      },
+    ) => void;
+    const launcher = (await launcherModule()) as unknown as {
+      renamePathRetrying: Retrying;
+    };
+    const shared = (await import(
+      '../../packages/shared/src/fs-windows-compat.js'
+    )) as unknown as { renamePathSyncRetrying: Retrying };
+    const refusal = (code: string) => Object.assign(new Error(code), { code });
+    const scripts: Array<{ platform: string; codes: (string | null)[] }> = [
+      { platform: 'win32', codes: ['EPERM', 'EBUSY', null] },
+      { platform: 'win32', codes: Array(12).fill('EACCES') },
+      { platform: 'win32', codes: ['EPERM', 'ENOENT'] },
+      { platform: 'linux', codes: ['EPERM', null] },
+    ];
+    for (const { platform, codes } of scripts) {
+      const run = (retrying: Retrying) => {
+        const errors = codes.map((code) => (code ? refusal(code) : null));
+        const waits: number[] = [];
+        let calls = 0;
+        let thrown: unknown = null;
+        try {
+          retrying('a', 'b', {
+            platform,
+            rename: () => {
+              const error = errors[calls++];
+              if (error) throw error;
+            },
+            wait: (ms) => waits.push(ms),
+          });
+        } catch (error) {
+          thrown = errors.indexOf(error as (typeof errors)[number]);
+        }
+        return { calls, waits, thrown };
+      };
+      expect(run(launcher.renamePathRetrying), JSON.stringify(codes)).toEqual(
+        run(shared.renamePathSyncRetrying),
+      );
+    }
+  });
+
+  it('switches `current` to the same version, leaving no current.next', async () => {
+    const both = await rules();
+    for (const rule of Object.values(both)) {
+      const root = layout('current');
+      rule.point(root, '1.1.0');
+      expect(observe(root)).toEqual({ current: '1.1.0', next: null });
+    }
   });
 });

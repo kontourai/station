@@ -125,13 +125,14 @@ test.describe('Project layout render storm', () => {
       await dismissSetupLauncher(page);
 
       // A phone lands on the Chat page, which is its maximized dock; the
-      // detector samples a drilled-in pane, as the desktop case does.
+      // detector samples a drilled-in pane, as the desktop case does. Collapse
+      // is the dock header's own control since #3144 (Chat actions keeps only
+      // Full screen / Exit full screen); it rides the same collapsed snap.
       const dock = page.locator('#chat-dock');
       await expect(dock).toHaveClass(/is-maximized/, { timeout: 20_000 });
-      await page.getByRole('button', { name: 'Chat actions' }).click();
       await page
-        .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: 'Collapse chat' })
+        .getByTestId('chat-dock-mobile-header')
+        .getByRole('button', { name: 'Collapse chat' })
         .click();
       await expect(dock).not.toHaveClass(/is-maximized/);
       await selectCodingPane(page, 'Files');

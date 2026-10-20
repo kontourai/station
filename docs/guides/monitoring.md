@@ -5,31 +5,189 @@ Station has three separate measurement paths:
 | Path | Owner and destination | What enables it |
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
-| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and the startup limitation below |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
+| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
+
+Full product observations use the disclosed v1 envelope: stable retry IDs, producer
+times, inventory revision and allowlisted immutable build attribution on every
+event. Full product telemetry is pseudonymous: its installation hash rotates
+monthly and is never linked to an account by Station. Lite is identifier-free
+by contract, but has no sender in this foundation. The optional [product receiver](../../packages/telemetry-broker/README.md)
+authenticates separate product source keys, durably commits PostgreSQL observations,
+and deduplicates retained source/event UUIDs. Its operator queries describe received
+observations with unknown delivery coverage; these observations are separate from
+canonical personal receipts. Acknowledgements
+must name the displayed inventory revision, so stale/older UIs cannot silently
+approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
+
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+configured UTC-day cutoff (default 90 days including today). Feedback hash
+erasure still runs if ping-hash erasure fails. Committed Lite responses always
+return `{ "accepted": true }`, without exposing dedupe state. Public and
+third-party publisher views exclude feedback.
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. Startup refuses
+non-canonical ranges, whitespace, IPv4 prefixes wider than /24 and IPv6 prefixes
+wider than /64. Trusted-proxy peers can reach only the public GET routes and
+Lite POST route; private routes return 404 even with valid credentials. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Sources default to catalog-only
+version admission. Optional `versionPolicy: "semver"` admits valid sender
+versions plus `custom`; operator exact views show all of them. Its public version
+support still comes only from `releaseVersions`, with no version dimension
+contributed by an empty SemVer catalog. Unlisted versions never expand public
+support. Migration 8 preserves catalog policy for existing sources. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
 
 The repository includes an optional Docker example for Collector → Prometheus
 → Grafana metrics and Collector → Jaeger traces. Starting that example is not
 proof that Station recorded or delivered a measurement. The local event log is
 also separate from the canonical orchestration EventStore.
 
-**Current collection limit:** instruments created before asynchronous OTel
-initialization can remain bound to a no-op meter after the SDK starts. A
-controlled initializer/in-memory-reader probe reproduced this with the actual
-exported chat counter. Treat the tables below as declarations and recording
-call sites, not proof of a populated collector. The startup owner needs to fix
-this binding before an enabled endpoint alone can establish metric collection:
-[#2755](https://github.com/kontourai/station/issues/2755).
+Configured OTel registers its providers synchronously when the telemetry module
+loads, before Station creates its instruments. Installation identity resolves
+as an asynchronous resource attribute; export waits for it without delaying
+application startup. Hosted persistence admission precedes schema/identity
+writes; deployment-mode detection has no metric imports that could create
+instruments before provider registration. Failed identity persistence stops the SDK and refuses
+export rather than sending an unidentified payload. With no endpoint, the SDK
+stays inactive and performs no identity I/O.
+
+The [telemetry regression](../../src-server/__tests__/telemetry.test.ts) records
+the actual exported chat counter while identity I/O is held, then observes both
+that record and a later record at a loopback OTLP receiver with the persisted
+identity hash. A failure control receives no payload, and unsafe hosted homes
+remain untouched. This repairs
+[#2755](https://github.com/kontourai/station/issues/2755); it does not qualify a
+deployed collector, storage backend or dashboard. The tables below remain
+declarations and recording call sites, not proof of those destinations.
+
+## Canonical usage export source
+
+The `GET /api/analytics/usage-export` path selects retained canonical
+usage observations in committed global order. It reuses the EventStore receipt
+SELECT, mapping and pricing projection. Dates are inclusive UTC Station-observed
+days, at most 366 days; each page selects at most 100 observation events. One
+event can produce distinct token and provider-cost receipts. Continuation fixes
+the stream epoch/high watermark and binds the source, request principal, tenant,
+owner set, scope and dates. It is pagination data, never an authentication grant.
+
+`scope=individual` selects only the verified person's own recorded owner id.
+`personal-account` explicitly selects the existing approved personal-conversation
+owner set; hosted mode refuses that broader scope and keeps exact owner+tenant
+selection. Runtime composition refuses unverified/operator-only person claims,
+rechecks existing credential/account authority at response release, and rechecks
+the owner set/source epoch. Unknown query keys and malformed continuations refuse.
+
+Coverage stays unknown: retained observation pages do not establish missing
+provider reports, source deletions or complete history. This source path does
+not issue a companion grant or borrow a peer bearer. Durable grants and person
+destination credential custody, transactional invalidations, restored-home
+generation fencing, index/checkpoint transactions and clone/mirror policy are
+still pending under #3459/#3460. Stream epoch is copied by backups; it is not
+a restore-generation fence. Focused mounted-route and runtime-composition
+controls have exercised more than 500 retained observations, fixed-head paging,
+owner/tenant scope, membership and queued-body revocation, verified person-bound
+Device and account reads, and cumulative-history refusal. They use controlled
+identity fixtures; live enrollment, durable sync, measured query performance,
+full gates and deployment qualification remain separate. The source
+refuses cumulative-cost projection when selected threads exceed a combined
+1,000-event sequence budget, before hydrating their history; its evidence read
+also has a row bound. It reports unavailable rather than truncate cost segments.
+Durable cost-segment indexing and measured larger-history budgets remain open.
+
+The [scoped SDK reader](../reference/sdk.md#canonical-usage-export) validates
+receipt observation clocks, source/window/scope, committed order and a captured
+continuation snapshot without folding page facts into totals. Its fetcher and
+two-observer query controls have executed; a query key grants no source access.
+
+## Developer diagnostics
+
+Developer → Monitoring provides five views over existing Station measurements:
+
+| View | Source and limits |
+| --- | --- |
+| Activity | Live monitoring events plus bounded file history. Search and filters apply to loaded rows. The expandable session list reads canonical current session summaries independently of the event window. |
+| Tool latency | Reported `station.tool.duration_ms` on filtered tool-result events. p50/p95 use measured durations only; unreported durations and outcomes remain separate. Truncated or failed history makes the result partial. |
+| Usage | Existing usage receipt rollup and operator-only Station usage overview. Reported cost, estimates, currency and coverage retain their existing distinctions. |
+| Context | Latest statistics for a selected session with an assigned Agent and conversation identity. Engine observations and Station estimates are labeled separately. Missing conversations or unreported measurement sources do not produce a percentage. Occupancy is not token consumption. |
+| Routing | Recent consuming and serving inference receipts, using each reader's own bounds. |
+
+Developer → System → Performance polls host CPU and memory diagnostics every
+five seconds while mounted. The CPU probe keeps its shared cache and sampling
+interval; host memory and Station-process RSS/heap have a separate observation
+time in `resources`. The chart retains up to 60 received samples during that
+mounted visit, not durable historical performance. System → Services exposes
+existing engine and capability readiness reasons. Developer → Logs offers
+optional refresh, time bounds and structured records with scan-coverage warnings.
+See the [Developer surface](../design/developer-surface.md) for implementation
+owners. None of these views requires OTel export to be enabled.
 
 ## Profile usage and paired people
 
 The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
 identity next to usage on the connected Station. These are different scopes:
-the identity does not make the retained lifetime summary a personal total.
+the identity does not make the Station-wide retained-source summary a personal total.
 Lifetime counts combine saved messages with completed external-engine turns.
-Daily graphs and period statistics cover file-memory messages on UTC dates;
-external-engine sessions contribute lifetime totals but no daily distribution.
-The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+Daily and model breakdowns include retained file-memory messages and external-engine
+observations. UTC days use saved-message timestamps and canonical provider-event
+`createdAt` values, not precise consumption dates or the receipt ingestion clock. Completed external-engine turns contribute activity on their
+recorded UTC day. Missing or invalid dates, missing models and unknown principal or
+provider attribution remain in `unallocated`. Saved messages have no authenticated
+principal or provider writer and remain unallocated in those dimensions even if
+arbitrary metadata names them. Engine person attribution uses the server-stamped `turn.started`
+principal; usage-event principal fields cannot override it. Current app or Agent configuration
+never fills historical gaps.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows,
+with full date endpoints at narrow widths. The usage summary shows retained activity,
+conversations, active UTC days and recorded cost. It does not divide a partial token
+or cost sum by all turns to imply a measured per-turn average. Model rankings show
+only recorded model identities and disclose unattributed turns; current Agent defaults
+do not establish historical model-to-Agent relationships. Model and Agent rows and
+details distinguish absent cost from a reported or estimated zero. Agent cost buckets
+retain optional `reportedCostUsd` and `estimatedCostUsd` alongside their combined `cost`.
+Paired people, the operator breakdown, peer receipts, milestones, diagnostics and
+history mount when their disclosure is opened and unmount when closed. Shared
+analytics queries, including milestone data, continue to follow their context
+ownership. Existing authorization rules still apply to the connected Station.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
@@ -40,35 +198,68 @@ forces the existing rescan. Clearing the aggregate is not a history deletion;
 retained transcripts and receipts rebuild it, so the profile does not offer a
 permanent-reset action.
 
-Lifetime summaries preserve historical high-water counters and attribute an
-engine session's model totals to its latest model. They are not a billing
-statement or an exact split of mixed-model sessions. The receipt rollup below
-keeps provider-reported cost, estimates, currencies, pricing snapshots, and
-missing-source coverage separate. Use those receipts for bounded provider/model
-comparisons. Unsupported or unreported figures remain unknown.
+The current summary is rebuilt from retained records. Corrected or deleted facts
+can decrease its counters and remove obsolete date, model and Agent buckets. Any
+saved summary from before this projection is preserved separately as
+`legacySummary` with `evidence: "unverified"`; it contributes nothing to current
+figures. Retention therefore limits current coverage.
 
-Station milestones use this retained summary, not a person's sent-message
-count. A cost milestone does not unlock from unreported engine or saved-assistant
-cost, skipped message records, a failed engine read, or retained measurements
-that the latest scan could not remeasure. Incremental message writes and usage
-enrichment invalidate cost coverage until the next rebuild. Its
+The shared usage fold applies each provider's token and cost scopes once while
+producing record allocations. Per-call measurements use their recorded model.
+Initial cumulative thread/process baselines and intervals crossing model changes
+remain unallocated by model and principal. A downward cumulative token correction
+cannot identify the earlier buckets to subtract from, so its corrected total is
+unallocated by date, model and principal. Thread-cumulative Codex tokens survive
+process restarts. Claude cost allocations use the same running-total segments as
+the session total: a resumed process continues its previous total; a fresh process
+or a lower cost figure starts a new segment and retains the previous spend.
+These distributions are recorded observations, not an exact consumption split
+or a billing statement.
+
+`tokenReports` counts retained measurement contributions, including explicit zero.
+A numeric compatibility sum without a corresponding report remains unmeasured.
+Optional `reportedCostUsd` and `estimatedCostUsd` keep provider-reported amounts
+and saved estimates distinct. No rescan reprices historical records. The receipt
+rollup below separately carries currencies, pricing snapshots and missing-source
+coverage for bounded comparisons.
+
+A Station-agent relay identifies its saved transcript only through canonical
+relay provider, one consistent recorded `agentId`, and the exact thread ID used
+by its `/chat` request. Saved messages remain the primary ledger for that join;
+`mirroredEngineActivity` separately discloses relay sessions and completed turns
+with partial coverage because exact per-turn overlap is unavailable. A matching
+conversation ID alone never excludes an unrelated external engine. Ambiguous
+Station-agent overlap is held outside current totals as `ambiguousRelayActivity`,
+with its activity count and any measured evidence preserved separately.
+
+Station milestones use this current retained-source summary, not a person's
+sent-message count. A cost milestone does not unlock from unreported engine or saved-assistant
+cost, completed engine turns without cost, unknown exact relay overlap, skipped
+message records, or a failed engine read. Message-write and enrichment notifications invalidate the projection; the next
+active reader rebuilds it rather than adding replacement usage again. Replacement
+retains the original timestamp, including an unknown or invalid timestamp; it
+never gives an undated retained record today's date. Its
 API result supplies `measurementUnavailableReason` and omits numeric progress;
 the UI shows that gap instead of a budget amount or progress bar. A reported
-zero cost remains a real measurement. `snapshot.retainedUsage` compares retained
-message, token and cost totals with the current scan; it is not a claim of
-complete historical coverage. The cost comparison tolerates floating-point
-rounding differences.
+zero cost remains a real measurement. `snapshot.projection` identifies
+`retained-source-v1`; `snapshot.dayScope` identifies
+`recorded-observations-utc`. These markers do not establish complete historical
+coverage. The [public stats DTO](../../packages/contracts/src/usage-stats.ts)
+exposes recorded-principal and recorded-provider buckets for authorized consumers.
+Recorded-person breakdowns require the bound local operator boundary; a principal
+is attribution, never a grant or a claim of personal lifetime totals.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
 | Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is a running total. A process that resumes its transcript continues that total; a restart without resume, or a lower figure, starts a new total that is added |
 | Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
+| Imported OpenCode sessions | Per-turn input, output (reasoning included) and cache read/write tokens, summed from the turn's steps | OpenCode's own cost figure is an estimate from its price catalog, not a provider charge, so it is not imported |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
 | ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
-| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
+| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
 persisted cursor. Older aggregation cursors recover identities from a bounded
@@ -81,6 +272,13 @@ observations, including split observations already persisted before this fix.
 Codex session-cumulative observations still use the latest snapshot. This
 repairs [#581](https://github.com/kontourai/station/issues/581); it does not
 expand the window's event or byte limits.
+
+The viewer receipt panel partitions its cache by captured Station authority and
+credential-profile filter. A lost scope hides cached rows; 401/403 pauses polling
+until retry. Pagination restarts when authority changes. Current cost cards say
+**Not reported** when no cost contribution exists, while measured zero stays
+numeric. An empty retained history cannot certify a cost-per-message milestone.
+Cache-only and total-only engine measurements count in token-reporting coverage.
 
 The receipt panel reads an aggregate separately from its drilldown page. Local
 aggregate reads select at most 500 observations; a page selects at most 100.
@@ -144,8 +342,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
@@ -170,6 +374,41 @@ is not a claim that every client is offline. A failed registry read hides cached
 profiles. HTTP 401/403 pauses registry polling to avoid consuming the auth-failure
 rate limit; an explicit retry can reauthorize it. This surface grants no access and shares no personal usage statistics.
 
+### Operator view of this instance
+
+Open **Profile → This Station → View station usage**.
+Activity bars rank recorded messages and completed turns; **Tokens & costs** opens
+the full measurement table. The authorized local operator can inspect usage by engine or
+provider, model, person/principal, and UTC day. **Unknown / unallocated** keeps
+missing attribution visible. Identity comes from server-stamped events; saved
+message metadata cannot certify a person. Corrections and deletions change
+current totals. Ambiguous relay activity is shown separately and excluded from
+those totals. Token report counts preserve measured zero; a missing measurement
+shows a dash. Reported cost and recorded estimates stay separate.
+
+The instance read requires the runtime-bound home-possession local operator and
+is unavailable on hosted deployments or tenant workers. Ordinary analytics and
+rescan responses omit the person breakdown. The SDK partitions its cache by
+Station and captured authority; an access error hides cached results, and
+401/403 pauses polling until retry. The view queries no peer Station.
+
+Measurements currently come from retained conversation history and
+orchestration events. Native direct invocations, inference served for peers,
+voice/realtime, embeddings, and provider activity outside recorded sessions are
+not independently metered here. Their existing lifecycle/routing receipts do not
+contain durable token/cost measurements. Fleet-routed measurements saved in a
+conversation are counted through that conversation once. Do not add serving and
+consumer observations together without shared call correlation. Context
+occupancy is not consumed tokens, and some harnesses report activity without
+usage. The overview's **Coverage & sources** explains these boundaries;
+missing measurements are not zero. Fixture/source verification does not prove a
+live provider invoice, every plan, or historical usage recovery.
+
+The Profile page keeps receipts, milestones, diagnostics, and detailed activity
+history in expandable sections. **About these totals** explains the summary
+without repeating it above every chart. Main usage refresh failures remain visible; each expanded section shows its own
+access or read failure.
+
 ## Quick Start
 
 ```bash
@@ -189,11 +428,24 @@ The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/statio
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint. Unset means no OTel SDK initialization; local monitoring remains available. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, no OTel SDK initializes; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
-| `STATION_TELEMETRY_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
+
+Product observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
+Legacy names remain supported until a separate release decision. Bootstrap
+notices name aliases or conflicts without printing key material.
+
+Settings → Telemetry distinguishes exporter initialization, metric and trace
+callback acceptance/failure, and explicit connection checks. An OTLP check sends
+empty trace and metric requests and establishes only collector HTTP acceptance.
+The response marks downstream delivery unverified; stored metrics, trace
+queries and dashboards need their own runtime qualification. Status and
+connection results describe the current Station process.
 
 To enable telemetry against the local stack:
 
@@ -246,10 +498,11 @@ from automatic retention.
 
 ## Local evidence and the historical migration shadow
 
-Without an OTel SDK, metric instruments **discard their writes**. The startup
-binding issue above can also leave an early-created instrument inactive after
-SDK registration. Nothing is buffered, so nothing is recoverable after the
-fact. That is fine for a rate you would only ever read on a dashboard, and it
+Without an OTel SDK, metric instruments **discard their writes**. Configured
+startup registers providers before creating instruments; an instrument created
+by a different entry point before registration can still bind to a no-op meter.
+Such discarded observations are not recoverable after the fact. That is fine
+for a rate you would only ever read on a dashboard, and it
 is *not* fine for a counter some gate is supposed to read as evidence: an
 instrument that throws its writes away produces exactly the same silence as a
 subsystem that agreed with everything, and the reader cannot tell them apart.
@@ -330,13 +583,16 @@ Station server
        └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
 ```
 
-`src-server/index.ts` imports `src-server/telemetry.ts` early, but initialization
-is asynchronous and does not hold up application startup. A failure warns and
-Station continues. Import order alone does not solve the instrument-binding
-problem described above. The configured SDK includes:
+`src-server/index.ts` imports `src-server/telemetry.ts` before runtime/instrument
+modules. Provider registration runs before the initializer's first await;
+installation identity and export readiness remain asynchronous. A failure
+warns and Station continues. Alternate entry points must preserve registration
+before instrument creation. The configured SDK includes:
 - `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
 - A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
+- No SDK log exporter: Station's durable logger remains a separate local path.
+  `OTEL_LOGS_EXPORTER` does not implicitly add an unreviewed export signal.
 
 ## Metrics reference
 
@@ -589,8 +845,10 @@ name/duration also travel into the local result event. Follow the
 caller instead of copying a partial snippet that changes those conditions.
 
 The optional SDK shutdown joins Station's shared 1.5-second network-teardown
-budget. It is best effort; process exit or that deadline is not proof of
-collector delivery.
+budget. Configured exporters can flush during that budget. Expiry fences their
+credentials and probes immediately, even if SDK shutdown is still pending;
+later callbacks cannot record an accepted delivery. It is best effort; process
+exit or that deadline is not proof of collector delivery.
 
 ## Application-Level Monitoring (MonitoringEmitter)
 
@@ -609,7 +867,13 @@ Station-agent streams feed the emitter through their streaming pipeline.
 External canonical engine events are projected by
 [OrchestrationMonitoringBridge](../../src-server/services/orchestration/orchestration-monitoring-bridge.ts),
 which excludes Station-agent to avoid a duplicate projection. The bridge does
-not own lifetime usage accounting; that has its own canonical usage fold.
+not own lifetime usage accounting; that has its own canonical usage fold. On an
+external engine's agent-complete span, token usage is that turn's own figure
+only for a provider declared `per-turn` in
+[usage semantics](../../packages/shared/src/usage-semantics.ts), summed across
+the turn's frames. A session-cumulative provider (Codex) or an undeclared one
+leaves the span's usage absent, because its frames are session totals, not that
+turn's usage. Spans written before this change can carry a Codex session total.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
@@ -639,8 +903,8 @@ GenAI attributes (set per operation type):
 |-----------|--------|-------------|
 | `gen_ai.request.model` | agent start/end | Model ID |
 | `gen_ai.conversation.id` | when reported | Optional Conversation ID |
-| `gen_ai.usage.input_tokens` | agent complete | Input token count |
-| `gen_ai.usage.output_tokens` | agent complete | Output token count |
+| `gen_ai.usage.input_tokens` | agent complete | That turn's input token count; absent when not reported or not attributable to the turn |
+| `gen_ai.usage.output_tokens` | agent complete | That turn's output token count; absent when not reported or not attributable to the turn |
 | `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (archive#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
 | `gen_ai.provider.name` | tool call/result | The engine that ran the tool (archive#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
 | `gen_ai.request.model` | tool call/result | Session-configured model at dispatch — not observed per call. |
@@ -696,7 +960,8 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Its default window is 14 days. The route applies
+hourly activity and totals. Agent buckets count chats only; there is no
+per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine
 filter cannot recover provider attribution missing from older or differently
@@ -709,10 +974,15 @@ reader's content-derived bounds, this optimization can omit a clock-skewed
 exporter's row at a UTC day boundary. It does not scan every retained file on
 every request.
 
-Insights logs and skips per-row parsing and per-file read failures, then can
-still return `success: true` without a completeness indicator. A successful
-aggregate therefore does not prove every relevant file/row was read. This
-differs from the history reader's propagation of non-missing-file I/O errors.
+Insights returns typed retained-scan coverage: clean scans are `complete`,
+omissions alongside readable rows are `partial`, and missing history or an
+impaired scan with no measurable rows is `unknown`. Malformed rows, invalid
+timestamps and unreadable files are classified without exposing paths, contents
+or other users' counts. An unreadable directory fails with 503. These states
+describe scan integrity, not lifetime, delivery or requested-window retention.
+The dashboard warns alongside partial totals, hides unknown totals, and hides
+cached totals after a failed refresh. Older servers without coverage show a
+completeness warning. Day windows must be integers from 1 through 365.
 
 For exact query parsing and response fields, read the
 [monitoring route](../../src-server/routes/operations/monitoring.ts),

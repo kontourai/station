@@ -1,0 +1,7 @@
+{
+  "revision": "e90bacc974c50d6da1b06c496a95889aa0d97af4",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed mobile-chat-composer Task-inventory outage coverage against this reading map. The product-bucket journey mounts Chats and tasks and the New chat dialog with explicit Task 503 responses and an audited preferences fixture. Reintroducing Task error gating fails the recent-chat error assertion after rebuilding UI; restored source passes. Existing representative owner and fixture limits remain accurate; this does not qualify the full product suite or physical devices.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

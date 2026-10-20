@@ -1,0 +1,31 @@
+{
+  "baseline": "a2668a0eb805c37c5e88adc1c8fa8784ee98f067",
+  "implementation": "ffd5ea543063f6474014307624722f66e1800d72",
+  "documentationHead": "6da9ec01ae9",
+  "environment": "macOS arm64, Node 24.19.0, production source build",
+  "screenshots": "Real browser captures. Comparisons crop the source screenshots; no UI text or pixels were altered. Baseline recreated on the original revision in a separate fresh home. Browser heights differ (953 and 1009 px). Agent selection differs after explicit setup, not because the copy fix changes selection.",
+  "sessions": {
+    "codex": "codex:1792077191154",
+    "station": "station:1792077384129",
+    "custom": "onboarding-codex:1792077567705"
+  },
+  "imageDigests": {
+    "agent-editor.jpg": "ee54318e828f8c6a9ae04608c583126faaf3167f9845a18d2ad7574b229095e5",
+    "codex-chat.jpg": "3cebc27bed18c7d42873c7572e1ecaf4fe7eb8257fed1a8acbdf5303755478ac",
+    "coding-tools.jpg": "e583378e148495f9dca80cc234e56d78cb9740cb355446d8b839911603e42a6d",
+    "connections-after.jpg": "31b9150ca2a62552dba3ef98c730bac7b59c81222c8aa5caa56da121eded8bbe",
+    "connections-before.jpg": "c3f9e4b710ad1e7820a06bf42f2b510e8435c354165198202530ef3b1a0b5f90",
+    "connections-comparison.jpg": "9c9e23fb20c13d2a02509c0d4f92b644a9e9e21ed43a855cd507f2b731938c00",
+    "diff.jpg": "82f032b638d258c18637c489f3c37b30b25d899d44b06ccb4dac9b47352febcb",
+    "first-launch.jpg": "02ef727f35d0071396334b04b7f00b132b5fbaec04476f3b580131489e3ef141",
+    "followup.jpg": "9e474b169310fb6da11d668b8a57f95ca31908f2147d0a7d0448338d12696390",
+    "project-after.jpg": "8fd7e51fbe79593e34194df93d4ba824348613f8291f058187ab9f82247fce6c",
+    "project-before.jpg": "c123e7ce9ab759788631c83cce738178c74025cecb8f86940bc24e6cac377ae3",
+    "project-comparison.jpg": "f1ba98881ef2cfcebe54de8cc5ac5e760a427ef9fa961d9c08572567239a46c1",
+    "starter-after.jpg": "c8126243db82edf9ed9a1ef2f17486717cf2dbc3fc761987c38f4d0532746227",
+    "starter-before.jpg": "cfe1175a9579485e0c2e07b5eb57257c5132dfa2be013e33589dff6a1fb0fdba",
+    "starter-comparison.jpg": "5bffab2ca43ec0080f8c288ef0af03a6137c3199142d66d8c3f932db77a1d911",
+    "station-unavailable.jpg": "0811bbcbb2944d344191777356a9315793d88c0fbc42d5d7f79cb1622b09f872",
+    "terminal-result.jpg": "61850c5f8f179cb3822769ee5ee626a0043714a307e5099665a107200c9413f6"
+  }
+}

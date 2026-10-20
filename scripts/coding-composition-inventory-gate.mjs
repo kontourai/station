@@ -165,6 +165,8 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/FileTreePanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.tsx': 'git-review',
+    'src-ui/src/components/coding-layout/PullRequestGuide.css': 'presentation',
+    'src-ui/src/components/coding-layout/PullRequestGuide.tsx': 'git-review',
     'src-ui/src/components/coding-layout/PullRequestReviewPanel.css':
       'presentation',
     'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx':
@@ -189,6 +191,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',
     'src-ui/src/hooks/useGitActions.ts': 'git-review',
     'src-ui/src/hooks/useNewProjectStarter.ts': 'distribution',
+    // Selects a decorative icon by Layout type; it mounts no Coding pane.
+    'src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx':
+      'presentation',
     'src-ui/src/index.css': 'presentation',
     // #890: ProjectPage is the navigation composition seam that chooses a
     // host before opening a layout-bound Workspace Pane. Every renderer in

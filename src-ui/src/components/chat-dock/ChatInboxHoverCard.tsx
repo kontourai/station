@@ -16,8 +16,8 @@ import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import type { WorkFacts } from '../../views/home/work-facts';
-import { workStatus } from '../../views/home/work-status';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   InboxRowStatusGlyph,
@@ -296,7 +296,7 @@ function ChatInboxCardBody({
   showTitle?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
-  const status = workStatus(item, now, facts);
+  const status = useObservedWorkStatus(item, now, facts);
 
   // Git facts resolve against the row's LOCAL working directory, supplied by
   // the host (see the prop docblock).

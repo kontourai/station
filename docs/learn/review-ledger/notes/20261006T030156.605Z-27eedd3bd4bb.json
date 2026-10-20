@@ -1,0 +1,7 @@
+{
+  "revision": "bb30ae01a4a37635346053fb5db3a3bbbf80f760",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3406 follow-up: the two PROCESS_HEAVY entries moved next to the plugin-draft-build-process entry (same group, same classification); no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

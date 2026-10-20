@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"#3331 only adds responsive-surface inventory entries (RequestSheet) and phone-path notes; RequestSheet.css uses --k-* tokens and the existing --overlay-bg-darker scrim. No theming claim changed.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

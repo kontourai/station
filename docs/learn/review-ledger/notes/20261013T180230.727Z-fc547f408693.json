@@ -1,0 +1,7 @@
+{
+  "revision": "c397e5020619428adbc868c9d13186449f447692",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read after memory-adapter-messages.ts made readStoredMessagesWithRecovery module-private (export keyword only). This doc does not mention that function, torn-tail recovery or the module; getMessages behaviour and its claims here are unchanged.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts"]}
+  ]
+}

@@ -11,7 +11,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
+import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
@@ -21,6 +24,12 @@ import {
   resolveConfigHomeAffinity,
 } from '../sessions/transcript-file-io.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
+
+// Adapter wiring fixtures must not borrow this Mac's real secure-store account.
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof import('node:os')>()),
+  platform: () => 'linux',
+}));
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
@@ -129,6 +138,8 @@ import {
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,
@@ -259,6 +270,210 @@ describe('ClaudeAdapter', () => {
     mockBuildCliRuntimePrerequisites.mockReset();
     mockAugmentedSpawnEnv.mockReset();
   });
+
+  test.each(['home', 'profile'] as const)(
+    'a native return refuses a changed %s before starting another Claude process',
+    async (changed) => {
+      let home = '/profiles/original';
+      let profileRef = 'original';
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: async () => ({
+          env: { CLAUDE_CONFIG_DIR: home },
+          profileRef,
+        }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'binding-source',
+        });
+        const event = (await iterator.next()).value;
+        const bindingKey =
+          event?.method === 'session.started'
+            ? event.metadata?.nativeResumeBindingKey
+            : undefined;
+        if (typeof bindingKey !== 'string')
+          throw new Error('No observed source binding');
+        await adapter.stopSession('binding-source');
+        if (changed === 'home') home = '/profiles/replacement';
+        else profileRef = 'replacement';
+        const invocations = mockQuery.mock.calls.length;
+        await expect(
+          adapter.startSession({
+            provider: 'claude',
+            threadId: 'binding-return',
+            resumeCursor: 'native-source',
+            requireNativeResumeIdentity: true,
+            nativeResumeBindingKey: bindingKey,
+          }),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(mockQuery).toHaveBeenCalledTimes(invocations);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test.each(['native-original', 'native-other'])(
+    'exact native resume observes Claude init %s before reporting matched continuity',
+    async (observedId) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const claim = vi.fn();
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
+      const events: Array<{
+        method: string;
+        code?: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      try {
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'strict-resume',
+          resumeCursor: 'native-original',
+          requireNativeResumeIdentity: true,
+          metadata: { nativeResumeIdentity: 'matched' },
+        });
+        expect(claim).toHaveBeenCalledOnce();
+        expect(
+          events.some(
+            (event) => event.metadata?.nativeResumeIdentity === 'matched',
+          ),
+        ).toBe(false);
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: observedId,
+          cwd: '/tmp/project',
+          model: 'claude-sonnet',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (observedId === 'native-original') {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'session.configured',
+                metadata: expect.objectContaining({
+                  nativeResumeIdentity: 'matched',
+                }),
+              }),
+            ),
+          );
+        } else {
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'runtime.error',
+                code: 'engine-session-binding-dead',
+                metadata: { nativeResumeIdentity: 'mismatch' },
+              }),
+            ),
+          );
+          expect(controlled.interrupt).toHaveBeenCalledOnce();
+          expect(
+            events.some(
+              (event) => event.metadata?.nativeResumeIdentity === 'matched',
+            ),
+          ).toBe(false);
+          expect(
+            events.some((event) => event.method === 'turn.completed'),
+          ).toBe(false);
+        }
+        expect(claim).toHaveBeenCalledOnce();
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
+
+  test.each(['claimed', 'refused'] as const)(
+    'fresh native init is %s before publishing ready continuity',
+    async (outcome) => {
+      const controlled = createControlledMockQuery();
+      mockQuery.mockReturnValue(controlled);
+      const order: string[] = [];
+      let session: { status: string } | undefined;
+      const statusAtClaim: Array<string | undefined> = [];
+      const claim = vi.fn<(identityKey: string, sessionId: string) => void>(
+        () => {
+          statusAtClaim.push(session?.status);
+          order.push('claim');
+          if (outcome === 'refused')
+            throw new Error('native ownership conflict');
+        },
+      );
+      const adapter = new ClaudeAdapter({
+        nativeSessionOwnership: {
+          assertMutable: vi.fn(),
+          claim,
+          retired: vi.fn(),
+        },
+      });
+      const events: Array<{ method: string; model?: string }> = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) {
+          events.push(event);
+          if (
+            event.method === 'session.configured' &&
+            event.model === 'native-observed-model'
+          )
+            order.push('configured');
+        }
+      })();
+      try {
+        const started = await adapter.startSession({
+          provider: 'claude',
+          threadId: 'fresh-native-init',
+        });
+        session = started;
+        expect(claim).not.toHaveBeenCalled();
+        controlled.push({
+          type: 'system',
+          subtype: 'init',
+          session_id: 'native-fresh',
+          cwd: '/tmp/project',
+          model: 'native-observed-model',
+          tools: [],
+          mcp_servers: [],
+        });
+        if (outcome === 'claimed') {
+          await vi.waitFor(() =>
+            expect(order).toEqual(['claim', 'configured']),
+          );
+          expect(started.status).toBe('ready');
+        } else {
+          await vi.waitFor(() => expect(started.status).toBe('error'));
+          expect(order).toEqual(['claim']);
+          expect(
+            events.some(
+              (event) =>
+                event.method === 'session.configured' &&
+                event.model === 'native-observed-model',
+            ),
+          ).toBe(false);
+        }
+        expect(claim).toHaveBeenCalledOnce();
+        expect(statusAtClaim).toEqual(['connecting']);
+        expect(claim.mock.calls[0]?.[1]).toBe('fresh-native-init');
+      } finally {
+        await adapter.stopAll();
+        await drain;
+      }
+    },
+  );
 
   test('adopts an external session by forking it and persists only the distinct child cursor', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
@@ -603,6 +818,49 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('returns the actual proxy route with the same environment sent to the SDK', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const route = {
+      connectionId: 'proxy-home',
+      label: 'home-media',
+      endpoint: 'https://proxy.example',
+    };
+    const adapter = new ClaudeAdapter({
+      getConnectionLaunch: async () => ({
+        env: {
+          ANTHROPIC_BASE_URL: route.endpoint,
+          ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+        },
+        args: [],
+        route,
+      }),
+    });
+    const session = await adapter.startSession({
+      provider: 'claude',
+      threadId: 'proxy-route-return',
+      cwd: '/tmp',
+      metadata: { modelRoute: { label: 'spoofed' } },
+    });
+    expect(session.modelRoute).toEqual(route);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          env: expect.objectContaining({
+            ANTHROPIC_AUTH_TOKEN: 'private-proxy-key',
+          }),
+        }),
+      }),
+    );
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    await events.next();
+    const configured = await events.next();
+    expect(configured.value).toMatchObject({
+      method: 'session.configured',
+      metadata: { modelRoute: route },
+    });
+    await events.return?.();
+  });
+
   test('deletes a fork when starting its query throws', async () => {
     mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
     mockQuery.mockImplementation(() => {
@@ -799,6 +1057,7 @@ describe('ClaudeAdapter', () => {
   test('steerTurn binds to the live SDK streaming-input queue', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
+    expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
     const events = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'claude',
@@ -1633,9 +1892,13 @@ describe('ClaudeAdapter', () => {
       const threadId = 'steer-queued';
       const { adapter } = await lifecycleSession(threadId);
       const u = await adapter.sendTurn({ threadId, input: 'second' });
-      await expect(
-        adapter.steerTurn(threadId, 'more', u.turnId),
-      ).rejects.toBeInstanceOf(SendTurnRefusedError);
+      const refusal = adapter.steerTurn(threadId, 'more', u.turnId);
+      await expect(refusal).rejects.toBeInstanceOf(SendTurnRefusedError);
+      await expect(refusal).rejects.toMatchObject({
+        kind: 'conflict',
+        retryable: false,
+        failurePhase: 'refused',
+      });
       await adapter.stopSession(threadId);
     });
 
@@ -2195,6 +2458,11 @@ describe('ClaudeAdapter', () => {
       await adapter.startSession({
         provider: 'claude',
         threadId,
+        // #2494: full access unconfined is the operator's (`host`) start;
+        // an absent confinement is `workspace` and runs it as Auto.
+        ...(options.modelOptions?.approvalMode === 'never'
+          ? { confinement: 'host' as const }
+          : {}),
         ...(options.modelOptions ? { modelOptions: options.modelOptions } : {}),
         ...(options.agent ? { agent: options.agent } : {}),
         ...(options.metadata ? { metadata: options.metadata } : {}),
@@ -3383,7 +3651,7 @@ describe('ClaudeAdapter', () => {
         if (question.kind !== 'prompted') throw new Error('expected a prompt');
         expect(question.event).toMatchObject({
           title: 'The agent has questions for you',
-          payload: { questionnaire: expect.anything() },
+          payload: { inputRequest: expect.anything() },
         });
         expect(logger.info).toHaveBeenCalledWith(
           NOT_APPLIED,
@@ -4732,6 +5000,130 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('canUseTool honors the session agent tools.autoApprove (external autoApprove parity)', () => {
+    test.each([
+      {
+        toolName: 'mcp__reports__write',
+        allows: ['*'],
+        asks: ['reports_write'],
+      },
+      {
+        toolName: 'mcp__fooBar__read',
+        allows: ['*'],
+        asks: ['mcp/fooBar/read'],
+      },
+      {
+        toolName: 'mcp__mcp___reports__read',
+        allows: ['mcp/reports/read', 'mcp__reports__read'],
+        asks: ['mcp/mcp/*'],
+      },
+      {
+        toolName: 'mcp__reports___read',
+        allows: ['mcp/reports/_read'],
+        asks: ['mcp/reports_/*'],
+      },
+      {
+        toolName: 'mcp__reports__safe__read',
+        allows: ['mcp/reports/safe__read', 'mcp/reports__safe/read'],
+        asks: ['mcp/reports/*'],
+      },
+      {
+        toolName: 'mcp__reports_safe__read',
+        allows: ['mcp/reports/safe_read', 'reports_safe_read'],
+        asks: ['mcp/reports_safe/*'],
+      },
+    ])(
+      'explicit Ask forces the hook and repeated prompts for $toolName',
+      async ({ toolName, allows, asks }) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const evaluator = createStagedPreToolPolicyEvaluator({
+          spec: {
+            name: 'Reviewer',
+            prompt: 'Review tool calls',
+            tools: { mcpServers: [], autoApprove: allows, askBeforeUse: asks },
+          },
+          toolNameMapping: new Map([
+            [
+              'fooBar_read',
+              {
+                original: 'foo-bar_read',
+                normalized: 'fooBar_read',
+                server: 'foo-bar',
+                tool: 'read',
+                provenance: new MCPToolProvenanceGeneration().mint({
+                  serverId: 'foo-bar',
+                  integrationId: 'foo-bar',
+                  originalToolName: 'read',
+                  runtimeName: 'fooBar_read',
+                }),
+              },
+            ],
+          ]),
+          isGranted: () => true,
+          logger: { info: vi.fn(), warn: vi.fn() },
+        });
+        const adapter = new ClaudeAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+        });
+        const events = adapter.streamEvents()[Symbol.asyncIterator]();
+        const threadId = 'thread-explicit-ask';
+        await adapter.startSession({
+          provider: 'claude',
+          threadId,
+          agent: {
+            slug: 'reviewer',
+            autoApprove: allows,
+            askBeforeUse: asks,
+          },
+        });
+        await events.next();
+        await events.next();
+        const options = mockQuery.mock.calls[0][0].options;
+        const hook = options.hooks.PreToolUse[0].hooks[0];
+        await expect(
+          hook(
+            {
+              hook_event_name: 'PreToolUse',
+              tool_name: toolName,
+              tool_input: {},
+              tool_use_id: 'required-call',
+            },
+            'required-call',
+            { signal: new AbortController().signal },
+          ),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: 'ask' },
+        });
+        for (const [index, decision] of (
+          ['acceptForSession', 'decline'] as const
+        ).entries()) {
+          const pending = options.canUseTool(
+            toolName,
+            {},
+            {
+              signal: new AbortController().signal,
+              toolUseID: `required-${index}`,
+              suggestions: [],
+            },
+          );
+          const request = await events.next();
+          expect(request.value).toMatchObject({
+            method: 'request.opened',
+            requestType: 'approval',
+          });
+          await adapter.respondToRequest(
+            threadId,
+            request.value.requestId,
+            decision,
+          );
+          expect((await pending).behavior).toBe(index === 0 ? 'allow' : 'deny');
+          expect((await events.next()).value).toMatchObject({
+            method: 'request.resolved',
+          });
+        }
+        await adapter.stopSession(threadId);
+      },
+    );
+
     function withTimeout<T>(
       promise: Promise<T>,
       ms: number,
@@ -4744,51 +5136,57 @@ describe('ClaudeAdapter', () => {
       ]);
     }
 
-    test('auto-approves an mcp__server__tool call matching the agent server_* pattern, with no approval request surfaced', async () => {
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter();
-      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    test.each(['station-control_*', 'mcp/station-control/list_agents'])(
+      'auto-approves a plain call under %s without surfacing a request',
+      async (pattern) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-auto-approve',
-        agent: {
-          slug: 'engine-lab',
-          // station-voice's actual pattern (agent-hooks.ts), authored
-          // against the Station-engine <server>_<tool> tool-name shape.
-          autoApprove: ['station-control_*'],
-          toolServers: [GENUINE_STATION_CONTROL_TOOLSERVER],
-        },
-      });
-      await iterator.next(); // session.started
-      await iterator.next(); // session.configured
-
-      const queryArgs = mockQuery.mock.calls[0][0];
-      // The Claude SDK's actual MCP tool-name format for a station-control
-      // tool call.
-      const result = await withTimeout(
-        queryArgs.options.canUseTool(
-          'mcp__station-control__list_agents',
-          { foo: 'bar' },
-          {
-            signal: new AbortController().signal,
-            toolUseID: 'tool-use-auto',
-            suggestions: [],
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-auto-approve',
+          agent: {
+            slug: 'engine-lab',
+            // station-voice's actual pattern (agent-hooks.ts), authored
+            // against the Station-engine <server>_<tool> tool-name shape.
+            autoApprove: [pattern],
+            askBeforeUse: pattern.startsWith('mcp/')
+              ? ['mcp/station-control/*']
+              : [],
+            toolServers: [GENUINE_STATION_CONTROL_TOOLSERVER],
           },
-        ),
-        200,
-      );
+        });
+        await iterator.next(); // session.started
+        await iterator.next(); // session.configured
 
-      expect(result).toEqual({
-        behavior: 'allow',
-        updatedInput: { foo: 'bar' },
-      });
+        const queryArgs = mockQuery.mock.calls[0][0];
+        // The Claude SDK's actual MCP tool-name format for a station-control
+        // tool call.
+        const result = await withTimeout(
+          queryArgs.options.canUseTool(
+            'mcp__station-control__list_agents',
+            { foo: 'bar' },
+            {
+              signal: new AbortController().signal,
+              toolUseID: 'tool-use-auto',
+              suggestions: [],
+            },
+          ),
+          200,
+        );
 
-      // No request.opened ever reaches the stream for this call — pumping
-      // the iterator again must time out rather than yield an event.
-      const nextEvent = await withTimeout(iterator.next(), 200);
-      expect(nextEvent).toBe('TIMED_OUT');
-    });
+        expect(result).toEqual({
+          behavior: 'allow',
+          updatedInput: { foo: 'bar' },
+        });
+
+        // No request.opened ever reaches the stream for this call — pumping
+        // the iterator again must time out rather than yield an event.
+        const nextEvent = await withTimeout(iterator.next(), 200);
+        expect(nextEvent).toBe('TIMED_OUT');
+      },
+    );
 
     test('still requests approval through the ApprovalRegistry for a tool NOT matching the pattern', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -7027,6 +7425,100 @@ describe('ClaudeAdapter', () => {
     expect(options).not.toHaveProperty('permissionMode');
   });
 
+  test.each(['probe', 'ordinary', 'mismatched server'] as const)(
+    'records generated probe ids only for the matching delivery Agent (%s)',
+    async (kind) => {
+      const suffix = 'a'.repeat(32);
+      let serverId = `probe${suffix}`;
+      let slug = kind === 'ordinary' ? 'ordinary-agent' : `delivery-${suffix}`;
+      if (kind === 'probe') {
+        let createdServerId = '';
+        // Exercise the actual id generator without creating a skill package.
+        // Setup stays local, and the SDK stream below is mocked.
+        const prepared = await deliveryScenarios[0].prepare({
+          engine: 'codex',
+          connectionId: 'probe-engine',
+          cwd: '/tmp',
+          model: 'probe-model',
+          delivery: {},
+          deferCleanup: () => {},
+          setupApi: async (path, body) => {
+            if (path === '/integrations' && body && typeof body === 'object') {
+              const id = Reflect.get(body, 'id');
+              if (typeof id !== 'string')
+                throw new Error('Missing authored integration id');
+              createdServerId = id;
+              return { data: {} };
+            }
+            if (path === '/integrations')
+              return {
+                data: [
+                  {
+                    id: createdServerId,
+                    tools: [{ toolName: 'ping' }, { toolName: 'blocked' }],
+                  },
+                ],
+              };
+            if (path === `/integrations/${createdServerId}/reconnect`)
+              return { data: { probe: { ok: true } } };
+            if (
+              [
+                `/integrations/${createdServerId}/tools/apply`,
+                `/integrations/${createdServerId}/enabled`,
+                '/agents',
+              ].includes(path)
+            )
+              return { data: {} };
+            throw new Error(`Unexpected preparation route: ${path}`);
+          },
+        });
+        if (!prepared.state)
+          throw new Error('Probe preparation did not produce its ids');
+        serverId = prepared.state.serverId;
+        slug = prepared.state.skillId;
+      }
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'system',
+            subtype: 'init',
+            session_id: 'claude-session',
+            cwd: '/tmp',
+            model: 'claude-sonnet-4-6',
+            permissionMode: 'auto',
+            uuid: 'probe-init',
+            tools: [`mcp__${serverId}__ping`, 'mcp__private__secret'],
+          },
+        ]),
+      );
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: `probe-inventory-${kind}`,
+        agent: {
+          slug,
+          toolServers: [
+            {
+              id: kind === 'mismatched server' ? 'another-server' : serverId,
+              command: 'node',
+              args: ['fixture.mjs'],
+            },
+          ],
+        },
+      });
+      await iterator.next();
+      await iterator.next();
+      const init = (await iterator.next()).value;
+      if (kind === 'probe')
+        expect(init?.metadata?.engineToolNames).toEqual([
+          `mcp__${serverId}__ping`,
+        ]);
+      else expect(init?.metadata).not.toHaveProperty('engineToolNames');
+      expect(JSON.stringify(init)).not.toContain('mcp__private__secret');
+    },
+  );
+
   test('init permissionMode auto is reported as the applied approval mode (station#1950)', async () => {
     mockQuery.mockReturnValue(
       createMockQuery([
@@ -7081,6 +7573,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-never-start',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 
@@ -7344,6 +7838,8 @@ describe('ClaudeAdapter', () => {
     await adapter.startSession({
       provider: 'claude',
       threadId: 'thread-escalate-allowed',
+      // #2494: an operator (`host`) start; absent is `workspace`.
+      confinement: 'host',
       modelOptions: { approvalMode: 'never' },
     });
 
@@ -7951,6 +8447,56 @@ describe('ClaudeAdapter', () => {
           {},
         ),
       ).toEqual({});
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__existing__read',
+            tool_input: {},
+            tool_use_id: 'existing',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+    });
+
+    test('Project MCP defaults preserve inherited harness discovery when the Agent declares no tool servers', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      const resolve = createSessionAgentResolver({
+        loadAgentSpec: async () => ({
+          name: 'Reader',
+          prompt: 'Reader prompt',
+        }),
+        resolveProjectToolServers: async () => ['weather'],
+        resolveToolServer: async () => ({
+          id: 'weather',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: process.execPath,
+          disabledTools: ['write'],
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-03T00:00:00Z',
+            toolNames: ['read', 'write'],
+            toolCount: 2,
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      await adapter.startSession(
+        await resolve({
+          provider: 'claude',
+          threadId: 'project-tools',
+          metadata: { agentSlug: 'reader', projectSlug: 'demo' },
+        }),
+      );
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.strictMcpConfig).toBe(false);
+      expect(options.mcpServers.weather.command).toBe(process.execPath);
+      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(
           {
@@ -9166,7 +9712,13 @@ echo '{"loggedIn":true}'
       vi.stubEnv('CLAUDE_CONFIG_DIR', home);
       try {
         const identity = deriveConfigHomeAffinity('claude-config-home', home)!;
+        const claim = vi.fn();
         const options = {
+          nativeSessionOwnership: {
+            assertMutable: vi.fn(),
+            claim,
+            retired: vi.fn(),
+          },
           resolveSourceHome: (affinity: typeof identity.affinity) =>
             resolveConfigHomeAffinity('claude-config-home', home, affinity),
           getConnectionEnv: async () => ({
@@ -9229,10 +9781,114 @@ echo '{"loggedIn":true}'
         );
         expect(resumeCall.options.env.CLAUDE_CONFIG_DIR).toBe(home);
         await restarted.stopSession('station-child-conn-env');
+        expect(claim).toHaveBeenCalledTimes(2);
+        expect(claim.mock.calls[0]?.[0]).toEqual(claim.mock.calls[1]?.[0]);
+        claim.mockImplementation(() => {
+          throw new Error('native identity already owned');
+        });
+        const queryCount = mockQuery.mock.calls.length;
+        await expect(
+          new ClaudeAdapter(options).startSession({
+            provider: 'claude',
+            threadId: 'unrelated-child',
+            resumeCursor: child.resumeCursor,
+            cwd: '/workspace/project',
+          }),
+        ).rejects.toThrow('already owned');
+        expect(mockQuery).toHaveBeenCalledTimes(queryCount);
       } finally {
         vi.unstubAllEnvs();
         rmSync(home, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('#2966: credential profile env overlay at the SDK spawn seam', () => {
+    const makeTempDir = trackTempDirs();
+    const connectionEnv = async () => ({
+      ANTHROPIC_BASE_URL: 'http://connection.example.internal',
+      CLAUDE_CONFIG_DIR: '/user/chosen/home',
+      CONNECTION_ONLY: 'kept',
+    });
+
+    test('the real resolver layers the profile overlay over the connection env, under the profile home key and TMPDIR', async () => {
+      const homeDir = makeTempDir('station-claude-profile-env-');
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+          engine: 'claude',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                {
+                  ref: 'proxy',
+                  env: {
+                    ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+                    ANTHROPIC_API_KEY: '',
+                  },
+                },
+              ],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        }),
+        getConnectionEnv: connectionEnv,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-profile-overlay',
+        cwd: '/workspace/project',
+      });
+
+      const env = mockQuery.mock.calls.at(-1)?.[0].options.env;
+      expect(env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
+      expect(env.ANTHROPIC_API_KEY).toBe('');
+      expect(env.CONNECTION_ONLY).toBe('kept');
+      expect(env.CLAUDE_CONFIG_DIR).toBe(
+        credentialProfileAppHomeDir('claude', 'proxy', homeDir),
+      );
+      expect(env.TMPDIR).toBe(engineSpawnTmpDirPath());
+      await iterator.next();
+      await iterator.next();
+    });
+
+    test("an invalid overlay on the connection's active profile (no explicit ref) fails the start instead of running on global credentials", async () => {
+      const homeDir = makeTempDir('station-claude-profile-env-');
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const warn = vi.fn();
+      const adapter = new ClaudeAdapter({
+        getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+          engine: 'claude',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                {
+                  ref: 'proxy',
+                  env: { ANTHROPIC_AUTH_TOKEN: 'canary-secret' },
+                },
+              ],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        }),
+        getConnectionEnv: connectionEnv,
+        logger: { warn },
+      });
+      mockQuery.mockClear();
+
+      await expect(
+        adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-profile-overlay-invalid',
+          cwd: '/workspace/project',
+        }),
+      ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+      expect(mockQuery).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
     });
   });
 

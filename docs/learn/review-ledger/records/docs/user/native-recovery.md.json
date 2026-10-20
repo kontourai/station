@@ -42,7 +42,9 @@
 
     "tests/tauri-shell/plugin-host-security.e2e.ts",
 
-    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx"
+    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx",
+
+    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts"
   ],
 
   "checks": [

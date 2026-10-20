@@ -1,0 +1,9 @@
+{
+  "revision": "802c62df93d98f8cd166daad60ad35a4807dbe21",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 round 5: ToolCallDisplay now opens every pending call that has details (openByDefault = awaiting approval with a handler and detail), and ToolCallDetails.css / NotificationContainer.css turn off ligatures and contextual alternates on the card's pre/code and the toast preview. Rewrote the auto-open sentence and added the ligature clause. Pinned by the unit auto-open test and the Chromium layout test's computed-style check, both fault-injected.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"#3382 round 5: the orchestration-chat-flow RTL test gained a two-run sample and a computed typography check; the table row still describes the spec. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

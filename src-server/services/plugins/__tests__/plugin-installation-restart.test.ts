@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
@@ -211,6 +212,7 @@ test('the public recovery preview and mutation require fresh consent and preserv
     rmSync(source, { recursive: true, force: true });
     unlinkSync(join(home, 'plugins', 'recoverable'));
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginInstallRoutes(app, {
       projectVisiblePlugins: () => (installed) => installed,
       projectHomeDir: home,

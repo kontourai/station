@@ -1,0 +1,19 @@
+{
+  "revision": "5d03b7d2dc2f04ca7cbb19c50d77a1a1ad0f5978",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Review fix round: the ./automation export moved to its alphabetical place after ./authority-observation; no other export changed. The overview enumerates no subpaths. No prose change.","inputs":["docs/architecture.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Review fix round: the ./automation export moved to its alphabetical place after ./authority-observation; no other export changed. The task-room-work export is unchanged. No prose change.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json"]},
+
+    {"path":"docs/glossary.md","note":"The contracts.md automation row moved after authority-observation and now states string-only event fields (numbers canonicalized), empty-where refusal and the semantic-dedupe outcome subset, checked against packages/contracts/src/automation.ts. The glossary does not define Automation yet. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The contracts.md automation row moved after authority-observation and now states string-only event fields (numbers canonicalized), empty-where refusal and the semantic-dedupe outcome subset, checked against packages/contracts/src/automation.ts. The guide routes to the reference without listing subpaths. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"The contracts.md automation row moved after authority-observation and now states string-only event fields (numbers canonicalized), empty-where refusal and the semantic-dedupe outcome subset, checked against packages/contracts/src/automation.ts. Review fix round: the ./automation export moved to its alphabetical place after ./authority-observation; no other export changed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Review fix round: the ./automation export moved to its alphabetical place after ./authority-observation; no other export changed. The contracts.md automation row moved after authority-observation and now states string-only event fields (numbers canonicalized), empty-where refusal and the semantic-dedupe outcome subset, checked against packages/contracts/src/automation.ts. Still types/constants only, imported by subpath. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Review fix round: the ./automation export moved to its alphabetical place after ./authority-observation; no other export changed. Source-only distribution and direct subpath imports unchanged. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]}
+  ]
+}

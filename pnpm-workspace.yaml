@@ -6,6 +6,9 @@ packages:
   - packages/shared
   - packages/cli
   - packages/connect
+  - packages/telemetry-broker
+  - packages/monument
+  - packages/supervisor
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
 linkWorkspacePackages: true
@@ -26,11 +29,8 @@ allowBuilds:
   ssh2@1.17.0: false
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
-  - '@kontourai/conduit'
-  - '@kontourai/flow-agents'
-  # Exact signed release required by Flow Agents 6.5.1; future Flow releases age normally.
-  - '@kontourai/flow@5.1.3'
-  - '@kontourai/veritas'
+  # Kontour-owned releases are exempt; third-party packages retain the 24-hour floor.
+  - '@kontourai/*'
 pmOnFail: ignore
 # pdfjs-dist renders in the browser; its optional @napi-rs/canvas binding is
 # only for Node-side rendering, which Station never does. Keep the native
@@ -38,21 +38,31 @@ pmOnFail: ignore
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 overrides:
+  http-cache-semantics: 4.3.0
+  '@modelcontextprotocol/client': 2.3.1
+  '@modelcontextprotocol/sdk': 1.32.1
+  '@modelcontextprotocol/client>zod': ^4.6.6
+  '@modelcontextprotocol/core>zod': ^4.6.6
+  '@modelcontextprotocol/server>zod': ^4.6.6
+  shell-quote: 1.11.0
   '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
   axios: ^1.20.0
   express-rate-limit: ^8.3.1
   fast-uri: ^3.1.8
   form-data: ^4.0.6
+  fast-copy: 4.1.0
   gaxios: ^7.3.0
   lodash: ^4.18.1
   node-forge: ^1.4.0
+  proxy-addr: 2.0.8
   qs: ^6.16.0
   router>path-to-regexp: ^8.4.2
   anymatch>picomatch: ^2.3.2
   micromatch>picomatch: ^2.3.2
   gray-matter>js-yaml: ^3.15.2
   read-yaml-file>js-yaml: ^3.15.2
+  "js-yaml@3.15.2>argparse": 2.0.1
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
   minimatch@^10.0.0>brace-expansion: ^5.0.12
@@ -69,6 +79,9 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
+  "http-cache-semantics@4.3.0": patches/http-cache-semantics-4.3.0.patch
+  "node-forge@1.4.0": patches/node-forge-1.4.0.patch
+  "js-yaml@3.15.2": patches/js-yaml-3.15.2-argparse2-cli.patch
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true

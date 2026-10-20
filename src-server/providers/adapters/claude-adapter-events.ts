@@ -11,9 +11,11 @@ import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orche
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -23,6 +25,7 @@ import {
   redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
@@ -209,6 +212,9 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  /** Set only for the temporary delivery Agent and its matching authored MCP server. */
+  deliveryProbeServerId?: string;
+  requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
@@ -432,6 +438,44 @@ export function reportClaudePermissionMode(
   });
 }
 
+function deliveryProbeInventory(record: ClaudeMessageState, tools: unknown) {
+  const serverId = record.deliveryProbeServerId;
+  if (!serverId) return {};
+  const names: string[] = [];
+  let bytes = 2;
+  let truncated = !Array.isArray(tools);
+  if (Array.isArray(tools)) {
+    for (const name of tools) {
+      if (typeof name !== 'string') {
+        truncated = true;
+        continue;
+      }
+      if (!name.startsWith(`mcp__${serverId}__`)) continue;
+      if (names.length >= 32 || Buffer.byteLength(name, 'utf8') > 128) {
+        truncated = true;
+        continue;
+      }
+      const encodedBytes = Buffer.byteLength(JSON.stringify(name), 'utf8') + 1;
+      if (bytes + encodedBytes > 2048) {
+        truncated = true;
+        continue;
+      }
+      bytes += encodedBytes;
+      names.push(name);
+    }
+  }
+  return {
+    engineToolNames: names,
+    ...(truncated ? { engineToolNamesTruncated: true } : {}),
+  };
+}
+
+export function isClaudeInitMessage(
+  message: SDKMessage,
+): message is Extract<SDKMessage, { type: 'system'; subtype: 'init' }> {
+  return message.type === 'system' && message.subtype === 'init';
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -458,7 +502,31 @@ export function mapClaudeSdkMessage({
       observeClaudeBackgroundChildSettling(turnContext),
   };
 
-  if (message.type === 'system' && message.subtype === 'init') {
+  if (isClaudeInitMessage(message)) {
+    if (
+      record.requireNativeResumeIdentity &&
+      message.session_id !== record.attemptedResumeCursor
+    ) {
+      record.terminalResultObserved = 'binding-dead';
+      record.session.status = 'dead';
+      clearClaudeSdkTurns(turnContext);
+      publish({
+        eventId: crypto.randomUUID(),
+        provider,
+        threadId: record.session.threadId,
+        createdAt,
+        method: 'runtime.error',
+        ...providerFailure('session_gone'),
+        severity: 'error',
+        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        retriable: false,
+        message:
+          'The engine opened a different native conversation; the requested resume was refused.',
+        metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
+      } satisfies ProviderRuntimeErrorEvent);
+      interruptEngine?.();
+      return;
+    }
     const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
     record.session.resumeCursor = sourceCursor
       ? { ...sourceCursor, claudeSessionId: message.session_id }
@@ -486,6 +554,10 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        ...deliveryProbeInventory(record, message.tools),
+        ...(record.attemptedResumeCursor === message.session_id
+          ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
+          : {}),
         ...(message.permissionMode
           ? { permissionMode: message.permissionMode }
           : {}),
@@ -908,6 +980,15 @@ export function mapClaudeSdkMessage({
         createdAt,
         turnId: resultTurnId,
         method: 'runtime.error',
+        ...providerFailure(
+          usageLimit
+            ? 'quota_exhausted'
+            : outcome === 'binding-dead'
+              ? 'session_gone'
+              : 'provider_error',
+          'failed',
+          usageLimit?.resetAt,
+        ),
         severity: 'error',
         code:
           outcome === 'binding-dead'
@@ -921,7 +1002,7 @@ export function mapClaudeSdkMessage({
         ...(resultTurn?.kind === 'provider'
           ? { metadata: claudeTurnTerminalMetadata(resultTurn) }
           : {}),
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       return;
     }
     // Claude emits a successful `result` for resume/init handshakes. It has

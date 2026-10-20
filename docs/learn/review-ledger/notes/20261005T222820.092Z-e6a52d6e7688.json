@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the base-controlled Windows floor and new staging paragraph/link against its real workflow, dedicated PowerShell keeper and process-heavy manifest. Recorded exact31e78 Windows fixed1PASS, only-examples-mkdir injected1namedFAIL, byte/hash restore1PASS. The original checkout suite is byte-identical to main; its earlier Windows newline-filename ENOENT is retained separately. Staging proof excludes real Cargo/Rust, file contents, complete Windows parity and canonical qualification. Maintained floor now invokes the dedicated whole file unconditionally before evidence upload/Cargo; classifier, Cargo gating/arguments, deadlines and existing suites are unchanged.","inputs":["docs/guides/testing.md",".github/workflows/windows-pr-verification.yml","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/windows-resource-staging.test.ts"]}
+  ]
+}

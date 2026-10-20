@@ -1,0 +1,7 @@
+{
+  "revision": "14eeeb00a0105af3df80fbace66f5f296fa2d220",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed additive HostResourceSnapshot documentation against the glossary and unchanged identity/authority nouns. The snapshot adds diagnostics only and changes no named domain concept or existing contract meaning.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

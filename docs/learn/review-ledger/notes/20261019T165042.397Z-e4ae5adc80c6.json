@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"The source delta is one added action inventory row (src-ui/src/components/chat/TranscriptTurnRail.tsx). This document cites the inventory as a source but makes no claim about individual rows; its statements remain accurate and need no prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

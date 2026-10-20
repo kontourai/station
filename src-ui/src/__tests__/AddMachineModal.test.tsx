@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -73,7 +73,7 @@ describe('AddMachineModal', () => {
     expect(
       screen.getByText('Control this Station from another device'),
     ).toBeTruthy();
-    expect(screen.getByText('Reach another Station')).toBeTruthy();
+    expect(screen.getByText('Connect a Station')).toBeTruthy();
     expect(
       screen.getByText('Run work on another computer over SSH'),
     ).toBeTruthy();
@@ -101,29 +101,18 @@ describe('AddMachineModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  test('the Station branch opens the address dialog, and adding one persists it locally', async () => {
-    // A never-resolving handshake proves the add never waits on it.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise(() => {})),
+  test('Station setup hands off to the stable shell without adding or selecting an address', async () => {
+    const { consumePendingConnectionsModal } = await import(
+      '../lib/connectionModalEvents'
     );
     const onClose = vi.fn();
     render(<AddMachineModal isOpen onClose={onClose} />);
-    fireEvent.click(screen.getByText('Reach another Station'));
-
-    fireEvent.change(screen.getByLabelText(/Station address/), {
-      target: { value: 'https://home-lab.tailnet.ts.net' },
+    fireEvent.click(screen.getByText('Connect a Station'));
+    expect(consumePendingConnectionsModal()).toEqual({
+      mode: 'connect-station',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add Station' }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    const stored = JSON.parse(
-      localStorage.getItem('station-known-environments') ?? '[]',
-    ) as Array<{ label: string; source: string }>;
-    expect(stored).toHaveLength(1);
-    expect(stored[0].label).toBe('https://home-lab.tailnet.ts.net');
-    expect(stored[0].source).toBe('manual');
-    vi.unstubAllGlobals();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('station-known-environments')).toBeNull();
   });
 
   test('the native chooser opens the separate broker-route profile editor', () => {
@@ -148,20 +137,6 @@ describe('AddMachineModal', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Save route' })).toBeTruthy();
-  });
-
-  test('an invalid Station address is refused with a usable message, and nothing is stored', () => {
-    render(<AddMachineModal isOpen onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText('Reach another Station'));
-    fireEvent.change(screen.getByLabelText(/Station address/), {
-      target: { value: 'not a url' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add Station' }));
-
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Enter a valid Station address',
-    );
-    expect(localStorage.getItem('station-known-environments')).toBeNull();
   });
 
   test('the SSH branch opens the creator, in the shared dialog chrome (CI-R19)', () => {

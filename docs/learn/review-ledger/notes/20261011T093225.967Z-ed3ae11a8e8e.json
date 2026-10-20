@@ -1,0 +1,9 @@
+{
+  "revision": "a593f7b547c69d067a2d495d5df4ba005980d559",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Scoped re-review of the private GCP source-built image contract against the one Docker manifest COPY. The declared telemetry workspace must be present for managed dependency setup; no VM, service account, supervisor, home lease, firewall or selected image changes. Prior dated build/runtime receipts remain historical and no current cloud acceptance is inferred. No prose change; no image build, provisioning, runtime or backup/restore execution.","inputs":["deploy/gcp-dev/README.md","Dockerfile"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Scoped re-review of immutable Station image, UID/home mounts and explicit Caddy ingress against the added dependency-stage workspace manifest. The receiver package declaration is an install input, not a published ingress/service/port/TLS change or public telemetry endpoint. Secrets and host node_modules remain excluded from the build context. Existing public-domain and deployment limits are retained. No prose change; no Docker/Caddy/certificate/network or current hosted/runtime acceptance.","inputs":["deploy/public-ingress/README.md","Dockerfile"]}
+  ]
+}

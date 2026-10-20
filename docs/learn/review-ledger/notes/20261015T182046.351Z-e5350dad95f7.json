@@ -1,0 +1,7 @@
+{
+  "revision": "8e88a3d353c6409ebeab1783fff766557828ac87",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed the behavior-neutral cleanup at 8e88a3d353c. The old details/account pair and catalog wrapper have no remaining callers; AgentToolLibrary and ToolAccountPanel own descriptions, provenance, approval controls and personal account setup. AgentToolConnection and selectIntegrationTools remain called; addIntegration is private. Mounted picker/editor tests passed12/12; independent source review found no cleanup findings. No product behavior or prose change.","inputs":["docs/guides/agents.md","src-ui/src/views/agent-editor/AgentToolDetails.tsx","src-ui/src/views/agent-editor/AgentToolDiscovery.tsx","src-ui/src/views/agent-editor/utils.ts"]}
+  ]
+}

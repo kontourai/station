@@ -1,0 +1,45 @@
+name: "PR: Docs kit"
+
+# Advisory @kontourai/docs-kit gate over corpus.json: manifest, links and
+# anchors, reachability, topics, local paths, and (on pull requests and
+# merge-queue entries) freshness against the base. It is deliberately not a
+# required check.
+#
+# Pull requests run under pull_request_target, never candidate-controlled
+# pull_request (scripts/actionlint-gate.mjs). The only job is the exact
+# reviewed call to the org reusable workflow that the gate's
+# isExactDocsGateCall admits: it checks out the pull request's head
+# repository and SHA, persists no credentials, reads only contents, gets no
+# secrets, and runs setup-node with package-manager-cache: false. On merge
+# queue and main pushes both inputs resolve to this repository and github.sha.
+on:
+  pull_request_target:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # pull_request_target's github.ref is the base branch, so key pull requests
+  # by number; otherwise every open pull request would cancel the others.
+  group: station-docs-kit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Docs kit gate
+    # Corpus v2 reusable gate, reviewed in actionlint-gate.mjs.
+    uses: kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94
+    with:
+      # Reviewed Corpus 0.7 source, shared with Pages bundle publishing.
+      corpus-ref: b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
+      repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+      ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+    permissions:
+      contents: read

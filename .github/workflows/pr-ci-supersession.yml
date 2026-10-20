@@ -1,0 +1,39 @@
+name: "Repo: Superseded PR checks"
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+  workflow_run:
+    workflows: ["PR: CI"]
+    types: [requested]
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write
+
+jobs:
+  cancel-obsolete:
+    if: >-
+      ${{ (github.event_name == 'workflow_run' &&
+           github.event.workflow_run.event == 'pull_request_target' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) ||
+          (github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
+           github.event.pull_request.merged == true &&
+           github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Retire superseded checks or merged optional delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-ci-supersession.mjs

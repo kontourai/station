@@ -40,14 +40,17 @@ export const EXPECTED_DESKTOP_RESOURCES = {
   '../dist-server': 'dist-server',
   '../dist-desktop-runtime/node_modules': 'node_modules',
   '../schemas': 'schemas',
+  '../dist-desktop-runtime/examples': 'examples',
 };
 export const EXPECTED_APPIMAGE_RUNTIME_FILES = {
   'usr/share/Station/dist-server': '../dist-server',
   'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
+  'usr/share/Station/examples': '../dist-desktop-runtime/examples',
 };
 export const EXPECTED_APPIMAGE_REMOVED_RESOURCES = {
   '../dist-server': null,
   '../dist-desktop-runtime/node_modules': null,
+  '../dist-desktop-runtime/examples': null,
 };
 export const EXPECTED_TAURI_PERMISSIONS = [
   // Read the configured local package name for Stable/Beta/Nightly/Dev shell
@@ -322,7 +325,7 @@ export function findTauriResourceBoundaryViolations(
     JSON.stringify(EXPECTED_APPIMAGE_REMOVED_RESOURCES)
   ) {
     violations.push(
-      `${appImageFile} must delete only the inherited server and raw node_modules resources`,
+      `${appImageFile} must delete only the inherited server, raw node_modules and examples resources`,
     );
   }
   if (

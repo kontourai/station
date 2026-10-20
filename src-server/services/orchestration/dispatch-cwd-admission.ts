@@ -11,7 +11,8 @@
  *   context, and the service runs it again beside the adapter start, for the
  *   directory the start is actually bound to;
  * - the canonical path is recorded on the session's start metadata
- *   ({@link DISPATCH_CANONICAL_CWD_METADATA_KEY}), and every later engine
+ *   ({@link DISPATCH_CANONICAL_CWD_METADATA_KEY}; #3386: an adopted
+ *   attached-session child records its folder the same way), and every later engine
  *   start for that session, or for a child session that continues it in the
  *   same folder, re-canonicalizes the folder and refuses a different result
  *   ({@link assertDispatchCwdUnmoved}).
@@ -65,11 +66,11 @@ export class DispatchCwdRefusedError extends Error {
 
 /**
  * The code the scope rule gives a folder it cannot read
- * (`station_control_role_required`, `tools/station-control-policy.ts`): a
- * folder that no longer resolves to the recorded path is not the folder
- * that was admitted.
+ * (`station_control_out_of_scope`, reason `target-unavailable`,
+ * `tools/station-control-policy.ts`): a folder that no longer resolves to the
+ * recorded path is not the folder that was admitted.
  */
-const MOVED_CODE = 'station_control_role_required';
+const MOVED_CODE = 'station_control_out_of_scope';
 
 /** The recorded canonical folder of a start input, if it carries one. */
 export function recordedDispatchCanonicalCwd(
@@ -120,7 +121,7 @@ export function dispatchCwdMovedError(
   current: string | undefined,
 ): DispatchCwdRefusedError {
   return new DispatchCwdRefusedError(
-    `Station will not start this session: an agent dispatched it into ${
+    `Station will not start this session: it was admitted into ${
       recorded ?? 'a folder Station did not record'
     }, and its working directory ${
       current === undefined

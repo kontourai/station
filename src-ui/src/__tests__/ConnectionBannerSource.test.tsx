@@ -84,6 +84,20 @@ function renderChrome() {
   );
 }
 
+/**
+ * station#529: the live region is the banner's message cell, not the card.
+ * Card-level state (classes, data attributes, the actions row) is read from
+ * the card that contains the announced message.
+ */
+// station#529: user-revealed detail text renders OUTSIDE the live region, so
+// "what the banner says once Details is open" is read from the card.
+async function findBannerCard(): Promise<HTMLElement> {
+  const alert = await screen.findByRole('alert');
+  const card = alert.closest<HTMLElement>('.banner-host__item');
+  if (!card) throw new Error('alert is not inside a banner card');
+  return card;
+}
+
 beforeEach(() => {
   setStreamConnectionState('https://station.example.test', 'unknown');
   globalThis.localStorage.clear();
@@ -219,7 +233,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     expect(details.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(details);
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await findBannerCard()).textContent).toMatch(
       /may have been reset or reinstalled/,
     );
     expect(
@@ -260,8 +274,9 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     try {
       renderChrome();
 
-      const alert = await screen.findByRole('alert');
-      const actions = alert.querySelectorAll('.banner-host__action');
+      const actions = (await findBannerCard()).querySelectorAll(
+        '.banner-host__action',
+      );
       // Visible text stays short ("Remove"); the accessible name is
       // the full sentence, asserted via `getByRole` below.
       expect([...actions].map((node) => node.textContent)).toEqual([
@@ -451,6 +466,129 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     });
 
     /**
+     * station#529: the connection banner is `role="alert"` (assertive and
+     * implicitly atomic), and this confirm relabels its own button on arm and
+     * relabels it back on a 5s timer. Any of those buttons inside the live
+     * region turns an unprompted timer into an unprompted re-announcement.
+     * The live region must be the message only.
+     */
+    it('keeps every action button outside the live region while it arms and auto-disarms', async () => {
+      vi.useFakeTimers();
+      const liveAncestor = (node: Element) => {
+        for (
+          let el: Element | null = node.parentElement;
+          el;
+          el = el.parentElement
+        ) {
+          const role = el.getAttribute('role');
+          const live = el.getAttribute('aria-live');
+          if (
+            role === 'alert' ||
+            role === 'status' ||
+            role === 'log' ||
+            (live !== null && live !== 'off')
+          ) {
+            return el;
+          }
+        }
+        return null;
+      };
+      // Every control in the card: actions, collapse/dismiss, and the
+      // Details disclosure.
+      const actionButtons = () => [
+        ...document.querySelectorAll('.banner-host__item button'),
+      ];
+      try {
+        renderChrome();
+        await vi.waitFor(() => screen.getByRole('alert'), { timeout: 5000 });
+
+        // The message itself is still announced assertively.
+        const alert = screen.getByRole('alert');
+        expect(alert.classList.contains('banner-host__live')).toBe(true);
+        expect(
+          alert.closest('[data-banner-id]')?.getAttribute('data-banner-id'),
+        ).toBe(BANNER_IDS.offline);
+        expect(alert.textContent?.trim().length).toBeGreaterThan(0);
+        const announced = alert.textContent;
+
+        expect(actionButtons().length).toBeGreaterThan(0);
+        for (const button of actionButtons()) {
+          expect(liveAncestor(button)).toBeNull();
+        }
+
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Remove connection' }),
+        );
+        const armed = actionButtons();
+        expect(armed.map((node) => node.textContent)).toContain('Cancel');
+        for (const button of armed) {
+          expect(liveAncestor(button)).toBeNull();
+        }
+        // Arming changed button labels, never the announced content.
+        expect(screen.getByRole('alert').textContent).toBe(announced);
+
+        act(() => {
+          vi.advanceTimersByTime(5_000);
+        });
+        expect(
+          screen.getByRole('button', { name: 'Remove connection' }),
+        ).toBeTruthy();
+        for (const button of actionButtons()) {
+          expect(liveAncestor(button)).toBeNull();
+        }
+        expect(screen.getByRole('alert').textContent).toBe(announced);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /**
+     * station#529 review: arming from COLLAPSED force-expands the card, which
+     * mounts the Details disclosure, and the 5s auto-disarm re-collapses it,
+     * unmounting that disclosure with no user action. None of that may happen
+     * inside the live region, or the timer re-announces the alert.
+     */
+    it('keeps the Details disclosure outside the live region through a collapsed arm and auto-disarm', async () => {
+      vi.useFakeTimers();
+      try {
+        renderChrome();
+        await vi.waitFor(() => screen.getByRole('alert'), { timeout: 5000 });
+        const alert = screen.getByRole('alert');
+        const card = alert.closest<HTMLElement>('.banner-host__item');
+        if (!card) throw new Error('alert is not inside a banner card');
+        const announced = alert.textContent;
+
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Collapse notice' }),
+        );
+        expect(card.className).toMatch(/banner-host__item--collapsed/);
+        expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Remove connection' }),
+        );
+        expect(card.className).not.toMatch(/banner-host__item--collapsed/);
+        const details = screen.getByRole('button', { name: 'Details' });
+        expect(alert.contains(details)).toBe(false);
+        fireEvent.click(details);
+        const detailText = card.querySelector('.banner-host__detail');
+        expect(detailText).not.toBeNull();
+        expect(alert.contains(detailText)).toBe(false);
+        expect(screen.getByRole('alert').textContent).toBe(announced);
+
+        act(() => {
+          vi.advanceTimersByTime(5_000);
+        });
+        expect(card.className).toMatch(/banner-host__item--collapsed/);
+        expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
+        expect(screen.getByRole('alert')).toBe(alert);
+        expect(alert.textContent).toBe(announced);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /**
      * (a) — an armed confirm has to stay VISIBLE to be cancellable. A
      * collapsed banner still renders its actions row (archive#4470), so
      * arming from collapsed force-expands the card; Cancel restores
@@ -458,32 +596,32 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
      */
     it('force-expands a collapsed banner on arm, and restores collapsed on cancel', async () => {
       renderChrome();
-      const alert = await screen.findByRole('alert');
+      const card = await findBannerCard();
 
       fireEvent.click(screen.getByRole('button', { name: 'Collapse notice' }));
-      expect(alert.className).toMatch(/banner-host__item--collapsed/);
+      expect(card.className).toMatch(/banner-host__item--collapsed/);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'Remove connection' }),
       );
-      expect(alert.className).not.toMatch(/banner-host__item--collapsed/);
+      expect(card.className).not.toMatch(/banner-host__item--collapsed/);
 
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(alert.className).toMatch(/banner-host__item--collapsed/);
+      expect(card.className).toMatch(/banner-host__item--collapsed/);
       expect(removeConnection).not.toHaveBeenCalled();
     });
 
     it('does not collapse an already-expanded banner when the confirm is cancelled', async () => {
       renderChrome();
-      const alert = await screen.findByRole('alert');
-      expect(alert.className).not.toMatch(/banner-host__item--collapsed/);
+      const card = await findBannerCard();
+      expect(card.className).not.toMatch(/banner-host__item--collapsed/);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'Remove connection' }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-      expect(alert.className).not.toMatch(/banner-host__item--collapsed/);
+      expect(card.className).not.toMatch(/banner-host__item--collapsed/);
     });
 
     /**
@@ -501,8 +639,8 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
      */
     it('disarms (rather than staying armed-and-collapsed) when the chevron collapses an armed, already-expanded banner', async () => {
       renderChrome();
-      const alert = await screen.findByRole('alert');
-      expect(alert.className).not.toMatch(/banner-host__item--collapsed/);
+      const card = await findBannerCard();
+      expect(card.className).not.toMatch(/banner-host__item--collapsed/);
 
       fireEvent.click(
         screen.getByRole('button', { name: 'Remove connection' }),
@@ -515,7 +653,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Collapse notice' }));
 
-      expect(alert.className).toMatch(/banner-host__item--collapsed/);
+      expect(card.className).toMatch(/banner-host__item--collapsed/);
       expect(
         screen.queryByRole('button', {
           name: 'Confirm removing this connection',
@@ -584,6 +722,31 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     ).toBeNull();
   });
 
+  it('tells the reader to update this app when the host refused its protocol (#2962)', async () => {
+    activeConnection = {
+      id: 'connection-1',
+      name: 'Studio',
+      url: 'https://station.example.test',
+    };
+    connectionStatus.reason = 'client-protocol-unsupported';
+    connectionStatus.failureStreak = 1;
+
+    renderChrome();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'Studio no longer supports this version of the app.',
+    );
+    // Not the host-side copy the handshake mismatch strip renders.
+    expect(
+      document.querySelector(`[data-banner-id="${BANNER_IDS.compat}"]`),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect((await findBannerCard()).textContent).toContain(
+      'Install the latest Station app or CLI on this device',
+    );
+  });
+
   it('keeps a decision banner dismissible, retryable and swipeable', async () => {
     connectionStatus.reason = 'unexpected-response';
     connectionStatus.failureStreak = 1;
@@ -601,7 +764,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     expect(
       screen.getByRole('button', { name: 'Dismiss connection notice' }),
     ).toBeTruthy();
-    expect(screen.getByRole('alert').dataset.swipeDismissible).toBe('true');
+    expect((await findBannerCard()).dataset.swipeDismissible).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Try now' }));
     expect(connectionStatus.recheck).toHaveBeenCalledOnce();
   });
@@ -625,7 +788,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     renderChrome();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await findBannerCard()).textContent).toMatch(
       /Use the host's IP address instead of localhost/,
     );
   });
@@ -639,6 +802,20 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
       id: 'conn-1',
       name: 'Tailnet Station',
       url: 'http://localhost:3242',
+    };
+
+    renderChrome();
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  it('keeps a same-origin browser restart transient instead of asking for another address', async () => {
+    connectionStatus.reason = 'timeout';
+    connectionStatus.failureStreak = 4;
+    activeConnection = {
+      id: 'conn-1',
+      name: 'This Station',
+      url: window.location.origin,
     };
 
     renderChrome();
@@ -704,7 +881,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     renderChrome();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await findBannerCard()).textContent).toMatch(
       /Use the host's IP address instead of localhost/,
     );
   });
@@ -721,7 +898,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     renderChrome();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await findBannerCard()).textContent).toMatch(
       /Use the host's IP address instead of localhost/,
     );
   });
@@ -796,17 +973,19 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
     renderChrome();
 
     const alert = await screen.findByRole('alert');
-    expect(alert.className).toMatch(/banner-host__item--blocked/);
+    const card = await findBannerCard();
+    expect(card.className).toMatch(/banner-host__item--blocked/);
     expect(alert.textContent).toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await findBannerCard()).textContent).toMatch(
       /Automatic reconnect is paused/,
     );
     expect(screen.getByRole('button', { name: 'Try now' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Dismiss connection notice' }),
     ).toBeNull();
-    expect(alert.dataset.swipeDismissible).toBeUndefined();
+    expect(card.dataset.swipeDismissible).toBeUndefined();
+    expect(card.classList.contains('banner-host__item')).toBe(true);
   });
 
   it('does not mark the banner as blocked for a non-credential decision', async () => {
@@ -817,10 +996,11 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
     renderChrome();
 
     const alert = await screen.findByRole('alert');
-    expect(alert.className).not.toMatch(/banner-host__item--blocked/);
+    const card = await findBannerCard();
+    expect(card.className).not.toMatch(/banner-host__item--blocked/);
     expect(alert.textContent).not.toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).not.toMatch(
+    expect((await findBannerCard()).textContent).not.toMatch(
       /Automatic reconnect is paused/,
     );
   });
@@ -849,8 +1029,8 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
 
     renderChrome();
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.className).toMatch(/banner-host__item--critical-chrome/);
+    const card = await findBannerCard();
+    expect(card.className).toMatch(/banner-host__item--critical-chrome/);
     expect(screen.getByTestId('banner-host').className).toMatch(
       /banner-host--critical-chrome/,
     );
@@ -894,7 +1074,7 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
     try {
       renderChrome();
 
-      const actions = (await screen.findByRole('alert')).querySelectorAll(
+      const actions = (await findBannerCard()).querySelectorAll(
         '.banner-host__action',
       );
       expect([...actions].map((node) => node.textContent)).toEqual([

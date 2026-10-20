@@ -1,0 +1,31 @@
+{
+  "revision": "741ac0395684d3c9c707f93204bb12350ab09986",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded tool-library runtime delta against Project tool composition: managed Station is a separate authoring choice and permission checks remain at the same service boundaries. No new module or execution authority; no prose change needed.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/tool-library-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed both fresh and recovered session callers, typed permission failures, corrupt/default state and unsupported Ask delivery. Updated recovery startup refusal; per-tool interception and mid-session revocation limits remain unchanged. Four new real-resolver failures reproduced before repair; fixed focused suites passed 193 tests, not live-provider evidence.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed current-owner notes and absent Station binding convention against managed Project authoring and recovery. The delta implements the existing no-external-binding rule and preserves historical protocol observations; no new provider capability claimed.","inputs":["docs/design/agent-engine-unification.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed browser flag/resolver boundary after recovery hardening. Common browser/computer layer remains a proposal; no browser adapter, host driver or qualification added by this repair.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed scoped Project authoring, explicit Station inventory and editor reopen. Admin/Owner authority, exact Project ownership, Owner policy and member execution refusal remain unchanged; existing prose still applies.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/tool-library-runtime.ts","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed tool-library actor and save changes against the separately admitted Project administration leaves. Managed Station selection grants no operator or member execution authority; authentication/provider boundaries remain unchanged.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/tool-library-runtime.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed Agent guide additions against the clean identity table: Station is an authoring selector only, persisted managed Agents omit external engine binding, no synthetic Agent identity introduced.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed catalog and Project Agent persistence with the runtime composition, including explicit Station option and absent external binding. Updated engineId semantics; route paths, authoring fields, exact Project checks and personal account restrictions remain unchanged.","inputs":["docs/reference/api.md","src-server/runtime/routes/tool-library-runtime.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed existing omitted agentConnectionId and separate tool-library state explanations against repaired Project persistence and failclosed recovered startup. No stored schema or new configuration keys added.","inputs":["docs/reference/config.md","src-server/runtime/routes/tool-library-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed recovery change against session/provider contracts: no DTO, event or export shape changes; the existing recovery failure/error state retains its retryable conversation semantics.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed Project tool-library SDK/query contract against managed authoring and recovered startup. No client contract change: catalog already admits engine projections and drafts use engineId; runtime refusal remains authoritative.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed agents-and-engines/tool-server summaries against explicit managed Station authoring and restored policy enforcement. Existing setup, approval and shared-source descriptions remain accurate; browser/computer expansion is still proposed.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-session-state.ts","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the bounded actor/save and recovery changes against admitted Project leaves. No Device/account gate broadening, member execution grant or personal OAuth sharing; recovery now retains authoritative refusals.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/tool-library-runtime.ts"]}
+  ]
+}

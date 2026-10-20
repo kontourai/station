@@ -17,7 +17,9 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
+import { readIntegrationOrigin } from '../services/plugins/integration-origin.js';
 import {
+  removePrincipalToolServerCredentials,
   ToolServerCredentialStore,
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
@@ -309,6 +311,8 @@ export async function deleteIntegrationConfig(
     }
     const store = new ToolServerCredentialStore(projectHomeDir);
     await store.removeServer(id);
+    // #3279: people's own connected accounts for this server go with it.
+    await removePrincipalToolServerCredentials(projectHomeDir, id);
   } finally {
     await release();
   }
@@ -356,6 +360,8 @@ export async function listIntegrationMetadata(
           : {}),
         transport: def.transport,
         source: def.command || def.endpoint,
+        origin: readIntegrationOrigin(projectHomeDir, def),
+        credentialOwnership: def.credentialOwnership,
         enabled: def.enabled !== false,
         disabledTools: def.disabledTools,
         probe: sanitizeProbeProjection(def.probe),

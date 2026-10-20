@@ -1,0 +1,7 @@
+{
+  "revision": "49b7bca9e505a2748d07ae8828d7a9e5f6cff3e2",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the browser fixture fidelity correction. The initial mobile prompt appears once in seeded history; its authoritative resolved event and one distinct desktop opened event are emitted with unique immutable IDs and sequences 4/5, so live delivery and durable replay use the same single records. Notification navigation, focus, definitive Station refusal, session scope and grouped-control contrast assertions remain as reviewed. Production code is unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

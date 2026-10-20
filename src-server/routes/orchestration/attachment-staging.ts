@@ -9,13 +9,14 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import {
   type AttachmentStageDescriptor,
   AttachmentStageError,
   type AttachmentStageOwner,
   type AttachmentStagingService,
 } from '../../services/orchestration/attachment-staging-service.js';
-import { getBody, param, validate } from '../schemas/schemas.js';
+import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 
 const descriptorSchema = z.object({
   clientAttachmentId: z.string().min(1).max(128),
@@ -59,6 +60,7 @@ export function createAttachmentStagingRoutes(
   const app = new Hono();
   const capability: AttachmentStagingCapability = {
     state: 'supported',
+    delegationFiles: true,
     version: ATTACHMENT_STAGING_PROTOCOL_VERSION,
     maxConcurrentUploads: ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS,
   };
@@ -107,8 +109,19 @@ export function createAttachmentStagingRoutes(
     }
   });
   app.post('/reconcile', validate(reconcileSchema), (c) => {
-    const body = getBody(c);
-    return c.json(deps.service.reconcile(deps.currentOwner(c), body.stageIds));
+    try {
+      const body = getBody(c);
+      return c.json(
+        deps.service.reconcile(deps.currentOwner(c), body.stageIds),
+      );
+    } catch (error) {
+      // Only the caller refusal is typed here; any other fault still reaches
+      // the runtime's unexpected-error boundary rather than reading as a 400.
+      if (error instanceof PrincipalUnresolvedError) {
+        return stageError(c, error);
+      }
+      throw error;
+    }
   });
   app.delete('/:stageId', (c) => {
     try {
@@ -176,6 +189,13 @@ function stageError(
   c: { json: (body: unknown, status: 400 | 403 | 404 | 409) => Response },
   error: unknown,
 ): Response {
+  // #545: an unresolvable caller is a deterministic authz refusal, not an
+  // outage. Answer it with the envelope the orchestration and personal-layout
+  // routes already use for this code (400 plus `code`), which the client
+  // translator keys on so it never offers a retry.
+  if (error instanceof PrincipalUnresolvedError) {
+    return c.json({ error: errorMessage(error), code: error.code }, 400);
+  }
   if (!(error instanceof AttachmentStageError)) {
     return c.json({ error: 'Attachment staging is unavailable.' }, 400);
   }

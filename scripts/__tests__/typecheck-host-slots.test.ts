@@ -12,6 +12,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -32,13 +33,37 @@ import {
   UNVERIFIED_HOLDER_STALE_MS,
 } from '../lib/typecheck-host-slots.mjs';
 import { compileProject } from '../scripts-typecheck-coverage.mjs';
-import { needsSlot, planTscArgs, projectConfigPath } from '../tsc-slot.mjs';
+import {
+  DEFAULT_COMPILERS,
+  needsSlot,
+  planTscArgs,
+  projectConfigPath,
+  selectCompiler,
+} from '../tsc-slot.mjs';
 import {
   TYPECHECK_LANES,
   typecheckConcurrency,
 } from '../typecheck-aggregate.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** Whether tsc-ts ships a build for this host (its own platform table). */
+const TSC_TS_HAS_BUILD = Boolean(
+  (
+    await import(
+      pathToFileURL(
+        join(
+          dirname(
+            createRequire(join(REPO_ROOT, 'package.json')).resolve(
+              'tsc-ts/package.json',
+            ),
+          ),
+          'bin',
+          'platforms.js',
+        ),
+      ).href
+    )
+  ).hostPlatform(),
+);
 const LIB_URL = pathToFileURL(
   join(REPO_ROOT, 'scripts', 'lib', 'typecheck-host-slots.mjs'),
 ).href;
@@ -591,6 +616,91 @@ describe('host-wide cap across processes', { timeout: 90_000 }, () => {
 });
 
 describe('tsc-slot runner', () => {
+  test('Bun diagnostics refuse a check script inherited from a parent directory', () => {
+    const parent = tempDir('tc-bun-shadow-');
+    const nested = join(parent, 'nested');
+    mkdirSync(nested);
+    writeFileSync(
+      join(parent, 'package.json'),
+      JSON.stringify({
+        scripts: { check: 'echo WRONG_CHECK' },
+      }),
+    );
+    writeFileSync(
+      join(nested, 'tsconfig.json'),
+      JSON.stringify({ files: ['bad.ts'] }),
+    );
+    writeFileSync(join(nested, 'bad.ts'), 'export const bad: string = 42;\n');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '--bun',
+        '--noEmit',
+        '-p',
+        'tsconfig.json',
+      ],
+      {
+        cwd: nested,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          STATION_BUN_EXECUTABLE: join(parent, 'missing-bun'),
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('package check script shadows the checker');
+    expect(result.stdout).toBe('');
+  });
+
+  test.each([
+    ['--bun', '--noEmit'],
+    ['--bun', '-p', 'tsconfig.json'],
+  ])('Bun diagnostics refuse incomplete project arguments: %j', (...args) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'), ...args],
+      { encoding: 'utf8', windowsHide: true, timeout: 10_000 },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain(
+      'require --noEmit and an explicit -p project',
+    );
+    expect(result.stdout).toBe('');
+  });
+
+  test('Bun diagnostics refuse an installed runtime with the wrong checker version', () => {
+    const project = tempDir('tc-bun-version-');
+    const probe = join(project, 'probe.cjs');
+    writeFileSync(probe, "global.Bun = { version: '1.3.14' };\n");
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '--bun',
+        '--noEmit',
+        '-p',
+        'tsconfig.json',
+      ],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          STATION_BUN_EXECUTABLE: process.execPath,
+          NODE_OPTIONS: `--require ${JSON.stringify(probe)}`,
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('require Bun 1.4.3 with TypeScript 7.0.2');
+    expect(result.stdout).toBe('');
+  });
+
   test('adds incremental flags with a per-project build info file', () => {
     const env = { STATION_TSBUILDINFO_DIR: '/cache' } as NodeJS.ProcessEnv;
     const plan = planTscArgs(
@@ -612,6 +722,261 @@ describe('tsc-slot runner', () => {
       join('/cache', 'packages__shared__tsconfig.json.tsbuildinfo'),
     ]);
   });
+
+  test('keeps a separate build info file per non-reference compiler', () => {
+    const env = { STATION_TSBUILDINFO_DIR: '/cache' } as NodeJS.ProcessEnv;
+    const args = ['-p', 'packages/shared/tsconfig.json', '--noEmit'];
+    const options = { cwd: REPO_ROOT, env, repoRoot: REPO_ROOT };
+    expect(planTscArgs(args, options).buildInfoFile).toBe(
+      join('/cache', 'packages__shared__tsconfig.json.tsbuildinfo'),
+    );
+    expect(
+      planTscArgs(args, { ...options, compiler: 'tsc-ts' }).buildInfoFile,
+    ).toBe(
+      join('/cache', 'packages__shared__tsconfig.json.tsc-ts.tsbuildinfo'),
+    );
+  });
+
+  test('selects the compiler by flag, then environment, then the local or CI default', () => {
+    const args = ['-p', 'x.json', '--noEmit'];
+    // Hosted CI owns the merge gate and must stay on the reference compiler.
+    // The local default is meant to be flipped freely, so it is not pinned.
+    expect(DEFAULT_COMPILERS.ci).toBe('tsc');
+    expect(selectCompiler(args, {})).toEqual({
+      compiler: DEFAULT_COMPILERS.local,
+      explicit: false,
+      args,
+    });
+    for (const CI of ['false', '0', ''])
+      expect(selectCompiler(args, { CI }).compiler).toBe(
+        DEFAULT_COMPILERS.local,
+      );
+    expect(selectCompiler(args, { CI: 'true' })).toEqual({
+      compiler: 'tsc',
+      explicit: false,
+      args,
+    });
+    expect(
+      selectCompiler(args, {
+        CI: 'true',
+        STATION_TYPECHECK_COMPILER: 'tsc-ts',
+      }),
+    ).toEqual({ compiler: 'tsc-ts', explicit: true, args });
+    expect(
+      selectCompiler(['--compiler=bun', ...args], {
+        STATION_TYPECHECK_COMPILER: 'tsc-ts',
+      }),
+    ).toEqual({ compiler: 'bun', explicit: true, args });
+    expect(selectCompiler(['--bun', ...args], {})).toEqual({
+      compiler: 'bun',
+      explicit: true,
+      args,
+    });
+    expect(() => selectCompiler(['--compiler=tsgo', ...args], {})).toThrow(
+      'Unknown typecheck compiler "tsgo"; expected one of: tsc, tsc-ts, bun.',
+    );
+    expect(() =>
+      selectCompiler(args, { STATION_TYPECHECK_COMPILER: 'swc' }),
+    ).toThrow('Unknown typecheck compiler "swc"');
+  });
+
+  /**
+   * Each compiler lists the default library from its own package directory,
+   * so `--listFiles` shows which binary actually ran; the diagnostics alone
+   * are identical by design.
+   */
+  function runSelected(args: string[], env: NodeJS.ProcessEnv) {
+    const project = tempDir('tc-compiler-select-');
+    writeFileSync(
+      join(project, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { lib: ['es2020'], types: [] },
+        files: ['bad.ts'],
+      }),
+    );
+    writeFileSync(join(project, 'bad.ts'), 'export const bad: string = 42;\n');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        ...args,
+        '-p',
+        'tsconfig.json',
+        '--noEmit',
+        '--listFiles',
+        '--pretty',
+        'false',
+      ],
+      {
+        cwd: project,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          CI: '',
+          STATION_TYPECHECK_COMPILER: '',
+          STATION_TSBUILDINFO_DIR: join(project, 'cache'),
+          STATION_TYPECHECK_SLOT_DIR: tempDir('tc-compiler-select-slots-'),
+          ...env,
+        },
+      },
+    );
+    expect(result.stdout).toContain(
+      "bad.ts(1,14): error TS2322: Type 'number' is not assignable to type 'string'.",
+    );
+    expect(result.status, result.stderr).toBe(1);
+    const lib = result.stdout
+      .split('\n')
+      .find((line) => /lib\.es2020\.d\.ts$/.test(line.trim()));
+    return {
+      lib: lib?.replaceAll('\\', '/') ?? '',
+      cache: readdirSync(join(project, 'cache')),
+    };
+  }
+
+  test('runs the tsc-ts binary when selected, with its own build info', () => {
+    const viaFlag = runSelected(['--compiler=tsc-ts'], {});
+    expect(viaFlag.lib).toContain('/@tsc-ts/');
+    // A project outside the repository gets a digest name; the suffix matters.
+    expect(viaFlag.cache).toEqual([
+      expect.stringMatching(/^external-[0-9a-f]{16}\.tsc-ts\.tsbuildinfo$/),
+    ]);
+    expect(
+      runSelected([], { STATION_TYPECHECK_COMPILER: 'tsc-ts' }).lib,
+    ).toContain('/@tsc-ts/');
+  });
+
+  test('CI and an explicit tsc selection run TypeScript 7', () => {
+    for (const run of [
+      runSelected([], { CI: 'true' }),
+      runSelected(['--compiler=tsc'], {}),
+    ]) {
+      expect(run.lib).toContain('/@typescript/typescript-');
+      expect(run.cache).toEqual([
+        expect.stringMatching(/^external-[0-9a-f]{16}\.tsbuildinfo$/),
+      ]);
+    }
+  });
+
+  test('the local default runs its compiler, or TypeScript 7 where it cannot', () => {
+    // Bun refuses --listFiles, so a Bun default falls back here too.
+    const expected =
+      DEFAULT_COMPILERS.local === 'tsc-ts' && TSC_TS_HAS_BUILD
+        ? '/@tsc-ts/'
+        : '/@typescript/typescript-';
+    expect(runSelected([], {}).lib).toContain(expected);
+  });
+
+  // Where tsc-ts has no build, an explicit selection fails for that reason
+  // rather than for version drift.
+  test.skipIf(!TSC_TS_HAS_BUILD)(
+    'installed tsc-ts implements the installed TypeScript version',
+    () => {
+      // tsc-ts ports one TypeScript release; a bump of either package alone
+      // would leave local checks on a different checker than hosted CI.
+      const version = (compiler: string) =>
+        spawnSync(
+          process.execPath,
+          [
+            join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+            `--compiler=${compiler}`,
+            '--version',
+          ],
+          { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+        ).stdout.trim();
+      const typescript = JSON.parse(
+        readFileSync(
+          join(REPO_ROOT, 'node_modules', 'typescript', 'package.json'),
+          'utf8',
+        ),
+      ).version;
+      expect(version('tsc')).toBe(`Version ${typescript}`);
+      expect(version('tsc-ts')).toBe(`Version ${typescript}`);
+    },
+  );
+
+  // The runner copy loads owned-process (and its Windows helpers) only on
+  // Windows; the guardrail scratch-repo tests cover that wiring. With another
+  // local default there is no tsc-ts fallback to prove.
+  test.skipIf(
+    process.platform === 'win32' || DEFAULT_COMPILERS.local !== 'tsc-ts',
+  )(
+    'without tsc-ts installed, the default falls back silently and an explicit choice fails',
+    () => {
+      const root = tempDir('tc-no-tsc-ts-');
+      for (const file of [
+        'scripts/tsc-slot.mjs',
+        'scripts/lib/bounded-capture.mjs',
+        'scripts/lib/module-entry.mjs',
+        'scripts/lib/typecheck-host-slots.mjs',
+        'packages/shared/src/process-identity.mjs',
+        'packages/shared/src/windows-system-utility.mjs',
+      ]) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), readFileSync(join(REPO_ROOT, file)));
+      }
+      writeFileSync(join(root, 'package.json'), '{"private":true}\n');
+      mkdirSync(join(root, 'node_modules'));
+      symlinkSync(
+        join(REPO_ROOT, 'node_modules', 'typescript'),
+        join(root, 'node_modules', 'typescript'),
+        'dir',
+      );
+      const project = join(root, 'project');
+      mkdirSync(project);
+      writeFileSync(
+        join(project, 'tsconfig.json'),
+        JSON.stringify({ compilerOptions: { types: [] }, files: ['bad.ts'] }),
+      );
+      writeFileSync(
+        join(project, 'bad.ts'),
+        'export const bad: string = 42;\n',
+      );
+      const run = (args: string[]) =>
+        spawnSync(
+          process.execPath,
+          [
+            join(root, 'scripts', 'tsc-slot.mjs'),
+            ...args,
+            '-p',
+            'tsconfig.json',
+            '--noEmit',
+            '--pretty',
+            'false',
+          ],
+          {
+            cwd: project,
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 60_000,
+            env: {
+              ...process.env,
+              CI: '',
+              STATION_TYPECHECK_COMPILER: '',
+              STATION_TSBUILDINFO_DIR: join(root, 'cache'),
+              STATION_TYPECHECK_SLOT_DIR: tempDir('tc-no-tsc-ts-slots-'),
+            },
+          },
+        );
+
+      const fallback = run([]);
+      expect(fallback.stdout).toContain('bad.ts(1,14): error TS2322');
+      expect(fallback.status).toBe(1);
+      // The coverage gate reads runner stderr as diagnostics.
+      expect(fallback.stderr).toBe('');
+      expect(readdirSync(join(root, 'cache'))).toEqual([
+        'project__tsconfig.json.tsbuildinfo',
+      ]);
+
+      const explicit = run(['--compiler=tsc-ts']);
+      expect(explicit.status).toBe(1);
+      expect(explicit.stdout).toBe('');
+      expect(explicit.stderr).toContain(
+        "Cannot find module 'tsc-ts/package.json'",
+      );
+    },
+  );
 
   test('leaves caller-chosen incremental settings, non-compile modes and the opt-out alone', () => {
     for (const args of [
@@ -881,71 +1246,89 @@ describe('tsc-slot runner', () => {
     );
   });
 
-  test('a warm incremental run still reports an unchanged type error, and releases its slot', {
-    timeout: 90_000,
-  }, () => {
-    const project = tempDir('tc-slots-project-');
-    const cache = tempDir('tc-slots-cache-');
-    const slotDir = tempDir('tc-slots-runner-');
-    writeFileSync(
-      join(project, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: { strict: true, noEmit: true, types: [] },
-        files: ['a.ts', 'b.ts'],
-      }),
-    );
-    writeFileSync(
-      join(project, 'a.ts'),
-      'export function f(x: number): number { return x; }\n',
-    );
-    writeFileSync(
-      join(project, 'b.ts'),
-      "import { f } from './a';\nexport const y: number = f(1);\n",
-    );
-    const run = () =>
-      spawnSync(
-        process.execPath,
-        [
-          join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
-          '-p',
-          join(project, 'tsconfig.json'),
-        ],
-        {
-          cwd: project,
-          encoding: 'utf8',
-          windowsHide: true,
-          env: {
-            ...process.env,
-            STATION_TSBUILDINFO_DIR: cache,
-            STATION_TYPECHECK_SLOT_DIR: slotDir,
-            STATION_TYPECHECK_SLOTS: '1',
-            [SLOT_HELD_ENV]: '',
-          },
-        },
+  test.each(['tsc', 'tsc-ts'])(
+    'a warm incremental %s run reports unchanged errors and leaves its slot reclaimable',
+    {
+      timeout: 90_000,
+    },
+    async (compiler) => {
+      const project = tempDir('tc-slots-project-');
+      const cache = tempDir('tc-slots-cache-');
+      const slotDir = tempDir('tc-slots-runner-');
+      writeFileSync(
+        join(project, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: { strict: true, noEmit: true, types: [] },
+          files: ['a.ts', 'b.ts'],
+        }),
       );
+      writeFileSync(
+        join(project, 'a.ts'),
+        'export function f(x: number): number { return x; }\n',
+      );
+      writeFileSync(
+        join(project, 'b.ts'),
+        "import { f } from './a';\nexport const y: number = f(1);\n",
+      );
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [
+            join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+            `--compiler=${compiler}`,
+            '-p',
+            join(project, 'tsconfig.json'),
+          ],
+          {
+            cwd: project,
+            encoding: 'utf8',
+            windowsHide: true,
+            env: {
+              ...process.env,
+              STATION_TSBUILDINFO_DIR: cache,
+              STATION_TYPECHECK_SLOT_DIR: slotDir,
+              STATION_TYPECHECK_SLOTS: '1',
+              [SLOT_HELD_ENV]: '',
+            },
+          },
+        );
 
-    const clean = run();
-    expect(clean.status, clean.stdout + clean.stderr).toBe(0);
-    const infos = readdirSync(cache);
-    expect(infos).toHaveLength(1);
-    expect(infos[0]).toMatch(/^external-[0-9a-f]{16}\.tsbuildinfo$/);
+      const clean = run();
+      expect(clean.status, clean.stdout + clean.stderr).toBe(0);
+      const infos = readdirSync(cache);
+      expect(infos).toHaveLength(1);
+      expect(infos[0]).toMatch(
+        /^external-[0-9a-f]{16}(\.tsc-ts)?\.tsbuildinfo$/,
+      );
+      expect(infos[0].includes('.tsc-ts.')).toBe(compiler === 'tsc-ts');
 
-    // Change a.ts's signature: the error is in b.ts, which did not change,
-    // so only a correct incremental graph can find it.
-    writeFileSync(
-      join(project, 'a.ts'),
-      'export function f(x: number): string { return String(x); }\n',
-    );
-    const broken = run();
-    expect(broken.status).not.toBe(0);
-    expect(broken.stdout).toMatch(/b\.ts\(2,14\): error TS2322/);
+      // Change a.ts's signature: the error is in b.ts, which did not change,
+      // so only a correct incremental graph can find it.
+      writeFileSync(
+        join(project, 'a.ts'),
+        'export function f(x: number): string { return String(x); }\n',
+      );
+      const broken = run();
+      expect(broken.status).not.toBe(0);
+      expect(broken.stdout).toMatch(/b\.ts\(2,14\): error TS2322/);
 
-    // Nothing changed since the failing run: the warm run must replay the
-    // stored diagnostic rather than report clean.
-    const again = run();
-    expect(again.status).not.toBe(0);
-    expect(again.stdout).toMatch(/b\.ts\(2,14\): error TS2322/);
+      // Nothing changed since the failing run: the warm run must replay the
+      // stored diagnostic rather than report clean.
+      const again = run();
+      expect(again.status).not.toBe(0);
+      expect(again.stdout).toMatch(/b\.ts\(2,14\): error TS2322/);
 
-    expect(readdirSync(slotDir).filter((n) => n.endsWith('.lock'))).toEqual([]);
-  });
+      const reclaimed = await acquireTypecheckSlot({
+        env: noEnv,
+        dir: slotDir,
+        slots: 1,
+        waitMs: 0,
+      });
+      expect(reclaimed.index).toBe(0);
+      reclaimed.release();
+      expect(readdirSync(slotDir).filter((n) => n.endsWith('.lock'))).toEqual(
+        [],
+      );
+    },
+  );
 });

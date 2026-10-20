@@ -1,5 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { BrandIcon } from '../icons/BrandIcon';
+import {
+  BoardGlyph,
+  CheckGlyph,
+  CodeGlyph,
+  DashboardGlyph,
+  ShieldGlyph,
+} from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 
 /**
@@ -23,6 +31,8 @@ export interface ProjectLayoutChip {
   key: string;
   /** The chip's visible text, which is also its accessible name. */
   name: string;
+  type?: string;
+  icon?: string;
   /**
    * True for the chip whose destination the app is currently showing. Exactly
    * the routed-destination meaning `aria-current="page"` carries, which is why
@@ -45,26 +55,7 @@ export interface ProjectLayoutChip {
   dockSurfaceId?: string | null;
 }
 
-/**
- * #2063 (design record D3): a project's layouts are a chip row under the
- * project name, replacing the nested tree and its expand/collapse chevron.
- *
- * The tree put every layout of every expanded project in the tab order as an
- * ordinary button, so a keyboard reader Tabbed through N layouts to reach the
- * next project. A chip row is a composite widget instead: ONE tab stop, with
- * Left/Right/Home/End moving focus inside it (`role="toolbar"`, the WAI-ARIA
- * pattern for a row of buttons). That is strictly more navigable than the
- * tree, not merely equal to it — the tree offered no arrow-key movement at all
- * and its active layout was styled by class alone, announcing nothing.
- *
- * The roving tab stop starts on the current chip when there is one, so Tab
- * lands a reader on the layout they are looking at rather than on the row's
- * first chip. A reader who arrows away keeps their moved stop, but only while
- * the route stands still: reaching another layout by any other route — the
- * header's layout picker, the command palette, a link — moves the current chip
- * and the tab stop follows it, because otherwise Tab would keep landing on a
- * layout the reader left some navigations ago.
- */
+/** Project views share one tab stop; Up/Down move within the vertical list. */
 export function ProjectLayoutChips({
   projectName,
   chips,
@@ -158,9 +149,6 @@ export function ProjectLayoutChips({
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    // Horizontal toolbar: Up/Down stay unhandled on purpose. The row sits
-    // beside a reorder handle whose own keyboard contract IS Up/Down, and
-    // swallowing them here would teach two meanings for one pair of keys.
     switch (event.key) {
       /**
        * The keyboard's route to the chip's menu (#2158), and the ONLY key
@@ -185,10 +173,10 @@ export function ProjectLayoutChips({
       case 'Enter':
         if (!event.shiftKey || !openMenuFor(rovingIndex)) return;
         break;
-      case 'ArrowRight':
+      case 'ArrowDown':
         focusAt(rovingIndex + 1);
         break;
-      case 'ArrowLeft':
+      case 'ArrowUp':
         focusAt(rovingIndex - 1);
         break;
       case 'Home':
@@ -217,7 +205,7 @@ export function ProjectLayoutChips({
         className="sidebar__layout-chips"
         role="toolbar"
         aria-label={`${projectName} layouts`}
-        aria-orientation="horizontal"
+        aria-orientation="vertical"
         // Advertised, not just implemented: a chord nothing announces is a
         // chord only its author knows. The reorder handle beside this row
         // states its own the same way.
@@ -279,7 +267,27 @@ export function ProjectLayoutChips({
               event.preventDefault();
             }}
           >
-            {chip.name}
+            <span className="sidebar__layout-icon" aria-hidden="true">
+              {chip.type === 'coding' ? (
+                <CodeGlyph />
+              ) : chip.type === 'tasks' ? (
+                <CheckGlyph />
+              ) : chip.type === 'review' ? (
+                <ShieldGlyph />
+              ) : chip.icon ? (
+                <BrandIcon
+                  name={chip.name}
+                  icon={chip.icon}
+                  allowSafeImageIcon
+                  size={16}
+                />
+              ) : chip.type === 'session-board' ? (
+                <BoardGlyph />
+              ) : (
+                <DashboardGlyph />
+              )}
+            </span>
+            <span>{chip.name}</span>
           </button>
         ))}
       </div>

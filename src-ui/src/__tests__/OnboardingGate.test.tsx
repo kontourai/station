@@ -5,8 +5,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PAIRING_LINK_REMEDY } from '@kontourai/station-connect/pairing-deep-link';
-import type { SystemStatus } from '@kontourai/station-sdk';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
+import { getJson, mutateJson, type SystemStatus } from '@kontourai/station-sdk';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useIsFetching,
+} from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -91,13 +96,20 @@ vi.mock('../hooks/useInvalidateCachesOnConnectionSwitch', () => ({
   useInvalidateCachesOnConnectionSwitch: () => {},
 }));
 
-// archive#2472: UsageTelemetryDisclosure reaches for a real QueryClient.
-// Its consent behavior is covered in its own suite; this suite's contract
-// (documented above) is module-boundary mocks, not a QueryClientProvider
-// wrap — so mock the component away like every other cross-cutting dep.
-vi.mock('../components/UsageTelemetryDisclosure', () => ({
-  UsageTelemetryDisclosure: () => null,
-}));
+let realTelemetryDisclosure = false;
+vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/UsageTelemetryDisclosure')
+    >();
+  return {
+    ...actual,
+    UsageTelemetryDisclosure: (props: { firstRun?: boolean }) =>
+      realTelemetryDisclosure ? (
+        <actual.UsageTelemetryDisclosure {...props} />
+      ) : null,
+  };
+});
 
 // Provider ordering is covered against the real application entrypoint in
 // main-provider-order.test.ts. This component suite isolates onboarding
@@ -208,6 +220,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
         url: activeConnectionUrl,
       },
       connections,
+      credentialAuthorityGeneration: () => 0,
       captureCredentialEvidence: () => null,
       isCredentialEvidenceCurrent: () => false,
       setActiveConnection: async () => {},
@@ -307,6 +320,8 @@ vi.mock('../components/PendingPairingReconciler', async () => {
 
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
+  getJson: vi.fn(),
+  mutateJson: vi.fn(),
   useForceRefetchSystemStatus: () => forceRefetch,
   // archive#1194: EnginePicker (rendered when the engine-picker variant
   // applies) reads these — empty/no-op defaults keep every other test in
@@ -381,7 +396,9 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { OnboardingGate } from '../components/OnboardingGate';
+import { resetUsageTelemetryDisclosureDismissal } from '../components/UsageTelemetryDisclosure';
 import { onboardingSetupStore } from '../contexts/onboarding-setup-store';
+import { RecoveryQueryBoundary } from '../contexts/RecoveryQueryBoundary';
 import {
   OPEN_CONNECTIONS_MODAL_EVENT,
   openConnectionsModal,
@@ -419,6 +436,8 @@ function createStatus(overrides: Partial<SystemStatus> = {}): SystemStatus {
 
 describe('OnboardingGate', () => {
   beforeEach(() => {
+    realTelemetryDisclosure = false;
+    resetUsageTelemetryDisclosureDismissal();
     bannerStore.reset();
     globalThis.localStorage.clear();
     currentStatus = createStatus();
@@ -480,6 +499,134 @@ describe('OnboardingGate', () => {
       ready: true,
     });
   }
+
+  test.each(['off', 'lite', 'full'] as const)(
+    'the app-wide DNT Save closes across remounts and re-prompts only pending Full: %s',
+    async (tier) => {
+      realTelemetryDisclosure = true;
+      currentStatus = chatReadyStatus();
+      configData = {
+        firstRun: { status: 'completed' },
+        telemetryTier: { operator: 'full' },
+      };
+      let dnt = true;
+      let inventoryRevision = 'dnt-gate-revision';
+      const reads = vi.mocked(getJson);
+      const writes = vi.mocked(mutateJson);
+      reads.mockReset();
+      writes.mockReset();
+      reads.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                acknowledged: false,
+                inventoryRevision,
+                events: {
+                  station_started: { description: 'Startup', properties: {} },
+                },
+                publishers: {
+                  operator: {
+                    tier: dnt ? 'off' : tier === 'full' ? 'lite' : tier,
+                    reason: dnt
+                      ? 'DNT'
+                      : tier === 'full'
+                        ? 'disclosure'
+                        : 'user',
+                    userChoice: configData.telemetryTier.operator,
+                  },
+                  kontour: {
+                    tier: dnt ? 'off' : 'lite',
+                    reason: dnt ? 'DNT' : 'default',
+                  },
+                } satisfies Record<
+                  'operator' | 'kontour',
+                  TelemetryPublisherStatus
+                >,
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+      writes.mockImplementation(async (_url, method, _options, body) => {
+        expect(method).toBe('PUT');
+        if (!body || typeof body !== 'object')
+          throw new Error('Expected config update');
+        configData = { ...configData, ...body };
+        return new Response(
+          JSON.stringify({ success: true, data: configData }),
+          { status: 200 },
+        );
+      });
+      function PendingReads() {
+        return (
+          <output aria-label="Pending disclosure reads">
+            {useIsFetching()}
+          </output>
+        );
+      }
+      const mount = () =>
+        render(
+          <RecoveryQueryBoundary>
+            <OnboardingGate>
+              <div>App</div>
+            </OnboardingGate>
+            <PendingReads />
+          </RecoveryQueryBoundary>,
+        );
+      const label = { off: 'Off', lite: 'Lite', full: 'Full' }[tier];
+      let view = mount();
+      fireEvent.click(await screen.findByRole('radio', { name: label }));
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: `Save operator choice as ${label}`,
+        }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(configData.telemetryTier.operator).toBe(tier);
+      expect(writes.mock.calls.map(([url, method]) => [url, method])).toEqual([
+        ['http://localhost:3242/config/app', 'PUT'],
+      ]);
+      view.unmount();
+      // Reload from the bytes the real Save wrote, with all page state reset.
+      const persisted = Object.entries(localStorage);
+      resetUsageTelemetryDisclosureDismissal();
+      localStorage.clear();
+      for (const [key, value] of persisted) localStorage.setItem(key, value);
+      view = mount();
+      await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Pending disclosure reads').textContent,
+        ).toBe('0'),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      view.unmount();
+      dnt = false;
+      view = mount();
+      await waitFor(() => expect(reads).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText('Pending disclosure reads').textContent,
+        ).toBe('0'),
+      );
+      if (tier === 'full') {
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(
+          screen.getByRole('button', { name: 'Allow Full usage telemetry' }),
+        ).toBeTruthy();
+      } else {
+        expect(screen.queryByRole('dialog')).toBeNull();
+      }
+      expect(writes).toHaveBeenCalledTimes(1);
+      view.unmount();
+      dnt = true;
+      inventoryRevision = 'next-dnt-gate-revision';
+      view = mount();
+      expect(await screen.findByRole('radio', { name: label })).toBeTruthy();
+      view.unmount();
+    },
+  );
 
   test('reports each desktop bootstrap recovery error once per component lifetime', async () => {
     platformProfile = {
@@ -1062,7 +1209,7 @@ describe('OnboardingGate', () => {
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
   });
 
-  test("routes an engine attention action to that engine's Agent Apps configuration", () => {
+  test('does not interrupt work with a global coding-engine sign-in reminder', () => {
     currentStatus = createStatus({
       externalEngines: [
         {
@@ -1082,8 +1229,8 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in to Codex' }));
-    expect(navigate).toHaveBeenCalledWith('/connections/engines/codex');
+    expect(screen.queryByTestId('setup-launcher')).toBeNull();
+    expect(screen.getByText('App')).toBeTruthy();
   });
 
   test('a chat-ready status renders the app shell without a setup launcher', () => {
@@ -1116,7 +1263,7 @@ describe('OnboardingGate', () => {
       /Request access to reconnect to Tailnet Station/i,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
 
   test('keeps the connected shell mounted while a newly selected connection needs credentials', async () => {
@@ -1524,7 +1671,7 @@ describe('OnboardingGate', () => {
       /Request access to reconnect to Tailnet Station/,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
 
   test('keeps the mobile shell available and launches connection management before a real host is saved', async () => {
@@ -2046,15 +2193,16 @@ describe('OnboardingGate', () => {
     // archive#4470b: the disclosure toggle's label is the constant "Details"
     // now (was "More"/"Less").
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    // station#529: the revealed detail renders outside the live region, so it
+    // is read from the card, not the alert.
+    const card = alert.closest<HTMLElement>('.banner-host__item');
+    expect(card?.textContent).toMatch(
       /isn't authorised there\. Request access to Tailnet Station again/i,
     );
     // The copy must not send the reader at the network. This banner is the
     // surface that told a phone its answering host "may be off, asleep, or on
     // another network" while it returned 401.
-    expect((await screen.findByRole('alert')).textContent).not.toMatch(
-      /off, asleep|another network/i,
-    );
+    expect(card?.textContent).not.toMatch(/off, asleep|another network/i);
   });
 
   test('does not ask the real connectionFailureCopy to explain awaiting approval', async () => {
@@ -2459,7 +2607,12 @@ describe('OnboardingGate', () => {
       document.head.append(style);
       try {
         showCredentialBanner();
-        const banner = await screen.findByRole('alert');
+        // station#529: the live region is the message cell; the card is
+        // what is positioned.
+        const banner = (await screen.findByRole('alert')).closest(
+          '.banner-host__item',
+        ) as HTMLElement;
+        expect(banner).not.toBeNull();
 
         const computed = getComputedStyle(banner);
         expect(
@@ -2478,8 +2631,10 @@ describe('OnboardingGate', () => {
 
     test('marks the strip as a drag region so the overlay title bar still drags', async () => {
       showCredentialBanner();
-      const banner = await screen.findByRole('alert');
-      expect(banner.hasAttribute('data-tauri-drag-region')).toBe(true);
+      const banner = (await screen.findByRole('alert')).closest(
+        '.banner-host__item',
+      );
+      expect(banner?.hasAttribute('data-tauri-drag-region')).toBe(true);
     });
 
     test('offers a named, keyboard-reachable dismiss that hides the banner', async () => {

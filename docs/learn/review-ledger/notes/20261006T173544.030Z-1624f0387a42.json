@@ -1,0 +1,7 @@
+{
+  "revision": "a0ccbf897f5d289ca5247bed0a28929a61d83350",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Narrowed the summary-tense sentence to settled summaries (summarizeCalls applies the all-failed noun form only when tense is 'done'; a running batch still uses -ing verbs) and named the retried count beside the failed count (recoveredFailures moves a retried failure out of failedCount). No other claim changed.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

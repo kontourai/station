@@ -1,0 +1,7 @@
+{
+  "revision": "0dd234dc8966852429ddc69f3f920e62a7cb4ab3",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed mobile toolbar composition and shared NewChatAction caller family. Corrected the component-sharing claim: mobile header now composes NewChatGlyph directly with unchanged toolbar classes; task picker, inbox, collapsed/open dock retain NewChatAction. CSS target and accessible naming declarations unchanged. No new layout/browser/native proof; changed-source caller/build checks pending, prior screenshot limitations retained.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/NewChatAction.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]}
+  ]
+}

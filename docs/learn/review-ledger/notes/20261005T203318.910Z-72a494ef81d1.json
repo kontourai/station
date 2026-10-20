@@ -1,0 +1,7 @@
+{
+  "revision": "0123eb6e46d4ef7b3af27ca8377e5d8684b6d48f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reworded a comment to describe another tool's worktree root without naming it, and replaced an example subfolder path with plain words; matching behaviour unchanged.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-repository.ts"]}
+  ]
+}

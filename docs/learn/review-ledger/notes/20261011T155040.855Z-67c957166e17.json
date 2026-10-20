@@ -1,0 +1,7 @@
+{
+  "revision": "50c2d479780caeeebc2d32e14e4d8a51e25aa4c5",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-after.png","note":"Capture shows a start composer with no setup-read failure; the alert restyle and agent-description indent are not on screen, so the capture is unchanged and accurate.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

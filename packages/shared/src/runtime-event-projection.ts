@@ -7,8 +7,22 @@ import type {
   ConversationMessage,
   MessagePart,
 } from './conversation-message.js';
-import { readHarnessQuestionnaire } from './harness-questions.js';
-import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
+import {
+  EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+  EXTENSION_TRANSCRIPT_MARKER_TEXT,
+  type ExtensionTranscriptMarkerKind,
+  extensionTranscriptMarker,
+} from './extension-transcript-markers.js';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestOutcome,
+} from './input-request.js';
+import {
+  toolRequestDisplayName,
+  toolRequestFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from './tool-request-preview.js';
+
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
 function repeatedRuntimeErrorText(message: string, count: number) {
@@ -138,6 +152,12 @@ export function approvalRetiredBy(
  * call with "No result recorded".
  */
 function retireApprovalCard(part: MessagePart): void {
+  // #3390: a request record closed with no decision reads as cancelled,
+  // the same outcome `request.resolved` would record for it.
+  if (part.inputRequestRecord) {
+    part.inputRequestRecord.outcome = 'cancelled';
+    return;
+  }
   part.needsApproval = false;
   part.cancelled = true;
   if (part.state === 'awaiting-approval') part.state = 'cancelled';
@@ -177,7 +197,7 @@ export function projectRuntimeEventsToMessages(
   // sessions, whose request ids are only unique per session).
   const openApprovalParts = new Map<
     string,
-    { part: MessagePart; subagent: boolean }
+    { part: MessagePart; subagent: boolean; nonblocking?: true }
   >();
   // #2316: the session whose `tool.started` created each tool part. Call ids
   // are only unique per session, and a lineage window folds several, so an
@@ -394,10 +414,29 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
-  const emitAssistantTurn = () => {
+  /** station#3415: markers that arrived during the open turn. */
+  let heldMarkers: Array<{
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
+    marker: ExtensionTranscriptMarkerKind;
+  }> = [];
+
+  /**
+   * True once the open turn's Session exited: no terminal will ever close
+   * that turn, so its held markers are shown after it even though the window
+   * ends with the turn still open (someone quit the engine mid-turn).
+   */
+  let openTurnSessionExited = false;
+
+  /**
+   * `releaseMarkers` is false only for the open turn the window ends on: that
+   * turn has not closed, so its held markers are not shown yet — unless its
+   * Session already exited (`openTurnSessionExited`).
+   */
+  const emitAssistantTurn = (releaseMarkers = true) => {
     flushReasoning();
     flushText();
     if (parts.length > 0) pushMessage('assistant', parts);
+    const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
     // or a late event for it would land on whatever turn is open next.
     const endedKey = turnKey(turnSessionId, turnIdentity);
@@ -432,6 +471,12 @@ export function projectRuntimeEventsToMessages(
     turnSessionId = undefined;
     turnAnswerEligible = false;
     turnAnchorEventId = undefined;
+    const held = heldMarkers;
+    heldMarkers = [];
+    openTurnSessionExited = false;
+    if (releaseMarkers)
+      for (const { ev, marker } of held)
+        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -474,6 +519,55 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
+  /**
+   * station#3415: an extension notification the transcript shows as a marker
+   * line (`extension-transcript-markers.ts`). A marker never splits a turn:
+   * the turn stays one assistant row with its canonical id and its answer
+   * eligibility, exactly as without markers. One that arrives between turns
+   * is a row in place; one that arrives during a turn is held and emitted
+   * right after that turn's rows when the turn closes (`emitAssistantTurn`),
+   * labelled as having happened during it. While the turn is open it shows
+   * nothing, so a live marker never moves or remounts the open turn's row.
+   */
+  const pushTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+    marker: ExtensionTranscriptMarkerKind,
+    duringTurn: boolean,
+    /**
+     * For a held marker, the closed turn's row timestamp: readers that merge
+     * rows by timestamp (the chat dock) then keep the marker after its turn
+     * rather than inside it.
+     */
+    turnRowTimestamp?: number,
+  ) => {
+    const timestamp =
+      turnRowTimestamp ??
+      (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
+    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
+    messages.push({
+      id:
+        options.stableIds && ev.eventId
+          ? `${ev.eventId}:transcript-marker`
+          : `proj-${messages.length}`,
+      role: 'system',
+      parts: [
+        {
+          type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
+          text: duringTurn ? text.duringTurn : text.betweenTurns,
+        },
+      ],
+      ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
+    });
+  };
+  const emitTranscriptMarker = (
+    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
+  ) => {
+    const marker = extensionTranscriptMarker(ev.namespace, ev.type);
+    if (!marker) return;
+    if (turnOpen) heldMarkers.push({ ev, marker });
+    else pushTranscriptMarker(ev, marker, false);
+  };
+
   for (const ev of events) {
     if (
       ev.method === 'turn.completed' ||
@@ -481,8 +575,13 @@ export function projectRuntimeEventsToMessages(
       ev.method === 'session.exited'
     ) {
       for (const [key, open] of openApprovalParts) {
-        if (open.part.approvalThreadId !== ev.threadId) continue;
+        const owner =
+          open.part.approvalThreadId ?? open.part.inputRequestRecord?.threadId;
+        if (owner !== ev.threadId) continue;
         if (!approvalRetiredBy(ev.method, open.subagent)) continue;
+        // The pending-requests strip's rule (`pendingRequestRows.ts`): an
+        // asynchronous question outlives the end of its turn.
+        if (open.nonblocking && ev.method === 'turn.completed') continue;
         retireApprovalCard(open.part);
         openApprovalParts.delete(key);
       }
@@ -776,6 +875,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
@@ -857,6 +957,7 @@ export function projectRuntimeEventsToMessages(
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
+            ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
@@ -904,7 +1005,45 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'request.opened': {
-        if (readHarnessQuestionnaire(ev.payload?.questionnaire)) break;
+        // #3390: one transcript record per request with no tool row to carry
+        // it. It sits where the request opened and takes its outcome from
+        // `request.resolved`, so an answer given anywhere — this device,
+        // another one, a timeout — leaves a trace.
+        const openRecord = (
+          kind: 'form' | 'decision',
+          requester: string,
+          message: string,
+        ) => {
+          turnSessionId ??= ev.threadId;
+          turnOpen = true;
+          flushText();
+          flushReasoning();
+          const part: MessagePart = {
+            type: 'input-request',
+            inputRequestRecord: {
+              requestId: ev.requestId,
+              threadId: ev.threadId,
+              eventId: ev.eventId,
+              kind,
+              requester,
+              message,
+              outcome: 'pending',
+            },
+          };
+          parts.push(part);
+          openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
+            part,
+            subagent: isSubagentApprovalRequest(ev.payload),
+            ...(ev.blocking === false ? { nonblocking: true as const } : {}),
+          });
+        };
+        // A form is answered with content on its own card, never as a
+        // tool's Allow/Deny.
+        const form = inputRequestFromRequestEvent(ev);
+        if (form) {
+          openRecord('form', form.requester, form.message);
+          break;
+        }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
         // #2316: a request id is answerable only by the session that minted
@@ -957,6 +1096,16 @@ export function projectRuntimeEventsToMessages(
             part: target,
             subagent: isSubagentApprovalRequest(ev.payload),
           });
+        } else if (
+          ev.requestType === 'approval' ||
+          ev.requestType === 'permission'
+        ) {
+          // An approval bound to no call (Codex reports no call identity; a
+          // subagent's call has no row here) records on its own part.
+          const named = toolRequestDisplayName(
+            toolRequestFromPayload(ev.payload).toolName,
+          );
+          openRecord('decision', named || 'A tool call', ev.title);
         }
         break;
       }
@@ -966,7 +1115,12 @@ export function projectRuntimeEventsToMessages(
         const target =
           openApprovalParts.get(key)?.part ?? approvalTargets.get(ev.requestId);
         openApprovalParts.delete(key);
-        if (target) {
+        if (target?.inputRequestRecord) {
+          target.inputRequestRecord.outcome = inputRequestOutcome(
+            target.inputRequestRecord.kind,
+            ev.status,
+          );
+        } else if (target) {
           target.needsApproval = false;
           if (ev.status === 'approved') target.approvalStatus = 'user-approved';
           else if (ev.status === 'denied')
@@ -1071,6 +1225,15 @@ export function projectRuntimeEventsToMessages(
         noteModelGeneration(sessionModel, sessionReportedModelFromEvent);
         break;
       }
+      case 'extension.notification':
+        emitTranscriptMarker(ev);
+        break;
+      case 'session.exited':
+        // The turn row itself is unchanged (it is still emitted as it
+        // stands at the end); only its held markers are now owed a place.
+        if (turnOpen && (!turnSessionId || turnSessionId === ev.threadId))
+          openTurnSessionExited = true;
+        break;
       case 'session.state-changed': {
         // station#4080 slice 1 (review round 1, M3): gate on
         // `interruptedTurnBoundary` — a field documented as written ONLY by
@@ -1106,9 +1269,15 @@ export function projectRuntimeEventsToMessages(
         // handled above, before it ever reaches this branch.)
         break;
     }
+    // A run of content no `turn.started` opened (an engine's history replay
+    // persisted turn-less, or a window that begins mid-turn) would otherwise
+    // be emitted with no timestamp, and readers that merge rows by timestamp
+    // then cannot place it. It takes the time of the event that opened it;
+    // a turn that did start keeps that start (or its terminal) time.
+    if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
   }
 
-  if (turnOpen) emitAssistantTurn();
+  if (turnOpen) emitAssistantTurn(openTurnSessionExited);
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||

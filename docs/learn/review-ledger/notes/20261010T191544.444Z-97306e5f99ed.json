@@ -1,0 +1,7 @@
+{
+  "revision": "00e2c8fd95a5b0e0885326fcbc2071425a009f34",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Only builder change since the last review is this branch's: renderInline now renders bare relative links (concepts.md) as relative instead of '#'. Re-read every claim against build-github-pages.mjs, check-generated-pages-links.mjs and public-docs-hygiene.mjs: allowlist, no recursive publish, emitted-HTML link check and dist-pages remain accurate. Added the admitted-to-admitted relative link rule and its PR-time enforcement by docs:public:hygiene. Checks: docs:public:hygiene, Pages build plus check-generated-pages-links, focused public-docs-admission tests. Limit: no hosted Pages deployment observed.","inputs":["docs/pages/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

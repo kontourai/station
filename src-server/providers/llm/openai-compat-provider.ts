@@ -179,6 +179,10 @@ export class OpenAICompatEmbeddingProvider implements IEmbeddingProvider {
     return 1536;
   }
 
+  embeddingIdentity(): string {
+    return `openai-compat-embedding:model=${this.model}`;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/models`, {

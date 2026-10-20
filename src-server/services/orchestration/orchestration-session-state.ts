@@ -1,3 +1,9 @@
+import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../../providers/provider-failure.js';
+
+export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -8,6 +14,7 @@ import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
   AgentRunStatus,
@@ -56,6 +63,7 @@ import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
+import { sessionAgentStartUnavailableReason } from './session-agent-start-policy.js';
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
@@ -307,7 +315,27 @@ export function trackOrchestrationSession(options: {
     options.session.threadId,
     options.session.provider,
   );
-  options.sessionReadModel.set(options.session.threadId, options.session);
+  const existing = options.sessionReadModel.get(options.session.threadId);
+  const nativeState =
+    existing?.provider === options.session.provider ? existing : undefined;
+  const retainCursor =
+    options.session.resumeCursor === undefined &&
+    nativeState?.resumeCursor !== undefined;
+  const retainPersistence =
+    options.session.persistSession === undefined &&
+    nativeState?.persistSession !== undefined;
+  options.sessionReadModel.set(
+    options.session.threadId,
+    retainCursor || retainPersistence
+      ? {
+          ...options.session,
+          ...(retainCursor ? { resumeCursor: nativeState?.resumeCursor } : {}),
+          ...(retainPersistence
+            ? { persistSession: nativeState?.persistSession }
+            : {}),
+        }
+      : options.session,
+  );
 }
 
 export async function resolveOrchestrationAdapterForThread(options: {
@@ -362,7 +390,38 @@ export function projectOrchestrationEventToReadModel(options: {
   sessionReadModel: Map<string, ProviderSession>;
   eventStore?: EventStore;
 }): void {
-  const { event, threadProviders, sessionReadModel, eventStore } = options;
+  const { threadProviders, sessionReadModel, eventStore } = options;
+  const session = deriveReadModelSession(options);
+  if (!session) return;
+  trackOrchestrationSession({ threadProviders, sessionReadModel, session });
+  persistReadModelSession(eventStore, session);
+}
+
+/**
+ * #3561: the durable half of {@link projectOrchestrationEventToReadModel}. The
+ * live publish path runs it as a co-commit participant of the event's own
+ * append, so the session row changes only with the event that justifies it.
+ */
+export function persistReadModelSession(
+  eventStore: EventStore | undefined,
+  session: ProviderSession,
+): void {
+  if (session.status === 'closed') {
+    eventStore?.markSessionClosed(session.threadId, session.provider);
+    return;
+  }
+  eventStore?.upsertSession(session);
+}
+
+/**
+ * #3561: the session an event would project, read from the current read
+ * model and changing nothing. `null` when the event projects no session.
+ */
+export function deriveReadModelSession(options: {
+  event: CanonicalRuntimeEvent;
+  sessionReadModel: ReadonlyMap<string, ProviderSession>;
+}): ProviderSession | null {
+  const { event, sessionReadModel } = options;
   const existing = sessionReadModel.get(event.threadId);
   const baseSession: ProviderSession = existing ?? {
     provider: event.provider,
@@ -387,6 +446,7 @@ export function projectOrchestrationEventToReadModel(options: {
     case 'session.configured':
       nextSession = {
         ...baseSession,
+        modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
@@ -436,17 +496,7 @@ export function projectOrchestrationEventToReadModel(options: {
       break;
   }
 
-  if (!nextSession) return;
-  trackOrchestrationSession({
-    threadProviders,
-    sessionReadModel,
-    session: nextSession,
-  });
-  if (nextSession.status === 'closed') {
-    eventStore?.markSessionClosed(nextSession.threadId, nextSession.provider);
-    return;
-  }
-  eventStore?.upsertSession(nextSession);
+  return nextSession;
 }
 
 export function buildOrchestrationSessionSummary(options: {
@@ -509,6 +559,19 @@ export function buildOrchestrationSessionSummary(options: {
   conversationDraftFacts?: ConversationDraftFacts;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
+  const persistedNativeState =
+    options.persisted?.provider === base?.provider &&
+    options.persisted?.threadId === base?.threadId
+      ? options.persisted
+      : undefined;
+  const resumeCursor =
+    base?.resumeCursor !== undefined
+      ? base.resumeCursor
+      : persistedNativeState?.resumeCursor;
+  const persistSession =
+    base?.persistSession !== undefined
+      ? base.persistSession
+      : persistedNativeState?.persistSession;
   if (!base) {
     throw new Error('A persisted or loaded session is required');
   }
@@ -527,6 +590,15 @@ export function buildOrchestrationSessionSummary(options: {
         ...(delegation.title ? { title: delegation.title } : {}),
       }
     : undefined;
+  const configuredRouteEvent = [...events]
+    .reverse()
+    .find((event) => event.method === 'session.configured');
+  const modelRoute =
+    options.loaded && Object.hasOwn(options.loaded, 'modelRoute')
+      ? readModelRoute(options.loaded.modelRoute)
+      : configuredRouteEvent
+        ? readModelRoute(configuredRouteEvent.metadata?.modelRoute)
+        : readModelRoute(base.modelRoute);
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -605,21 +677,13 @@ export function buildOrchestrationSessionSummary(options: {
       observedBy: options.answerability.observedBy,
       observedAt: options.answerability.observedAt,
     }),
+    ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.resumeCursor !== undefined
-      ? { resumeCursor: base.resumeCursor }
-      : {}),
-    // #765 A1: carried so conversation continuation can tell a cursor with a
-    // durable engine transcript behind it from one whose session was started
-    // with persistence explicitly off (the Claude adapter spawns those with
-    // `--no-session-persistence`, so presenting the cursor to a child start
-    // is guaranteed to fail). Only a LOADED session ever carries an explicit
-    // `false` — the event-store row stores false and absent identically —
-    // which is exactly the live-continuation window the guard needs.
-    ...(base.persistSession !== undefined
-      ? { persistSession: base.persistSession }
-      : {}),
+    ...(resumeCursor !== undefined ? { resumeCursor } : {}),
+    // A partial live projection cannot erase a persisted native cursor or its
+    // persistence posture; explicit false still refuses a native continuation.
+    ...(persistSession !== undefined ? { persistSession } : {}),
     ...(base.attachedSource ? { attachedSource: base.attachedSource } : {}),
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
@@ -1006,7 +1070,12 @@ function extractAttachedSessionAttribution(
     ) {
       return { state: 'attributed', slug: projectSlug };
     }
-    if (stringMeta(metadata, 'projectAttribution') !== 'ambiguous') continue;
+    const marker = stringMeta(metadata, 'projectAttribution');
+    // #3386: the follow service found no project for this session and said
+    // so. It is the newest statement, so nothing older is read past it — the
+    // same precedence the writer's stored fingerprint uses.
+    if (marker === 'unattributed') return undefined;
+    if (marker !== 'ambiguous') continue;
     const raw = metadata?.projectCandidates;
     if (!Array.isArray(raw)) continue;
     const named = raw.filter(
@@ -1134,6 +1203,19 @@ export function extractPeerPendingRequestObservation(
         : {}),
       ...(typeof record.title === 'string' && record.title.trim()
         ? { title: record.title }
+        : {}),
+      // The binding pair is read only whole.
+      ...(typeof record.eventId === 'string' &&
+      record.eventId &&
+      typeof record.threadId === 'string' &&
+      record.threadId
+        ? { eventId: record.eventId, threadId: record.threadId }
+        : {}),
+      ...(typeof record.body === 'string' && record.body.trim()
+        ? { body: record.body }
+        : {}),
+      ...(typeof record.callerCanRespond === 'boolean'
+        ? { callerCanRespond: record.callerCanRespond }
         : {}),
       observedAt,
     };
@@ -1470,7 +1552,6 @@ function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
  * A conversation Station could not reopen IS retryable: the usual cause is a
  * connection setting the user can change back.
  */
-export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
 
 /**
  * Deterministic event id for a recovery failure, so the same failure recorded
@@ -1664,23 +1745,15 @@ export async function startRecoveredOrchestrationSession(options: {
       startInput = await deps.applyApprovalPosture(adapter, startInput);
     }
     if (deps.resolveSessionAgent) {
-      try {
-        startInput = await deps.resolveSessionAgent(startInput);
-      } catch (error) {
-        // Belt-and-suspenders: the resolver's own contract is never-throws
-        // (session-agent-resolution.ts), but degrading to the unresolved
-        // input on an unexpected throw is strictly safer than failing the
-        // turn outright — this is exactly what boot recovery did.
-        deps.logger.warn(
-          'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-          {
-            provider: session.provider,
-            threadId: session.threadId,
-            error: errorMessage(error),
-          },
-        );
-      }
+      startInput = await deps.resolveSessionAgent(startInput);
     }
+    const unavailableReason = sessionAgentStartUnavailableReason({
+      agentSlug: startInput.metadata?.agentSlug,
+      hasResolvedAgent:
+        Boolean(startInput.agent) ||
+        sessionDeliveryChannels(startInput.provider) === undefined,
+    });
+    if (unavailableReason) throw new Error(unavailableReason);
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
@@ -1744,6 +1817,14 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
+          ...providerFailure(
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'unavailable',
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'failed',
+          ),
           severity: 'error',
           code:
             error instanceof SessionStartIndeterminateError
@@ -1751,7 +1832,7 @@ export async function startRecoveredOrchestrationSession(options: {
               : SESSION_RECOVERY_FAILED_CODE,
           retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
-        },
+        } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
       ),
     );
@@ -2230,4 +2311,31 @@ function findTerminalFailureEvent(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return lastFailure;
+}
+
+function readModelRoute(value: unknown): ProviderSession['modelRoute'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const route = value as Record<string, unknown>;
+  if (
+    typeof route.connectionId !== 'string' ||
+    typeof route.label !== 'string' ||
+    typeof route.endpoint !== 'string'
+  )
+    return undefined;
+  try {
+    const url = new URL(route.endpoint);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return {
+      connectionId: route.connectionId,
+      label: route.label.slice(0, 200),
+      endpoint: url.origin,
+    };
+  } catch {
+    return undefined;
+  }
 }

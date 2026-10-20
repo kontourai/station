@@ -1,0 +1,7 @@
+{
+  "revision": "1d7c6f50f7ddfc15d981fc32a2f6279ddec6a07c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced accumulated eff24-to-1d7 canonical input-request admission, answer validation before consumption, question exclusions from grants, permission-frame tap and grant ordering. Reviewed native ownership before init publication, mismatch refusal and termination before retirement. Usage-limit/subagent mapping leaves tool-policy claims unchanged; dated SDK observations remain historical. Independent source review of affected claims only; no affected prose correction identified. REASONED, not provider/native/runtime/CI qualification. Shared typed init predicate retains identical classification and claim-before-mapper ordering.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter-events.ts","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

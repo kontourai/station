@@ -86,9 +86,15 @@ The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station now composes it in its native saved-route owner
 for a configured host-owned Device binding. Each peer obtains fresh ICE, and
 a separate account bridge supplies continuation proof for bounded Project
-reads. Unsupported resources and writes fail before peer allocation in the
+reads and the closed relay-management/Project access administration leaves,
+using a dedicated fixed native account operation for management POSTs.
+Unsupported resources and writes fail before peer allocation in the
 [Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
-The generic library does not choose that policy.
+The generic library does not choose that policy. Management does not replace
+Project IAM or grant terminal, Agent or Task publication authority. The
+account-bound gate admits only exact native relay-management leaves with
+current Device/account proof and separate `relay:manage`; credential-only
+account-bound Devices remain gated. Capabilities grant no management authority.
 [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
 [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
 mount the host transport; the

@@ -1,0 +1,25 @@
+{
+  "revision": "353037698ed918ccbe616175efe110777bac70df",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed the #3158 paragraph against 353037698e: 'suppresses the one turn it stops' still holds (an unlogged-turn suppression binds one-to-one within PENDING_TURN_INTERRUPT_TTL_MS and cancels only a turn that did not complete normally); 'undoes only its own records' and the five-attempt and Session-pin sentences are unchanged in behaviour. Schema migration and savepoints add no claim this paragraph makes.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Re-reviewed for review round 3 (353037698e): delegated-result schema migration, the unlogged-turn window derived from PENDING_TURN_INTERRUPT_TTL_MS, one-to-one suppression binding, savepoint-wrapped transitions and guarded retry timers. This document makes no claim about these mechanics; its recorded scope is unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

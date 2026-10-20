@@ -1,0 +1,7 @@
+{
+  "revision": "d033b5aca270c5e1c1040dd7e2f37445d8df4de9",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Regenerated design index includes the explicitly proposed agent browser/computer capability exploration. The index adds navigation only and makes no implementation or qualification claim.","inputs":["docs/design/README.md"]}
+  ]
+}

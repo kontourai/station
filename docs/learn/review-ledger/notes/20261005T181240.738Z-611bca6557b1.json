@@ -1,0 +1,7 @@
+{
+  "revision": "88ec1eba41b6b9d11d4a3ea31f29c5614c78d184",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Re-read every runtime-routes.ts citation after #3381 inserted two lines at 4467: each cited range past it shifted by +2 and was byte-compared against the text cited at 86a524b10f (8303-8328, 8629-8643, 8663-8684, 8672, 8695-8783, 8714-8720, 8784-8806); 1345-1352 is unchanged. #3387's lib.rs change only adds x-station-envelope to the native response-header allowlist; the doc's claims that the broker attaches the keychain credential and that nothing in src-desktop reads the operator credential still hold. Corrected a pre-existing wrong citation: the per-boot secret is read in read_local_grant_secret at lib.rs:1788-1802, not :1821-1836 (hostname formatting).","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

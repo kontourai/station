@@ -1,0 +1,7 @@
+{
+  "revision": "d62e17e105caa246a8c09d48bc523488becd6bdc",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed arm/dequeue checkout against workflow revision, stale PR event base and untrusted candidate boundaries. Both helpers use github.workflow_sha; the real temporary Git regression passes 10 tests, old checkout expressions fail the named regression, byte-exact restoration passes. Source review only for token/API and release-stage boundaries; no hosted report or new-source release claim.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml"]}
+  ]
+}

@@ -77,9 +77,30 @@ export interface AttachedSessionSource {
   readonly kind: string;
   /** Declared only when completed canonical turn IDs are native fork positions. */
   readonly continuationBoundary?: 'completed-turn';
+  /**
+   * For an engine Station runs under a different provider id (Grok runs as an
+   * ACP connection): the native session id a persisted Station session owns
+   * in this source, so the follower does not import Station's own session a
+   * second time. Absent: only the same provider's adapter proves ownership.
+   */
+  ownedNativeSessionId?(session: {
+    provider: string;
+    resumeCursor?: unknown;
+  }): string | undefined;
   discover(): Promise<AttachedSessionDiscoveryResult>;
+  /**
+   * Sources with a moving cold-read window must pin its start before read().
+   * The follower persists this bounded cursor before observing any events.
+   * A legacy row gaining source affinity persists it after a successful read.
+   * Undefined means the descriptor could not be validated; do not read it.
+   */
+  initialCursor?(
+    session: AttachedSessionDescriptor,
+  ): Promise<AttachedSessionCursor | undefined>;
   read(
     session: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): Promise<AttachedSessionReadResult>;
+  /** Release held resources (open store handles); called when following stops. */
+  close?(): void;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "06976c588106928fc904a541bc0db50959f6b11f",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Reviewed: prompt only runs under the codex-gated repair job; no change needed for the QUALIFICATION_REPAIR_AGENT opt-in.","inputs":[".github/codex/qualification-repair.md",".github/workflows/qualification-repair.yml","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-repair.mjs"]}
+  ]
+}

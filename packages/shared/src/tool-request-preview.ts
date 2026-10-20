@@ -1,3 +1,9 @@
+import {
+  boundedJoinedLines,
+  compactDisplaySource,
+  displayLines,
+  displayText,
+} from './display-text.js';
 import { MAX_SANITIZED_TEXT_LENGTH, redactSecrets } from './redaction.js';
 
 /**
@@ -837,11 +843,17 @@ function renderValue(value: unknown): string | undefined {
 }
 
 /**
- * Single line, secret-redacted, bounded. Control characters become spaces
- * rather than being dropped: a heredoc's second command must stay visible as
- * separate words, and a multi-line value must not be able to push a toast's
- * buttons out of view. An ANSI escape reaching a React text node is inert, but
- * it still renders as a gap that hides what follows it.
+ * Single line, secret-redacted, sanitised, bounded. Shown as text next to
+ * Allow and Deny, so it gets the same treatment as a transcript label
+ * (`displayText`): bidi controls removed, so the line cannot reorder what it
+ * shows; control characters (C0, DEL, C1) turned into spaces rather than
+ * dropped, so they cannot hide what follows them and a heredoc's second
+ * command stays separate words.
+ *
+ * A value with more than one line shows its lines joined by ` ⏎ `
+ * (`boundedJoinedLines`). When the bound cuts off whole lines, the
+ * line ends with the same "(+N lines)" marker the transcript label uses, kept
+ * inside the bound, so the reader knows something is not shown.
  */
 function boundedPreviewLine(value: string): string | undefined {
   // Slice to a coarse prefix BEFORE redacting. A tool input is unbounded
@@ -869,20 +881,28 @@ function boundedPreviewLine(value: string): string | undefined {
   // class is `[^\s&;]`: `&` and `;` are the delimiters the contextual pass
   // already anchors values on, so they are exactly the boundaries that make a
   // fragment visible.
-  const cut = value.slice(0, MAX_SANITIZED_TEXT_LENGTH);
+  //
+  // Padding is taken out first (`compactDisplaySource`, linear): before, 5000
+  // spaces or RLOs after `echo a` pushed `; rm -rf /` past this cut, and the
+  // toast showed a bare "echo a" next to Allow Once (#3382).
+  const compact = compactDisplaySource(value);
+  const cut = compact.slice(0, MAX_SANITIZED_TEXT_LENGTH);
   const trailingRun = /[^\s&;]+$/.exec(cut)?.[0] ?? '';
   const sliced =
-    value.length > MAX_SANITIZED_TEXT_LENGTH &&
+    compact.length > MAX_SANITIZED_TEXT_LENGTH &&
     trailingRun.length <= MAX_TRUNCATED_TOKEN_TRIM
       ? cut.slice(0, cut.length - trailingRun.length)
       : cut;
-  const oneLine = redactSecrets(sliced)
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: collapsing raw control characters into spaces is the point.
-    .replace(/[\u0000-\u001F\u007F]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!oneLine) return undefined;
-  return oneLine.length <= MAX_TOOL_REQUEST_PREVIEW_LENGTH
-    ? oneLine
-    : `${oneLine.slice(0, MAX_TOOL_REQUEST_PREVIEW_LENGTH - 1)}…`;
+  const lines = displayLines(redactSecrets(sliced)).map(displayText);
+  if (lines.length === 0) return undefined;
+  // A value cut short here always says so: "…", and the lines past the cut
+  // counted from the whole value (a linear split, no secret patterns).
+  const cutShort = sliced.length < compact.length;
+  return boundedJoinedLines(
+    lines,
+    MAX_TOOL_REQUEST_PREVIEW_LENGTH,
+    cutShort
+      ? { truncated: true, totalLines: displayLines(compact).length }
+      : {},
+  );
 }

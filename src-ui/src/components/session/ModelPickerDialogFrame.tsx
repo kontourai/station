@@ -13,10 +13,12 @@ import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
  */
 export function ModelPickerDialogFrame({
   children,
+  title = 'Model',
   onClose,
   returnFocusTarget,
 }: {
   children: ReactNode;
+  title?: string;
   onClose: () => void;
   /**
    * The control that opened the picker. Without it the frame returns focus to
@@ -91,8 +93,8 @@ export function ModelPickerDialogFrame({
       onKeyDownCapture={containFocus}
     >
       <ResponsiveDialogHeader
-        title="Model"
-        subtitle="For this chat · Favorites stay on this device"
+        title={title}
+        subtitle="For this conversation"
         closeLabel="Close model picker"
         onClose={onClose}
       />

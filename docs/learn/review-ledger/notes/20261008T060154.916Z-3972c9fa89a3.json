@@ -1,0 +1,7 @@
+{
+  "revision": "13e6bfa14590b8a37a8f5f045205ee2584622a9f",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"packages/shared/package.json gained the display-text and display-reveal export subpaths from this PR; checked the guide's export-map and dependency claims against the merged manifest; the new subpaths are source .ts leaves consistent with the documented shape.","inputs":["docs/guides/dependency-security.md","packages/shared/package.json"]}
+  ]
+}

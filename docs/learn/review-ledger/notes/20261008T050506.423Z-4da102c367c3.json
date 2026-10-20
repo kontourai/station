@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"docs/reference/cli.md gained the connections profile-env command from this PR; checked this document's CLI references still resolve against the current command surface; unchanged.","inputs":["packages/cli/README.md","packages/cli/package.json","docs/reference/cli.md"]}
+  ]
+}

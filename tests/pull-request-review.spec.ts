@@ -179,7 +179,7 @@ async function mount(page: Page, forge: 'github' | 'gitlab', lost = false) {
               {
                 name: 'Windows PR portable floor',
                 state: 'failure',
-                group: 'Windows PR Verification',
+                group: 'PR: Windows',
                 url: 'https://forge.test/team/repo/actions/runs/3/job/4',
               },
               { name: 'Dependency review', state: 'failure', group: 'CI' },

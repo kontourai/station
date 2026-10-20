@@ -36,6 +36,7 @@ async function fixture() {
   retire.unshift(() => authentication.service.close());
   return {
     homeDir,
+    security,
     membership,
     databasePath: join(
       homeDir,
@@ -167,5 +168,47 @@ describe('native Device proof runtime composition', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe('#3557 Station groups at native admission', () => {
+  test('the composed authority sees a person-bound device capped by their group', async () => {
+    const h = await fixture();
+    const pairing = h.security.devicePairing;
+    const elevated =
+      'orchestration:read orchestration:operate terminal:operate coding:exec';
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.test',
+      scope: elevated,
+    });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Casey phone',
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login: 'casey' },
+    });
+    const principalId = 'human:tailscale-serve:casey';
+    pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId, kind: 'verified-ingress' },
+    );
+    const { device } = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+    const runtime = createNativeDeviceProofRuntime(h.options);
+    if (!runtime) throw new Error('native runtime was not composed');
+    retire.unshift(() => runtime.close());
+
+    const activeDevice = runtime.configuration.pairing.activeDevice;
+    expect(activeDevice(device.id)?.scope).toBe(
+      'orchestration:read orchestration:operate terminal:operate',
+    );
+    await h.security.assignGroup(principalId, 'admin');
+    expect(activeDevice(device.id)?.scope).toBe(elevated);
   });
 });

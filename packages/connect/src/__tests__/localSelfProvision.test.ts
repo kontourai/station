@@ -1,21 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  attemptLocalSelfProvision,
-  attemptLocalSelfProvisionOnce,
-  attemptLocalSelfProvisionOnceWithOutcome,
-  resetLocalSelfProvisionLatchForTests,
-  retryLocalSelfProvisionAfterRejection,
-} from '../core/localSelfProvision';
 
-beforeEach(() => {
-  resetLocalSelfProvisionLatchForTests();
+let selfProvision: typeof import('../core/localSelfProvision');
+
+beforeEach(async () => {
+  vi.resetModules();
+  selfProvision = await import('../core/localSelfProvision');
 });
 
 describe('attemptLocalSelfProvision', () => {
   test('invokes the single native command with the profile name and returns true on success', async () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
 
-    const result = await attemptLocalSelfProvision({
+    const result = await selfProvision.attemptLocalSelfProvision({
       invoke,
       profileName: 'local',
     });
@@ -32,7 +28,7 @@ describe('attemptLocalSelfProvision', () => {
       .fn()
       .mockRejectedValue(new Error('local grant forbidden'));
 
-    const result = await attemptLocalSelfProvision({
+    const result = await selfProvision.attemptLocalSelfProvision({
       invoke,
       profileName: 'local',
     });
@@ -48,14 +44,14 @@ describe('attemptLocalSelfProvision', () => {
     const invoke = vi.fn().mockRejectedValue(error);
 
     await expect(
-      attemptLocalSelfProvisionOnceWithOutcome({
+      selfProvision.attemptLocalSelfProvisionOnceWithOutcome({
         invoke,
         profileName: 'local',
       }),
     ).resolves.toEqual({ provisioned: false, error });
     // The detailed API keeps the same one-attempt-per-boot safety boundary.
     await expect(
-      attemptLocalSelfProvisionOnceWithOutcome({
+      selfProvision.attemptLocalSelfProvisionOnceWithOutcome({
         invoke,
         profileName: 'local',
       }),
@@ -68,8 +64,8 @@ describe('attemptLocalSelfProvisionOnce', () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
     const deps = { invoke, profileName: 'local' };
 
-    expect(await attemptLocalSelfProvisionOnce(deps)).toBe(true);
-    expect(await attemptLocalSelfProvisionOnce(deps)).toBe(false);
+    expect(await selfProvision.attemptLocalSelfProvisionOnce(deps)).toBe(true);
+    expect(await selfProvision.attemptLocalSelfProvisionOnce(deps)).toBe(false);
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
@@ -77,8 +73,8 @@ describe('attemptLocalSelfProvisionOnce', () => {
     const invoke = vi.fn().mockRejectedValue(new Error('not eligible'));
     const deps = { invoke, profileName: 'local' };
 
-    expect(await attemptLocalSelfProvisionOnce(deps)).toBe(false);
-    expect(await attemptLocalSelfProvisionOnce(deps)).toBe(false);
+    expect(await selfProvision.attemptLocalSelfProvisionOnce(deps)).toBe(false);
+    expect(await selfProvision.attemptLocalSelfProvisionOnce(deps)).toBe(false);
     // The second call never re-invokes: the latch consumed on the first
     // attempt, success or not — a caller decides separately whether to
     // re-arm it (e.g. a fresh app boot, never within one session).
@@ -95,14 +91,18 @@ describe('retryLocalSelfProvisionAfterRejection', () => {
     const deps = { invoke, profileName: 'local' };
 
     // The boot-time attempt consumes ITS latch first.
-    expect(await attemptLocalSelfProvisionOnce(deps)).toBe(true);
+    expect(await selfProvision.attemptLocalSelfProvisionOnce(deps)).toBe(true);
     // The rejection-retry path is still reachable — it has its own guard,
     // independent of `attemptedThisBoot`. This is the fix: re-provisioning
     // reachable from an authentication refusal even after the boot attempt.
-    expect(await retryLocalSelfProvisionAfterRejection(deps)).toBe(true);
+    expect(
+      await selfProvision.retryLocalSelfProvisionAfterRejection(deps),
+    ).toBe(true);
     // But only ONCE — a second observed rejection does not re-mint, which
     // is what stops a genuinely-rejecting server from looping.
-    expect(await retryLocalSelfProvisionAfterRejection(deps)).toBe(false);
+    expect(
+      await selfProvision.retryLocalSelfProvisionAfterRejection(deps),
+    ).toBe(false);
     // Two total invocations: one boot, one rejection-retry.
     expect(invoke).toHaveBeenCalledTimes(2);
   });
@@ -113,8 +113,12 @@ describe('retryLocalSelfProvisionAfterRejection', () => {
       .mockRejectedValue(new Error('local grant forbidden'));
     const deps = { invoke, profileName: 'local' };
 
-    expect(await retryLocalSelfProvisionAfterRejection(deps)).toBe(false);
-    expect(await retryLocalSelfProvisionAfterRejection(deps)).toBe(false);
+    expect(
+      await selfProvision.retryLocalSelfProvisionAfterRejection(deps),
+    ).toBe(false);
+    expect(
+      await selfProvision.retryLocalSelfProvisionAfterRejection(deps),
+    ).toBe(false);
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 });

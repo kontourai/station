@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 105,
+  "pageLocalMediaQueryCeiling": 106,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -45,6 +45,10 @@
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the exit animation is `forwards`: under the motion primitive alone a 0.01ms run HOLDS the collapsed end state instead of leaving the panel as it was."
     },
+    "src-ui/src/components/modals/TaskChatStart.css": {
+      "count": 1,
+      "reason": "#3705: the New Task shaping start surface is a chat-dock sheet like BackgroundTasksSheet; on phones it fills the viewport below the toolbar so the page's own Start work composer cannot sit beside the shaping composer. No shared primitive owns chat-dock sheet height."
+    },
     "src-ui/src/components/chat/QueuedMessages.css": {
       "count": 1,
       "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
@@ -58,8 +62,8 @@
       "reason": "The conversation timeline owns its compact mobile history header, 44px scrubber, and four-action row so transcript space remains usable at phone widths."
     },
     "src-ui/src/components/chat/chat.css": {
-      "count": 8,
-      "reason": "Eight surface-owned decisions: 480px toolbar region-button and turn-footer alignment; 600px mention targets; shared phone/coarse attachment, menu and picker touch floors; hover-only footer disclosure; phone/short-coarse composer and toolbar layout; 374px connection-label reachability; a 640px composer container query for centered status/scroll stacking and its popup; and short-coarse focused drafting that hides settings while preserving activity. Duplicate 480px and phone/coarse blocks were consolidated; counts and ceiling remain unchanged. These choices depend on chat/toolbar control composition or allocated pane width rather than a generic dialog or page primitive."
+      "count": 9,
+      "reason": "Nine surface-owned decisions: 480px toolbar region-button and turn-footer alignment; 600px mention targets; shared phone/coarse attachment, menu and picker touch floors; hover-only footer disclosure; phone/short-coarse composer and toolbar layout; 374px connection-label reachability; a 640px composer container query for centered status/scroll stacking and its popup; short-coarse focused drafting that hides settings while preserving activity; and a 48px container query on the phone chat bar's project control, which shows a folder glyph only where a long chat title leaves it 40px of content and both its caption and project name would truncate to an ellipsis (the width depends on the chat title beside it, so no viewport media query or shared primitive can decide it). Duplicate 480px and phone/coarse blocks were consolidated; counts and ceiling remain unchanged. These choices depend on chat/toolbar control composition or allocated pane width rather than a generic dialog or page primitive."
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,
@@ -214,7 +218,7 @@
       "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
     },
     "src-ui/src/views/SessionsView.css": {
-      "count": 3,
+      "count": 2,
       "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
     },
     "src-ui/src/views/SettingsView.css": {

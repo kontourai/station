@@ -1,0 +1,7 @@
+{
+  "revision": "db10e05cbf16be99d68c909ef74d2a2bb543ebb5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the repository-scan manifest and external-history isolation caller against the guide whole-tree scan and fixture-fidelity contracts. run-e2e-suite-ports now derives every server external source root, so it belongs in the existing always-run repository scan list rather than an exemption. Existing child-process resource classification is preserved. Scanner boundary, real e2e runner and repository-scan runner controls passed 147/147; guide prose remains accurate. No browser journey, native runtime or hosted Windows proof is inferred.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

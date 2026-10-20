@@ -573,7 +573,8 @@ export class WorktreeProvisioningService {
     try {
       const repoRoot = repository.top;
       const repo = ['-C', repoRoot, ...repository.repoArgs];
-      const env = repository.env;
+      // A recorded commit must select its own tree, even if replace refs change.
+      const env = { ...repository.env, GIT_NO_REPLACE_OBJECTS: '1' };
 
       const status = await this.git.run([...repo, 'status', '--porcelain'], {
         env,
@@ -602,6 +603,24 @@ export class WorktreeProvisioningService {
         throw new Error(`Worktree branch already exists: ${branch}`);
       }
 
+      const baseCommit = (
+        await this.git.run(
+          [
+            ...repo,
+            'rev-parse',
+            '--verify',
+            '--end-of-options',
+            `${policy.baseRef}^{commit}`,
+          ],
+          { env },
+        )
+      ).stdout.trim();
+      if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(baseCommit)) {
+        throw new Error(
+          'Cannot resolve the worktree base to a full Git commit',
+        );
+      }
+
       const worktreeBaseDir = resolveWorktreeBaseDir(
         repoRoot,
         policy.worktreeBaseDir,
@@ -628,20 +647,20 @@ export class WorktreeProvisioningService {
       }
       try {
         await this.git.run(
-          [
-            ...repo,
-            'worktree',
-            'add',
-            '-b',
-            branch,
-            worktreePath,
-            policy.baseRef,
-          ],
+          [...repo, 'worktree', 'add', '-b', branch, worktreePath, baseCommit],
           { env },
         );
       } catch (error) {
         await rm(worktreePath, { recursive: true, force: true });
         throw error;
+      }
+      try {
+        await repository.settleCreatedWorktree(worktreePath);
+      } catch (error) {
+        throw new Error(
+          `Created worktree preserved at ${worktreePath}: metadata could not be settled`,
+          { cause: error },
+        );
       }
 
       return {
@@ -650,6 +669,7 @@ export class WorktreeProvisioningService {
         path: worktreePath,
         branch,
         baseRef: policy.baseRef,
+        baseCommit,
         cleanupPolicy: policy.cleanupPolicy,
         preserveOnFailure: policy.preserveOnFailure,
         createdAt: new Date().toISOString(),

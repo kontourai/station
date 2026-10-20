@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-15",
+  "implementationSource": "Per-capture revision; most earlier captures c1462875d0f, final connected and keyboard 7dfd9fa0cf7",
+  "environment": "macOS arm64 Node24.19.0, isolated production server4242 UI5474; iOS26.5 Safari simulator 402x874 CSS px",
+  "baseline": "Real captures before each named change. Initial build SHA was not separately recorded; baseline desktop state and geometry retained in first-round report and original images. Mobile keyboard before was captured after first header fixes but before central phone Coding.",
+  "after": "Actual running application, not mockups. Source-only later documentation commits do not change these pixels. Each capture records its stage in round-two.html. Crops/comparisons only position original captures side by side; no UI content replaced.",
+  "scope": "Simulator connection used a launcher browser bootstrap and refresh; full code-pairing/physical QR remains unverified. Existing host Codex credentials reused.",
+  "screenshots": [
+    {
+      "path": "round2-mobile-connect-before.png",
+      "source": "/tmp/station-mobile-connect-before.png",
+      "width": 402,
+      "height": 874,
+      "sha256": "124746d92c8c8c727f84a54745c8f2d5e63994d6845ed83087f931715df6f60b"
+    },
+    {
+      "path": "round2-mobile-connect-after.png",
+      "source": "/tmp/station-mobile-connect-after.png",
+      "width": 402,
+      "height": 874,
+      "sha256": "961e9d5a37b3a52a551180e2545b503b0499d23b0574b963e4cd79a1e63bf184"
+    },
+    {
+      "path": "round2-mobile-keyboard-before.png",
+      "source": "/tmp/station-mobile-keyboard-after.png",
+      "width": 402,
+      "height": 874,
+      "sha256": "1dffd144d24b81b84a733e3640b8d834a3de2a81574feb4b67aa332625202045"
+    },
+    {
+      "path": "round2-mobile-keyboard-after.png",
+      "source": "/tmp/station-mobile-final-keyboard.png",
+      "width": 402,
+      "height": 874,
+      "sha256": "1c37e1fdcc463a43a25e94dd21119e77f2ee447e53c72f58c3f8ce601116f7c8",
+      "implementationSource": "7dfd9fa0cf7",
+      "scope": "Final direct Project restoration, after Safari process relaunch recovered from recorded restart failure. Existing successful tool transcript retained; no new provider turn in this capture."
+    },
+    {
+      "path": "round2-mobile-chat-after.png",
+      "source": "/tmp/station-mobile-final-connected.png",
+      "width": 402,
+      "height": 874,
+      "sha256": "e7f0a223b66edb15925c75f98b2e97216d687fb81d518953e57b401bbc27bc63",
+      "implementationSource": "7dfd9fa0cf7",
+      "scope": "Final direct Project restoration, after Safari process relaunch recovered from recorded restart failure. Existing successful tool transcript retained; no new provider turn in this capture."
+    },
+    {
+      "path": "round2-coding-before.png",
+      "source": "Pre-fix collaborative browser capture, retained byte-for-byte as round2-coding-before.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "e69cb1dd70fdc77eb5a4fffd213f34c2ceafc03d7ac496338aa769ceabff3abe",
+      "originalCaptureId": "mv9qq6sa-43fe0b66"
+    },
+    {
+      "path": "round2-coding-after.jpg",
+      "source": "/tmp/station-coding-after-1280.jpg",
+      "width": 1280,
+      "height": 800,
+      "sha256": "27b770790f31e8a5331ce5aa1018d5c15c64cdf1b9b85a53b9ced3b517e91e22"
+    },
+    {
+      "path": "round2-coding-file-after.jpg",
+      "source": "/tmp/station-coding-file-after-1280.jpg",
+      "width": 1280,
+      "height": 800,
+      "sha256": "96f8f0d5ee6b22eaf6ed9fd9f086d920dcb91d94609e658a278755b7b506659c"
+    },
+    {
+      "path": "round2-instructions-before.png",
+      "source": "/tmp/station-product-critique-20261015/instructions-lock.png",
+      "width": 715,
+      "height": 405,
+      "sha256": "27dc4648e7a4fd4285f93685ca0e4c89d79f237ea36c6115c28a603ebd8e612b"
+    },
+    {
+      "path": "round2-instructions-after.jpg",
+      "source": "/tmp/station-instructions-after.jpg",
+      "width": 1626,
+      "height": 953,
+      "sha256": "b6f998a27b99226f8c615fafd06512ad45ac29a2b0fb06d6f8a48da0968ea439"
+    },
+    {
+      "path": "round2-tools-after.jpg",
+      "source": "/tmp/station-instruction-tool-proof.jpg",
+      "width": 1626,
+      "height": 953,
+      "sha256": "196625995dc240b408d92d7611badaa9b83e0b63df163a11a0267cb44d55aecb"
+    },
+    {
+      "path": "round2-pairing-before.jpg",
+      "source": "/tmp/station-pairing-permission-before.jpg",
+      "width": 1626,
+      "height": 953,
+      "sha256": "d2ae2062a46a58d60c0f1f3a187eafab024796d44d17956b57836d1547ef2856"
+    },
+    {
+      "path": "round2-agent-selection-after.jpg",
+      "source": "/tmp/station-agent-selection-after.jpg",
+      "width": 1280,
+      "height": 800,
+      "sha256": "665ce2c4811a1003f5c625dc3ac942aefa4bf3bd44081e6d06605146d8ff7f2d"
+    },
+    {
+      "path": "round2-mobile-restart-failure.png",
+      "source": "/tmp/station-mobile-restart-failure.png",
+      "width": 402,
+      "height": 874,
+      "implementationSource": "7dfd9fa0cf7",
+      "sha256": "50547f495d04fd061067e39f85ef7e49d83386a1613aa93a7eec91f599ed8f3c",
+      "scope": "Final rebuild recovery failure in Safari; desktop later recovered automatically. This is negative evidence, not an after-success capture."
+    }
+  ]
+}

@@ -800,7 +800,7 @@ describe('buildHomeWorkItems', () => {
           id: 'task-1',
           projectId: 'project-alpha',
           title: 'Persisted Task',
-          status: 'running',
+          status: 'in_progress',
           priority: 'normal',
           description: '',
           createdBy: 'user',
@@ -817,8 +817,9 @@ describe('buildHomeWorkItems', () => {
         id: 'task-1',
         kind: 'task',
         title: 'Persisted Task',
+        kindLabel: 'Task · In progress',
         projectLabel: 'project-alpha',
-        agentLabel: 'Agent unavailable',
+        agentLabel: 'No agent assigned',
         modelLabel: 'Model unavailable',
         taskSessionId: 'session-1',
       }),
@@ -856,7 +857,7 @@ describe('buildHomeWorkItems', () => {
           id: 'task-without-session',
           kind: 'task',
           taskSessionId: undefined,
-          agentLabel: 'Agent unavailable',
+          agentLabel: 'No agent assigned',
           modelLabel: 'Model unavailable',
         }),
         expect.objectContaining({ kind: 'chat', title: 'Same title' }),
@@ -888,7 +889,7 @@ describe('buildHomeWorkItems', () => {
 });
 
 describe('orchestration Running is gated on an in-flight turn (#1069)', () => {
-  // Shape copied from a live read-model row on the brian-media dogfood
+  // Shape copied from a live read-model row on the media-server dogfood
   // instance, where 13 of 24 sessions rendered "Running" indefinitely.
   const attachedButIdle = {
     threadId: 'codex:1784515865925',
@@ -1386,7 +1387,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1399,7 +1400,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       kind: 'remote-session',
       kindLabel: 'Remote session',
       environmentId: 'env-a',
-      environmentLabel: 'Brian media',
+      environmentLabel: 'Home media',
     });
     // The local item is untouched by the merge — no provenance fields leak
     // onto it.
@@ -1416,7 +1417,7 @@ describe('buildHomeWorkItems remote-session read augmentation (station#1097)', (
       remoteEnvironments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           // Deliberately the SAME threadId as LOCAL_SESSION.
           sessions: [{ ...LOCAL_SESSION }] as any,
         },

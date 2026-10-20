@@ -167,6 +167,72 @@ describe('useComposerAttachments', () => {
     expect(stages[0]?.error).toBe('Attachment staging capacity is full.');
   });
 
+  // #545: the queue reports an unresolvable caller as a failed stage; the
+  // hook's catch must not turn it back into a Retry or bury the reason.
+  test('an unresolvable caller stays a failed, explained stage', async () => {
+    let stages: ComposerAttachmentStageSnapshot[] = [];
+    const selected: FileAttachment[] = [];
+    const unresolved = Object.assign(
+      new Error('Unable to resolve a principal: no paired device'),
+      { status: 400, code: 'principal_unresolved' },
+    );
+    const aggregate = new AggregateError(
+      [unresolved],
+      'One or more attachment stages did not complete.',
+    );
+    stageComposerAttachments.mockImplementationOnce(
+      async (_api, files, _signal, update) => {
+        update({
+          clientAttachmentId: files[0].id,
+          state: 'failed',
+          progress: 0,
+          error: unresolved.message,
+          callerUnresolved: true,
+        });
+        throw aggregate;
+      },
+    );
+    readChatAttachmentFiles.mockResolvedValueOnce({
+      attachments: [attachment('unknown-caller')],
+      errors: [],
+    });
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: 'http://station.test',
+        ownerKey: 'unresolved',
+        attachments: selected,
+        stages,
+        getCurrentAttachments: () => selected,
+        getCurrentStages: () => stages,
+        capabilities: { images: true, files: true },
+        onAddAttachments: (files) => selected.push(...files),
+        onStagesChange: (value) => {
+          stages = value;
+        },
+      }),
+    );
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['hello'], 'x.txt')]);
+    });
+    await waitFor(() =>
+      expect(stages).toMatchObject([
+        { clientAttachmentId: 'unknown-caller', state: 'failed' },
+      ]),
+    );
+    hook.rerender();
+    // The reason is on screen, not only in the chip's tooltip, and it names
+    // the action that helps; removing the attachment is what unblocks Send.
+    expect(hook.result.current.sendBlockedReason).toMatch(
+      /couldn't confirm who is uploading/,
+    );
+    expect(hook.result.current.removalUnblocksSend).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+    expect(stages[0]).toMatchObject({
+      callerUnresolved: true,
+      error: 'Unable to resolve a principal: no paired device',
+    });
+  });
+
   test('late upload progress stays with its original chat after the selected composer changes', async () => {
     const records: Record<string, ComposerAttachmentStageSnapshot[]> = {
       a: [],

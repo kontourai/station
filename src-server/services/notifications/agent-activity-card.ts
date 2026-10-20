@@ -15,6 +15,7 @@ import {
   isNativePushSessionReference,
   NATIVE_PUSH_SESSION_REFERENCE_FIELDS,
 } from '@kontourai/station-contracts/native-push';
+import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
   type SessionAttentionSubject,
   sessionAttentionDisposition,
@@ -74,6 +75,7 @@ const finished = (phase: AgentActivityPhase) =>
 
 /** The subset of a session read-model row the card may use. */
 export interface AgentActivitySessionFacts extends SessionAttentionSubject {
+  controlMode?: ProviderSession['controlMode'];
   /** True while the session has an open turn. */
   hasActiveTurn?: boolean;
   /** True while this Station process has the session's runtime attached. */
@@ -110,6 +112,7 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
 export function agentActivityPhaseFor(
   facts: AgentActivitySessionFacts,
 ): AgentActivityPhase | null {
+  if (facts.controlMode === 'read-only-attached') return null;
   if (facts.draft === true || facts.lifecycleState === undefined) return null;
   const disposition = sessionAttentionDisposition(facts);
   if (disposition.state === 'failed') return 'failed';

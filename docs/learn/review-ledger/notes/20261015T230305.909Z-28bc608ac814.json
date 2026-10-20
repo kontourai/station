@@ -1,0 +1,7 @@
+{
+  "revision": "a37b2f13e0bd85d02ff76e25cb34156d7ee49699",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed normal merge of main b83e93be into the boundary-write slice at a37b2f13. Only conflict was generated station-docs-content.ts, resolved by the canonical MCP generator over merged documentation. Kernel source, SQLite boundary coordinator and boundary authority remain byte-identical to reviewed 0e8d6df7; EventStore gains upstream usage-export code while its boundary-composition tail is unchanged. Canonical SessionTurnBoundaryAuthority, EventStore and compiled-package claims remain accurate; no hand edit to generated topics and no boundary behavior change. Current merged-head focused proof is pending; old source/mutation receipts are not promoted to current hosted qualification.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

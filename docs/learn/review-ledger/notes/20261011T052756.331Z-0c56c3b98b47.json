@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#463: added the bridge's per-turn usage rule (per-turn providers summed, session-cumulative/undeclared omitted; older spans may carry a Codex session total), qualified the gen_ai.usage rows, and stated Insights agent buckets count chats only. Checked against orchestration-monitoring-bridge.ts, usage-semantics.ts, insights.ts, monitoring.ts, schema.ts and chat-lifecycle.ts.","inputs":["docs/guides/monitoring.md","src-server/monitoring/schema.ts","src-server/routes/chat/chat-lifecycle.ts","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts","src-server/services/orchestration/orchestration-monitoring-bridge.ts"]}
+  ]
+}

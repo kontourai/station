@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex:thread-9b93bb96-f542-4c31-99b7-2edabdc2573f",
+    "displayName": "Codex Root agent",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-07T11:10:37.735Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:8fc9938f121d8e94a115d60f4f7f65657a1d89392bf599b8ba2057f6532bde71",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+  "validUntilDays": 5,
+  "notes": "Agent-executed Root review; no Brian identity or independent human sign-off is claimed. Source-owner packet SHA25644f2fd854a5ec7ebdb45df8f01da05f702f642e761bbeb55e7fb3beacbcc3891 attests eight historical public-topic prose matches only; exact note SHA256eef52c1ee93bb692d7af363a72f9f8fa4bd8a5db75a39a0b7f038276695d8558. Root independently verified ONLY the migrated exact note path is added to the existing generic-api-key AND anchored public-phrase allowance. Regex/rules/entropy/ignore/note/history/protected standards unchanged. Canonical source preservation plus same-path credential and outside-path controls retained. Root exact-source full-history scan exit0. No universal credential absence, rotation, hosted acceptance or release completion claim.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-06T21-06-17-994Z-b4c862f9a7ba",
+    "approvalRef": "t3-thread:9b93bb96-f542-4c31-99b7-2edabdc2573f:source-owner-attestation-44f2fd854a5ec7ebdb45df8f01da05f702f642e761bbeb55e7fb3beacbcc3891",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+        "validUntil": "2026-10-12T11:10:37.735Z"
+      },
+      "createdAt": "2026-10-07T11:10:37.735Z",
+      "updatedAt": "2026-10-07T11:10:37.735Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+      "claimId": "veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Agent-executed Root review; no Brian identity or independent human sign-off is claimed. Source-owner packet SHA25644f2fd854a5ec7ebdb45df8f01da05f702f642e761bbeb55e7fb3beacbcc3891 attests eight historical public-topic prose matches only; exact note SHA256eef52c1ee93bb692d7af363a72f9f8fa4bd8a5db75a39a0b7f038276695d8558. Root independently verified ONLY the migrated exact note path is added to the existing generic-api-key AND anchored public-phrase allowance. Regex/rules/entropy/ignore/note/history/protected standards unchanged. Canonical source preservation plus same-path credential and outside-path controls retained. Root exact-source full-history scan exit0. No universal credential absence, rotation, hosted acceptance or release completion claim.",
+      "observedAt": "2026-10-07T11:10:37.735Z",
+      "collectedBy": "codex:thread-9b93bb96-f542-4c31-99b7-2edabdc2573f",
+      "integrityRef": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+      "metadata": {
+        "actor": {
+          "id": "codex:thread-9b93bb96-f542-4c31-99b7-2edabdc2573f",
+          "displayName": "Codex Root agent"
+        },
+        "attestedAt": "2026-10-07T11:10:37.735Z",
+        "validUntil": "2026-10-12T11:10:37.735Z",
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+      "status": "verified",
+      "actor": "codex:thread-9b93bb96-f542-4c31-99b7-2edabdc2573f",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-07T11-10-37-735Z-5402f3546c75"
+      ],
+      "createdAt": "2026-10-07T11:10:37.735Z",
+      "verifiedAt": "2026-10-07T11:10:37.735Z"
+    }
+  }
+}

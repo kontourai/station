@@ -561,6 +561,38 @@ export function useChatInput({
         addToInputHistory(sessionId, text.trim());
         setHistoryIndex((prev) => new Map(prev).set(sessionId, -1));
       }
+      // The composer's text is saved before the send clears it: a debounced
+      // keystroke still pending would otherwise exist only in memory until
+      // the outbox row is written.
+      if (overrideText === undefined && input) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        setDraft(sessionId, input);
+      }
+      // The saved draft is let go the moment the outbox holds the message
+      // durably — before its request — so the text is never in both places
+      // after a crash (a relaunch would otherwise offer it for a second send
+      // under a new key) and never in neither.
+      let draftHandedOff = false;
+      const handOffDraft = () => {
+        draftHandedOff = true;
+        const now = activeChatsStore.getSnapshot()[sessionId];
+        if (
+          (now?.input && now.input !== input) ||
+          chatDraftsStore
+            .getQuotes(sessionId)
+            .some((quote) => !submittedQuotes.includes(quote))
+        ) {
+          // The user is already writing the next message: keep that.
+          chatDraftsStore.consumeQuotes(sessionId, submittedQuotes);
+          return;
+        }
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        clearDraft(sessionId);
+      };
       const sent = await sendMessageAction(
         sessionId,
         agentSlug,
@@ -569,16 +601,22 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        submittedExperienceDraft
-          ? {
-              skillExperienceDraft: submittedExperienceDraft,
-              experienceRequestScope: mentionRequestScope,
-              ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
-            }
-          : options?.queueOnBusy
-            ? { queueOnBusy: true }
-            : undefined,
+        {
+          ...(submittedExperienceDraft
+            ? {
+                skillExperienceDraft: submittedExperienceDraft,
+                experienceRequestScope: mentionRequestScope,
+              }
+            : {}),
+          ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          onDurable: handOffDraft,
+        },
       );
+      // Refused after the handoff: the composer has the text back, so its
+      // saved draft does too.
+      const restored = activeChatsStore.getSnapshot()[sessionId]?.input;
+      if (sent === false && draftHandedOff && restored)
+        setDraft(sessionId, restored);
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
       //
@@ -621,6 +659,7 @@ export function useChatInput({
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
+      setDraft,
       showToast,
       workingDirectory,
       mentionRequestScope,
@@ -866,6 +905,12 @@ export function useChatInput({
     ],
   );
 
+  const openModelForExecution = useCallback(() => {
+    if (!sessionId) return;
+    closeCommand();
+    openModel();
+  }, [sessionId, closeCommand, openModel]);
+
   const handleModelOpen = useCallback(() => {
     if (!sessionId) return;
     if (!canModelSelect) {
@@ -920,14 +965,20 @@ export function useChatInput({
       const update = approvalPickUpdate(current, mode);
       if (!update) return;
       updateChat(sessionId, update);
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Approval mode set to **${approvalModeLabel(mode)}**; it applies from the next turn.`,
-      });
+      const notePickSet = () =>
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: `Approval mode set to **${approvalModeLabel(mode)}**; it applies from the next turn.`,
+        });
       const threadId = current?.orchestrationSessionStarted
         ? (current.currentSessionId ?? sessionId)
         : undefined;
-      if (!threadId) return;
+      if (!threadId) {
+        notePickSet();
+        return;
+      }
+      // With a session the server decides now, so the note waits for it: a
+      // refused or superseded pick must not first read as set.
       void setOrchestrationApprovalMode({
         threadId,
         approvalMode: mode,
@@ -940,7 +991,8 @@ export function useChatInput({
           const latest = activeChatsStore.getSnapshot()[sessionId];
           if (!latest) return;
           updateChat(sessionId, approvalPickReceived(latest, mode, result));
-          if (!result.recorded) {
+          if (result.recorded) notePickSet();
+          else {
             addEphemeralMessage(sessionId, {
               role: 'system',
               content: supersededPickNote(result.approvalMode),
@@ -961,9 +1013,11 @@ export function useChatInput({
                 'pick-not-applied',
               ),
             });
+            return;
           }
           // Otherwise still queued: the next send carries it, and the server
           // records it on receipt.
+          notePickSet();
         });
     },
     [apiBase, sessionId, updateChat, addEphemeralMessage],
@@ -1167,6 +1221,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       handleModelClose: closeModel,
       handleCommandSelect,
       handleCommandClose: closeCommand,
@@ -1213,6 +1268,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       closeModel,
       handleCommandSelect,
       closeCommand,

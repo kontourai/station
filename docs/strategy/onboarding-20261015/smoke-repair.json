@@ -1,0 +1,424 @@
+{
+  "status": "historical evidence; live PR state belongs to GitHub",
+  "testedRevision": "34a74ca20269dd811234c5dc45dd95eafd2ed1d0",
+  "hostedFailure": {
+    "head": "2cdf0eb1e64564c58a0f7b44a62868e1abb0c19e",
+    "run": 38826691167,
+    "job": 116735687820,
+    "artifact": 12017107992,
+    "archiveSha256": "a7585f3b890997823c5075783ac8af149ada279af8681ab30b55efb578b2de25",
+    "result": "4 failed /33 passed; core ci-fast passed, browser smoke failed"
+  },
+  "repairs": [
+    "Open the real connection disclosure in the journey; retain credential ordering and secret checks.",
+    "Update mobile Coding expectations to persistent central Chat; retain real Home-to-dock navigation.",
+    "Wait for canonical request.resolved before checking sheet closure and focus.",
+    "Release pointer events from the transparent approval-queue wrapper, retaining visible controls.",
+    "Preserve visible approval conversation layout using canonical draft, conversation and execution identities."
+  ],
+  "proof": {
+    "browserMutation": "restoring old CSS and approval handler gives2intended failures: Home navigation and intercepted Chat menu click",
+    "restoredFocused": "4 passed",
+    "identityMutation": "45 passed -> omit onlychatKey:3 intended failures/42passed -> restore45passed",
+    "browserFrozen": "37passed; clean immutable source; PASS receipt",
+    "ciFast": "passed; request0191a992cc8be32c8c4d100c96e13a6a41b1a7bad7f74654d1583f88ef769cea",
+    "discardedRun": "37 scenarios passed but source changed during execution; NOT_VERIFIED, not qualification"
+  },
+  "screenshots": [
+    {
+      "path": "docs/strategy/onboarding-20261015/screenshots/smoke-approval-focus-before.png",
+      "sha256": "8176a2031cb217b7d998bd1959611be29d75cefcfb28aa3e77f20c7cb4227f86",
+      "state": "before",
+      "issue": "approval-focus"
+    },
+    {
+      "path": "docs/strategy/onboarding-20261015/screenshots/smoke-approval-focus-after.png",
+      "sha256": "46adba040e6ac388f21ee17be68a53241d8ec0a56af7f01fd11e92565596f504",
+      "state": "after",
+      "issue": "approval-focus"
+    },
+    {
+      "path": "docs/strategy/onboarding-20261015/screenshots/smoke-region-controls-before.png",
+      "sha256": "5c45c3411256d60fb5c0ed20da3d657c6d5d9942299f07c322801d16dbe4be7e",
+      "state": "before",
+      "issue": "region-controls"
+    },
+    {
+      "path": "docs/strategy/onboarding-20261015/screenshots/smoke-region-controls-after.png",
+      "sha256": "2c8b1c312cdd25dfc3449f00687b7ae093c2b7d43157188141dc2224bff3f6ff",
+      "state": "after",
+      "issue": "region-controls"
+    }
+  ],
+  "captureNotes": {
+    "before": "Controlled reintroduction of old production owners at457d61e9070; updated assertions fail.",
+    "after": "34a74ca2026 production and assertions unchanged; only screenshot outputPath options temporarily added to retain files before successful-run cleanup. 2cases pass; temporary edits restored. Region image is immediately after accepted selection, before dock mount; later geometry assertions pass.",
+    "limits": "Browser fixtures do not qualify live provider recovery, native shells, physical phones, Gallery or release delivery. #3713 remains open."
+  },
+  "logs": [
+    {
+      "path": "/tmp/station-3715-smoke-before.log",
+      "sha256": "42613c19dcc6880f8fd2bd1f940917e62082428150b75384c3de588a29c36e65"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-mutation.log",
+      "sha256": "d5bd2795ab3c53801f1944921a8d69564119253f994918cefedf2802520d3dab"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-restored.log",
+      "sha256": "aa57d9ce694c53fc81550f64fe90ce09c94d527302303754f5667770bb8fb4ef"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-full.log",
+      "sha256": "bbb3f70dcb6fb11af7df65331a0a021ac10184069b672c42fc9e568e408d6f73"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-full-frozen.log",
+      "sha256": "31cf059ff5e1bc8b2492806a275e6ea2da9e29313f987740f5d6ada924d8ecd0"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-captures.log",
+      "sha256": "ec330a0dea194d2a88c437cabfcf05b4d270d5b78d78a7eb8327c510da81322b"
+    },
+    {
+      "path": "/tmp/station-3715-approval-alias-unit.log",
+      "sha256": "9d91a4f7bfdec1cc95460b0d04e0b09cb10f070f26b60514d316aa96e67f6722"
+    },
+    {
+      "path": "/tmp/station-3715-approval-alias-injected.log",
+      "sha256": "b71aac55cb4d10f06e56f17bfd72c2f035574d74a73b8f15b14e632b9a8392fd"
+    },
+    {
+      "path": "/tmp/station-3715-approval-alias-restored.log",
+      "sha256": "ea327c36c623726b1fafa68d19d102f2186a4257b2e2efa56b53bbd0ff9fffb0"
+    },
+    {
+      "path": "/tmp/station-3715-smoke-ci-fast.log",
+      "sha256": "fee79c51fb1aed66673901e4c2f90e162d4cd2e60f76a9c3ca21827904966669"
+    }
+  ],
+  "browserReceipt": {
+    "kind": "station.critical-browser-evidence",
+    "observedAt": "2026-10-16T01:21:21.717Z",
+    "source": {
+      "head": "34a74ca20269dd811234c5dc45dd95eafd2ed1d0",
+      "trackedDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "clean": true
+    },
+    "expectedSource": "34a74ca20269dd811234c5dc45dd95eafd2ed1d0",
+    "immutableSource": true,
+    "status": "PASS",
+    "identityErrors": [],
+    "missingFiles": [],
+    "missingObservations": [],
+    "incomplete": [],
+    "observations": [
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "the chip chooser opens the connection manager",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "traps keyboard focus, closes with Escape, and restores its trigger",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "can approve a new Device connection and select it explicitly",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "keeps Connect Station fields at the iOS focus-zoom floor",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "keeps one Station chooser on the page and one manager action in fullscreen chat at 390px (#1048)",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "can switch between approved Device connections",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "can edit a connection",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "mobile saved addresses wrap, copy in full, and remain editable",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "can remove a connection",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "modal closes when clicking the backdrop",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "does not expose empty discovery when no candidate provider is registered",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "paired devices panel opens and revokes from a phone viewport",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "the manager reflects current healthy status and offers a reachability check",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-modal.spec.ts",
+        "title": "cleared connection storage falls back to the current app connection",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-remote-auth-recovery.spec.ts",
+        "title": "desktop: clean remote browser reaches pairing recovery before protected bootstrap",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-remote-auth-recovery.spec.ts",
+        "title": "desktop: remote recovery remains authenticated and bound to stable identity",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-remote-auth-recovery.spec.ts",
+        "title": "phone: clean remote browser reaches pairing recovery before protected bootstrap",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-remote-auth-recovery.spec.ts",
+        "title": "phone: remote recovery remains authenticated and bound to stable identity",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/connect-remote-auth-recovery.spec.ts",
+        "title": "local same-origin startup requires an explicit credential",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "keeps long persisted Home rows inside a 412px phone viewport",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "switches managed, connected, and ACP conversations while preserving project-scoped agent choices",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "keeps deterministic Claude and Codex browser turns exact, settled, and project-bound",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "rejects a submitted turn when one exact assistant response has an extra assistant row",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "keeps a degraded ACP connection out of the chat-ready list while its sibling stays selectable",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "desktop badge opens an anchored popover; Open navigates and Switch rebinds without starting a chat",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "mobile primary project switcher opens an edge sheet at 320x844 with touch-safe actions",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "mobile primary project switcher opens an edge sheet at 390x844 with touch-safe actions",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/cross-runtime-chat-switching.spec.ts",
+        "title": "mobile primary project switcher opens an edge sheet at 412x844 with touch-safe actions",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/csp-shell.spec.ts",
+        "title": "boots the built shell under CSP and opens its connection recovery UI",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/orchestration-chat-flow.spec.ts",
+        "title": "restores direct-answer Basis with the canonical Project id, never its route slug",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/orchestration-chat-flow.spec.ts",
+        "title": "renders transcript, tool activity, and approval UI from canonical events",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/orchestration-chat-flow.spec.ts",
+        "title": "keeps the approval card label visible and its glyphs clear of its controls at 360px and 720px (decisions in the #3331 request sheet) and in a narrow desktop dock, with legible buttons in both themes (#2917)",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/orchestration-chat-flow.spec.ts",
+        "title": "a pending command with right-to-left letters keeps its visual order in the label and the details (#3382)",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/pr-smoke-live-chat-send.spec.ts",
+        "title": "a real turn round-trips through POST /api/orchestration/chat into a real model server",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/ui-crud-smoke.spec.ts",
+        "title": "project update and delete round-trip through the live server",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/ui-crud-smoke.spec.ts",
+        "title": "creating a project through the live UI lands on it",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      },
+      {
+        "file": "tests/ui-crud-smoke.spec.ts",
+        "title": "agents CRUD through the live UI",
+        "expectedStatus": "passed",
+        "results": [
+          "passed"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-320.png",
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-390.png",
+      ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf-412.png"
+    ]
+  },
+  "browserReceiptProvenance": {
+    "originalReceipt": ".kontourai/browser-evidence/e2e-pr-smoke-1792113508105-psz1vf.json",
+    "originalReceiptSha256": "c8557ac58bfe27c86fc36a736f52404fd76eba72a39b24dea6632e03dc0199d1",
+    "normalization": "Only screenshot paths are recorded relative to the repository root. The original receipt bytes are identified by SHA256."
+  }
+}

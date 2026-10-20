@@ -145,6 +145,8 @@ function settingsScopeDetail(
       return formatMessage('scopeStation', locale);
     case 'defaults':
       return formatMessage('scopeDefaults', locale);
+    case 'account':
+      return formatMessage('scopeAccount', locale);
     case 'device':
       return formatMessage('scopeDevice', locale);
     case 'mixed':

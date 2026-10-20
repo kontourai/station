@@ -40,6 +40,15 @@ export function lookupProcessBirthFingerprint(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): string | null;
+export const WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS: number;
+export type WindowsProcessImageIdentity = { birth: string; image: string };
+export function lookupWindowsProcessImageIdentity(
+  pid: number,
+  dependencies?: Pick<
+    ProcessIdentityDependencies,
+    'exec' | 'env' | 'timeoutMs'
+  >,
+): WindowsProcessImageIdentity | null;
 export type OwnProcessBirthProbeSchedule = {
   retryDelayMs: number;
   attempts: Array<{ timeoutMs: number; windowsShell: string | undefined }>;
@@ -115,3 +124,15 @@ export function probeExactProcessIdentityAsync(
   pid: number,
   dependencies?: ProcessIdentityAsyncProbeDependencies,
 ): Promise<ExactProcessIdentityProbe>;
+/**
+ * True when the fingerprint's process was born before the current boot,
+ * false when within it, null when either side cannot be read.
+ */
+export function processBirthPredatesCurrentBoot(
+  fingerprint: string | null | undefined,
+  dependencies?: {
+    platform?: NodeJS.Platform;
+    exec?: ProcessIdentityDependencies['exec'];
+    readFile?: (path: string, encoding: 'utf8') => string;
+  },
+): boolean | null;

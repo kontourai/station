@@ -86,4 +86,9 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `station-capability-flags.test.ts`: the flag cannot be advertised
   // without the token, and the token cannot be removed without the flag.
   fleetInference: true,
+  // Bound answers to a delegated task's open input request: `continue`
+  // honours `expectedInputRequest` (station-control-delegation.ts
+  // `continueDelegatedTask`, re-checked by the orchestration service at
+  // engine invocation). Senders gate the field on this flag.
+  delegatedInputAnswers: true,
 };

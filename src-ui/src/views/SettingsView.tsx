@@ -1,3 +1,5 @@
+import { SectionNavigation } from '../components/SectionNavigation';
+import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -19,8 +21,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import { PageRow } from '../components/PageRow';
-import { SectionNav, type SectionNavItem } from '../components/SectionNav';
+import type { SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
   describeReadFailure,
@@ -69,6 +70,7 @@ import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { PairingSection } from './settings/PairingSection';
+import { PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -78,6 +80,7 @@ import {
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
+import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
 import { SystemSection } from './settings/SystemSection';
@@ -97,6 +100,7 @@ import {
   settingsSectionsForView,
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
+import { TelemetryDelivery } from './settings/TelemetryDelivery';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -224,7 +228,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
-    sidebarSections,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
     // Settings row, so the in-chat gear was the only place to change them.
@@ -663,6 +666,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           return [key, key === 'region' && value === '' ? null : value];
         }),
     ) as Partial<AppConfig>;
+    // The server merges publishers independently. Do not replay an untouched
+    // publisher from a draft that predates a withdrawal on another device.
+    if (changed.telemetryTier) {
+      changed.telemetryTier = Object.fromEntries(
+        Object.entries(changed.telemetryTier).filter(
+          ([publisher, tier]) =>
+            tier !==
+            savedConfig.telemetryTier?.[publisher as 'kontour' | 'operator'],
+        ),
+      );
+      if (Object.keys(changed.telemetryTier).length === 0)
+        delete changed.telemetryTier;
+    }
     const { logLevel, ...plainChanges } = changed;
     const plainWrite =
       Object.keys(plainChanges).length > 0
@@ -994,6 +1010,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               </div>
             )}
 
+            {sectionVisible('account-preferences') && (
+              <AccountPreferencesSection />
+            )}
+
             {/* ── Station scope ── */}
             {groupVisible('this-station') && (
               <section
@@ -1046,6 +1066,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
+                {/* #3557: people, their Station group and their tokens.
+              Operator-only (the same gate as device hosts); the section
+              renders nothing for a caller the route refuses. */}
+                {sectionVisible('people') && <PeopleSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1092,6 +1116,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   <Section icon="◉" title="Telemetry" id="section-telemetry">
                     <StationConfigSection
                       section="telemetry"
+                      telemetryPublishers={telemetryDisclosure.data?.publishers}
                       embedded
                       config={config}
                       provenance={provenance}
@@ -1107,7 +1132,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   exposed (see `usageTelemetryDestinationSummary`). */}
                     <PageRow
                       {...settingsRow('telemetry-destination')}
-                      description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
+                      description="Telemetry requires an operator-configured destination. Its address is hidden."
                       control={(() => {
                         // `null` is the in-flight read: the row keeps its place
                         // (and its catalog identity) while saying nothing, rather
@@ -1126,6 +1151,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       })()}
                     />
                     <UsageTelemetryDisclosure />
+                    <TelemetryDelivery />
                   </Section>
                 )}
 
@@ -1137,7 +1163,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('diagnostics-bundle')}
-                      description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
+                      description="Redacted health, configuration, and recent logs when logging is enabled."
                       control={
                         <button
                           type="button"
@@ -1239,10 +1265,13 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             {/* ── This device scope ── */}
             {groupVisible('you') && (
               <section
-                aria-label="This device settings"
+                aria-label="Personal and device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">Saved to this device.</p>
+                <p className="settings__scope-caption">
+                  Personal choices follow your account on this Station. Device
+                  settings stay here.
+                </p>
 
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
@@ -1250,46 +1279,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       {...settingsRow('theme')}
                       control={<ThemeToggle />}
                     />
-                    {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-                    <PageRow
-                      {...settingsRow('sidebar-sections')}
-                      description="Show the Open chats and Drafts sections in the sidebar."
-                      control={
-                        <div className="settings__toggle-column">
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.openChatsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  openChatsHidden: !checked,
-                                })
-                              }
-                              label="Open chats in sidebar"
-                            />
-                            <span aria-hidden="true">Open chats</span>
-                          </div>
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.draftsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  draftsHidden: !checked,
-                                })
-                              }
-                              label="Drafts in sidebar"
-                            />
-                            <span aria-hidden="true">Drafts</span>
-                          </div>
-                        </div>
-                      }
-                    />
                     {isMobile && (
                       <PageRow
                         {...settingsRow('haptic-feedback')}
-                        description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                        description="Vibrate while replies stream and when you copy, pair, or confirm a destructive action."
                         control={
                           <Toggle
                             checked={hapticsEnabled}
@@ -1343,7 +1336,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       // `defaultChatFontSize` is not in force anywhere yet, so
                       // moving the slider with it would show a fallback no chat is
                       // using.
-                      description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                      description={`Message text size (10–24px). Station default: ${savedConfig.defaultChatFontSize ?? 14}px.`}
                       control={
                         <div className="settings__range-row">
                           <input
@@ -1399,7 +1392,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   from the same mapping module. */}
                     <PageRow
                       {...settingsRow('smooth-answer-reveal')}
-                      description="How this device displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
+                      description="Show text as it arrives, at a steady pace, or in larger updates between actions."
                       control={
                         <select
                           className="editor-select"
@@ -1427,7 +1420,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-reasoning')}
-                      description="Chat messages on this device include the model’s reasoning steps."
+                      description="Show the model’s reasoning when available."
                       control={
                         <Toggle
                           checked={chatShowReasoning}
@@ -1440,7 +1433,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-tool-details')}
-                      description="Tool calls can be expanded to read their arguments and results."
+                      description="Expand tool calls to see arguments and results."
                       control={
                         <Toggle
                           checked={chatShowToolDetails}
@@ -1453,7 +1446,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-dock-auto-hide')}
-                      description="An idle, open chat dock collapses to its bar after five seconds."
+                      description="Collapse the idle chat dock after five seconds."
                       control={
                         <Toggle
                           checked={chatDockAutoHide}
@@ -1467,7 +1460,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     {/* #90 D9: the same key the in-chat gear panel sets. */}
                     <PageRow
                       {...settingsRow('chat-auto-float-browser')}
-                      description="When an agent in a chat opens or drives a browser and no pane shows it, the browser floats over that chat. A session you close stays closed in that chat."
+                      description="Show an agent’s browser over its chat when no pane displays it. Closing it keeps it closed for that chat."
                       control={
                         <Toggle
                           checked={
@@ -1489,7 +1482,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   keys from its own controls. */}
                     <PageRow
                       {...settingsRow('diff-style')}
-                      description="Changed files show as one column, or as two side-by-side columns."
+                      description="Show changes in one column or side by side."
                       control={
                         <select
                           className="editor-select"
@@ -1509,7 +1502,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('diff-wrap')}
-                      description="Long diff lines wrap instead of scrolling sideways."
+                      description="Wrap long lines in file changes."
                       control={
                         <Toggle
                           checked={diffWrap}
@@ -1530,7 +1523,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <h3 className="settings__group-title">Confirmations</h3>
                     <PageRow
                       {...settingsRow('confirm-conversation-delete')}
-                      description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                      description="Ask before deleting a conversation. Deletion is permanent; clearing all conversations always asks."
                       control={
                         <Toggle
                           checked={confirmConversationDelete}
@@ -1574,7 +1567,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette on this device."
+                      description="Show Developer in Customize and the command palette."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
@@ -1602,8 +1595,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 className="settings__scope-group"
               >
                 <p className="settings__scope-caption">
-                  Saved to this Station — available from every device that
-                  connects to it.
+                  Saved to this Station.
                 </p>
                 <KnowledgeStoreSection />
               </section>
@@ -1695,7 +1687,14 @@ function SettingsSectionNav({
     navigateToSection(key);
   };
   return (
-    <div className="settings__navigation section-nav--rail">
+    <SectionNavigation
+      label="Settings sections"
+      pickerLabel="Settings section"
+      items={items}
+      activeKey={selectedKey}
+      showSelection={!searchQuery.trim()}
+      onNavigate={choosePage}
+    >
       <input
         type="search"
         className="settings__search"
@@ -1704,32 +1703,6 @@ function SettingsSectionNav({
         onChange={(event) => onSearchChange(event.target.value)}
         aria-label="Filter settings"
       />
-      <label className="settings__mobile-section-picker">
-        Settings section
-        <select
-          className="editor-select"
-          value={selectedKey}
-          onChange={(event) => choosePage(event.target.value)}
-        >
-          {selectedKey === 'overview' && (
-            <option value="overview">All settings</option>
-          )}
-          {items.map((item) => (
-            <option key={item.key} value={item.key}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <SectionNav
-        className="settings__section-nav section-nav--rail"
-        aria-label="Settings sections"
-        items={items}
-        activeKey={
-          searchQuery.trim() || selectedKey === 'overview' ? '' : selectedKey
-        }
-        onNavigate={choosePage}
-      />
-    </div>
+    </SectionNavigation>
   );
 }

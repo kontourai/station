@@ -1,14 +1,11 @@
+import type { UsageInsights } from '@kontourai/station-contracts/insights';
 import { _getApiBase } from '../api';
-import {
-  fetchUsageRollup as fetchUsageRollupAt,
-  type UsageRollupQuery,
-  type UsageRollupResponse,
-} from '../client/analytics';
 
 export type {
   UsageRollupQuery,
   UsageRollupResponse,
 } from '../client/analytics';
+export { fetchUsageRollup } from './usageRollup';
 
 import {
   type MutationOptions,
@@ -73,38 +70,6 @@ export function useUsageQuery(config?: QueryConfig<any>) {
   });
 }
 
-export async function fetchUsageRollup(
-  query: UsageRollupQuery,
-): Promise<NonNullable<UsageRollupResponse['data']>> {
-  const apiBase = await _getApiBase();
-  const result = await fetchUsageRollupAt(apiBase, query);
-  if (!result.success) {
-    throw new Error('Failed to fetch usage rollup');
-  }
-  if (!result.data) throw new Error('Usage rollup returned no data');
-  return result.data;
-}
-
-export function useUsageRollupQuery(
-  query: UsageRollupQuery,
-  config?: QueryConfig<NonNullable<UsageRollupResponse['data']>>,
-) {
-  return useApiQuery(
-    [
-      'analytics',
-      'usage-rollup',
-      query.days,
-      query.provider ?? '',
-      query.localOnly ? 1 : 0,
-      query.groupBy ?? 'provider',
-      query.cursor ?? '',
-      query.pageSize ?? 50,
-    ],
-    () => fetchUsageRollup(query),
-    { ...liveAnalyticsConfig, ...config },
-  );
-}
-
 export function useActivityUsageQuery(
   from: string,
   to: string,
@@ -160,19 +125,20 @@ function insightsQuery(days: number, filters: InsightsFilters = {}): string {
 export async function fetchInsights(
   days = 14,
   filters: InsightsFilters = {},
-): Promise<any> {
+): Promise<UsageInsights> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/insights?${insightsQuery(days, filters)}`,
   );
   if (!response.ok) throw new Error('Failed to fetch insights');
-  return (await response.json()).data;
+  const { parseInsightsResponse } = await import('./insightsResponse');
+  return parseInsightsResponse(await response.json());
 }
 
 export function useInsightsQuery(
   days = 14,
   filters: InsightsFilters = {},
-  config?: QueryConfig<any>,
+  config?: QueryConfig<UsageInsights>,
 ) {
   return useApiQuery(
     // Filters belong in the cache key: without them, switching agent would

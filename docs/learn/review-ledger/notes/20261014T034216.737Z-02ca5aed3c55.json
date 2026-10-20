@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Changed input ChatDockBody.tsx (fix round: one persistent status region for the empty filler, non-announcing skeleton inside it, Markdown renderer preload when a conversation is open, loadingConversation passed to the composer). The doc's ChatDockBody claim about refusing to re-send a turn whose attachment blob was reclaimed is unchanged. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

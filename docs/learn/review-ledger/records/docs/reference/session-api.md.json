@@ -68,7 +68,51 @@
 
     "src-ui/src/hooks/orchestration/queueDrain.ts",
 
-    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-server/services/orchestration/attached-session-repository.ts",
+
+    "src-server/providers/sessions/grok-session-source.ts",
+
+    "src-server/services/orchestration/attached-session-poll-snapshot.ts",
+
+    "src-server/providers/sessions/grok-session-index.ts",
+
+    "src-server/services/acp/managed-acp-workspace.ts",
+
+    "src-server/services/agents/agent-definition-fingerprint.ts",
+
+    "src-server/services/agents/agent-profile-capabilities.ts",
+
+    "src-ui/src/components/profile/ToolRequestsPanel.tsx",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/providers/sessions/attached-session-source.ts",
+
+    "src-server/providers/sessions/opencode-session-source.ts",
+
+    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/thread-inbox.ts",
+
+    "src-server/services/orchestration/attachment-staging-service.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"
   ],
 
   "checks": [

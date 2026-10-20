@@ -31,6 +31,8 @@ export function conversationPartToContentParts(
     args: part.args,
     result: part.result,
     output: part.output,
+    ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
+    ...(part.outputTruncated ? { outputTruncated: true } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,
@@ -47,6 +49,9 @@ export function conversationPartToContentParts(
       : {}),
     approvalSessionGrant: part.approvalSessionGrant,
     approvalStatus: part.approvalStatus,
+    ...(part.inputRequestRecord
+      ? { inputRequestRecord: { ...part.inputRequestRecord } }
+      : {}),
   } as ContentPart;
   // Preserve the same tool-result identity and sanitized blocks as the live
   // renderer when a completed turn enters durable replay.
@@ -74,7 +79,8 @@ export function stitchWindowWithLiveEvents(input: {
   watermark: number | undefined;
   liveEvents: readonly OrchestrationSequencedEvent[];
   threadIds: ReadonlySet<string | undefined>;
-}): OrchestrationSequencedEvent[] {
+  previous?: readonly OrchestrationSequencedEvent[];
+}): readonly OrchestrationSequencedEvent[] {
   const watermark =
     input.watermark ??
     Math.max(0, ...input.windowEvents.map((item) => item.sequence));
@@ -88,5 +94,10 @@ export function stitchWindowWithLiveEvents(input: {
     if (persistedIds.has(item.event.eventId)) continue;
     events.push(item);
   }
-  return events.sort((left, right) => left.sequence - right.sequence);
+  events.sort((left, right) => left.sequence - right.sequence);
+  const previous = input.previous ?? input.windowEvents;
+  return events.length === previous.length &&
+    events.every((item, index) => item === previous[index])
+    ? previous
+    : events;
 }

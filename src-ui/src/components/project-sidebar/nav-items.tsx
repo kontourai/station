@@ -64,8 +64,10 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
   ),
   activity: sidebarIcon(
     <>
-      <rect x="3" y="4" width="18" height="14" rx="2" />
-      <path d="M8 21h8M12 18v3M7 9l3 3-3 3M13 15h4" />
+      <path d="M5 7v3m0 4v3M11 5h10M11 12h8M11 19h10" />
+      <circle cx="5" cy="5" r="2" />
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="5" cy="19" r="2" />
     </>,
   ),
   developer: sidebarIcon(<path d="M5 4v16m5-12 4 4-4 4" />),

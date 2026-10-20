@@ -1126,9 +1126,13 @@ Install, recovery, update, and removal are person-only lifecycle operations.
 The [route guard](../../src-server/routes/plugins/plugin-person-approval.ts)
 refuses Station's internal agent-tool identity and delegated or unconfirmed
 device identities. Agent tools can propose an operation for a person to
-complete. This is an authenticated Station API boundary, not isolation from
-arbitrary code running as Station's operating-system user; that code can access
-the same local credentials and files.
+complete. Install, recovery and update also run the package's code, so a paired
+device additionally needs the operator's `coding:exec` grant (`403` with
+`code: 'command-not-granted'` otherwise); the operator in person never does.
+Preview only fetches and reads a manifest and needs no grant. This is an
+authenticated Station API boundary, not isolation from arbitrary code running as
+Station's operating-system user; that code can access the same local credentials
+and files.
 
 ```bash
 API_BASE="${STATION_API_BASE:-http://127.0.0.1:18141}"
@@ -1589,7 +1593,6 @@ by plugin code.
   "guardrails": {
     "maxTokens": 4096,
     "temperature": 0.7,
-    "topP": 0.9,
     "maxSteps": 10
   },
   "tools": {
@@ -1772,3 +1775,22 @@ For each conversion, move `displayName` to namespace `title`, make the
 supported Agent, capability, permission, and host-action declarations into the
 Station namespace. A schema-only rewrite is insufficient: installation,
 activation, each component, and real action execution must be verified together.
+
+## Extension loading and recovery in the client
+
+A remote Station's extensions are off until this device explicitly consents.
+That is a normal trust setting, not a workspace-wide failure banner. The
+Extensions screen explains it and offers Enable remote extensions, with the
+existing warning about app-wide authority before consent is stored.
+
+A failed inventory or bundle load produces a notification linking to Extensions.
+The screen retains the failure message and Retry extensions until the registry
+recovers. A failure to start the deferred registry itself produces a notification
+with Reload Station; it does not displace unrelated work with a global banner.
+Core shell and connection recovery retain their own failure surfaces.
+
+Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
+[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
+These presentation changes do not enable bundles or alter consent storage,
+origin binding, plugin permissions or native bridge authority.

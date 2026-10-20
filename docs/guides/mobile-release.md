@@ -11,8 +11,9 @@ Connect / GitHub-secret checklist, use [store-entry.md](./store-entry.md).
 Listing copy is in
 [store-listing.md](./store-listing.md). This doc only covers what's specific to
 getting a signed Android/iOS build from a GitHub release into Play's internal
-testing track and TestFlight. The daily Android nightly channel is a separate,
-scheduled pipeline under its own applicationId — see
+testing track and TestFlight. The Android Nightly channel is a separate
+pipeline with hourly eligibility checks and a six-hour default minimum
+publication interval, under its own applicationId — see
 [nightly.md](./nightly.md#android-nightly-play-internal-testing).
 
 Station's Android release build (signed universal APK + AAB) and iOS device
@@ -184,8 +185,9 @@ The delivery workflow therefore runs
 `src-desktop/icons/nightly/ios/`, named by `iosIconSet` in the channel
 identity table in `scripts/ios-testflight-channel.mjs` and by `iosIconSource`
 in `config/channel-platform-matrix.json` — over the catalog. It fails closed when
-the set lacks a file the catalog's `Contents.json` references or when any file
-the template wrote survives. After the build,
+the set lacks a file the catalog's `Contents.json` references or its bytes differ
+from `assets/brand/station-icon-manifest.json`. A valid set may be applied again
+when init preserves an existing catalog. After the build,
 `node scripts/ios-channel-icons.mjs verify <channel> --app <Payload/*.app> --receipt provider-receipts/channel-icon-receipt.json`
 compares the generated input catalog to the set byte for byte and the loose
 `AppIcon60x60@2x.png` inside the `.app` to the set pixel for pixel (Xcode
@@ -201,8 +203,17 @@ does not compare every compiled catalog rendition to its source pixels.
 
 The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
 emits them from each channel's opaque square master (iOS rejects alpha; the
-committed `gen/apple` catalog is the stable set, which local and simulator
-builds reuse as is). See `src-desktop/icons/README.md`.
+committed `gen/apple` catalog is the stable set). The Dev set is for local
+simulator builds and does not enable store delivery. The common
+`write-ios-build-manifest.mjs --config <overlay>` step selects the set from
+the active Tauri configuration and restores it after init for every maintained
+build route. Without an overlay it selects the base Stable identity. Tauri may
+preserve a `project.yml` from another channel, so staging does not use its
+identifier. CI and release simulator packaging verify the shipped icon against
+their selected channel; local development completion verifies the Dev icon.
+These comparisons cover the source catalog and the loose
+iPhone @2x icon, not every rendition in `Assets.car` or the installed home-screen
+appearance. See `src-desktop/icons/README.md`.
 
 ## Runtime privacy permissions
 
@@ -321,6 +332,16 @@ exported IPA with `security cms -D -i`. It rejects profiles with
 check deliberately derives the effective distribution method from the IPA;
 the Tauri export flag is not treated as evidence.
 
+### iOS minimum version
+
+The iOS app requires iOS 16.4 (`src-desktop/tauri.ios.conf.json`, and
+`IPHONEOS_DEPLOYMENT_TARGET` in `src-desktop/gen/apple`). WebKit gained regex
+lookbehind in 16.4, and the UI and its bundled dependencies use it; on an
+earlier version each one throws when its module loads, so whole screens, not
+just chat Markdown and diffs, fail (#3399). Lower the floor only
+after removing every lookbehind from the built UI bundle, dependencies
+included.
+
 ### iOS device distribution policy
 
 Internal ad-hoc IPA distribution is intentionally retired from this release
@@ -426,11 +447,10 @@ still be established by the operator.
    `https://token.actions.githubusercontent.com`. Restrict its attribute
    condition to repository `kontourai/station` and only the trusted
    `nightly.yml@refs/heads/main` and `release.yml@refs/tags/v*` workflow refs.
-   A Nightly started by Main qualification runs as a called workflow, so its
-   top-level `workflow_ref` claim is `main-qualification.yml@refs/heads/main`.
-   A condition on `workflow_ref` must admit that ref too, or that entry
-   point's Play and Secret Manager steps fail authentication. The live
-   condition is `NOT_VERIFIED` by this source review.
+   Scheduled and manual Nightly now run directly from `nightly.yml`; main
+   qualification no longer calls Nightly. A historical admission for
+   `main-qualification.yml@refs/heads/main` is not required by the current
+   delivery graph. The live condition is `NOT_VERIFIED` by this source review.
 3. Grant that provider's repository principal only
    `roles/iam.workloadIdentityUser` on the service account. Do not create a
    user-managed service-account key.

@@ -6,7 +6,7 @@ import {
   STATION_PRE_TOOL_POLICY_SEAMS,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 
 const adapterSource = (module: string) =>

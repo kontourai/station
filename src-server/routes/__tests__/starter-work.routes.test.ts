@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   StarterWorkPrerequisiteError,
   StarterWorkTargetError,
@@ -332,6 +332,35 @@ describe('starter work routes', () => {
       code: 'starter_work_unavailable',
       error: 'Starter Work is unavailable.',
     });
+  });
+
+  it('passes a named continuation target to the registry and refuses one carrying a path (#3386)', async () => {
+    const launched = registry();
+    const launchContinueSession = vi.fn(launched.launchContinueSession);
+    launched.launchContinueSession = launchContinueSession as never;
+    const app = createStarterWorkRoutes(
+      launched as never,
+      STARTER_ROUTE_OPTIONS,
+    );
+    const launch = (target: unknown) =>
+      app.request('/launch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          starterId: 'continue-session',
+          operationId: 'continue-target',
+          sourceSessionId: 'external-session',
+          target,
+        }),
+      });
+    expect((await launch({ kind: 'own-folder' })).status).toBe(201);
+    expect((launchContinueSession.mock.calls[0] as unknown[])[0]).toMatchObject(
+      {
+        target: { kind: 'own-folder' },
+      },
+    );
+    expect((await launch({ kind: 'own-folder', cwd: '/' })).status).toBe(400);
+    expect(launchContinueSession).toHaveBeenCalledTimes(1);
   });
 
   it('routes the bounded Session continuation intent separately', async () => {

@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import {
   readInstanceRegistry,
   upsertInstance,
@@ -3464,6 +3464,192 @@ describe('what an installed service runs (#2675 slice C)', () => {
         'utf8',
       ),
     ).toBe('// launcher v1\n');
+  });
+
+  test('on Windows the task runs the launcher with a node.exe frozen beside it (#2675 W3)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '' }));
+
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(version),
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+    });
+
+    expect(installWindowsService).toHaveBeenCalledWith(
+      'service-test',
+      expect.objectContaining({
+        kind: 'archive',
+        installRoot,
+        nodePath: win32.join(installRoot, 'runtime', 'node.exe'),
+      }),
+    );
+    expect(readFileSync(join(installRoot, 'runtime', 'node.exe'), 'utf8')).toBe(
+      'node.exe v1',
+    );
+    expect(
+      readFileSync(
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'utf8',
+      ),
+    ).toBe('// launcher v1\n');
+  });
+
+  test('stops a Windows launcher service from its wrapper down, and waits for the launcher (#2675 W3)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '' }));
+    installWindowsService.mockImplementationOnce((instanceId, input) => ({
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      kind: input.kind,
+      installRoot: input.installRoot,
+      nodePath: input.nodePath,
+      platform: 'win32',
+      repoPath: input.repoPath,
+      serverPort: input.lifecycle.serverPort,
+      taskName: `\\KontourStation-${instanceId}`,
+      uiPort: input.lifecycle.uiPort,
+      unitPath: `/tmp/${instanceId}.cmd`,
+    }));
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(version),
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+    });
+
+    // A live launcher holds the lock, with its pid and start time.
+    const launcher = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    );
+    const pid = launcher.pid as number;
+    const lock = join(installRoot, 'runtime', 'service-state.lock');
+    writeFileSync(
+      lock,
+      `${JSON.stringify({ pid, birth: lookupProcessBirthFingerprint(pid), token: 't' })}\n`,
+    );
+    const order: string[] = [];
+    // `/End` ends the wrapper; the launcher notices, stops Station in order
+    // and exits, releasing its lock, a little later.
+    stopWindowsService.mockImplementation(() => {
+      order.push('end-task');
+      setTimeout(() => {
+        nodeFs.rmSync(lock, { force: true });
+        launcher.kill('SIGKILL');
+      }, 300);
+    });
+    stop.mockImplementation(() => {
+      order.push(nodeFs.existsSync(lock) ? 'stop-while-launcher-runs' : 'stop');
+    });
+    windowsServiceStatus.mockReturnValue({
+      active: true,
+      enabled: true,
+      present: true,
+    });
+    stopWindowsService.mockClear();
+    stop.mockClear();
+    order.length = 0;
+    const sleep = vi.fn(
+      (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 50))),
+    );
+    windowsServiceStatus
+      .mockReturnValueOnce({ active: true, enabled: true, present: true })
+      .mockReturnValue({ active: false, enabled: true, present: true });
+    collectInstanceStatus.mockResolvedValue({
+      found: false,
+      healthy: false,
+      instanceId: 'service-test',
+      server: { pid: null, reachable: false },
+      ui: { pid: null, reachable: false },
+    });
+    try {
+      await runServiceCommand(['stop'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'win32',
+        run,
+        sleep,
+      });
+    } finally {
+      launcher.kill('SIGKILL');
+    }
+    // Stopping Station first would read to the launcher as a crash, which
+    // it answers by starting Station again.
+    expect(order).toEqual(['end-task', 'stop']);
+  });
+
+  test('ends a launcher that outlived its stop budget only when its start time proves the pid (#2675 W3)', async () => {
+    const { waitForServiceLauncherExit } = await import(
+      '../commands/service.js'
+    );
+    const installRoot = makeTempDir('station-launcher-lock-');
+    mkdirSync(join(installRoot, 'runtime'));
+    // A live process stands in for the launcher that holds the lock.
+    const holder = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    );
+    const pid = holder.pid as number;
+    writeFileSync(
+      join(installRoot, 'runtime', 'service-state.lock'),
+      `${JSON.stringify({ pid, birth: 'recorded-birth', token: 't' })}\n`,
+    );
+    const kill = vi.fn();
+    try {
+      // Its start time cannot be read: nothing proves the pid is still the
+      // launcher's, so it is not signalled and the stop is refused.
+      await expect(
+        waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+          deadlineMs: 0,
+          birthOf: () => null,
+          kill,
+        }),
+      ).rejects.toThrow(
+        `The Station service launcher (pid ${pid}, lock ${join(installRoot, 'runtime', 'service-state.lock')}) did not stop within 0s, and its start time could not be read`,
+      );
+      expect(kill).not.toHaveBeenCalled();
+      // Proven by its start time: it is ended.
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'recorded-birth',
+        kill,
+      });
+      expect(kill).toHaveBeenCalledWith(pid);
+      // Another start time: the pid was reused, the lock is stale, nothing
+      // is signalled and there is nothing to wait for.
+      kill.mockClear();
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'another-birth',
+        kill,
+      });
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      holder.kill('SIGKILL');
+    }
   });
 
   test('refuses to install from an inactive installer version, before touching the backend', async () => {

@@ -1,0 +1,11 @@
+{
+  "revision": "e6f1664d7e8db3fae24ece2311a917354a9441d5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"§3.1 reset bullet re-read: every Model reset now goes through modelResetSourceLabel (execution.ts) and names the default's source, falling back to 'default model' when the source is unknown or unreported; the in-chat inline reset now reads 'Use default model' instead of 'Use default'. The bullet's examples (Use project default / agent default / source turn) remain accurate; no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal change is a refactor of the fork picker's reset label into the shared modelResetSourceLabel with identical output; no connection-onboarding claim is affected. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Agent chip passage (Use project default example) unchanged in behavior: StartMenus now calls the shared modelResetSourceLabel with the same result. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

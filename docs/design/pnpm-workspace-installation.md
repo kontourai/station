@@ -25,6 +25,25 @@ for exact parity. `npm run` and npm publication remain supported command
 interfaces; package-manager choice is determined by the pinned package manager
 and lock/configuration files, not the spelling of the script runner.
 
+The optional `packages/telemetry-broker` companion is declared in both workspace
+lists and owns its pinned PostgreSQL dependencies in the same lock. It remains
+private and builds a separate Node bundle; adding a workspace does not publish
+it with Station or configure a telemetry destination.
+
+`packages/monument` is declared in both workspace lists too. It is private
+until its first owner-gated publish, so `changeset publish` skips it. It has no
+dependencies, so its lock importer is empty; its import boundary is enforced by
+`scripts/monument-import-boundary-gate.mjs`, not by the package manager. The root
+manifest depends on it (`@kontourai/monument` `^0.1.0`, resolved to the workspace
+directory by `linkWorkspacePackages`), so the root importer in the lock holds a
+`link:packages/monument` entry; the gate also refuses Station code that reaches
+the package other than through its exported entry points.
+
+`packages/supervisor` is declared in both workspace lists as well. It is
+private, has no dependencies, and nothing depends on it yet, so its lock
+importer is empty and no other importer links it. The server build bundles it
+into a self-contained `dist-server/station-supervisor.js`.
+
 Preserve the managed `dependencies:*` entry points. They bootstrap the exact
 pnpm pin, force an inert install, inspect all installed lifecycle packages,
 validate their locked identity and complete hook set, run approved hooks, and
@@ -32,6 +51,12 @@ verify native artifacts. Native pnpm patches replace post-install patching.
 Disable pnpm's automatic installation before script execution and dependency
 scripts by default, so `pnpm run` cannot execute dependency hooks before this
 boundary. Existing verification preflight continues to reject stale installs.
+
+Third-party registry packages retain a 1,440-minute minimum release age.
+The `@kontourai/*` namespace is exempt, including transitive packages. This
+exemption does not grant lifecycle permissions or change integrity checks.
+The pinned pnpm 11 applies release-age policy to locked packages during frozen
+installation too; a frozen lock is not a release-age exemption.
 
 Use a hoisted layout during this migration to retain existing native and
 packaging consumers. Each worktree keeps its own installation graph. Use
@@ -60,6 +85,9 @@ Advisory policy uses one registry response with separate full and production
 closures for root, SDK, and Shared. Root includes all managed workspace
 importers; SDK and Shared each select their own importer. The policy retains
 its severity and residual requirements.
+An exact reviewed local remediation can satisfy a version-reported high finding
+only with current patch, graph, and installed-byte verification; it does not
+reclassify the advisory. See the [RSA backport](../guides/dependency-security.md#rsa-signature-verification-backport-2026-10).
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of

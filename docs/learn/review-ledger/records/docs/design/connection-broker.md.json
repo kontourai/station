@@ -80,7 +80,13 @@
 
     "tests/tauri-shell/native-project-acceptance.e2e.ts",
 
-    "tests/tauri-shell/native-project-runtime-fixture.ts"
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

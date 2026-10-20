@@ -12,7 +12,7 @@ import {
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
-} from '@kontourai/station-shared/usage-fold';
+} from '@kontourai/station-shared/usage-semantics';
 import { type ReactNode, useId, useState } from 'react';
 import {
   exactTokenCount,
@@ -584,8 +584,6 @@ export interface TurnProvenanceCardProps {
   statedInRow?: TurnProvenanceStatedInRow;
   /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
-  /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
-  basisContent?: ReactNode;
   /** The share entry point is part of the always-visible disclosure line. */
   shareContent?: ReactNode;
   /**
@@ -600,7 +598,6 @@ export function TurnProvenanceCard({
   provenance,
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
-  basisContent,
   shareContent,
   defaultOpen = false,
 }: TurnProvenanceCardProps) {
@@ -679,9 +676,6 @@ export function TurnProvenanceCard({
             ))}
           </dl>
 
-          {basisContent && (
-            <div className="turn-provenance__basis">{basisContent}</div>
-          )}
           {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (

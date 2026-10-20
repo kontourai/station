@@ -89,6 +89,30 @@ export class ProjectMembershipService {
     );
   }
 
+  async withAgentAdministration<T>(
+    slug: string,
+    expectedProjectId: string,
+    expectedActorId: string,
+    authority: ProjectMembershipAuthority,
+    operation: (scope: ProjectMembershipScope) => Promise<T>,
+  ): Promise<T> {
+    const actor = await authority.current();
+    if (actor.principal.id !== expectedActorId)
+      throw new ProjectMembershipRefusal('forbidden');
+    const scope = this.members.scopeForMember(
+      slug,
+      actor.principal,
+      'manage-members',
+    );
+    if (scope.localProjectId !== expectedProjectId)
+      throw new ProjectMembershipRefusal('conflict');
+    return this.withProject(slug, scope, async () => {
+      const current = await this.currentActor(authority, expectedActorId);
+      this.members.require(scope, current.principal, 'manage-members');
+      return operation(scope);
+    });
+  }
+
   async administration(slug: string, authority: ProjectMembershipAuthority) {
     const actor = await authority.current();
     // Authorization precedes reading any Project files or metadata.

@@ -1,0 +1,7 @@
+{
+  "revision": "fd398008136f4785cd7f79c2a40a2b046d8156d4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Upstream scripts/test-impact-manifest.mjs change adds a docs-kit.json -> docs-kit-manifest.test.ts mapping and adds that test to the public-docs.json entry; the guide's description of changed-path selection and unknown-path escalation is unchanged and still accurate. No prose change.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

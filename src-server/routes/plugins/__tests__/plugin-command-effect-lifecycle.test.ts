@@ -36,6 +36,7 @@ import {
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   clearAll,
@@ -193,49 +194,54 @@ function harness(
       verifyOperatorCredential: (candidate) =>
         candidate === OPERATOR_CREDENTIAL,
       identifyDevice: () => null,
+      resolveGrantedScope: () => undefined,
     },
   });
   const visibility = new PluginVisibilityService(home);
   const caller = options.caller ?? TEST_OPERATOR_PRINCIPAL;
   const mount = () =>
-    createPluginRoutes(home, logger, undefined, {
-      visibility: {
-        service: visibility,
-        resolvePrincipal: () => caller,
-        listKnownPrincipals: () => [],
-      },
-      consentChannel: channel,
-      applyConfigurationMutation: undefined as never,
-      settleProviderAdapterRetirements: async () => {},
-      ...(options.reconciliation
-        ? {
-            quiesceEventSubscriptions: async () => ({ release() {} }),
-            reconcileEventSubscriptions: async () => ({
-              kind: 'applied' as const,
-            }),
-            removeEngineConnections: async () => {},
-            reconcileEngineConnections: async () => {},
-          }
-        : {}),
-      commandEffects: {
-        isHostedDeployment: () => options.hosted === true,
-        publishAudit: () => true,
-        now: () => new Date(Math.max(clock.now, Date.now())),
-        indeterminateAfterMs: 60_000,
-        resolveRequirement: async () => {
-          await pass('requirement');
-          return 'available';
+    withOperatorPrincipal(
+      createPluginRoutes(home, logger, undefined, {
+        visibility: {
+          service: visibility,
+          resolvePrincipal: () => caller,
+          listKnownPrincipals: () => [],
         },
-        beforeRecord: () => pass('record'),
-      },
-    });
+        consentChannel: channel,
+        applyConfigurationMutation: undefined as never,
+        settleProviderAdapterRetirements: async () => {},
+        ...(options.reconciliation
+          ? {
+              quiesceEventSubscriptions: async () => ({ release() {} }),
+              reconcileEventSubscriptions: async () => ({
+                kind: 'applied' as const,
+              }),
+              removeEngineConnections: async () => {},
+              reconcileEngineConnections: async () => {},
+            }
+          : {}),
+        commandEffects: {
+          isHostedDeployment: () => options.hosted === true,
+          publishAudit: () => true,
+          now: () => new Date(Math.max(clock.now, Date.now())),
+          indeterminateAfterMs: 60_000,
+          resolveRequirement: async () => {
+            await pass('requirement');
+            return 'available';
+          },
+          beforeRecord: () => pass('record'),
+        },
+      }),
+    );
   const mountRegistry = () =>
-    createRegistryRoutes(
-      { getProjectHomeDir: () => home } as never,
-      async () => {},
-      undefined,
-      undefined,
-      { logger } as never,
+    withOperatorPrincipal(
+      createRegistryRoutes(
+        { getProjectHomeDir: () => home } as never,
+        async () => {},
+        undefined,
+        undefined,
+        { logger } as never,
+      ),
     );
   let app = mount();
   let registryApp: Hono = mountRegistry();

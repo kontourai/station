@@ -106,7 +106,13 @@
 
     "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
 
-    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx"
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
+
+    "src-ui/src/views/connections-hub/ConnectStationDialog.tsx",
+
+    "src-server/services/peers/peer-enrollment-service.ts",
+
+    "src-server/routes/environments/peer-credential-routes.ts"
   ],
 
   "checks": [

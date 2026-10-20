@@ -1,0 +1,7 @@
+{
+  "revision": "9281b930f3c3128a9674cc333d11a1aa086ea632",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 5 for #3391: the list read now maps time-box and queued folder checks to runsAt 'unchecked' (FolderNotCheckedError) and keeps 'unavailable' for refusals; start-path resolution unchanged, no module-map claim affected.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

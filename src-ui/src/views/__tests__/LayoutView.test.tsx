@@ -394,7 +394,9 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
 
     render(<LayoutView projectSlug="audit-alpha" layoutSlug="coding" />);
 
-    expect(screen.getByTestId('full-screen-loader')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Opening layout' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to project' }));
+    expect(navigateMock).toHaveBeenCalledWith('/projects/audit-alpha');
   });
   // LayoutView maps the STORED config into the shape the renderer reads. The
   // `tabs[].prompts` -> `tabs[].skills` rename moved the contract and the

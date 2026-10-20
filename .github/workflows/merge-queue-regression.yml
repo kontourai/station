@@ -1,56 +1,20 @@
-name: "PR: Merge integration"
+name: "Diagnostic: Merge integration"
 
-# The required context retains its old name for existing rulesets. Full
-# regression now belongs to scheduled qualification and release promotion.
+# Automatic integration belongs to ci.yml's same-run fast-checks graph.
+# Keep the existing dispatch entry point as a conservative full-corpus diagnostic.
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-  merge_group:
-    branches: [main]
-    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: merge-integration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  diff:
-    if: github.event_name != 'pull_request_target'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-      - name: Validate combined candidate diff
-        env:
-          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
-          INTEGRATION_PAUSED: ${{ vars.STATION_INTEGRATION_PAUSED }}
-        run: |
-          if [[ "$INTEGRATION_PAUSED" == true ]]; then
-            echo '::error::Integration paused by the incident owner; see the qualification repair issue.'
-            exit 1
-          fi
-          git diff --check "$BASE_SHA" HEAD
-
-  merge-queue-regression:
-    name: Merge-queue regression
-    if: always() && github.event_name != 'pull_request_target'
-    needs: [diff]
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    steps:
-      - name: Require every regression job to succeed
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+  full-regression:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      capacity_class: integration
+      source_sha: ${{ github.sha }}
+      allow_reuse: true

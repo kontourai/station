@@ -148,6 +148,7 @@ function readStage(value: unknown): ComposerAttachmentStageSnapshot | null {
     ...(typeof needsFile === 'boolean' ? { needsFile } : {}),
     ...(expired === true ? { expired: true } : {}),
     ...(value.capacityFull === true ? { capacityFull: true } : {}),
+    ...(value.callerUnresolved === true ? { callerUnresolved: true } : {}),
     ...(typeof error === 'string' ? { error } : {}),
     ...(isTransformationReceipt(transformation) ? { transformation } : {}),
   };

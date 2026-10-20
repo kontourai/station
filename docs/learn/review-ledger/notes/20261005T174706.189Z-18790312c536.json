@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 fix round: session-api.md delta adds genuine-checkout, paired-device, search, setting and hosted-scope sentences about attached transcripts; the ADR's historical decision is unaffected. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

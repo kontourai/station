@@ -1,0 +1,7 @@
+{
+  "revision": "2d79be8ea0c396176851cb61f8f66f7ac49b6195",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-checked after a comment-only change to project-identity-routes.ts (the attach route's workingDirectory presence check): no claim in this document about the attach route or its folder authority changed.","inputs":["docs/reference/sdk.md","src-server/routes/projects/project-identity-routes.ts"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "a98842f0618699cd9e9171b9b3b7321a7f3cfbc1",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3386 Phase B final round: AttachedSessionFollowService.stop() is now async and waits for a poll in flight before calling each source's optional close(). No claim in this document describes follower shutdown, poll ordering or source handles; no prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 Phase B final round: AttachedSessionFollowService.stop() is now async and waits for a poll in flight before calling each source's optional close(). No claim in this document describes follower shutdown, poll ordering or source handles; no prose change.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Phase B final round: AttachedSessionFollowService.stop() is now async and waits for a poll in flight before calling each source's optional close(). No claim in this document describes follower shutdown, poll ordering or source handles; no prose change.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

@@ -84,7 +84,13 @@
 
     "src-ui/src/platform/native/notifier.ts",
 
-    "src-ui/src/views/settings/AgentActivitySetting.tsx"
+    "src-ui/src/views/settings/AgentActivitySetting.tsx",
+
+    "src-server/services/orchestration/turn-completion-notifications.ts",
+
+    "src-server/services/approvals/approval-inbox.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts"
   ],
 
   "checks": [

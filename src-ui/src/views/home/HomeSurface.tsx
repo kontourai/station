@@ -38,7 +38,8 @@ const CONTINUE_SECTION_ID = 'home-continue';
  * the work. With recent work on the page the lanes come right after the
  * form and the heading, the action cards and the chart wait below them —
  * someone with work does not need to be asked what they want to work on
- * above it. An empty Station keeps the heading and leads with the cards.
+ * above it. The shared composer owns the visible start heading; Home keeps
+ * an accessible page title and an empty Station leads with the cards.
  * The counts that used to caption the lanes are gone: the lane headings
  * carry their counts, and the chart draws only once it has more than one
  * row to compare.
@@ -61,7 +62,7 @@ export function HomeSurface({
   // derive its own; a second `useHomeWorkLanes` instance carries its own
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
-  const lanes = useHomeWorkLanes(model.workItems);
+  const lanes = useHomeWorkLanes(model.workItems, model.workFacts);
   // #928: Activity is a region surface with no standalone placement. "View
   // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
   // same verb as the sidebar row — rather than docking it beside Home.
@@ -127,6 +128,7 @@ export function HomeSurface({
     !model.actionsLoading && model.primaryWorkItem ? (
       <HomeContinueCard
         model={model}
+        childrenById={lanes.childrenById}
         id={CONTINUE_SECTION_ID}
         onViewActivity={
           listEmpty ? () => showSurfacePage('activity') : undefined
@@ -183,11 +185,7 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      {!hasWork && (
-        <header className="home-view__intro">
-          <h1>What's next?</h1>
-        </header>
-      )}
+      <h1 className="sr-only">Home</h1>
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div

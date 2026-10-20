@@ -1,0 +1,7 @@
+{
+  "revision": "b049694f8c347cf302857f6081c499bb4e4600d7",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed after the user-menu gate fix: a user row offers the ⋯ (desktop corner or phone sheet) only when its menu has an item (fork with its handler, or new chat), and otherwise only when the sheet has a Task pin or trace; the doc's 'omits itself from a user message that has none of them' still holds. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

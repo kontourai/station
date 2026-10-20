@@ -1,16 +1,27 @@
 import { curatedModelIdentityByCanonicalId } from '@kontourai/station-contracts/model-inventory';
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import {
-  modelPreferenceKey,
+  type KeyboardEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
+import {
+  chooseModelRoute,
+  modelChoiceKey,
+  visibleModelChoices,
+} from '../../settings/modelPickerSelection';
 import {
   groupModelsByCanonicalIdentity,
   type ModelProviderOption,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 import { CheckGlyph } from '../icons/Glyph';
+import { ModelIcon } from '../icons/ModelIcon';
 import { ModelRuntimeOptionFields } from '../ModelRuntimeOptionFields';
 import { Empty, SkeletonList } from '../state';
 import { ModelCatalogUnavailableState } from './ModelCatalogUnavailableState';
@@ -24,6 +35,10 @@ interface SessionModelPickerProps {
   stale?: boolean;
   providers?: ModelProviderOption[];
   currentProviderId?: string;
+  currentExecutionAgentId?: string;
+  stationControl?: ReactNode;
+  bindingLabel?: string;
+  catalogNotice?: string;
   currentModel?: string;
   defaultModel?: string;
   defaultSourceLabel?: string;
@@ -51,6 +66,10 @@ export function SessionModelPicker({
   stale = false,
   providers = [],
   currentProviderId,
+  currentExecutionAgentId,
+  bindingLabel,
+  stationControl,
+  catalogNotice,
   currentModel,
   defaultModel,
   defaultSourceLabel = 'default model',
@@ -62,10 +81,9 @@ export function SessionModelPicker({
   returnFocusTarget,
 }: SessionModelPickerProps) {
   const [query, setQuery] = useState('');
-  const [providerFilter, setProviderFilter] = useState(
-    currentProviderId ?? 'all',
-  );
+  const [providerFilter, setProviderFilter] = useState('all');
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const preferences = useModelPickerPreferences();
   const favoriteKeys = useMemo(
     () => new Set(preferences.favorites),
@@ -77,6 +95,7 @@ export function SessionModelPicker({
     models.find(
       (model) =>
         model.id === activeModel &&
+        model.executionAgentId === currentExecutionAgentId &&
         (!currentProviderId || model.providerId === currentProviderId),
     ) ??
     models.find((model) => model.id === activeModel) ??
@@ -116,97 +135,37 @@ export function SessionModelPicker({
     [filters, models],
   );
   const visibleModels = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const preferenceKeys = new Map(
-      models.map((model) => [
-        model,
-        modelPreferenceKey(
-          model.providerId ?? currentProviderId ?? 'current',
-          model.id,
+    const choices = visibleModelChoices(
+      models,
+      preferences,
+      query,
+      providerFilter === 'current-engine' ? 'all' : providerFilter,
+      currentProviderId,
+    );
+    return choices.filter(
+      (model) =>
+        (providerFilter !== 'current-engine' ||
+          model.executionAgentId === currentExecutionAgentId) &&
+        capabilityFilters.every((id) =>
+          filters.find((filter) => filter.id === id)?.matches(model),
         ),
-      ]),
     );
-    const hiddenKeys = new Set(preferences.hidden);
-    const selectedFilters = capabilityFilters.map((id) =>
-      filters.find((filter) => filter.id === id),
-    );
-    const orderIndex = new Map(
-      preferences.order.map((key, index) => [key, index]),
-    );
-    const recentIndex = new Map(
-      preferences.recents.map((key, index) => [key, index]),
-    );
-    return models
-      .filter((model) => !hiddenKeys.has(preferenceKeys.get(model)!))
-      .filter(
-        (model) =>
-          needle.length > 0 ||
-          providerFilter === 'all' ||
-          (providerFilter === 'favorites'
-            ? favoriteKeys.has(preferenceKeys.get(model)!)
-            : model.providerId === providerFilter),
-      )
-      .filter((model) =>
-        selectedFilters.every((filter) => filter?.matches(model)),
-      )
-      .filter(
-        (model) =>
-          !needle ||
-          model.name.toLowerCase().includes(needle) ||
-          model.id.toLowerCase().includes(needle) ||
-          model.providerName?.toLowerCase().includes(needle),
-      )
-      .sort((a, b) => {
-        const aKey = preferenceKeys.get(a)!;
-        const bKey = preferenceKeys.get(b)!;
-        const aOrder = orderIndex.get(aKey);
-        const bOrder = orderIndex.get(bKey);
-        if (aOrder !== undefined || bOrder !== undefined) {
-          return (
-            (aOrder ?? Number.MAX_SAFE_INTEGER) -
-            (bOrder ?? Number.MAX_SAFE_INTEGER)
-          );
-        }
-        const aRecent = recentIndex.get(aKey);
-        const bRecent = recentIndex.get(bKey);
-        if (aRecent !== undefined || bRecent !== undefined) {
-          return (
-            (aRecent ?? Number.MAX_SAFE_INTEGER) -
-            (bRecent ?? Number.MAX_SAFE_INTEGER)
-          );
-        }
-        return 0;
-      });
   }, [
+    models,
+    preferences,
+    query,
+    providerFilter,
     currentProviderId,
+    currentExecutionAgentId,
     capabilityFilters,
     filters,
-    models,
-    favoriteKeys,
-    preferences.hidden,
-    preferences.order,
-    preferences.recents,
-    providerFilter,
-    query,
   ]);
 
-  const selectModel = (model: SelectableModel) => {
-    const key = modelPreferenceKey(
-      model.providerId ?? currentProviderId ?? 'current',
-      model.id,
-    );
-    updateModelPickerPreferences((current) => ({
-      ...current,
-      recents: [key, ...current.recents.filter((entry) => entry !== key)],
-    }));
-    onSelect(model);
-  };
+  const selectModel = (model: SelectableModel) =>
+    chooseModelRoute(model, onSelect, currentProviderId);
 
   const toggleFavorite = (model: SelectableModel) => {
-    const key = modelPreferenceKey(
-      model.providerId ?? currentProviderId ?? 'current',
-      model.id,
-    );
+    const key = modelChoiceKey(model, currentProviderId);
     updateModelPickerPreferences((current) => ({
       ...current,
       favorites: current.favorites.includes(key)
@@ -230,12 +189,10 @@ export function SessionModelPicker({
   );
 
   const renderModelRow = (model: SelectableModel) => {
-    const key = modelPreferenceKey(
-      model.providerId ?? currentProviderId ?? 'current',
-      model.id,
-    );
+    const key = modelChoiceKey(model, currentProviderId);
     const active =
       model.id === activeModel &&
+      model.executionAgentId === currentExecutionAgentId &&
       (!currentProviderId ||
         !model.providerId ||
         model.providerId === currentProviderId);
@@ -265,9 +222,10 @@ export function SessionModelPicker({
             )
           }
         >
-          <span>{model.name}</span>
+          <ModelIcon model={model} />
+          <span className="session-model-picker__model-name">{model.name}</span>
           <small>
-            {[model.providerName, model.id]
+            {[model.engineName, model.providerName, model.stationName]
               .filter(Boolean)
               .filter((value, index, values) => values.indexOf(value) === index)
               .join(' · ')}
@@ -342,7 +300,21 @@ export function SessionModelPicker({
     <ModelPickerDialogFrame
       onClose={onClose}
       returnFocusTarget={returnFocusTarget}
+      title={
+        stationControl || models.some((model) => model.executionAgentId)
+          ? 'Engine & model'
+          : 'Model'
+      }
     >
+      {stationControl}
+      {catalogNotice && (
+        <p className="session-model-picker__binding" role="alert">
+          {catalogNotice}
+        </p>
+      )}
+      {bindingLabel && (
+        <p className="session-model-picker__binding">{bindingLabel}</p>
+      )}
       {loading ? (
         <SkeletonList count={3} label="Loading models" />
       ) : (
@@ -365,48 +337,45 @@ export function SessionModelPicker({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              {providers.length > 1 && (
-                <fieldset
-                  className="session-model-picker__providers"
-                  aria-label="Providers"
+              <div className="session-model-picker__toolbar">
+                <select
+                  className="editor-select"
+                  aria-label="Filter models"
+                  value={providerFilter}
+                  onChange={(event) => setProviderFilter(event.target.value)}
                 >
-                  <button
-                    type="button"
-                    aria-pressed={providerFilter === 'favorites'}
-                    onClick={() => setProviderFilter('favorites')}
-                  >
-                    ★ Favorites
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={providerFilter === 'all'}
-                    onClick={() => setProviderFilter('all')}
-                  >
-                    All
-                  </button>
+                  <option value="all">All models</option>
+                  {models.some((model) => model.engineName) && (
+                    <option value="current-engine">Current engine</option>
+                  )}
+                  <option value="recents">Recent</option>
+                  <option value="favorites">Favorites</option>
                   {providers.map((provider) => (
-                    <button
-                      type="button"
+                    <option
                       key={provider.id}
-                      aria-label={provider.name}
-                      aria-pressed={providerFilter === provider.id}
+                      value={provider.id}
                       disabled={!provider.available}
-                      title={
-                        provider.available
-                          ? provider.name
-                          : `${provider.name}: ${provider.detail ?? 'Unavailable'}`
-                      }
-                      onClick={() => setProviderFilter(provider.id)}
                     >
                       {provider.name}
-                      {!provider.available && (
-                        <small>{provider.detail ?? 'Unavailable'}</small>
-                      )}
-                    </button>
+                      {provider.available
+                        ? ''
+                        : ` · ${provider.detail ?? 'Unavailable'}`}
+                    </option>
                   ))}
-                </fieldset>
-              )}
-              {availableFilters.length > 0 && (
+                </select>
+                <button
+                  type="button"
+                  className="session-model-picker__options-toggle"
+                  aria-expanded={optionsOpen}
+                  onClick={() => setOptionsOpen((open) => !open)}
+                >
+                  Options
+                  {capabilityFilters.length > 0
+                    ? ` (${capabilityFilters.length})`
+                    : ''}
+                </button>
+              </div>
+              {optionsOpen && availableFilters.length > 0 && (
                 <fieldset
                   className="session-model-picker__filters"
                   aria-label="Capabilities"
@@ -459,29 +428,34 @@ export function SessionModelPicker({
                     label={
                       providerFilter === 'favorites' && !query
                         ? 'No favorite models yet.'
-                        : 'Nothing matches your search.'
+                        : providerFilter === 'recents' && !query
+                          ? 'No recent models yet.'
+                          : 'Nothing matches your search.'
                     }
                   />
                 )}
               </div>
             </>
-          ) : (
+          ) : catalogNotice ? null : (
             <ModelCatalogUnavailableState stale={stale} />
           )}
-          <ModelRuntimeOptionFields
-            idPrefix="session-model-picker"
-            className="session-model-picker__effort"
-            capabilities={capabilities}
-            runtimeOptions={runtimeOptions}
-            onRuntimeOptionChange={onRuntimeOptionChange}
-          />
-          {currentModel && (
+          {optionsOpen && (
+            <ModelRuntimeOptionFields
+              idPrefix="session-model-picker"
+              className="session-model-picker__effort"
+              capabilities={capabilities}
+              runtimeOptions={runtimeOptions}
+              onRuntimeOptionChange={onRuntimeOptionChange}
+            />
+          )}
+          {(currentModel || currentExecutionAgentId) && (
             <button
               type="button"
               className="session-model-picker__reset"
               onClick={onReset}
             >
-              Use {defaultSourceLabel}
+              Use{' '}
+              {currentExecutionAgentId ? 'Agent defaults' : defaultSourceLabel}
             </button>
           )}
         </>

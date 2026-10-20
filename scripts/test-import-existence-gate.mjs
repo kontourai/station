@@ -31,7 +31,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

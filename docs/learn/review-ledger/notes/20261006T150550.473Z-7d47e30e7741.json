@@ -1,0 +1,7 @@
+{
+  "revision": "6c52af1d9f15866c262e5a3b63de7ed48bda7a7c",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed current formatter policy call into fail-closed patch binding, exact Oct13 residual and Codex-executed Brian approval attestation; composed managed install ci0 verify0 source-map1.2.2 and actual Node24 formatter binding passed. Preserved historical228505 six-entrypoint66-control evidence, final e319 independent review/109 drift-restoration controls, production-presence versus unproven attacker-format reachability and precision compatibility limits. Current source is locally composed, not hosted or landed; current audit verdict is independent.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml","scripts/dependency-advisory-exceptions.json","scripts/dependency-advisory-policy.mjs"]}
+  ]
+}

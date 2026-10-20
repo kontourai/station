@@ -2,7 +2,10 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
+import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -32,11 +35,15 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -106,16 +113,7 @@ import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
-import {
-  CredentialProfileEnvironmentError,
-  claudeAppHomeEnv,
-  codexAppHomeEnv,
-  ensureAppHomeProfile,
-} from '../../providers/app-home/app-home-profiles.js';
-import {
-  ensureCredentialProfileAppHome,
-  normalizeCredentialProfileRegistry,
-} from '../../providers/app-home/credential-profile-registry.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
@@ -128,11 +126,8 @@ import { makeUnattendedGrantResolver } from '../../services/agents/unattended-gr
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import {
-  appHomeActive,
-  connectionSpawnEnv,
-} from '../../services/connections/connection-env.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { readVerifiedNativePionApplicationRequest } from '../../services/connections/native-v2-pion-application-adapter.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import {
@@ -206,6 +201,7 @@ import {
   orchestrationStreamPresenceRosterOps,
 } from '../../telemetry/metrics.js';
 import { configuredTelemetryShutdownTask } from '../../telemetry.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import { setRuntimeControlApiBase } from '../../tools/station-control-shared.js';
 import {
   applyConfiguredLogLevel,
@@ -425,8 +421,8 @@ import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
-import { StrandsFramework } from '../frameworks/strands-adapter.js';
-import { releaseAllNativeStationControlClients } from '../frameworks/strands-tool-loader.js';
+import type { StrandsFramework } from '../frameworks/strands-adapter.js';
+import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -512,6 +508,7 @@ export interface StationRuntimeOptions {
     ready: (application: VirtualApplication) => void;
   };
   /** Explicit self-hosted routing composition; requires virtualApplication. */
+  relayInvitationOwner?: RelayInvitationOwner;
   selfHostedBrokerConnector?: {
     /** Validated native application lane actually selected by the trusted connector factory. */
     nativeApplication?: NativeApplicationConnectorConfiguration;
@@ -545,6 +542,7 @@ export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
   private virtualApplication?: VirtualApplicationIngress;
+  private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
   private selfHostedBroker?: {
     start(): Promise<void>;
@@ -762,8 +760,21 @@ export class StationRuntime {
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
   private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.claudeTranscriptSource.resolveSourceHome(affinity),
     resolvePreToolPolicy: (input) =>
@@ -797,40 +808,17 @@ export class StationRuntime {
     // Legacy no-ref lookup failures degrade to the global config. An explicit
     // or configured credential profile fails closed so a successful turn can
     // never be attributed to credentials that were not actually applied.
-    getAppHomeEnv: async (credentialProfileRef) => {
-      let selectedProfileRef = credentialProfileRef;
-      try {
-        const appConfig = await this.configLoader.loadAppConfig();
-        const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.claude?.credentialRecovery,
-        ).activeProfileRef;
-        const profileRef =
-          credentialProfileRef ??
-          (typeof configuredRef === 'string' ? configuredRef : undefined);
-        selectedProfileRef = profileRef;
-        if (profileRef) {
-          const { dir } = await ensureCredentialProfileAppHome(
-            'claude',
-            profileRef,
-          );
-          return { env: claudeAppHomeEnv(dir), profileRef };
-        }
-        const useAppHome = appHomeActive(
-          appConfig.agentConnections?.claude?.config,
-        );
-        if (!useAppHome) return { profileRef: null };
-        const { dir } = await ensureAppHomeProfile('claude');
-        return { env: claudeAppHomeEnv(dir), profileRef: null };
-      } catch (error) {
-        if (selectedProfileRef) {
-          throw new CredentialProfileEnvironmentError();
-        }
+    // #2966: a selected profile's env overlay joins its home key here
+    // (`credential-profile-env.ts` owns the merge and its exclusions).
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+      engine: 'claude',
+      loadConnectionSettings: async () =>
+        (await this.configLoader.loadAppConfig()).agentConnections?.claude,
+      warn: (message) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
-        );
-        return undefined;
-      }
-    },
+          message,
+        ),
+    }),
     // station#2072: per-connection env overrides + explicit config home
     // (`config.env`, `config.configHome`) — re-sanitized and tilde-expanded
     // by `connectionSpawnEnv`, so a hand-edited config file meets the same
@@ -839,11 +827,12 @@ export class StationRuntime {
     // byte-identical spawn env. Lazy-captured posture identical to
     // `getAppHomeEnv` above: only invoked at spawn time, well after
     // construction.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.claude?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'claude',
+        config.agentConnections?.claude?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // Station#1157 review fix (MEDIUM): the built-in station-control MCP
@@ -894,6 +883,18 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    nativeSessionOwnership: {
+      assertMutable: (sessionId) =>
+        this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
+      claim: (key, sessionId, rebind) =>
+        this.orchestrationEventStore.claimNativeSessionIdentity(
+          key,
+          sessionId,
+          rebind,
+        ),
+      retired: (sessionId) =>
+        this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
+    },
     resolveSourceHome: (affinity) =>
       this.codexRolloutSource.resolveSourceHome(affinity),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
@@ -901,48 +902,24 @@ export class StationRuntime {
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
     // (skills stay claude/workspace-channel only this wave). As above,
     // selected-profile failures block the spawn instead of falling back.
-    getAppHomeEnv: async (credentialProfileRef) => {
-      let selectedProfileRef = credentialProfileRef;
-      try {
-        const appConfig = await this.configLoader.loadAppConfig();
-        const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.codex?.credentialRecovery,
-        ).activeProfileRef;
-        const profileRef =
-          credentialProfileRef ??
-          (typeof configuredRef === 'string' ? configuredRef : undefined);
-        selectedProfileRef = profileRef;
-        if (profileRef) {
-          const { dir } = await ensureCredentialProfileAppHome(
-            'codex',
-            profileRef,
-          );
-          return { env: codexAppHomeEnv(dir), profileRef };
-        }
-        const useAppHome = appHomeActive(
-          appConfig.agentConnections?.codex?.config,
-        );
-        if (!useAppHome) return { profileRef: null };
-        const { dir } = await ensureAppHomeProfile('codex');
-        return { env: codexAppHomeEnv(dir), profileRef: null };
-      } catch (error) {
-        if (selectedProfileRef) {
-          throw new CredentialProfileEnvironmentError();
-        }
+    getAppHomeEnv: createCredentialProfileAppHomeEnvResolver({
+      engine: 'codex',
+      loadConnectionSettings: async () =>
+        (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      warn: (message) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
-        );
-        return undefined;
-      }
-    },
+          message,
+        ),
+    }),
     // station#2072: codex counterpart of claudeAdapter's getConnectionEnv
     // closure above — same sanitization, same lazy capture, `CODEX_HOME`
     // as the config-home key.
-    getConnectionEnv: async () => {
-      const appConfig = await this.configLoader.loadAppConfig();
-      return connectionSpawnEnv(
-        appConfig.agentConnections?.codex?.config,
+    getConnectionLaunch: async () => {
+      const config = await this.configLoader.loadAppConfig();
+      return engineProxyLaunch(
         'codex',
+        config.agentConnections?.codex?.config,
+        this.providerService.listProviderConnections(),
       );
     },
     // archive#1195: the wire-safe substitution for the built-in
@@ -1141,6 +1118,21 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      projectToolPolicy: () => {
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(
+          input.agent!.slug,
+          spec,
+          typeof input.metadata?.projectSlug === 'string'
+            ? this.projectService.getProject(input.metadata.projectSlug).id
+            : spec.project
+              ? this.projectService.getProject(spec.project).id
+              : undefined,
+          input.agent?.toolServers?.map((server) => server.id) ?? [],
+        );
+      },
       agentPolicyService: getAgentPolicyService(this.logger),
       approvalGuardian: new ApprovalGuardianService({
         appConfig: this.appConfig,
@@ -1170,6 +1162,7 @@ export class StationRuntime {
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
+    this.relayInvitationOwner = options.relayInvitationOwner;
     this.selfHostedBrokerConfiguration = options.selfHostedBrokerConnector;
     if (
       this.selfHostedBrokerConfiguration &&
@@ -1489,6 +1482,9 @@ export class StationRuntime {
       this.agentService = services.agentService;
       this.skillService = services.skillService;
       this.mcpService = services.mcpService;
+      this.orchestrationEventStore.setMcpAppResourceResolver((ref) =>
+        this.mcpService.getOpenMCPAppResourceUri(ref),
+      );
       this.secretBindingAdministration = services.secretBindingAdministration;
       this.secretBindingIntegrationAdministration =
         services.secretBindingIntegrationAdministration;
@@ -2619,6 +2615,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
+        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -2626,7 +2623,6 @@ export class StationRuntime {
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
-    this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3184,6 +3180,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
+      this.applyPersistedTelemetryConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3191,9 +3188,39 @@ export class StationRuntime {
       this.rebuildGlobalToolRegistry();
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
-      this.usageTelemetry?.reconfigure(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
+  }
+
+  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+    this.usageTelemetry?.reconfigure(config);
+    reconfigureOtelTelemetryDelivery(config);
+  }
+
+  private async initializeUsageTelemetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshot =
+        await this.configLoader.captureAppConfigLaunchabilitySnapshot();
+      if (this.configLoader.getLaunchabilityRevision() !== snapshot.revision)
+        continue;
+      // HTTP is already listening: a saved withdrawal must survive late construction.
+      const telemetry = new UsageTelemetryService({
+        homeDir: this.configLoader.getProjectHomeDir(),
+        appConfig: snapshot.config,
+        version: packageJson.version,
+        buildProvenance: this.buildProvenanceSnapshot ?? null,
+        logger: this.logger,
+        telemetrySecretResolver: this.secretBindingAdministration,
+      });
+      this.usageTelemetry = telemetry;
+      // Assignment precedes this await so subsequent PUTs reach the live owner.
+      await telemetry.loadDisclosureReceipt();
+      this.orchestrationService.setUsageTelemetry(telemetry);
+      return;
+    }
+    throw new Error(
+      'App configuration changed before product telemetry initialization.',
+    );
   }
 
   private async reloadDefaultAgentFromConfig(
@@ -3364,8 +3391,7 @@ export class StationRuntime {
    * (archive#1019's `custom-writer not found` cross-test contamination).
    */
   async initialize(): Promise<void> {
-    if (this.virtualApplicationConfiguration)
-      this.virtualApplicationLifetime.signal.throwIfAborted();
+    this.virtualApplicationLifetime.signal.throwIfAborted();
     this.virtualApplication?.stop();
     const virtualApplication = this.virtualApplicationConfiguration
       ? new VirtualApplicationIngress(
@@ -3380,8 +3406,8 @@ export class StationRuntime {
     this.initializeInFlight = inFlight;
     try {
       await inFlight;
+      this.virtualApplicationLifetime.signal.throwIfAborted();
       if (virtualApplication) {
-        this.virtualApplicationLifetime.signal.throwIfAborted();
         const application = virtualApplication.activate();
         this.virtualApplicationConfiguration!.ready(application);
         if (this.selfHostedBrokerConfiguration) {
@@ -3398,6 +3424,9 @@ export class StationRuntime {
           });
         }
       }
+      this.virtualApplicationLifetime.signal.throwIfAborted();
+      this.recordRuntimeLifecycle('ready');
+      void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
       const cleanupErrors: unknown[] = [];
@@ -3424,6 +3453,12 @@ export class StationRuntime {
           this.applicationSessions = undefined;
         });
         await retire(async () => {
+          // #3586: tokens stop reading the account store before it closes.
+          // Set only after security initialized, so its device pairing exists.
+          if (this.localAccounts)
+            this.environmentSecurityService.devicePairing.setAccountDirectory(
+              undefined,
+            );
           await this.deploymentAuthentication?.service.close();
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
@@ -3483,6 +3518,11 @@ export class StationRuntime {
         this.projectMembership.service,
       );
       this.deploymentAuthentication = this.localAccounts;
+      // #3586: account-tied personal access tokens are checked against
+      // this Station's own account standing; no other provider has one.
+      this.environmentSecurityService.devicePairing.setAccountDirectory(
+        this.localAccounts.accountDirectory,
+      );
     } else if (
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
@@ -3583,6 +3623,9 @@ export class StationRuntime {
           readSecureDeviceCookie: (request) =>
             parseSecureDeviceSessionCookie(
               request.headers.get('cookie') ?? undefined,
+              (candidate) =>
+                this.environmentSecurityService.identifyDevice(candidate) !==
+                null,
             ),
           issueAlias: (parentCredential, deviceId, aliasId) =>
             this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(
@@ -3659,6 +3702,8 @@ export class StationRuntime {
           attachedSessionSources: [
             this.claudeTranscriptSource,
             this.codexRolloutSource,
+            new GrokSessionSource({ logger: this.logger }),
+            this.openCodeSessionSource,
           ],
           port: this.port,
           host: this.host,
@@ -3669,6 +3714,34 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          validateProjectTools: async (slug, spec, input) => {
+            const policy = new ToolLibraryService(
+              this.configLoader.getProjectHomeDir(),
+            );
+            policy.assertAgent(
+              slug,
+              spec,
+              typeof input.metadata?.projectSlug === 'string'
+                ? this.projectService.getProject(input.metadata.projectSlug).id
+                : spec.project
+                  ? this.projectService.getProject(spec.project).id
+                  : undefined,
+            );
+          },
+          resolveProjectToolServers: async (input) => {
+            const slug = input.metadata?.projectSlug;
+            if (typeof slug !== 'string' || !slug) return [];
+            const project = this.projectService.getProject(slug);
+            const roots = await this.knowledgeStoreProvider.listRoots();
+            return projectMcpServers(
+              project,
+              roots.some(
+                (root) =>
+                  root.scope.kind === 'project' &&
+                  root.scope.projectSlug === slug,
+              ),
+            );
+          },
           skillService: this.skillService,
           feedbackService: this.feedbackService,
           voiceService: this.voiceService,
@@ -3858,19 +3931,7 @@ export class StationRuntime {
     await this.startConsentListenerOrReport();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
-    this.usageTelemetry = new UsageTelemetryService({
-      homeDir: this.configLoader.getProjectHomeDir(),
-      appConfig: this.appConfig,
-      version: packageJson.version,
-      logger: this.logger,
-    });
-    // A saved, current receipt remains consent after a restart. This read is
-    // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves
-    // telemetry inactive, while a missing receipt stays silent and inactive.
-    await this.usageTelemetry.loadDisclosureReceipt();
-    this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
-    // Never delay a usable runtime for optional telemetry.
-    void this.usageTelemetry.stationStarted();
+    await this.initializeUsageTelemetry();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.
@@ -3879,7 +3940,6 @@ export class StationRuntime {
         initialized.registryPolicyApplication,
         initialized.appConfig.registryTrust,
       );
-    this.recordRuntimeLifecycle('ready');
 
     // archive#1575: detected native engines (claude/codex CLIs) become registry
     // engine connections + default Agents without a Providers-UI trip.
@@ -4257,6 +4317,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
     } = configureRuntimeRoutes({
+      relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
       ...(this.nativeDeviceProofPilot
@@ -4396,6 +4457,29 @@ export class StationRuntime {
       activeAgents: this.activeAgents,
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
+      loadProjectTools: createProjectNativeToolLoader({
+        validateProjectTools: (slug, spec, project, servers) =>
+          new ToolLibraryService(
+            this.configLoader.getProjectHomeDir(),
+          ).assertAgent(slug, spec, project.id, servers),
+        agentSpecs: this.agentSpecs,
+        getProject: (slug) => this.projectService.getProject(slug),
+        listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        loadTools: (slug, spec) =>
+          this.framework.loadTools(slug, spec, {
+            configLoader: this.configLoader,
+            mcpConfigs: this.mcpConfigs,
+            mcpCustody: this.mcpCustody,
+            mcpConnectionStatus: this.mcpConnectionStatus,
+            integrationMetadata: this.integrationMetadata,
+            toolNameMapping: this.toolNameMapping,
+            toolNameReverseMapping: this.toolNameReverseMapping,
+            mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
+            integrationSecretResolver: this.secretBindingAdministration,
+            logger: this.logger,
+            serverPort: this.port,
+          }),
+      }),
       memoryAdapters: this.memoryAdapters,
       mcpConnectionStatus: this.mcpConnectionStatus,
       integrationMetadata: this.integrationMetadata,
@@ -4506,6 +4590,31 @@ export class StationRuntime {
   ) {
     return {
       agentSlug,
+      validateProjectTools: (
+        slug: string,
+        spec: AgentSpec,
+        invocation?: import('../types.js').InvocationContext,
+        additions: readonly string[] = [],
+      ) => {
+        const foreground = currentNativeForegroundRelay()?.project;
+        const sessionProject = invocation?.sessionId
+          ? this.orchestrationEventStore.readConversationProjectSlug(
+              invocation.sessionId,
+            )
+          : undefined;
+        const effectiveSlug =
+          foreground?.slug ?? sessionProject ?? spec.project;
+        const project =
+          typeof effectiveSlug === 'string'
+            ? this.projectService.getProject(effectiveSlug)
+            : undefined;
+        if (foreground && foreground.id !== project?.id)
+          throw new Error('Project changed.');
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(slug, spec, project?.id, additions);
+      },
       appConfig,
       configLoader: composition
         ? this.configLoader.forPluginActivationComposition(composition)
@@ -4871,6 +4980,12 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      // #3586: tokens stop reading the account store before it closes.
+      // Set only after security initialized, so its device pairing exists.
+      if (this.localAccounts)
+        this.environmentSecurityService.devicePairing.setAccountDirectory(
+          undefined,
+        );
       await this.deploymentAuthentication?.service.close();
       this.deploymentAuthentication = undefined;
       this.localAccounts = undefined;

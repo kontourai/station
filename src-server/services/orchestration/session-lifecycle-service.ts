@@ -279,12 +279,13 @@ export function projectSessionLifecycle(options: {
   // status is not a rich cause, but it is a real observation and it is the
   // one we have; naming it beats naming nothing.
   if (!blockedReason && lifecycleState === 'failed') {
+    // Names no turn: a session whose start the engine refused (it rejected
+    // the model, say) lands here having run none, and the log window cannot
+    // show that one did. The binding status is the one fact in hand.
     if (options.session.status === 'dead') {
-      blockedReason =
-        "This session's engine process is gone; the turn it was running never finished.";
+      blockedReason = "This session's engine process is gone.";
     } else if (options.session.status === 'error') {
-      blockedReason =
-        "This session's engine binding is in an error state; the turn it was running never finished.";
+      blockedReason = "This session's engine binding is in an error state.";
     }
   }
 

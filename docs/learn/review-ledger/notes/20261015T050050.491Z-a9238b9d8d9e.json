@@ -1,0 +1,7 @@
+{
+  "revision": "23b8d757bc5a25c6b14e12d35dad1d091ba19240",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"PR #3676 fix round 1: re-read the chat-dock attachment re-send refusal and transcript-reference claims against the ChatDockBody delta. The delta only scopes its existing work-observation subscription to activeSession conversation identity. Attachment retention, reference reads, re-send refusal, config fields and defaults are unchanged. No prose change; merged-base focused 241/241 passed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -202,8 +202,15 @@ describe('DeltaCoalescer', () => {
     coalescer.offer(delta('t1', '67890'));
 
     // Reaching the cap emits without waiting for the window, bounding the
-    // SIZE of a single event.
-    expect(texts(emitted)).toEqual(['paint', '1234567890']);
+    // SIZE of a single event. #3560: the buffer is emitted BEFORE the delta
+    // that would reach the cap joins it, so no emitted event ever contains
+    // the delta being offered (a retry of that delta then cannot repeat it).
+    expect(texts(emitted)).toEqual(['paint', '12345']);
+    coalescer.offer(delta('t1', 'abcdefghij'));
+    // A single delta at the cap is emitted on its own at once.
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890', 'abcdefghij']);
+    for (const text of texts(emitted))
+      expect(text.length).toBeLessThanOrEqual(10);
   });
 
   test('the window fires on its own when no other event arrives', () => {
@@ -311,6 +318,209 @@ describe('DeltaCoalescer', () => {
     // the delivery is attempted.
     expect(coalescer.pendingThreadCount()).toBe(0);
     expect(texts(emitted)).toEqual(['paint']);
+  });
+
+  // #3560: the owner can ask for a failed flush ahead of another event to be
+  // held for that event's retry, so the terminal cannot overtake the text.
+  test('a failed flush ahead of another event is retained when the owner asks, and the retry delivers it first', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let failNext = false;
+    const retainFailedFlush = vi.fn(() => true);
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('SQLITE_BUSY: database is locked');
+        }
+        emitted.push(event);
+      },
+      {
+        windowMs: 1_000_000,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush,
+      },
+    );
+
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    failNext = true;
+    const terminal = other('t1', 'turn.completed');
+    expect(() => coalescer.offer(terminal)).toThrow('SQLITE_BUSY');
+    expect(retainFailedFlush).toHaveBeenCalledWith(
+      expect.objectContaining({ delta: '-held' }),
+      expect.any(Error),
+    );
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    // The caller's retry of the same terminal flushes the held text first.
+    expect(coalescer.offer(terminal)).toBe(false);
+    expect(texts(emitted)).toEqual(['paint', '-held']);
+    expect(coalescer.pendingThreadCount()).toBe(0);
+  });
+
+  test('a failed size-cap flush retains the text buffered before the offered delta, which the retry then delivers first', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let failNext = false;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error('SQLITE_BUSY: database is locked');
+        }
+        emitted.push(event);
+      },
+      {
+        windowMs: 1_000_000,
+        maxChars: 10,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '12345'));
+    failNext = true;
+    const reachesCap = delta('t1', '67890');
+    expect(() => coalescer.offer(reachesCap)).toThrow('SQLITE_BUSY');
+    // Only the earlier text: the offered delta is the caller's to re-offer,
+    // and keeping it too would duplicate it.
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    expect(coalescer.offer(reachesCap)).toBe(true);
+    coalescer.flushAll();
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890']);
+  });
+
+  test('retained text arms no window timer, so a timer cannot drop it while the owner retry sleeps', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let locked = false;
+    const timers = new Map<number, () => void>();
+    let nextTimer = 0;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (locked) throw new Error('SQLITE_BUSY: database is locked');
+        emitted.push(event);
+      },
+      {
+        windowMs: 60,
+        setTimer: (fn) => {
+          nextTimer += 1;
+          timers.set(nextTimer, fn);
+          return nextTimer;
+        },
+        clearTimer: (handle) => {
+          timers.delete(handle as number);
+        },
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    locked = true;
+    const terminal = other('t1', 'turn.completed');
+    expect(() => coalescer.offer(terminal)).toThrow('SQLITE_BUSY');
+
+    // The owner is asleep before its retry and the store is still locked:
+    // any window timer firing now would take the warn path and drop the text.
+    for (const fire of [...timers.values()]) fire();
+    expect(coalescer.pendingThreadCount()).toBe(1);
+
+    locked = false;
+    expect(coalescer.offer(terminal)).toBe(false);
+    expect(texts(emitted)).toEqual(['paint', '-held']);
+  });
+
+  test('text merged into a retained buffer after the retry gave up is timed again', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let locked = false;
+    const timers = new Map<number, () => void>();
+    let nextTimer = 0;
+    const coalescer = new DeltaCoalescer(
+      (event) => {
+        if (locked) throw new Error('SQLITE_BUSY: database is locked');
+        emitted.push(event);
+      },
+      {
+        windowMs: 60,
+        setTimer: (fn) => {
+          nextTimer += 1;
+          timers.set(nextTimer, fn);
+          return nextTimer;
+        },
+        clearTimer: (handle) => {
+          timers.delete(handle as number);
+        },
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => true,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    locked = true;
+    expect(() =>
+      coalescer.offer(delta('t1', 'x', { itemId: 'item-2' })),
+    ).toThrow('SQLITE_BUSY');
+    locked = false;
+    // The owner moved on; a later delta of the same text merges in and must
+    // not sit untimed until some unrelated event flushes it.
+    coalescer.offer(delta('t1', '-more'));
+    for (const fire of [...timers.values()]) fire();
+    expect(texts(emitted)).toEqual(['paint', '-held-more']);
+  });
+
+  test('a later delta a listener buffers during the size-cap flush cannot overtake the offered delta', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let coalescer!: DeltaCoalescer;
+    coalescer = new DeltaCoalescer(
+      (event) => {
+        emitted.push(event);
+        // A synchronous fan-out that publishes a later delta for the same
+        // thread while the flush ahead of the offered delta is on the stack.
+        if ((event as unknown as { delta: string }).delta === '12345')
+          coalescer.offer(delta('t1', 'LATER'));
+      },
+      {
+        windowMs: 1_000_000,
+        maxChars: 10,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '12345'));
+    coalescer.offer(delta('t1', '67890'));
+    coalescer.flushAll();
+
+    // '67890' was produced before 'LATER', so it must not be appended after it.
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890', 'LATER']);
+  });
+
+  test('a failed flush the owner declines to retain is dropped, as before', () => {
+    let failNext = false;
+    const coalescer = new DeltaCoalescer(
+      () => {
+        if (failNext) throw new Error('UNIQUE constraint failed');
+      },
+      {
+        windowMs: 1_000_000,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+        retainFailedFlush: () => false,
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '-held'));
+    failNext = true;
+    expect(() => coalescer.offer(other('t1', 'turn.completed'))).toThrow(
+      'UNIQUE',
+    );
+    expect(coalescer.pendingThreadCount()).toBe(0);
   });
 
   test('a delivery that throws on the timer path does not propagate, and the coalescer stays usable', () => {

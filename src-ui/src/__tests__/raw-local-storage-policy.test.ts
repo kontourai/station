@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 
 const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
@@ -12,6 +12,7 @@ const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
  */
 const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'debug', // Development-only logger bootstrap flag, not a product preference.
+  'station.transcriptTrace.overlay', // Opt-in transcript layout tracer's debug overlay toggle (only read while the `app:transcript-layout` debug namespace is on); developer tooling, not a product preference.
   'lastProject', // Navigation restore pointer to the last visited project.
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
@@ -21,6 +22,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.activity.terminalSince', // Terminal activity cursor.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
+  'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
   'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
   'station.banners.dismissed', // Per-occurrence banner dismissals, not a setting.
@@ -35,12 +37,14 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.newChat.lastModelByBinding', // Derived per-agent last-choice memory.
   'station.newChat.lastAgentByContext', // Derived authority-and-project last-choice memory; not a device setting.
   'station.usage-telemetry-disclosure.snoozed', // Revision-bound disclosure deferral, not acknowledgement or a preference.
+  'station.usage-telemetry-disclosure.dnt-decisions', // Revision-bound DNT decision reminder, not acknowledgement or a preference.
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
   'station:chat-drafts:v1', // Draft message content, not a setting.
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
+  'station-startup-mark', // The channel mark the native host last reported, so startup-theme.js can paint the splash before the report arrives. Host identity, not a setting.
 ] as const;
 
 // Known accepted limitation ( 2, accepted-with-rationale): this is

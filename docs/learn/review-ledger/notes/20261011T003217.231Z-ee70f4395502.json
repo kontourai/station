@@ -1,0 +1,7 @@
+{
+  "revision": "e758ddb805e80df529feee941deec0cb57512213",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery exact-pixel procedure against baseline commit e758ddb805 and complete hosted artifact gallery-pr-38097950303-1 from source 67fe20b. Only overlay-command-palette-results PNG/hash changed: equal-score command rows follow the live registry ordering, so eager region chrome now registers Maximize/restore before lazy Chat actions. Labels/actions and geometry are preserved. The four dock mismatches were fixed in source, not accepted into baselines. All 53 retained-image comparisons pass; one existing volatile screen is preserved, no masks/thresholds/capture scripts changed. New-head hosted recapture and queue qualification remain pending.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "319069f8fc7a632c6838cf24cf7cc2945062bde3",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Fix-round review at319069f8fc7: foreground predicate now receives canonical draft store key in addition to conversation and execution identities, matching the active selection contract. All45approval-handler checks pass; removing only chatKey causes3intended visible-draft navigation failures/42pass, exact restoration45pass. Background decisions and request-event binding retained. No delivery, authorization, timeout or grant-scope change; provider recovery remains outside this evidence.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

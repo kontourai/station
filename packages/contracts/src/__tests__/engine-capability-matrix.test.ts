@@ -240,9 +240,6 @@ describe('engine capability matrix', () => {
 
   test('agentEngineValidationFindings names the engine and capability verbatim and returns [] when nothing authored or everything deliverable', () => {
     const codex = ENGINE_CAPABILITY_MATRICES.codex;
-    // station#1195: codex's toolServers cell flipped from unsupported to
-    // session/wire, so authoring `tools: true` is no longer a validation
-    // finding for codex — only prompt/skills/commands remain unsupported.
     expect(
       agentEngineValidationFindings(
         codex,
@@ -250,11 +247,6 @@ describe('engine capability matrix', () => {
         'Codex',
       ),
     ).toEqual([
-      {
-        capability: 'prompt',
-        engineId: 'codex',
-        message: "Codex can't receive a system prompt from Station",
-      },
       {
         capability: 'skills',
         engineId: 'codex',
@@ -363,6 +355,9 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.codex.engineId)).toBe(
       'Codex',
     );
+    // Attached OpenCode sessions carry the provider id 'opencode' with no
+    // capability matrix; they are still named for the engine.
+    expect(engineDisplayLabel('opencode')).toBe('OpenCode');
   });
 
   test('a session channel WITHOUT a delivery mechanism is chat-only regardless of channel name — proves this keys on the delivery field, not a channel or engine list', () => {

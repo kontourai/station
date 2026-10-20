@@ -75,6 +75,13 @@ const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
 
 /**
+ * #3563: when a timer fires and the per-intent source-terminal fence cannot
+ * be read, the dispatch waits this long and asks again, for as long as it
+ * takes. It never dispatches on an unread fence and never gives up.
+ */
+const SOURCE_TERMINAL_FENCE_RETRY_MS = 60_000;
+
+/**
  * Small recovery owner for the orchestration event seam. It schedules only
  * durable intents, while provider work is delegated to one composed Adapter.
  * It is not a general scheduler or credential recovery implementation.
@@ -165,7 +172,7 @@ export class SessionRecoveryCoordinator {
     // The source terminal is durable even if the original cancellation CAS
     // returned unavailable. Repair it before deriving timers, so restart can
     // never re-dispatch a recovery that the source already ended.
-    this.ledger.cancelSourceTerminated(this.now().toISOString());
+    const repair = this.ledger.cancelSourceTerminated(this.now().toISOString());
     // CredentialRecoveryModule is the only owner that can turn a prepared
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
@@ -174,13 +181,77 @@ export class SessionRecoveryCoordinator {
       this.now().toISOString(),
       'due',
     );
-    for (const intent of unsettled)
-      this.recordIntentOutcome(intent, 'indeterminate');
+    // An unreadable scan fences nothing, so there is no outcome to record.
+    // Its prepared rows stay durable for the next startup; this due-path
+    // sweep has no in-process retry (#2823 scopes that to credentials).
+    if (unsettled.kind === 'available')
+      for (const intent of unsettled.obligations)
+        this.recordIntentOutcome(intent, 'indeterminate');
+    // #3563: the bulk repair is defence in depth. Each timer re-checks the
+    // same rule for its own intent before it can dispatch, so a failed
+    // repair only needs to be said, not to pause every recovery.
+    if (repair.kind === 'unavailable' || repair.kind === 'invalid') {
+      this.options.logger?.warn(
+        'Recovery source-terminal repair is unavailable at startup; each recovery is checked when its timer fires',
+        { result: repair.kind },
+      );
+    }
     for (const intent of this.ledger.pending()) {
       if (intent.outcome !== 'armed' || !intent.dueAt) continue;
       this.schedule(intent.fingerprint, intent.dueAt);
     }
     void this.credentialRecovery?.reconcile();
+  }
+
+  /**
+   * #3563: the fire-time half of the source-terminal rule. Returns true when
+   * this timer may go on to claim. A canceled intent stops here; an unread
+   * fence re-arms the timer and asks again later.
+   */
+  private passesSourceTerminalFence(fingerprint: string): boolean {
+    // `undefined` means the read itself failed; `null` means the intent is gone.
+    let intent: ReturnType<RecoveryLedger['find']> | undefined;
+    let fenced: RecoveryTransition;
+    try {
+      intent = this.ledger.find(fingerprint);
+      fenced = this.ledger.cancelIfSourceTerminated(
+        fingerprint,
+        this.now().toISOString(),
+      );
+    } catch {
+      fenced = { kind: 'unavailable' };
+    }
+    if (fenced.kind === 'stale') return true;
+    if (fenced.kind === 'applied') {
+      if (intent) this.recordIntentOutcome(intent, 'canceled');
+      return false;
+    }
+    // An unread intent is re-armed too: the claim is a compare-and-set, so a
+    // timer for an intent that is no longer armed can never dispatch.
+    if (intent === undefined || intent?.outcome === 'armed') {
+      this.deferUnreadFence(fingerprint);
+    }
+    return false;
+  }
+
+  /**
+   * #3563: a fire-time read that failed. The dispatch waits and asks again.
+   * Never while stopping: shutdown owns every timer from that point. A store
+   * closed without disposing this coordinator keeps re-arming every 60s;
+   * production disposes first, and the timers are unref'd.
+   */
+  private deferUnreadFence(fingerprint: string): void {
+    this.options.logger?.warn(
+      'Recovery fire-time source-terminal check is unavailable; the dispatch waits and retries',
+      { retryInMs: SOURCE_TERMINAL_FENCE_RETRY_MS },
+    );
+    if (this.stopping || this.disposed) return;
+    this.schedule(
+      fingerprint,
+      new Date(
+        this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
+      ).toISOString(),
+    );
   }
 
   async dispose(): Promise<void> {
@@ -491,6 +562,7 @@ export class SessionRecoveryCoordinator {
     autoResumeAllowed = true,
   ): Promise<void> {
     if (this.disposed) return;
+    if (!this.passesSourceTerminalFence(fingerprint)) return;
     // A reconstructed due intent still gets the same credential-recovery
     // Module before ordinary replay. Its durable claim remains the authority.
     if (this.credentialRecovery) {
@@ -819,10 +891,18 @@ export class SessionRecoveryCoordinator {
   }
 
   private trackClaimAndResume(fingerprint: string): void {
-    if (
-      !this.options.autoResume ||
-      !this.ledger.find(fingerprint)?.usageLimit
-    ) {
+    // This runs in the timer callback itself, so a throwing read must not
+    // escape it (#3563 review M1): it is an unread fence like any other.
+    let usageLimit: boolean | undefined;
+    try {
+      usageLimit = this.options.autoResume
+        ? this.ledger.find(fingerprint)?.usageLimit
+        : undefined;
+    } catch {
+      this.deferUnreadFence(fingerprint);
+      return;
+    }
+    if (!this.options.autoResume || !usageLimit) {
       this.enqueueLifecycle(fingerprint, () =>
         this.claimAndResume(fingerprint),
       );

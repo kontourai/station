@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added the continueDelegatedTask bound-answer note; checked against the SDK input type and the receiver refusal code.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

@@ -34,10 +34,23 @@
  * `conversation_not_found` rather than an empty transcript. The cursor is
  * judged only after admission.
  *
+ * `aroundMessageId` (station#3413) starts the read at a search hit: the page
+ * that contains that message, with `prevCursor` and `nextCursor` to walk in
+ * either direction, under the same count, byte and per-message bounds. A
+ * message id that is not in the conversation (stale, or another
+ * conversation's) is refused, never answered with page one.
+ *
  * Requests that are not station-control tool calls (the operator's own
  * clients, a paired device) read with their own authority, as they can on
  * the `/messages` route; the reference rule is about what an agent may read.
  */
+
+import type {
+  ConversationReadMessage,
+  ConversationReadPage,
+  ConversationReadProvenance,
+  OrchestrationConversationEventWindow,
+} from '@kontourai/station-contracts/orchestration';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -55,6 +68,10 @@ import {
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import type { Logger } from '../../utils/logger.js';
 import {
+  clipSerialized,
+  serializedBytes,
+} from '../../utils/serialized-clip.js';
+import {
   CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
   type ConversationLineageReader,
   ConversationLineageTooLongError,
@@ -68,6 +85,8 @@ import {
   READ_CONVERSATION_PAGE_MAX_BYTES,
 } from './conversation-reference-read-limits.js';
 
+/** A message id's longest accepted length (search hits are bounded the same). */
+const READ_CONVERSATION_ANCHOR_ID_MAX_CHARS = 512;
 const READ_CONVERSATION_MESSAGE_TOOLS_MAX = 32;
 const READ_CONVERSATION_MESSAGE_TOOLS_MAX_BYTES = 4 * 1024;
 
@@ -83,7 +102,10 @@ export type ConversationReadRefusalCode =
   | 'conversation_out_of_scope'
   | 'conversation_deleted'
   | 'conversation_read_limit_out_of_range'
-  | 'conversation_read_cursor_invalid';
+  | 'conversation_read_cursor_invalid'
+  | 'conversation_read_anchor_invalid'
+  | 'conversation_read_anchor_with_cursor'
+  | 'conversation_read_anchor_not_found';
 
 const REFUSALS: Record<
   ConversationReadRefusalCode,
@@ -113,6 +135,20 @@ const REFUSALS: Record<
     explanation:
       'cursor is not a cursor this read returned for this conversation. Omit it to start from the first message.',
   },
+  conversation_read_anchor_invalid: {
+    status: 400,
+    explanation: `aroundMessageId must be a message id of at most ${READ_CONVERSATION_ANCHOR_ID_MAX_CHARS} characters, as a search hit or a previous page returned it.`,
+  },
+  conversation_read_anchor_with_cursor: {
+    status: 400,
+    explanation:
+      'Pass either cursor or aroundMessageId, not both: a cursor already says where the page starts.',
+  },
+  conversation_read_anchor_not_found: {
+    status: 404,
+    explanation:
+      'No message with this id is in this conversation (the id is stale, or belongs to another conversation). Nothing was read: omit aroundMessageId to start from the first message, or search again for a current hit.',
+  },
 };
 
 function refuse(c: Context, code: ConversationReadRefusalCode) {
@@ -140,41 +176,25 @@ export function parseConversationReferenceIds(text: string): string[] {
   return ids.filter((id) => id.length > 0);
 }
 
-export interface ReadConversationMessage {
-  /** Position in the whole transcript, from 0. */
-  index: number;
-  id: string;
-  role: ConversationMessage['role'];
-  text: string;
-  /** Present when `text` was clipped: the full text's size. */
-  textTruncated?: { originalBytes: number };
-  /** Tools the message called, by name. */
-  tools?: string[];
-  createdAt?: string;
-}
-
-/** Bytes `value` occupies once serialized as JSON (escapes included). */
-function serializedBytes(value: unknown): number {
-  return Buffer.byteLength(JSON.stringify(value), 'utf8');
-}
+export type ReadConversationMessage = ConversationReadMessage;
 
 /**
- * The longest prefix of `text`, by whole code points, whose JSON-serialized
- * form fits `maxBytes`. Measured on the serialized form because escaping
- * inflates a control character to six bytes (`\u001b`).
+ * The id a message is known by outside this transcript. A search hit names a
+ * user message by its turn's start event (`<turn.started event id>:user`,
+ * `search_sessions`), while the runtime projection's own user ids are
+ * positional (`proj-<n>`) unless a caller asks for the stable form, and shift
+ * with the window. Every id this read returns, and every `aroundMessageId` it
+ * accepts, is the stable one, so a hit can be read at. An assistant message's
+ * projected id already is its search id; a message with no recorded start
+ * event (a stored conversation) keeps the id it was stored under.
  */
-function clipSerialized(text: string, maxBytes: number): string {
-  if (serializedBytes(text) <= maxBytes) return text;
-  const points = Array.from(text);
-  let low = 0;
-  let high = points.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (serializedBytes(points.slice(0, middle).join('')) <= maxBytes)
-      low = middle;
-    else high = middle - 1;
-  }
-  return points.slice(0, low).join('');
+function readableMessageId(message: ConversationMessage): string {
+  const source = message.metadata?.sourceEventId;
+  return message.role === 'user' &&
+    typeof source === 'string' &&
+    source.length > 0
+    ? `${source}:user`
+    : message.id;
 }
 
 function compactMessage(
@@ -207,11 +227,20 @@ function compactMessage(
     toolBytes += size;
   }
   const timestamp = message.metadata?.timestamp;
+  const sessionId = message.metadata?.sessionId;
+  const reportedModel = message.metadata?.reportedModel;
+  const selectedModel = message.metadata?.model;
   return {
     index,
-    id: message.id,
+    id: readableMessageId(message),
     role: message.role,
     text,
+    ...(typeof sessionId === 'string' ? { sessionId } : {}),
+    ...(typeof reportedModel === 'string'
+      ? { model: { id: reportedModel, source: 'provider-reported' as const } }
+      : typeof selectedModel === 'string'
+        ? { model: { id: selectedModel, source: 'selected' as const } }
+        : {}),
     ...(text.length < fullText.length
       ? { textTruncated: { originalBytes } }
       : {}),
@@ -225,30 +254,43 @@ function compactMessage(
 interface ReadCursor {
   conversationId: string;
   offset: number;
+  /**
+   * `back`: the page that ENDS before `offset` (a `prevCursor`); absent: the
+   * page that starts at `offset` (a `nextCursor`).
+   */
+  direction?: 'back';
 }
 
 function encodeCursor(cursor: ReadCursor): string {
   return Buffer.from(
-    JSON.stringify({ v: 1, c: cursor.conversationId, o: cursor.offset }),
+    JSON.stringify({
+      v: 1,
+      c: cursor.conversationId,
+      o: cursor.offset,
+      ...(cursor.direction ? { d: cursor.direction } : {}),
+    }),
     'utf8',
   ).toString('base64url');
 }
 
 function decodeCursor(value: string): ReadCursor | undefined {
   if (value.length > 2048 || !/^[A-Za-z0-9_-]+$/u.test(value)) return undefined;
+  let parsed: { v?: unknown; c?: unknown; o?: unknown; d?: unknown };
   try {
-    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-    if (
-      parsed?.v !== 1 ||
-      typeof parsed.c !== 'string' ||
-      !Number.isSafeInteger(parsed.o) ||
-      parsed.o < 0
-    )
-      return undefined;
-    return { conversationId: parsed.c, offset: parsed.o };
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
   } catch {
     return undefined;
   }
+  const { v, c, o, d } = parsed ?? {};
+  if (v !== 1 || typeof c !== 'string') return undefined;
+  if (typeof o !== 'number' || !Number.isSafeInteger(o) || o < 0)
+    return undefined;
+  if (d !== undefined && d !== 'back') return undefined;
+  return {
+    conversationId: c,
+    offset: o,
+    ...(d === 'back' ? { direction: d } : {}),
+  };
 }
 
 /** Parse `limit`: absent means the default; anything else must be 1..max. */
@@ -294,10 +336,66 @@ export function readConversationPage(
     : { messages: page };
 }
 
+/**
+ * The page that ENDS just before `end`: at most `limit` messages, walking
+ * backward under the same byte cap as {@link readConversationPage}, returned
+ * oldest first. `startOffset` is where the next older page ends (0 at the
+ * start of the transcript), so paging backward covers each message once.
+ */
+function readConversationPageBefore(
+  messages: readonly ConversationMessage[],
+  end: number,
+  limit: number,
+): { messages: ReadConversationMessage[]; startOffset: number } {
+  const page: ReadConversationMessage[] = [];
+  let bytes = 2;
+  let index = Math.min(end, messages.length) - 1;
+  for (; index >= 0 && page.length < limit; index -= 1) {
+    const compact = compactMessage(messages[index]!, index);
+    const size = serializedBytes(compact) + 1;
+    if (bytes + size > READ_CONVERSATION_PAGE_MAX_BYTES) {
+      if (page.length > 0) break;
+      throw new Error('A conversation message exceeds the page byte cap.');
+    }
+    page.unshift(compact);
+    bytes += size;
+  }
+  return { messages: page, startOffset: index + 1 };
+}
+
+/**
+ * The page that contains the message at `anchorIndex`, with context on both
+ * sides: it starts about half a page before the anchor, and moves forward
+ * only as far as the byte cap requires for the anchor to be on it. The
+ * anchor is therefore always on the first page returned, under the same
+ * count, byte and per-message bounds as any other page.
+ */
+function readConversationPageAround(
+  messages: readonly ConversationMessage[],
+  anchorIndex: number,
+  limit: number,
+): {
+  messages: ReadConversationMessage[];
+  offset: number;
+  nextOffset?: number;
+} {
+  let offset = Math.max(0, anchorIndex - Math.floor(limit / 2));
+  for (;;) {
+    const page = readConversationPage(messages, offset, limit);
+    if (offset + page.messages.length > anchorIndex || offset >= anchorIndex)
+      return { ...page, offset };
+    offset += 1;
+  }
+}
+
 /** How the read was admitted, reported with the page. */
 export type ConversationReadAccess = 'own' | 'scope' | 'reference' | 'person';
 
 export interface ConversationReferenceReadDeps {
+  readProvenance?(
+    request: Request,
+    conversationId: string,
+  ): Promise<ConversationReadProvenance>;
   /** The owner-scoped unified read (`createConversationMessageReader`). */
   readConversationMessages(
     request: Request,
@@ -337,12 +435,24 @@ export interface ConversationReferenceReadDeps {
 export interface ConversationReferenceReadSources {
   memoryAdapters: Map<string, FileMemoryAdapter>;
   sessions: ConversationLineageReader & {
+    readConversationEventWindow?(
+      conversationId: string,
+      options: { authority: SessionReadAuthority; turnLimit: number },
+    ): Promise<OrchestrationConversationEventWindow | null>;
     readSessionMessages(
       threadId: string,
       authority: SessionReadAuthority,
     ): ConversationMessage[];
   };
   eventStore?: {
+    readConversationForkProvenance?(conversationId: string): {
+      forkedFrom?: {
+        sourceConversationId: string;
+        sourceSessionId?: string;
+        branchPointTurnId?: string;
+        continuation?: 'native' | 'replay-seed';
+      };
+    };
     conversationForSession(
       sessionId: string,
     ): { readonly conversationId: string } | undefined;
@@ -406,6 +516,44 @@ export function conversationReferenceReadDeps(
     },
     turnPromptsContaining: (threadIds, needle) =>
       sources.eventStore?.turnPromptsContaining(threadIds, needle) ?? [],
+    async readProvenance(request, conversationId) {
+      const window = await sources.sessions.readConversationEventWindow?.(
+        conversationId,
+        { authority: sources.authorityFor(request), turnLimit: 1 },
+      );
+      if (!window?.sessionLineage)
+        return { protocolVersion: 1, status: 'unavailable' };
+      const forkedFrom =
+        sources.eventStore?.readConversationForkProvenance?.(
+          conversationId,
+        ).forkedFrom;
+      const provenance: ConversationReadProvenance = {
+        protocolVersion: 1,
+        status: 'available',
+        currentSessionId: window.currentSessionId,
+        sessions: window.sessionLineage,
+        handoffs: window.handoffs,
+        ...(forkedFrom
+          ? {
+              forkedFrom: {
+                sourceConversationId: forkedFrom.sourceConversationId,
+                ...(forkedFrom.sourceSessionId
+                  ? { sourceSessionId: forkedFrom.sourceSessionId }
+                  : {}),
+                ...(forkedFrom.branchPointTurnId
+                  ? { branchPointTurnId: forkedFrom.branchPointTurnId }
+                  : {}),
+                ...(forkedFrom.continuation
+                  ? { continuation: forkedFrom.continuation }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+      return serializedBytes(provenance) <= 32 * 1024
+        ? provenance
+        : { protocolVersion: 1, status: 'unavailable' };
+    },
     isPersonActor(actor) {
       if (!actor || typeof actor !== 'object') return false;
       const { kind, deviceId } = actor as {
@@ -528,15 +676,23 @@ export function createConversationReferenceReadRoutes(
       }
     }
 
-    // Decided only after admission, so a forged cursor tells a caller
-    // nothing about a conversation it may not read.
+    // Decided only after admission, so a forged cursor or a probe for a
+    // message id tells a caller nothing about a conversation it may not read.
     const cursorValue = c.req.query('cursor');
-    let offset = 0;
+    const anchorValue = c.req.query('aroundMessageId');
+    if (
+      anchorValue !== undefined &&
+      (anchorValue.length === 0 ||
+        anchorValue.length > READ_CONVERSATION_ANCHOR_ID_MAX_CHARS)
+    )
+      return refuse(c, 'conversation_read_anchor_invalid');
+    if (anchorValue !== undefined && cursorValue !== undefined)
+      return refuse(c, 'conversation_read_anchor_with_cursor');
+    let cursor: ReadCursor | undefined;
     if (cursorValue !== undefined) {
-      const cursor = decodeCursor(cursorValue);
+      cursor = decodeCursor(cursorValue);
       if (!cursor || cursor.conversationId !== conversationId)
         return refuse(c, 'conversation_read_cursor_invalid');
-      offset = cursor.offset;
     }
 
     try {
@@ -562,21 +718,77 @@ export function createConversationReferenceReadRoutes(
           return refuse(c, 'conversation_not_found');
       }
       const messages = read.messages;
-      const page = readConversationPage(messages, offset, limit);
-      return c.json({
-        success: true,
-        data: {
+      let page: {
+        messages: ReadConversationMessage[];
+        startOffset: number;
+        nextOffset?: number;
+      };
+      if (anchorValue !== undefined) {
+        // The first message of that id: ids are unique within a conversation,
+        // and one that is not here (stale, or another conversation's) is
+        // refused rather than answered with page one.
+        const anchorIndex = messages.findIndex(
+          (message) => readableMessageId(message) === anchorValue,
+        );
+        if (anchorIndex < 0)
+          return refuse(c, 'conversation_read_anchor_not_found');
+        const around = readConversationPageAround(messages, anchorIndex, limit);
+        page = {
+          messages: around.messages,
+          startOffset: around.offset,
+          ...(around.nextOffset !== undefined
+            ? { nextOffset: around.nextOffset }
+            : {}),
+        };
+      } else if (cursor?.direction === 'back') {
+        const before = readConversationPageBefore(
+          messages,
+          cursor.offset,
+          limit,
+        );
+        // What this page's end was cut at is where the forward read resumes.
+        page = {
+          messages: before.messages,
+          startOffset: before.startOffset,
+          ...(cursor.offset < messages.length
+            ? { nextOffset: cursor.offset }
+            : {}),
+        };
+      } else {
+        const offset = cursor?.offset ?? 0;
+        const forward = readConversationPage(messages, offset, limit);
+        page = {
+          messages: forward.messages,
+          startOffset: offset,
+          ...(forward.nextOffset !== undefined
+            ? { nextOffset: forward.nextOffset }
+            : {}),
+        };
+      }
+      const data: ConversationReadPage = {
+        conversationId,
+        access,
+        notice: READ_CONVERSATION_NOTICE,
+        messageCount: messages.length,
+        messages: page.messages,
+        provenance: (await deps.readProvenance?.(
+          c.req.raw,
           conversationId,
-          access,
-          notice: READ_CONVERSATION_NOTICE,
-          messageCount: messages.length,
-          messages: page.messages,
-          nextCursor:
-            page.nextOffset === undefined
-              ? null
-              : encodeCursor({ conversationId, offset: page.nextOffset }),
-        },
-      });
+        )) ?? { protocolVersion: 1, status: 'unavailable' },
+        prevCursor:
+          page.startOffset > 0
+            ? encodeCursor({
+                conversationId,
+                offset: page.startOffset,
+                direction: 'back',
+              })
+            : null,
+        nextCursor:
+          page.nextOffset === undefined
+            ? null
+            : encodeCursor({ conversationId, offset: page.nextOffset }),
+      };
+      return c.json({ success: true, data });
     } catch (error) {
       // #3112: a lineage past the read bound is refused, never truncated.
       if (error instanceof ConversationLineageTooLongError)

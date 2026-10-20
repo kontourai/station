@@ -1,0 +1,7 @@
+{
+  "revision": "a8b72ad2dcaa5598a3cc15c4e5860a90fa7ab8b8",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"#3386 fix round: config.md changed only the Settings path wording in the attachedSessionsOutsideProjects row; nothing this document says depends on it. No prose change.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

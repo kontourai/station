@@ -1,0 +1,7 @@
+{
+  "revision": "85ca3d9a72220bb18a71d186faeb0c36b71bd8a2",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Re-checked after the delivery-state review round (computed waiting states, Not confirmed for this window's unanswered sends, cross-window discard via retiredKeys, rowStatus, the shared unconfirmed confirmation, the bubble-menu Discard, the outlives-app fix and two responsive inventory entries). Searched for delivery, outbox, bubble, discard and safe-to-close claims; none in this document changes. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}

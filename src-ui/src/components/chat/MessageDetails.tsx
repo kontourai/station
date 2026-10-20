@@ -4,6 +4,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { MoreActionsGlyph } from './MoreActionsGlyph';
 
 /** Secondary facts and actions stay available without competing with the message. */
 export function MessageDetails({
@@ -24,7 +25,7 @@ export function MessageDetails({
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
-        ⋯
+        <MoreActionsGlyph />
       </button>
       {open &&
         createPortal(

@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#463: fetchInsights still returns UsageInsights and preserves additive fields; agentUsage no longer requires tokens (legacy value tolerated). Monitoring types changed (cost/totalCost removed, MonitoringMetric.totalCost optional + unpricedCount); the SDK reference makes no claims about those fields. Prose remains accurate.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/insightsResponse.ts","packages/sdk/src/query-domains/systemRuntime.ts"]}
+  ]
+}

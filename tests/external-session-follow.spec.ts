@@ -144,8 +144,10 @@ test('enables external Codex continuation only after a completed source turn is 
     });
     await initialAnswer.scrollIntoViewIfNeeded();
     await expect(initialAnswer).toBeInViewport();
+    // #3552: continuing starts from the ordinary chat composer, which
+    // waits for a completed source turn.
     await expect(
-      detail.getByRole('button', { name: 'Continue in Station' }),
+      detail.getByRole('textbox', { name: 'Message' }),
     ).toBeDisabled();
     await expect(detail).toContainText(
       'No completed source turn is available for continuation.',
@@ -173,21 +175,13 @@ test('enables external Codex continuation only after a completed source turn is 
       timeout: 15_000,
     });
     await expect(
-      detail.getByRole('button', { name: 'Continue in Station' }),
+      detail.getByRole('textbox', { name: 'Message' }),
     ).toBeEnabled();
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
-    const mobileContinue = detail.getByRole('button', {
-      name: 'Continue in Station',
-    });
-    await mobileContinue.scrollIntoViewIfNeeded();
-    await expect(mobileContinue).toBeInViewport();
-    await expect(
-      detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeVisible();
-    await expect(
-      detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeEnabled();
+    const mobileComposer = detail.getByRole('textbox', { name: 'Message' });
+    await expect(mobileComposer).toBeInViewport();
+    await expect(mobileComposer).toBeEnabled();
   } finally {
     await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
       method: 'DELETE',
@@ -478,13 +472,15 @@ test.describe
 
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
+      // Read only: the one action is the composer's Send, which confirms
+      // a continuation first; nothing here acts on the source session.
       await expect(
         detail.getByRole('button', {
-          name: /send|approve|decline|stop|resume|retry|delegate/i,
+          name: /approve|decline|stop|resume|retry|delegate/i,
         }),
       ).toHaveCount(0);
       await expect(
-        page.getByRole('button', { name: 'Continue in Station' }),
+        detail.getByRole('textbox', { name: 'Message' }),
       ).toBeVisible();
       expect(
         await page.evaluate(
@@ -504,8 +500,7 @@ test('opens an attached session in the normal mobile chat without adopting befor
   );
   const detail = page.getByTestId('session-detail');
   await expect(detail).toContainText('Started in Claude Code · Read only');
-  await detail.getByRole('button', { name: 'Continue in Station' }).click();
-  const composer = page.getByPlaceholder('Type a message…', { exact: true });
+  const composer = detail.getByPlaceholder('Type a message…', { exact: true });
   await expect(composer).toBeVisible();
   await composer.fill('UI audit draft — do not send.');
   expect(fixture.commands).toEqual([]);

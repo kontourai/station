@@ -1,0 +1,7 @@
+{
+  "revision": "5bd56b10d48fb40ef857c45b50a00f964510dbb9",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed only the recorded orchestration-chat-flow spec delta: canonical approval naming, the existing phone Answer/request-sheet path, retained 360/720px layout and theme checks, and the public region chooser plus disabled-state geometry in the narrow desktop dock. The new da6113 edit is solely Approval needed to Needs approval in the dialog locator. The real focused product-runner Chromium keeper passed all its existing pending/refused/already-settled controls and browser-health assertions on da6113; fixture policy and E2E typecheck pass. The guide still accurately describes synthetic canonical-event approval UI; manifest, smoke worker/retry policy and other specs did not change. This reviews that spec input only and does not claim the entire PR smoke lane, provider acknowledgement, native runtime or release qualification.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

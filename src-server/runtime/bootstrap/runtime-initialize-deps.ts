@@ -7,6 +7,7 @@ import type {
   OrchestrationUsageRef,
   UsageAggregator,
 } from '../../analytics/usage-aggregator.js';
+import type { EngineAgentCatalog } from '../../domain/agent-registry.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
@@ -53,6 +54,8 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
+  resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -63,9 +66,14 @@ interface RuntimeInitializationContext {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
+    // #3429: this Station's Environment, which a continued attached
+    // conversation records as its execution binding.
+    | 'readExistingRecord'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -80,7 +88,7 @@ interface RuntimeInitializationContext {
     saveIntegration: (id: string, def: ToolDef) => Promise<void>;
     hasIntegration: (id: string) => Promise<boolean>;
     /** Agent-record enumeration for boot-time engine adoption. */
-    listAgents: () => Promise<Array<{ slug: string }>>;
+    listAgents: EngineAgentCatalog['listAgents'];
     mutateAgent: (slug: string, updater: (current: any) => any) => Promise<any>;
   };
   storageAdapter: FileStorageAdapter;
@@ -178,6 +186,8 @@ export function createRuntimeInitializationDeps(
     timers: context.timers,
     configLoader: context.configLoader,
     storageAdapter: context.storageAdapter,
+    validateProjectTools: context.validateProjectTools,
+    resolveProjectToolServers: context.resolveProjectToolServers,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,

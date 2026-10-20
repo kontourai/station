@@ -3,7 +3,7 @@
 // can be unit-tested directly. See the ratchet's header for what the gate
 // does and does not prove.
 
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 /**
  * The floor the inventory starts at. Below U+2000 the bundled latin /

@@ -1,5 +1,14 @@
 # Fresh native relay fixture
 
+The fixture's invitation and pending-Device operator commands are CLI/API
+evidence for their own exact scopes. They do not exercise the desktop/native
+**Devices → Invite device** controls or their explicitly promoted `relay:manage` caller.
+[Connections](../../docs/guides/connections.md#invite-a-device-to-a-relay-station)
+owns that new source journey. Exact native account-bound manager admission is
+now integrated; current Device/account proof and independent management scope
+remain required. Fixture receipts do not qualify released Nightly, physical-device
+or two-human delivery of those controls.
+
 This opt-in fixture prepares a genuine isolated Station, a supported local
 account provider, an unconsumed Project invitation, and registry-backed native
 Pion enrollment. The receiver uses the public broker and broker-issued TURN.
@@ -25,6 +34,12 @@ node --import tsx scripts/native-fresh-relay-fixture.ts prepare /absolute/new-ow
 non-default listener block, source revision, and public signing descriptor.
 The actual operator credential stays in private `operator.json`. Do not copy
 that file or broker connector/routing credentials into a WebView or invitation.
+
+A refusal exits nonzero and prints `native_fresh_fixture_refused`. Simple
+fixture assertion codes follow that prefix, such as
+`fixture_committed_source_required` for a dirty checkout. Other errors retain
+the generic refusal; private paths, response bodies and credentials are not
+printed. Keep the failed command's stderr when investigating a refusal.
 
 Stage the artifacts and launch prerequisites below **before** the broker owner
 provisions this exact scope. The initial lease is only 60 seconds; do not start
@@ -181,7 +196,7 @@ successor preparation does not prove that a native grant was absent or retired.
    with the unconsumed person invitation and new username/password. The
    maintained provider creates the real issuer-qualified person. `pending
    plan.json` displays actual pending enrollment candidates.
-4. Brian verifies Zach's exact candidate and actual account identity.
+4. Casey verifies Zach's exact candidate and actual account identity.
    `approve plan.json approval.json` sends the exact `{enrollmentId,candidate}`
    through the operator endpoint. Use the pending item's opaque `enrollmentId`,
    not its UUID `requestId`. Synthetic automation may perform this same

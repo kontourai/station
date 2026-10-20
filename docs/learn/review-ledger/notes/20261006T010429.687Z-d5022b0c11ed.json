@@ -1,0 +1,11 @@
+{
+  "revision": "b7d431bd5103d32674dc5f7649717d5150ff044c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 final round: the link rule now reads as implemented in recordedPathFollowsLink (a link whose parent resolves inside the home folder is refused; case/normalization differences and links above home accepted) and states every refusal is path-free (ambiguous refusal names candidates only). Checked against attached-session-continuation-place.ts and its tests.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 final round: the No project paragraph now says the link refusal applies inside your home folder, matching recordedPathFollowsLink; rest of the Continue section unchanged and re-read against the code.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 final round: stale only because session-api.md's adoption paragraph changed (link rule wording). This ADR makes no adoption or continuation-folder claim. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

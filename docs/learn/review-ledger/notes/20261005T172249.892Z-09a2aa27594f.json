@@ -1,0 +1,7 @@
+{
+  "revision": "7b0c7f2dc324aaf1a0aeafb6b7a1bf8bf71aaa87",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"#3331 round 1: orchestration-chat-flow's #2917 test adds a desktop right-dock settled leg (no longer open, widths stable on disable, legible). The smoke row's claim (transcript, tool activity and approval UI from synthetic canonical events) still holds.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

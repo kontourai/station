@@ -22,7 +22,6 @@ import {
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
-import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
 import {
   collectDocumentationChanges,
   formatDocumentationImpact,
@@ -42,7 +41,7 @@ function resolveBaseSha(base) {
   }
 }
 
-/** What `.githooks/pre-push` runs on every push, whatever the change. */
+/** Unscoped commands in the hook's normal source-edit push path. */
 export const EVERY_PUSH_CHECKS = Object.freeze([
   Object.freeze({
     command: 'npm run lint:check',
@@ -53,8 +52,8 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'governance proof (~4s)',
   }),
   Object.freeze({
-    command: 'npm run veritas:readiness',
-    note: 'Veritas readiness (~15-35s)',
+    command: 'node scripts/prepush-pure-merge.mjs',
+    note: 'classifies actual pushed refs against remote main (#3101)',
   }),
   Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
@@ -70,14 +69,15 @@ export const LANE_LADDER = Object.freeze([
     detail: null,
   }),
   Object.freeze({
-    stage: 'Bounded feedback before push',
+    stage: 'Only to reproduce a specific failure or when explicitly requested',
     command: 'npm run ci:fast',
     detail: null,
   }),
   Object.freeze({
     stage: 'Ordinary PR integration',
     command: null,
-    detail: 'required checks on the GitHub merge queue candidate',
+    detail:
+      'required hosted fast-checks owns readiness and all typecheck lanes; the merge queue checks the combined candidate',
   }),
   Object.freeze({
     stage: 'Promotion completion',
@@ -102,7 +102,6 @@ export function gateScopes({ changedPaths, baseSha }) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
-  const typecheck = decideTypecheckScope({ baseSha, changedPaths });
   return [
     {
       name: 'orchestration transfer budgets',
@@ -118,11 +117,6 @@ export function gateScopes({ changedPaths, baseSha }) {
       name: 'SDK public barrel',
       decision: barrel,
       command: 'node scripts/check-prepush-sdk-barrel.mjs',
-    },
-    {
-      name: 'typecheck (twelve tsc lanes, ~91s)',
-      decision: typecheck,
-      command: 'node scripts/check-prepush-typecheck.mjs',
     },
   ].map(({ name, decision, command }) => ({
     name,
@@ -148,10 +142,12 @@ export function gateReport({ changedPaths, baseSha }) {
   const lines = [
     `gate:for — ${plan.changedPaths.length} changed path(s)`,
     '',
-    'Every push (armed in .githooks/pre-push):',
+    'Normal source-edit push (armed in .githooks/pre-push):',
     ...plan.everyPush.map(
       ({ command, note }) => `  ${command.padEnd(46)} # ${note}`,
     ),
+    '',
+    'The hook classifies pure merges from actual push refs; only verified clean merges take its lighter path.',
     '',
     'Scoped to this change surface:',
   ];

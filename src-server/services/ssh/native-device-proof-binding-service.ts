@@ -22,6 +22,7 @@ import {
   type PairedDevice,
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
+import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
@@ -206,11 +207,22 @@ export interface NativeDeviceProofApprovalTuple {
 export class NativeDeviceProofOperatorAuthority {
   approve(input: {
     operatorPrincipalId: string;
+    approverPrincipalId?: string;
     tuple: NativeDeviceProofApprovalTuple;
   }): NativeDeviceProofOperatorApprovalContext {
     if (input.operatorPrincipalId !== LOCAL_OPERATOR_PRINCIPAL_ID) {
       throw new NativeDeviceProofBindingError('operator_unauthorized');
     }
+    const actorPrincipalId =
+      input.approverPrincipalId ?? input.operatorPrincipalId;
+    if (
+      !isPrincipalRef({
+        kind: 'human',
+        id: actorPrincipalId,
+        display: 'approver',
+      })
+    )
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
     const tuple = input.tuple;
     if (
       !tuple ||
@@ -234,6 +246,7 @@ export class NativeDeviceProofOperatorAuthority {
     return new NativeDeviceProofOperatorApprovalContext({
       token: OPERATOR_AUTHORITY_TOKEN,
       operatorPrincipalId: input.operatorPrincipalId,
+      actorPrincipalId,
       approvalId: randomUUID(),
       tuple,
     });
@@ -242,6 +255,7 @@ export class NativeDeviceProofOperatorAuthority {
 
 class NativeDeviceProofOperatorApprovalContext {
   readonly operatorPrincipalId: string;
+  readonly actorPrincipalId: string;
   readonly approvalId: string;
   readonly tuple: NativeDeviceProofApprovalTuple;
   #intact = true;
@@ -249,6 +263,7 @@ class NativeDeviceProofOperatorApprovalContext {
   constructor(init: {
     token: symbol;
     operatorPrincipalId: string;
+    actorPrincipalId: string;
     approvalId: string;
     tuple: NativeDeviceProofApprovalTuple;
   }) {
@@ -256,6 +271,7 @@ class NativeDeviceProofOperatorApprovalContext {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
     this.operatorPrincipalId = init.operatorPrincipalId;
+    this.actorPrincipalId = init.actorPrincipalId;
     this.approvalId = init.approvalId;
     this.tuple = Object.freeze({
       ...init.tuple,
@@ -482,7 +498,11 @@ class NativeDeviceProofBindingStore {
       isValidNativeClientSurface(b.surface) &&
       Number.isSafeInteger(b.createdAt) &&
       Number.isSafeInteger(b.approvedAt) &&
-      b.approvedBy === LOCAL_OPERATOR_PRINCIPAL_ID &&
+      isPrincipalRef({
+        kind: 'human',
+        id: b.approvedBy,
+        display: 'approver',
+      }) &&
       typeof b.deviceScopeAtApproval === 'string' &&
       parsePairingScope(b.deviceScopeAtApproval) !== null &&
       (b.state === 'active' || b.state === 'revoked') &&
@@ -606,7 +626,7 @@ export class NativeDeviceProofBindingService {
       surface,
       createdAt: now,
       approvedAt: now,
-      approvedBy: input.approval.operatorPrincipalId,
+      approvedBy: input.approval.actorPrincipalId,
       deviceScopeAtApproval: device.scope,
       state: 'active',
     };

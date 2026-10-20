@@ -82,7 +82,7 @@
   max-width: 100%;
   min-height: 28px;
   padding: 0 var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
@@ -477,87 +477,164 @@
   font-size: 0.72rem;
 }
 
-/* Read-only pane: no pinned composer, so the transcript grows to fill the
-   scroll region when short and rides the single scroll region when long. */
-.sessions-detail--read-only .sessions-detail__transcript {
-  flex: 1 0 auto;
+/* #3552: an external conversation reads as the ordinary chat in Activity and
+   in the dock. Everything above and below the messages sits on the chat's
+   own gutter, so its edges line up with the messages. */
+.sessions-detail--chat {
+  --chat-message-gutter: clamp(12px, 4vw, 20px);
 }
 
-.sessions-detail__readonly-label {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-.sessions-detail__adoption {
+.sessions-detail__chat-header {
+  position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--chat-message-gutter);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
 }
 
-.sessions-detail__adoption p {
-  margin: 0.2rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+.sessions-detail__chat-heading {
+  min-width: 0;
 }
 
-.sessions-detail__adoption .button {
-  min-height: 44px;
-  flex: 0 0 auto;
-}
-
-.sessions-detail__connection-state,
-.sessions-detail__details {
+.sessions-detail__chat-heading h2 {
   margin: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sessions-detail__connection-state strong {
-  color: var(--text-primary);
+.sessions-detail__chat-heading .sessions-detail__meta-line {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
-.sessions-detail__connection-state p,
-.sessions-detail__details p,
-.sessions-detail__adoption-reason {
-  margin: 0.3rem 0 0;
+.sessions-detail__details {
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 
+/* A 44px tap target for a quiet, one-word disclosure. */
 .sessions-detail__details summary {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
   cursor: pointer;
-  color: var(--text-primary);
+  list-style: none;
+}
+
+.sessions-detail__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.sessions-detail__details summary:hover,
+.sessions-detail__details[open] summary {
+  color: var(--k-text);
+}
+
+/* Drops down from the header as part of it, over the conversation rather
+   than pushing it down: full width, opaque, edged like the header. */
+.sessions-detail__details-body {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  padding: var(--k-space-2) var(--chat-message-gutter) var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-bg);
+  box-shadow: var(--k-shadow);
+}
+
+.sessions-detail__details-body p {
+  margin: 0;
+}
+
+.sessions-detail__details-body p + p {
+  margin-top: var(--k-space-1);
 }
 
 .sessions-detail__details code {
   overflow-wrap: anywhere;
 }
 
-.sessions-detail__adoption-reason {
-  flex-basis: 100%;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+.sessions-detail__connection-state {
+  flex: 0 0 auto;
+  margin: var(--k-space-2) var(--chat-message-gutter);
+  padding: var(--k-space-2) var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-caution-soft);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 
-@media (max-width: 480px) {
-  .sessions-detail__adoption {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.sessions-detail__connection-state strong {
+  color: var(--k-text);
+  font-weight: 600;
+}
 
-  .sessions-detail__adoption .button {
-    width: 100%;
-  }
+.sessions-detail__connection-state p {
+  margin: var(--k-space-1) 0 0;
+}
+
+.sessions-detail__connection-state .button {
+  margin-top: var(--k-space-2);
+}
+
+.external-chat-composer__note {
+  /* The composer already sits on the chat gutter. */
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.sessions-detail__adoption-folder {
+  overflow-wrap: anywhere;
+}
+
+/* The No project alternative reads as an action, not a third footer
+   button competing with Continue. */
+.sessions-detail__confirm-alternative {
+  display: flex;
+}
+
+/* Link-styled, but a full touch target that starts on the text's edge, and
+   underlined so it does not read as a link by colour alone. */
+.sessions-detail__confirm-alternative .button {
+  min-height: 44px;
+  padding-inline: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Spacing for the continuation confirmation's paragraphs. */
+.sessions-detail__confirm {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.sessions-detail__confirm p {
+  margin: 0;
+}
+
+.sessions-detail__adoption-reason {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.sessions-detail__adoption-reason[role="alert"] {
+  color: var(--k-negative);
 }
 
 .sessions-detail__transcript {
@@ -570,29 +647,6 @@
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   background: var(--bg-secondary);
-}
-
-.sessions-detail__transcript-message {
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-primary);
-  overflow-wrap: anywhere;
-}
-
-.sessions-detail__transcript-message--user {
-  background: var(--bg-secondary);
-}
-
-.sessions-detail__transcript-role {
-  margin: 0 0 0.35rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
@@ -776,13 +830,31 @@
 .external-chat-composer {
   flex: 0 0 auto;
   margin: 0;
-  padding: 0;
+  padding: 0 var(--chat-message-gutter, 0) var(--k-space-2);
   border: 0;
+}
+
+/* Continuing is unavailable: the composer reads as off, not just its Send. */
+.external-chat-composer:has(textarea:disabled) .chat-input__capsule {
+  opacity: 0.55;
+}
+
+.external-chat-composer textarea:disabled {
+  cursor: not-allowed;
 }
 .sessions-detail--chat .sessions-detail__transcript {
   display: flex;
   flex-direction: column;
   gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+  /* Grow with the messages: a message that renders taller after mounting
+     must grow this container, which the follow-latest scroll observes. */
+  flex-shrink: 0;
+  min-height: auto;
 }
 
 .imported-conversation-send-row {
@@ -815,4 +887,18 @@
 .session-discard-draft:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+
+.activity-show-more {
+  min-height: 44px;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.session-parent-navigation {
+  padding: var(--k-space-2) var(--k-space-3);
+}
+.session-parent-navigation button {
+  min-height: 44px;
+  color: var(--k-action);
 }

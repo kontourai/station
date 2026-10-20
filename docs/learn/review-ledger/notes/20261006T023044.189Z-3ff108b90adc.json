@@ -1,0 +1,7 @@
+{
+  "revision": "35109fbfbcacc6dece1c2c87d5e302fac56f731b",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Reviewed the generated index change: one added line for the new automations proposal.","inputs":["docs/design/README.md"]}
+  ]
+}

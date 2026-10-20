@@ -163,8 +163,12 @@
  */
 
 import { existsSync, realpathSync, statSync } from 'node:fs';
+import { access, realpath, stat } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  ProjectConfig,
+  ProjectRunsAt,
+} from '@kontourai/station-contracts/project';
 import {
   isWellFormedResolution,
   localProjectResourceId,
@@ -209,6 +213,203 @@ export interface ProjectResourceResolverOptions {
   manifests?: ProjectManifestStore;
   bindings?: ProjectBindingsStore;
   readRemotes?: CheckoutRemoteReader;
+}
+
+/**
+ * Whether a resolution runs the live git identity check (`verify`, every
+ * start and every resolution route) or takes the recorded directory as given
+ * (`trust-records`, the project list's run-location read only).
+ */
+type IdentityCheck = 'verify' | 'trust-records';
+
+/** The folder reads a resolution makes, swappable so a list read never blocks. */
+export interface RunLocationFs {
+  exists(path: string): Promise<boolean>;
+  realpath(path: string): Promise<string>;
+  isDirectory(path: string): Promise<boolean>;
+}
+
+interface ResolutionIo extends RunLocationFs {
+  identity: IdentityCheck;
+  findBinding: ProjectBindingsStore['findBinding'];
+}
+
+/** Starts keep their synchronous reads: the behavior every start has had. */
+const SYNC_RUN_LOCATION_FS: RunLocationFs = {
+  exists: async (path) => existsSync(path),
+  realpath: async (path) => realpathSync(path),
+  isDirectory: async (path) => statSync(path).isDirectory(),
+};
+
+/** The list read's folder reads, off the event loop. */
+const ASYNC_RUN_LOCATION_FS: RunLocationFs = {
+  exists: (path) =>
+    access(path).then(
+      () => true,
+      () => false,
+    ),
+  realpath: (path) => realpath(path),
+  isDirectory: async (path) => (await stat(path)).isDirectory(),
+};
+
+/**
+ * How long a list read waits on one project's folder. A local disk answers in
+ * well under a millisecond; this only bounds a folder that does not answer.
+ */
+const RUN_LOCATION_TIMEOUT_MS = 1500;
+
+export const RUN_LOCATION_TIMED_OUT_REASON =
+  "Station could not check this project's folder in time (it may be on a drive that is not responding).";
+
+/**
+ * The folder was not looked at, or did not answer: the list read does not
+ * know where the project resolves, which is not the same as a refusal.
+ */
+class FolderNotCheckedError extends Error {}
+
+export const RUN_LOCATION_BUSY_REASON =
+  'Station is still waiting on other project folders, so it did not check this one yet. Try again shortly.';
+
+/**
+ * Folder checks, shared by every list read in this process.
+ *
+ * The time box frees the HTTP response, not the libuv thread: an
+ * `fs.promises` call on a mount that does not answer holds one of the four
+ * default threadpool threads until the mount does, and with all four held
+ * every async file read in the server (and dns, and zlib) waits behind them.
+ * So at most `MAX_UNSETTLED_FOLDER_CHECKS` checks are ever out at once —
+ * stuck or not, one read or many — which always leaves a thread for the rest
+ * of the server. Further checks wait their turn, first in first out, within
+ * their project's time box; one that never gets a turn reads `unchecked`
+ * with `RUN_LOCATION_BUSY_REASON`, since nothing checked it. A check of a
+ * folder that is already out joins that check instead of queueing another.
+ * Healthy folders answer in well under a millisecond, so the limit costs
+ * them nothing measurable while a hung mount holds at most the slots it
+ * already has.
+ */
+export const MAX_UNSETTLED_FOLDER_CHECKS = 3;
+
+interface FolderCheck {
+  promise: Promise<unknown>;
+  /** False while it waits for a slot: nothing has looked at the folder. */
+  started: boolean;
+}
+
+const pendingFolderChecks = new Map<string, FolderCheck>();
+const waitingFolderChecks: Array<() => void> = [];
+let unsettledFolderChecks = 0;
+/** Bumped by the test reset, so a check from before it cannot free a slot. */
+let folderCheckGeneration = 0;
+
+/** Test seam: forget every check (a hung stub never settles on its own). */
+export function resetRunLocationFolderChecksForTests(): void {
+  pendingFolderChecks.clear();
+  waitingFolderChecks.length = 0;
+  unsettledFolderChecks = 0;
+  folderCheckGeneration += 1;
+}
+
+/** Test seam: how many folder checks are out right now. */
+export function unsettledRunLocationFolderChecks(): number {
+  return unsettledFolderChecks;
+}
+
+function startWaitingFolderChecks(): void {
+  while (
+    unsettledFolderChecks < MAX_UNSETTLED_FOLDER_CHECKS &&
+    waitingFolderChecks.length > 0
+  )
+    waitingFolderChecks.shift()?.();
+}
+
+/**
+ * `fs` behind the shared limit, for one project: `awaited` collects the
+ * checks this project waits on, so its time box can tell "the folder did not
+ * answer" from "the folder was never checked".
+ */
+function guardFolderChecks(
+  fs: RunLocationFs,
+  timeoutMs: number,
+  awaited: Set<FolderCheck>,
+): RunLocationFs {
+  const guarded =
+    <T>(op: string, run: (path: string) => Promise<T>) =>
+    (path: string): Promise<T> => {
+      const key = `${op}\u0000${path}`;
+      let check = pendingFolderChecks.get(key);
+      if (!check) {
+        const entry: FolderCheck = {
+          promise: Promise.resolve(),
+          started: false,
+        };
+        const generation = folderCheckGeneration;
+        entry.promise = new Promise<T>((resolve, reject) => {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          const begin = () => {
+            clearTimeout(deadline);
+            entry.started = true;
+            unsettledFolderChecks += 1;
+            Promise.resolve()
+              .then(() => run(path))
+              .then(resolve, reject)
+              .finally(() => {
+                if (generation !== folderCheckGeneration) return;
+                unsettledFolderChecks -= 1;
+                pendingFolderChecks.delete(key);
+                startWaitingFolderChecks();
+              });
+          };
+          if (unsettledFolderChecks < MAX_UNSETTLED_FOLDER_CHECKS) {
+            begin();
+            return;
+          }
+          waitingFolderChecks.push(begin);
+          deadline = setTimeout(() => {
+            const index = waitingFolderChecks.indexOf(begin);
+            if (index >= 0) waitingFolderChecks.splice(index, 1);
+            pendingFolderChecks.delete(key);
+            reject(new FolderNotCheckedError(RUN_LOCATION_BUSY_REASON));
+          }, timeoutMs);
+          deadline.unref?.();
+        });
+        // The caller handles the rejection; this copy keeps it observed.
+        entry.promise.catch(() => {});
+        pendingFolderChecks.set(key, entry);
+        check = entry;
+      }
+      awaited.add(check);
+      return check.promise as Promise<T>;
+    };
+  return {
+    exists: guarded('exists', fs.exists),
+    realpath: guarded('realpath', fs.realpath),
+    isDirectory: guarded('isDirectory', fs.isDirectory),
+  };
+}
+
+async function withRunLocationTimeout(
+  pending: Promise<ProjectRunsAt>,
+  timeoutMs: number,
+  awaited: ReadonlySet<FolderCheck>,
+): Promise<ProjectRunsAt> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<ProjectRunsAt>((resolve) => {
+    timer = setTimeout(() => {
+      const neverChecked = [...awaited].some((check) => !check.started);
+      resolve({
+        kind: 'unchecked',
+        reason: neverChecked
+          ? RUN_LOCATION_BUSY_REASON
+          : RUN_LOCATION_TIMED_OUT_REASON,
+      });
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([pending, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 type ResourceSelection =
@@ -261,21 +462,144 @@ export class ProjectResourceResolver {
   async resolveProjectExecutionRoot(
     projectSlug: string,
   ): Promise<string | undefined> {
-    const project = this.source.getProject(projectSlug);
-    const manifest = this.manifests.readProjectManifest(projectSlug);
+    return this.executionRoot(projectSlug, this.verifyingIo());
+  }
+
+  /** Every start and resolution route: the live identity check, sync stats. */
+  private verifyingIo(): ResolutionIo {
+    return {
+      identity: 'verify',
+      findBinding: (projectId, resourceId) =>
+        this.bindings.findBinding(projectId, resourceId),
+      ...SYNC_RUN_LOCATION_FS,
+    };
+  }
+
+  /**
+   * #3370: the directory each project resolves to, for the project list the
+   * start composer reads. It is `resolveProjectExecutionRoot`'s own selection
+   * — manifest, binding, working directory, `executionRoot` — with ONE step
+   * left out: the live git identity check, which spawns `git` per project and
+   * has no place on a list read. So the result is the directory the records
+   * name, not a verified checkout: one that would fail that check still names
+   * its directory here, and the start refuses it. Everything else that refuses
+   * a start reads as `unavailable`, with the start's own reason.
+   *
+   * A list read must never hold the server on a project's folder: a hung
+   * network or autofs mount would otherwise stall every project-list fetch.
+   * So this reads Station's own records once per request (one project record
+   * and manifest per project, one bindings read for all of them), touches the
+   * project folders only through async `fs.promises`, runs the projects
+   * concurrently, and gives each one `timeoutMs` before it reads as
+   * `unchecked` — "could not check the folder", which is not a refusal. A folder that does not
+   * answer still holds a threadpool thread until its mount does; see
+   * `MAX_UNSETTLED_FOLDER_CHECKS` for the limit that keeps one free.
+   *
+   * `none` is a project with no directory at all: where its chats run then
+   * depends on the agent (home, an ACP connection's folder, or a private one),
+   * which the client knows and this read does not.
+   */
+  async describeProjectRunLocations(
+    projectSlugs: readonly string[],
+    options: { timeoutMs?: number; fs?: RunLocationFs } = {},
+  ): Promise<Map<string, ProjectRunsAt>> {
+    const timeoutMs = options.timeoutMs ?? RUN_LOCATION_TIMEOUT_MS;
+    let findBinding: ResolutionIo['findBinding'];
+    try {
+      const store = this.bindings.read();
+      findBinding = (projectId, resourceId) =>
+        store.bindings.find(
+          (binding) =>
+            binding.projectId === projectId &&
+            binding.resourceId === resourceId,
+        );
+    } catch (error) {
+      // The same failure a start would hit, but only for a project that
+      // actually consults a binding.
+      findBinding = () => {
+        throw error;
+      };
+    }
+    const fs = options.fs ?? ASYNC_RUN_LOCATION_FS;
+    const entries = await Promise.all(
+      projectSlugs.map(async (slug) => {
+        const awaited = new Set<FolderCheck>();
+        const io: ResolutionIo = {
+          identity: 'trust-records',
+          findBinding,
+          ...guardFolderChecks(fs, timeoutMs, awaited),
+        };
+        return [
+          slug,
+          await withRunLocationTimeout(
+            this.describeOne(slug, io),
+            timeoutMs,
+            awaited,
+          ),
+        ] as const;
+      }),
+    );
+    return new Map(entries);
+  }
+
+  private async describeOne(
+    projectSlug: string,
+    io: ResolutionIo,
+  ): Promise<ProjectRunsAt> {
+    let root: string | undefined;
+    let stored: string | undefined;
+    try {
+      const project = this.source.getProject(projectSlug);
+      const record = this.manifests.readRecord(projectSlug);
+      const manifest = record
+        ? this.manifests.composeManifest(record, project)
+        : undefined;
+      root = await this.executionRoot(projectSlug, io, project, manifest);
+      // Compared expanded; returned as stored (`~/dev/app`), which is how
+      // every other surface shows the project's folder.
+      stored = project.workingDirectory?.trim();
+      if (stored && resolvePath(expandTilde(stored)) !== root)
+        stored = undefined;
+    } catch (error) {
+      if (error instanceof FolderNotCheckedError)
+        return { kind: 'unchecked', reason: error.message };
+      return {
+        kind: 'unavailable',
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (root === undefined) return { kind: 'none' };
+    if (stored) return { kind: 'folder', path: stored };
+    return { kind: 'execution-root', path: root };
+  }
+
+  private async executionRoot(
+    projectSlug: string,
+    io: ResolutionIo,
+    projectSnapshot?: ProjectConfig,
+    manifestSnapshot?: ProjectManifest,
+  ): Promise<string | undefined> {
+    const project = projectSnapshot ?? this.source.getProject(projectSlug);
+    const manifest = projectSnapshot
+      ? manifestSnapshot
+      : this.manifests.readProjectManifest(projectSlug);
     const selection = manifest?.executionRoot;
     const result = await this.resolve(
       projectSlug,
       selection?.repoId,
       project,
       manifest ?? null,
+      io,
     );
     if (!isWellFormedResolution(result)) {
       throw new Error(
         `resolveProjectResource produced a malformed resolution for ${projectSlug}: ${JSON.stringify(result)}`,
       );
     }
-    projectResourceResolutions.add(1, { state: result.state });
+    // A list read's unverified `bound` is not a resolution outcome; counting
+    // it would inflate the verified-start metric once per project per read.
+    if (io.identity === 'verify')
+      projectResourceResolutions.add(1, { state: result.state });
     if (result.state !== 'bound') {
       if (
         !selection &&
@@ -300,19 +624,19 @@ export class ProjectResourceResolver {
       .split(/[\\/]/);
     const candidate = resolvePath(result.path, ...portableSegments);
     assertPathInside(result.path, candidate, 'Project execution root');
-    if (!existsSync(candidate)) {
+    if (!(await io.exists(candidate))) {
       throw new Error(
         `Project '${projectSlug}' execution root does not exist: ${selection.path}`,
       );
     }
-    const canonicalRoot = realpathSync(result.path);
-    const canonicalCandidate = realpathSync(candidate);
+    const canonicalRoot = await io.realpath(result.path);
+    const canonicalCandidate = await io.realpath(candidate);
     assertPathInside(
       canonicalRoot,
       canonicalCandidate,
       'Project execution root',
     );
-    if (!statSync(canonicalCandidate).isDirectory()) {
+    if (!(await io.isDirectory(canonicalCandidate))) {
       throw new Error(
         `Project '${projectSlug}' execution root is not a directory: ${selection.path}`,
       );
@@ -325,6 +649,7 @@ export class ProjectResourceResolver {
     resourceId?: string,
     projectSnapshot?: ProjectConfig,
     manifestSnapshot?: ProjectManifest | null,
+    io: ResolutionIo = this.verifyingIo(),
   ): Promise<ResourceResolutionResult> {
     const project = projectSnapshot ?? this.source.getProject(projectSlug);
     // Decision 1: read only. A project with no manifest stays on the compat
@@ -345,20 +670,24 @@ export class ProjectResourceResolver {
       // The compat resource is treated as local-only: there is no manifest
       // identity to check the directory against, so there is nothing to
       // verify and nothing to claim beyond "this is where it is".
-      return this.resolveThroughWorkingDirectory(project, {
-        kind: 'local-only',
-        id: localProjectResourceId(projectSlug),
-      });
+      return this.resolveThroughWorkingDirectory(
+        project,
+        {
+          kind: 'local-only',
+          id: localProjectResourceId(projectSlug),
+        },
+        io,
+      );
     }
 
     const selection = selectResource(manifest, resourceId);
     if (!selection.ok) return selection.result;
     const resource = selection.resource;
 
-    const binding = this.bindings.findBinding(manifest.id, resource.id);
+    const binding = io.findBinding(manifest.id, resource.id);
     if (binding) {
       const absolute = resolvePath(expandTilde(binding.path));
-      if (!existsSync(absolute)) {
+      if (!(await io.exists(absolute))) {
         // Decision 5: named, and never quietly re-pointed at the project's
         // working directory.
         return {
@@ -372,10 +701,13 @@ export class ProjectResourceResolver {
       if (resource.kind === 'local-only') {
         return { state: 'bound', resourceId: resource.id, path: absolute };
       }
-      return await this.verifyGitCheckout(resource, binding.path, absolute, {
-        kind: 'binding',
-        verifiedAt: binding.verifiedAt,
-      });
+      return await this.verifyGitCheckout(
+        resource,
+        binding.path,
+        absolute,
+        { kind: 'binding', verifiedAt: binding.verifiedAt },
+        io.identity,
+      );
     }
 
     // archive#1503 — the working-directory substitute stands in for AT MOST ONE
@@ -422,12 +754,13 @@ export class ProjectResourceResolver {
     // §5 point 2: `workingDirectory` stays authoritative during compat, and a
     // backfilled binding row duplicating it is exactly the second copy this
     // design exists to avoid.
-    return this.resolveThroughWorkingDirectory(project, resource);
+    return this.resolveThroughWorkingDirectory(project, resource, io);
   }
 
   private async resolveThroughWorkingDirectory(
     project: ProjectConfig,
     resource: ProjectRepoResource,
+    io: ResolutionIo,
   ): Promise<ResourceResolutionResult> {
     const resourceId = resource.id;
     const workingDirectory = project.workingDirectory?.trim();
@@ -452,7 +785,7 @@ export class ProjectResourceResolver {
     }
     // Decision 8.
     const absolute = resolvePath(expandTilde(workingDirectory));
-    if (!existsSync(absolute)) {
+    if (!(await io.exists(absolute))) {
       // archive#1594 — THIS is `missing`, not `unbound`. §5 makes the declared
       // `workingDirectory` the compat-era binding ("workingDirectory stays
       // authoritative during compat"), so a declared directory that is gone is
@@ -482,6 +815,7 @@ export class ProjectResourceResolver {
         {
           kind: 'working-directory',
         },
+        io.identity,
       );
     }
     return { state: 'bound', resourceId, path: absolute };
@@ -494,7 +828,12 @@ export class ProjectResourceResolver {
     observation:
       | { kind: 'binding'; verifiedAt: number }
       | { kind: 'working-directory' },
+    identity: IdentityCheck,
   ): Promise<ResourceResolutionResult> {
+    // Only `describeProjectRunLocations` skips this, and it never reports the
+    // result as `bound` to anyone: it names a directory, not a repository.
+    if (identity === 'trust-records')
+      return { state: 'bound', resourceId: resource.id, path: absolutePath };
     const remotes = await this.readRemotes(absolutePath);
     if (!remotes.ok) {
       // Decision 4: a recorded timestamp is REPORTED as an observation; it is

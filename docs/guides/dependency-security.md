@@ -4,6 +4,221 @@ Station uses one root `pnpm-lock.yaml` for its workspace. Root, SDK, and Shared
 remain separate advisory views of that graph; they no longer own independent
 npm lockfiles.
 
+## RSA signature verification backport (2026-10)
+
+Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
+for [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
+It backports the nested DigestAlgorithm element-count check from
+[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), commit
+`ceba34402e329f0365134f23fe19898756527d65`, to `lib/rsa.js` and both shipped
+browser bundles. The threat is an attacker without the private key forging an
+RSA PKCS#1 v1.5 signature, particularly with a low public exponent. The parser
+now requires the algorithm OID plus only its optional NULL parameter, retaining
+the existing outer DigestInfo and padding checks.
+The pnpm patch recreates the two bundles with equivalent `\x01` string escapes
+for their published literal control bytes, keeping the patch visible to text
+scanners without changing those string values.
+
+The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
+exercise the package entrypoint and both browser globals. A retained signature
+constructed using only an exponent-3 public key passes pristine 1.4.0 and fails
+the patched verifier; Node crypto independently rejects it. Valid SHA-256
+signatures with exponents 3 and 65537, wrong-message rejection, and the
+supported omitted-NULL form remain covered. These are dependency API checks,
+not a reproduced Station endpoint exploit or full browser/native qualification.
+
+The registry still reports version 1.4.0 as **high**. A separate `remediations`
+record in the [advisory ledger](../../scripts/dependency-advisory-exceptions.json)
+replaces this advisory's temporary risk exception. The policy prints `PATCHED`
+only after checking the exact advisory/version, Node 24, workspace registration,
+patch SHA-256, locked graph edges, and the installed main, RSA implementation,
+and both bundles for every accounted copy. Missing or changed bytes,
+unaccounted copies, and changed entrypoint contracts block the finding. This
+checks the installed tree at decision time; it does not defend against a
+same-user writer changing code afterward. Other advisories retain their own
+dispositions and deadlines.
+
+The remediation has no risk-acceptance expiry: it requires current installed
+proof on every decision. An absent advisory makes its record unused and fails
+the gate, requiring cleanup rather than silently retaining an allowance.
+[Issue #3122](https://github.com/kontourai/station/issues/3122) tracks replacement
+with an independently verified official release. Recheck after every Forge,
+VoltAgent, SAP/JKS, patch, or provider-boundary change. Optional provider
+packaging is tracked by [issue #3745](https://github.com/kontourai/station/issues/3745);
+this patch preserves SAP functionality and makes
+no universal nonreachability claim.
+
+## Proxy, copy, and numeric formatter advisories (2026-10)
+
+The workspace pins `proxy-addr` 2.0.8 and `fast-copy` 4.1.0. The
+[proxy advisory](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) concerns a
+remote caller spoofing `X-Forwarded-For` when a consumer configures a short
+IPv4-mapped IPv6 trust subnet. Both Express dependency branches use the pin;
+Station's trust configuration is unchanged. Version exposure does not prove
+that Station uses the vulnerable trust configuration.
+
+The [copy advisory](https://github.com/advisories/GHSA-jggr-w7fw-pc2j) concerns
+stack exhaustion from deeply nested input. `pino-pretty`, used by Station's
+logging seam, creates the copier with default options. The upstream patch
+limits traversal to 1,000 nested objects and throws `MaxDepthExceededError`, a
+`RangeError` subclass. This bounds traversal; it does not make arbitrary deep
+input succeed or establish that an unauthenticated request reaches that call.
+
+### Legacy YAML CLI parent migration
+
+The workspace removes `sprintf-js` and argparse 1 from the locked graph by
+pinning only `js-yaml@3.15.2>argparse` to 2.0.1. The
+[BIN-only patch](../../patches/js-yaml-3.15.2-argparse2-cli.patch) adapts the
+legacy CLI to the modern argument API. It keeps `-v`/`--version`, help,
+compact/trace errors, optional stdin/file input, and the hidden `-j`/`--to-json`
+compatibility flag. That flag retains the CLI's content-based conversion; it
+does not force JSON output. The parser calls use the modern names to avoid
+alias deprecation messages. The YAML 3 package's library API and published
+index/lib/dist bytes stay unchanged, including gray-matter's
+`safeLoad`/`safeDump` callers. YAML 4's incompatible library API is not
+substituted.
+
+The installed [compatibility keeper](../../scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts)
+reaches the actual legacy YAML CLI and gray-matter parse/stringify boundary.
+The reviewed candidate's managed install and separate verification completed
+on Node 24.19.0. Its complete lock and installed inventories found no
+`sprintf-js` or argparse 1; the installed Voltagent CLI and Core consumers
+resolved the patched YAML 3 copy and argparse 2.0.1. All 32 published library
+artifacts matched. Replacing only that owned installed BIN with its original
+bytes caused 14 compatibility failures; exact restoration returned all 19
+controls to PASS. These are source-bound local observations, not a hosted,
+provider, native, or release receipt.
+
+The current six-view registry audit found no formatter advisory in this
+candidate. The obsolete formatter residual is removed in the same remediation;
+its original expired-and-unused failure remains retained evidence. All other
+records and expiry dates are preserved. No expiry is renewed, no unused record
+is automatically accepted, and the historical formatter patch file is retained
+without registration. Graph removal addresses dependency presence;
+it does not establish that a Station endpoint was unreachable or that upstream
+published a patched formatter.
+
+### Historical formatter patch and acceptance
+
+The preceding graph retained `sprintf-js` version 1.0.3 with a Station-owned
+[package patch](../../patches/sprintf-js-1.0.3.patch), bound through
+`patchedDependencies` and the lockfile hash. The
+[formatter advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) concerns
+attacker-controlled precision causing an uncaught numeric `RangeError`. The
+patch covers both `src/sprintf.js` and the shipped `dist/sprintf.min.js`:
+`e` and `f` precision is capped at 100; `g` precision is clamped to 1–100 on
+Station's Node 24 runtime. Supported precision and omitted-precision behavior
+stay unchanged. Unsupported precision now rounds at the bound; explicit
+`g` precision zero uses one significant digit instead of throwing. This is a
+compatibility choice for previously invalid input, not a new upstream version.
+Width, padding, parser input size, and nonnumeric type errors are outside this
+patch's scope. The Angular artifacts delegate to the formatter globals.
+
+That graph's dependency path was VoltAgent → gray-matter → js-yaml 3 → argparse 1 →
+sprintf-js. Gray-matter uses js-yaml's library `safeLoad`/`safeDump` exports;
+that library entrypoint does not import argparse. The bundled js-yaml CLI
+does import argparse. Installed dependency reachability is broader than an
+executed Station request path; this inspection does not prove remote format
+control. Keep the legacy YAML API rather than forcing js-yaml 4, where those
+calls no longer have the same contract.
+
+The registry advisory scan may continue to report patched `sprintf-js` 1.0.3
+by version. Patch application and bounded behavior evidence do not imply a
+green advisory floor. At reviewed revision `2285053942`, controlled dependency
+probes on Node 24.19.0 checked source and minified formatter code through CJS,
+browser globals, and AMD. All 66 supported-output comparisons matched the
+unpatched baseline. Numeric boundary and 400-digit precision probes confirmed
+bounded rounding, including the explicit `g0` tradeoff; Angular wrapper
+delegation and legacy YAML library/CLI controls passed. These are dependency
+behavior observations, not production reachability or full browser/native
+qualification.
+
+That historical scan remained red for high-severity `source-map-js` and the
+version-reported production `sprintf-js` advisory. The reviewed composed graph
+inherited `source-map-js` 1.2.2 from the existing Dependabot change. Managed
+installation and verification observed that version and the exact patched
+formatter bytes on Node 24.19.0; this does not establish hosted qualification.
+
+Brian approved an exact root production `sprintf-js` 1.0.3 residual for
+GHSA-hp3w-g68c-fv3c through **2026-10-13**, conditional on drift/restoration
+proof, independent review, and installed binding verification. The
+[residual record](../../scripts/dependency-advisory-exceptions.json) retained
+that expiry and had no automatic renewal. It accepted the version-reported
+finding for the reviewed local patch; it does not claim upstream remediation
+or absence of attacker-controlled Station format strings.
+
+The [policy evaluator](../../scripts/dependency-advisory-policy.mjs) directly
+calls the [patch-binding verifier](../../scripts/lib/dependency-patch-binding.mjs)
+before accepting this residual. Its optional structured `patchBinding`
+preserves the twelve required legacy string fields. For this exact formatter
+identity, deleting the binding fails; there is no identity-only fallback.
+The verifier checks Node 24, parsed workspace and lock references, the patch
+SHA-256, production graph presence, and the source and minified bytes of every
+accounted installed formatter instance. Missing evidence, drift, unaccounted
+copies, or caller-directory/file/symlink/case-equivalent module shadows fail
+closed. The guard is a check of the current installed tree, not continuous
+protection against a same-user writer changing files after verification.
+
+The guard's 109 real-file, CLI, and legacy controls passed, including named
+bad cases and exact restoration. Disabling only the production verification
+call caused 17 failures; restoration returned all 109 tests to PASS.
+Independent review passed at `e319df1a89`. These guard controls complement the
+six-entrypoint formatter proof above; neither establishes a production request
+path or whole-source qualification. The actual audit owns the current floor
+verdict and remains separate from these proofs.
+
+Recheck before expiry, on dependency, patch, source/minified bytes, Node runtime,
+or entrypoint changes, and when untrusted production format control is found.
+Withdraw acceptance on mismatch. Remove the residual and local formatter patch
+when a compatible upstream release passes the same numeric, formatter, YAML,
+and CLI controls. No unrelated exception, baseline, severity, or proxy trust
+policy is changed.
+
+## Shell quoting and MCP credential issuer advisories (2026-10)
+
+The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.3.1
+in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.1.
+Exact overrides cover transitive client/SDK consumers. The client brings its
+exact core 2.3.1 dependency; server 2.3.1 brings its exact core 2.3.1 dependency.
+No Station code imports core directly.
+
+The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)
+concerns attacker-controlled line terminators in a string after a comment token
+in `quote()`, allowing shell execution when the resulting string is executed.
+Version 1.11.0 rejects LF, CR, U+2028 and U+2029 in that position. Bounded
+controls observed those rejections and preserved ordinary quoting and editor
+argument parsing without executing a shell. Station's inspected transitive
+caller, launch-editor, calls `parse()` and launches an argument array; direct
+Station exploitation of the advisory has not been reproduced.
+
+The [MCP advisory](https://github.com/advisories/GHSA-6qxp-vccf-f47h) concerns a
+compromised remote MCP server choosing a different authorization server to
+receive previously saved refresh tokens or client secrets. The patched client
+and SDK retain issuer metadata and refuse credentials bound to another issuer.
+An upgrade alone does not repair an application that strips issuer fields,
+uses a bundled provider without its required expected issuer, or bypasses the
+supported authorization path.
+
+Station's [OAuth provider](../../src-server/services/plugins/tool-server-oauth.ts)
+already stores the complete supplied credential value, binds records to their
+resource and owner, and refuses reads with missing or mismatched issuer context.
+The inspected HTTP client uses this provider and the vendor's context-aware
+`tokens()` and `clientInformation()` calls. Station's inspected v1 SDK caller
+uses stdio. The repair changes vendor inputs; it does not clear or migrate
+credentials, loosen issuer checks, or change OAuth trust policy. Focused
+provider, mounted OAuth-runtime, local-custody and Strands-stdio controls passed
+against the new graph. These controls do not establish every transitive
+consumer's remote authorization behavior or prove an attacker reached Station.
+New interactive sign-in trust and direct low-level vendor calls remain
+separate from this advisory's saved-credential binding claim.
+
+The earlier local audit and hosted receipts retain their observation times:
+these newly disclosed findings do not rewrite those results. Current audit,
+new-source CI, normal hooks, hosted checks and actual landing each own their
+subsequent verdict. At the time of that MCP repair, the formatter patch, machine binding and exact
+2026-10-13 residual remained unchanged. The parent migration above is a separate
+remediation; no new advisory exception is added.
+
 ## Lifecycle scripts are reviewed capabilities
 
 Use `npm run dependencies:ci` for a frozen install and
@@ -353,6 +568,32 @@ independently. `Production` means the finding was present in the root
 The final 2026-07 policy run reports no unaccepted critical/high advisory in
 root, SDK, or shared. No exception was required.
 
+## 2026-10 VoltAgent production residuals
+
+The 2026-10-08 production audit still reaches three moderate advisories through
+VoltAgent's private dependency graph. `pnpm why --prod` identifies the pinned
+paths:
+
+| Package / version | Production path | Advisory and patched line |
+| --- | --- | --- |
+| `@opentelemetry/core@2.0.1` | `@voltagent/core@2.10.0` → `@opentelemetry/exporter-trace-otlp-http@0.203.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf), fixed at `2.8.0` |
+| `@opentelemetry/core@2.1.0` | `@voltagent/core@2.10.0` → `@voltagent/logger@2.0.2` → `@opentelemetry/exporter-logs-otlp-http@0.204.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf), fixed at `2.8.0` |
+| `uuid@9.0.1` | `@voltagent/core@2.10.0` | [`GHSA-w5hq-g745-h8pq`](https://github.com/advisories/GHSA-w5hq-g745-h8pq), fixed at `11.1.1` |
+
+The latest published `@voltagent/core` (`2.11.0`) still declares the `0.203`
+trace exporter, the `0.204` logs exporter, and `uuid ^9.0.1`; no compatible
+VoltAgent update currently removes these resolutions. The three exact residuals
+in [`dependency-advisory-exceptions.json`](../../scripts/dependency-advisory-exceptions.json)
+carry an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
+by [issue #3510](https://github.com/kontourai/station/issues/3510). Their
+GHSA severity remains **moderate**; the issue's P1 label prioritizes removing
+the blocker and closing the residuals, not reclassifying those advisories.
+This acceptance does not claim the paths are unreachable or fixed. Remove each
+record as soon as its compatible upstream remediation lands, and run
+`npm run audit:policy` after VoltAgent or OpenTelemetry updates. Station's own
+security-sensitive identifiers use Node crypto; that narrows the uuid impact
+but does not make the dependency unreachable.
+
 ## 2026-08 production residual inventory
 
 This section preserves the **2026-08-08 npm intake**, including then-current
@@ -374,3 +615,39 @@ compatible version.
 | `@opentelemetry/core@2.0.1` and `2.1.0` | [`GHSA-8988-4f7v-96qf`](https://github.com/advisories/GHSA-8988-4f7v-96qf) | Nested under the current `@voltagent/core@2.9.2` and `@voltagent/logger@2.0.2`; the root's independently managed OpenTelemetry graph resolves `2.10.0`. The VoltAgent package is at its published current version, and `npm audit` offers no compatible fix. | VoltAgent release notes and `npm audit --omit=dev --json` |
 | `uuid@9.0.1` | [`GHSA-w5hq-g745-h8pq`](https://github.com/advisories/GHSA-w5hq-g745-h8pq) | Nested only under the current `@voltagent/core@2.9.2`; a root override would cross the framework's private dependency boundary, and `npm audit` offers no compatible fix. | VoltAgent release notes and `npm audit --omit=dev --json` |
 | `@ai-sdk/provider-utils@3.0.30` | [`GHSA-866g-f22w-33x8`](https://github.com/advisories/GHSA-866g-f22w-33x8) | The six propagated low records resolve through VoltAgent's nested AI SDK provider graph. A root override cannot safely replace that framework-private 3.x dependency; Station keeps the affected provider path behind authenticated runtime entrypoints and existing request-size limits. | VoltAgent and AI SDK release notes plus `npm audit --omit=dev --json` |
+
+## Title policy publication
+
+The trusted title-status job receives `statuses:write` solely for title policy.
+The isolated source-policy publisher below is a separate exception; jobs that
+execute candidate code retain read-only tokens. The title job checks out the
+running workflow revision for PR events and the protected base for merge groups;
+candidate code never receives this token. It writes only `PR title policy` on
+the exact event head, leaving source-check contexts untouched.
+
+Pending is published before setup. Validation or publication errors attempt a
+failure status; once pending is accepted, rejected terminal writes leave it
+pending. If both the initial pending and fallback writes are rejected, the
+client cannot revoke an earlier remote success. The diagnostic job reports the
+error; it does not claim that remote admission failed closed. An operator hold
+is needed during such a complete publication outage.
+
+
+## Source policy publication
+
+The isolated [source-policy workflow](../../.github/workflows/source-verification-policy.yml)
+also receives `statuses:write`. It checks out trusted policy, never candidate
+code, and publishes only `Source verification policy` from existing GitHub run
+and job evidence. `PR: CI` calls it after core source checks and before optional
+delivery work for source-changing PR events. Lifecycle reconciliation handles
+requested, in-progress and completed source runs; metadata start events allocate
+no publisher, while metadata completion can reconcile existing proof.
+
+The policy binds the exact head, repository and every current main-target PR
+sharing that head. It checks recorded base ancestry and the current run attempt;
+new main commits do not by themselves invalidate ancestral source evidence.
+Missing, unfinished, failed, cancelled or divergent proof cannot borrow an older
+success. Reconciliation launches no candidate tests. Keep the legacy required
+`fast-checks` context until real publisher statuses are verified, then follow
+[the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
+This source status is not full release qualification.

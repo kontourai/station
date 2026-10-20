@@ -1,0 +1,7 @@
+{
+  "revision": "e81e0f058e923ad6eb02f1d5111c038eb6e50ddf",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the one added resource-manifest entry for version-pr-operation tests: actual workflow Bash guard executes through existing bounded/cross-platform runWorkflowShell with deadlines/windowsHide, so it is classified in process-heavy. No instruction/policy/allowlist bypass or broad verification scheduling change.108 composed tests and causal credential/publish bad cases/restoration passed; scripts scope prose still accurately routes deterministic gates, owned processes and true terminal evidence.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

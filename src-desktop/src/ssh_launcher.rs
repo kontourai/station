@@ -835,7 +835,7 @@ mod tests {
         ] {
             assert!(validate_target(value).is_err(), "accepted {value:?}");
         }
-        assert!(validate_target("dev@brian-media.tailnet").is_ok());
+        assert!(validate_target("dev@home-media.tailnet").is_ok());
     }
     #[test]
     fn checkout_sequence_is_byte_exact_and_verifies_head_last() {

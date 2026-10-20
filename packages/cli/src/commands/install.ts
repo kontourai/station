@@ -40,6 +40,29 @@ function resolvePluginSourceForStation(
   return existsSync(localSource) ? localSource : source;
 }
 
+/**
+ * The error a plugin command throws when its Station request never got an
+ * answer. A refused or failed connection is genuinely "not reachable", and
+ * gets the lifecycle-specific wording. A deadline miss is not: Station
+ * accepted the connection and was still working, and a timed-out write may
+ * already have been applied (#369). That error passes through unchanged so
+ * `explainRequestFailure` still sees it and reports a timeout, indeterminate
+ * for a write, instead of a false "not reachable" that invites a blind retry.
+ */
+function stationRequestFailure(
+  error: unknown,
+  apiBase: string,
+  requirement: string,
+): Error {
+  if (error instanceof StationRequestTimeoutError) return error;
+  return new Error(`Station at ${apiBase} is not reachable. ${requirement}`, {
+    cause: error,
+  });
+}
+
+const PLUGIN_LIFECYCLE_REQUIREMENT =
+  'Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.';
+
 function resolvePluginTarget(parsed: ParsedCoreArgs): ResolvedApiBase {
   const target = resolveApiBaseDetailed(parsed);
   configureApiCredential(parsed, target.apiBase);
@@ -63,10 +86,7 @@ async function pluginRequest<T>(
       },
     });
   } catch (error) {
-    throw new Error(
-      `Station at ${apiBase} is not reachable. Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.`,
-      { cause: error },
-    );
+    throw stationRequestFailure(error, apiBase, PLUGIN_LIFECYCLE_REQUIREMENT);
   }
 
   const payload = (await response.json()) as T & {
@@ -135,9 +155,7 @@ async function previewPlugin(
         source: resolvePluginSourceForStation(source, target),
       }),
       // POST to carry the source; the route inspects a manifest and installs
-      // nothing. (Today `pluginRequest` rewraps every transport failure, so no
-      // reporter sees this error's classification — see station#3402's
-      // follow-up. The declaration belongs with the operation regardless.)
+      // nothing, so a timeout here reports as a read, not a write.
       readOnly: true,
     },
     target,
@@ -389,9 +407,10 @@ async function installedPlugins(
     ) {
       throw error;
     }
-    throw new Error(
-      `Station at ${target.apiBase} is not reachable. Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.`,
-      { cause: error },
+    throw stationRequestFailure(
+      error,
+      target.apiBase,
+      PLUGIN_LIFECYCLE_REQUIREMENT,
     );
   }
 }
@@ -513,9 +532,10 @@ export async function installRegistryPlugin(
       },
     );
   } catch (error) {
-    throw new Error(
-      `Station at ${apiBase} is not reachable. Registry plugin installation requires the canonical Station lifecycle.`,
-      { cause: error },
+    throw stationRequestFailure(
+      error,
+      apiBase,
+      'Registry plugin installation requires the canonical Station lifecycle.',
     );
   }
   const result = (await response.json()) as {

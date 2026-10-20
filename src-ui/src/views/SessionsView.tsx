@@ -12,6 +12,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Fragment,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -42,10 +43,12 @@ import type { SessionEvidenceReveal } from '../components/session-detail/Mutable
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
+import { requestTaskShaping } from '../lib/task-shaping';
 import { relativeTime } from '../utils/relativeTime';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
@@ -70,6 +73,7 @@ import {
   activityProjectOptions,
   matchesActivityKind,
   matchesActivityOrigin,
+  matchesActivityProject,
   NO_ACTIVITY_FILTERS,
 } from './activity/activity-list-model';
 import { olderDraftsLabel } from './home/draft-lane';
@@ -82,7 +86,6 @@ import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
 import {
-  matchesProjectFilter,
   partitionSessionLanes,
   SESSION_LANE_LABELS,
   SESSION_LANE_ORDER,
@@ -98,6 +101,7 @@ const SESSION_LIST_REFRESH_MS = 5000;
 
 /** How often relative times and lanes re-derive. */
 const ACTIVITY_CLOCK_MS = 30_000;
+const SETTLED_PAGE_SIZE = 20;
 
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
@@ -284,7 +288,7 @@ export function SessionsView({
   focusHint,
   intentToken,
   onFocusConsumed,
-  onOpenInChat,
+  onContinueInChat,
 }: {
   apiBase: string;
   sessionId?: string;
@@ -301,7 +305,13 @@ export function SessionsView({
   focusHint?: 'evidence';
   intentToken?: number;
   onFocusConsumed?: () => void;
-  onOpenInChat?: (threadId: string) => void;
+  /**
+   * #3552: hands a message typed in an external conversation to Chat, which
+   * continues it (#3454). Activity's pane always passes it. A host without it
+   * continues here, and the confirmed message waits in the continued
+   * session's message box rather than being sent from here.
+   */
+  onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
   // The SSE feed is per-session, so the list itself is kept fresh by polling.
   // The query owns that poll: an interval beside it calling `refetch()` was a
@@ -380,7 +390,7 @@ export function SessionsView({
   // it here can invalidate a valid browser session.
   const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const [isDelegationOpen, setIsDelegationOpen] = useState(false);
-  /** The row a "Delegate subtask…" was chosen from; null for "New task". */
+  /** The row whose Delegate subtask action opened the launcher. */
   const [delegationParent, setDelegationParent] =
     useState<OrchestrationSessionSummary | null>(null);
   const delegationReturnFocusRef = useRef<HTMLElement[]>([]);
@@ -545,14 +555,17 @@ export function SessionsView({
       sessions.filter(
         (s) =>
           matchesActivityKind(s, filters.kind) &&
-          matchesProjectFilter(s, filters.project) &&
+          matchesActivityProject(s, filters.project) &&
           matchesActivityOrigin(s, filters.origin),
       ),
     [sessions, filters],
   );
+  const deferredSearch = useDeferredValue(search);
+  const [settledVisibleCount, setSettledVisibleCount] =
+    useState(SETTLED_PAGE_SIZE);
   const matchesSearch = useCallback(
     (s: OrchestrationSessionSummary) => {
-      const q = search.trim().toLowerCase();
+      const q = deferredSearch.trim().toLowerCase();
       return (
         !q ||
         searchableSessionFields(s, agents).some((field) =>
@@ -560,7 +573,7 @@ export function SessionsView({
         )
       );
     },
-    [search, agents],
+    [deferredSearch, agents],
   );
   const filtered = useMemo(
     () => collectionFiltered.filter(matchesSearch),
@@ -589,13 +602,24 @@ export function SessionsView({
         sessions.filter(
           (s) =>
             matchesActivityKind(s, filters.kind) &&
-            matchesProjectFilter(s, filters.project) &&
+            matchesActivityProject(s, filters.project) &&
             matchesSearch(s),
         ),
         selectedId,
       ),
     [sessions, filters.kind, filters.project, matchesSearch, selectedId],
   );
+  const selectedRunRoot = useMemo(() => {
+    if (!selectedId) return null;
+    const group = groupDelegatedSessionRuns(sessions).find(
+      (entry) =>
+        entry.kind === 'run' &&
+        entry.run.members.some((member) => member.threadId === selectedId),
+    );
+    return group?.kind === 'run' && group.run.parent.threadId !== selectedId
+      ? group.run.parent
+      : null;
+  }, [sessions, selectedId]);
   const clearSearchAndFilters = useCallback(() => {
     setSearch('');
     setFilters(NO_ACTIVITY_FILTERS);
@@ -612,45 +636,76 @@ export function SessionsView({
     [filtered, agents, now],
   );
 
-  const sessionRows = lanes.flatMap((lane) =>
-    lane.sessions.map((session) => ({ session, laneId: lane.id })),
-  );
-  const lanesByThreadId = new Map(
-    sessionRows.map((row) => [row.session.threadId, row.laneId]),
-  );
-  const orderByThreadId = new Map(
-    sessionRows.map((row, index) => [row.session.threadId, index]),
-  );
-  // #765 residue: fold sibling turn-sessions of one conversation into a
-  // single representative row (newest state wins; count carried onto the
-  // row). Runs first, then the fold — a run group is already its own
-  // presentation unit and must not lose members to a conversation fold.
-  const { presentations: foldedPresentations, turnCounts } =
-    foldConversationTurns(
-      groupDelegatedSessionRuns(sessionRows.map((row) => row.session)),
-      { pinnedThreadId: selectedId },
+  const { lanesByThreadId, turnCounts, presentationLanes } = useMemo(() => {
+    const sessionRows = lanes.flatMap((lane) =>
+      lane.sessions.map((session) => ({ session, laneId: lane.id })),
     );
-  const presentationRows = foldedPresentations.map((presentation) => {
-    const members =
-      presentation.kind === 'run'
-        ? presentation.run.members
-        : [presentation.session];
-    // A delegated run renders in the highest-priority lane any member is in:
-    // the run root row stays with its run, and a waiting child pulls the run
-    // up to "Needs you" rather than hiding below it.
-    const laneId = members.reduce<SessionLaneId>((highest, member) => {
-      const candidate = lanesByThreadId.get(member.threadId);
-      return candidate &&
-        SESSION_LANE_ORDER.indexOf(candidate) <
-          SESSION_LANE_ORDER.indexOf(highest)
-        ? candidate
-        : highest;
-    }, lanesByThreadId.get(members[0].threadId)!);
-    const order = Math.min(
-      ...members.map((member) => orderByThreadId.get(member.threadId)!),
+    const lanesByThreadId = new Map(
+      sessionRows.map((row) => [row.session.threadId, row.laneId]),
     );
-    return { presentation, members, laneId, order };
-  });
+    const orderByThreadId = new Map(
+      sessionRows.map((row, index) => [row.session.threadId, index]),
+    );
+    // #765 residue: fold sibling turn-sessions of one conversation into a
+    // single representative row (newest state wins; count carried onto the
+    // row). Runs first, then the fold — a run group is already its own
+    // presentation unit and must not lose members to a conversation fold.
+    const { presentations: foldedPresentations, turnCounts } =
+      foldConversationTurns(
+        groupDelegatedSessionRuns(sessionRows.map((row) => row.session)),
+        { pinnedThreadId: selectedId },
+      );
+    const presentationRows = foldedPresentations.map((presentation) => {
+      const members =
+        presentation.kind === 'run'
+          ? presentation.run.members
+          : [presentation.session];
+      // A delegated run renders in the highest-priority lane any member is in:
+      // the run root row stays with its run, and a waiting child pulls the run
+      // up to "Needs you" rather than hiding below it.
+      const laneId = members.reduce<SessionLaneId>((highest, member) => {
+        const candidate = lanesByThreadId.get(member.threadId);
+        return candidate &&
+          SESSION_LANE_ORDER.indexOf(candidate) <
+            SESSION_LANE_ORDER.indexOf(highest)
+          ? candidate
+          : highest;
+      }, lanesByThreadId.get(members[0].threadId)!);
+      const order = Math.min(
+        ...members.map((member) => orderByThreadId.get(member.threadId)!),
+      );
+      return { presentation, members, laneId, order };
+    });
+
+    const rowsByLane = new Map(
+      SESSION_LANE_ORDER.map((laneId) => [
+        laneId,
+        [] as typeof presentationRows,
+      ]),
+    );
+    for (const row of presentationRows) rowsByLane.get(row.laneId)!.push(row);
+    const presentationLanes = SESSION_LANE_ORDER.map((laneId) => {
+      const rows = rowsByLane
+        .get(laneId)!
+        .sort((left, right) => left.order - right.order);
+      const count =
+        laneId === 'needsYou'
+          ? rows.reduce(
+              (total, row) =>
+                total +
+                row.members.filter(
+                  (member) => lanesByThreadId.get(member.threadId) === laneId,
+                ).length,
+              0,
+            )
+          : rows.length;
+      return { laneId, rows, count };
+    });
+    return { lanesByThreadId, turnCounts, presentationLanes };
+  }, [lanes, selectedId]);
+  const earlierCount =
+    presentationLanes.find((lane) => lane.laneId === 'earlier')?.rows.length ??
+    0;
   // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
   // until opened. They are the Drafts lane's trailing rows (the lane is
   // newest-first), so the group is contiguous as SplitPaneLayout requires.
@@ -696,8 +751,8 @@ export function SessionsView({
    * or attached), and Activity already IS that fallback.
    */
   const chatOpenDetail = (session: OrchestrationSessionSummary) => {
-    // A paired Station's record: its transcript is not local (#847).
-    if (session.delegation?.environmentKind === 'peer') return null;
+    // A paired Station's record (#847) resolves to `navigate` in the policy
+    // via `delegationEnvironmentKind`: its transcript is not local.
     const action = resolveConversationOpenAction({
       threadId: session.threadId,
       conversationId: session.conversationId,
@@ -705,6 +760,7 @@ export function SessionsView({
       controlMode: session.controlMode,
       projectSlug: session.projectSlug,
       model: session.model,
+      delegationEnvironmentKind: session.delegation?.environmentKind,
     });
     return action.kind === 'rehydrate'
       ? focusChatEventDetailForAction(action)
@@ -717,8 +773,8 @@ export function SessionsView({
   ): ActivityRowAction[] => {
     const actions: ActivityRowAction[] = [];
     if (isReadOnlyAttachedSession(s)) {
-      // Attached transcripts keep their existing continuation, which lives
-      // in the detail ("Continue in Station"); "Open" is that detail.
+      // An attached transcript continues from its detail's composer;
+      // "Open" is that detail.
       actions.push({
         id: 'open',
         label: 'Open',
@@ -797,169 +853,212 @@ export function SessionsView({
     return actions;
   };
 
-  const items = SESSION_LANE_ORDER.flatMap((laneId) => {
-    const lanePresentations = presentationRows
-      .filter((row) => row.laneId === laneId)
-      .sort((left, right) => left.order - right.order);
-    if (lanePresentations.length === 0) return [];
-    const olderDraftCount =
-      laneId === 'drafts'
-        ? lanePresentations.filter(
-            (row) =>
-              row.presentation.kind !== 'run' && isOlderDraft(row.members),
-          ).length
-        : 0;
-    // A section's count means members CLASSIFIED into this lane. A mixed-state
-    // run RENDERS in its highest-priority member lane, but its members still
-    // count where their own state belongs: one waiting child in an
-    // otherwise-active run is 'Needs you · 1', never '· 2'. Stable across
-    // expand/collapse because classification, not visibility, is counted.
-    // Turn-sessions folded away by `foldConversationTurns` do NOT count: the
-    // folded conversation is the unit this list shows, the same population
-    // Home and Project Live Work count.
-    //
-    // The history lane is "Earlier", as on Home and in the dock (design round
-    // 2026-10, C2): it used to split into "Earlier today" / "Yesterday" /
-    // "This week" / "Older", a second set of names for one lane. Each row's
-    // own time ("3h", "2d", "Sep 12") already says when.
-    const classifiedIn = (row: (typeof lanePresentations)[number]) =>
-      row.members.filter(
-        (member) => lanesByThreadId.get(member.threadId) === laneId,
-      ).length;
-    const laneCount = lanePresentations.reduce(
-      (total, row) => total + classifiedIn(row),
-      0,
-    );
-    const section = workGroupLabelText(SESSION_LANE_LABELS[laneId], laneCount);
-    const sectionLabel = (
-      <WorkGroupLabel label={SESSION_LANE_LABELS[laneId]} count={laneCount} />
-    );
-    return lanePresentations.flatMap((row) => {
-      const { presentation, members } = row;
-      const subtaskCount = members.length - 1;
-      // A run renders in its highest-priority member's lane — the point is
-      // that a waiting subtask surfaces the run. When that pulls the run
-      // above the lane its ROOT is in, the group label says why, so a root
-      // reading "Completed" under "Needs you" is explained, not contradicted.
-      const pulledUpBy =
-        presentation.kind === 'run' &&
-        lanesByThreadId.get(members[0].threadId) !== laneId
-          ? members
-              .slice(1)
-              .filter(
-                (member) => lanesByThreadId.get(member.threadId) === laneId,
-              ).length
+  const earlierFooter =
+    settledVisibleCount < earlierCount
+      ? {
+          id: 'earlier-pagination',
+          content: (
+            <Button
+              variant="ghost"
+              className="activity-show-more"
+              aria-label="Show more earlier activity"
+              onClick={(event) => {
+                const container =
+                  event.currentTarget.closest('.split-pane__list');
+                const previous = new Set(
+                  container?.querySelectorAll('.split-pane__item'),
+                );
+                const lastPage =
+                  settledVisibleCount + SETTLED_PAGE_SIZE >= earlierCount;
+                const restoreFocus =
+                  document.activeElement === event.currentTarget;
+                setSettledVisibleCount((count) => count + SETTLED_PAGE_SIZE);
+                if (lastPage && restoreFocus)
+                  requestAnimationFrame(() => {
+                    Array.from(
+                      container?.querySelectorAll<HTMLButtonElement>(
+                        '.split-pane__item',
+                      ) ?? [],
+                    )
+                      .find((row) => !previous.has(row))
+                      ?.focus();
+                  });
+              }}
+            >
+              Show more
+            </Button>
+          ),
+        }
+      : undefined;
+
+  const items = presentationLanes.flatMap(
+    ({ laneId, rows: lanePresentations, count: laneCount }) => {
+      if (lanePresentations.length === 0) return [];
+      const olderDraftCount =
+        laneId === 'drafts'
+          ? lanePresentations.filter(
+              (row) =>
+                row.presentation.kind !== 'run' && isOlderDraft(row.members),
+            ).length
           : 0;
-      const runLabel = `${subtaskCount} ${subtaskCount === 1 ? 'subtask' : 'subtasks'}${
-        pulledUpBy > 0
-          ? ` · ${pulledUpBy} ${SESSION_LANE_LABELS[laneId].toLowerCase()}`
-          : ''
-      }`;
-      const group =
-        presentation.kind !== 'run' &&
-        olderDraftCount > 0 &&
-        isOlderDraft(members)
-          ? {
-              id: 'older-drafts',
-              label: olderDraftsLabel(olderDraftCount),
-              collapsedByDefault: true,
-            }
-          : presentation.kind === 'run'
+      // A section's count means members CLASSIFIED into this lane. A mixed-state
+      // run RENDERS in its highest-priority member lane, but its members still
+      // count where their own state belongs: one waiting child in an
+      // otherwise-active run is 'Needs you · 1', never '· 2'. Stable across
+      // expand/collapse because classification, not visibility, is counted.
+      // Turn-sessions folded away by `foldConversationTurns` do NOT count: the
+      // folded conversation is the unit this list shows, the same population
+      // Home and Project Live Work count.
+      //
+      // The history lane is "Earlier", as on Home and in the dock (design round
+      // 2026-10, C2): it used to split into "Earlier today" / "Yesterday" /
+      // "This week" / "Older", a second set of names for one lane. Each row's
+      // own time ("3h", "2d", "Sep 12") already says when.
+      const section = workGroupLabelText(
+        SESSION_LANE_LABELS[laneId],
+        laneCount,
+      );
+      const sectionLabel = (
+        <WorkGroupLabel label={SESSION_LANE_LABELS[laneId]} count={laneCount} />
+      );
+      const visiblePresentations =
+        laneId === 'earlier'
+          ? lanePresentations.filter(
+              (row, index) =>
+                index < settledVisibleCount ||
+                row.members.some((member) => member.threadId === selectedId),
+            )
+          : lanePresentations;
+      return visiblePresentations.flatMap((row) => {
+        const { presentation, members } = row;
+        const subtaskCount = members.length - 1;
+        // A run renders in its highest-priority member's lane — the point is
+        // that a waiting subtask surfaces the run. When that pulls the run
+        // above the lane its ROOT is in, the group label says why, so a root
+        // reading "Completed" under "Needs you" is explained, not contradicted.
+        const pulledUpBy =
+          presentation.kind === 'run' &&
+          lanesByThreadId.get(members[0].threadId) !== laneId
+            ? members
+                .slice(1)
+                .filter(
+                  (member) => lanesByThreadId.get(member.threadId) === laneId,
+                ).length
+            : 0;
+        const runLabel = `${subtaskCount} ${subtaskCount === 1 ? 'subtask' : 'subtasks'}${
+          pulledUpBy > 0
+            ? ` · ${pulledUpBy} ${SESSION_LANE_LABELS[laneId].toLowerCase()}`
+            : ''
+        }`;
+        const group =
+          presentation.kind !== 'run' &&
+          olderDraftCount > 0 &&
+          isOlderDraft(members)
             ? {
-                id: presentation.run.id,
-                label: runLabel,
-                // The board summarises the SAME population the label counts:
-                // the subtasks, not the root row above them.
-                renderSummary: (focusMember: (memberId: string) => void) => (
-                  <RunBoardSummary
-                    members={presentation.run.members.slice(1)}
-                    onFocusMember={focusMember}
-                  />
-                ),
+                id: 'older-drafts',
+                label: olderDraftsLabel(olderDraftCount),
+                collapsedByDefault: true,
               }
-            : undefined;
-      return members.map((s) => {
-        // "Show details & evidence" appears only when both halves of its
-        // promise hold: the session genuinely ENDED — the canonical fold
-        // through the ONE terminal predicate (archive#3227 A6) — and its
-        // detail is the mutable one that renders the evidence region. A
-        // read-only attached transcript has no such region.
-        const showEvidence =
-          !isReadOnlyAttachedSession(s) &&
-          isTerminalLifecycle(orchestrationLifecycleLabel(s));
-        // #2312: the server's Draft fold, read through the same label the
-        // Drafts lane files by. Discarding is the server command, no confirm.
-        const showDiscard = orchestrationLifecycleLabel(s) === 'Draft';
-        const recency = activityRecency(s);
-        return {
-          id: s.threadId,
-          name: sessionTitle(s),
-          subtitle: (
-            <ActivityRowMeta
-              session={s}
-              agents={agents}
-              now={now}
-              foldedTurnCount={turnCounts.get(s.threadId)}
-            />
-          ),
-          // EVERY row carries its section — the layout emits a heading only
-          // when section CHANGES between neighbours.
-          section,
-          sectionLabel,
-          icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
-          openChat: openConversationIds.has(s.threadId),
-          badge: <SessionPullRequestConflictChip session={s} />,
-          ...(referenceable?.apiBase === apiBase &&
-          referenceable.ids.has(s.conversationId ?? s.threadId)
-            ? {
-                onDragStart: (event: React.DragEvent<HTMLElement>) =>
-                  startConversationReferenceDrag(event, {
-                    id: s.conversationId ?? s.threadId,
-                    title: sessionTitle(s),
-                    ...(s.projectSlug ? { projectSlug: s.projectSlug } : {}),
-                    apiBase,
-                  }),
-                onDragEnd: endConversationReferenceDrag,
-              }
-            : {}),
-          ...(group ? { group } : {}),
-          // Interactive controls live in `trailing`, a sibling of the row
-          // button, because a button may not contain interactive content.
-          // `responsive-surface-actions`: the shared action-row primitive,
-          // whose direct controls get the 44px phone touch floor.
-          trailing: (
-            <div className="activity-row__actions responsive-surface-actions">
-              {recency > 0 && (
-                <time
-                  className="activity-row__time"
-                  dateTime={new Date(recency).toISOString()}
-                  aria-hidden="true"
-                >
-                  {relativeTime(recency, now)}
-                </time>
-              )}
-              {showDiscard && (
-                <DiscardDraftButton
-                  threadId={s.threadId}
-                  title={sessionTitle(s)}
-                  className="session-discard-draft"
-                  closeSessionIds={(
-                    threadIdsByConversation.get(
-                      s.conversationId ?? s.threadId,
-                    ) ?? []
-                  ).concat(s.conversationId ? [s.conversationId] : [])}
-                />
-              )}
-              <ActivityRowMenu
-                itemTitle={sessionTitle(s)}
-                actions={rowActions(s, showEvidence)}
+            : presentation.kind === 'run'
+              ? {
+                  id: presentation.run.id,
+                  label: runLabel,
+                  // The board summarises the SAME population the label counts:
+                  // the subtasks, not the root row above them.
+                  renderSummary: (focusMember: (memberId: string) => void) => (
+                    <RunBoardSummary
+                      members={presentation.run.members.slice(1)}
+                      onFocusMember={focusMember}
+                    />
+                  ),
+                }
+              : undefined;
+        return members.map((s) => {
+          // "Show details & evidence" appears only when both halves of its
+          // promise hold: the session genuinely ENDED — the canonical fold
+          // through the ONE terminal predicate (archive#3227 A6) — and its
+          // detail is the mutable one that renders the evidence region. A
+          // read-only attached transcript has no such region.
+          const showEvidence =
+            !isReadOnlyAttachedSession(s) &&
+            isTerminalLifecycle(orchestrationLifecycleLabel(s));
+          // #2312: the server's Draft fold, read through the same label the
+          // Drafts lane files by. Discarding is the server command, no confirm.
+          const showDiscard = orchestrationLifecycleLabel(s) === 'Draft';
+          const recency = activityRecency(s);
+          return {
+            id: s.threadId,
+            name: sessionTitle(s),
+            subtitle: (
+              <ActivityRowMeta
+                session={s}
+                agents={agents}
+                now={now}
+                foldedTurnCount={turnCounts.get(s.threadId)}
               />
-            </div>
-          ),
-        };
+            ),
+            // EVERY row carries its section — the layout emits a heading only
+            // when section CHANGES between neighbours.
+            section,
+            sectionLabel,
+            sectionFooter: laneId === 'earlier' ? earlierFooter : undefined,
+            icon: (
+              <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />
+            ),
+            openChat: openConversationIds.has(s.threadId),
+            badge: <SessionPullRequestConflictChip session={s} />,
+            ...(referenceable?.apiBase === apiBase &&
+            referenceable.ids.has(s.conversationId ?? s.threadId)
+              ? {
+                  onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                    startConversationReferenceDrag(event, {
+                      id: s.conversationId ?? s.threadId,
+                      title: sessionTitle(s),
+                      ...(s.projectSlug ? { projectSlug: s.projectSlug } : {}),
+                      apiBase,
+                    }),
+                  onDragEnd: endConversationReferenceDrag,
+                }
+              : {}),
+            ...(group ? { group } : {}),
+            // Interactive controls live in `trailing`, a sibling of the row
+            // button, because a button may not contain interactive content.
+            // `responsive-surface-actions`: the shared action-row primitive,
+            // whose direct controls get the 44px phone touch floor.
+            trailing: (
+              <div className="activity-row__actions responsive-surface-actions">
+                {recency > 0 && (
+                  <time
+                    className="activity-row__time"
+                    dateTime={new Date(recency).toISOString()}
+                    aria-hidden="true"
+                  >
+                    {relativeTime(recency, now)}
+                  </time>
+                )}
+                {showDiscard && (
+                  <DiscardDraftButton
+                    threadId={s.threadId}
+                    title={sessionTitle(s)}
+                    className="session-discard-draft"
+                    closeSessionIds={(
+                      threadIdsByConversation.get(
+                        s.conversationId ?? s.threadId,
+                      ) ?? []
+                    ).concat(s.conversationId ? [s.conversationId] : [])}
+                  />
+                )}
+                <ActivityRowMenu
+                  itemTitle={sessionTitle(s)}
+                  actions={rowActions(s, showEvidence)}
+                />
+              </div>
+            ),
+          };
+        });
       });
-    });
-  });
+    },
+  );
 
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
   const lookupFailed =
@@ -1002,12 +1101,7 @@ export function SessionsView({
     setIsDelegationOpen(true);
   }
   const openTopLevelDelegation = () =>
-    openDelegation(
-      null,
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null,
-    );
+    requestTaskShaping({ projectSlug: delegationProjectSlug ?? undefined });
 
   const closeDelegation = () => {
     const chain = delegationReturnFocusRef.current;
@@ -1022,11 +1116,11 @@ export function SessionsView({
     ? (delegationParent.delegation?.taskId ?? delegationParent.threadId)
     : undefined;
 
-  const searchActive = search.trim().length > 0;
+  const searchActive = deferredSearch.trim().length > 0;
   const collectionEmpty = sessions.length === 0;
   const resultsEmpty = !collectionEmpty && filtered.length === 0;
   const filteredEmptyTitle = searchActive
-    ? `No activity matches “${search.trim()}”`
+    ? `No activity matches “${deferredSearch.trim()}”`
     : 'No activity matches these filters';
 
   return (
@@ -1089,19 +1183,19 @@ export function SessionsView({
         listEmptyDescription={
           resultsEmpty
             ? 'Try another search, or clear the search and filters.'
-            : 'Start a task with New task, or open a chat. What runs shows up here.'
+            : 'Start a task with New Task, or open a chat. What runs shows up here.'
         }
         /* Always the plain empty state: Activity's filtered-empty copy and
            its reset ("Clear search and filters", in the filter bar just
            above) cover filters as well as the query, which the layout's own
            search-only FilteredEmpty cannot. */
         collectionEmpty
-        /* "New task" is the header's primary action in every placement:
+        /* "New Task" is the header's primary action in every placement:
            framed (Activity as the main page) the layout puts `onAdd` in the
            page header; unframed (a dock pane) the layout would put it in the
            list FOOTER, so it renders at the top of the list instead. */
         {...(framed
-          ? { onAdd: openTopLevelDelegation, addLabel: 'New task' }
+          ? { onAdd: openTopLevelDelegation, addLabel: 'New Task' }
           : {})}
         listIntro={(selectItem) => {
           selectItemRef.current = selectItem;
@@ -1114,7 +1208,7 @@ export function SessionsView({
                     size="sm"
                     onClick={openTopLevelDelegation}
                   >
-                    New task
+                    New Task
                   </Button>
                 </div>
               )}
@@ -1143,34 +1237,55 @@ export function SessionsView({
         firstRunAnchor="activity"
       >
         {selected && (
-          <SessionDetail
-            key={`${apiBase}\0${selected.threadId}`}
-            apiBase={apiBase}
-            session={selected}
-            evidenceReveal={evidenceReveal}
-            onTaskChanged={() => void refetch()}
-            onOpenInChat={
-              onOpenInChat ? () => onOpenInChat(selected.threadId) : undefined
-            }
-            onAdopted={(child, intent) => {
-              adoptedSelectionRef.current = {
-                threadId: child.threadId,
-                intent,
-              };
-              void refetch().finally(() => {
-                if (intent === selectionIntentRef.current) {
-                  setSelection(child.threadId);
-                }
-              });
-            }}
-            getSelectionIntent={() => selectionIntentRef.current}
-          />
+          <>
+            {selectedRunRoot && (
+              <nav
+                aria-label="Session parents"
+                className="session-parent-navigation"
+              >
+                <button
+                  type="button"
+                  onClick={() => selectWithIntent(selectedRunRoot.threadId)}
+                >
+                  Parent run: {sessionTitle(selectedRunRoot)}
+                </button>
+              </nav>
+            )}
+            <SessionDetail
+              key={`${apiBase}\0${selected.threadId}`}
+              apiBase={apiBase}
+              session={selected}
+              evidenceReveal={evidenceReveal}
+              onTaskChanged={() => void refetch()}
+              onContinueInChat={
+                onContinueInChat
+                  ? (draft) => onContinueInChat(selected.threadId, draft)
+                  : undefined
+              }
+              onAdopted={(child, intent, message) => {
+                if (message.trim())
+                  chatDraftsStore.setActivityDraft(
+                    apiBase,
+                    child.threadId,
+                    message,
+                  );
+                adoptedSelectionRef.current = {
+                  threadId: child.threadId,
+                  intent,
+                };
+                void refetch().finally(() => {
+                  if (intent === selectionIntentRef.current) {
+                    setSelection(child.threadId);
+                  }
+                });
+              }}
+              getSelectionIntent={() => selectionIntentRef.current}
+            />
+          </>
         )}
       </SplitPaneLayout>
 
-      {/* "New task" is always a TOP-LEVEL task (no parent), so the launcher
-          never silently files it as someone else's subtask; a subtask comes
-          only from a delegated row's "Delegate subtask…". */}
+      {/* Delegated rows keep their existing subtask launcher. */}
       <DelegationLauncher
         isOpen={isDelegationOpen}
         apiBase={apiBase}

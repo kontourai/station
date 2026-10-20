@@ -1,0 +1,9 @@
+{
+  "revision": "cb4913a44eced5f8d582ae0a25e6b5f8b13c3ace",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"StartMenus.tsx change only routes the Station-scoped Model picker's reset label through modelResetSourceLabel (same text, plus no bare 'Use' for an unknown source). Viewed the capture: the picker is closed and no reset label is visible, so it remains accurate.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Pre-redesign comparison capture; the StartMenus.tsx reset-label change renders nothing in this closed-picker view, so it remains accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

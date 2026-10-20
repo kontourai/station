@@ -1,0 +1,7 @@
+{
+  "revision": "e38107fa7a45f78d9059cd6a9de9f66f3b157e34",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated MCP topic bytes against the changed canonical JsonFileMutationAuthority explanation. Only its telemetry consent sentence and aggregate digest changed; route/service own displayed-revision admission and the publisher retains its unchanged whole-value publication/lock semantics. Generated topics route to canonical sources and establish no deployed, native or store proof.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

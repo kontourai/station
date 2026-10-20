@@ -1,0 +1,7 @@
+{
+  "revision": "3c46e70d711638eff4cb1df697770a832b859d1e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Corrected the runner admission anchor after docs:links:check named the removed heading; the linked section documents the new validated profiles and capacity snapshot limits. No verification policy or runtime behavior changed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

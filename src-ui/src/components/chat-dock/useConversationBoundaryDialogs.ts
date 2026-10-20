@@ -7,6 +7,7 @@ import {
   type EffectiveModelSource,
   isSessionExecutionActive,
 } from '../../utils/execution';
+import type { SelectableModel } from '../../utils/modelCapabilities';
 import { agentRunnability } from '../agent-runnability';
 import {
   readConversationContextBoundaryUiState,
@@ -42,6 +43,7 @@ export function useConversationBoundaryDialogs({
   const [handoffSource, setHandoffSource] = useState<{
     id: string;
     agentSlug: string;
+    executionPreset?: { executionAgentId?: string; modelId?: string };
   } | null>(null);
   const [forkSource, setForkSource] = useState<{
     id: string;
@@ -193,6 +195,21 @@ export function useConversationBoundaryDialogs({
     [activeSession],
   );
 
+  const openExecutionHandoff = useCallback(
+    (model?: SelectableModel) => {
+      if (!activeSession?.conversationId) return;
+      setHandoffSource({
+        id: activeSession.conversationId,
+        agentSlug: activeSession.agentSlug,
+        executionPreset: {
+          executionAgentId: model?.executionAgentId,
+          modelId: model?.id,
+        },
+      });
+    },
+    [activeSession],
+  );
+
   const handoffSession = handoffSource
     ? allSessions.find(
         (session) =>
@@ -208,6 +225,7 @@ export function useConversationBoundaryDialogs({
     handoffSession,
     handoffDisabledReason,
     openConversationHandoff,
+    openExecutionHandoff,
     forkSource,
     setForkSource,
     forkOperation,

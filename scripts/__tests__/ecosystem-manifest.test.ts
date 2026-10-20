@@ -22,6 +22,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { rollingManifestUrl } from '../lib/public-release-locations.mjs';
 import {
   buildPrebuiltArchive,
   type PrebuiltArchive,
@@ -871,6 +872,72 @@ describe('install.sh public manifest verification', () => {
     expect(installedTag(fixture)).toBe('v1.2.4');
   });
 
+  it('refuses a manifest older than a release the install already accepted, even after a rollback (#187)', {
+    timeout: 300_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-accepted-');
+    const markPath = join(
+      fixture.dir,
+      'home',
+      '.station',
+      'installs',
+      'stable',
+      '.station-release-accepted.json',
+    );
+    const release = (version: string) =>
+      signManifest(fixture, version, buildArchive(fixture, version));
+    const v124 = release('1.2.4');
+    const installed = runInstaller(fixture, v124);
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(readFileSync(markPath, 'utf8')).toBe(
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'stable', version: '1.2.4' })}\n`,
+    );
+    // A deliberate rollback is still possible, and does not lower the mark.
+    const rolledBack = runInstaller(fixture, release('1.2.2'), {
+      STATION_VERSION: 'v1.2.2',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(rolledBack.status, rolledBack.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.2');
+    expect(JSON.parse(readFileSync(markPath, 'utf8')).version).toBe('1.2.4');
+
+    // A replayed 1.2.3 is newer than what runs, but older than 1.2.4: refused,
+    // by an install and by the stage-only run the service's update uses.
+    const v123 = release('1.2.3');
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_STAGE_ONLY: '1' },
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.3' },
+    ]) {
+      const refused = runInstaller(fixture, v123, env);
+      expect(refused.stderr).toContain(
+        'refusing Station v1.2.3: this install already accepted the newer signed release v1.2.4, so this manifest is stale or replayed',
+      );
+      expect(refused.status).toBe(1);
+      expect(installedTag(fixture)).toBe('v1.2.2');
+    }
+
+    // A mark that cannot be read refuses too (fail closed), unless explicit.
+    writeFileSync(markPath, 'not json');
+    const unreadable = runInstaller(fixture, v124);
+    expect(unreadable.stderr).toContain(
+      'cannot read the newest release this install accepted',
+    );
+    expect(unreadable.status).toBe(1);
+    const explicit = runInstaller(fixture, v123, {
+      STATION_VERSION: 'v1.2.3',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(explicit.status, explicit.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.3');
+
+    // Control: the accepted release itself still installs without a flag.
+    const forward = runInstaller(fixture, v124);
+    expect(forward.status, forward.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.4');
+  });
+
   it('refuses the same version with different bytes unless explicitly requested', {
     timeout: 180_000,
   }, () => {
@@ -1228,19 +1295,101 @@ describe('install.sh nightly channel (#2675)', () => {
     },
   );
 
-  it('refuses nightly on the authenticated GitHub-release path', {
+  // `STATION_CHANNEL=nightly sh` with no manifest URL installs from the
+  // rolling nightly manifest. The literal pins the published URL; the
+  // derivation pins its owner.
+  const NIGHTLY_ROLLING_MANIFEST_URL =
+    'https://github.com/kontourai/station/releases/download/portable-nightly/station-portable-nightly-manifest.json';
+
+  /**
+   * A curl that answers the rolling nightly manifest URL with `manifestPath`
+   * (logging each such request) and hands every other request, such as the
+   * file:// archive, to the real curl. install.sh is otherwise unchanged.
+   */
+  function serveRollingManifest(fixture: InstallFixture, manifestPath: string) {
+    const realCurl = spawnSync('sh', ['-c', 'command -v curl'], {
+      encoding: 'utf8',
+      windowsHide: true,
+    }).stdout.trim();
+    expect(realCurl).not.toBe('');
+    const requests = join(fixture.dir, 'rolling-manifest-requests.log');
+    writeFileSync(
+      join(fixture.fakeBin, 'curl'),
+      `#!/bin/sh
+for last; do :; done
+if [ "$last" = '${NIGHTLY_ROLLING_MANIFEST_URL}' ]; then
+  printf '%s\\n' "$last" >> '${requests}'
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = -o ]; then exec cp '${manifestPath}' "$2"; fi
+    shift
+  done
+  exit 2
+fi
+exec '${realCurl}' "$@"
+`,
+    );
+    chmodSync(join(fixture.fakeBin, 'curl'), 0o755);
+    return () =>
+      existsSync(requests)
+        ? readFileSync(requests, 'utf8').trim().split('\n')
+        : [];
+  }
+
+  it('installs from the rolling nightly manifest when only the channel is named', {
     timeout: 60_000,
   }, () => {
-    const fixture = makeInstallFixture('station-nightly-gh-path-');
-    const result = runInstaller(fixture, join(fixture.dir, 'unused.json'), {
+    expect(rollingManifestUrl('nightly')).toBe(NIGHTLY_ROLLING_MANIFEST_URL);
+    const fixture = makeInstallFixture('station-nightly-default-');
+    const manifestPath = signManifest(
+      fixture,
+      '0.7.0-nightly.242705',
+      buildArchive(fixture, '0.7.0-nightly.242705'),
+    );
+    const requests = serveRollingManifest(fixture, manifestPath);
+    // Unset: the fixture harness always names a URL, so remove it.
+    const result = runInstaller(fixture, manifestPath, {
       ...noStart,
       STATION_INSTALL_PUBLIC_MANIFEST_URL: '',
-      GH_TOKEN: 'fixture-token',
     });
+    expect(result.status, result.stderr).toBe(0);
+    expect(requests()).toEqual([NIGHTLY_ROLLING_MANIFEST_URL]);
+    expect(installedTag(fixture, 'nightly')).toBe('v0.7.0-nightly.242705');
+    const paths = nightlyPaths(fixture);
+    // An upgrade follows the recorded manifest, so it is the default URL.
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(paths.installRoot, '.station-release-state.json'),
+          'utf8',
+        ),
+      ).manifestUrl,
+    ).toBe(NIGHTLY_ROLLING_MANIFEST_URL);
+  });
+
+  it('still verifies the rolling nightly manifest against the pinned keys', {
+    timeout: 60_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-nightly-default-unpinned-');
+    // Signed by the fixture's key, which no installer pins: without the
+    // test-only key override the default manifest must be refused.
+    const manifestPath = signManifest(
+      fixture,
+      '0.7.0-nightly.242706',
+      buildArchive(fixture, '0.7.0-nightly.242706'),
+    );
+    const requests = serveRollingManifest(fixture, manifestPath);
+    const result = runInstaller(fixture, manifestPath, {
+      ...noStart,
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: '',
+      STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: '',
+      STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '',
+    });
+    expect(requests()).toEqual([NIGHTLY_ROLLING_MANIFEST_URL]);
     expect(result.stderr).toContain(
-      'STATION_CHANNEL=nightly installs only from a signed public manifest',
+      'public ecosystem manifest signature did not verify',
     );
     expect(result.status).toBe(1);
+    expect(existsSync(nightlyPaths(fixture).installRoot)).toBe(false);
   });
 
   it('refuses an exact pin from another ring before downloading', {

@@ -40,7 +40,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
     apiBase: station.apiBase,
     connectionId: 'direct-1',
-    credentialProvider,
+    credentialProvider: { ...credentialProvider },
   }),
 }));
 vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
@@ -57,7 +57,11 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     write = vi.fn();
     dispose = vi.fn();
     focus = vi.fn();
-    onData = vi.fn(() => ({ dispose: vi.fn() }));
+    dataListener: ((data: string) => void) | null = null;
+    onData = vi.fn((listener: (data: string) => void) => {
+      this.dataListener = listener;
+      return { dispose: vi.fn() };
+    });
     onSelectionChange = vi.fn((listener: () => void) => {
       this.selectionListener = listener;
       return { dispose: vi.fn() };
@@ -207,6 +211,93 @@ test('renderer unmount detaches its WebSocket without sending a terminal close c
       type: 'close',
       sessionId: 'project-a:terminal-one',
     }),
+  );
+});
+
+test('routine context updates keep the connected shell while a changed credential reconnects it', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  act(() => navigationStore.setActiveChat('chat-a'));
+  expect(socket.close).not.toHaveBeenCalled();
+  expect(terminal.dispose).not.toHaveBeenCalled();
+  expect(FakeWebSocket.instances).toHaveLength(1);
+
+  credentialProvider.getCredential = () => 'changed-current-credential';
+  act(() => navigationStore.setActiveChat(null));
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+  expect(socket.close).toHaveBeenCalledTimes(1);
+});
+
+test('retains terminal output after a lost connection and reconnects its identity without replaying typed commands', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  act(() => terminal.dataListener?.('echo once\r'));
+  act(() => {
+    socket.readyState = 3;
+    socket.onclose?.({ code: 1006 } as CloseEvent);
+  });
+  expect(screen.getByRole('alert').textContent).toMatch(/connection lost/i);
+  expect(screen.getByRole('application', { name: 'Terminal' })).toBeTruthy();
+  expect(terminal.dispose).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Reconnect terminal' }));
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+  const replacement = FakeWebSocket.instances[1]!;
+  act(() => replacement.onopen?.());
+  expect(replacement.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+    expect.objectContaining({
+      type: 'open',
+      projectSlug: 'project-a',
+      terminalId: 'terminal-one',
+    }),
+  ]);
+  expect(
+    replacement.send.mock.calls.some(
+      ([raw]) => JSON.parse(raw).type === 'data',
+    ),
+  ).toBe(false);
+});
+
+test('ignores data and exit events for any session other than its own', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  const deliver = (message: Record<string, unknown>) =>
+    act(() =>
+      socket.onmessage?.({ data: JSON.stringify(message) } as MessageEvent),
+    );
+
+  deliver({
+    type: 'data',
+    sessionId: 'project-b:terminal-two',
+    data: 'foreign-shell-output',
+  });
+  deliver({
+    type: 'exited',
+    sessionId: 'project-b:terminal-two',
+    exitCode: 0,
+    signal: null,
+  });
+
+  expect(terminal.write).not.toHaveBeenCalledWith('foreign-shell-output');
+  expect(terminal.write).not.toHaveBeenCalledWith(
+    expect.stringContaining('[terminal exited]'),
+  );
+  expect(screen.queryByText('The shell has exited.')).toBeNull();
+
+  // Positive control: the panel's own session still reaches the terminal.
+  deliver({
+    type: 'data',
+    sessionId: 'project-a:terminal-one',
+    data: 'own-shell-output',
+  });
+  expect(terminal.write).toHaveBeenCalledWith('own-shell-output');
+  deliver({
+    type: 'exited',
+    sessionId: 'project-a:terminal-one',
+    exitCode: 0,
+    signal: null,
+  });
+  expect(terminal.write).toHaveBeenCalledWith(
+    expect.stringContaining('[terminal exited]'),
   );
 });
 

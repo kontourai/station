@@ -1,0 +1,7 @@
+{
+  "revision": "402e4335cd784e20678ef5ac11a0849cb168c476",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Flagged because src-server/generated/settings-registry.json was regenerated, adding one entry: people (station scope, section people, route /settings?view=people&highlight=people) for #3557's operator-only People section. The doc describes the URL shape, the GET /api/settings/registry body (the generated file served verbatim), the field meanings and how agents should answer with one control; it lists no individual entries, and operator-only entries (e.g. plugin-visibility) were already present in the registry, so adding people changes no claim.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6ae6c44a12dd2dabfe34abb8153d89d8f59bac5b",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Re-reviewed against the second publish-packages.yml change for #3565: a gate step (Is Monument public?) now precedes the Monument build and smoke, which run only for a publish dispatch with a public package; comments now say pnpm 11.25.0 (changesets 3.x) does its own trusted-publishing exchange and that the preflight's npm 11.5.1 floor no longer guards the actual publisher; the stale 2026-05-20 allowed-action date is corrected to the 2026-09-03 stage-publish default. The guide's channel, qualification and Stable promotion claims, and its note that npm trusted publishing matches the top-level workflow, are unaffected; it does not describe the package-publish step list or the preflight floor.","inputs":["docs/guides/releasing.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

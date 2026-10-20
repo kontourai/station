@@ -24,7 +24,9 @@
 
     "src-server/services/acp/opencode-approval-launch.ts",
 
-    "src-server/services/acp/opencode-approval-verify.ts"
+    "src-server/services/acp/opencode-approval-verify.ts",
+
+    "src-server/services/acp/acp-probe-session.ts"
   ],
 
   "checks": [

@@ -8,7 +8,11 @@ import {
   getOrchestrationSessionEventWindow,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
-import { validateHarnessQuestionAnswers } from '@kontourai/station-shared/harness-questions';
+import { harnessQuestionnaireFromInputRequest } from '@kontourai/station-shared/harness-questions';
+import {
+  harnessAnswersToInputContent,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import {
   readSkillExperienceStartInput,
   sameSkillExperienceIdentity,
@@ -133,12 +137,20 @@ export function RichExperiencePane({
       return unansweredApprovalRequests(
         [],
         events.events.map((row) => row.event),
-      ).filter(
-        (request) =>
-          request.questionnaire &&
-          request.approvalThreadId === invocation.threadId &&
-          !request.questionnaire.questions.some((question) => question.secret),
-      );
+      ).flatMap((request) => {
+        // #3390: the rich view's published protocol still speaks the
+        // pre-#3390 questionnaire shape, so only an engine's own question
+        // that the shape can express is offered, and never a private one.
+        const questionnaire =
+          request.inputRequest?.source.startsWith('harness:') &&
+          request.approvalThreadId === invocation.threadId
+            ? harnessQuestionnaireFromInputRequest(request.inputRequest)
+            : null;
+        return questionnaire &&
+          !questionnaire.questions.some((question) => question.secret)
+          ? [{ ...request, questionnaire }]
+          : [];
+      });
     };
     return {
       read: async () => {
@@ -168,9 +180,11 @@ export function RichExperiencePane({
           throw new Error(
             'This is not a current question that the rich view can answer. Use the canonical conversation controls.',
           );
-        const answers = validateHarnessQuestionAnswers(
-          request.questionnaire,
-          input.answers,
+        // Translated from the rich view's answer shape and checked by the
+        // one input-request validator; the server checks it again.
+        const content = validateInputRequestContent(
+          request.inputRequest!,
+          harnessAnswersToInputContent(request.inputRequest!, input.answers),
         );
         await respondToRequest(
           authority.apiBase,
@@ -183,7 +197,7 @@ export function RichExperiencePane({
               eventId: invocation.eventId,
             },
             decision: 'accept',
-            answers,
+            content,
           },
           { requestScope: authority },
         );

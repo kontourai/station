@@ -50,7 +50,8 @@ disable sign-in, revoke account sessions or create a password-recovery link.
 Confirm the person's identity before sharing that recovery link privately. The
 link expires after 20 minutes and can reset the password once; reset revokes old
 account sessions. These controls do not delete Project membership or device
-grants. A Project administrator does not inherit Station operator authority.
+grants. Disabling an account, or revoking its sessions, also stops every
+personal access token made for it before then (#3586). A Project administrator does not inherit Station operator authority.
 
 The authentication secret and account store live in private SQLite files beneath
 this Station home's `authentication` directory. Restart preserves existing
@@ -108,7 +109,8 @@ and implement idempotent resource closure.
 - `displayName` is presentation only.
 - `sessionCookies` names one to four account cookies. Use names unique to this
   Station authority, including when several Stations share a hostname. Existing
-  Station device-cookie names are reserved. Multiple presented account cookies
+  The `station-device` and `__Host-station-device` names and their hyphenated
+  namespaces are reserved. Multiple presented account cookies
   are a conflict; no credential is selected by precedence.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
@@ -202,6 +204,12 @@ account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
+A verified person can read and patch their own `/api/me/preferences` from an
+account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
+paths. Account preferences are partitioned by person and trusted tenant on this
+Station, and grant no Device or execution authority. See
+[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+
 ### Account-bound collaborator Devices
 
 A collaborator Device uses an explicit second pairing ceremony after account
@@ -228,12 +236,27 @@ An existing unbound personal Device is not silently converted by login. The
 operator must explicitly approve and exchange the account-bound replacement,
 then revoke any older broad grant retained for that client.
 
+A personal access token tied to an account is the one credential that acts
+without an account session (#3586), and only with Station's own local
+accounts. The account-bound Device mints it from `/api/access/tokens` while
+its session is current, or the operator mints it on People. The token is then checked against the account's
+standing instead: it stops when the account is disabled, deleted or signed
+out everywhere after the token was made, and re-enabling the account does
+not revive it. It must be presented alone (an account
+cookie, session continuation or ingress identity beside it is `401
+account_identity_conflict`), and it reaches only the collaborator profile
+below, without the account controls, token management or any Project access
+route. With any other deployment provider, account-tied people cannot hold a
+token (`400 account_bound_person`).
+
 The direct request-access endpoint also accepts `requireAccountBinding: true`
 after sign-in. Station attaches the verified account candidate and makes this
 intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
 Device for that request. Existing ordinary pairing requests remain available.
 
-The collaborator profile admits account controls, membership-filtered Project
+The collaborator profile admits account controls, the person's own personal
+access tokens (`GET`/`POST /api/access/tokens`, `DELETE
+/api/access/tokens/:tokenId`), membership-filtered Project
 catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
 the shared-work list, history, document and publication receipt. Shared work is read-only in this
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
@@ -247,23 +270,62 @@ tell them apart. Only the operator sees the `unshared` review state, and sharing
 and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
-streamed chunk. The audited administration endpoints below are the only
-additional Project mutations admitted here. Unrelated personal configuration,
+streamed chunk. The audited administration endpoints below and the scoped
+[Project agent and tool-library routes](../reference/api.md#project-tool-library)
+are the additional Project mutations admitted here. Admins and Owners may author
+constrained agents and request permitted tool sources; only Owners change
+Project tool policy. Member agent execution remains refused. Unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces remain denied even
 if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
 
+#### Native relay-management admission
+
+The account-bound Device gate admits these exact relay path families only
+through current native Device proof, current account session and matching
+Device/account binding. The shared pure classifier grants no authority:
+
+| Method | Exact path |
+| --- | --- |
+| GET / HEAD | `/api/relay-management` |
+| GET / HEAD | `/api/relay-management/capabilities` |
+| POST | `/api/relay-management/approvals` |
+| POST | `/api/relay-management/approvals/revoke` |
+| POST | `/api/relay-management/invitations` |
+| POST | `/api/relay-management/devices/:enrollmentId/approve` |
+| POST | `/api/relay-management/devices/:enrollmentId/deny` |
+
+The Device decision ID must match the existing 43-character opaque-ID rule.
+Management still requires an explicit current `relay:manage` promotion; the
+capabilities read can return `canManage: false` and confers no authority.
+Credential-only account-bound Devices remain gated. This does not add a legacy
+access grant, admit arbitrary methods or descendants, waive Project IAM, or
+open Agent, terminal or Task share/unshare operations. Both native-proof
+conditions on neutral Device-only observations remain intact; management is
+not a Device-only observation and still requires the account.
+
+The [gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts),
+[exact classifier](../../src-server/security/pairing-route-scopes.ts) and
+[management authority](../../src-server/security/relay-management-authority.ts)
+own these separate checks. This is source admission, not a physical/native
+operator or released Nightly journey receipt.
+
 #### Invited administrators through the API
 
 An accepted Project administrator can read `GET /api/projects/:slug/access`
 with an approved account-bound Device carrying `orchestration:read`. To manage
 members or invitation links, the operator must independently approve
-`orchestration:operate` on that Device through the existing
-`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
-`["orchestration:read", "orchestration:operate"]`; the standard personal-device
-preset includes terminal access and is not the collaborator-management grant.
+`orchestration:operate` or the narrower `relay:manage` on that Device through
+the existing `POST /api/pairing/devices/:deviceId/scope` endpoint. For the closed
+access-management leaves, grant `orchestration:read` plus `relay:manage`
+(**Manage remote access**); presets/defaults exclude it. The standard
+personal-device preset includes terminal access and is not the
+collaborator-management grant. Native management account proofs use a separate
+fixed host operation. Account-bound relay management admits only the exact
+native leaves described below, with current Device/account proof and separate
+`relay:manage`. Neither scope replaces the person's Project role.
 The person remains signed in as their own account throughout this workflow.
 
 The audited POST leaves beneath `/api/projects/:slug/access` are
@@ -366,7 +428,8 @@ app is installed or that a device has been approved.
 `station.application-session/v1`. The SDK implementation is
 `@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
 HttpOnly cookies. A same-origin HTTPS browser can explicitly adopt its current
-`__Host-station-device` cookie and provider account cookie into a read-only alias
+`__Host-station-device-<station-id-hash>` cookie (or legacy
+`__Host-station-device`) and provider account cookie into a read-only alias
 for that same approved Device plus an exact alias-bound continuation. The SDK's
 `ApplicationSessionClient.adoptCookies()` sends them only through the browser's
 same-origin cookie handling; cookie values are never read by JavaScript or

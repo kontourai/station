@@ -1,0 +1,7 @@
+{
+  "revision": "48141e60edaa61152a858faff936428d93992123",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the ownership list naming ChatMessageList and MessageContent: still accurate; the change adds subagent cards after tool-call runs and touches no composer, toast, or approval-preview behavior. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6a1321cf961b8c8e8089129927a269f7c202ff1a",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Only change since the last review: the testing guide link now uses its absolute GitHub URL, because guides/testing.md is not admitted to Pages and the bare link rendered as a dead '#'. Prose claims unchanged and not re-reviewed. Checks: docs:links:check, docs:public:hygiene, Pages build plus check-generated-pages-links.","inputs":["docs/guides/product-law-authoring.md"]}
+  ]
+}

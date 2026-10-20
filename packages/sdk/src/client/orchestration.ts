@@ -37,6 +37,7 @@
  */
 import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
   SteerInputInspectionResult,
@@ -105,6 +106,15 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  /**
+   * #3390: accepted content for a form input request, keyed by field name;
+   * validated server-side against the exact opened event.
+   */
+  content?: InputRequestContent;
+  /**
+   * @deprecated since 0.9.0; retained for compatibility. A pre-#3390 harness
+   * answer; send `content` instead.
+   */
   answers?: HarnessQuestionAnswers;
 }
 

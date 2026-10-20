@@ -24,7 +24,29 @@
 
     "src-ui/src/components/session-detail/useSessionTranscriptScroll.ts",
 
-    "src-ui/src/contexts/chat-drafts-store.ts"
+    "src-ui/src/contexts/chat-drafts-store.ts",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx",
+
+    "src-ui/src/components/project-sidebar/SidebarPopover.tsx",
+
+    "src-ui/src/components/project-sidebar/useProjectSidebarState.ts",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/components/header/Header.css",
+
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "docs/user/personal-boards.md",
+
+    "src-ui/src/__tests__/session-follow-reader.browser.test.tsx"
   ],
 
   "checks": [

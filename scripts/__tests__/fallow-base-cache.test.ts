@@ -6,13 +6,20 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   prepareFallowRun,
   removeAbandonedFallowRuns,
 } from '../lib/fallow-base-cache.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../lib/owned-process.mjs';
 import { runFallowAnalysis } from '../run-fallow-audit.mjs';
 
 /**
@@ -81,7 +88,7 @@ describe('fallow audit base snapshots (#2529)', () => {
           seen.add(entry);
     }, 20);
     try {
-      await runFallowAnalysis(repo, 'audit', join(scratch, 'audit.json'));
+      await runFallowAnalysis(repo, 'audit', join(repo, 'audit.json'));
     } finally {
       clearInterval(watcher);
     }
@@ -92,6 +99,110 @@ describe('fallow audit base snapshots (#2529)', () => {
     expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
     expect(listing(systemTemp)).toEqual([]);
   }, 60_000);
+
+  test('a real analyzer refusal retains its status and structured reason and releases its run directory', async () => {
+    const repo = join(scratch, 'invalid-config');
+    mkdirSync(repo);
+    writeFileSync(
+      join(repo, 'package.json'),
+      '{"name":"invalid-config","type":"module"}\n',
+    );
+    writeFileSync(join(repo, '.fallowrc.json'), '{"entry":');
+    const stationRoot = join(scratch, 'station-root');
+    process.env.STATION_TEMP_ROOT = stationRoot;
+
+    await expect(
+      runFallowAnalysis(repo, 'audit', join(repo, 'refused-audit.json')),
+    ).rejects.toThrow(/status=2[\s\S]*Failed to parse config file/);
+    expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
+  });
+
+  test('a native spawn refusal retains its error code and releases its run directory', async () => {
+    const stationRoot = join(scratch, 'spawn-refused-station');
+    process.env.STATION_TEMP_ROOT = stationRoot;
+    await expect(
+      runFallowAnalysis(
+        join(scratch, 'missing-project'),
+        'health',
+        join(scratch, 'missing-health.json'),
+      ),
+    ).rejects.toThrow(/errorCode=ENOENT/);
+    expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'a real analyzer interruption retains the signal and releases its private run directory',
+    async () => {
+      const repo = join(scratch, 'interrupted-repo');
+      mkdirSync(repo);
+      writeFileSync(
+        join(repo, 'package.json'),
+        '{"name":"interrupted","type":"module"}\n',
+      );
+      const stationRoot = join(scratch, 'interrupted-station');
+      const ownerUrl = pathToFileURL(
+        resolve(import.meta.dirname, '../run-fallow-audit.mjs'),
+      ).href;
+      const script = `
+      import { runFallowAnalysis } from ${JSON.stringify(ownerUrl)};
+      const pending = runFallowAnalysis(${JSON.stringify(repo)}, 'health', ${JSON.stringify(join(scratch, 'interrupted-health.json'))});
+      process.send('ready');
+      try {
+        await pending;
+        process.stdout.write(JSON.stringify({ unexpectedSuccess: true }));
+      } catch (error) {
+        process.stdout.write(JSON.stringify({ error: error.message }));
+      }
+      process.disconnect();
+    `;
+      const execution = executeOwnedCommand(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        undefined,
+        'fallow interruption keeper',
+        {
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+          env: { ...process.env, STATION_TEMP_ROOT: stationRoot },
+        },
+      );
+      const child = execution.child;
+      if (!('on' in child))
+        throw new Error('Native interruption child did not spawn.');
+      let ready = false;
+      child.on('message', (message: unknown) => {
+        if (message !== 'ready') return;
+        ready = true;
+        child.kill('SIGTERM');
+      });
+      const stop = () =>
+        terminateSuiteExecution(execution, {
+          processLabel: 'fallow interruption keeper',
+          terminationGraceMs: 2000,
+          terminationForceMs: 2000,
+          waitForSuiteSettlement,
+        });
+      const capture = captureOwnedProcessOutput(execution, {
+        maxBytes: 16 * 1024,
+      });
+      const timeout = setTimeout(() => void stop(), 10_000);
+      try {
+        const result = await execution.completion;
+        const output = capture.finish();
+        expect(ready).toBe(true);
+        expect(result.status).toBe(0);
+        expect(output.truncated).toBe(false);
+        const diagnostic = JSON.parse(output.stdout.text);
+        expect(diagnostic.error).toMatch(
+          /signal=SIGTERM[\s\S]*interrupted=true[\s\S]*truncated=false/,
+        );
+        expect(listing(join(stationRoot, 'fallow'))).toEqual([]);
+      } finally {
+        clearTimeout(timeout);
+        if (execution.isAlive()) await stop();
+      }
+    },
+  );
 
   test('a run directory is removed when released, even if fallow left files in it', () => {
     process.env.STATION_TEMP_ROOT = join(scratch, 'station-root');

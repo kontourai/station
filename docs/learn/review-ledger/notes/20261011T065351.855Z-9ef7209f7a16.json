@@ -1,0 +1,7 @@
+{
+  "revision": "67d82683286c7dddf288e65470247da177042e5b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the principal_unresolved attachment case: checked against attachment-staging-queue.ts (callerUnresolved set for code principal_unresolved, stage failed), useComposerAttachments.ts (blocked-send line and removalUnblocksSend) and ComposerAttachmentStrip.tsx (chip label, no Retry).","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

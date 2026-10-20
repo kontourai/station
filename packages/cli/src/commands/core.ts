@@ -1166,12 +1166,13 @@ async function runChat(
 ): Promise<void> {
   rejectRetiredExecutionSelectors(parsed);
   const selectedAgent = agentId(requirePositional(parsed, agentIndex, 'agent'));
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200) {
+    throw new Error('--client-turn-id must be at most 200 characters.');
+  }
   const content = await loadTextInput(parsed, agentIndex + 1);
   const sessionFlag = optionalValueFlag(parsed, 'session');
-  const conversationFlag =
-    typeof parsed.flags.conversation === 'string'
-      ? parsed.flags.conversation
-      : undefined;
+  const conversationFlag = optionalValueFlag(parsed, 'conversation');
   if (sessionFlag && conversationFlag && sessionFlag !== conversationFlag) {
     throw new Error(
       '--session and --conversation must identify the same session.',
@@ -1194,6 +1195,7 @@ async function runChat(
     throw new Error('Use --project or --cwd, not both.');
   }
   const onRequest = resolveOnRequestMode(parsed);
+  const environment = executionEnvironment(parsed);
   if (parsed.flags.title !== undefined) {
     throw new Error(
       '--title is not supported by canonical foreground execution yet.',
@@ -1203,7 +1205,7 @@ async function runChat(
   await sendExecutionTargetChat(
     apiBase,
     {
-      environment: executionEnvironment(parsed),
+      environment,
       agent: selectedAgent,
       ...(model || modelOptions
         ? {
@@ -1222,17 +1224,23 @@ async function runChat(
                 cwd: process.cwd(),
               },
             }
-          : {
-              workspace: {
-                kind: 'directory' as const,
-                cwd: cwd ?? process.cwd(),
-              },
-            }
+          : cwd !== undefined || environment.kind === 'current'
+            ? {
+                workspace: {
+                  kind: 'directory' as const,
+                  cwd: cwd ?? process.cwd(),
+                },
+              }
+            : // This machine's folder means nothing on another Station, and
+              // naming one there takes command authority; an explicit --cwd
+              // is still sent.
+              {}
         : {}),
     },
     {
       message: content,
       conversationId: sessionFlag ?? conversationFlag,
+      clientTurnId,
       jsonMode: parsed.flags.json === true,
       onRequest,
     },

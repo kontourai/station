@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#463: updated the failed-observations paragraph: Insights per-agent tokens and monitoring stats cost placeholders are now omitted (insights.ts, monitoring.ts). Re-read the monitoring guide edits it routes to; other findings unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

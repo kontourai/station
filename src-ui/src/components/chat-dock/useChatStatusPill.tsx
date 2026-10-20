@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import { useStationOutlivesApp } from '../../hooks/useStationOutlivesApp';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
@@ -14,6 +15,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
   OPEN_APPROVAL_QUEUE_EVENT,
+  type RevealApprovalDetail,
   revealApprovalCard,
 } from '../status/approvalReveal';
 import type { ChatStatusInput } from '../status/chatStatus';
@@ -50,11 +52,23 @@ export function useChatStatusPill({
   streamStatus,
   turnLive,
   enabled,
+  windowRequests,
+  observationUnavailable = false,
+  resyncPending = false,
+  onResync,
+  onRecoveryFocus,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
+  windowRequests?: readonly RevealApprovalDetail[];
+  observationUnavailable?: boolean;
+  resyncPending?: boolean;
+  /** Re-reads this conversation when its status could not be observed. */
+  onResync?: () => void;
+  /** Focus the recovered composer without changing its write permission. */
+  onRecoveryFocus?: () => boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -66,13 +80,25 @@ export function useChatStatusPill({
   const pendingApprovals = useMemo(
     () =>
       requestsWaitingOnUser({
-        pendingApprovals: activeSession.pendingApprovals,
+        pendingApprovals: [
+          ...new Set([
+            ...(activeSession.pendingApprovals ?? []),
+            ...(windowRequests ?? []).map((request) => request.requestId),
+          ]),
+        ],
         answeredApprovals: activeSession.answeredApprovals,
       }),
-    [activeSession.pendingApprovals, activeSession.answeredApprovals],
+    [
+      activeSession.pendingApprovals,
+      activeSession.answeredApprovals,
+      windowRequests,
+    ],
   );
   const approvalCount = pendingApprovals.length;
+  const stationOutlivesApp = useStationOutlivesApp();
   const input: ChatStatusInput = {
+    observationUnavailable,
+    resyncPending,
     approvalCount,
     stream: streamStatus,
     turnLive,
@@ -84,6 +110,9 @@ export function useChatStatusPill({
     activity: activeSession.conversationActivity,
     activityHint: activeSession.activityHint,
     turnStartedAt: activeSession.openTurnStartedAt,
+    sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
+    stationHasSend: activeSession.pendingSendStationHasIt,
+    stationOutlivesApp,
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);
@@ -104,8 +133,14 @@ export function useChatStatusPill({
       activeSession.conversationActivity?.openTurn?.threadId,
     ],
   );
-  // Approval is the pill's highest priority: any pending one is what it shows.
-  const presentingApproval = enabled && view === 'mounted' && approvalCount > 0;
+  const presentingApproval =
+    enabled &&
+    view === 'mounted' &&
+    approvalCount > 0 &&
+    !observationUnavailable &&
+    streamStatus?.kind !== 'blocked' &&
+    streamStatus?.kind !== 'reconnecting' &&
+    streamStatus?.kind !== 'catching-up';
   useEffect(() => {
     if (!presentingApproval) return;
     return claimApprovalThreads(threadIds);
@@ -118,12 +153,23 @@ export function useChatStatusPill({
   const requestKey = pendingApprovals.join('\u0000');
   const latestRequests = useRef(pendingApprovals);
   latestRequests.current = pendingApprovals;
+  const latestWindowRequests = useRef(windowRequests);
+  latestWindowRequests.current = windowRequests;
+  const latestThreadId = useRef(
+    activeSession.currentSessionId ?? activeSession.id,
+  );
+  latestThreadId.current = activeSession.currentSessionId ?? activeSession.id;
   const onRevealApproval = useCallback(() => {
     const requests = latestRequests.current;
     if (requests.length === 0) return;
     const requestId = requests[next.current % requests.length]!;
     next.current += 1;
-    void revealApprovalCard({ requestId }).then((shown) => {
+    const reference = latestWindowRequests.current?.find(
+      (request) => request.requestId === requestId,
+    );
+    void revealApprovalCard(
+      reference ?? { requestId, threadId: latestThreadId.current },
+    ).then((shown) => {
       if (!shown) window.dispatchEvent(new Event(OPEN_APPROVAL_QUEUE_EVENT));
     });
   }, []);
@@ -137,6 +183,7 @@ export function useChatStatusPill({
     statusInPill: view !== 'unavailable',
     pill: (
       <LazyBoundary
+        key={activeSession.id}
         load={loadChatStatusPillView}
         shareAcrossMounts
         pending={null}
@@ -145,6 +192,8 @@ export function useChatStatusPill({
           input,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
+          onResync,
+          onRecoveryFocus,
           onMounted,
         }}
       />

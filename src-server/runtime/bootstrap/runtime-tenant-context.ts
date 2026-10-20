@@ -18,15 +18,15 @@ import {
   isTrustedInternalApiToken,
 } from '../../utils/internal-api-token.js';
 
-export const HOSTED_TENANT_REGISTRY_FILE_ENV =
-  'STATION_HOSTED_TENANT_REGISTRY_FILE';
+import {
+  HOSTED_TENANT_REGISTRY_FILE_ENV,
+  isHostedTenantExecutionRequired,
+} from './hosted-tenant-mode.js';
 
-/** Whether this process is configured as a hosted tenant-isolated runtime. */
-export function isHostedTenantExecutionRequired(
-  environment: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return environment[HOSTED_TENANT_REGISTRY_FILE_ENV] !== undefined;
-}
+export {
+  HOSTED_TENANT_REGISTRY_FILE_ENV,
+  isHostedTenantExecutionRequired,
+} from './hosted-tenant-mode.js';
 
 const contexts = new WeakMap<Request, TenantRequestContext>();
 const executionContexts = new AsyncLocalStorage<TenantExecutionContext>();

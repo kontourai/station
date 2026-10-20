@@ -1,12 +1,20 @@
 /**
  * @vitest-environment jsdom
  */
+
+import type { UsageInsights } from '@kontourai/station-contracts/insights';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchMonitoringEvents = vi.fn();
+const insightsQuery = vi.hoisted(() => ({
+  data: undefined as UsageInsights | undefined,
+  error: undefined as Error | undefined,
+  refetch: vi.fn(),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   fetchMonitoringEvents: (...args: unknown[]) => fetchMonitoringEvents(...args),
-  useInsightsQuery: () => ({ data: undefined }),
+  useInsightsQuery: () => insightsQuery,
 }));
 
 // jsdom 30.1 implements URL.createObjectURL for its own Blob only, and this
@@ -19,17 +27,113 @@ const originalObjectUrls = {
   revokeObjectURL: URL.revokeObjectURL,
 };
 beforeEach(() => {
+  insightsQuery.data = undefined;
+  insightsQuery.error = undefined;
   Object.assign(URL, { createObjectURL, revokeObjectURL });
   createObjectURL.mockClear();
   revokeObjectURL.mockClear();
 });
 afterEach(() => {
+  cleanup();
   Object.assign(URL, originalObjectUrls);
 });
 
-const { downloadInsightEvents } = await import(
+const { downloadInsightEvents, InsightsDashboard } = await import(
   '../components/monitoring/InsightsDashboard'
 );
+
+describe('Insights scan evidence reaches the actual dashboard', () => {
+  const data = (): UsageInsights => ({
+    toolUsage: {},
+    hourlyActivity: Array(24).fill(0),
+    agentUsage: {},
+    modelUsage: {},
+    totalChats: 12,
+    totalToolCalls: 0,
+    totalErrors: 0,
+    days: 14,
+  });
+
+  test.each(['complete', 'partial', 'unknown', 'legacy'] as const)(
+    'shows %s retained-history scope without a false complete claim',
+    (state) => {
+      insightsQuery.data = {
+        ...data(),
+        ...(state === 'legacy'
+          ? {}
+          : {
+              coverage: {
+                state,
+                scope: 'retained-monitoring',
+                evaluatedAt: '2026-10-10T12:00:00.000Z',
+                issues:
+                  state === 'partial'
+                    ? ['malformed-row']
+                    : state === 'unknown'
+                      ? ['history-missing']
+                      : [],
+              },
+            }),
+      };
+      render(<InsightsDashboard />);
+      if (state === 'unknown') {
+        expect(screen.getByText('Insights history unavailable')).toBeTruthy();
+        expect(screen.queryByText('12')).toBeNull();
+      } else if (state === 'partial') {
+        expect(screen.getByRole('alert').textContent).toContain(
+          'totals are incomplete',
+        );
+        expect(screen.getByText('12')).toBeTruthy();
+      } else if (state === 'legacy') {
+        expect(screen.getByRole('status').textContent).toContain(
+          'does not report scan completeness',
+        );
+      } else {
+        expect(screen.getByRole('status').textContent).toContain(
+          'retained records only',
+        );
+      }
+    },
+  );
+
+  /**
+   * #463: nothing measures per-agent tokens. Older Stations still send the
+   * unmeasured `tokens: 0`, which this row used to print as "0.0k tok" — a
+   * measurement nothing computed. The row shows only what is counted.
+   */
+  test.each([
+    ['a current Station', { chats: 4 }],
+    ['an older Station that sends tokens: 0', { chats: 4, tokens: 0 }],
+  ] as const)(
+    'shows an agent row from %s with chats and no token figure',
+    (_label, usage) => {
+      insightsQuery.data = {
+        ...data(),
+        agentUsage: { coder: usage as UsageInsights['agentUsage'][string] },
+      };
+      render(<InsightsDashboard />);
+      const row = screen.getByRole('button', { name: /coder/ });
+      expect(row.textContent).toContain('4 chats');
+      expect(row.textContent).not.toMatch(/tok/);
+    },
+  );
+
+  test('failed refetch hides cached complete totals', () => {
+    insightsQuery.data = {
+      ...data(),
+      coverage: {
+        state: 'complete',
+        scope: 'retained-monitoring',
+        evaluatedAt: '2026-10-10T12:00:00.000Z',
+        issues: [],
+      },
+    };
+    insightsQuery.error = new Error('history is unreadable');
+    render(<InsightsDashboard />);
+    expect(screen.getByText('Could not refresh insights')).toBeTruthy();
+    expect(screen.queryByText('12')).toBeNull();
+  });
+});
 
 describe('the export refuses to misrepresent itself (station#3075)', () => {
   test('sends tools=true, so the file matches the name it is given', async () => {

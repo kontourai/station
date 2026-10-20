@@ -252,6 +252,7 @@ describe('portable server archive workflow', () => {
     jobs: {
       archive: {
         strategy: {
+          'max-parallel': number;
           matrix: {
             include: Array<{ runner: string; target: string; format: string }>;
           };
@@ -266,6 +267,7 @@ describe('portable server archive workflow', () => {
   const workflow = load(source) as Workflow;
 
   it('builds and smokes every supported target in its archive format', () => {
+    expect(workflow.jobs.archive.strategy['max-parallel']).toBe(2);
     const include = workflow.jobs.archive.strategy.matrix.include;
     expect(include.map((entry) => entry.target).sort()).toEqual(
       SUPPORTED_TARGETS,
@@ -282,8 +284,6 @@ describe('portable server archive workflow', () => {
   it('stays a read-only packaging proof that publishes nothing', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(workflow.on).sort()).toEqual([
-      'pull_request_target',
-      'push',
       'workflow_call',
       'workflow_dispatch',
     ]);
@@ -301,7 +301,6 @@ describe('portable server archive workflow', () => {
         }),
       },
     });
-    expect(workflow.on.push).toMatchObject({ branches: ['main'] });
     expect(source).not.toMatch(
       /secrets\.|id-token|attest-build-provenance|gh release/,
     );
@@ -333,7 +332,10 @@ describe('portable archive workflow paths filter', () => {
       'utf8',
     ),
   ) as { on: Record<string, { paths?: string[] }> };
-  const paths = workflow.on.pull_request_target?.paths ?? [];
+  const registry = JSON.parse(
+    readFileSync(join(repoRoot, 'scripts/pr-delivery-paths.json'), 'utf8'),
+  ) as { portable: string[] };
+  const paths = registry.portable;
   const covered = (file: string) =>
     paths.some((pattern) =>
       pattern.endsWith('/**')
@@ -413,13 +415,16 @@ describe('portable archive workflow paths filter', () => {
       'pnpm-lock.yaml',
       'pnpm-workspace.yaml',
       'schemas/app.schema.json',
+      'examples/registry/default.json',
+      'examples/matt-pocock-engineering/plugin.json',
       ...STATION_DOCS_INPUT_PATHS,
     ];
     expect(required.filter((file) => !covered(file))).toEqual([]);
   });
 
-  it('runs on main for exactly the paths it runs on for pull requests', () => {
-    expect(workflow.on.push?.paths).toEqual(paths);
+  it('delegates candidate scheduling to the shared delivery callers', () => {
+    expect(workflow.on.push).toBeUndefined();
+    expect(workflow.on.pull_request_target).toBeUndefined();
   });
 });
 

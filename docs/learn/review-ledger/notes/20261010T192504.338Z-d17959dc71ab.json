@@ -1,0 +1,7 @@
+{
+  "revision": "dee48303001a65d09c9745867e3ae4d34515b352",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Follow-up to this branch's review: tightened two corrected claims after an independent delta review. The Model chip opens the Model picker, titled Engine & model only when it offers alternative engines (SessionModelPicker.tsx:303-307). Bound paired-Station answers need the viewer's access and use the Answer on the paired Station box's Send answer button (attention.ts peerRequestDecision, AttentionCard.tsx:680-695). Checks: docs:links:check, docs:public:hygiene. Limits as in the prior note: code reading only.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the merge-queue passages (UI bundle ceiling on the candidate, composition freshness): still accurate; the change adds a conditional full regression to the Merge-queue regression check for deferred plans and an optional plan field, neither of which affects bundle budgets, freshness or the code-health route.","inputs":["docs/guides/code-quality.md",".github/workflows/merge-queue-regression.yml","docs/guides/testing.md","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

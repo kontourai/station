@@ -1,0 +1,7 @@
+{
+  "revision": "6a4dda58c38361eab17ddf719ceeba7cd3dad9a2",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Review-round delta to ChatMessageList.tsx: a visually hidden status span mounted beside the turn rail and an announcement on Previous/Next. No region, surface, pane or dock placement behavior changes; no prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

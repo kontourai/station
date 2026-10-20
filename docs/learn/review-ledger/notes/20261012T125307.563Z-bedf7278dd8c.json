@@ -1,0 +1,9 @@
+{
+  "revision": "ba7392ce57bd0ec48777866965b892a74c872d47",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3606: sqlite-turn-dedup-persistence.ts only drops the export keyword from TURN_DEDUP_TOMBSTONE_RETENTION_MS (now module-private; the code-health gate refused an export with no caller). Value and behaviour unchanged; the module map still names the constant as the source of the 30-day chat: bound. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3606: sqlite-turn-dedup-persistence.ts only drops the export keyword from TURN_DEDUP_TOMBSTONE_RETENTION_MS (now module-private; the code-health gate refused an export with no caller). Value and behaviour unchanged; the module map still names the constant as the source of the 30-day chat: bound. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]}
+  ]
+}

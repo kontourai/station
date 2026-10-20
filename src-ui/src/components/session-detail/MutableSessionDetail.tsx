@@ -3,6 +3,7 @@ import {
   type OrchestrationSessionSummary,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
+import { boundedDisplayText } from '@kontourai/station-shared/display-text';
 import {
   type ReactNode,
   useCallback,
@@ -20,6 +21,7 @@ import {
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
+import { requestTaskShaping } from '../../lib/task-shaping';
 import {
   clientOriginDetail,
   clientOriginSummary,
@@ -53,6 +55,9 @@ import {
   sessionChatOpenTarget,
 } from './sessionDetailPresentation';
 import './SessionDetail.css';
+
+/** A pending request's title is engine text; Codex's is the whole command. */
+const MAX_PENDING_REQUEST_TITLE_LENGTH = 200;
 
 const loadConversationPullRequestLinks = () =>
   import('../pull-requests/ConversationPullRequestLinks').then((module) => ({
@@ -332,6 +337,24 @@ export function MutableSessionDetail({
   const delegationProjectSlug =
     session.delegation?.projectSlug ?? session.projectSlug;
   const menuActions = [
+    ...(chatOpenTarget
+      ? [
+          {
+            key: 'turn-into-task',
+            label: 'Turn into Task',
+            onSelect: () =>
+              requestTaskShaping({
+                projectSlug: session.projectSlug,
+                source: {
+                  sessionId: session.threadId,
+                  conversationId: session.conversationId,
+                  agentSlug: session.assignedAgentSlug,
+                  agentName: agentLabel,
+                },
+              }),
+          },
+        ]
+      : []),
     { key: 'copy-id', label: 'Copy session ID', onSelect: copySessionId },
     ...(isDelegated && !isPeerRecord
       ? [
@@ -379,7 +402,14 @@ export function MutableSessionDetail({
               <span className="sessions-detail__request-label">
                 {pendingRequestPresentation.label}
               </span>
-              <strong>{pendingRequest.title}</strong>
+              {/* #3382: an engine-supplied title (Codex's is the command)
+                  beside Approve/Decline, so in display form. */}
+              <strong>
+                {boundedDisplayText(
+                  pendingRequest.title,
+                  MAX_PENDING_REQUEST_TITLE_LENGTH,
+                )}
+              </strong>
             </div>
             {/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and

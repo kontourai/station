@@ -1,0 +1,47 @@
+{
+  "revision": "31341ea5d783e3e2c2a46c454106e7e1e366937f",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed required readiness/hosted aggregate claims: no evidence family removed; zero-shard path independently checks empty exact-head plan; source statics still runs required readiness.","inputs":[".veritas/README.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"AGENTS.md","note":"Updated documented live queue setting to one candidate build and up to three merges; REST comparison preserved all other rules and bypass settings. Focused/local/hosted ownership unchanged.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Root imports AGENTS; new queue concurrency prose does not alter governance block or startup routing.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed same-run authoritative plan, independent empty-plan validation, manual integration diagnostic, separate live PR-title context, metadata job naming, source-only browser build budget, sequenced qualification and health owner migration. Reviewed delegate negative controls and combined tests; hosted rollout/performance remain unverified.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/ci-health.test.ts","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/actionlint-gate.mjs","scripts/ci-health.mjs","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed unchanged complete qualification/source-age/publication authority, same-run queue plan fallback, ancillary failure continuation, four/seven per-invocation runner envelopes and conservative same-run occupancy. Independent title check requires controlled ruleset activation; no global reservation or new critical-path measurement claimed.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed new live title check versus local commit hooks; source checks remain broad required integration and metadata cannot replace their result. Hosted plan/shard format and optional-local diagnosis distinction preserved.","inputs":["docs/guides/development.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed hook/source-check ownership and zero-to-four shard explanation. Candidate UI bundle ceiling remains enforced by fresh required browser build; no source proof removed. Metadata-only edits run independent title validation.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/merge-queue-regression.yml","AGENTS.md","docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed workflow token boundaries: only exact trusted-base title job receives read-only pull-request token; candidate jobs retain read-only contents and no exposed token. Shared queue planning uses same-run local plan, not privileged cross-run artifacts. Security/advisory/dependency coverage unchanged.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed runner guards and workflow routing delta. All new/reorganized jobs remain hosted; existing private label/lease restrictions unchanged. Per-invocation qualification caps do not claim organization-wide reservation.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed workflow/governance source dependency delta: delegation attempt identity and ownership assertions unchanged; only CI scheduling/plan and metadata topology modified.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed workflow/governance source dependency delta: home-transfer controller authority and transfer tests remain unchanged; no transfer check or custody rule removed.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed workflow-governance delta: product-law authoring/observation contracts and evidence ownership unchanged; required source checks persist across metadata edits.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed hosting/tooling layout claims against moved integration ownership: paths remain present, old merge integration workflow is manual diagnostic, automatic queue checks now in ci.yml.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed candidate execution/credential governance changes: work-board authorization contracts untouched; title check executes trusted base code with read-only PR API scope.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed workflow/governance source changes: workspace package boundaries, builds and resolution unchanged; shared planner removes duplicate installation, not required package tests.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed statics performance-smoke wiring remains required on source events and queue candidates; hardware-reference workflow unchanged. Metadata skip creates no performance evidence claim.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed fresh isolated browser startup builds ordinary candidate UI with enforced budget; standalone duplicate build removed. Worker count, zero retries, deadline and selected journeys unchanged. Empty-plan admission does not skip statics/browser smoke.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed canonical testing references after scheduling changes. Focused proof, resource classification, causal failures and code-health disposition remain required.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed development/testing references: source-focused and mounted runtime evidence requirements unchanged by hosted scheduling.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing reference changes: UI authority and mounted verification remain required; metadata-only CI does not claim UI evidence.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed fixture/resource/deferred-selection guidance against shared-plan and empty-shard contracts: unknown or failed plans still require full regression; no skipped execution fabricated.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

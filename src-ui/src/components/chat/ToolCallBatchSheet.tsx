@@ -9,6 +9,7 @@ import './chat.css';
 export interface ToolCallBatchSheetProps<P extends ToolCallLike> {
   group: ToolCallGroup<P>;
   renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
+  renderInterlude?: (part: P, index: number) => ReactNode;
   titleId: string;
   onClose: () => void;
 }
@@ -25,9 +26,21 @@ export interface ToolCallBatchSheetProps<P extends ToolCallLike> {
 export function ToolCallBatchSheet<P extends ToolCallLike>({
   group,
   renderCall,
+  renderInterlude,
   titleId,
   onClose,
 }: ToolCallBatchSheetProps<P>) {
+  // A folded turn's narration sits between the calls it was written between.
+  const rows = [
+    ...group.calls.map((call) => ({ kind: 'call' as const, call })),
+    ...(renderInterlude
+      ? group.interludes.map((note) => ({ kind: 'note' as const, note }))
+      : []),
+  ].sort(
+    (a, b) =>
+      (a.kind === 'call' ? a.call.index : a.note.index) -
+      (b.kind === 'call' ? b.call.index : b.note.index),
+  );
   return (
     <ResponsiveDialogSurface
       layer="dialog"
@@ -47,15 +60,26 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
         />
       </div>
       <div className="tool-call-batch-sheet__list">
-        {group.calls.map((call) => (
-          <div
-            key={call.part.toolCallId ?? `tool-call-row:${call.index}`}
-            className="tool-call-batch-sheet__row"
-          >
-            {/* An explicit disclosure overrides the inline visibility preference. */}
-            {renderCall(call.part, call.index, true)}
-          </div>
-        ))}
+        {rows.map((row) =>
+          row.kind === 'note' ? (
+            <div
+              key={`tool-call-note:${row.note.index}`}
+              className="tool-call-batch-sheet__note"
+            >
+              {renderInterlude?.(row.note.part, row.note.index)}
+            </div>
+          ) : (
+            <div
+              key={
+                row.call.part.toolCallId ?? `tool-call-row:${row.call.index}`
+              }
+              className="tool-call-batch-sheet__row"
+            >
+              {/* An explicit disclosure overrides the inline visibility preference. */}
+              {renderCall(row.call.part, row.call.index, true)}
+            </div>
+          ),
+        )}
       </div>
     </ResponsiveDialogSurface>
   );

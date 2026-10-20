@@ -31,6 +31,57 @@ describe('device-settings-store', () => {
     vi.resetModules();
   });
 
+  test('account values never leak to device storage, and retirement restores this device', async () => {
+    const { deviceSettingsStore: store } = await freshStore();
+    store.set('theme', 'dark');
+    store.set('chatDockWidth', 480);
+    const before = localStorage.getItem(ENVELOPE_KEY);
+    const write = vi.fn();
+    const detach = store.bindAccountPreferences(
+      { theme: 'light', chatShowReasoning: true },
+      write,
+    );
+    expect(store.get('theme')).toBe('light');
+    expect(store.get('chatDockWidth')).toBe(480);
+    store.set('theme', 'dark');
+    expect(write).toHaveBeenLastCalledWith({ theme: 'dark' });
+    expect(localStorage.getItem(ENVELOPE_KEY)).toBe(before);
+    store.set('chatDockWidth', 510);
+    store.reset('chatShowReasoning');
+    expect(write).toHaveBeenLastCalledWith({ chatShowReasoning: null });
+    detach();
+    expect(store.get('theme')).toBe('dark');
+    expect(store.get('chatDockWidth')).toBe(510);
+    const retireOther = store.bindAccountPreferences(
+      { theme: 'light' },
+      vi.fn(),
+    );
+    detach();
+    expect(store.get('theme')).toBe('light');
+    retireOther();
+  });
+
+  test('an empty account uses account defaults, preserving legacy preferences for explicit import', async () => {
+    const { deviceSettingsStore: store } = await freshStore();
+    store.set('theme', 'light');
+    store.set('chatFontSize', 22);
+    store.set('featureSettings', {
+      ...store.get('featureSettings'),
+      smoothReveal: true,
+      pushNotificationsEnabled: true,
+    });
+    const detach = store.bindAccountPreferences({}, vi.fn());
+    expect(store.get('chatFontSize')).toBeNull();
+    expect(store.get('featureSettings').smoothReveal).toBeUndefined();
+    expect(store.get('featureSettings').pushNotificationsEnabled).toBe(true);
+    expect(store.getEnvelope().values).toMatchObject({
+      theme: 'light',
+      chatFontSize: 22,
+    });
+    detach();
+    expect(store.get('chatFontSize')).toBe(22);
+  });
+
   describe('one-time prior-setting migration, one test per prior key', () => {
     test('theme', async () => {
       localStorage.setItem('theme', 'light');

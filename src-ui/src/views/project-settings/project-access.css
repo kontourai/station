@@ -1,0 +1,46 @@
+.project-access__actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.project-access__actions label:not(.cb) {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.project-access__actions select {
+  min-height: 44px;
+  max-width: 100%;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--k-space-2);
+  font: inherit;
+}
+
+/* A member's controls (a labelled role picker and up to two buttons) are
+   wider than a People row's one picker, so the line wraps them beneath the
+   name rather than squeezing the name away. */
+.project-access__member-row .person-row__header {
+  flex-wrap: wrap;
+  /* The inset moves from the name to the line, so wrapped controls align
+     with the name instead of touching the list's border. */
+  padding: var(--k-space-1) var(--k-space-3) var(--k-space-2);
+}
+.project-access__member-row .person-row__static {
+  padding-left: 0;
+}
+
+.project-access__member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+.project-access__member p {
+  margin-block: var(--k-space-1);
+}

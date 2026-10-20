@@ -1,0 +1,7 @@
+{
+  "revision": "63571acc7e7c9584da81b809b7fe4721b4ddc0ca",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped source review of proof-repo-guardrails and its executable negative-control suite: MetricsPanel was deleted by landed3500; current MonitoringView owns SDK useOrchestrationSessionsQuery for session diagnostics. The proof now requires that live query and refuses raw fetch on that owner. Missing-source verdicts remain fail-closed. Baseline15cases produced12PASS3FAIL on retired-file reads; repaired16cases PASS including new actual-script query-replacement negative control and unmutated positive verdict. No proof baseline or exception changed. Existing test-effectiveness, scope-honesty and ordinary-PR/canonical-release guidance remains accurate; these source checks are structural, not runtime/native/provider completion.","inputs":["docs/guides/testing.md","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

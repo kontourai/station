@@ -10,15 +10,25 @@
   "limits": "Direction and source implementation; no publication or live provider proof.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
-    "packages/sdk/package.json",
-
     "packages/sdk/src/__tests__/browser-entry-bundles.test.ts",
 
     "packages/sdk/src/agent/index.ts",
 
     "packages/shared/src/build.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/files",
+
+    "packages/sdk/package.json#/main",
+
+    "packages/sdk/package.json#/types",
+
+    "packages/sdk/package.json#/peerDependencies"
   ],
 
   "checks": [

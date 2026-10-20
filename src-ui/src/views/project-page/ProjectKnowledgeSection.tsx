@@ -22,6 +22,7 @@ import { ProjectKnowledgeDocGroup } from './ProjectKnowledgeDocGroup';
 import { ProjectKnowledgeNamespaceConfig } from './ProjectKnowledgeNamespaceConfig';
 import { ProjectKnowledgeRulesEditor } from './ProjectKnowledgeRulesEditor';
 import { ProjectKnowledgeScanModal } from './ProjectKnowledgeScanModal';
+import { ProjectKnowledgeStores } from './ProjectKnowledgeStores';
 import { ProjectKnowledgeViewerModal } from './ProjectKnowledgeViewerModal';
 import type {
   DocMeta,
@@ -240,6 +241,8 @@ export function ProjectKnowledgeSection({
           </div>
         )}
       </div>
+
+      <ProjectKnowledgeStores slug={slug} />
 
       {docsError && (
         <ErrorState

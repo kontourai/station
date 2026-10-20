@@ -11,6 +11,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { TelemetryDestinationGrants } from './TelemetryDestinationGrants';
 
 type Backend = 'env' | 'keychain' | 'op';
 type Form = {
@@ -169,8 +170,8 @@ export function SecretBindingsSection() {
         </summary>
         <div className="editor__expandable-content">
           <p className="agent-editor__section-desc">
-            Operator-owned MCP references. Secret material never enters this
-            editor.
+            Operator-owned references for tool connections and telemetry. Secret
+            material never enters this editor.
           </p>
           <form onSubmit={submit}>
             <div className="editor-field">
@@ -341,12 +342,13 @@ export function SecretBindingsSection() {
               ))}
             </ul>
           )}
+          <TelemetryDestinationGrants />
         </div>
       </details>
       <ConfirmModal
         isOpen={revokeTarget !== null}
         title="Revoke secret binding"
-        message={`Revoke "${revokeTarget?.name ?? ''}"? Existing MCP consumers will no longer be able to establish this binding.`}
+        message={`Revoke "${revokeTarget?.name ?? ''}"? Existing MCP consumers, ACP providers and telemetry destinations will no longer be able to use this binding.`}
         confirmLabel="Revoke binding"
         variant="danger"
         role="alertdialog"

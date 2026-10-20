@@ -1,0 +1,7 @@
+{
+  "revision": "ca1b6aa38f4facc08f8d155553a245117d55b1eb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed ca1b6aa38f bounded gallery fixture repair. tests/screenshots.spec.ts now hides only the completed Profile Updated timestamp matching currentspanmarkup; Update time unavailable, Station usage, rebuild controls and failures stay visible, with visibility:hidden preserving geometry. Guide test-effectiveness/runtime versus structural evidence rules and hosted renderer authority remain accurate. E2Etypecheck,46 comparator tests and realDOM selector check passed; independent source review found no issue. No imagebaseline updated; new hostedProfile capture and independent exactcomparison remain pending. Shared dock/Home divergence remains owned3342 and is not approved by this review.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -828,7 +828,11 @@ describe('learning atlas', () => {
     expect(() => assertDocumentationFresh(result)).not.toThrow();
     expect(result.reviews.size).toBe(ledger.records.length);
     expect(result.reviews.size).toBeGreaterThan(0);
-  });
+    // On a change that advances coverageBaseline, the scoped check proves the
+    // advance by running strict freshness in a temporary worktree at the new
+    // baseline (`baselineAdvanceProblem`): a full checkout plus a strict run,
+    // about 30 s on an idle host and several times that under load.
+  }, 240_000);
 
   it('invalidates review status when either the document or its code changes', async () => {
     const digest = (text: string) =>

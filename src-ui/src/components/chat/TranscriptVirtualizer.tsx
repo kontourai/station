@@ -1,4 +1,8 @@
-import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  elementScroll,
+  useVirtualizer,
+  type Virtualizer,
+} from '@tanstack/react-virtual';
 import {
   type ReactNode,
   type RefObject,
@@ -8,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { markTranscriptPhase, traceKey } from './transcriptLayoutTrace';
 
 interface VirtualTranscriptRow {
   readonly id: string;
@@ -18,6 +23,7 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   readonly rows: readonly Row[];
   readonly scrollElement: RefObject<HTMLElement | null>;
   readonly renderRow: (row: Row) => ReactNode;
+  readonly onProgrammaticScroll?: (element: HTMLElement) => void;
   /** The surface has elected to keep the transcript at its newest row. */
   readonly followTail?: boolean;
   /**
@@ -33,6 +39,14 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   /** Owner-confirmed reader row and viewport offset to restore. */
   readonly restoreAnchor?: { key: string; offset: number };
   readonly restoreAnchorVersion?: number;
+  /**
+   * Read once, at mount: the reader's row and viewport offset when this
+   * virtualizer takes over a transcript the reader is already in (the
+   * surface crossing into virtualization as earlier history loads). Without
+   * it the first range starts at offset 0, and attaching the scroll element
+   * scrolled the reader to the top of the history.
+   */
+  readonly initialAnchor?: { key: string; offset: number } | null;
 }
 
 const ESTIMATED_ROW_HEIGHT: Record<string, number> = {
@@ -40,6 +54,18 @@ const ESTIMATED_ROW_HEIGHT: Record<string, number> = {
   'message:assistant': 176,
   'message:system': 64,
 };
+
+function estimatedRowHeight(row: VirtualTranscriptRow | undefined) {
+  return (row && ESTIMATED_ROW_HEIGHT[row.kind]) ?? 96;
+}
+
+/** TanStack's own pre-measurement start for `index`: the sum of estimates. */
+function estimatedStart(rows: readonly VirtualTranscriptRow[], index: number) {
+  let start = 0;
+  for (let position = 0; position < index; position += 1)
+    start += estimatedRowHeight(rows[position]);
+  return start;
+}
 
 /**
  * Station's replaceable DOM virtualizer boundary. The scroll container stays
@@ -50,16 +76,38 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   rows,
   scrollElement,
   renderRow,
+  onProgrammaticScroll,
   followTail = false,
   followTick,
   anchorVersion = 0,
   revealRowId,
   restoreAnchor,
   restoreAnchorVersion,
+  initialAnchor,
 }: TranscriptVirtualizerProps<Row>) {
   const [scrollReady, setScrollReady] = useState(false);
+  // The handed-over reader row, resolved against the rows this mount sees.
+  const [mountAnchor] = useState(() => {
+    if (!initialAnchor) return undefined;
+    const index = rows.findIndex((row) => row.id === initialAnchor.key);
+    return index < 0
+      ? undefined
+      : { id: initialAnchor.key, index, offset: initialAnchor.offset };
+  });
   const spacerRef = useRef<HTMLDivElement>(null);
-  const [scrollMargin, setScrollMargin] = useState(0);
+  // Mounting under an existing transcript, the rows it replaces still sit
+  // where the spacer will: start from their offset, so the first range is
+  // positioned where the effect below will confirm it.
+  const [scrollMargin, setScrollMargin] = useState(() => {
+    const container = scrollElement.current;
+    const firstRow = container?.querySelector('[data-chat-message-key]');
+    if (!container || !firstRow) return 0;
+    return (
+      firstRow.getBoundingClientRect().top -
+      container.getBoundingClientRect().top +
+      container.scrollTop
+    );
+  });
   // The transcript can contain history controls before the virtual rows.
   // TanStack offsets include that prefix; row transforms remain spacer-relative.
   useLayoutEffect(() => {
@@ -77,36 +125,114 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   const virtualAnchorRef = useRef<
     { id: string; index: number; offset: number } | undefined
   >(undefined);
+  // A handed-over anchor is restored like an owner's restore request (below)
+  // and stands until the reader moves: the next anchor version.
+  const [handoff, setHandoff] = useState(
+    mountAnchor
+      ? { key: mountAnchor.id, offset: mountAnchor.offset }
+      : undefined,
+  );
+  const mountAnchorVersionRef = useRef(anchorVersion);
+  useLayoutEffect(() => {
+    if (handoff && anchorVersion !== mountAnchorVersionRef.current)
+      setHandoff(undefined);
+  }, [anchorVersion, handoff]);
+  // Attaching the scroll element scrolls it to this offset (TanStack reads no
+  // position before its first scroll event), so it must name where the
+  // transcript already is: the handed-over row, the tail being followed, or
+  // the element's own position. Evaluated once, on the first range.
+  const initialOffset = () => {
+    const element = scrollElement.current;
+    if (!element) return 0;
+    // In TanStack's own (estimated) coordinates, so the row it positions for
+    // this offset is the row the reader was on, at their offset.
+    if (mountAnchor)
+      return Math.max(
+        0,
+        scrollMargin +
+          estimatedStart(rows, mountAnchor.index) -
+          mountAnchor.offset,
+      );
+    if (followTail)
+      return Math.max(
+        0,
+        scrollMargin + estimatedStart(rows, rows.length) - element.clientHeight,
+      );
+    return element.scrollTop;
+  };
+  const scrollTo = useCallback(
+    (
+      offset: number,
+      options: { adjustments?: number; behavior?: ScrollBehavior },
+      instance: Virtualizer<HTMLElement, HTMLElement>,
+    ) => {
+      elementScroll(offset, options, instance);
+      if (instance.scrollElement)
+        onProgrammaticScroll?.(instance.scrollElement);
+    },
+    [onProgrammaticScroll],
+  );
   const virtualizerOptions = {
+    scrollToFn: scrollTo,
     count: rows.length,
     scrollMargin,
-    getScrollElement: () => (scrollReady ? scrollElement.current : null),
-    estimateSize: (index: number) =>
-      ESTIMATED_ROW_HEIGHT[rows[index]?.kind] ?? 96,
+    // The element is attached as soon as it exists. On the transcript's first
+    // mount it does not yet (the parent's ref attaches after this child's
+    // layout effects); the `scrollReady` re-render below attaches it then.
+    getScrollElement: () => scrollElement.current,
+    estimateSize: (index: number) => estimatedRowHeight(rows[index]),
     getItemKey: (index: number) => rows[index]?.id ?? index,
     overscan: 8,
-    initialRect: { width: 1, height: 600 },
-    initialOffset: 0,
-    // Measurements can settle several frames after a prepend (markdown,
-    // expanded tool details, fonts). Keep compensating every changed row
-    // strictly before the retained keyed anchor; a fixed number of rAF
-    // corrections cannot prove that the final ResizeObserver has fired.
-    shouldAdjustScrollPositionOnItemSizeChange: (
-      item: { index: number; start: number },
-      _delta: number,
-      instance: { getScrollOffset(): number },
-    ) => {
-      const anchor = virtualAnchorRef.current;
-      if (followTail) return item.start < instance.getScrollOffset();
-      return anchor ? item.index < anchor.index : false;
+    initialRect: {
+      width: scrollElement.current?.clientWidth || 1,
+      height: scrollElement.current?.clientHeight || 600,
     },
+    initialOffset,
   };
   const virtualizer = useVirtualizer(virtualizerOptions);
+  // Measurements can settle several frames after a prepend (markdown,
+  // expanded tool details, fonts). Keep compensating every changed row
+  // strictly before the retained keyed anchor; a fixed number of rAF
+  // corrections cannot prove that the final ResizeObserver has fired.
+  // An INSTANCE property in @tanstack/virtual-core (3.17.11 installed), not an
+  // option: passed among the options it was never read, and TanStack's
+  // default (compensate every first-measured row above the fold) ran instead.
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
+    item,
+    _delta,
+    instance,
+  ) => {
+    const anchor = virtualAnchorRef.current;
+    // TanStack's own default rule (virtual-core 3.17.11): the fold is the
+    // cached offset plus adjustments already queued in this batch; a first
+    // measurement compensates any row starting above it, a re-measurement
+    // only a row entirely above it and not while scrolling backward (a
+    // streaming row spanning the fold grows below the reader).
+    if (followTail) {
+      const fold = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+      return instance.itemSizeCache.has(item.key)
+        ? item.start + item.size <= fold &&
+            instance.scrollDirection !== 'backward'
+        : item.start < fold;
+    }
+    return anchor ? item.index < anchor.index : false;
+  };
+
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const previousRowsRef = useRef(rows);
+  // The rows on screen at mount are positioned from the handed-over anchor,
+  // not chosen by the reader.
+  const mountAnchorPendingRef = useRef(Boolean(mountAnchor));
+  useLayoutEffect(() => {
+    if (mountAnchor)
+      markTranscriptPhase('virtualizer-mount-anchor', {
+        key: traceKey(mountAnchor.id),
+        index: mountAnchor.index,
+      });
+  }, [mountAnchor]);
 
   const captureVirtualAnchor = useCallback(() => {
     const element = scrollElement.current;
@@ -145,7 +271,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     // size through measureElement.
     let start = 0;
     for (const [index, candidate] of rowsRef.current.entries()) {
-      const size = ESTIMATED_ROW_HEIGHT[candidate.kind] ?? 96;
+      const size = estimatedRowHeight(candidate);
       if (offset < start + size) {
         virtualAnchorRef.current = {
           id: candidate.id,
@@ -164,6 +290,9 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   useEffect(() => {
     setScrollReady(scrollElement.current !== null);
     virtualizer.measure();
+    markTranscriptPhase('virtualizer-scroll-ready', {
+      ready: scrollElement.current !== null,
+    });
   }, [scrollElement, virtualizer]);
 
   const revealedRowRef = useRef<string | undefined>(undefined);
@@ -182,11 +311,16 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     const index = rows.findIndex((row) => row.id === revealRowId);
     if (index < 0) return;
     virtualizerRef.current.scrollToIndex(index, { align: 'center' });
+    markTranscriptPhase('virtualizer-scroll-to-index', {
+      reason: 'reveal',
+      index,
+    });
     revealedRowRef.current = revealRowId;
   }, [revealRowId, rows]);
 
-  const restoreAnchorKey = restoreAnchor?.key;
-  const restoreAnchorOffset = restoreAnchor?.offset;
+  const restoringHandoff = !restoreAnchor && handoff !== undefined;
+  const restoreAnchorKey = (restoreAnchor ?? handoff)?.key;
+  const restoreAnchorOffset = (restoreAnchor ?? handoff)?.offset;
   const restoreAnchorIndex = restoreAnchorKey
     ? rows.findIndex((row) => row.id === restoreAnchorKey)
     : -1;
@@ -222,6 +356,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       const offset = element.scrollTop + delta;
       virtualizerRef.current.scrollToOffset(offset);
       element.scrollTop = offset;
+      onProgrammaticScroll?.(element);
     };
     const schedule = () => {
       if (correctionFrame !== undefined) cancelAnimationFrame(correctionFrame);
@@ -241,7 +376,9 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     });
     mutationObserver.observe(element, { childList: true, subtree: true });
     observeRows();
-    virtualizerRef.current.scrollToIndex(index, { align: 'start' });
+    // A handoff mounted its first range at the row already (`initialOffset`).
+    if (restoringHandoff) reconcile();
+    else virtualizerRef.current.scrollToIndex(index, { align: 'start' });
     schedule();
     return () => {
       if (correctionFrame !== undefined) cancelAnimationFrame(correctionFrame);
@@ -249,10 +386,12 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       mutationObserver?.disconnect();
     };
   }, [
+    onProgrammaticScroll,
     restoreAnchorIndex,
     restoreAnchorKey,
     restoreAnchorOffset,
     restoreAnchorVersion,
+    restoringHandoff,
     scrollElement,
   ]);
 
@@ -262,6 +401,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   // intermediate measured position just before a prepend.
   useLayoutEffect(() => {
     void anchorVersion;
+    if (mountAnchorPendingRef.current) {
+      mountAnchorPendingRef.current = false;
+      return;
+    }
     captureVirtualAnchor();
   }, [anchorVersion, captureVirtualAnchor]);
 
@@ -305,7 +448,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
         if (mountedOffset !== undefined && anchor) {
           const restoreOffset = currentOffset + mountedOffset - anchor.offset;
           virtualizerRef.current.scrollToOffset(restoreOffset);
-          if (element) element.scrollTop = restoreOffset;
+          if (element) {
+            element.scrollTop = restoreOffset;
+            onProgrammaticScroll?.(element);
+          }
         } else {
           // The retained row can be recycled out during the prepend commit.
           // Materialize that exact key first; the persistent correction below
@@ -326,6 +472,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
             const correctedOffset = element.scrollTop + delta;
             virtualizerRef.current.scrollToOffset(correctedOffset);
             element.scrollTop = correctedOffset;
+            onProgrammaticScroll?.(element);
             return false;
           };
           const scheduleReconcile = () => {
@@ -375,7 +522,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [rows, anchorVersion, scrollElement]);
+  }, [rows, anchorVersion, scrollElement, onProgrammaticScroll]);
 
   // Estimates are corrected after rows enter the DOM. Scrolling to the final
   // keyed item on a new follow-tail request keeps that correction from leaving
@@ -385,6 +532,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     void followTick;
     if (!scrollReady || !followTail || rows.length === 0) return;
     virtualizerRef.current.scrollToIndex(rows.length - 1, { align: 'end' });
+    markTranscriptPhase('virtualizer-scroll-to-index', {
+      reason: 'follow-tail',
+      index: rows.length - 1,
+    });
   }, [followTail, rows.length, scrollReady, followTick]);
 
   return (

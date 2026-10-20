@@ -67,7 +67,7 @@ export async function resolveChatAgentModelOverride({
   const originalSpec = ctx.agentSpecs.get(slug);
   const originalTools = ctx.agentTools.get(slug);
   const appConfig = ctx.appConfig;
-  const instructions = (agent as { instructions?: string }).instructions || '';
+  const instructions = agent.instructions ?? '';
   const leaseIsCurrent = () => runtimeConfigurationLeaseIsCurrent(ctx, lease);
   try {
     if (providerConnection.type === 'bedrock') {

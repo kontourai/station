@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"actionlint-gate.mjs change only admits the exact merge-queue full-regression reusable call and updates the merge-queue aggregate pin; no transfer-controller workflow or gate rule this guide describes changed.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

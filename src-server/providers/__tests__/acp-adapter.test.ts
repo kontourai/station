@@ -3,13 +3,10 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   type Client,
-  type ContentBlock,
   type PermissionOption,
-  type PromptResponse,
   RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
-  type StopReason,
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -42,13 +39,13 @@ const GENUINE_STATION_CONTROL_TOOLSERVER = {
 };
 
 import { validateSessionLifecycleTransition } from '@kontourai/station-contracts/session-lifecycle';
-import {
-  ACPProcess,
-  type ACPProcessOptions,
-} from '../../services/acp/acp-process.js';
+import { ACPProcess } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
-import { SendTurnRefusedError } from '../adapter-shape.js';
+import {
+  SendTurnRefusedError,
+  SessionStartRefusedError,
+} from '../adapter-shape.js';
 import {
   AcpAdapter,
   type AcpAdapterOptions,
@@ -62,185 +59,7 @@ const managedWorkspaceHome = mkdtempSync(
 );
 afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
-/**
- * Stub ACPProcess substrate (injected via AcpAdapterOptions.processFactory —
- * the same constructor-level testing seam codex-adapter.test.ts uses). No
- * real process is spawned; `createClient` is invoked synchronously during
- * `start()` exactly as the real ACPProcess does, handing the test the live
- * `Client` object the adapter built (fs/terminal/ext handlers plus the
- * adapter's own canonical `requestPermission` override).
- */
-class FakeAcpProcess {
-  client!: Client;
-  /**
-   * archive#1684: OPTIONAL, and mutable. The adapter's station-control gate
-   * distinguishes "the engine answered no" from "there was no initialize
-   * result to read", so the fake has to be able to represent the second —
-   * `initResult` used to be a non-optional readonly field, which made that
-   * case untestable and therefore unwritten.
-   */
-  initResult:
-    | {
-        protocolVersion: number;
-        agentInfo?: { name: string; version?: string };
-        agentCapabilities: {
-          promptCapabilities: { image: boolean };
-          loadSession?: boolean;
-          mcpCapabilities?: { http?: boolean; sse?: boolean };
-        };
-      }
-    | undefined = {
-    protocolVersion: 1,
-    agentCapabilities: { promptCapabilities: { image: true } },
-  };
-  sessionId: string | null = null;
-  readonly extMethodCalls: Array<{
-    method: string;
-    params: Record<string, unknown>;
-  }> = [];
-  extMethodError?: unknown;
-  destroyed = false;
-  destroyCalls = 0;
-  cancelCalls = 0;
-  cancelPromise?: Promise<void>;
-  startError?: Error;
-  destroyError?: Error;
-  destroyPromise?: Promise<void>;
-  private readonly pendingPrompts: Array<{
-    resolve: (response: PromptResponse) => void;
-    reject: (error: unknown) => void;
-  }> = [];
-
-  constructor(readonly opts: ACPProcessOptions) {}
-
-  async start() {
-    if (this.startError) throw this.startError;
-    this.client = this.opts.createClient(undefined as any);
-    return this.initResult;
-  }
-
-  newSessionMcpServers: unknown[] | undefined;
-  /** archive#1684: proves the fail-closed path does NOT retry session/new. */
-  newSessionCalls = 0;
-  /** archive#1182: overridable per-test to simulate an agent's own reported model config option. */
-  newSessionConfigOptions: unknown[] = [];
-  /** station#1945: older ACP `modes` catalog when no mode config option exists. */
-  newSessionModes?: {
-    availableModes: Array<{
-      id: string;
-      name: string;
-      description?: string;
-      _meta?: Record<string, unknown>;
-    }>;
-    currentModeId?: string;
-  };
-  readonly setModeCalls: string[] = [];
-
-  async setMode(modeId: string): Promise<void> {
-    this.setModeCalls.push(modeId);
-  }
-
-  /**
-   * archive#1684: makes `session/new` REJECT, so the no-retry claim has
-   * something to be true of. Without it `newSessionCalls === 1` only ever
-   * observed the success path, and a `.catch(...)` retry was invisible.
-   */
-  newSessionError?: unknown;
-
-  async newSession(_cwd: string, mcpServers?: unknown[]) {
-    this.newSessionCalls += 1;
-    this.newSessionMcpServers = mcpServers;
-    if (this.newSessionError) throw this.newSessionError;
-    this.sessionId = `native-${this.opts.command}`;
-    return {
-      sessionId: this.sessionId,
-      modes: this.newSessionModes ?? {
-        availableModes: [],
-        currentModeId: 'default',
-      },
-      configOptions: this.newSessionConfigOptions,
-    };
-  }
-
-  loadSessionArgs?: { sessionId: string; cwd: string; mcpServers?: unknown[] };
-  loadSessionCalls = 0;
-  loadSessionPromise?: Promise<void>;
-  /** archive#1684 delta review (LOW-2): the resume branch needs the same
-   * no-retry proof `newSessionError` gives `session/new`. */
-  loadSessionError?: unknown;
-
-  async loadSession(
-    sessionId: string,
-    cwd: string,
-    mcpServers?: unknown[],
-  ): Promise<void> {
-    this.loadSessionCalls += 1;
-    this.loadSessionArgs = { sessionId, cwd, mcpServers };
-    if (this.loadSessionError) throw this.loadSessionError;
-    this.sessionId = sessionId;
-    await this.loadSessionPromise;
-  }
-
-  readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
-    [];
-  setConfigOptionResponse?: unknown;
-  setConfigOptionError?: unknown;
-
-  async setConfigOption(configId: string, value: string): Promise<unknown> {
-    this.setConfigOptionCalls.push({ configId, value });
-    if (this.setConfigOptionError) throw this.setConfigOptionError;
-    if (this.setConfigOptionResponse !== undefined) {
-      return this.setConfigOptionResponse;
-    }
-    return {
-      configOptions: this.newSessionConfigOptions.map((option) =>
-        option &&
-        typeof option === 'object' &&
-        (option as { id?: unknown }).id === configId
-          ? { ...option, currentValue: value }
-          : option,
-      ),
-    };
-  }
-
-  readonly promptContents: ContentBlock[][] = [];
-
-  prompt(content: ContentBlock[]): Promise<PromptResponse> {
-    this.promptContents.push(content);
-    return new Promise((resolve, reject) => {
-      this.pendingPrompts.push({ resolve, reject });
-    });
-  }
-
-  resolvePrompt(stopReason: StopReason): void {
-    this.pendingPrompts.shift()?.resolve({ stopReason });
-  }
-
-  rejectPrompt(error: unknown): void {
-    this.pendingPrompts.shift()?.reject(error);
-  }
-
-  async cancel(): Promise<void> {
-    this.cancelCalls += 1;
-    await this.cancelPromise;
-  }
-
-  async extMethod(
-    method: string,
-    params: Record<string, unknown>,
-  ): Promise<unknown> {
-    this.extMethodCalls.push({ method, params });
-    if (this.extMethodError) throw this.extMethodError;
-    return {};
-  }
-
-  async destroy(): Promise<void> {
-    this.destroyCalls += 1;
-    if (this.destroyError) throw this.destroyError;
-    await this.destroyPromise;
-    this.destroyed = true;
-  }
-}
+import { FakeAcpProcess } from './fake-acp-process.js';
 
 function createConnections(
   overrides: Partial<ACPConnectionConfig>[] = [],
@@ -266,6 +85,8 @@ function createAdapter(
   options: {
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
+    /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
+    resumeSessionCapability?: boolean;
     connectionOverrides?: Partial<ACPConnectionConfig>[];
     resolveToolServer?: (id: string) => Promise<any>;
     logger?: any;
@@ -289,6 +110,7 @@ function createAdapter(
     loadSessionError?: unknown;
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
+    sendTurnStartWaitMs?: number;
   } = {},
 ): {
   adapter: AcpAdapter;
@@ -307,6 +129,7 @@ function createAdapter(
     mintStationControlMcpAuth: options.mintStationControlMcpAuth,
     revokeStationControlMcpAuth: options.revokeStationControlMcpAuth,
     resolvePreToolPolicy: options.resolvePreToolPolicy,
+    sendTurnStartWaitMs: options.sendTurnStartWaitMs,
     managedWorkspaceHomeDir:
       options.managedWorkspaceHomeDir ?? managedWorkspaceHome,
     processFactory: (opts) => {
@@ -317,6 +140,9 @@ function createAdapter(
         const capabilities = proc.initResult!.agentCapabilities;
         capabilities.promptCapabilities.image = options.imageCapability ?? true;
         capabilities.loadSession = options.loadSessionCapability;
+        if (options.resumeSessionCapability) {
+          capabilities.sessionCapabilities = { resume: {} };
+        }
         if (options.mcpHttpCapability !== undefined) {
           capabilities.mcpCapabilities = { http: options.mcpHttpCapability };
         }
@@ -2777,6 +2603,442 @@ describe('AcpAdapter', () => {
       });
     });
 
+    /**
+     * ACP: on `session/load` the agent streams the conversation history as
+     * `session/update` notifications before it answers. The fake emits the
+     * stored history inside `loadSession`, plus one update still in flight
+     * after the response (the SDK dispatches without awaiting).
+     */
+    const emitStoredHistory = (client: Client) => {
+      const replayed = (update: Record<string, unknown>) =>
+        ({ sessionId: 'native-kiro-cli', update }) as any;
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'user_message_chunk',
+          content: { type: 'text', text: 'earlier question' },
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'agent_thought_chunk',
+          messageId: 'msg_old',
+          content: { type: 'text', text: 'earlier thinking' },
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_old',
+          title: 'list_projects',
+          kind: 'other',
+          status: 'completed',
+          rawInput: {},
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_old',
+          content: { type: 'text', text: 'earlier answer' },
+        }),
+      );
+      // Session state rides the same channel and still applies.
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'deploy', description: 'Deploy' }],
+        }),
+      );
+      let late = Promise.resolve();
+      for (let hop = 0; hop < 20; hop++) late = late.then(() => {});
+      void late.then(() =>
+        client.sessionUpdate(
+          replayed({
+            sessionUpdate: 'agent_message_chunk',
+            messageId: 'msg_old',
+            content: { type: 'text', text: 'earlier answer, tail' },
+          }),
+        ),
+      );
+    };
+
+    /**
+     * Resume `threadId` from a cursor, run one turn that streams one chunk,
+     * and return every event published through that turn's terminal.
+     */
+    const resumeThenTurn = async (
+      adapter: AcpAdapter,
+      processes: FakeAcpProcess[],
+      threadId: string,
+    ) => {
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        resumeCursor: {
+          acpSessionId: 'native-kiro-cli',
+          connectionId: 'kiro',
+          connectionFingerprint: kiroFingerprint(),
+        },
+      });
+      const seen: CanonicalRuntimeEvent[] = [];
+      const readThrough = async (method: string) => {
+        for (;;) {
+          const event = await nextEvent(iterator, method);
+          seen.push(event);
+          if (event.method === method) return event;
+        }
+      };
+      await readThrough('session.configured');
+      const turn = await adapter.sendTurn({ threadId, input: 'new question' });
+      await readThrough('turn.started');
+      await processes[0].client.sessionUpdate({
+        sessionId: 'native-kiro-cli',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_new',
+          content: { type: 'text', text: 'new answer' },
+        },
+      } as any);
+      await readThrough('content.text-delta');
+      processes[0].resolvePrompt('end_turn');
+      await readThrough('turn.completed');
+      return { seen, turnId: turn.turnId };
+    };
+
+    /** No replayed content was published; only the new turn's chunk was. */
+    const expectOnlyTheNewTurnStreamed = (
+      seen: CanonicalRuntimeEvent[],
+      turnId: string,
+    ) => {
+      const content = seen.filter(
+        (event) =>
+          event.method.startsWith('content.') ||
+          event.method.startsWith('tool.') ||
+          event.method === 'plan.updated',
+      );
+      expect(
+        content.map((event) => ({
+          method: event.method,
+          turnId: event.turnId,
+          delta: (event as { delta?: string }).delta,
+        })),
+      ).toEqual([
+        { method: 'content.text-delta', turnId, delta: 'new answer' },
+      ]);
+      expect(seen.map((event) => event.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'content.text-delta',
+        'turn.completed',
+      ]);
+    };
+
+    test('the history a session/load replays is not published, and the next turn still streams', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-replay',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(0);
+      expect(processes[0].loadSessionCalls).toBe(1);
+      expect((await adapter.getCommands()).map((c) => c.name)).toEqual([
+        'deploy',
+      ]);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('an engine advertising session/resume is resumed, not loaded, and the next turn streams', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          // Were the adapter to load instead, this history would be replayed.
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-native',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].resumeSessionArgs).toMatchObject({
+        sessionId: 'native-kiro-cli',
+        cwd: '/tmp/project',
+      });
+      expect(processes[0].loadSessionCalls).toBe(0);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('a session/resume the engine answers with method-not-found falls back to session/load', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionError =
+            RequestError.methodNotFound('session/resume');
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-fallback',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].loadSessionCalls).toBe(1);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('any other session/resume failure fails the start rather than loading', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionError = new RequestError(
+            -32002,
+            'Resource not found: session native-kiro-cli',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'acp',
+          threadId: 'thread-resume-real-failure',
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          resumeCursor: {
+            acpSessionId: 'native-kiro-cli',
+            connectionId: 'kiro',
+            connectionFingerprint: kiroFingerprint(),
+          },
+        }),
+      ).rejects.toThrow('Resource not found: session native-kiro-cli');
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].loadSessionCalls).toBe(0);
+    });
+
+    /** Start a resume whose `session/load` stays open until released. */
+    const startHeldReattach = async (
+      threadId: string,
+      options: { sendTurnStartWaitMs?: number; logger?: unknown } = {},
+    ) => {
+      let releaseLoad!: () => void;
+      let failLoad!: (error: Error) => void;
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        ...options,
+        onProcess: (proc) => {
+          proc.loadSessionPromise = new Promise<void>((resolve, reject) => {
+            releaseLoad = resolve;
+            failLoad = reject;
+          });
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const started = adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        resumeCursor: {
+          acpSessionId: 'native-kiro-cli',
+          connectionId: 'kiro',
+          connectionFingerprint: kiroFingerprint(),
+        },
+      });
+      await vi.waitFor(() => expect(processes[0]?.loadSessionCalls).toBe(1));
+      return {
+        adapter,
+        processes,
+        iterator,
+        started,
+        releaseLoad: () => releaseLoad(),
+        failLoad: (error: Error) => failLoad(error),
+      };
+    };
+
+    test('a send waits for a reattach in progress (as orchestration does), then starts and streams', async () => {
+      const { adapter, processes, iterator, started, releaseLoad } =
+        await startHeldReattach('thread-resume-race');
+
+      let ready = false;
+      const waiting = adapter
+        .whenSessionReady('thread-resume-race')
+        .then(() => {
+          ready = true;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(ready).toBe(false);
+      expect(processes[0].promptContents).toEqual([]);
+
+      releaseLoad();
+      await started;
+      await waiting;
+      const turn = await adapter.sendTurn({
+        threadId: 'thread-resume-race',
+        input: 'early message',
+      });
+      expect(processes[0].promptContents).toHaveLength(1);
+
+      const readThrough = async (method: string) => {
+        for (;;) {
+          const event = await nextEvent(iterator, method);
+          if (event.method === method) return event;
+        }
+      };
+      await readThrough('turn.started');
+      // The waiting send's own output is not mistaken for replayed history.
+      await processes[0].client.sessionUpdate({
+        sessionId: 'native-kiro-cli',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_new',
+          content: { type: 'text', text: 'answer to the early message' },
+        },
+      } as any);
+      expect(await readThrough('content.text-delta')).toMatchObject({
+        turnId: turn.turnId,
+        delta: 'answer to the early message',
+      });
+      processes[0].resolvePrompt('end_turn');
+      await readThrough('turn.completed');
+    });
+
+    test('a send that skips the wait during a start is refused retryably at once', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-direct');
+      const refusal = await adapter
+        .sendTurn({ threadId: 'thread-resume-direct', input: 'too early' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_starting',
+      );
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await started;
+    });
+
+    test('a wait on a reattach that fails is refused in plain words, with a keep-it code, not left hanging', async () => {
+      const warn = vi.fn();
+      const { adapter, processes, started, failLoad } = await startHeldReattach(
+        'thread-resume-fails',
+        {
+          logger: { debug: () => {}, warn, error: () => {} },
+        },
+      );
+      const waiting = adapter.whenSessionReady('thread-resume-fails').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      failLoad(new Error('native session is gone\n    at engine internals'));
+      await expect(started).rejects.toThrow('native session is gone');
+
+      const refusal = await waiting;
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as Error).message).toBe(
+        "The agent's session couldn't start: native session is gone",
+      );
+      // The literal: the client keeps the message queued on this code.
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_start_failed',
+      );
+      // The engine's full error goes to the Station log, not the user.
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'thread-resume-fails',
+          err: expect.objectContaining({
+            message: expect.stringContaining('engine internals'),
+          }),
+        }),
+        expect.any(String),
+      );
+      expect(processes[0].promptContents).toEqual([]);
+    });
+
+    test('a wait that outlasts a slow reattach is refused retryably, with a code and neutral copy', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-slow', {
+          sendTurnStartWaitMs: 25,
+        });
+      const refusal = await adapter.whenSessionReady('thread-resume-slow').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      // The literal, not the constant: the client's queue keys on this string.
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_starting',
+      );
+      expect((refusal as Error).message).toBe(
+        'The session is still starting. Nothing was sent; try again in a moment.',
+      );
+      expect(processes[0].promptContents).toEqual([]);
+
+      releaseLoad();
+      await started;
+      await adapter.whenSessionReady('thread-resume-slow');
+      await adapter.sendTurn({
+        threadId: 'thread-resume-slow',
+        input: 'early message',
+      });
+      expect(processes[0].promptContents).toHaveLength(1);
+    });
+
+    test("an aborted send's wait ends at once and nothing reaches the engine", async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-abort');
+      const controller = new AbortController();
+      const waiting = adapter
+        .whenSessionReady('thread-resume-abort', { signal: controller.signal })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      controller.abort(new Error('client went away'));
+      expect(await waiting).toMatchObject({ message: 'client went away' });
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await started;
+    });
+
+    test('a Stop during a waiting send refuses it at once, before the start unwinds', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-stop');
+      const waiting = adapter.whenSessionReady('thread-resume-stop').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      const startOutcome = started.then(
+        () => 'started',
+        () => 'ended',
+      );
+      const stopped = adapter.stopSession('thread-resume-stop');
+      // The send learns at once; the held load has not answered yet.
+      const refusal = await waiting;
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as Error).message).toBe(
+        "The agent's session ended before it was ready. Nothing was sent.",
+      );
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await stopped;
+      expect(await startOutcome).toBe('ended');
+    });
+
     test('startSession with an ACP resume cursor fails closed with a named error when the CLI does not advertise loadSession (no silent fresh session)', async () => {
       const { adapter, processes } = createAdapter({
         loadSessionCapability: false,
@@ -3268,6 +3530,52 @@ describe('AcpAdapter', () => {
     expect(processes[1].destroyed).toBe(true);
     expect(await adapter.hasSession('thread-kiro')).toBe(false);
     expect(await adapter.hasSession('thread-other')).toBe(false);
+  });
+
+  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const completions: Record<string, unknown>[] = [];
+    for (const stopReason of [
+      'end_turn',
+      'refusal',
+      'max_turn_requests',
+    ] as const) {
+      await adapter.sendTurn({ threadId: 'thread-stop', input: stopReason });
+      await nextEvent(iterator, `turn.started (${stopReason})`);
+      processes[0].resolvePrompt(stopReason);
+      completions.push(
+        (await nextEvent(
+          iterator,
+          `turn.completed (${stopReason})`,
+        )) as unknown as Record<string, unknown>,
+      );
+    }
+
+    const [ended, refused, exhausted] = completions;
+    expect(ended).toMatchObject({ finishReason: 'stop' });
+    expect(ended).not.toHaveProperty('stopReason');
+    expect(refused).toMatchObject({
+      method: 'turn.completed',
+      finishReason: 'other',
+      stopReason: 'refusal',
+    });
+    expect(exhausted).toMatchObject({
+      method: 'turn.completed',
+      finishReason: 'other',
+      stopReason: 'max_turn_requests',
+    });
+    await adapter.stopAll();
   });
 
   test('publishes runtime.error and reflects error status when the ACP process rejects a prompt', async () => {
@@ -4073,7 +4381,11 @@ describe('station#1182: runtime-reported model', () => {
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
       }),
-    ).rejects.toThrow('ACP model option unavailable');
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model option unavailable'),
+    });
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
@@ -4097,8 +4409,144 @@ describe('station#1182: runtime-reported model', () => {
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
       }),
-    ).rejects.toThrow('ACP model value unsupported');
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model value unsupported'),
+    });
     expect(processes[0].setConfigOptionCalls).toEqual([]);
+  });
+
+  // `session.started` is published before `session/new` answers, so a refusal
+  // must end that session in the event stream too: the service binds the
+  // thread to the adapter on the first event, and only `session.exited`
+  // unbinds it. Without it the retry the refusal invites hits "Session already
+  // exists".
+  test('a refused model ends the session it had announced, with the cause first', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'model',
+          category: 'model',
+          currentValue: 'model-a',
+          options: [{ value: 'model-a' }],
+        },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-refused-announced',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      }),
+    ).rejects.toBeInstanceOf(SessionStartRefusedError);
+
+    await nextEvent(iterator, 'session.started');
+    await expect(nextEvent(iterator, 'runtime.error')).resolves.toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model value unsupported'),
+    });
+    const exited = await nextEvent(iterator, 'session.exited');
+    expect(exited).toMatchObject({
+      method: 'session.exited',
+      sessionId: 'thread-refused-announced',
+      reason: 'start-refused',
+    });
+    expect(exited).not.toHaveProperty('exitCode');
+    expect(processes[0].destroyCalls).toBe(1);
+    await expect(adapter.listSessions()).resolves.toEqual([]);
+  });
+
+  // A Stop that lands while `session/new` is in flight is the user's act: the
+  // start ends as a stop, and the model's refusal that then arrives is not
+  // reported as the cause.
+  test('a Stop during session/new ends the start as stopped, not as a model refusal', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { adapter } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'model',
+          category: 'model',
+          currentValue: 'model-a',
+          options: [{ value: 'model-a' }],
+        },
+      ],
+      onProcess: (process) => {
+        process.newSessionGate = gate;
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const started = adapter
+      .startSession({
+        provider: 'acp',
+        threadId: 'thread-stop-during-new-session',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      })
+      .catch((error: unknown) => error);
+    await nextEvent(iterator, 'session.started');
+    const stopped = adapter.stopSession('thread-stop-during-new-session');
+    release();
+    await Promise.all([started, stopped]);
+
+    const exited = await nextEvent(iterator, 'session.exited');
+    expect(exited).toMatchObject({ reason: 'stopped' });
+    expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+  });
+
+  // Teardown is part of what makes a refusal definitive. If the engine process
+  // cannot be confirmed gone, the start is NOT settled: the failure must not be
+  // the typed refusal (the boundary would release it) and no session end is
+  // announced for a process that may still be running.
+  test('a refusal whose teardown is not confirmed is not a settled start', async () => {
+    const processes: FakeAcpProcess[] = [];
+    const adapter = new AcpAdapter({
+      getConnections: async () => createConnections(),
+      logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      processFactory: (options) => {
+        const process = new FakeAcpProcess(options);
+        process.newSessionConfigOptions = [
+          {
+            id: 'model',
+            category: 'model',
+            currentValue: 'model-a',
+            options: [{ value: 'model-a' }],
+          },
+        ];
+        process.destroyError = new Error('termination not confirmed');
+        processes.push(process);
+        return process as unknown as ACPProcess;
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const failure = await adapter
+      .startSession({
+        provider: 'acp',
+        threadId: 'thread-refused-teardown-unconfirmed',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure).not.toBeInstanceOf(SessionStartRefusedError);
+    await nextEvent(iterator, 'session.started');
+    expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+    processes[0].destroyError = undefined;
+    await adapter.stopAll();
   });
 
   test('applies an advertised session mode via setConfigOption (station#1945)', async () => {
@@ -4423,15 +4871,21 @@ describe('station#1182: runtime-reported model', () => {
       },
     });
 
-    await expect(
-      adapter.startSession({
+    const failure = await adapter
+      .startSession({
         provider: 'acp',
         threadId: 'thread-model-unverified',
         cwd: '/tmp/project',
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
-      }),
-    ).rejects.toThrow('ACP model application unverified');
+      })
+      .catch((error: unknown) => error);
+    expect(String((failure as Error).message)).toContain(
+      'ACP model application unverified',
+    );
+    // The engine was asked to apply it and answered something else: not a
+    // definitive refusal, so the start stays an uncertain one.
+    expect(failure).not.toBeInstanceOf(SessionStartRefusedError);
     expect(processes[0].setConfigOptionCalls).toHaveLength(1);
     expect(processes[0].destroyCalls).toBe(1);
   });
@@ -5470,6 +5924,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
 describe('AcpAdapter.steerTurn', () => {
   test('Kiro injects via _session/steer and keeps the in-flight prompt', async () => {
     const { adapter, processes } = createAdapter();
+    expect(adapter.metadata.durability?.steerPlacement.state).toBe('emulated');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',

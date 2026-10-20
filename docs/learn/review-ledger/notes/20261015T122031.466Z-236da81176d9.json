@@ -1,0 +1,7 @@
+{
+  "revision": "a9b64d3a368552f5b695046d6539bba3db6da575",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Re-read after changed-verification.test.ts raised its SPAWNED_SCRIPT_EDGES pin from 11 to 12 for the monument pack smoke edge. This fixture README describes the fixture repository layout and does not state the spawned-script edge count; nothing in it changes.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

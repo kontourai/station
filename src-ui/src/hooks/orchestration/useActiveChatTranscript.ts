@@ -1,8 +1,13 @@
+import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
-import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
+import {
+  getJson,
+  invalidateSessionEventWindowCapabilityCache,
+  readEnvelopeOrThrow,
+} from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
   useCallback,
@@ -301,6 +306,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationHistoryRevision,
     session.currentSessionId ?? session.id,
   );
+  const retryHistory = useCallback(() => {
+    invalidateSessionEventWindowCapabilityCache(apiBase);
+    return serverWindow.reload();
+  }, [apiBase, serverWindow.reload]);
   const window = useMemo(
     () =>
       replayHistory
@@ -312,8 +321,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             loadOlder: () => requestReplayHistory(session.id),
             reload: () => requestReplayHistory(session.id),
           }
-        : serverWindow,
-    [replayHistory, serverWindow, session.id],
+        : { ...serverWindow, reload: retryHistory },
+    [replayHistory, serverWindow, session.id, retryHistory],
   );
   const subscribeLive = useCallback(
     (listener: () => void) => subscribeSequencedLiveEvents(apiBase, listener),
@@ -352,9 +361,13 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     serverWindow.error,
     serverWindow.reload,
   ]);
+  const previousStitchedEvents = useRef<readonly OrchestrationSequencedEvent[]>(
+    [],
+  );
   const stitchedEvents = useMemo(() => {
     if (replay) return window.events;
-    return stitchWindowWithLiveEvents({
+    const next = stitchWindowWithLiveEvents({
+      previous: previousStitchedEvents.current,
       windowEvents: window.events,
       watermark: windowWatermark,
       liveEvents,
@@ -364,6 +377,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
       ]),
     });
+    previousStitchedEvents.current = next;
+    return next;
   }, [
     replay,
     window.events,

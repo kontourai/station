@@ -1,0 +1,7 @@
+{
+  "revision": "7dc5a9c590d9a9a049d34861591b7f171addd2a0",
+
+  "notes": [
+    {"path":"README.md","note":"Searched for access verbs, operator-credential and Paired devices claims; none describe access revoke/remove or the native-host panel copy, and the change only adds two host-only CLI verbs plus panel 401 text, so existing claims remain accurate.","inputs":["README.md"]}
+  ]
+}

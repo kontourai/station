@@ -903,6 +903,11 @@ export class NotificationService {
     );
   }
 
+  async get(id: string): Promise<Notification | undefined> {
+    const notification = (await this.read()).find((n) => n.id === id);
+    return notification ? toPublicNotification(notification) : undefined;
+  }
+
   async list(opts?: {
     status?: string[];
     category?: string[];

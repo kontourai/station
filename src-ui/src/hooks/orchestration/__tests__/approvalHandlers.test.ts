@@ -10,6 +10,16 @@ const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
 const showToast = vi.fn();
 const getChatForExecutionSession = vi.fn();
 const updateChat = vi.fn();
+const navigate = vi.fn();
+const getSnapshot = vi.fn(() => ({
+  isDockOpen: false,
+  activeChat: null as string | null,
+}));
+const getChatKeyForExecutionSession = vi.fn(() => 'draft-1');
+
+vi.mock('../../../contexts/NavigationContext', () => ({
+  navigationStore: { navigate, getSnapshot },
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   resolveOrchestrationRequest: vi.fn().mockResolvedValue(undefined),
@@ -19,7 +29,11 @@ vi.mock('../../../contexts/ToastContext', () => ({
   toastStore: { showToolApproval, show: showToast, dismiss: vi.fn() },
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
-  activeChatsStore: { getChatForExecutionSession, updateChat },
+  activeChatsStore: {
+    getChatForExecutionSession,
+    getChatKeyForExecutionSession,
+    updateChat,
+  },
 }));
 
 const {
@@ -27,6 +41,16 @@ const {
   handleRequestDeliveryEvent,
   handleRequestResolvedEvent,
 } = await import('../approvalHandlers');
+const { forgetApprovalAnswer } = await import('../answerRequest');
+beforeEach(() => {
+  forgetApprovalAnswer('thread-1', 'req-1');
+  navigate.mockClear();
+  getSnapshot.mockReturnValue({ isDockOpen: false, activeChat: null });
+  vi.mocked(resolveOrchestrationRequest)
+    .mockReset()
+    .mockResolvedValue(undefined);
+});
+
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -116,6 +140,43 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
       'Allow Bash for this session',
       'Deny',
     ]);
+  });
+
+  test('#3382: the preview and "Why:" drop bidi controls, turn C1 controls into spaces and keep every line', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const PDF = String.fromCodePoint(0x202c);
+    const NEL = String.fromCodePoint(0x85);
+    const BEL = String.fromCodePoint(0x07);
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({
+        toolName: `Ba${RLO}sh${BEL}`,
+        toolPurpose: `Tidy${NEL}up ${RLO}txt.exe${PDF}`,
+        toolInput: { command: `echo a${RLO}b${PDF}\nrm${NEL}-rf${BEL}/` },
+      }),
+    );
+
+    const toast = approvalToast();
+    expect(toast.toolName).toBe('Bash');
+    // ⏎: the lines stay apart. Joined by a space, `rm -rf /` read as
+    // part of what `echo` prints.
+    expect(toast.toolPreview).toBe(
+      'Why: Tidy up txt.exe \u00b7 echo ab \u23ce rm -rf /',
+    );
+    expect(toast.actions.map((action) => action.label)).toContain(
+      'Allow Bash for this session',
+    );
+  });
+
+  test('#3382: a title shown in place of a tool name is sanitised too', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    const NEL = String.fromCodePoint(0x85);
+    handleRequestOpenedEvent('http://localhost:1', {
+      ...requestOpened({ command: 'ls' }),
+      title: `echo ${RLO}a${NEL}b\nrm -rf /`,
+    } as Parameters<typeof handleRequestOpenedEvent>[1]);
+
+    expect(approvalToast().toolName).toBe('echo a b \u23ce rm -rf /');
   });
 
   test('#2916: a plan exit offers no session grant', () => {
@@ -348,12 +409,27 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
   });
 
   test.each([
-    [0, 'accept'],
-    [1, 'acceptForSession'],
-    [2, 'decline'],
+    [0, 'accept', false],
+    [1, 'acceptForSession', false],
+    [2, 'decline', false],
+    [0, 'accept', true],
+    [1, 'acceptForSession', true],
+    [2, 'decline', true],
   ] as const)(
-    'action %i sends %s bound to the request event id',
-    async (index, decision) => {
+    'action %i sends %s bound to the request event id (visible draft: %s)',
+    async (index, decision, visibleDraft) => {
+      if (visibleDraft)
+        getChatForExecutionSession.mockReturnValue({
+          title: 'Conversation',
+          agentName: 'Claude',
+          pendingApprovals: [],
+          conversationId: 'conv-1',
+          currentSessionId: 'thread-1',
+        });
+      getSnapshot.mockReturnValue({
+        isDockOpen: visibleDraft,
+        activeChat: visibleDraft ? 'draft-1' : null,
+      });
       handleRequestOpenedEvent(
         'http://localhost:1',
         requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
@@ -369,7 +445,14 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
         requestId: 'req-1',
         expectedRequestEventId: 'evt-1',
         decision,
+        timeoutMs: 15_000,
       });
+      if (visibleDraft) expect(navigate).not.toHaveBeenCalled();
+      else
+        expect(navigate).toHaveBeenCalledWith('/', {
+          chat: 'thread-1',
+          dock: 'open',
+        });
     },
   );
 });
@@ -486,11 +569,15 @@ describe('#2344: the toast reports what happened to its answer', () => {
       ),
     );
     // Read from the request itself, bound to the prompt the toast showed.
-    expect(inspectAttentionRequest).toHaveBeenCalledWith('http://localhost:1', {
-      threadId: 'thread-1',
-      requestId: 'req-1',
-      requestEventId: 'evt-1',
-    });
+    expect(inspectAttentionRequest).toHaveBeenCalledWith(
+      'http://localhost:1',
+      {
+        threadId: 'thread-1',
+        requestId: 'req-1',
+        requestEventId: 'evt-1',
+      },
+      { timeoutMs: 5_000 },
+    );
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToolApproval).toHaveBeenCalledTimes(1);
   });

@@ -1,0 +1,7 @@
+{
+  "revision": "df7b96310914c8671c3584eb71f0b1a1a1f4af0c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed changed pointer-hit policy against NotificationContainer.css and its visible trigger/panel markup: transparent queue wrapper passes clicks, visible surfaces retain pointer events. Rechecked shared dialog focus lifecycle and status announcement anchor. Existing browser approval geometry scenario reaches the real Right-region Chat menu; focus/layout proof runs separately. No mobile-native or provider claim added.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

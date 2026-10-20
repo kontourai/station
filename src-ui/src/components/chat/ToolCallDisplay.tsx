@@ -1,11 +1,31 @@
 import {
+  hasHiddenCharacters,
+  revealHiddenCharacters,
+} from '@kontourai/station-shared/display-reveal';
+import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
+import {
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
-import { memo, useMemo, useState } from 'react';
+import {
+  memo,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  type ApprovalAnswerReference,
+  readApprovalAnswerState,
+  subscribeApprovalAnswers,
+} from '../../hooks/orchestration/answerRequest';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { attentionWord } from '../../views/home/work-status';
+import { Button } from '../Button';
 import {
   DiscardGlyph,
   DocumentGlyph,
@@ -15,11 +35,21 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
+import { useApprovalSheet } from './ApprovalSheetContext';
 import {
   boundedToolResultText,
   formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
+import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
+import {
+  RequestSheet,
+  RequestSheetTrigger,
+  useRequestSheet,
+} from './RequestSheet';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
   classifyToolCall,
@@ -28,6 +58,10 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+
+const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+
+import './ToolCallDetails.css';
 
 /**
  * Flat `tool-invocation` shape — the single chat tool-part vocabulary shared by
@@ -59,6 +93,7 @@ export interface ToolCallData {
   approvalId?: string;
   /** #2316: the thread of the request that set `approvalId`. */
   approvalThreadId?: string;
+  approvalEventId?: string;
   /** See `MessagePart.approvalToolName` — what the session grant names. */
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
@@ -132,8 +167,20 @@ function ToolCallDisplayComponent({
   toolCall,
   onApprove,
   showDetails = true,
-}: ToolCallDisplayProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  appTools,
+}: ToolCallDisplayProps & { appTools: ReadonlySet<string> }) {
+  // `null` until the user toggles the row: until then it follows
+  // `openByDefault` below, so a pending multi-line command opens and the row
+  // closes again once the request settles. A toggle on a pending request is
+  // remembered by request, so it survives the strip card becoming the
+  // transcript row (a different component instance).
+  const toggleKey =
+    toolCall.needsApproval && toolCall.approvalId
+      ? `${toolCall.approvalThreadId ?? ''}:${toolCall.approvalId}`
+      : undefined;
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(() =>
+    toggleKey ? (approvalToggles.get(toggleKey) ?? null) : null,
+  );
 
   const id = toolCall.toolCallId || '';
   // Identity-keyed one-shot entrance (archive#2651): keyed to the tool call
@@ -142,6 +189,9 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
+  const candidateRef = transcriptMcpToolRef(toolCall);
+  const appToolRef =
+    candidateRef && appTools.has(candidateRef) ? candidateRef : undefined;
   const display = toolDisplayView(toolCall);
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
@@ -172,9 +222,10 @@ function ToolCallDisplayComponent({
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
   const running = phase === 'running';
-  // Every other unresolved outcome already carries a badge below (Failed,
-  // Cancelled, User denied, Blocked by Station). This is the one that does
-  // not: dispatched, and no completion event ever arrived.
+  // Every other unresolved outcome already carries a badge below (Cancelled,
+  // User denied, Blocked by Station; a plain failure is its own `failed`
+  // phase with a Failed badge). This is the one that does not: dispatched,
+  // and no completion event ever arrived.
   const unresolvedWithoutOutcome =
     phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
@@ -193,13 +244,27 @@ function ToolCallDisplayComponent({
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
   const allowDetails = showDetails || (awaitingApproval && Boolean(onApprove));
 
+  // #3382: every pending call that has something to show opens its details,
+  // so what is being approved is on screen next to Allow and Deny. The label
+  // can hide part of it in too many ways to detect them all: a first line
+  // with "(+N lines)", a cut ("…"), characters it drops, and a CSS ellipsis
+  // at narrow widths. The user can still collapse it (remembered per request).
+  const openByDefault = awaitingApproval && Boolean(onApprove) && hasDetail;
+  const isExpanded = userExpanded ?? openByDefault;
+  const toggleExpanded = () => {
+    setUserExpanded(!isExpanded);
+    if (toggleKey) rememberToggle(toggleKey, !isExpanded);
+  };
+
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (
     <>
       <span className="tool-call__glyph" aria-hidden="true">
         <Glyph />
       </span>
-      <span className="tool-call__label">{label}</span>
+      {/* Right-to-left words isolated, as in the details, so the label and
+          the details show the same word order. */}
+      <span className="tool-call__label">{isolateRightToLeft(label, 0)}</span>
       {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
       {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
@@ -268,7 +333,7 @@ function ToolCallDisplayComponent({
   const grantToolName = toolCall.approvalThreadId
     ? toolCall.approvalToolName
     : toolCall.toolName;
-  // The header "Approval needed" pill brings the user here: an answerable
+  // The header approval pill brings the user here: an answerable
   // card names the request it answers.
   const answerable = awaitingApproval && Boolean(onApprove);
   return (
@@ -285,7 +350,7 @@ function ToolCallDisplayComponent({
             type="button"
             className="tool-call__line"
             aria-expanded={isExpanded}
-            onClick={() => setIsExpanded((expanded) => !expanded)}
+            onClick={toggleExpanded}
           >
             {lineContent}
             <span className="tool-call__chevron" aria-hidden="true">
@@ -295,20 +360,6 @@ function ToolCallDisplayComponent({
         ) : (
           <div className="tool-call__line tool-call__line--static">
             {lineContent}
-          </div>
-        )}
-        {awaitingApproval && onApprove && (
-          <div className="tool-call__actions">
-            <ToolApprovalButtons
-              onApprove={onApprove}
-              grantToolName={grantToolName}
-              sessionGrant={
-                // A part without the projected grant (a registry-route
-                // request) is judged by its tool name alone.
-                toolCall.approvalSessionGrant ??
-                toolRequestSessionGrant({ toolName: grantToolName })
-              }
-            />
           </div>
         )}
       </div>
@@ -333,6 +384,55 @@ function ToolCallDisplayComponent({
           lastProgress={running ? undefined : progressMessage}
         />
       )}
+      {appToolRef && (
+        <LazyBoundary
+          key={id}
+          load={loadTranscriptMCPApp}
+          pending={null}
+          componentProps={{
+            toolRef: appToolRef,
+            toolCallId: id,
+            args,
+            result: toolCall.output ?? toolCall.result,
+          }}
+        />
+      )}
+      {awaitingApproval && onApprove && (
+        <div className="tool-call__actions">
+          <ToolApprovalControls
+            request={{
+              requestId: toolCall.approvalId ?? '',
+              threadId: toolCall.approvalThreadId,
+              requestEventId: toolCall.approvalEventId,
+            }}
+            onApprove={onApprove}
+            grantToolName={grantToolName}
+            sessionGrant={
+              // A part without the projected grant (a registry-route
+              // request) is judged by its tool name alone.
+              toolCall.approvalSessionGrant ??
+              toolRequestSessionGrant({ toolName: grantToolName })
+            }
+            summary={label}
+            details={
+              hasDetail ? (
+                <ToolCallDetails
+                  id={id}
+                  server={server}
+                  toolName={toolName}
+                  originalName={originalName}
+                  args={args}
+                  result={result}
+                  error={error}
+                  cancelled={cancelled}
+                  unresolved={unresolved}
+                  approvalStatus={approvalStatus}
+                />
+              ) : null
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -340,27 +440,85 @@ function ToolCallDisplayComponent({
 /**
  * #2316: a decision is not done until Station accepts it. While it is in
  * flight the buttons are disabled (a second click would answer a request the
- * first may already have settled); a rejected decision re-enables them and
- * names the failure, because the request is still open and still waiting on
- * the user. After success they stay disabled until the durable
+ * first may already have settled). A confirmed refusal re-enables them; an
+ * uncertain delivery stays disabled until inspection confirms the request.
+ * After success they stay disabled until the durable
  * `request.resolved` settles the row and unmounts this control.
  */
-function ToolApprovalButtons({
-  onApprove,
-  grantToolName,
-  sessionGrant,
-}: {
-  onApprove: ToolApprovalHandler;
-  /** The request's reported tool name — never the row's display name. */
-  grantToolName?: string;
-  sessionGrant: ToolRequestSessionGrant;
-}) {
-  const [phase, setPhase] = useState<
-    'idle' | 'sending' | 'sent' | 'already-settled'
-  >('idle');
-  const [failure, setFailure] = useState<string | null>(null);
+type ApprovalPhase =
+  | 'idle'
+  | 'sending'
+  | 'sent'
+  | 'already-settled'
+  | 'unconfirmed';
+
+/** The decision lifecycle above, shared by the inline buttons and the sheet. */
+function useApprovalDecision(
+  onApprove: ToolApprovalHandler,
+  onCheck?: () => Promise<'pending' | 'already-settled'>,
+  reference?: ApprovalAnswerReference,
+) {
+  const admission = useRef(false);
+  const [checking, setChecking] = useState(false);
+  const [localPhase, setPhase] = useState<ApprovalPhase>('idle');
+  const shared = useSyncExternalStore(subscribeApprovalAnswers, () =>
+    reference ? readApprovalAnswerState(reference) : null,
+  );
+  const phase = shared?.phase ?? localPhase;
+  const previousShared = useRef(shared);
+  useEffect(() => {
+    const recovered =
+      (previousShared.current?.phase === 'unconfirmed' ||
+        previousShared.current?.phase === 'sent') &&
+      shared === null;
+    previousShared.current = shared;
+    if (
+      shared?.phase === 'already-settled' &&
+      localPhase !== 'already-settled'
+    ) {
+      admission.current = true;
+      setPhase('already-settled');
+      setFailure(null);
+      setChosen(undefined);
+    } else if (
+      recovered &&
+      (localPhase === 'unconfirmed' || localPhase === 'sent')
+    ) {
+      admission.current = false;
+      setPhase('idle');
+      setFailure(null);
+      setChosen(undefined);
+    }
+  }, [shared, localPhase]);
+
+  const [localFailure, setFailure] = useState<{
+    summary: string;
+    detail?: string;
+  } | null>(null);
+  const [localChosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
+  const chosen = shared
+    ? shared.decision === 'decline'
+      ? 'deny'
+      : shared.decision === 'acceptForSession'
+        ? 'trust'
+        : 'once'
+    : localChosen;
+  const failure =
+    localFailure ??
+    (shared?.phase === 'unconfirmed'
+      ? {
+          summary:
+            shared.error?.message ?? 'Station has not confirmed this decision.',
+          detail:
+            shared.error?.cause instanceof Error
+              ? shared.error.cause.message
+              : undefined,
+        }
+      : null);
   const decide = (action: 'once' | 'trust' | 'deny') => {
-    if (phase !== 'idle') return;
+    if (phase !== 'idle' || admission.current) return;
+    admission.current = true;
+    setChosen(action);
     setPhase('sending');
     setFailure(null);
     // The handler is called in the click, and the buttons are disabled before
@@ -376,60 +534,307 @@ function ToolApprovalButtons({
     Promise.resolve(sent).then(
       (outcome) =>
         setPhase(outcome === 'already-settled' ? 'already-settled' : 'sent'),
-      (error: unknown) => {
-        setPhase('idle');
-        setFailure(
-          error instanceof Error && error.message
+      async (error: unknown) => {
+        const unconfirmed =
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'approval_delivery_unconfirmed';
+        setPhase(unconfirmed ? 'unconfirmed' : 'idle');
+        admission.current = unconfirmed;
+        const translation = await import(
+          '../../utils/chatErrorTranslation'
+        ).catch(() => undefined);
+        const message =
+          error instanceof Error
             ? error.message
-            : 'Station did not accept this decision.',
-        );
+            : 'Station did not accept this decision.';
+        const code =
+          error instanceof Error &&
+          'code' in error &&
+          typeof error.code === 'string'
+            ? error.code
+            : undefined;
+        const translated = translation?.translateChatError({
+          message,
+          code,
+        }) ?? { title: 'Decision delivery failed', body: message };
+        if (
+          unconfirmed &&
+          reference &&
+          readApprovalAnswerState(reference)?.phase !== 'unconfirmed'
+        )
+          return;
+        setFailure({
+          summary: unconfirmed
+            ? message
+            : `${translated.title}. ${translated.hint ?? translated.body}`,
+          detail:
+            error instanceof Error && error.cause instanceof Error
+              ? error.cause.message
+              : message,
+        });
       },
     );
   };
-  const busy = phase !== 'idle';
-  // #2915/#2916: undefined where no session grant is offered.
-  const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
+  const check = onCheck
+    ? async () => {
+        if (checking) return;
+        setChecking(true);
+        try {
+          const outcome = await onCheck();
+          setPhase(outcome === 'pending' ? 'idle' : 'already-settled');
+          admission.current = outcome !== 'pending';
+          setFailure(null);
+        } catch (error) {
+          setFailure({
+            summary:
+              'Station still could not confirm this decision. Reconnect and check again.',
+            detail: error instanceof Error ? error.message : undefined,
+          });
+        } finally {
+          setChecking(false);
+        }
+      }
+    : undefined;
+  return {
+    phase,
+    failure,
+    decide,
+    chosen,
+    checking,
+    check,
+    busy: phase !== 'idle',
+  };
+}
+
+function ApprovalDecisionStatus({
+  phase,
+  failure,
+  check,
+  checking,
+}: {
+  phase: ApprovalPhase;
+  failure: { summary: string; detail?: string } | null;
+  check?: () => Promise<void>;
+  checking?: boolean;
+}) {
   return (
     <>
-      <button
-        type="button"
-        onClick={() => decide('once')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--primary"
-      >
-        Allow Once
-      </button>
-      {grantLabel && (
-        <button
-          type="button"
-          onClick={() => decide('trust')}
-          disabled={busy}
-          className="tool-call__approve-btn tool-call__approve-btn--secondary"
-        >
-          {/* #2316: the same words as the toast and the inbox card for the
-              same grant. It names the REQUEST's tool, never the row's
-              `toolName`, which can be an ACP title — a whole command line. */}
-          {grantLabel}
-        </button>
+      {(phase === 'sending' || phase === 'sent') && (
+        <p className="tool-call__approve-status" role="status">
+          {phase === 'sending'
+            ? 'Sending your decision…'
+            : 'Decision sent. Waiting for the tool to continue.'}
+          {phase === 'sent' && check && (
+            <Button pending={checking} onClick={() => void check()}>
+              Check status
+            </Button>
+          )}
+        </p>
       )}
-      <button
-        type="button"
-        onClick={() => decide('deny')}
-        disabled={busy}
-        className="tool-call__approve-btn tool-call__approve-btn--danger"
-      >
-        Deny
-      </button>
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
           This request is no longer open.
         </p>
       )}
       {failure && (
-        <p className="tool-call__approve-error" role="alert">
-          Your decision was not delivered: {failure}
-        </p>
+        <div className="tool-call__approve-error" role="alert">
+          <p>
+            {phase === 'unconfirmed'
+              ? 'Delivery is not confirmed.'
+              : phase === 'sent'
+                ? 'Current status is not confirmed.'
+                : 'Your decision was not delivered.'}{' '}
+            {failure.summary}
+          </p>
+          {phase === 'unconfirmed' && check && (
+            <Button pending={checking} onClick={() => void check()}>
+              Check status
+            </Button>
+          )}
+          {failure.detail && (
+            <details>
+              <summary>Details</summary>
+              <p>{failure.detail}</p>
+            </details>
+          )}
+        </div>
       )}
+    </>
+  );
+}
+
+interface ToolApprovalControlProps {
+  onApprove: ToolApprovalHandler;
+  reference?: ApprovalAnswerReference;
+  onCheck?: () => Promise<'pending' | 'already-settled'>;
+  /** The request's reported tool name — never the row's display name. */
+  grantToolName?: string;
+  sessionGrant: ToolRequestSessionGrant;
+}
+
+/**
+ * #3331: a desktop answers in the row; a phone answers in the shared request
+ * sheet, with the row itself as the persistent card. Only an awaiting row
+ * mounts this, so the viewport subscription is per open request, not per
+ * transcript row — and a request that settles unmounts it, closing any open
+ * sheet with it.
+ */
+function ToolApprovalControls({
+  summary,
+  details,
+  request,
+  ...props
+}: ToolApprovalControlProps & {
+  summary: ReactNode;
+  details: ReactNode;
+  request: { requestId: string; threadId?: string; requestEventId?: string };
+}) {
+  const isMobile = useIsMobile();
+  const approvalSheet = useApprovalSheet();
+  const reference =
+    approvalSheet?.apiBase !== undefined &&
+    request.threadId &&
+    request.requestEventId
+      ? {
+          apiBase: approvalSheet.apiBase,
+          threadId: request.threadId,
+          requestId: request.requestId,
+          requestEventId: request.requestEventId,
+        }
+      : undefined;
+  const check = approvalSheet ? () => approvalSheet.check(request) : undefined;
+  if (approvalSheet?.insideSheet)
+    return (
+      <ToolApprovalSheet
+        {...props}
+        reference={reference}
+        onCheck={check}
+        summary={summary}
+        details={null}
+        openGrouped={() => false}
+        grouped
+      />
+    );
+  return isMobile ? (
+    <ToolApprovalSheet
+      {...props}
+      reference={reference}
+      onCheck={check}
+      summary={summary}
+      details={details}
+      openGrouped={() => approvalSheet?.show(request) ?? false}
+    />
+  ) : (
+    <ToolApprovalButtons {...props} reference={reference} onCheck={check} />
+  );
+}
+
+function ToolApprovalSheet({
+  reference,
+  onApprove,
+  onCheck,
+  grantToolName,
+  sessionGrant,
+  summary,
+  details,
+  openGrouped,
+  grouped = false,
+}: ToolApprovalControlProps & {
+  summary: ReactNode;
+  details: ReactNode;
+  openGrouped: () => boolean;
+  grouped?: boolean;
+}) {
+  const { phase, failure, decide, chosen, busy, check, checking } =
+    useApprovalDecision(onApprove, onCheck, reference);
+  const sheet = useRequestSheet(true);
+  // Accepted but not yet settled reads as in progress, not as a frozen
+  // sheet: the row stays until the durable `request.resolved` removes it.
+  const inFlight = phase === 'sending' || phase === 'sent';
+  const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
+  const status = (
+    <ApprovalDecisionStatus
+      phase={phase}
+      failure={failure}
+      check={check}
+      checking={checking}
+    />
+  );
+  const actions = (
+    <DecisionActionRow
+      body={approvalDecisionBody(grantLabel)}
+      busy={busy}
+      inFlight={inFlight}
+      chosen={chosen}
+      onChoose={decide}
+    />
+  );
+  if (grouped)
+    return (
+      <>
+        {actions}
+        {status}
+      </>
+    );
+  return (
+    <>
+      <RequestSheetTrigger
+        ref={sheet.triggerRef}
+        onClick={() => {
+          if (!openGrouped()) sheet.show();
+        }}
+        compact
+      />
+      {!sheet.open && status}
+      {sheet.open && (
+        <RequestSheet
+          title={attentionWord('approval')}
+          subtitle={summary}
+          onDismiss={sheet.dismiss}
+          returnFocusTarget={sheet.triggerRef.current}
+          actions={actions}
+        >
+          {details ?? <p className="request-sheet__status">{summary}</p>}
+          {status}
+        </RequestSheet>
+      )}
+    </>
+  );
+}
+
+function ToolApprovalButtons({
+  reference,
+  onApprove,
+  onCheck,
+  grantToolName,
+  sessionGrant,
+}: ToolApprovalControlProps) {
+  const { phase, failure, decide, check, checking } = useApprovalDecision(
+    onApprove,
+    onCheck,
+    reference,
+  );
+  const busy = phase !== 'idle';
+  // #2915/#2916: undefined where no session grant is offered.
+  const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
+  // #3390: the options come from the approval's decision body. #2316: the
+  // session option's label is the same words as the toast and the inbox
+  // card for the same grant, and names the REQUEST's tool, never the row's
+  // `toolName`, which can be an ACP title — a whole command line.
+  return (
+    <>
+      <DecisionButtons
+        body={approvalDecisionBody(grantLabel)}
+        busy={busy}
+        onChoose={decide}
+      />
+      <ApprovalDecisionStatus
+        phase={phase}
+        failure={failure}
+        check={check}
+        checking={checking}
+      />
     </>
   );
 }
@@ -524,20 +929,43 @@ function ToolCallDetails({
           ? 'Success'
           : null;
 
+  const showArgs = commandValue === undefined || hasRemainingArgs;
+  // #3382: the raw views are what an approval is decided from, so a bidi
+  // override or zero-width character in them is shown, never applied.
+  const hiddenWarning =
+    commandValue !== undefined && hasHiddenCharacters(commandValue)
+      ? 'This command contains hidden characters, shown below as «U+…».'
+      : showArgs &&
+          typeof argsJson === 'string' &&
+          hasHiddenCharacters(argsJson)
+        ? 'These arguments contain hidden characters, shown below as «U+…».'
+        : undefined;
+
   return (
     <div className="tool-call__details">
+      {hiddenWarning && (
+        <p className="tool-call__hidden-warning" role="note">
+          {hiddenWarning}
+        </p>
+      )}
       {commandValue !== undefined && (
         <div className="tool-call__section">
           <strong>Command:</strong>
-          <pre className="tool-call__code tool-call__code--command">
-            {commandValue}
+          <pre className="tool-call__code tool-call__code--command" dir="ltr">
+            <RevealedText text={commandValue} />
           </pre>
         </div>
       )}
-      {(commandValue === undefined || hasRemainingArgs) && (
+      {showArgs && (
         <div className="tool-call__section">
           <strong>Arguments:</strong>
-          <pre className="tool-call__code">{argsJson}</pre>
+          <pre className="tool-call__code" dir="ltr">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
         </div>
       )}
       {result !== undefined && (
@@ -596,7 +1024,8 @@ function ToolCallDetails({
         )}
         {toolName && (
           <span>
-            <strong>Tool:</strong> <code>{toolName}</code>
+            <strong>Tool:</strong>{' '}
+            <code dir="ltr">{isolateRightToLeft(toolName, 0)}</code>
           </span>
         )}
         {originalName && originalName !== `${server}_${toolName}` && (
@@ -622,4 +1051,83 @@ function ToolCallDetails({
   );
 }
 
-export const ToolCallDisplay = memo(ToolCallDisplayComponent);
+/**
+ * #3382: raw text exactly as written, except that each hidden character (a
+ * bidi control, a zero-width character, a control other than LF and tab) is
+ * shown as its own muted «U+XXXX» token instead of being applied. The DOM
+ * text is then the value in logical order.
+ */
+function RevealedText({ text }: { text: string }) {
+  const segments = useMemo(() => revealHiddenCharacters(text), [text]);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === 'text' ? (
+          isolateRightToLeft(segment.text, index)
+        ) : (
+          <span
+            // Segments are positions in one string and never reorder.
+            key={index}
+            className="tool-call__hidden-char"
+            title={`Hidden character: ${segment.name}. Shown here instead of being applied.`}
+          >
+            {segment.token}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** A maximal run of right-to-left letters (Hebrew, Arabic, Syriac, Thaana,
+ * N'Ko, …), with their combining marks. Nothing else: no spaces, digits,
+ * punctuation or Latin. */
+const RIGHT_TO_LEFT_RUN =
+  /([\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]+)/u;
+
+/**
+ * #3382: each run of right-to-left letters in its own `<bdi>`, inside a
+ * left-to-right block, so the run reads right to left inside itself and
+ * nothing else moves. Only the letters are isolated: wrapping a whole word
+ * moved its Latin part too, so `echo שלום;rm` read as "echo rm;…" and
+ * `שלום/../../etc/passwd` as "etc/passwd/../../…". Unisolated, the runs
+ * reorder their neighbours (`cp שלום עולם` shows its arguments swapped).
+ */
+function isolateRightToLeft(text: string, key: number): React.ReactNode {
+  const parts = text.split(RIGHT_TO_LEFT_RUN);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) =>
+    // `split` with a capture puts every run at an odd index.
+    index % 2 === 1 ? (
+      // Parts are positions in one string and never reorder.
+      <bdi key={`${key}:${index}`}>{part}</bdi>
+    ) : (
+      part
+    ),
+  );
+}
+
+/** Remembered expand/collapse choices on pending requests, by request. */
+const approvalToggles = new Map<string, boolean>();
+const MAX_REMEMBERED_TOGGLES = 100;
+
+function rememberToggle(key: string, expanded: boolean): void {
+  approvalToggles.delete(key);
+  approvalToggles.set(key, expanded);
+  if (approvalToggles.size > MAX_REMEMBERED_TOGGLES) {
+    const oldest = approvalToggles.keys().next().value;
+    if (oldest !== undefined) approvalToggles.delete(oldest);
+  }
+}
+
+export const ToolCallDisplay = memo(function ToolCallDisplay(
+  props: ToolCallDisplayProps,
+) {
+  return (
+    <TranscriptAppTools calls={[props.toolCall]}>
+      {(appTools) => (
+        <ToolCallDisplayComponent {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
+  );
+});

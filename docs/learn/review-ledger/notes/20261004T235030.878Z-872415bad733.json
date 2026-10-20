@@ -1,0 +1,7 @@
+{
+  "revision": "ae3033839a74ad8dc5d005fa71bb349e1efea634",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed its read-only-attached and work-item placement mentions; peer records now navigate to Activity like read-only-attached ones, which does not contradict its placement rules. The workspace Home projection only gained one described field.","inputs":["docs/design/placement.md","packages/contracts/src/workspace-home-role.ts"]}
+  ]
+}

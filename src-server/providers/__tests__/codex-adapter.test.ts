@@ -31,6 +31,8 @@ import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
+import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
+import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
@@ -1488,6 +1490,136 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test.each(['home', 'profile'] as const)(
+    'a native return refuses a changed %s before starting another Codex process',
+    async (changed) => {
+      let home = '/profiles/original';
+      let profileRef = 'original';
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({ env: { CODEX_HOME: home }, profileRef }),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        const source = adapter.startSession({
+          provider: 'codex',
+          threadId: 'binding-source',
+        });
+        await flushIo();
+        processHandle.stdout.write(
+          `${JSON.stringify({ id: '1', result: {} })}\n`,
+        );
+        await flushIo();
+        processHandle.stdout.write(
+          `${JSON.stringify({ id: '2', result: { thread: { id: 'native-source' } } })}\n`,
+        );
+        await source;
+        let bindingKey: string | undefined;
+        for (let count = 0; count < 4; count++) {
+          const event = (await iterator.next()).value;
+          if (
+            event?.method === 'session.configured' &&
+            typeof event.metadata?.nativeResumeBindingKey === 'string'
+          ) {
+            bindingKey = event.metadata.nativeResumeBindingKey;
+            break;
+          }
+        }
+        if (!bindingKey) throw new Error('No observed source binding');
+        await adapter.stopSession('binding-source');
+        if (changed === 'home') home = '/profiles/replacement';
+        else profileRef = 'replacement';
+        const invocations = processFactory.mock.calls.length;
+        await expect(
+          adapter.startSession({
+            provider: 'codex',
+            threadId: 'binding-return',
+            resumeCursor: { codexThreadId: 'native-source' },
+            requireNativeResumeIdentity: true,
+            nativeResumeBindingKey: bindingKey,
+          }),
+        ).rejects.toThrow('different engine home or credential profile');
+        expect(processFactory).toHaveBeenCalledTimes(invocations);
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test.each(['native-original', 'native-other'])(
+    'exact native resume checks the provider response %s and closes a mismatched process',
+    async (observedId) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const events: Array<{
+        method: string;
+        metadata?: Record<string, unknown>;
+      }> = [];
+      const controller = new AbortController();
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents({
+          signal: controller.signal,
+        }))
+          events.push(event);
+      })();
+      const started = adapter.startSession({
+        provider: 'codex',
+        threadId: 'strict-resume',
+        resumeCursor: { codexThreadId: 'native-original' },
+        requireNativeResumeIdentity: true,
+      });
+      const result = started.then(
+        (session) => ({ session }),
+        (error) => ({ error }),
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '2', result: { thread: { id: observedId } } })}\n`,
+      );
+      try {
+        const outcome = await withTimeout(result, 'strict resume');
+        if (observedId === 'native-original') {
+          expect(outcome).toHaveProperty(
+            'session.resumeCursor.codexThreadId',
+            'native-original',
+          );
+          await vi.waitFor(() =>
+            expect(events).toContainEqual(
+              expect.objectContaining({
+                method: 'session.configured',
+                metadata: expect.objectContaining({
+                  nativeResumeIdentity: 'matched',
+                }),
+              }),
+            ),
+          );
+        } else {
+          expect(outcome).toHaveProperty(
+            'error.message',
+            'The engine opened a different native conversation; the requested resume was refused.',
+          );
+          expect(processHandle.killed).toBe(true);
+          expect(
+            events.some((event) => event.method === 'session.configured'),
+          ).toBe(false);
+          expect(await adapter.hasSession('strict-resume')).toBe(false);
+        }
+      } finally {
+        await adapter.stopAll();
+        controller.abort();
+        await drain;
+      }
+    },
+  );
+
   test('starts a Codex session, sends turns, and maps notifications to canonical events', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -1932,6 +2064,7 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
     });
+    expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
     const startSessionPromise = adapter.startSession({
@@ -5760,6 +5893,102 @@ describe('CodexAdapter', () => {
       expect(processFactory).toHaveBeenCalledWith({
         ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
         CODEX_HOME: '/profiles/a',
+      });
+    });
+
+    describe('#2966: credential profile env overlay', () => {
+      const makeTempDir = trackTempDirs();
+      const connectionEnv = async () => ({
+        OPENAI_BASE_URL: 'http://connection.example.internal',
+        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CONNECTION_ONLY: 'kept',
+      });
+      const resolverFor = (homeDir: string, env: Record<string, string>) =>
+        createCredentialProfileAppHomeEnvResolver({
+          engine: 'codex',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [{ ref: 'proxy', env }],
+              activeProfileRef: 'proxy',
+            },
+          }),
+        });
+
+      test('startSession hands the process factory the overlay over the connection env, under the profile CODEX_HOME', async () => {
+        const homeDir = makeTempDir('station-codex-profile-env-');
+        processHandle = new FakeCodexProcess();
+        const processFactory = vi.fn(() => processHandle!);
+        const adapter = new CodexAdapter({
+          processFactory,
+          getAppHomeEnv: resolverFor(homeDir, {
+            OPENAI_BASE_URL: 'http://127.0.0.1:9000',
+            OPENAI_API_KEY: '',
+          }),
+          getConnectionEnv: connectionEnv,
+        } as any);
+
+        const startSessionPromise = adapter.startSession({
+          provider: 'codex',
+          threadId: 'thread-profile-overlay',
+          cwd: '/tmp/project',
+          modelId: 'gpt-5-codex',
+        });
+        // The real resolver creates the profile home before the spawn.
+        await vi.waitFor(() => expect(processFactory).toHaveBeenCalled());
+        await flushIo();
+        writeServerMessage(adapter, 'thread-profile-overlay', {
+          id: '1',
+          result: { userAgent: 'test' },
+        });
+        await flushIo();
+        writeServerMessage(adapter, 'thread-profile-overlay', {
+          id: '2',
+          result: {
+            thread: { id: 'codex-thread-profile-overlay' },
+            model: 'gpt-5-codex',
+          },
+        });
+        await withTimeout(startSessionPromise, 'startSession');
+
+        expect(processFactory).toHaveBeenCalledWith(
+          {
+            OPENAI_BASE_URL: 'http://127.0.0.1:9000',
+            OPENAI_API_KEY: '',
+            CONNECTION_ONLY: 'kept',
+            CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+          },
+          undefined,
+        );
+        await adapter.stopAll();
+      });
+
+      test('an invalid overlay on the active profile rejects startSession and the quota read without a ref, spawning nothing', async () => {
+        const homeDir = makeTempDir('station-codex-profile-env-');
+        // A spawn here is the defect: fail fast rather than await a handshake.
+        const processFactory = vi.fn((): FakeCodexProcess => {
+          throw new Error('spawned despite an invalid profile overlay');
+        });
+        const adapter = new CodexAdapter({
+          processFactory,
+          getAppHomeEnv: resolverFor(homeDir, {
+            OPENAI_API_KEY: 'canary-secret',
+          }),
+          getConnectionEnv: connectionEnv,
+        } as any);
+
+        await expect(
+          adapter.startSession({
+            provider: 'codex',
+            threadId: 'thread-profile-overlay-invalid',
+            cwd: '/tmp/project',
+            modelId: 'gpt-5-codex',
+          }),
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+        await expect(
+          adapter.readQuotaSnapshot({ connectionId: 'codex' }),
+        ).rejects.toBeInstanceOf(CredentialProfileEnvironmentError);
+        expect(processFactory).not.toHaveBeenCalled();
       });
     });
   });

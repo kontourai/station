@@ -23,12 +23,16 @@ import {
   getRuntimeNativeDeviceProofPrincipal,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { VerifiedIdentity } from '../../services/identity/identity-source.js';
-import { identifyIngress } from '../../services/identity/identity-source.js';
+import {
+  DEVICE_IDENTITY_PROVIDER,
+  identifyIngress,
+} from '../../services/identity/identity-source.js';
 import {
   PrincipalUnresolvedError,
   principalForRecordedSessionOwner,
@@ -44,28 +48,12 @@ function isAccountDeviceBinding(
   return 'kind' in binding && binding.kind === 'account';
 }
 
-function principalForDeviceBinding(
-  binding: DevicePrincipalBinding,
-): PrincipalRef {
-  return 'kind' in binding
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
-}
-
 /** The identity a request carrying this device's own credential presents. */
 function deviceIdentity(
   device: Pick<PairedDevice, 'id' | 'name'>,
 ): VerifiedIdentity {
   return {
-    provider: 'device',
+    provider: DEVICE_IDENTITY_PROVIDER,
     subject: device.id,
     displayName: device.name?.trim() || device.id,
   };
@@ -213,11 +201,11 @@ export function createOrchestrationRequestPrincipalResolver(
           ? ({ verifiedOperatorCredential: true } as const)
           : undefined;
     const ingressIdentity = identifyIngress(c);
-    const binding =
+    const device =
       runtimePrincipal?.authority === 'device-credential'
         ? environmentSecurityService.identifyDevice(runtimePrincipal.credential)
-            ?.principalBinding
         : undefined;
+    const binding = device?.principalBinding;
     if (
       binding &&
       (hostedTenantRegistry !== undefined ||
@@ -245,6 +233,16 @@ export function createOrchestrationRequestPrincipalResolver(
       verifiedPerson ? [verifiedPerson] : [],
     );
     if (account) return account;
+    // #3586: a personal access token tied to an account acts as that
+    // account without a session; the pairing service resolved it only
+    // because the account's standing is current.
+    if (
+      verifiedPerson &&
+      binding &&
+      isAccountDeviceBinding(binding) &&
+      device?.credentialKind === 'personal-token'
+    )
+      return verifiedPerson;
     return resolveStationPrincipal(
       (binding && !('kind' in binding)
         ? {

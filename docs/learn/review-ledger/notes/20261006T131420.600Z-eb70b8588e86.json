@@ -1,0 +1,9 @@
+{
+  "revision": "ebe01e714259be3e78b278f57883e7c3e81c87fe",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Dated decision record, dependent via docs/reference/session-api.md. The session-api change only corrects the Grok rewind-marker visibility sentence; this ADR's routing decision and rationale make no claim about extension markers.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"runtime-event-projection.ts now also releases a turn's held transcript markers when that turn's Session exits mid-turn; the turn row itself and every tool, approval and policy-denied projection path this document describes are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]}
+  ]
+}

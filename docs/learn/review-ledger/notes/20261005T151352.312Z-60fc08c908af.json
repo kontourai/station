@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#3331 adds tests/mobile-request-sheet.spec.ts to the product bucket and execution profile in tests/e2e-manifest.mjs. The matrix routes surfaces to representative owners and is not an exhaustive spec list; the bucket and manifest-ownership prose remains accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6cd445a588ae4e11199509394a277719fa235a1c",
+
+  "notes": [
+    {"path":"docs/strategy/dogfood/dogfood-018-home-media-client-preflight/report.md","note":"Correction to the 2026-10-06 note on this record: the evidence-retention check resolves this record's digests against the unrecoverable ledger by sha256 alone; the ledger entry's run field is read only by the stale-entry check. So the rename could not break that join, but the earlier note's claim that the digests join the ledger under the new run id overstated what the check proves. The record's content, classification and limits are unchanged.","inputs":["docs/strategy/dogfood/dogfood-018-home-media-client-preflight/report.md"]}
+  ]
+}

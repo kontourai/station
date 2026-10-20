@@ -197,6 +197,8 @@ export async function mockChatShell(
           ],
         }),
       );
+    if (path === '/api/projects/run-locations')
+      return route.fulfill(json({ success: true, data: {} }));
     if (path === '/api/connections/agents')
       return route.fulfill(
         json({

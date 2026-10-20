@@ -1,13 +1,21 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
+import { createEmptyUsageStats } from '../../../analytics/usage-aggregator-state.js';
+import {
+  bindRuntimeLocalOperator,
+  isBoundRuntimeLocalOperator,
+  type RuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   analyticsOps: { add: vi.fn() },
@@ -15,6 +23,122 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 const { createAnalyticsRoutes } = await import('../analytics.js');
 const makeHome = trackTempDirs();
+
+test('ordinary analytics and rescan responses omit the operator-only person breakdown', async () => {
+  const aggregator = new UsageAggregator(makeHome('station-private-usage-'));
+  const stats = createEmptyUsageStats();
+  const principal = humanPrincipal('oidc', 'recorded-user', 'Recorded person');
+  stats.byPrincipal = {
+    [principal.id]: {
+      principal,
+      usage: {
+        messages: 1,
+        inputTokens: 12,
+        outputTokens: 4,
+        cost: 0,
+      },
+    },
+  };
+  vi.spyOn(aggregator, 'readStats').mockResolvedValue(stats);
+  vi.spyOn(aggregator, 'fullRescan').mockResolvedValue(stats);
+  const app = createAnalyticsRoutes(
+    aggregator,
+    undefined,
+    undefined,
+    undefined,
+    'instance',
+    () => true,
+  );
+  for (const [path, method] of [
+    ['/usage', 'GET'],
+    ['/usage?from=2026-10-01&to=2026-10-04', 'GET'],
+    ['/rescan', 'POST'],
+  ]) {
+    const response = await app.request(path, { method });
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(body.data.byPrincipal).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(principal.id);
+  }
+  const protectedBody = await json(await app.request('/station-usage'));
+  expect(protectedBody.data.byPrincipal[principal.id].usage.inputTokens).toBe(
+    12,
+  );
+});
+
+test('station overview requires bound operator authority and reads the whole local instance', async () => {
+  const home = makeHome('station-operator-usage-');
+  for (const [agent, inputTokens] of [
+    ['one', 11],
+    ['two', 23],
+  ] as const) {
+    const dir = join(home, 'agents', agent, 'memory', 'sessions');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'conversation.ndjson'),
+      JSON.stringify({
+        role: 'assistant',
+        timestamp: '2026-10-04T12:00:00.000Z',
+        metadata: { usage: { inputTokens, outputTokens: 2, estimatedCost: 0 } },
+      }),
+    );
+  }
+  const aggregator = new UsageAggregator(home);
+  const read = vi.spyOn(aggregator, 'readStats');
+  let principal: RuntimeAuthenticatedRequestPrincipal | undefined;
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    bindRuntimeLocalOperator(c.req.raw, principal);
+    await next();
+  });
+  app.route(
+    '/analytics',
+    createAnalyticsRoutes(
+      aggregator,
+      undefined,
+      undefined,
+      undefined,
+      'this-instance',
+      isBoundRuntimeLocalOperator,
+    ),
+  );
+  for (const caller of [
+    undefined,
+    {
+      credential: 'test-paired-device',
+      authority: undefined,
+      source: 'bearer' as const,
+      pairingSource: 'same-origin' as const,
+    },
+  ]) {
+    principal = caller;
+    const response = await app.request(
+      '/analytics/station-usage?operator=1&userId=human:local:operator',
+      {
+        headers: { 'x-operator': 'true' },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(read).not.toHaveBeenCalled();
+  }
+  principal = {
+    credential: 'test-local-grant',
+    authority: undefined,
+    source: 'bearer',
+    locality: 'home-possession',
+  };
+  const response = await app.request('/analytics/station-usage');
+  expect(response.status).toBe(200);
+  const body = await json(response);
+  expect(body.scope).toEqual({ kind: 'station', stationId: 'this-instance' });
+  expect(body.data.lifetime.totalInputTokens).toBe(34);
+  expect(body.data.byAgent.one.messages).toBe(1);
+  expect(body.data.byAgent.two.messages).toBe(1);
+  principal = undefined;
+  expect((await app.request('/analytics/station-usage')).status).toBe(403);
+  expect(read).toHaveBeenCalledTimes(1);
+});
 
 test('rescanning the same measured messages in a different order preserves cost eligibility', async () => {
   const home = makeHome('station-profile-cost-rounding-');
@@ -99,22 +223,29 @@ test.each([
 test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
   '%s cannot certify cost coverage before the changed message is rescanned',
   async (method) => {
-    const aggregator = new UsageAggregator(
-      makeHome('station-profile-cost-update-'),
-      {
-        get: () => ({
-          listSessionUsage: () => [
-            {
-              threadId: 'engine',
-              conversationId: 'engine',
-              usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
-            },
-          ],
-        }),
-      },
-    );
+    const home = makeHome('station-profile-cost-update-');
+    const aggregator = new UsageAggregator(home, {
+      get: () => ({
+        listSessionUsage: () => [
+          {
+            threadId: 'engine',
+            conversationId: 'engine',
+            usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
+          },
+        ],
+      }),
+    });
     const app = createAnalyticsRoutes(aggregator);
     await app.request('/achievements');
+    const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'one.ndjson'),
+      JSON.stringify({
+        role: 'assistant',
+        metadata: { usage: { inputTokens: 10 } },
+      }),
+    );
     await aggregator[method](
       { role: 'assistant', metadata: { usage: { inputTokens: 10 } } },
       'sample',
@@ -129,7 +260,7 @@ test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
   },
 );
 
-test('retained token measurements block a cost milestone even when message counts match', async () => {
+test('a corrected current token figure does not retain an obsolete cost-coverage gap', async () => {
   const usage = {
     turns: 60,
     toolCalls: 0,
@@ -155,8 +286,8 @@ test('retained token measurements block a cost milestone even when message count
   const milestone = body.data.find(
     (item: { id: string }) => item.id === 'cost-conscious',
   );
-  expect(milestone.unlocked).toBe(false);
-  expect(milestone.measurementUnavailableReason).toBeTruthy();
+  expect(milestone.unlocked).toBe(true);
+  expect(milestone.measurementUnavailableReason).toBeUndefined();
 });
 
 test.each([undefined, 0])(
@@ -231,12 +362,18 @@ test('usage reads refresh engine totals and achievements after the snapshot expi
   }
 });
 
-test('reset leaves a valid aggregate that can accept the next message', async () => {
-  const aggregator = new UsageAggregator(makeHome('station-profile-reset-'));
-  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+test('reset leaves a usable projection rebuilt from the next retained message', async () => {
+  const home = makeHome('station-profile-reset-');
+  const aggregator = new UsageAggregator(home);
   await aggregator.reset();
-  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'two');
-  expect((await aggregator.loadStats()).lifetime.totalMessages).toBe(1);
+  const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, 'one.ndjson'),
+    JSON.stringify({ role: 'assistant' }),
+  );
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+  expect((await aggregator.readStats()).lifetime.totalMessages).toBe(1);
 });
 
 function createMockAggregator() {

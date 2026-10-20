@@ -1,0 +1,91 @@
+/* A background task's settle in the transcript: one status line, then the
+   result. The status reads as text plus the shared lifecycle glyph and tone
+   (StatusGlyph.css), never an emoji. */
+.task-notice {
+  line-height: var(--k-leading-normal);
+}
+
+/* Inline text, not a flex row: a long title wraps word by word right after
+   the status, instead of dropping to its own line and leaving the separator
+   dangling at the end of the first. */
+.task-notice__line {
+  margin: 0;
+}
+
+.task-notice__status {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-notice__glyph {
+  display: inline-block;
+  width: 1em;
+  margin-right: var(--k-space-1);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.task-notice__status--success {
+  color: var(--color-success);
+}
+
+.task-notice__status--danger {
+  color: var(--color-error);
+}
+
+.task-notice__status--warning {
+  color: var(--color-warning);
+}
+
+.task-notice__status--muted {
+  color: var(--k-text-muted);
+}
+
+.task-notice__separator {
+  margin: 0 var(--k-space-2);
+  color: var(--k-text-muted);
+}
+
+.task-notice__title {
+  overflow-wrap: anywhere;
+}
+
+.task-notice__summary {
+  margin: var(--k-space-1) 0 0;
+  color: var(--k-text-muted);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+.task-notice__summary > :first-child {
+  margin-top: 0;
+}
+
+.task-notice__summary > :last-child {
+  margin-bottom: 0;
+}
+
+.task-notice__details {
+  margin-top: var(--k-space-1);
+}
+
+.task-notice__details > summary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--k-text-muted);
+  font-size: 0.92em;
+  cursor: pointer;
+}
+
+/* The 44px touch target without a 44px row, the way ActionRow.css does it:
+   the hit area is a pseudo-element, so the card stays one line tall. */
+.task-notice__details > summary::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}

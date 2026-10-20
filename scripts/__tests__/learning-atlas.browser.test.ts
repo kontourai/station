@@ -225,12 +225,17 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await page.goBack();
   await browserExpect(page.getByRole('article')).toContainText('indeterminate');
   await page.getByRole('searchbox').fill('docs/reference/station-docs.md');
-  await browserExpect(page.getByRole('status')).toContainText(
-    '1 documents match',
+  // Other documents legitimately mention this path, so require at least one
+  // document match and find the manual itself rather than pinning a count.
+  await browserExpect(page.getByRole('status')).toHaveText(
+    /^\d+ concepts and [1-9]\d* documents match\./,
   );
   await page
     .getByRole('navigation', { name: 'Search results' })
-    .getByRole('link')
+    .getByRole('link', {
+      name: 'Station shipped documentation docs/reference/station-docs.md',
+      exact: true,
+    })
     .click();
   await browserExpect(
     page.getByRole('article').getByRole('heading', { level: 1 }),

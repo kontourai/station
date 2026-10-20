@@ -83,7 +83,7 @@ function Rows() {
         <ProjectSidebarRow
           key={project.slug}
           project={project}
-          isActive={false}
+          isActive={index === 0}
           activeLayout={null}
           collapsed={false}
           reorder={rowReorderProps(index)}
@@ -128,9 +128,9 @@ describe.skipIf(!chromiumAvailable)(
         );
         return await page.evaluate(() => {
           const box = (element: Element) => {
-            const { top, bottom, left, right, height } =
+            const { top, bottom, left, right, height, width } =
               element.getBoundingClientRect();
-            return { top, bottom, left, right, height };
+            return { top, bottom, left, right, height, width };
           };
           const rows = Array.from(
             document.querySelectorAll('.sidebar__project-row-main'),
@@ -139,7 +139,11 @@ describe.skipIf(!chromiumAvailable)(
             const name = rowMain.querySelector('.sidebar__project-name');
             if (!handle || !name) throw new Error('the row did not render');
             const handleBox = box(handle);
+            const disclosure = rowMain.querySelector(
+              '.sidebar__project-disclosure',
+            );
             return {
+              disclosure: disclosure ? box(disclosure) : null,
               row: box(rowMain),
               handle: handleBox,
               name: box(name),
@@ -190,6 +194,16 @@ describe.skipIf(!chromiumAvailable)(
       }
       // Adjacent handles tile instead of overlapping.
       expect(rows[0].handle.bottom).toBeLessThanOrEqual(rows[1].handle.top);
+    }, 120_000);
+
+    test('the selected project disclosure is 44px square and clear of its name and reorder handle', async () => {
+      const { rows } = await measure(true);
+      const row = rows[0];
+      expect(row.disclosure).not.toBeNull();
+      expect(row.disclosure!.width).toBeGreaterThanOrEqual(44);
+      expect(row.disclosure!.height).toBeGreaterThanOrEqual(44);
+      expect(row.name.right).toBeLessThanOrEqual(row.disclosure!.left);
+      expect(row.disclosure!.right).toBeLessThanOrEqual(row.handle.left);
     }, 120_000);
 
     test('a fine pointer leaves the handle hidden at rest', async () => {

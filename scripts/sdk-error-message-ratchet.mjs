@@ -89,7 +89,7 @@
 //   node scripts/sdk-error-message-ratchet.mjs [--update]
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

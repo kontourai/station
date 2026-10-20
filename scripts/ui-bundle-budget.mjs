@@ -48,10 +48,11 @@
  * first paint regardless of how many the bundler emits. This deliberately
  * does NOT follow the module graph transitively: a chunk that is only
  * discoverable via a lazy `import()` (no matching modulepreload in the built
- * HTML) is not part of the initial payload by any browser-observable
- * definition, so it is out of scope here even though it exists on disk.
+ * HTML) is normally out of scope here even though it exists on disk. Station's
+ * small boot entry immediately imports the app; `station-eager-entry` names
+ * that named chunk so its static JS/CSS closure still pays this same budget.
  */
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -221,8 +222,55 @@ export function measureEntryBundle(outputDir) {
 
   // Dedupe: the same chunk can appear as both a <script src> and a
   // modulepreload link. Count its bytes once, not once per reference.
-  const entryJsFiles = Array.from(new Set([...scripts, ...modulepreloads]));
-  const entryCssFiles = Array.from(new Set(stylesheets));
+  const eagerJs = [...scripts, ...modulepreloads];
+  const eagerCss = [...stylesheets];
+  const appEntry = findTags(html, 'meta').find((tag) =>
+    /\bname="station-eager-entry"/.test(tag),
+  );
+  const manifestPath = join(outputDir, '.vite/manifest.json');
+  const manifest = existsSync(manifestPath)
+    ? JSON.parse(readFileSync(manifestPath, 'utf8'))
+    : null;
+  if (
+    !appEntry &&
+    manifest &&
+    Object.values(manifest).some(
+      (chunk) => chunk.name === 'main' && chunk.isDynamicEntry === true,
+    )
+  )
+    throw new Error(
+      'Station boot output is missing station-eager-entry metadata.',
+    );
+  if (appEntry) {
+    const entry = appEntry.match(/\bcontent="([^"]+)"/)?.[1];
+    if (!entry)
+      throw new Error('Station eager entry is missing its chunk name.');
+    if (!manifest)
+      throw new Error('Station eager entry is missing its Vite manifest.');
+    const visited = new Set();
+    const visit = (key) => {
+      if (visited.has(key)) return;
+      visited.add(key);
+      const chunk = manifest[key];
+      if (!chunk || typeof chunk.file !== 'string')
+        throw new Error(
+          `Station eager entry references missing manifest chunk ${key}.`,
+        );
+      eagerJs.push(chunk.file);
+      for (const file of chunk.css ?? []) eagerCss.push(file);
+      for (const dependency of chunk.imports ?? []) visit(dependency);
+    };
+    const candidates = Object.entries(manifest).filter(
+      ([, chunk]) => chunk.name === entry && chunk.isDynamicEntry === true,
+    );
+    if (candidates.length !== 1)
+      throw new Error(
+        `Station eager entry needs one dynamic chunk named ${entry}; found ${candidates.length}.`,
+      );
+    visit(candidates[0][0]);
+  }
+  const entryJsFiles = Array.from(new Set(eagerJs));
+  const entryCssFiles = Array.from(new Set(eagerCss));
 
   // Gzip each file individually and sum, matching what a browser actually
   // receives (independent gzip streams, one per HTTP response) rather than

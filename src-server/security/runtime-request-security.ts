@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
+import type { ClientProtocolPolicy } from './client-protocol-admission.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
 export type PairedDeviceLastSeenFrom = 'loopback' | 'lan' | 'tailnet';
@@ -430,6 +431,12 @@ export interface RuntimeHttpSecurityOptions {
     credential: string,
   ) => string | undefined | Promise<string | undefined>;
   allowedOrigins?: readonly string[];
+  /**
+   * Test seam for the client-protocol range this host enforces. Production
+   * omits it and enforces the same block the public handshake advertises
+   * (`HOST_STATION_COMPATIBILITY`), so the two cannot disagree.
+   */
+  clientCompatibility?: ClientProtocolPolicy;
   audit?: (record: RuntimeSecurityAuditRecord) => void;
   now?: () => number;
   maxFailures?: number;
@@ -1355,6 +1362,7 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
       capability.scope,
       { method, path },
       security.verifyOperatorCredential?.(principal.credential) === true,
+      principal.locality === 'home-possession',
     )
   );
 }

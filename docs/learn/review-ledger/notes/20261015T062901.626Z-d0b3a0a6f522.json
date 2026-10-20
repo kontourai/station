@@ -1,0 +1,7 @@
+{
+  "revision": "cfd6c05c087ee53626ef87b9aeba238f88601d5d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 3: re-read the composer policy and traced work-observation, mounted history/open readers, stream delivery, and shared row rendering. Inventory omission retains observations while any row or history/open reader subscribes; final release also requires absence from loaded inventory. Stream supersession compares each failed source watermark and proves status only; history error UI remains until read recovery. Owner suite 20/20, full focused suite 248/248, ten committed-clean-tree injections all red then restored green, and desktop/mobile conversation-resync browser journey passed. No native, provider, hosted Gallery, or merge-queue qualification claimed.","inputs":["docs/design/chat-composer.md","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

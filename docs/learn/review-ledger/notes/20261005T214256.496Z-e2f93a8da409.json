@@ -1,0 +1,7 @@
+{
+  "revision": "5de4e826780e99e45500d6c8d4344a166746556c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Updated the MCP client feature-support Elicitation row for #3284: an elicitation is answered only when exactly one request is in flight on the connection and it is a Station-agent turn's tool call; any other in-flight request (tool call, MCP Apps call, prompt or resource read) makes it refused. Checked against mcp-connection.ts (inFlightRequest in the guarded client, the elicitation/create handler) and mcp-elicitation-connection.test.ts in both eras.","inputs":["docs/design/mcp-ui-host.md","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

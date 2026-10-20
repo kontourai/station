@@ -17,7 +17,6 @@ export interface AgentStats {
   model: string;
   conversationCount: number;
   messageCount: number;
-  cost: number;
   healthy?: boolean;
 }
 
@@ -28,7 +27,6 @@ export interface MonitoringStats {
     activeAgents: number;
     runningAgents: number;
     totalMessages: number;
-    totalCost: number;
   };
 }
 

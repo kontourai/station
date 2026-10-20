@@ -20,11 +20,17 @@ device receipts for current availability.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: about once a day, with native publication only when `main` moved.**
-Nightly runs daily at 06:43 UTC. `Main: Qualification` runs every six hours, and
-a passing run also calls Nightly for the commit it just qualified, at most
-about once a day. The scheduled run admits exact-source qualification evidence
-or runs fresh qualification. See [the release procedure](releasing.md#release-procedure). The scheduled job compares `HEAD`
+**Cadence: a configurable minimum interval, six hours by default.**
+Nightly checks eligibility hourly at minute 47 UTC under its serialized delivery
+lease. The default minimum publication spacing is six hours; unchanged or recent
+ships skip before source tests and builds. Eligible candidates must pass lint,
+all typecheck lanes, native boundary checks and real browser smoke on the exact
+event SHA. Full qualification runs separately every six hours; Nightly's gate
+does not produce that receipt. Manual dispatch retains the same source and
+artifact gates for recovery.
+The hourly qualification-health watchdog reports stale or missing qualification
+and failed delivery; see [the release procedure](releasing.md#release-procedure).
+The cohort decision compares its source
 against the rolling `nightly` tag (the commit the last published nightly was
 cut from) and builds nothing when they match and the deploy ledger records
 that ship: a new version number over identical content is a version number
@@ -33,12 +39,11 @@ by design. The tag alone is not the evidence — the macOS marker moves before
 its publish is verified, so the decision also requires a ledger row per
 platform at the tag's commit
 (see [Native Nightly cohort](./native-releases.md#native-nightly-cohort)).
-Scheduled same-day ships of new content automatically take the next reserved
-version code. Manual `rebuild_index` remains the exception for rebuilding a
+Admitted ships of new content take the next reserved version code. Manual `rebuild_index` remains the exception for rebuilding a
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The daily schedule is not a
+provider processing determine delivery time. The eligibility schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
@@ -56,9 +61,8 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 section for an exceptional same-day rebuild (`rebuild_index`).
 
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
-select an older Stable/TestFlight candidate. Native staging needs the source
-gate and can run alongside full regression; promotion needs both completed
-staging and the exact-SHA full-regression receipt.
+select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
+requires that gate and completed staging. Full regression runs independently.
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,
@@ -78,28 +82,45 @@ provider outcomes retain their own status; a failed overall run can already have
 published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
 before retrying or changing a marker.
 
-## Portable server nightly (dry run until the owner enables it)
+## Portable server nightly
 
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
-`portable-nightly` after full regression, builds the five
+`portable-nightly` after source usability succeeds, builds the five
 `station-server-<os>-<arch>` archives through the reusable
 `portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
 `<code>` is the native Nightly's reserved version code (re-checked against the
 `nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
 the archive descriptors, signs it with a throwaway key, verifies it, and
-confirms the pinned key table refuses that envelope. That is the whole run
-unless the owner gate is on; nothing is uploaded except short-lived run
-artifacts.
+confirms the pinned key table refuses that envelope. Publication is enabled:
+the owner set `STATION_PORTABLE_NIGHTLY_PUBLISH=enabled`, and Nightlies
+publish versioned `vX.Y.Z-nightly.<code>` releases and replace the rolling
+`portable-nightly` manifest (as read on 2026-10-12, the newest was
+`v0.1.11-nightly.247504`). Without the gate, or on a direct dispatch, the run
+stops after the dry run and uploads only short-lived run artifacts.
 
 This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
 selects the host's archive, verifies its signed size and digest, and installs
 it under `versions/<version>` with its bundled Node.js and a forwarding
 launcher. On Windows, `install.ps1` installs it the same way under a
 `current` junction with a `station-nightly.cmd` launcher (see
-[Windows archive installs](release-channel-ports.md#windows-archive-installs)). Set `STATION_CHANNEL=nightly` and
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
-Installer support does not establish that publication is enabled or that a
-release has been installed successfully; see the
+[Windows archive installs](release-channel-ports.md#windows-archive-installs)).
+`STATION_CHANNEL=nightly` alone installs from the rolling
+`portable-nightly/station-portable-nightly-manifest.json`, which both
+installers carry as a generated default; an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it, with the same pinned-key
+verification:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+```
+
+```powershell
+$env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontourai/station/main/install.ps1 | iex
+```
+
+The installer is not otherwise part of the signed release. Each versioned
+release also carries the `install.sh` and `install.ps1` of its source SHA,
+which the publish job reads back byte for byte. See the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` and the only one that
@@ -121,9 +142,10 @@ gh workflow run portable-nightly-publish.yml --repo kontourai/station --ref <bra
 
 When enabled, it signs in the `portable-nightly-signing` environment with the
 pinned `station-portable-nightly-2026-09` key, refuses a version that is not
-newer than the rolling manifest, uploads the archives and the manifest to the
-immutable prerelease `v<version>` (never marked latest), re-downloads them and
-compares digests, replaces `station-portable-nightly-manifest.json` on the
+newer than the rolling manifest, uploads the archives, the manifest,
+`install.sh` and `install.ps1` to the immutable prerelease `v<version>`
+(never marked latest), re-downloads them and compares digests (the archives
+against the signed manifest, the installers against the checkout), replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
 Unlike the stable and preview host pointers, Nightly checks "newer than the
 rolling manifest" against the cacheable download URL only and does not plan
@@ -145,8 +167,9 @@ To enable it (owner only):
 
 - Plan retention first. Each publish adds a permanent prerelease and tag
   `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
-  point at): one for each Nightly that builds, and up to four
-  scheduled runs a day.
+  point at): one for each Nightly that builds. The default six-hour minimum permits
+  about four publication opportunities a day; hourly decisions that skip add no
+  release, and a shorter configured interval increases retention needs.
 - Provision the `portable-nightly-signing` environment and its
   `STATION_PORTABLE_NIGHTLY_MANIFEST_SIGNING_KEY` secret, matching the public
   key pinned as `station-portable-nightly-2026-09` in
@@ -160,8 +183,9 @@ To enable it (owner only):
 - Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
   verify". It says whether the gate evaluated as enabled for that run. The gate
   relies on `github.workflow_ref` in a called workflow naming the top-level
-  caller (`nightly.yml`, or `main-qualification.yml` when qualification starts
-  the Nightly), as GitHub documents, and that is unverified until then. If
+  caller (`nightly.yml`), as GitHub documents. Historical qualification-driven
+  identity remains admitted, but no current workflow calls Nightly that way.
+  Actual enabled publication remains unverified until that provider run. If
   the summary says dry run, the publish job was skipped, which fails safe.
 
 Deleting the variable returns every run to a dry run.
@@ -216,7 +240,9 @@ separate:
   release is available, and the UI never renders it as "update available".
   A prebuilt release archive is the exception: the same route fetches the
   signed public manifest its install records, verifies it against the pinned
-  keys for its ring, and reports the running and newest versions. Settings can
+  keys for its ring, and reports the running and newest versions. A manifest
+  older than the newest release that install already accepted is not offered
+  (it would be a stale or replayed one). Settings can
   apply that update only when the service's fixed launcher runs the server;
   any other archive names `station upgrade` on the host, or a reinstall (see
   the [CLI `service` reference](../reference/cli.md#service)).
@@ -224,6 +250,32 @@ separate:
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, and its card
 says so.
+
+### When the server is older than the app
+
+A desktop or mobile app whose version a release pipeline stamped
+(`STATION_BUILD_VERSION`) compares that version with the one a prebuilt
+archive server reports on the same route, in Station's release order
+([`release-version-order.ts`](../../packages/shared/src/release-version-order.ts)).
+A native Nightly's `X.Y.Z-nightly.<day>[.<build>]` is first written as the
+portable `X.Y.Z-nightly.<day × 100 + build>` that names the same nightly
+allocation; #2962 is meant to replace that bridge with one identity. An iOS
+build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
+stamped with the cohort's full Nightly version, or a Beta's full release
+version, instead. A bare `X.Y.Z` client never counts as newer than a
+prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
+against a `0.1.12-preview.N` server, which tracks another ring and cannot
+update itself to the stable release. When the server is older, a dismissible
+banner says the server is older and names both versions in one readable form,
+a Nightly by its build date
+([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)).
+If the service's launcher runs the server and its verified manifest names a
+newer release, the banner offers **Update server to …**. That queues the same
+service update Settings applies and follows its progress through the restart.
+Any other server gets the way to update it on its host instead. The banner
+never appears for a dev or locally built app, equal versions, a server that
+reports no version (source checkouts and desktop bundles), the server's own
+web UI, or a built-in server.
 
 ### Advanced source installer boundary
 
@@ -391,17 +443,36 @@ credentials are configured. Without those credentials, the installer records
 signature. Missing or invalid updater signatures always block publication;
 configured publisher-signing failures also block instead of falling back.
 This uses our own updater keys and GitHub Releases without a paid Windows
-certificate subscription. Downloads without Authenticode can show an Unknown
-publisher or SmartScreen warning. Existing macOS signing remains required.
+certificate subscription. Hosted Nightly configures no publisher credentials
+today, so the published Windows installer has no Authenticode signature
+(`station-0.1.11-nightly.2475.3-windows-x86_64-setup.exe` had an empty PE
+certificate table on 2026-10-12). Running the downloaded installer,
+Microsoft Defender SmartScreen shows "Windows protected your PC" with an
+unknown publisher, and the user must choose **More info**, then **Run
+anyway**; with Windows 11 Smart App Control on, Windows can block it with no
+override. Updates through the
+Tauri updater are verified with the updater key. Publisher signing is
+[#3591](https://github.com/kontourai/station/issues/3591). Existing macOS
+signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
-only that cohort. It uploads the five version-specific desktop downloads,
-checks their GitHub sizes and digests, and replaces `latest.json` last. It
-refuses version regression. Previous downloads are not overwritten, so an
-upload failure before the manifest write leaves the previous feed usable.
-GitHub's manifest replacement is not transactional; interrupted provider
-writes remain unresolved until readback verifies them.
+only that cohort. It uploads the five version-specific desktop downloads and
+checks their GitHub sizes and digests. Then it replaces three more assets:
+the two installers again under fixed names,
+`station-nightly-macos-aarch64.dmg` and
+`station-nightly-windows-x86_64-setup.exe` (so
+`releases/download/nightly-desktop/<name>` is always the newest build), and
+`SHA256SUMS`, which lists this build's seven downloads under both names. It
+replaces `latest.json` last and reads every asset back. It refuses version
+regression. Previous versioned downloads are not overwritten, so an upload
+failure before the manifest write leaves the previous feed usable, although
+the fixed names may already serve the new build. GitHub's asset replacement
+is a delete then an upload, not a transaction: a download in between can
+miss a fixed name, or pair it with the other build's `SHA256SUMS`, which then
+fails the check. Interrupted provider writes remain unresolved until readback
+verifies them. The older `station-nightly-desktop-*` assets on the release
+come from builds before versioned names, and are not updated.
 
 The final receipt records separate macOS and Windows claims for this shared
 publication. Android retains its separate provider outcome. A build or release

@@ -1,0 +1,7 @@
+{
+  "revision": "3e1e8a94bd2f66cb6b04e2bf1ad3ecd084287bd5",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Reviewed the renamed v2 manifest against public-docs admission and Pages bundle publishing; document order, sections, topics, bundle-only manual, and fail-open publishing remain unchanged. Corpus 0.7.0 check and focused manifest tests passed; hosted publishing is unverified.","inputs":["docs/pages/README.md",".github/workflows/pages.yml","docs-kit.json","corpus.json"]}
+  ]
+}

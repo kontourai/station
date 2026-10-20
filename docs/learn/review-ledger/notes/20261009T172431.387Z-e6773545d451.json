@@ -1,0 +1,7 @@
+{
+  "revision": "d5ced853347c6b1221aacd21434f9c99b20b6d3c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the Check status control using the shared Button pending spinner and aria-busy/disabled behavior with its stable action label. The pending-label removal is presentation only; request scope, transport deadlines, shared uncertain/settled outcomes and no-repeat controls remain unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

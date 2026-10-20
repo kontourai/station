@@ -57,13 +57,22 @@ updater payloads; it is not the Android upload key.
 
 1. **Setup** — the Node version in `.nvmrc`, Rust with Android targets, and the Java/SDK/NDK versions pinned in the workflow
 2. **Build frontend** — `npm run dependencies:ci`, then the SDK, Connect, and desktop resources
-3. **Tauri Android Init** — runs from `src-desktop` with the base and Dev
-   overlays, `--ci` and `--skip-targets-install`. Running discovery from the
-   repository root can select an experimental Tauri app instead.
+3. **Tauri Android Init** — `node scripts/reset-android-generated-project.mjs`
+   first removes the tracked seed, as the Nightly and beta lanes do, so the
+   project comes entirely from the pinned CLI's templates. Init then runs from
+   `src-desktop` with the base and Dev overlays, `--ci` and
+   `--skip-targets-install`. Running discovery from the repository root can
+   select an experimental Tauri app instead.
 4. **Apply native bootstrap** — `node scripts/apply-android-native-bootstrap.mjs`
-   restores credential initialization and the window-inset bridge in the
-   generated namespace. The channel icon and network-policy helpers also run
+   keeps the activity's `onCreate` hook and the window-inset bridge in the
+   generated namespace. It never initializes `ndk_context`: tao owns that
+   initialization, and a second one aborts the app at launch. The channel icon and network-policy helpers also run
    before compilation. See the workflow for their exact ordering.
+   The icon helper restores the selected channel in both `main` and `debug`.
+   Android 13+ launchers receive a monochrome adaptive layer for themed icons;
+   the ordinary foreground/background layers remain available when theming is
+   off and on older Android versions. Launcher tinting and icon-cache refresh
+   after an update require device verification.
 5. **Stage build provenance** — `node scripts/write-android-build-manifest.mjs`
    writes `station-build.json` into the generated project's asset source set,
    after init (which would otherwise replace it) and before the build that
@@ -81,6 +90,23 @@ updater payloads; it is not the Android upload key.
    reads the stamp back out of the APK for the same reason: staging can succeed
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
+
+### Release size
+
+Release builds use the `[profile.release]` in `src-desktop/Cargo.toml`: strip,
+fat LTO and one codegen unit. On the aarch64 Nightly build that takes
+`libstation_ai_lib.so` from 32.7 MB unstripped to 20.9 MB, and the APK from
+35.4 MB to 23.7 MB. The library is stored uncompressed, so installed size
+follows it closely.
+
+The Nightly and release lanes run `node scripts/check-android-native-size.mjs
+<apk>` beside the 16 KB check. It rejects any native library that still has
+`.symtab` or `.debug_*` sections, for every ABI the APK carries (release
+builds package all four, two of them 32-bit). Ceilings in
+`config/android-native-size-budget.json` are per ABI; only arm64-v8a, the
+measured ABI that phones install, carries one. It has about 15% headroom and
+fails only on growth past it; raise it in a reviewed change that names what
+grew. Debug builds are unstripped by design and are not gated.
 
 ### Triggers
 

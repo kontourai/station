@@ -4,8 +4,8 @@
 ///
 /// The `ActivityAttributes` conformance is declared separately by the app
 /// plugin and by the widget extension: this file is compiled into both and
-/// may not import ActivityKit (the app still deploys to iOS versions that
-/// predate it). APNs push-to-start names this type by its unqualified name
+/// may not import ActivityKit (the plugin package declares iOS 13, which
+/// predates it). APNs push-to-start names this type by its unqualified name
 /// (`NATIVE_PUSH_IOS_ATTRIBUTES_TYPE`), so the name is part of the contract.
 public struct StationAgentActivityAttributes: Codable, Hashable {
   public struct ContentState: Codable, Hashable {

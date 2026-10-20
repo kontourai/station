@@ -34,6 +34,7 @@ import {
   getWorkingMemoryState as getWorkingMemoryStateFile,
   setWorkflowStateEntry as setWorkflowStateEntryFile,
   setWorkingMemoryState as setWorkingMemoryStateFile,
+  updateWorkflowStateEntry as updateWorkflowStateEntryFile,
 } from './memory-adapter-state.js';
 
 const logger = createLogger({ name: 'memory-adapter' });
@@ -361,26 +362,7 @@ export class FileMemoryAdapter implements StorageAdapter {
     executionId: string,
     updates: Partial<WorkflowStateEntry>,
   ): Promise<void> {
-    const existing = await this.getWorkflowState(executionId);
-    if (!existing) {
-      throw new Error(`Workflow state ${executionId} not found`);
-    }
-
-    const merged: WorkflowStateEntry = {
-      ...existing,
-      ...updates,
-      createdAt: existing.createdAt,
-      updatedAt: updates.updatedAt ?? new Date(),
-    };
-
-    if (merged.suspension && existing.suspension) {
-      merged.suspension = {
-        ...existing.suspension,
-        ...updates.suspension,
-      };
-    }
-
-    await this.setWorkflowState(executionId, merged);
+    await updateWorkflowStateEntryFile(this.paths, executionId, updates);
   }
 
   async getSuspendedWorkflowStates(

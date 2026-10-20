@@ -3,7 +3,11 @@
  */
 
 import { createHash, webcrypto } from 'node:crypto';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -12,6 +16,15 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
+import {
+  codingDiffProcessFixture as codingDiffFixture,
+  THREE_NEW_FILES,
+} from './fixtures/coding-diff-process';
+
+const makeDiffTempDir = trackTempDirs();
+let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
+let realDiffLocation: { workingDir?: string; projectSlug?: string } | undefined;
 
 let queryResult: {
   data?: any;
@@ -95,6 +108,35 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
+  useCodingDiffQuery: (location: {
+    workingDir?: string;
+    projectSlug?: string;
+  }) => {
+    realDiffLocation = location;
+    return useQuery({
+      queryKey: ['real-task-diff', location.workingDir],
+      queryFn: async () => {
+        if (
+          !realDiffFixture ||
+          location.workingDir !== realDiffFixture.root ||
+          location.projectSlug !== 'project-alpha'
+        )
+          throw new Error('Wrong Task diff binding');
+        const response = await realDiffFixture.request();
+        const body = (await response.json()) as {
+          success: boolean;
+          data?: { diff: string };
+          error?: string;
+        };
+        if (!body.success) throw new Error(body.error);
+        return body.data?.diff ?? '';
+      },
+      retry: false,
+    });
+  },
+  useDiffCommentsQuery: () => ({ data: [] }),
+  useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),
   useQueryClient: () => starterQueryClient,
   useTaskGraphQuery: () => queryResult,
@@ -194,10 +236,24 @@ vi.mock('../components/coding-layout/FileContentViewer', () => ({
     filePath: string;
   }) => <div data-testid="file-content">{`${workingDir}:${filePath}`}</div>,
 }));
-vi.mock('../components/coding-layout/DiffPanel', () => ({
-  DiffPanel: ({ workingDir }: { workingDir: string }) => (
-    <div data-testid="diff-panel">{workingDir}</div>
-  ),
+vi.mock('../components/coding-layout/DiffPanel', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../components/coding-layout/DiffPanel')
+    >();
+  return {
+    ...actual,
+    DiffPanel: (props: React.ComponentProps<typeof actual.DiffPanel>) =>
+      realDiffFixture ? (
+        <actual.DiffPanel {...props} />
+      ) : (
+        <div data-testid="diff-panel">{props.workingDir}</div>
+      ),
+  };
+});
+vi.mock('../contexts/DeviceSettingsContext', () => ({
+  useDeviceSettings: () => ({ diffStyle: 'unified', diffWrap: true }),
+  useDeviceSettingsActions: () => ({ setDeviceSetting: vi.fn() }),
 }));
 vi.mock('../components/chat/LazyMarkdown', () => ({
   LazyMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
@@ -1360,6 +1416,142 @@ describe('TaskWorkspaceView', () => {
       '/project/worktrees/task-alpha',
     );
   });
+
+  test('renders route-produced new files in the real shared panel from the Task binding', async () => {
+    realDiffFixture = codingDiffFixture(makeDiffTempDir('station-task-patch-'));
+    if (typeof globalThis.ResizeObserver === 'undefined') {
+      globalThis.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver;
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    try {
+      for (const [name, content] of Object.entries(THREE_NEW_FILES))
+        realDiffFixture.put(name, content);
+      queryResult.data = graph({
+        workspaceBinding: {
+          availability: 'available',
+          workingDirectory: '/wrong-project-root',
+          repoRoot: '/wrong-project-root',
+          worktreePath: realDiffFixture.root,
+          branch: 'task-fixture',
+        },
+      });
+      const { container, unmount } = render(
+        <QueryClientProvider client={client}>
+          <TaskWorkspaceView taskId="task-alpha" />
+        </QueryClientProvider>,
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Inspect worktree diff' }),
+      );
+      await waitFor(() =>
+        expect(container.querySelectorAll('diffs-container').length).toBe(3),
+      );
+      expect(realDiffLocation).toEqual(
+        expect.objectContaining({
+          workingDir: realDiffFixture.root,
+          projectSlug: 'project-alpha',
+        }),
+      );
+      await waitFor(() => {
+        const text = [...container.querySelectorAll('diffs-container')]
+          .map((element) => element.shadowRoot?.textContent ?? '')
+          .join('\n');
+        for (const content of Object.values(THREE_NEW_FILES))
+          expect(text).toContain(content.trimEnd());
+        for (const name of Object.keys(THREE_NEW_FILES))
+          expect(text).toContain(name);
+      });
+      expect(screen.queryByText('No changes')).toBeNull();
+      unmount();
+    } finally {
+      client.clear();
+      realDiffFixture = undefined;
+    }
+  });
+
+  test.each(['clean', 'empty-binary', 'quoted', 'refusal'] as const)(
+    'real Task diff renders the public %s outcome truthfully',
+    async (kind) => {
+      realDiffFixture = codingDiffFixture(
+        makeDiffTempDir('station-task-patch-state-'),
+      );
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      try {
+        if (kind === 'empty-binary') {
+          realDiffFixture.put('empty.txt', '');
+          realDiffFixture.put('binary.dat', Buffer.from([0, 255]));
+        }
+        if (kind === 'quoted')
+          realDiffFixture.put(
+            process.platform === 'win32' ? '日本語.txt' : 'quote"日本語\n.txt',
+            'literal addition\n',
+          );
+        if (kind === 'refusal')
+          realDiffFixture.put('oversized.txt', Buffer.alloc(256 * 1024 + 1));
+        queryResult.data = graph({
+          workspaceBinding: {
+            availability: 'available',
+            workingDirectory: '/wrong-root',
+            repoRoot: '/wrong-root',
+            worktreePath: realDiffFixture.root,
+          },
+        });
+        const { container, unmount } = render(
+          <QueryClientProvider client={client}>
+            <TaskWorkspaceView taskId="task-alpha" />
+          </QueryClientProvider>,
+        );
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Inspect worktree diff' }),
+        );
+        if (kind === 'clean')
+          await waitFor(() =>
+            expect(screen.getByText('No changes')).toBeTruthy(),
+          );
+        else if (kind === 'refusal') {
+          await waitFor(() =>
+            expect(screen.getByRole('alert').textContent).toContain(
+              'Worktree diff unavailable:',
+            ),
+          );
+          expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+          expect(screen.queryByText('No changes')).toBeNull();
+        } else {
+          await waitFor(() =>
+            expect(container.querySelectorAll('diffs-container').length).toBe(
+              kind === 'empty-binary' ? 2 : 1,
+            ),
+          );
+          await waitFor(() => {
+            const text = [...container.querySelectorAll('diffs-container')]
+              .map((element) => element.shadowRoot?.textContent ?? '')
+              .join('\n');
+            if (kind === 'quoted') {
+              expect(text).toContain('literal addition');
+              expect(text).toContain('日本語');
+            } else {
+              expect(text).toContain('empty.txt');
+              expect(text).toContain('binary.dat');
+            }
+          });
+          expect(screen.queryByText('No changes')).toBeNull();
+          expect(screen.queryByText('Unable to parse diff.')).toBeNull();
+        }
+        unmount();
+      } finally {
+        client.clear();
+        realDiffFixture = undefined;
+      }
+    },
+  );
 
   test('resets a selected reference when the Task id changes', async () => {
     const { rerender } = render(<TaskWorkspaceView taskId="task-alpha" />);

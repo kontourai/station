@@ -39,7 +39,11 @@ export function createAttentionRoutes(
      * still refuse. Absent fails closed: no item claims the caller can
      * respond.
      */
-    viewerMayRespondToPeerTask?: (c: Context, taskId: string) => boolean;
+    viewerMayRespondToPeerTask?: (
+      c: Context,
+      taskId: string,
+      requestType: string | undefined,
+    ) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -52,8 +56,12 @@ export function createAttentionRoutes(
         isOperator: options.viewerIsOperator?.(c) ?? false,
         ...(options.viewerMayRespondToPeerTask
           ? {
-              mayRespondToPeerTask: (taskId: string) =>
-                options.viewerMayRespondToPeerTask?.(c, taskId) ?? false,
+              mayRespondToPeerTask: (
+                taskId: string,
+                requestType: string | undefined,
+              ) =>
+                options.viewerMayRespondToPeerTask?.(c, taskId, requestType) ??
+                false,
             }
           : {}),
       }),

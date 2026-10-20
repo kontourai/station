@@ -17,6 +17,7 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
+import { toastStore } from '../contexts/ToastContext';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from '../core/pluginRegistryCopy';
 
 const connection = vi.hoisted(() => ({
@@ -41,6 +42,7 @@ describe('DeferredCapabilityBoundary', () => {
     cleanup();
     connection.status = 'connected';
     bannerStore.reset();
+    toastStore.clear();
     vi.restoreAllMocks();
   });
 
@@ -212,6 +214,30 @@ describe('DeferredCapabilityBoundary', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     fireEvent.click(screen.getByTestId('banner-stack-cap'));
     expect(screen.getAllByRole('alert')).toHaveLength(2);
+  });
+
+  test('an extension bootstrap failure can notify without occupying the global banner', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <DeferredCapabilityBoundary
+        id="extension-registry"
+        failurePresentation="notification"
+        copy={{
+          failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
+          failure: 'Extensions could not start.',
+        }}
+      >
+        <BrokenCapability />
+      </DeferredCapabilityBoundary>,
+    );
+    await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
+    expect(toastStore.getSnapshot()[0]?.message).toContain(
+      EXTENSIONS_UNAVAILABLE_LABEL,
+    );
+    expect(toastStore.getSnapshot()[0]?.actions?.[0]?.label).toBe(
+      'Reload Station',
+    );
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
   test('dismisses its failure banner on unmount', async () => {

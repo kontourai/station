@@ -11,6 +11,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -19,11 +20,16 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { basename, dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  codingDiffFixture,
+  THREE_NEW_FILES,
+} from './fixtures/coding-worktree-diff.js';
 
 /**
  * A hook on every git call Station makes, so a test can change the
@@ -32,6 +38,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
  */
 const hooks = vi.hoisted(() => ({
   beforeGit: undefined as ((args: string[]) => void) | undefined,
+  afterGit: undefined as ((args: string[]) => void) | undefined,
 }));
 
 vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
@@ -41,7 +48,10 @@ vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
     ...original,
     execGit: ((args, options) => {
       hooks.beforeGit?.(args);
-      return original.execGit(args, options);
+      return original.execGit(args, options).then((result) => {
+        hooks.afterGit?.(args);
+        return result;
+      });
     }) as typeof original.execGit,
   };
 });
@@ -227,6 +237,7 @@ function expectRefused(
 
 beforeEach(() => {
   hooks.beforeGit = undefined;
+  hooks.afterGit = undefined;
   root = realpathSync(makeTempDir('station-coding-git-read-'));
   const global = join(root, 'global.gitconfig');
   writeFileSync(
@@ -463,9 +474,12 @@ describe.skipIf(process.platform === 'win32')(
         '%s runs no credential helper and connects nowhere',
         async (route) => {
           let connections = 0;
-          const server = createServer((socket) => {
+          const server = createHttpServer((_request, response) => {
             connections += 1;
-            socket.destroy();
+            response.writeHead(401, {
+              'WWW-Authenticate': 'Basic realm="partial-clone-control"',
+            });
+            response.end();
           });
           await new Promise<void>((resolve) =>
             server.listen(0, '127.0.0.1', resolve),
@@ -483,8 +497,7 @@ describe.skipIf(process.platform === 'win32')(
               ['core.repositoryformatversion', '1'],
               ['extensions.partialClone', 'origin'],
               ['remote.origin.promisor', 'true'],
-              ['remote.origin.url', `https://u@127.0.0.1:${port}/x.git`],
-              ['http.proactiveAuth', 'basic'],
+              ['remote.origin.url', `http://u@127.0.0.1:${port}/x.git`],
               [
                 'credential.helper',
                 `!touch '${marker}'; echo username=u; echo password=p`,
@@ -1777,6 +1790,49 @@ describe.skipIf(process.platform === 'win32')(
       expect(existsSync(marker), 'control: plain git runs it').toBe(true);
     });
 
+    test.each(['symlink', 'hardlink', 'folder-symlink'] as const)(
+      'an independent review refuses a %s planted in its new worktree pointer without modifying the linked file',
+      async (kind) => {
+        repo(project, { 'a.txt': 'one\n' });
+        const base = git(project, ['rev-parse', 'HEAD']);
+        writeFileSync(join(project, 'a.txt'), 'two\n');
+        git(project, ['commit', '-q', '-am', 'second']);
+        const head = git(project, ['rev-parse', 'HEAD']);
+        const external = join(root, 'external-pointer');
+        let created = '';
+        let original = '';
+        hooks.afterGit = (args) => {
+          if (!args.includes('worktree') || !args.includes('add')) return;
+          created = args[args.indexOf('--detach') + 1]!;
+          const pointer = join(created, '.git');
+          original = readFileSync(pointer, 'utf8');
+          writeFileSync(external, original);
+          if (kind === 'folder-symlink') {
+            renameSync(created, `${created}-moved`);
+            symlinkSync(`${created}-moved`, created, 'dir');
+          } else {
+            rmSync(pointer);
+            if (kind === 'symlink') symlinkSync(external, pointer);
+            else linkSync(external, pointer);
+          }
+        };
+        await expect(
+          new GitReviewWorkspaceSource(
+            { workspace: () => project },
+            join(root, 'review-workspaces'),
+          ).open({
+            kind: 'git-range',
+            projectSlug: 'acme',
+            baseRevision: base,
+            headRevision: head,
+          }),
+        ).rejects.toThrow('metadata could not be settled');
+        expect(created).not.toBe('');
+        expect(existsSync(created)).toBe(true);
+        expect(readFileSync(external, 'utf8')).toBe(original);
+      },
+    );
+
     test('an independent review checks out with the config it judged: a smudge filter written afterwards does not run', async () => {
       repo(project, {
         'a.txt': 'one\n',
@@ -2079,9 +2135,17 @@ describe.skipIf(process.platform === 'win32')(
       writeFileSync(join(entry, 'HEAD'), 'ref: refs/heads/main\n');
       writeFileSync(join(entry, 'commondir'), '../..\n');
       execFileSync('mkfifo', [join(project, 'w', '.git')]);
-      expect(git(project, ['worktree', 'list', '--porcelain'])).toContain(
-        `worktree ${join(project, 'w')}`,
-      );
+      // Git 2.50 on macOS lists this registration, so the reader reaches the
+      // FIFO; the Linux runners' git omits it, so the hazard cannot reach this
+      // path there. Either way listing must settle and exclude it, and the
+      // FIFO read itself is pinned by the readSmallRegularFile test above.
+      const reachesFifo = git(project, [
+        'worktree',
+        'list',
+        '--porcelain',
+      ]).includes(`worktree ${join(project, 'w')}`);
+      if (!reachesFifo)
+        console.info('git omits the FIFO worktree; checking settle only');
       // A read that waited on the FIFO would block the event loop, so the
       // race below would never settle and this test would time out.
       const listed = await Promise.race([
@@ -2095,3 +2159,24 @@ describe.skipIf(process.platform === 'win32')(
     });
   },
 );
+
+describe('whole-worktree diff additions', () => {
+  test('public diff includes three untracked additions without changing index or status', async () => {
+    const fixture = codingDiffFixture(makeTempDir('station-worktree-diff-'));
+    for (const [name, content] of Object.entries(THREE_NEW_FILES))
+      fixture.put(name, content);
+    const before = fixture.state();
+    const response = await fixture.request();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: { diff: string };
+    };
+    expect(body.success).toBe(true);
+    for (const [name, content] of Object.entries(THREE_NEW_FILES)) {
+      expect(body.data.diff).toContain(`+++ b/${name}`);
+      expect(body.data.diff).toContain(`+${content.trimEnd()}`);
+    }
+    expect(fixture.state()).toEqual(before);
+  });
+});

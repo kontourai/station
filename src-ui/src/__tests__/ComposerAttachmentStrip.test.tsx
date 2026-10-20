@@ -239,6 +239,32 @@ describe('ComposerAttachmentStrip', () => {
     ).toBeNull();
   });
 
+  test('an unresolvable caller says so and offers no Retry (#545)', () => {
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        stages={[
+          {
+            clientAttachmentId: 'a1',
+            name: 'screenshot.webp',
+            mimeType: 'image/webp',
+            size: 1_048_576,
+            state: 'failed',
+            progress: 0,
+            callerUnresolved: true,
+            error: 'Unable to resolve a principal: no paired device',
+          },
+        ]}
+        onRemove={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Couldn't confirm who you are")).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^(Retry|Upload again) / }),
+    ).toBeNull();
+  });
+
   test('an image chip says the engine refused images instead of "ready"', () => {
     render(
       <ComposerAttachmentStrip

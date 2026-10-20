@@ -3,6 +3,10 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
   type StationClientCompatibilityPolicy,
 } from '@kontourai/station-contracts';
+import {
+  clientProtocolHeaders,
+  resetClientProtocolObservations,
+} from '@kontourai/station-shared/client-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLIENT_COMPATIBILITY_POLICY,
@@ -10,6 +14,7 @@ import {
   evaluateCompatibility,
 } from '../lib/compatibility';
 import { isBlockingCompatibility } from '../lib/compatibilityLoader';
+import { probeServerConnection } from '../lib/serverHealth';
 
 /**
  * The client this repo ships. Every "too old" case below has to be constructed
@@ -33,7 +38,11 @@ const serverBlock = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  resetClientProtocolObservations();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('evaluateCompatibility', () => {
   it('accepts a host inside the window both sides declare', () => {
@@ -169,6 +178,66 @@ describe('checkHostCompatibility', () => {
     );
   });
 
+  it.each([
+    ['compatibility', true],
+    ['compatibility', false],
+    ['health', true],
+    ['health', false],
+  ] as const)(
+    'keeps the latest-started handshake authoritative across callers: first %s, first succeeds %s',
+    async (firstCaller, firstSucceeds) => {
+      const url = 'https://station.example.test';
+      vi.stubGlobal('location', {
+        href: 'https://client.example.test/',
+        origin: 'https://client.example.test',
+      });
+      const pending: Array<(response: Response) => void> = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        if (String(input).endsWith('/api/system/identity')) {
+          return Response.json({
+            environmentId: 'environment-1',
+            bootId: 'boot-1',
+          });
+        }
+        return new Promise<Response>((resolve) => pending.push(resolve));
+      });
+      const start = (caller: 'compatibility' | 'health') =>
+        caller === 'compatibility'
+          ? checkHostCompatibility(url)
+          : probeServerConnection(
+              url,
+              'fixture-credential',
+              'environment-1',
+              new AbortController().signal,
+            );
+      const first = start(firstCaller);
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      const second = start(
+        firstCaller === 'health' ? 'compatibility' : 'health',
+      );
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      const success = () =>
+        Response.json({
+          schemaVersion: 1,
+          environmentId: 'environment-1',
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+          transports: { http: 1, sse: 1, websocket: 1 },
+          compatibility: serverBlock({
+            protocolVersion: 1,
+            minClientProtocol: 1,
+            capabilities: { clientProtocolHeader: 1 },
+          }),
+        });
+      pending[0](firstSucceeds ? success() : new Response('', { status: 503 }));
+      await first;
+      pending[1](firstSucceeds ? new Response('', { status: 503 }) : success());
+      await second;
+      const headers = clientProtocolHeaders(`${url}/api/projects`);
+      if (firstSucceeds) expect(headers).toEqual({});
+      else expect(headers).toHaveProperty('X-Station-Client-Protocol');
+    },
+  );
+
   it('uses the supplied native-shell transport for the public handshake', async () => {
     const transport = vi
       .fn<typeof fetch>()
@@ -216,10 +285,33 @@ describe('checkHostCompatibility', () => {
   ] as const)(
     'blocks %s with an actionable verification state',
     async (_label, respond) => {
-      vi.spyOn(globalThis, 'fetch').mockImplementationOnce(respond as never);
+      vi.stubGlobal('location', {
+        href: 'https://client.example.test/',
+        origin: 'https://client.example.test',
+      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json({
+          compatibility: serverBlock({
+            capabilities: { clientProtocolHeader: 1 },
+          }),
+        }),
+      );
+      await checkHostCompatibility(
+        'https://station.example.test',
+        undefined,
+        policy(3, 3),
+      );
+      expect(
+        clientProtocolHeaders('https://station.example.test/api/projects'),
+      ).toHaveProperty('X-Station-Client-Protocol');
+      vi.mocked(fetch).mockImplementationOnce(respond as never);
       await expect(
         checkHostCompatibility('https://station.example.test'),
       ).resolves.toMatchObject({ verdict: 'unknown', blocking: true });
+      expect(
+        clientProtocolHeaders('https://station.example.test/api/projects'),
+        'failed re-handshake must forget cross-origin header acceptance',
+      ).toEqual({});
     },
   );
 });

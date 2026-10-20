@@ -1,0 +1,7 @@
+{
+  "revision": "be44612fd3024a259c8aec95213aeaa5c7772279",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"Reviewed only install-smoke fixture startup after the one-line curl argument correction at be44612f. The malformed continuation introduced an extra space URL argument; the corrected committed function supplies one intended localhost URL and keeps the same bounded process-aware readiness, installer/signing/publication contracts, and fixture-only authority. An observer executing real curl against a real Python localhost server asserted the exact argument vector: old committed 1baa failed for the unwanted space argument; corrected committed be446 passed readiness and settled-server refusal. The earlier real readiness pass did not detect this argument error, and on the observed Linux curl the valid final URL could still yield exit zero. No macOS runner success or cause of the old 394 startup refusal is established; all broader packaging and public-distribution claims remain separate.","inputs":["packaging/manifest/README.md",".github/workflows/install-smoke.yml"]}
+  ]
+}

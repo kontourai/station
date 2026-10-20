@@ -1,3 +1,5 @@
+import './TaskChatStart.css';
+import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
 import {
@@ -10,10 +12,12 @@ import React, {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -34,13 +38,15 @@ import type {
   NewChatStartSelection,
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
+import { TASK_SHAPING_INSTRUCTION } from '../../lib/task-shaping';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
-  modelSourceLabel,
+  modelResetSourceLabel,
 } from '../../utils/execution';
 import {
   type NewChatModelChoice,
+  resolveModelChoice,
   sanitizeRuntimeOptionsForModel,
 } from '../../utils/modelCapabilities';
 import {
@@ -63,7 +69,12 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
+import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
 import {
   buildCodingChatInitialMessage,
   type CodingChatContextDraft,
@@ -90,6 +101,7 @@ import {
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
   scheduleSelectedAgentVisibility,
+  withProjectRunLocations,
   workspaceHintText,
 } from './new-chat-modal-utils';
 import {
@@ -108,31 +120,26 @@ const RecentChatList = React.lazy(() =>
   })),
 );
 
+const DelegationLauncher = React.lazy(() =>
+  import('../chat-dock/DelegationLauncher').then((module) => ({
+    default: module.DelegationLauncher,
+  })),
+);
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
     default: module.SessionModelPicker,
   })),
 );
-const StartAgentMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartAgentMenu,
-  })),
-);
-const StartProjectMenu = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartProjectMenu,
-  })),
-);
-const StartModelPicker = React.lazy(() =>
-  import('../chat-start/StartMenus').then((module) => ({
-    default: module.StartModelPicker,
+const StartPickerMenus = React.lazy(() =>
+  import('../chat-start/StartPickerMenus').then((module) => ({
+    default: module.StartPickerMenus,
   })),
 );
 
 /** Re-exported for callers that imported it from here before it moved. */
 export { ContextPickerOptions };
 
-const NO_ACCENTS: ReadonlyMap<string, string> = new Map();
+const NO_PROJECT_ACCENTS: ReadonlyMap<string, string> = new Map();
 
 export interface NewChatModalMode {
   kind: 'fork';
@@ -162,14 +169,24 @@ interface NewChatModalProps {
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
     sendInitialMessage?: boolean,
+    executionAgentId?: string,
+    expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
+    /** Files for the first message (passed only when there are some). */
+    initialFiles?: File[],
+    ambientContext?: string,
   ) => void | Promise<void>;
   onClose: () => void;
+  onTaskStarted?: () => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
   startWithDefault?: boolean;
   initialPrompt?: string;
+  /** Files Home's composer attached with its prompt. */
+  initialFiles?: File[];
   startSurface?: boolean;
+  taskShaping?: boolean;
   recentChats?: Omit<ComponentProps<typeof RecentList>, 'context' | 'agents'>;
   /**
    * What Home's composer chose (its chips), carried with a start or a
@@ -196,6 +213,16 @@ interface NewChatModalProps {
    * project in the sidebar's colour.
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /**
+   * The sidebar's project icons (`useProjectIcons`, read by the dock).
+   * Required: a caller that forgot it would draw every project as a dot.
+   */
+  projectIconBySlug: ReadonlyMap<string, string>;
+  /**
+   * #3391: where each project's chats run, from the dock's run-locations
+   * read. Absent until it answers; the composer then names the stored folder.
+   */
+  projectRunLocations?: ProjectRunLocations;
 }
 
 /** "Global" sentinel for the context picker */
@@ -205,12 +232,15 @@ export function NewChatModal({
   activeProjectSlug,
   onSelect,
   onClose,
+  onTaskStarted,
   draftContext = null,
   mode,
   requestAuthority,
   startWithDefault = false,
   initialPrompt,
+  initialFiles,
   startSurface = false,
+  taskShaping = false,
   recentChats,
   startSelection,
   handoff,
@@ -218,7 +248,9 @@ export function NewChatModal({
   onDraftChange,
   projectBindable = false,
   projectsLoaded = true,
-  projectAccentBySlug = NO_ACCENTS,
+  projectAccentBySlug = NO_PROJECT_ACCENTS,
+  projectIconBySlug,
+  projectRunLocations,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use
@@ -257,6 +289,12 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [shaping, setShaping] = useState(taskShaping);
+  const [startFiles, setStartFiles] = useState<File[]>(initialFiles ?? []);
+  const startVoice = useStartDictation((text) =>
+    setPrompt((current) => appendDictation(current, text)),
+  );
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
     reportDraft(prompt);
@@ -288,6 +326,12 @@ export function NewChatModal({
     kind: 'agents' | 'project' | 'model';
     trigger: HTMLElement | null;
     agentSlug?: string;
+  } | null>(null);
+  const taskScope = useHostRequestAuthorityScope();
+  const [remoteLaunch, setRemoteLaunch] = useState<{
+    profile: AgentData;
+    choice: NewChatModelChoice;
+    prompt: string;
   } | null>(null);
   const [agentSearch, setAgentSearch] = useState('');
   const preservedAgentSlug = useRef<string | undefined>(undefined);
@@ -351,9 +395,13 @@ export function NewChatModal({
     scheduleSelectedAgentVisibility(element);
   }, []);
 
+  const projectsWithRunLocations = useMemo(
+    () => withProjectRunLocations(projects, projectRunLocations),
+    [projects, projectRunLocations],
+  );
   const selectionModel = useNewChatSelectionModel({
     agents,
-    projects,
+    projects: projectsWithRunLocations,
     selectedContext,
     contextSearch,
     agentSearch,
@@ -751,17 +799,48 @@ export function NewChatModal({
       (composer
         ? start.modelChoiceFor(agent)
         : modelChoices[modelChoiceKey(agent)]);
+    if (choice?.environmentId && choice.environmentId !== 'current') {
+      if (startFiles.length > 0) {
+        setSelectFeedback(
+          'A task on another Station takes text only. Remove the files, or choose an engine on this Station to send them.',
+        );
+        setShowChatOptions(true);
+        return;
+      }
+      if (
+        experience ||
+        !choice.executionAgentId ||
+        !choice.expectedDefinitionFingerprint ||
+        choice.expectedDefinitionFingerprint !== agent.definitionFingerprint
+      ) {
+        setSelectFeedback(
+          'Choose a verified engine on that Station before starting a task. Visual skills stay in the foreground chat.',
+        );
+        setShowChatOptions(true);
+        return;
+      }
+      setRemoteLaunch({ profile: agent, choice, prompt: initialMessage ?? '' });
+      setShowChatOptions(true);
+      return;
+    }
     // A Model chosen before this dialog (Home's chip, or before a setup
-    // journey) can have gone meanwhile: check it before starting on it.
+    // journey) can have gone meanwhile: check it before starting on it. A
+    // choice kept from earlier in this tab goes the same way when the engine
+    // reconnects with another catalog, so it is refused when the catalog is
+    // known and no longer lists it. Availability is not checked there: an
+    // engine that is merely not ready is reported by its own setup repair.
+    const startModels = selectionModel.executionModelsForAgent(agent);
+    const isChosen = (model: (typeof startModels)[number]) =>
+      model.id === choice?.modelId &&
+      (!choice?.providerId || model.providerId === choice.providerId) &&
+      model.executionAgentId === choice?.executionAgentId;
     if (
-      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !modelsForAgent(agent).some(
-        (model) =>
-          model.id === choice.modelId &&
-          model.available !== false &&
-          (!choice.providerId || model.providerId === choice.providerId),
-      )
+      (returnedFromSetup || options.choice !== undefined
+        ? !startModels.some(
+            (model) => isChosen(model) && model.available !== false,
+          )
+        : startModels.length > 0 && !startModels.some(isChosen))
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
@@ -831,11 +910,46 @@ export function NewChatModal({
               },
             }
           : undefined;
-      const startOptions: [SkillExperienceDraft?, boolean?] = sendInitialMessage
-        ? [experienceDraft, true]
-        : experienceDraft
-          ? [experienceDraft]
-          : [];
+      const startOptions: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+      ] =
+        choice?.environmentId === 'current'
+          ? [
+              experienceDraft,
+              sendInitialMessage,
+              choice.executionAgentId,
+              choice.expectedDefinitionFingerprint,
+              true,
+            ]
+          : choice?.executionAgentId
+            ? [
+                experienceDraft,
+                sendInitialMessage,
+                choice.executionAgentId,
+                choice.expectedDefinitionFingerprint,
+              ]
+            : sendInitialMessage
+              ? [experienceDraft, true]
+              : experienceDraft
+                ? [experienceDraft]
+                : [];
+      // Files ride after every positional option, so those are padded only
+      // when there are files to place (callers compare exact arguments).
+      const selectTail: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+        File[]?,
+        string?,
+      ] = [...startOptions];
+      if (startFiles.length) selectTail[5] = startFiles;
+      if (shaping) selectTail[6] = TASK_SHAPING_INSTRUCTION;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -858,7 +972,7 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
-            ...startOptions,
+            ...selectTail,
           ),
         )
           .then(() => {
@@ -911,36 +1025,18 @@ export function NewChatModal({
   // composer shows, and a fork's local one otherwise.
   const pickerChoiceFor = (agent: AgentData) =>
     showStart ? start.modelChoiceFor(agent) : modelChoiceFor(agent);
-  const modelFor = (agent: AgentData) => {
-    const choice = modelChoiceFor(agent);
-    const effective = defaultEffectiveModelForAgent(agent);
-    const selected = choice?.modelId
-      ? modelsForAgent(agent).find(
-          (model) =>
-            model.id === choice.modelId &&
-            (!choice.providerId || model.providerId === choice.providerId),
-        )
-      : undefined;
-    const sourceModel =
+  const modelFor = (agent: AgentData) =>
+    resolveModelChoice(
+      modelChoiceFor(agent),
+      defaultEffectiveModelForAgent(agent),
+      modelsForAgent(agent),
       mode?.kind === 'fork' &&
-      agent.slug === mode.preferredAgentSlug &&
-      !choice?.modelId
+        agent.slug === mode.preferredAgentSlug &&
+        !modelChoiceFor(agent)?.modelId
         ? mode.sourceModel
-        : undefined;
-    return {
-      id: choice?.modelId ?? sourceModel ?? effective.id ?? undefined,
-      label: choice?.modelId
-        ? (selected?.name ?? choice.modelId)
-        : sourceModel
-          ? sourceModel
-          : effective.label,
-      source: choice?.modelId
-        ? 'session override'
-        : sourceModel
-          ? 'source turn'
-          : effective.source,
-    };
-  };
+        : undefined,
+    );
+
   const updateModelChoice = (
     agent: AgentData,
     update: (
@@ -1173,9 +1269,11 @@ export function NewChatModal({
   // The composer's chips: a skeleton while the start path cannot yet say
   // what it will use, never a guess.
   const accents = projectAccentBySlug;
-  const draftModelLabel = draftAgent
-    ? start.modelFor(draftAgent).label
-    : undefined;
+  const draftModel = draftAgent ? start.modelFor(draftAgent) : undefined;
+  const draftModelLabel =
+    draftModel?.engineName && draftModel.executionAgentId
+      ? `${draftModel.engineName} · ${draftModel.label}`
+      : draftModel?.label;
   const agentChip: StartAgentChip =
     runtimeLoading ||
     modelsLoading ||
@@ -1186,6 +1284,12 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          executionAgentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.executionAgentId
+            : undefined,
+          environmentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.environmentId
+            : undefined,
           needsSetup: draftAgent
             ? !agentRunnability(draftAgent).runnable
             : false,
@@ -1201,6 +1305,7 @@ export function NewChatModal({
           (isGlobal ? NO_PROJECT_LABEL : selectedContext),
         isGlobal,
         accent: isGlobal ? undefined : accents.get(selectedContext),
+        icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
         folder: workspaceHintText(workspaceHint),
       };
   const contextSelected = Boolean(
@@ -1232,12 +1337,6 @@ export function NewChatModal({
     // switcher does, so Home and the dock open on the same project next.
     if (projectBindable) bindProject(value);
   };
-  const chipMenuAgent =
-    chipMenu?.kind === 'model'
-      ? (flatList.find((agent) => agent.slug === chipMenu.agentSlug) ??
-        draftAgent)
-      : undefined;
-
   const closeChatRequest = () => {
     if (setupReturn.close()) requestActive.current = false;
   };
@@ -1374,27 +1473,46 @@ export function NewChatModal({
     );
   }
 
+  const StartSurface = taskShaping
+    ? TaskChatStartSurface
+    : ResponsiveDialogSurface;
   return (
-    <ResponsiveDialogSurface
+    <StartSurface
       layer="dialog"
       ariaLabel={
         mode?.kind === 'fork'
           ? 'Fork from here'
           : showStart
-            ? 'New chat'
+            ? shaping
+              ? 'New Task'
+              : 'New chat'
             : 'New Chat'
       }
       overlayClassName="new-chat-modal__overlay"
       panelClassName="new-chat-modal"
       initialFocusRef={showStart ? promptRef : agentInputRef}
-      initialFocusPolicy="desktop"
+      initialFocusPolicy={taskShaping ? 'always' : 'desktop'}
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
           <h3 className="new-chat-modal__title">
-            {mode?.kind === 'fork' ? 'Fork from here' : 'New chat'}
+            {mode?.kind === 'fork'
+              ? 'Fork from here'
+              : shaping
+                ? 'New Task'
+                : 'New chat'}
           </h3>
+          {shaping && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              onClick={() => setShaping(false)}
+              aria-label="Remove Shaping a Task mode"
+            >
+              Shaping a Task ×
+            </Button>
+          )}
           <ResponsiveDialogCloseButton
             label={mode?.kind === 'fork' ? 'Cancel fork' : 'Close new chat'}
             onClick={closeChatRequest}
@@ -1469,6 +1587,11 @@ export function NewChatModal({
                   <span className="new-chat-modal__context-dir">
                     <CwdBreadcrumb path={workspaceHint.path} />
                   </span>
+                  {workspaceHint.kind === 'unverified' && (
+                    <span className="new-chat-modal__context-dir">
+                      (not checked yet)
+                    </span>
+                  )}
                 </>
               )}
               {workspaceHint.kind === 'home' && (
@@ -1644,10 +1767,72 @@ export function NewChatModal({
             </p>
           )}
           <StartComposer
+            compact={taskShaping}
+            heading={shaping ? 'Shape a Task' : undefined}
+            placeholder={shaping ? 'Describe the idea…' : undefined}
             prompt={prompt}
             onPromptChange={setPrompt}
             textareaRef={promptRef}
             agent={agentChip}
+            onOpenModel={(trigger) =>
+              setChipMenu({
+                kind: 'model',
+                trigger,
+                agentSlug: draftAgent?.slug,
+              })
+            }
+            stationControl={
+              <StartStationControl
+                prompt={prompt}
+                projectSlug={viewModel.selectedProject?.slug}
+                projectName={viewModel.selectedProject?.name}
+                defaultEnvironment={
+                  viewModel.selectedProject?.defaultEnvironment
+                }
+                agentSlug={draftAgent?.slug}
+                executionAgentId={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.executionAgentId
+                    : undefined
+                }
+                expectedDefinitionFingerprint={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)
+                        ?.expectedDefinitionFingerprint
+                    : undefined
+                }
+                environmentId={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.environmentId
+                    : undefined
+                }
+                providerOptions={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.providerOptions
+                    : undefined
+                }
+                model={
+                  draftAgent
+                    ? start.modelChoiceFor(draftAgent)?.modelId
+                    : undefined
+                }
+                disabled={
+                  submitting ||
+                  Boolean(experience) ||
+                  Boolean(draftContext) ||
+                  !selectedContextResolved
+                }
+                onPromptChange={setPrompt}
+                onStarted={(_task, station, sentPrompt) => {
+                  setPrompt((current) =>
+                    current === sentPrompt ? '' : current,
+                  );
+                  setTaskNotice(
+                    `Task started on ${station}. Open Activity to follow its progress.`,
+                  );
+                }}
+              />
+            }
             onOpenAgents={(trigger) => {
               setAgentSearch('');
               setChipMenu({ kind: 'agents', trigger });
@@ -1690,12 +1875,23 @@ export function NewChatModal({
             onStart={() => {
               if (draftAgent) handleSelect(draftAgent, { composer: true });
             }}
+            files={{
+              list: startFiles,
+              onAdd: (files) =>
+                setStartFiles((current) => [...current, ...files]),
+              onRemove: (index) =>
+                setStartFiles((current) =>
+                  current.filter((_, position) => position !== index),
+                ),
+            }}
+            voice={startVoice}
             note={
               !prompt.trim() && contextSelected && !experience
                 ? 'With no message, Start puts this context in the new chat’s composer for you to send.'
                 : undefined
             }
           >
+            {taskNotice && <p role="status">{taskNotice}</p>}
             {(skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
@@ -1730,9 +1926,30 @@ export function NewChatModal({
           {/* setupError covers the project list too: a failed read is said,
               never shown as a guessed project chip. */}
           {(selectFeedback || returnError || setupError) && (
-            <p role="alert">
-              {selectFeedback?.text ??
-                describeReadFailure(returnError ?? setupError)}
+            // The same alert the Home composer draws: warning tone, and a
+            // retry for a failed read (a choice's own feedback has none).
+            <p role="alert" className="start-composer__alert">
+              <span>
+                {selectFeedback?.text ??
+                  describeReadFailure(returnError ?? setupError)}
+              </span>
+              {!selectFeedback && refreshSetup && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    if (returnedFromSetup) {
+                      if (!setupReturn.retry())
+                        setSelectFeedback(
+                          'Reconnect to this Station before checking setup.',
+                        );
+                      return;
+                    }
+                    void refreshSetup().catch(() => undefined);
+                  }}
+                >
+                  Try again
+                </Button>
+              )}
             </p>
           )}
           {runtimeLoading || modelsLoading ? (
@@ -1780,7 +1997,7 @@ export function NewChatModal({
               />
             </React.Suspense>
           ) : null}
-          {recentChats && (
+          {recentChats && !taskShaping && (
             <React.Suspense
               fallback={<SkeletonList count={1} label="Loading recent chats" />}
             >
@@ -1936,90 +2153,60 @@ export function NewChatModal({
       )}
       {showStart && chipMenu && (
         <React.Suspense fallback={null}>
-          {chipMenu.kind === 'agents' ? (
-            <StartAgentMenu
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              groups={groups}
-              flatList={flatList}
-              selectedSlug={draftAgent?.slug}
-              loading={runtimeLoading || modelsLoading}
-              error={runtimeError ?? modelsError}
-              onRetry={() => {
-                if (refreshSetup) void refreshSetup().catch(() => undefined);
-                else {
-                  void refetchAgentConnections?.();
-                  void refetchModelConnections?.();
-                }
-              }}
-              onSetUpConnections={() => beginSetup('/connections')}
-              modelLabelFor={(agent) => start.modelFor(agent).label}
-              modelUnavailableFor={(agent) =>
-                modelsForAgent(agent).length === 0 && !modelsLoading
-              }
-              // The Agent list closes for the Model picker, so the picker
-              // anchors to (and returns focus to) the Agent chip, not the
-              // row's trigger that goes with the list.
-              onOpenModel={(agent) =>
-                setChipMenu({
-                  kind: 'model',
-                  trigger: chipMenu.trigger,
-                  agentSlug: agent.slug,
-                })
-              }
-              onChoose={(agent) => {
-                start.chooseAgent(agent.slug);
-                setSelectFeedback(null);
-                setAgentSearch('');
-                setChipMenu(null);
-              }}
-              onFix={repairAgent}
-              fixDisabledFor={(agent) =>
-                agentFixRoute(agent) === 'enable' &&
-                resolveNewChatAgentEnable(agent)
-                  ? enableInFlight
-                  : undefined
-              }
-              interactionDisabled={checkingSetup || setupReturn.pending}
-              search={agentSearch}
-              onSearch={setAgentSearch}
-              notice={compatibilityMessage}
-              onClose={() => {
-                setAgentSearch('');
-                setChipMenu(null);
-              }}
-            />
-          ) : chipMenu.kind === 'project' ? (
-            <StartProjectMenu
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              options={viewModel.contextOptions ?? filteredContextOptions}
-              selectedContext={selectedContext}
-              workspaceHint={workspaceHint}
-              folderlessHint={folderlessHint}
-              onChoose={(value) => {
-                chooseContext(value);
-                setChipMenu(null);
-              }}
-              onClose={() => setChipMenu(null)}
-            />
-          ) : chipMenuAgent ? (
-            <StartModelPicker
-              anchor={chipMenu.trigger}
-              layer="dialog"
-              models={modelsForAgent(chipMenuAgent)}
-              loading={modelsLoading}
-              modelConnections={modelConnections}
-              choice={start.modelChoiceFor(chipMenuAgent)}
-              defaultModel={defaultEffectiveModelForAgent(chipMenuAgent)}
-              onSelect={(model) => start.chooseModel(chipMenuAgent, model)}
-              onReset={() => start.resetModel(chipMenuAgent)}
-              onRuntimeOptionChange={(key, value) =>
-                start.setRuntimeOption(chipMenuAgent, key, value)
-              }
-              onClose={() => setChipMenu(null)}
-            />
-          ) : null}
+          <StartPickerMenus
+            menu={chipMenu}
+            setMenu={setChipMenu}
+            layer="dialog"
+            selection={selectionModel}
+            start={start}
+            context={selectedContext}
+            search={agentSearch}
+            onSearch={setAgentSearch}
+            onFeedbackClear={() => setSelectFeedback(null)}
+            onSetup={() => beginSetup('/connections')}
+            onRepair={repairAgent}
+            enablePending={enableInFlight}
+            interactionDisabled={checkingSetup || setupReturn.pending}
+            onChooseProject={chooseContext}
+            icons={projectIconBySlug}
+            accents={accents}
+          />
+        </React.Suspense>
+      )}
+      {remoteLaunch && taskScope && (
+        <React.Suspense
+          fallback={<SkeletonList count={1} label="Loading task placement" />}
+        >
+          <DelegationLauncher
+            isOpen
+            apiBase={taskScope.apiBase}
+            projectSlug={selectedProject?.slug}
+            projectName={selectedProject?.name}
+            currentAgentId={remoteLaunch.profile.slug}
+            currentModel={remoteLaunch.choice.modelId}
+            executionAgentId={remoteLaunch.choice.executionAgentId}
+            expectedDefinitionFingerprint={
+              remoteLaunch.choice.expectedDefinitionFingerprint
+            }
+            initialEnvironmentId={remoteLaunch.choice.environmentId}
+            providerOptions={remoteLaunch.choice.providerOptions}
+            initialPrompt={remoteLaunch.prompt}
+            onDraftChange={setPrompt}
+            title="Run on a Station"
+            submitLabel="Run task"
+            routingExpanded
+            onClose={() => {
+              setRemoteLaunch(null);
+              setShowChatOptions(true);
+            }}
+            onDelegated={(_task, _target, placement) => {
+              setRemoteLaunch(null);
+              setPrompt((current) =>
+                current === placement.prompt ? '' : current,
+              );
+              onTaskStarted?.();
+            }}
+          />
         </React.Suspense>
       )}
       {modelPickerAgent && (
@@ -2051,6 +2238,9 @@ export function NewChatModal({
                   modelPickerDefault?.providerId
                 }
                 currentModel={pickerChoiceFor(modelPickerAgent)?.modelId}
+                currentExecutionAgentId={
+                  pickerChoiceFor(modelPickerAgent)?.executionAgentId
+                }
                 defaultModel={modelPickerDefault?.id ?? undefined}
                 // Names what reset restores: a fork's preferred Agent returns
                 // to the source turn's Model, not the Agent default.
@@ -2059,11 +2249,7 @@ export function NewChatModal({
                   modelPickerAgent.slug === mode.preferredAgentSlug &&
                   mode.sourceModel
                     ? 'source turn'
-                    : (modelPickerDefault?.source &&
-                        modelSourceLabel(
-                          modelPickerDefault.source,
-                        ).toLowerCase()) ||
-                      'default model'
+                    : modelResetSourceLabel(modelPickerDefault?.source)
                 }
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions
@@ -2116,6 +2302,31 @@ export function NewChatModal({
           </div>
         </div>
       )}
-    </ResponsiveDialogSurface>
+    </StartSurface>
+  );
+}
+
+function TaskChatStartSurface({
+  children,
+  initialFocusRef,
+  ariaLabel,
+  onClose,
+}: ComponentProps<typeof ResponsiveDialogSurface>) {
+  useEffect(() => {
+    initialFocusRef?.current?.focus();
+  }, [initialFocusRef]);
+  return (
+    <section
+      className="new-chat-modal task-chat-start"
+      aria-label={ariaLabel}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onClose?.();
+        }
+      }}
+    >
+      {children}
+    </section>
   );
 }

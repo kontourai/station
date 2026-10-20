@@ -171,7 +171,8 @@ function bodyExcerpt(body: string): string {
  * lower-to-upper case change or after `.`, `_`, `/` or `-`.
  */
 function identifierBreakSegments(title: string): string[] {
-  // Lookahead only: regex lookbehind needs Safari 16.4, above the iOS floor.
+  // Lookahead only: an SDK consumer may run on an engine without regex
+  // lookbehind (Safari before 16.4).
   // Each match is the character a break follows, so cut just after it.
   const segments: string[] = [];
   let start = 0;

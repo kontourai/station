@@ -1,0 +1,7 @@
+{
+  "revision": "56d71606afb1ea5f1b856422113f9fac9cea11d0",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Re-reviewed Continue an Attached Session against AttachedSessionDetail after the read-only view redesign: Continue in Station remains the entry (now a floating action), the unavailable reason is still shown beside it, a No project Session still continues only after the person confirms (now in a confirmation dialog), and retry of an uncertain response is unchanged. No prose change needed.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

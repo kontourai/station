@@ -1,0 +1,7 @@
+{
+  "revision": "6187f327cb97af9ef1cfa9e03c06a3c1b6530437",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Corrected this branch's own Model-picker rewording after an independent delta review: the start composer always passes the Station selector (StartPickerMenus.tsx StartModelPicker onEnvironmentChange -> StartMenus.tsx StationScopedModelPicker stationControl), so its picker is always titled Engine & model (SessionModelPicker.tsx title test; StartMenus.tsx ariaLabel). Checks: docs:links:check, docs:public:hygiene. Limits: code reading only.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

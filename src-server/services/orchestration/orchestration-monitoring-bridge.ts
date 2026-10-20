@@ -1,4 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { toolDuration as otelToolDuration } from '../../telemetry/metrics.js';
 
@@ -11,6 +12,12 @@ type TurnContext = {
   traceId: string;
   model?: string;
   usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  /**
+   * #463: set once any usage frame in this turn came from a provider whose
+   * frames are not that turn's own figures (session-cumulative, or a scope
+   * nobody declared). The turn's usage is then unknown, never a number.
+   */
+  usageNotPerTurn?: true;
   provider?: string;
   /** Tool call start times, for the elapsed time on results (archive#3077). */
   toolStartedAt?: Record<string, number>;
@@ -172,12 +179,26 @@ export class OrchestrationMonitoringBridge {
                 : undefined,
       });
     } else if (event.method === 'token-usage.updated') {
-      // Claude/Codex streams report cumulative usage, so retain the last frame.
-      context.usage = {
-        inputTokens: event.promptTokens,
-        outputTokens: event.completionTokens,
-        totalTokens: event.totalTokens,
-      };
+      // #463: what one frame measures depends on the provider
+      // (PROVIDER_USAGE_SCOPE). Claude and the other `per-turn` reporters
+      // describe only this turn, so the turn's usage is the sum of its own
+      // frames — the same rule `turn-provenance-fold.ts` applies. Codex
+      // reports a session-to-date total; stamping it on this turn's span
+      // attributed the whole session to one turn. A per-turn delta would
+      // need the previous turn's cumulative figure, which this bridge does
+      // not reliably have (a resumed thread, a restart, or a replayed turn
+      // all lose it), so a cumulative or undeclared reporter's turn usage
+      // is left unknown rather than guessed.
+      if (providerUsageScope(event.provider) !== 'per-turn') {
+        context.usageNotPerTurn = true;
+        context.usage = undefined;
+      } else if (!context.usageNotPerTurn) {
+        context.usage = addUsage(context.usage, {
+          inputTokens: event.promptTokens,
+          outputTokens: event.completionTokens,
+          totalTokens: event.totalTokens,
+        });
+      }
     } else if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
@@ -224,4 +245,17 @@ export class OrchestrationMonitoringBridge {
   private key(threadId: string, turnId: string): string {
     return `${threadId}:${turnId}`;
   }
+}
+
+type TurnUsage = NonNullable<TurnContext['usage']>;
+
+/** Sums reported components; a component no frame reported stays absent. */
+function addUsage(current: TurnUsage | undefined, next: TurnUsage): TurnUsage {
+  const sum = (a: number | undefined, b: number | undefined) =>
+    a === undefined ? b : b === undefined ? a : a + b;
+  return {
+    inputTokens: sum(current?.inputTokens, next.inputTokens),
+    outputTokens: sum(current?.outputTokens, next.outputTokens),
+    totalTokens: sum(current?.totalTokens, next.totalTokens),
+  };
 }

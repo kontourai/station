@@ -1,0 +1,7 @@
+{
+  "revision": "6300503acd3ef1489a987799598f7d0d675137d8",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"fs-windows-compat gains renamePathSyncRetrying for installer renames; the registry's fsyncDirectorySync and rename claims are unchanged; checked.","inputs":["docs/design/instance-registry.md","packages/shared/src/fs-windows-compat.ts"]}
+  ]
+}

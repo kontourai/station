@@ -1,0 +1,7 @@
+{
+  "revision": "ffa4423c1052dcdabd912f17b75cbbb9f250481f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the narrow guardrail repair at ffa4423: the extracted usage module must retain its public engine attribution export alongside saved-message and other existing public helpers; module read/import and retired-inline bans remain. The composed usage GET and state keepers own daily accounting, including UTC allocation and invalid or absent dates. Current-main proof failed solely on retired private updateDailyUsage; repaired proof passes. Copied-source public-export removal fails by name, and an absent usage owner reaches the named missing-source aggregate failure without uncaught ENOENT. Both daily-allocation fault cases were caught by existing GET/state assertions and returned green after exact restoration. Private-helper rename leaves proof plus47 focused tests green at baseline, renamed and restored phases. Accounting production bytes were restored exactly and are not in the committed change. This follows the guide structural-ownership and causal-mutation distinction; no prose or policy change. Evidence is local Node execution, not final-SHA hosted qualification, provider/device or release proof.","inputs":["docs/guides/testing.md","scripts/proof-repo-guardrails.mjs","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "464ffaeb2e2a837b28c49f447fb61c56fbacf196",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ChatDock passes an inbox sync prop; placement and mount rules for the inbox panel are unchanged","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

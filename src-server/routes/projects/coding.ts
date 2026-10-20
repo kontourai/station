@@ -7,10 +7,15 @@ import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { type Context, Hono, type Next } from 'hono';
+import { z } from 'zod';
 import {
   isOperatorInPersonNotAgent,
   mayRunCommandsOnHost,
 } from '../../security/coding-authority.js';
+import {
+  operatorHostCli,
+  requestingDeviceShortId,
+} from '../../security/full-access-refusal.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -24,7 +29,10 @@ import {
   commitRepository,
   pushRepository,
 } from '../../services/projects/coding-git-actions.js';
-import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import {
+  FilePreviewError,
+  type FileTreeService,
+} from '../../services/projects/file-tree-service.js';
 import {
   type LiveRepository,
   openLiveRepository,
@@ -33,6 +41,7 @@ import {
   readProjectRepository,
 } from '../../services/projects/git-read-repository.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
+import { readWorkspaceDiff } from '../../services/projects/workspace-diff-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -53,6 +62,21 @@ import {
   validate,
 } from '../schemas/schemas.js';
 
+const fileTreeQuerySchema = z.object({
+  depth: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(0).max(10))
+    .optional(),
+  maxEntries: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(5000))
+    .optional(),
+});
+
 /**
  * #2412, owner decision: `POST /exec` stays at the operate tier, and a
  * paired device additionally needs `coding:exec`, which the operator grants
@@ -66,13 +90,23 @@ function codingExecAllowed(c: Context): boolean {
   );
 }
 
-/** The stable refusal a device without the exec grant receives. */
-const CODING_EXEC_NOT_GRANTED = {
-  success: false as const,
-  code: 'coding-exec-not-granted' as const,
-  error:
-    "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: station environment access devices, then station environment access scope <this device> --add coding:exec; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.",
-};
+/**
+ * The stable refusal a device without the exec grant receives. The host
+ * command names this Station's own CLI and, when a paired device asked, that
+ * device, so the operator can run it as written.
+ */
+function codingExecNotGranted(request: Request) {
+  const cli = operatorHostCli(request);
+  const device = requestingDeviceShortId(request);
+  const command = device
+    ? `${cli} environment access scope ${device} --add coding:exec`
+    : `${cli} environment access devices, then ${cli} environment access scope <this device> --add coding:exec`;
+  return {
+    success: false as const,
+    code: 'coding-exec-not-granted' as const,
+    error: `This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: ${command}; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.`,
+  };
+}
 
 /**
  * Bounds on every git call these routes make (#2363 review round 2). A
@@ -84,7 +118,6 @@ const CODING_EXEC_NOT_GRANTED = {
  */
 const GIT_QUICK_TIMEOUT_MS = 10_000;
 const GIT_READ_TIMEOUT_MS = 20_000;
-const GIT_DIFF_TIMEOUT_MS = 30_000;
 const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
 
 const GIT_TIMEOUT_MESSAGE =
@@ -597,13 +630,17 @@ export function createCodingRoutes(
       );
       if (location instanceof Response) return location;
       const dir = location.target;
-      const depth = c.req.query('depth')
-        ? Number(c.req.query('depth'))
-        : undefined;
-      const maxEntries = c.req.query('maxEntries')
-        ? Number(c.req.query('maxEntries'))
-        : undefined;
-      const data = fileTreeService.listDirectory(dir, { depth, maxEntries });
+      const options = fileTreeQuerySchema.safeParse(c.req.query());
+      if (!options.success)
+        return c.json(
+          {
+            success: false,
+            error:
+              'depth must be an integer from 0 to 10; maxEntries must be an integer from 1 to 5000.',
+          },
+          400,
+        );
+      const data = await fileTreeService.listDirectory(dir, options.data);
       return c.json({ success: true, data });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -653,9 +690,21 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const content = fileTreeService.readFileWithin(location.target, file);
+      const content = await fileTreeService.readFilePreviewWithin(
+        location.target,
+        file,
+      );
       return c.json({ success: true, data: { path: file, content } });
     } catch (e: unknown) {
+      if (e instanceof FilePreviewError)
+        return c.json(
+          { success: false, code: e.code, error: errorMessage(e) },
+          e.code === 'file-too-large'
+            ? 413
+            : e.code === 'not-found'
+              ? 500
+              : 400,
+        );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
   });
@@ -872,15 +921,8 @@ export function createCodingRoutes(
       if (location instanceof Response) return location;
       // A multi-repo workspace root isn't itself a repo; return an empty diff
       // instead of letting `git diff` fail with "not a git repository".
-      // #2363: `diff` runs repository-defined filters and diff drivers.
       return await gitRead(c, location, { diff: '' }, async (repository) => ({
-        diff: (
-          await execGit([...repository.repoArgs, 'diff'], {
-            cwd: repository.top,
-            encoding: 'utf-8',
-            timeout: GIT_DIFF_TIMEOUT_MS,
-          })
-        ).stdout,
+        diff: await readWorkspaceDiff(repository),
       }));
     } catch (e: unknown) {
       return gitFailure(c, e);
@@ -1113,8 +1155,8 @@ export function createCodingRoutes(
           [
             ...repository.repoArgs,
             ...(create
-              ? ['checkout', '-b', branch, '--end-of-options']
-              : ['checkout', '--end-of-options', branch, '--']),
+              ? ['checkout', '-b', branch, 'HEAD', '--']
+              : ['checkout', branch, '--']),
           ],
           opts,
         );
@@ -1206,7 +1248,7 @@ export function createCodingRoutes(
   app.post('/exec', async (c, next) => {
     if (codingExecAllowed(c)) return next();
     codingOps.add(1, { operation: 'exec-refused' });
-    return c.json(CODING_EXEC_NOT_GRANTED, 403);
+    return c.json(codingExecNotGranted(c.req.raw), 403);
   });
   app.post('/exec', validate(execCommandSchema), async (c) => {
     codingOps.add(1, { operation: 'exec' });

@@ -1,0 +1,7 @@
+{
+  "revision": "464ffaeb2e2a837b28c49f447fb61c56fbacf196",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"added a Resync verb to the status pill and a Refresh button beside New chat in the inbox footer; responsive rules (44px mobile targets apply to mobile chrome, inbox panel is desktop-only) unchanged","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/status/live-status.css"]}
+  ]
+}

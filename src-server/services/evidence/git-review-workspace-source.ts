@@ -143,6 +143,14 @@ export class GitReviewWorkspaceSource implements ReviewWorkspaceSource {
           await rm(workspaceRoot, { recursive: true, force: true });
           throw error;
         }
+        try {
+          await live.settleCreatedWorktree(workspaceRoot);
+        } catch (error) {
+          throw new Error(
+            `Created worktree preserved at ${workspaceRoot}: metadata could not be settled`,
+            { cause: error },
+          );
+        }
       } finally {
         await live.dispose();
       }

@@ -18,7 +18,7 @@ import {
   useWorkItemsQuery,
 } from '@kontourai/station-sdk';
 import type { FormEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
@@ -26,6 +26,8 @@ import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
+import { requestTaskShaping } from '../../lib/task-shaping';
+import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
 
@@ -115,6 +117,7 @@ export function ProjectTasksSection({
   presentation?: 'list' | 'board';
 }) {
   const { navigate } = useNavigation();
+  const dispatchReasonId = useId();
   const starterId =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('starter')
@@ -341,7 +344,7 @@ export function ProjectTasksSection({
   }
 
   async function dispatchSelectedTask() {
-    if (!selectedTask) return;
+    if (!selectedTask?.agentId?.trim()) return;
     const result = await dispatchTaskMutation.mutateAsync({
       taskId: selectedTask.id,
       dispatch: {
@@ -385,32 +388,39 @@ export function ProjectTasksSection({
         </p>
       ) : null}
 
-      <form className="project-page__task-form" onSubmit={createTask}>
-        {starterId === 'start-task' && (
+      {starterId !== 'start-task' ? (
+        <Button
+          variant="primary"
+          onClick={() => requestTaskShaping({ projectSlug: slug })}
+        >
+          New Task
+        </Button>
+      ) : (
+        <form className="project-page__task-form" onSubmit={createTask}>
           <p role="status">
             Create a focused starter task. Station will link the exact task
             after it is created.
           </p>
-        )}
-        <input
-          className="project-page__task-input"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Create a task"
-          aria-label="Task title"
-        />
-        <button
-          className="project-page__add-btn project-page__add-btn--primary"
-          type="submit"
-          disabled={
-            !title.trim() ||
-            createTaskMutation.isPending ||
-            launchStarterMutation.isPending
-          }
-        >
-          Add task
-        </button>
-      </form>
+          <input
+            className="project-page__task-input"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Create a task"
+            aria-label="Task title"
+          />
+          <button
+            className="project-page__add-btn project-page__add-btn--primary"
+            type="submit"
+            disabled={
+              !title.trim() ||
+              createTaskMutation.isPending ||
+              launchStarterMutation.isPending
+            }
+          >
+            Add task
+          </button>
+        </form>
+      )}
       {/*
         station#3965: these six sentences are what a person reads after
         pressing "Add task", and every one of them used to name the mechanism
@@ -613,6 +623,31 @@ export function ProjectTasksSection({
                         Claimed by {actorLabel(taskClaim.actor)}
                       </div>
                     )}
+                  {!selectedTask.agentId?.trim() && (
+                    <div
+                      className="project-page__task-detail-meta"
+                      role="status"
+                      id={dispatchReasonId}
+                    >
+                      Dispatch needs an agent, and this Task has none. See{' '}
+                      <a
+                        href={`/projects/${encodeURIComponent(slug)}/edit?section=agents`}
+                        onClick={(event) => {
+                          if (!isPlainLeftClick(event)) return;
+                          event.preventDefault();
+                          navigate(
+                            `/projects/${encodeURIComponent(slug)}/edit`,
+                            {
+                              section: 'agents',
+                            },
+                          );
+                        }}
+                      >
+                        Project settings › Agents
+                      </a>
+                      .
+                    </div>
+                  )}
                   {workflowMatch && (
                     <WorkflowStatusLine
                       entry={{
@@ -639,12 +674,13 @@ export function ProjectTasksSection({
                   <button
                     className="project-page__add-btn"
                     type="button"
-                    title={
-                      taskClaim?.state === 'claimed-by-other' && taskClaim.actor
-                        ? `Claimed by ${actorLabel(taskClaim.actor)}`
+                    aria-describedby={
+                      !selectedTask.agentId?.trim()
+                        ? dispatchReasonId
                         : undefined
                     }
                     disabled={
+                      !selectedTask.agentId?.trim() ||
                       dispatchTaskMutation.isPending ||
                       selectedTask.status === 'done' ||
                       selectedTask.status === 'canceled' ||

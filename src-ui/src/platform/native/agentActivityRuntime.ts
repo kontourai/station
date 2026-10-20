@@ -1,4 +1,5 @@
 import {
+  nativePushRegistrationStatus,
   registerNativePush,
   unregisterNativePush,
 } from '@kontourai/station-sdk';
@@ -25,6 +26,7 @@ export async function agentActivityController(): Promise<AgentActivityController
     adapter,
     register: registerNativePush,
     unregister: unregisterNativePush,
+    registrationStatus: nativePushRegistrationStatus,
     store: localAgentActivityRegistrationStore(),
     requestNotificationPermission: primeNativeNotifications,
     now: Date.now,

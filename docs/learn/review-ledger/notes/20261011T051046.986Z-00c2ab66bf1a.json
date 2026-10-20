@@ -1,0 +1,37 @@
+{
+  "revision": "371bcf14430ba67a4b405b82eeaca1850df708c5",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"#369: install.ts now passes a StationRequestTimeoutError through its plugin request wrappers instead of rewrapping it as 'not reachable'; refused connections keep the wrapper. Grepped the guide for reachability/timeout wording: it states none, and its install/consent steps are unchanged. No prose change.","inputs":["docs/guides/build-your-first-plugin.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"#369: plugin install/list/update/remove/registry install now report a deadline miss as a timeout (indeterminate for writes) rather than 'Station is not reachable'. The reference makes no claim about transport error wording; install/consent behavior is unchanged. No prose change.","inputs":["docs/reference/agent-plugins.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#369: the request-deadlines section already says plugins preview declares itself read-only so a timeout keeps the read message; that is now true end to end (install.ts no longer masks the timeout), and the write sentence now applies to plugins install/update/registry install. #554: station-dev section gains the installer's symlink/non-shim refusal (lstat, temp file plus rename) and the 128+signal exit; checked against install-station-dev.mjs and station-dev.mjs run().","inputs":["docs/reference/cli.md","packages/cli/src/commands/install.ts","scripts/station-dev.mjs"]},
+
+    {"path":"examples/demo-layout/README.md","note":"#369: only the timeout error wording of the plugin CLI changed (install.ts passes StationRequestTimeoutError through). The README's install instructions make no claim about it. No prose change.","inputs":["examples/demo-layout/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"#369: only the timeout error wording of the plugin CLI changed (install.ts passes StationRequestTimeoutError through). The README's install instructions make no claim about it. No prose change.","inputs":["examples/getting-started-starter/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"#369: only the timeout error wording of the plugin CLI changed (install.ts passes StationRequestTimeoutError through). The README's install and build instructions make no claim about it. No prose change.","inputs":["examples/minimal-layout/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/portable-author-kit/README.md","note":"#369: only the timeout error wording of the plugin CLI changed (install.ts passes StationRequestTimeoutError through); target-source admission (resolvePluginSourceForStation) is untouched. No prose change.","inputs":["examples/portable-author-kit/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/registry/README.md","note":"#369: registry install now reports a deadline miss as an indeterminate write instead of 'not reachable'; the README makes no claim about that error text, and registry resolution/consent is unchanged. No prose change.","inputs":["examples/registry/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"#369: CLI-only change in install.ts error mapping; the SDK's StationRequestTimeoutError and authenticatedFetch are unchanged, and the README's plugin install boundary text still holds. No prose change.","inputs":["packages/sdk/README.md","packages/cli/src/commands/install.ts"]},
+
+    {"path":"packages/cli/README.md","note":"#554: station-dev now reports a signal-killed CLI as 128+signal; the README's one-paragraph station-dev description (runs the checkout bundle, approximate staleness check) remains accurate and defers details to cli.md. No prose change.","inputs":["packages/cli/README.md","docs/reference/cli.md","scripts/station-dev.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"#699 and #577: two files were added to PROCESS_HEAVY_VITEST_FILES (plugin-build.test.ts, the interactive-workspace host-gate test). The guide's group descriptions (ordinary four workers, process-heavy two) and policy are unchanged. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#699 and #577: manifest gained two process-heavy entries; the instruction that new child-process tests be classified in the manifest is what these follow. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#577: e2e-manifest rationale for the interactive-workspace bridge spec now says the workload is skipped off win32; its bucket stays smoke-live. The matrix does not list this spec or quote its rationale. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"#577: only the bridge spec's manifest rationale changed; bucket membership is unchanged and this page does not describe the spec. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"#577: added a paragraph for referenceHostGate (skip before provisioning off win32, NOT_VERIFIED receipt written to STATION_PERFORMANCE_REPORT_OUTPUT, STATION_PERFORMANCE_NON_REFERENCE_DIAGNOSTIC=1 opt-in, hardware still from runtime metadata) and the referenceOwnership fixture teardown. Checked against the spec and scripts/interactive-workspace-performance.mjs.","inputs":["docs/reference/interactive-workspace-performance.md","scripts/interactive-workspace-performance.mjs","tests/interactive-workspace-performance-bridge.spec.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#699: plugin-build.test.ts only moved to the process-heavy pool and its hang guard returned to 15 s; buildPlugin and its containment assertions are unchanged. No prose change.","inputs":["docs/reference/shared.md","packages/shared/src/__tests__/plugin-build.test.ts"]}
+  ]
+}

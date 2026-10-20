@@ -193,7 +193,11 @@ const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
   failedPluginNames: readonly string[];
-  failure: 'remote-isolation' | undefined;
+  failure:
+    | 'remote-isolation'
+    | 'registry-unavailable'
+    | 'bundle-load-failure'
+    | undefined;
 } = {
   state: 'ready',
   failedPluginNames: [],
@@ -428,6 +432,24 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
+  test('the agent picker installs without navigating away from the agent draft', async () => {
+    const { RegistryView } = await import('../views/RegistryView');
+    const onInstalled = vi.fn();
+    render(
+      <RegistryView
+        initialTab="integrations"
+        toolPicker
+        onInstalled={onInstalled}
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: 'Agents' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Plugins' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Find tools' }), {
+      target: { value: 'Integration One' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(onInstalled).toHaveBeenCalledOnce());
+  });
   test('keeps unsupported-format skill details available with an explanation and disabled installation', () => {
     render(<RegistryView initialTab="skills" />);
     fireEvent.click(
@@ -1257,3 +1279,32 @@ describe('RegistryView', () => {
     expect(screen.getByText('Install Preview')).toBeTruthy();
   });
 });
+
+test.each(['registry-unavailable', 'bundle-load-failure'] as const)(
+  'the Extensions screen owns %s and its Retry action',
+  (failure) => {
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames:
+        failure === 'bundle-load-failure' ? ['broken-extension'] : [],
+      failure,
+    };
+    render(<RegistryView />);
+    expect(screen.getByRole('alert').textContent).toContain(
+      "Couldn't load extensions",
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
+    expect(pluginRegistryReload).toHaveBeenCalledTimes(1);
+    act(() => {
+      pluginRegistryStatus = {
+        state: 'ready',
+        failedPluginNames: [],
+        failure: undefined,
+      };
+      for (const listener of pluginRegistryListeners) listener();
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Retry extensions' }),
+    ).toBeNull();
+  },
+);

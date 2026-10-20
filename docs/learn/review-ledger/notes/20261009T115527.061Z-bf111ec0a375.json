@@ -1,0 +1,7 @@
+{
+  "revision": "13601b5ff486e99faa117bf3b4e032519f9a8e66",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the affected exact-pixel baseline claims in the testing guide against screenshot-diff baseline reading, decoded-RGBA hashing, selected merge behavior, companion PNG lookup and renderer limits. The only manifest difference from main949 is the320/390 HTTP-consent reference hashes; corresponding PNGs retain the explicitly approved complete canonical producer37683548395 bytes for the ConnectStation ceremony, rather than main's retired AddStation scene. All other entries, volatile treatment, dimensions, comparator policy and capture assertions remain unchanged. Those retained images are reference assets, not new-head rendering or a continuous determinism guarantee. Historical approval/source-qualified51+2+1 comparison remains recorded separately; actual current-head hosted Gallery must still pass. No guide prose change is needed because its policy, partial-run refusal and renderer-bound evidence limits remain accurate. This is scoped source/asset review only. Initial exact13601 CI stopped on this binding with758selected tests passing and1freshness failure; it remains a failed receipt. Four owning feature suites passed73tests and full-history scan passed at13601, neither proving current screenshots. No parent note/history edit, baseline regeneration, wildcard exception, timeout or pixel policy change.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

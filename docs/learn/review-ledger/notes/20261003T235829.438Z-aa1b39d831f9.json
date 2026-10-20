@@ -1,0 +1,7 @@
+{
+  "revision": "0371f7dc7c6adc213a577809267f86740b64a676",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed #2962 protocol admission against runtime-http, RuntimeAuthFailureLimiter and the route regression: 100 unauthenticated mixed 400/426 refusals share the 10-per-60-second peer auth budget; audit suppression retains protocol responses. Reviewed UI origin observations: each re-handshake clears stale acceptance before fetch, then valid discovery restores it. Socket and released-device behavior not verified."}
+  ]
+}

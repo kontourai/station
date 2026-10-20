@@ -1,0 +1,7 @@
+{
+  "revision": "00066cf16dae1518e7e923d20f668dacfd700cb2",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed actual queue candidate54753c failure: main S0 proposal cited scheduled-principal-context.ts removed by S1 rename. Corrected the current source link to unattended-principal-context.ts and identified shared server-issued AsyncLocalStorage while preserving scheduled-job kind/jobId, two-key/default-deny and proposal runtime limits. Normal fdb integration is separate; no helper alias/exemption/retry. Markdown-link recheck passed; canonical MCP docs regenerated. This scoped review is not full Automation intake/dispatch/hosted qualification.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/agents/unattended-principal-context.ts"]}
+  ]
+}

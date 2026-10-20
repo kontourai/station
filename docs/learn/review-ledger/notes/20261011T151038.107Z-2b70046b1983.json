@@ -1,0 +1,7 @@
+{
+  "revision": "3c928c782fea6a679e066f678aba4e18e0bdb6d2",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Capture shows the closed start composer. StartComposer.css edits here only affect open start menus on phones (safe-area padding, docked width); the closed composer is unchanged.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

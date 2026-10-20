@@ -1,0 +1,31 @@
+{
+  "revision": "1ec3d7990fff1a3b0cfb87d8c82f55e4fe2c583c",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Added the docs-kit.json paragraph: checked it against docs-kit.json, pages.yml (bundle build + copy into dist-pages), and docs-kit.yml (push/main and dispatch only, so the local-check advice is accurate). Remaining guide claims untouched.","inputs":["docs/guides/documentation.md","docs-kit.json",".github/workflows/docs-kit.yml"]},
+
+    {"path":"docs/pages/README.md","note":"Added the docs-kit.json section: verified the exclude list against docs-kit.json and git ls-files docs (79 guide/reference exclusions proven by removing them), that docs-kit build emits docs/<path>.html URLs identical to npm run docs:pages:build output, and that pages.yml copies only docs-bundle.json.","inputs":["docs/pages/README.md","docs-kit.json",".github/workflows/pages.yml"]},
+
+    {"path":"docs/README.md","note":"Added docs-kit.json to the public source boundary; checked against docs-kit.json and pages.yml. The documentation.md change adds only a docs-kit paragraph and leaves this index's routes accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added the Main: Docs kit inventory row; checked name and triggers against .github/workflows/docs-kit.yml. The documentation.md change does not affect this guide's claims.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":".veritas/README.md","note":"Upstream documentation.md change only adds a docs-kit bundle paragraph; this README's Veritas configuration and evidence-boundary claims do not depend on it. No prose change.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Upstream documentation.md change only adds a docs-kit bundle paragraph; no finding here cites Pages or docs publication. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Upstream changes add a docs-kit paragraph (documentation.md) and one workflow inventory row (testing.md); this guide's hook and publication requirements do not reference either. No prose change.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Upstream documentation.md change adds a docs-kit bundle paragraph. Docs And Pages section still holds: rendered pages remain limited to public-docs.json, and docs-kit.json mirrors that allowlist. No prose change.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Upstream documentation.md change only adds a docs-kit bundle paragraph; integration routing claims do not depend on it. No prose change.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Upstream testing.md change adds one workflow inventory row; this file routes to testing.md without restating the inventory. No prose change.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Upstream testing.md change adds one workflow inventory row; this file's routed claims do not cover workflows. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Upstream testing.md change adds one workflow inventory row; this file's routed claims do not cover workflows. No prose change.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Upstream testing.md change adds one workflow inventory row; this file's fixture and helper claims do not cover workflows. No prose change.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

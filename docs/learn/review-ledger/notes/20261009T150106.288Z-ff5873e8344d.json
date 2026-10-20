@@ -1,0 +1,7 @@
+{
+  "revision": "c3707bab8c4516c52f0de635423319798336754b",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed first-paint saved-theme selection, HTML stylesheet ordering, shared StartupScreen call sites, and native day/night window background. The Android window uses the OS palette behind an initially transparent WebView, while HTML uses the stored device mode; main.tsx still owns canonical accent and branding. Ripple/stream use existing motion tokens and reduced-motion CSS. Existing white-label authority claims remain accurate.","inputs":["docs/guides/theming.md"]}
+  ]
+}

@@ -4,8 +4,18 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import {
   type AgentId,
   agentId,
+  parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import {
+  AGENT_PROFILE_CAPABILITIES,
+  type AgentProfileCapability,
+} from '@kontourai/station-contracts/enriched-agent';
+import {
+  type ExecutionConfinementRecord,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from '@kontourai/station-contracts/execution-confinement';
 import type {
   EnvironmentRef,
   ExecutionModelRequest,
@@ -17,6 +27,7 @@ import { environmentId } from '@kontourai/station-contracts/execution-target';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type InterruptTurnResult,
   normalizeRequestAnswerability,
   type RequestAnswerability,
 } from '@kontourai/station-contracts/orchestration';
@@ -34,9 +45,11 @@ import {
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
+  type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  type TokenUsageUpdatedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -66,6 +79,7 @@ import {
   StationHttpError,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
+import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
 import {
   formatProviderQuotaEventText,
   formatProviderQuotaReasonDetail,
@@ -74,6 +88,8 @@ import {
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
+import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
+import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -101,15 +117,30 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
-import type { DispatchCwdAdmission } from '../services/orchestration/dispatch-cwd-admission.js';
+import {
+  type DelegationStagedFiles,
+  materializeDelegationFiles,
+} from '../services/orchestration/delegation-files.js';
+import {
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  type DispatchCwdAdmission,
+} from '../services/orchestration/dispatch-cwd-admission.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
-import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type {
+  OrchestrationService,
+  PeerReportedPendingRequest,
+} from '../services/orchestration/orchestration-service.js';
+import {
+  type PresentableOpenRequest,
+  presentOpenRequest,
+} from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -286,6 +317,7 @@ interface StationHandshake {
     portableExecutionOffers?: boolean;
     delegationAttemptClaims?: boolean;
     executionPreparation?: boolean;
+    delegatedInputAnswers?: boolean;
   };
 }
 
@@ -363,6 +395,8 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Server-only current-host staging authority, composed by the authenticated route. */
+  stagedFiles?: DelegationStagedFiles;
   prompt: string;
   target: ExecutionTarget;
   sessionId?: string;
@@ -578,6 +612,14 @@ export interface DelegationTargetOption {
   description?: string;
   kind: 'agent';
   ready: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  executionReady?: boolean;
+  engineConnectionId?: string;
+  engineId?: EngineId;
+  engineName?: string;
   unavailableReason?: string;
   defaultModel?: string;
   models: ModelOption[];
@@ -612,6 +654,22 @@ export interface DelegationEnvironments {
   environments: DelegationEnvironmentOption[];
 }
 
+function safeProfileCapabilities(
+  value: unknown,
+): AgentProfileCapability[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    value.length > AGENT_PROFILE_CAPABILITIES.length ||
+    !value.every(
+      (entry): entry is AgentProfileCapability =>
+        typeof entry === 'string' &&
+        AGENT_PROFILE_CAPABILITIES.some((capability) => capability === entry),
+    )
+  )
+    return undefined;
+  return [...new Set(value)];
+}
+
 interface DelegationAgentView {
   slug: string;
   name: string;
@@ -623,7 +681,15 @@ interface DelegationAgentView {
     runtimeOptions?: Record<string, unknown>;
   };
   modelOptions?: ModelOption[] | null;
+  engineId?: EngineId;
+  engineDisplayName?: string;
   available?: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  engineDefault?: boolean;
+  enable?: { engineConnectionId: string };
   unavailableReason?: string;
 }
 
@@ -649,6 +715,14 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * `delegatedInputAnswers`: deliver `message` only as the answer to this
+   * exact open input request on the task's current Session. Forwarded to
+   * another Station only when it advertises the capability; the executing
+   * Station refuses with `input_request_changed` when the request is gone
+   * or replaced.
+   */
+  expectedInputRequest?: AttentionRequestReference;
   /**
    * Station #90 lane D (D2): route-set only. A follow-up can start a new
    * child session of the task's conversation, which must carry the same
@@ -756,6 +830,11 @@ export interface DelegatedTaskEvent {
   totalTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  cacheWriteTokens5m?: number;
+  cacheWriteTokens1h?: number;
+  serviceTier?: string;
+  contextTokens?: number;
+  contextWindowTokens?: number;
   verdict?: string;
   gateId?: string;
   runId?: string;
@@ -875,6 +954,33 @@ function capabilityDeliveryReport(
     };
   }
   return report;
+}
+
+/**
+ * #2494: the confinement record on the session's latest `session.started`,
+ * or `undefined` when it recorded none (or something that is not one).
+ */
+export function startedSessionConfinement(
+  events: readonly unknown[],
+): ExecutionConfinementRecord | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (
+      !event ||
+      typeof event !== 'object' ||
+      (event as { method?: unknown }).method !== 'session.started'
+    )
+      continue;
+    const metadata = (event as { metadata?: unknown }).metadata;
+    return metadata && typeof metadata === 'object'
+      ? readConfinementRecord(
+          (metadata as Record<string, unknown>)[
+            STATION_CONFINEMENT_RECORD_METADATA_KEY
+          ],
+        )
+      : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -1520,6 +1626,18 @@ export interface DelegatedTaskSnapshot {
      * only when the target returned no session for the task.
      */
     answerability?: RequestAnswerability;
+    /** `delegatedInputAnswers`: the open request's `request.opened` event id. */
+    eventId?: string;
+    /** The question as `presentOpenRequest` presents it, when it has one. */
+    body?: string;
+    /**
+     * Whether the caller of THIS read passes this Station's own checks on
+     * the route that answers the request — `respond` for an approval,
+     * permission or confirmation, `continue` for an input question. Set
+     * only by the route for a read this Station serves itself; absent
+     * means not evaluated (an older Station, or a forwarded read).
+     */
+    callerCanRespond?: boolean;
   };
   canInterrupt: boolean;
   /**
@@ -1641,6 +1759,30 @@ function answerText(
   return typeof peerText === 'string' && peerText
     ? peerText
     : unavailableMessage;
+}
+
+/**
+ * Another Station's refusal to let this Station's device choose a working
+ * folder (403 `working-directory-not-granted`, the closed code of the shared
+ * folder rule). The receiver alone knows whether the operator granted that
+ * device `coding:exec`, so the folder is sent and its refusal is answered here
+ * with this Station's own fixed sentence, never the receiver's text (#2708).
+ */
+export const REMOTE_FOLDER_NOT_GRANTED_MESSAGE =
+  "The selected Station did not allow this Station's device to choose a working folder. Name a Project instead (for example --project), or ask that Station's operator to allow this Station's device to run commands (the coding:exec grant). Nothing was started.";
+
+function remoteFolderRefusal(
+  endpoint: StationEndpoint,
+  status: number,
+  payload: unknown,
+): string | undefined {
+  return endpoint.kind !== 'current' &&
+    status === 403 &&
+    typeof payload === 'object' &&
+    payload !== null &&
+    Reflect.get(payload, 'code') === WORKING_DIRECTORY_NOT_GRANTED_CODE
+    ? REMOTE_FOLDER_NOT_GRANTED_MESSAGE
+    : undefined;
 }
 
 type ForwardedDelegation = {
@@ -1801,9 +1943,13 @@ function localRefusalOf(
   message: string,
 ): LocalStationRefusal | undefined {
   if (target.kind !== 'current') return undefined;
-  const code = (payload as { code?: unknown } | null | undefined)?.code;
+  const body = payload as
+    | { code?: unknown; reason?: unknown }
+    | null
+    | undefined;
+  const code = body?.code;
   return typeof code === 'string' && code
-    ? new LocalStationRefusal(code, message)
+    ? new LocalStationRefusal(code, message, body?.reason)
     : undefined;
 }
 
@@ -1830,12 +1976,9 @@ async function readJson<T>(
     throw new Error(unavailableMessage);
   }
   if (!response.ok) {
-    const message = answerText(
-      endpoint,
-      payload.error,
-      unavailableMessage,
-      response.status,
-    );
+    const message =
+      remoteFolderRefusal(endpoint, response.status, payload) ??
+      answerText(endpoint, payload.error, unavailableMessage, response.status);
     const cause = localRefusalOf(endpoint, payload, message);
     throw new Error(message, cause ? { cause } : undefined);
   }
@@ -2133,6 +2276,15 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
+    // `delegatedInputAnswers`: the receiver's closed binding refusals keep
+    // their meaning here (its prose does not cross; only the code does).
+    if (response.status === 409) {
+      const code = (payload as { code?: unknown } | null)?.code;
+      if (code === 'input_request_changed')
+        throw new DelegatedInputRequestChangedError();
+      if (code === 'input_binding_unsupported')
+        throw new DelegatedInputBindingUnsupportedError();
+    }
     // The paired-Station sentence is for a paired (peer) target's 403 only.
     // `current` and `ssh` fall through to the local refusal below: this
     // Station's own 403 keeps its typed code (#2708, #2795), and an SSH
@@ -2319,12 +2471,9 @@ async function postForegroundMessage(
       );
       if (refusal) throw refusal;
     }
-    const message = answerText(
-      target,
-      payload.error,
-      unavailableMessage,
-      response.status,
-    );
+    const message =
+      remoteFolderRefusal(target, response.status, payload) ??
+      answerText(target, payload.error, unavailableMessage, response.status);
     // #2708/#2795: only this Station's own answer is relayed to the agent,
     // as a `LocalStationRefusal` cause; `code` below is the route contract.
     const cause = localRefusalOf(target, payload, message);
@@ -2874,12 +3023,26 @@ export async function discoverDelegationOptions(
           connection?.config.defaultModel,
       );
       const description = safeDescription(agent.description);
+      const profileCapabilities = agent.definitionFingerprint
+        ? safeProfileCapabilities(agent.profileCapabilities)
+        : undefined;
+      const unsupportedProfileCapabilities = safeProfileCapabilities(
+        agent.unsupportedProfileCapabilities,
+      );
       const connectionReady = connection
         ? connection.enabled &&
           connection.status === 'ready' &&
           connection.capabilities.includes('agent-runtime')
         : true;
       const ready = agent.available !== false && connectionReady;
+      const resolvedEngineId =
+        parseEngineId(agent.engineId) ??
+        (connectionReady
+          ? parseEngineId(connection?.config.engineId)
+          : undefined);
+      const engineName =
+        safeDescription(agent.engineDisplayName) ||
+        (connectionReady ? safeDescription(connection?.name) : undefined);
       const unavailableReason =
         safeDescription(agent.unavailableReason) ||
         (connection && !connectionReady
@@ -2892,6 +3055,28 @@ export async function discoverDelegationOptions(
           ...(description ? { description } : {}),
           kind: 'agent' as const,
           ready,
+          ...(profileCapabilities ? { profileCapabilities } : {}),
+          ...(unsupportedProfileCapabilities
+            ? { unsupportedProfileCapabilities }
+            : {}),
+          ...(agent.definitionFingerprint &&
+          /^sha256:[0-9a-f]{64}$/.test(agent.definitionFingerprint)
+            ? { definitionFingerprint: agent.definitionFingerprint }
+            : {}),
+          ...(agent.executionDefault === true
+            ? {
+                executionDefault: true,
+                executionReady:
+                  connectionReady &&
+                  (agent.available !== false ||
+                    (agent.engineDefault === true &&
+                      agent.enable?.engineConnectionId === connectionId &&
+                      agent.enable !== undefined)),
+              }
+            : {}),
+          ...(connectionId ? { engineConnectionId: connectionId } : {}),
+          ...(resolvedEngineId ? { engineId: resolvedEngineId } : {}),
+          ...(engineName ? { engineName } : {}),
           ...(!ready && unavailableReason ? { unavailableReason } : {}),
           ...(defaultModel ? { defaultModel } : {}),
           models,
@@ -3469,6 +3654,13 @@ export function snapshotFor(options: {
             ...(typeof pendingRequest.requestType === 'string'
               ? { type: pendingRequest.requestType }
               : {}),
+            // `delegatedInputAnswers`: the request's own event identity, so a
+            // sender can bind an answer to exactly this request, and the
+            // question as the shared presentation renders it locally.
+            ...(typeof pendingRequest.eventId === 'string'
+              ? { eventId: pendingRequest.eventId }
+              : {}),
+            ...pendingRequestBody(pendingRequest),
             // The TARGET Station's own observation, forwarded as-is. Never
             // re-derived here: this process holds neither that environment's
             // adapter registry nor its thread attachments (ADR 0012).
@@ -3478,6 +3670,50 @@ export function snapshotFor(options: {
       : {}),
     canInterrupt: status === 'queued' || status === 'running',
     resumable: conversationCanAcceptFollowUp(status),
+  };
+}
+
+/**
+ * The presented question text of an open request — the same
+ * `presentOpenRequest` wording a local attention item shows — when the
+ * request carries a known type. Bounded by that presentation.
+ */
+function pendingRequestBody(event: Record<string, unknown>): {
+  body?: string;
+} {
+  const request = presentableOpenRequest(event);
+  if (!request) return {};
+  const body = presentOpenRequest(request).body;
+  return body ? { body } : {};
+}
+
+/**
+ * The fields the presentation reads, each checked off a parsed event record:
+ * a known `requestType`, a string `title` (or none), a string `description`
+ * and an object `payload` only when present in those shapes.
+ */
+function presentableOpenRequest(
+  event: Record<string, unknown>,
+): PresentableOpenRequest | undefined {
+  if (event.method !== 'request.opened') return undefined;
+  const requestType = event.requestType;
+  if (
+    requestType !== 'approval' &&
+    requestType !== 'permission' &&
+    requestType !== 'confirmation' &&
+    requestType !== 'input'
+  )
+    return undefined;
+  const payload = event.payload;
+  return {
+    requestType,
+    title: typeof event.title === 'string' ? event.title : '',
+    ...(typeof event.description === 'string'
+      ? { description: event.description }
+      : {}),
+    ...(payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? { payload: payload as Record<string, unknown> }
+      : {}),
   };
 }
 
@@ -3545,6 +3781,44 @@ function optionalNumber(value: unknown): number | undefined {
     ? value
     : undefined;
 }
+
+/**
+ * #225: the usage fields a delegated-task event carries, keyed by the
+ * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
+ * compile error here instead of a silent drop. Two fields are excluded on
+ * purpose: `pricingSnapshot` is ingestion-time catalog provenance, and
+ * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
+ * that this per-event projection cannot state.
+ */
+type DelegatedUsageField = Exclude<
+  keyof TokenUsageUpdatedEvent,
+  | keyof CanonicalRuntimeEventBase
+  | 'method'
+  | 'pricingSnapshot'
+  | 'reportedCostUsd'
+>;
+
+const DELEGATED_USAGE_FIELD_PROJECTORS: {
+  readonly [K in DelegatedUsageField]-?: (
+    value: unknown,
+  ) => TokenUsageUpdatedEvent[K];
+} = {
+  promptTokens: optionalNumber,
+  completionTokens: optionalNumber,
+  totalTokens: optionalNumber,
+  cacheReadTokens: optionalNumber,
+  cacheWriteTokens: optionalNumber,
+  cacheWriteTokens5m: optionalNumber,
+  cacheWriteTokens1h: optionalNumber,
+  // Opaque provider text, never enumerated. Over-long text is omitted, not
+  // cut: a truncated tier would read as a different, plausible tier.
+  serviceTier: (value) => {
+    const tier = optionalString(value, 65);
+    return tier && tier.length <= 64 ? tier : undefined;
+  },
+  contextTokens: optionalNumber,
+  contextWindowTokens: optionalNumber,
+};
 
 function optionalCount(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -3726,13 +4000,11 @@ export function projectDelegatedTaskEvent(
         text: 'The delegated runtime reported a warning.',
       };
     case 'token-usage.updated': {
-      const usage = {
-        promptTokens: optionalNumber(event.promptTokens),
-        completionTokens: optionalNumber(event.completionTokens),
-        totalTokens: optionalNumber(event.totalTokens),
-        cacheReadTokens: optionalNumber(event.cacheReadTokens),
-        cacheWriteTokens: optionalNumber(event.cacheWriteTokens),
-      };
+      const usage = Object.fromEntries(
+        Object.entries(DELEGATED_USAGE_FIELD_PROJECTORS).map(
+          ([field, project]) => [field, project(event[field])],
+        ),
+      );
       return {
         ...common,
         kind: 'usage',
@@ -4299,14 +4571,27 @@ export async function observeDelegatedTask(
  */
 function peerPendingRequestOf(
   snapshot: DelegatedTaskSnapshot,
-): { id: string; type?: string; title?: string } | null {
+): PeerReportedPendingRequest | null {
   const request = snapshot.pendingRequest;
   if (!request || typeof request.id !== 'string' || !request.id.trim())
     return null;
+  const eventId =
+    typeof request.eventId === 'string' && request.eventId.trim()
+      ? request.eventId
+      : undefined;
   return {
     id: request.id,
     ...(typeof request.type === 'string' ? { type: request.type } : {}),
     ...(typeof request.title === 'string' ? { title: request.title } : {}),
+    // The binding pair only travels together: an event id names a request
+    // on the paired Station's CURRENT Session.
+    ...(eventId && typeof snapshot.currentSessionId === 'string'
+      ? { eventId, threadId: snapshot.currentSessionId }
+      : {}),
+    ...(typeof request.body === 'string' ? { body: request.body } : {}),
+    ...(typeof request.callerCanRespond === 'boolean'
+      ? { callerCanRespond: request.callerCanRespond }
+      : {}),
   };
 }
 
@@ -4348,6 +4633,80 @@ export async function refreshPeerDelegationActivity(
   );
 }
 
+/** Refusal for a bound answer whose request is gone, replaced, or elsewhere. */
+class DelegatedInputRequestChangedError extends Error {
+  readonly code = 'input_request_changed';
+  constructor() {
+    super(
+      'The input request changed or was answered. Refresh and answer the current request.',
+    );
+    this.name = 'DelegatedInputRequestChangedError';
+  }
+}
+
+/** Refusal for a bound answer that also asks for a model change. */
+class DelegatedInputBindingModelChangeError extends Error {
+  readonly code = 'input_binding_model_change';
+  constructor() {
+    super(
+      'An answer to an open request cannot change the model; send the answer without a model change.',
+    );
+    this.name = 'DelegatedInputBindingModelChangeError';
+  }
+}
+
+/** Refusal for a bound answer to a Station that does not enforce bindings. */
+class DelegatedInputBindingUnsupportedError extends Error {
+  readonly code = 'input_binding_unsupported';
+  constructor() {
+    super(
+      'The selected Station cannot bind an answer to its open request; answer it on that Station.',
+    );
+    this.name = 'DelegatedInputBindingUnsupportedError';
+  }
+}
+
+/**
+ * The executing Station's own check before a bound answer: the reference
+ * names the task's CURRENT Session and an input request that is open and
+ * answerable there for this caller. The orchestration service re-checks the
+ * same request immediately before invoking the engine.
+ */
+function assertInputRequestOpenOnTask(
+  expected: AttentionRequestReference,
+  currentSessionId: string,
+  orchestrationService: OrchestrationService,
+  readAuthority: SessionReadAuthority,
+): void {
+  if (expected.threadId !== currentSessionId)
+    throw new DelegatedInputRequestChangedError();
+  const context = orchestrationService.inspectInputReplyContext(
+    expected,
+    readAuthority,
+  );
+  if (context.state !== 'open') throw new DelegatedInputRequestChangedError();
+}
+
+/**
+ * The selected Station's public handshake must advertise
+ * `delegatedInputAnswers` and name the selected environment back.
+ */
+async function assertTargetEnforcesInputBinding(
+  target: DelegationTarget,
+): Promise<void> {
+  const handshake = await readJson<StationHandshake>(
+    target,
+    `${target.apiBase}/.well-known/station/v1`,
+    { headers: target.requestOptions?.headers ?? {} },
+    'The selected Station could not be reached to confirm answer binding support',
+  );
+  if (
+    handshake.environmentId !== target.environmentId ||
+    handshake.capabilities?.delegatedInputAnswers !== true
+  )
+    throw new DelegatedInputBindingUnsupportedError();
+}
+
 /**
  * Continue the durable Conversation through its serving Station's shared
  * foreground seam. A stopped predecessor is intentionally replaced by a
@@ -4364,6 +4723,11 @@ export async function continueDelegatedTask(
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
+  // A bound answer goes to the request's own Session. A model change can
+  // start a successor Session before the turn's binding check runs, moving
+  // the task off the question it answers, so the two are never combined.
+  if (input.expectedInputRequest && (input.model || input.modelOptions))
+    throw new DelegatedInputBindingModelChangeError();
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
@@ -4410,12 +4774,20 @@ export async function continueDelegatedTask(
     // Station, while every non-portable failure keeps the plain path
     // byte-for-byte (the narrow translator cannot mislabel a legacy
     // failure, since the body carries no portable signal either way).
+    // A bound answer goes only to a Station that advertises enforcing the
+    // binding: an older Station's schema would drop the field and deliver
+    // the text as an unbound follow-up turn.
+    if (input.expectedInputRequest && selectedTarget.kind !== 'current')
+      await assertTargetEnforcesInputBinding(selectedTarget);
     return normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskFollowUpHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/continue`,
         {
           message: input.message,
+          ...(input.expectedInputRequest
+            ? { expectedInputRequest: input.expectedInputRequest }
+            : {}),
           ...relayQuery(selectedTarget),
           ...(input.model ? { model: input.model } : {}),
           ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
@@ -4433,6 +4805,13 @@ export async function continueDelegatedTask(
     input,
   );
   const snapshot = snapshotFor(loaded);
+  if (input.expectedInputRequest)
+    assertInputRequestOpenOnTask(
+      input.expectedInputRequest,
+      snapshot.currentSessionId,
+      orchestrationService,
+      readAuthority,
+    );
   // The shared execution-target resolver owns model-option capability checks.
   // A completed predecessor may be replaced by a child with another provider,
   // so prevalidating against the predecessor snapshot can reject a valid
@@ -4441,6 +4820,10 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      // Re-checked by the orchestration service at engine invocation.
+      ...(input.expectedInputRequest
+        ? { expectedInputRequest: input.expectedInputRequest }
+        : {}),
       userId: readAuthority.userId,
       ...(input.ownerAttribution
         ? { ownerAttribution: input.ownerAttribution }
@@ -4647,12 +5030,53 @@ export async function respondToDelegatedTaskRequest(
   };
 }
 
+const INTERRUPT_TURN_OUTCOMES: ReadonlySet<string> = new Set<
+  InterruptTurnResult['outcome']
+>([
+  'cooperative',
+  'forced',
+  'turn-completed',
+  'pending-turn-start',
+  'no-active-turn',
+]);
+
+/**
+ * #3158: the outcome the stopping Station derived for an `interruptTurn`
+ * (`InterruptTurnResult`), read from its command result. Anything else
+ * (another Station's older response, an unexpected result) is `undefined`:
+ * unknown, never a guessed outcome.
+ */
+function knownInterruptOutcome(
+  outcome: unknown,
+): InterruptTurnResult['outcome'] | undefined {
+  return typeof outcome === 'string' && INTERRUPT_TURN_OUTCOMES.has(outcome)
+    ? (outcome as InterruptTurnResult['outcome'])
+    : undefined;
+}
+const interruptTurnOutcomeOf = (result: unknown) =>
+  knownInterruptOutcome(
+    result && typeof result === 'object'
+      ? (result as { outcome?: unknown }).outcome
+      : undefined,
+  );
+
+export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
+  interruptRequested: true;
+  /**
+   * #3158: what the stop actually did, as the orchestration service derived
+   * it (`InterruptTurnResult['outcome']`). `no-active-turn` means nothing was
+   * interrupted (no turn running, or not the requested one). Absent when the
+   * Station that ran the stop did not report it.
+   */
+  interruptOutcome?: InterruptTurnResult['outcome'];
+};
+
 /** Interrupt the active turn after re-verifying environment and user binding. */
 export async function interruptDelegatedTask(
   input: DelegatedTaskReferenceInput & { turnId?: string },
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
-): Promise<DelegatedTaskSnapshot & { interruptRequested: true }> {
+): Promise<DelegatedTaskInterruptResult> {
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
@@ -4665,8 +5089,10 @@ export async function interruptDelegatedTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
-    return normalizeDelegatedIdentity(
-      await postCanonical<DelegatedTaskSnapshot & { interruptRequested: true }>(
+    // The selected Station's own route ran the stop and reports its outcome;
+    // it is passed on only if it is one this Station's contract names.
+    const { interruptOutcome, ...forwarded } = normalizeDelegatedIdentity(
+      await postCanonical<DelegatedTaskInterruptResult>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/interrupt`,
         {
@@ -4676,6 +5102,8 @@ export async function interruptDelegatedTask(
         'The selected Station could not interrupt the delegated task',
       ),
     );
+    const outcome = knownInterruptOutcome(interruptOutcome);
+    return { ...forwarded, ...(outcome ? { interruptOutcome: outcome } : {}) };
   }
   const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   const snapshot = snapshotFor(loaded);
@@ -4684,21 +5112,24 @@ export async function interruptDelegatedTask(
       `Delegated task cannot be interrupted while ${snapshot.status}`,
     );
   }
+  let interrupted: unknown;
   if (loaded.target.kind === 'current' && orchestrationService) {
-    await orchestrationService.dispatchWithReceipt(
-      {
-        type: 'interruptTurn',
-        threadId: snapshot.currentSessionId,
-        ...(input.turnId ? { turnId: input.turnId } : {}),
-      },
-      dispatchContextForAuthority(
-        readAuthority,
-        input.clientOrigin,
-        input.principal,
-      ),
-    );
+    interrupted = (
+      await orchestrationService.dispatchWithReceipt(
+        {
+          type: 'interruptTurn',
+          threadId: snapshot.currentSessionId,
+          ...(input.turnId ? { turnId: input.turnId } : {}),
+        },
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+        ),
+      )
+    ).result;
   } else {
-    await readSelectedStation(loaded.target, () =>
+    interrupted = await readSelectedStation(loaded.target, () =>
       interruptTurn(
         loaded.target.apiBase,
         {
@@ -4713,7 +5144,12 @@ export async function interruptDelegatedTask(
     target: snapshot.target.kind,
     environment: loaded.target.kind,
   });
-  return { ...snapshot, interruptRequested: true };
+  const interruptOutcome = interruptTurnOutcomeOf(interrupted);
+  return {
+    ...snapshot,
+    interruptRequested: true,
+    ...(interruptOutcome ? { interruptOutcome } : {}),
+  };
 }
 
 /**
@@ -4755,6 +5191,16 @@ export async function delegateTask(
     throw new Error(
       'Task room invocation admission requires the current Task Project.',
     );
+  if (
+    input.stagedFiles &&
+    (input.target.environment.kind !== 'current' ||
+      input.target.workspace?.kind === 'project-portable' ||
+      input.target.workspace?.kind === 'project-portable-prepared' ||
+      input.delegationAttemptId ||
+      input.taskRoomInvocationAdmission ||
+      input.sessionId)
+  )
+    throw new DelegationFileRefusal('delegation_files_unsupported');
   const readAuthority = readAuthorityForInput(input);
   // #2875: a prepared intent IS a portable intent with a version
   // requirement — every portable rule below (admission, no-onward-hop, SSH
@@ -4787,6 +5233,13 @@ export async function delegateTask(
     remote,
     orchestrationService,
   );
+  if (
+    input.stagedFiles &&
+    (selectedTarget.kind !== 'current' ||
+      selectedTarget.relayEnvironmentId ||
+      !orchestrationService)
+  )
+    throw new DelegationFileRefusal('delegation_files_unsupported');
   if (portableIntent && selectedTarget.kind !== 'current') {
     // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
     // peer must execute on THIS verified receiver or refuse — a caller
@@ -5129,6 +5582,11 @@ export async function delegateTask(
       // Deliberately conservative: see the classification comment above.
     }
   };
+  let fileBinding: { threadId: string; clientTurnId: string } | undefined;
+  let workspaceFiles:
+    | Awaited<ReturnType<typeof materializeDelegationFiles>>
+    | undefined;
+  let retainFiles = false;
   // #2875: the matched version check, bound to the claim and returned on
   // the resolution receipt. Replaced by the pre-start recheck below.
   let preparationReceipt:
@@ -5398,6 +5856,24 @@ export async function delegateTask(
         );
       }
     }
+    fileBinding = { threadId: sessionId, clientTurnId: randomUUID() };
+    let delegatePrompt = input.prompt;
+    if (input.stagedFiles) {
+      if (!resolvedCwd)
+        throw new DelegationFileRefusal('delegation_files_unsupported');
+      if (
+        resolved.workspace?.kind === 'project' &&
+        resolved.workspace.workspaceIsolation.mode !== 'shared'
+      )
+        throw new DelegationFileRefusal('delegation_files_unsupported');
+      const attachments = input.stagedFiles.resolve(fileBinding);
+      input.dispatchCwdAdmission?.recheck(resolvedCwd, 'session');
+      workspaceFiles = await materializeDelegationFiles(
+        resolvedCwd,
+        attachments,
+      );
+      delegatePrompt += `\n\nAttached files in your workspace (read their bytes; do not transcribe exact values):\n${workspaceFiles.paths.map((path) => JSON.stringify(path)).join('\n')}`;
+    }
     const session = await orchestrationService.readSession(
       sessionId,
       readAuthority,
@@ -5462,6 +5938,8 @@ export async function delegateTask(
       // #485: from this point the invocation may happen — classification
       // below (and in the outer catch) flips to `unresolved`.
       attemptStartInvoked = true;
+      // A thrown/indeterminate start may have spawned an engine that can read files.
+      retainFiles = true;
       const started = await orchestrationService.startSessionInternal(
         {
           type: 'start-session',
@@ -5479,6 +5957,15 @@ export async function delegateTask(
             metadata: {
               agentId: resolved.agentId,
               agentSlug: resolved.agentId,
+              ...(resolved.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      resolved.expectedDefinitionFingerprint,
+                  }
+                : {}),
+              ...(resolved.executionAgentId
+                ? { executionAgentId: resolved.executionAgentId }
+                : {}),
               ...(resolved.engine.kind === 'connection'
                 ? { connectionId: resolved.engine.connectionId }
                 : {}),
@@ -5567,11 +6054,16 @@ export async function delegateTask(
         },
       );
       if (started.status === 'indeterminate') {
+        if (input.stagedFiles)
+          throw new DelegationFileRefusal('delegation_files_outcome_unknown');
         throw new Error(
           `${started.message} Session ${started.session?.threadId ?? sessionId} may already be running; do not retry automatically.`,
         );
       }
+      retainFiles = false;
       if (started.status !== 'accepted') {
+        if (input.stagedFiles)
+          throw new DelegationFileRefusal('delegation_files_start_refused');
         const error = new Error(started.message) as Error & { code?: string };
         error.code = started.code;
         throw error;
@@ -5608,12 +6100,13 @@ export async function delegateTask(
     // Only the dispatch RETURNING its real provider turn id advances the
     // claim to `accepted` with that turn recorded — never invented, never
     // a second dispatch for the same claim.
+    retainFiles = true;
     const attemptTurnDispatch = await orchestrationService.dispatchWithReceipt(
       {
         type: 'sendTurn',
         input: {
           threadId: sessionId,
-          input: input.prompt,
+          input: delegatePrompt,
           // See the foreground sendTurn: the Agent's declared model is a
           // start-time selection, not a per-turn override.
           ...(input.target.model?.override
@@ -5621,6 +6114,9 @@ export async function delegateTask(
             : {}),
           ...(resolved.modelOptions
             ? { modelOptions: { ...resolved.modelOptions } }
+            : {}),
+          ...(input.stagedFiles
+            ? { clientTurnId: fileBinding.clientTurnId }
             : {}),
           ...(attemptClaim
             ? { clientTurnId: attemptClaim.initialClientTurnId }
@@ -5657,6 +6153,7 @@ export async function delegateTask(
           : {}),
       },
     );
+    input.stagedFiles?.accept(fileBinding);
     // The dispatch returning means the turn was durably accepted by the
     // adapter (the dedup-hit path returns the SAME already-accepted turn
     // rather than executing again). Record that flag before the claim
@@ -5701,6 +6198,10 @@ export async function delegateTask(
     // otherwise-successful dispatch, and `delegate status` re-derives the same
     // view from the same events on every read.
     let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+    // #2494: the receipt is resolved before the session exists, so the
+    // confinement the started process was observed under is read back from
+    // the session's own start record here, beside the delivery disclosure.
+    let confinement: ExecutionConfinementRecord | undefined;
     try {
       const detail = await orchestrationService.readSession(
         sessionId,
@@ -5709,19 +6210,58 @@ export async function delegateTask(
       capabilityDelivery = delegatedCapabilityDelivery(
         (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
       );
+      confinement = startedSessionConfinement(detail?.events ?? []);
     } catch {
       capabilityDelivery = undefined;
+      confinement = undefined;
     }
     return {
       ...handleFor(input, target, project, sessionId),
       target: { kind: 'agent', id: resolved.agentId },
-      resolution: preparationReceipt
-        ? { ...resolved.receipt, preparation: preparationReceipt }
-        : resolved.receipt,
+      resolution: {
+        ...resolved.receipt,
+        ...(preparationReceipt ? { preparation: preparationReceipt } : {}),
+        ...(confinement ? { confinement } : {}),
+      },
       provider: resolved.provider,
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
   } catch (attemptError) {
+    // This local service's rejection must identify this exact command/thread;
+    // unknown outcomes and another command's receipt cannot release these files.
+    const failure = record(attemptError);
+    const receipt = record(failure.receipt);
+    const rejectedTurn =
+      attemptError instanceof Error &&
+      fileBinding !== undefined &&
+      receipt.threadId === fileBinding.threadId &&
+      receipt.commandType === 'sendTurn' &&
+      receipt.status === 'rejected' &&
+      failure.outcome !== 'indeterminate';
+    if (rejectedTurn) retainFiles = false;
+    if (input.stagedFiles && fileBinding && !retainFiles) {
+      try {
+        await workspaceFiles?.remove();
+      } catch (cause) {
+        throw new DelegationFileRefusal('delegation_files_cleanup_failed', {
+          cause,
+        });
+      } finally {
+        input.stagedFiles.release(fileBinding);
+      }
+    }
+    if (
+      input.stagedFiles &&
+      retainFiles &&
+      !(attemptError instanceof DelegationFileRefusal)
+    )
+      throw new DelegationFileRefusal('delegation_files_outcome_unknown', {
+        cause: attemptError,
+      });
+    if (input.stagedFiles && rejectedTurn && !retainFiles)
+      throw new DelegationFileRefusal('delegation_files_turn_refused', {
+        cause: attemptError,
+      });
     if (attemptClaim) {
       if (attemptInitialTurnAccepted || attemptInitialTurnReturned) {
         // The initial turn was durably accepted by the adapter (the
@@ -5759,7 +6299,16 @@ export async function executeExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId || input.handoffIntent)
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const capturedProject = admission?.project;
   const capturedAgent = admission?.agentSpec;
   if (admission) {
@@ -6021,11 +6570,26 @@ export async function executeExecutionTargetMessage(
       return {
         environmentId: metadata.environmentId,
         agentId: boundTarget.id,
+        ...(reservedHandoff?.targetExecutionAgentId
+          ? { executionAgentId: reservedHandoff.targetExecutionAgentId }
+          : typeof currentMetadata?.executionAgentId === 'string'
+            ? { executionAgentId: currentMetadata.executionAgentId }
+            : {}),
         ...(typeof metadata.projectSlug === 'string'
           ? { projectSlug: metadata.projectSlug }
           : {}),
         ...(typeof rootDetail.session.cwd === 'string'
           ? { cwd: rootDetail.session.cwd }
+          : {}),
+        // #3429: the folder this conversation was admitted into, recorded
+        // by the server alone (an adopted attached conversation, or a scoped
+        // dispatch). A follow-up naming only the project continues there.
+        ...(typeof metadata[DISPATCH_CANONICAL_CWD_METADATA_KEY] === 'string'
+          ? {
+              admittedCwd: metadata[
+                DISPATCH_CANONICAL_CWD_METADATA_KEY
+              ] as string,
+            }
           : {}),
         ...(metadata.workspaceIsolation &&
         typeof metadata.workspaceIsolation === 'object' &&
@@ -6055,6 +6619,57 @@ export async function executeExecutionTargetMessage(
             : {}),
       };
     },
+    readPendingConversationSubmission: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+      userId?: string,
+    ) => {
+      if (
+        typeof orchestrationService.readPendingConversationSubmission !==
+        'function'
+      )
+        throw new Error('The requested conversation is unavailable.');
+      return orchestrationService.readPendingConversationSubmission(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        userId,
+      );
+    },
+    inspectConversationTurnKey: (
+      _access: EnvironmentAccess,
+      conversationId: string,
+      clientTurnId: string,
+      inputDigest?: string,
+    ) => {
+      if (typeof orchestrationService.inspectTurnDelivery !== 'function')
+        throw new Error('The requested conversation is unavailable.');
+      const inspection = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthority,
+        inputDigest,
+      );
+      if (inspection === null)
+        throw new Error('The requested conversation is unavailable.');
+      return inspection;
+    },
+    joinConversationTurnKey: async (
+      _access: EnvironmentAccess,
+      sessionId: string,
+      clientTurnId: string,
+      signal?: AbortSignal,
+      inputDigest?: string,
+    ) =>
+      typeof orchestrationService.joinHeldTurnKey === 'function'
+        ? await orchestrationService.joinHeldTurnKey(
+            sessionId,
+            clientTurnId,
+            signal,
+            inputDigest,
+          )
+        : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
@@ -6103,6 +6718,10 @@ export async function executeExecutionTargetMessage(
         readAuthority,
         {
           agentId: handoff.agentId,
+          provider: handoff.provider,
+          ...(handoff.executionAgentId
+            ? { executionAgentId: handoff.executionAgentId }
+            : {}),
           environmentId: access.environmentId,
           ...(handoff.connectionId
             ? { connectionId: handoff.connectionId }
@@ -6114,6 +6733,12 @@ export async function executeExecutionTargetMessage(
       );
       return {
         marker: prepared.marker,
+        ...(prepared.resumeCursor !== undefined
+          ? { resumeCursor: prepared.resumeCursor }
+          : {}),
+        ...(prepared.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: prepared.nativeResumeBindingKey }
+          : {}),
         ...(prepared.transcriptSeed
           ? { transcriptSeed: prepared.transcriptSeed }
           : {}),
@@ -6130,7 +6755,21 @@ export async function executeExecutionTargetMessage(
         handoff.conversationId,
         handoff.idempotencyKey,
         readAuthority,
+        handoff.inputDigest,
       ),
+    retireNativeReturnSource: async (_access, handoffSessionId) =>
+      orchestrationService.retireNativeReturnSource(
+        handoffSessionId,
+        readAuthority,
+      ),
+    retireNativeContinuationSource: async (_access, sourceId, targetId) =>
+      orchestrationService.retireNativeContinuationSource(
+        sourceId,
+        targetId,
+        readAuthority,
+      ),
+    retireHandoffPredecessor: async (_access, targetId) =>
+      orchestrationService.retireHandoffPredecessor(targetId, readAuthority),
     claimConversationContextBoundaryColdStart: (
       _access,
       boundaryId,
@@ -6341,6 +6980,9 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6359,6 +7001,9 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(context?.submissionDigest !== undefined
+                ? { submissionDigest: context.submissionDigest }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6380,7 +7025,7 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies);
+  return executeResolvedForegroundMessage(input, resolverDependencies, context);
 }
 
 /**
@@ -6477,11 +7122,88 @@ export function resumedWorkspaceBinding(
   return {};
 }
 
+/**
+ * #3568 fix round (A4): whether a `/chat` follow-up's target names exactly
+ * what continuing this conversation will use: its bound Agent (and execution
+ * Agent) and its bound workspace, with no engine or Agent-definition
+ * precondition. The inbox
+ * replays a held follow-up through {@link continueExecutionTargetMessage},
+ * which rebuilds the target from the binding, so a body that names anything
+ * else must take the live path, which checks it while the sender waits.
+ * Conservative: a reserved handoff, an unreadable or unbound conversation,
+ * or any shape it does not recognise answers `false`.
+ */
+export async function followUpTargetMatchesBinding(
+  orchestrationService: OrchestrationService,
+  conversationId: string,
+  target: ExecutionTarget,
+  readAuthority: SessionReadAuthority,
+): Promise<boolean> {
+  if (target.expectedEngine) return false;
+  const rootDetail = await orchestrationService.readSession(
+    conversationId,
+    readAuthority,
+  );
+  if (!rootDetail) return false;
+  const currentSessionId =
+    orchestrationService.currentConversationSessionId(conversationId);
+  if (orchestrationService.reservedConversationHandoff(currentSessionId))
+    return false;
+  const currentDetail = await orchestrationService.readSession(
+    currentSessionId,
+    readAuthority,
+  );
+  if (!currentDetail) return false;
+  const metadata = sessionBinding(rootDetail);
+  const currentMetadata = sessionBinding(currentDetail);
+  const bound = delegationTargetBinding(currentMetadata);
+  if (!bound || !metadata) return false;
+  const agent = target.agent;
+  // A stale-definition precondition is checked only by the live path.
+  if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
+    return false;
+  const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
+  const requestedExecution =
+    typeof agent === 'string' ? undefined : agent.executionAgent;
+  const boundExecution =
+    typeof currentMetadata?.executionAgentId === 'string'
+      ? currentMetadata.executionAgentId
+      : undefined;
+  if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
+    return false;
+  const workspace = resumedWorkspaceBinding(
+    metadata,
+    record(rootDetail.session).cwd,
+  ).workspace;
+  const requested = target.workspace;
+  if (!requested) return workspace === undefined;
+  if (requested.kind === 'project')
+    return (
+      workspace?.kind === 'project' &&
+      workspace.projectSlug === requested.projectSlug &&
+      requested.cwd === undefined &&
+      requested.workspaceIsolation === undefined
+    );
+  if (requested.kind === 'directory')
+    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
+  return false;
+}
+
 export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
+  context?: { submissionDigest?: string; inboxPlacement?: true },
 ): Promise<ForegroundMessageHandle> {
+  context = context ? { ...context } : undefined;
+  if (input.clientTurnId)
+    input = snapshotTurnSubmissionFields(input, [
+      'model',
+      'environment',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {
@@ -6589,7 +7311,26 @@ export async function continueExecutionTargetMessage(
       conversationId: input.conversationId,
       target: {
         environment: { kind: 'current' },
-        agent: agentId(boundTarget.id),
+        agent: reservedHandoff?.targetExecutionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(boundTarget.id),
+              executionAgent: agentId(reservedHandoff.targetExecutionAgentId),
+            }
+          : typeof currentMetadata?.executionAgentId === 'string'
+            ? {
+                kind: 'agent-execution-override',
+                agent: agentId(boundTarget.id),
+                executionAgent: agentId(currentMetadata.executionAgentId),
+                ...(typeof currentMetadata.expectedDefinitionFingerprint ===
+                'string'
+                  ? {
+                      expectedDefinitionFingerprint:
+                        currentMetadata.expectedDefinitionFingerprint,
+                    }
+                  : {}),
+              }
+            : agentId(boundTarget.id),
         // archive#3421: a continuation names a conversation, and that
         // conversation already knows its workspace -- so it is rebuilt from the
         // binding, never re-supplied by the caller (the CLI deliberately sends
@@ -6606,5 +7347,8 @@ export async function continueExecutionTargetMessage(
       },
     },
     orchestrationService,
+    undefined,
+    undefined,
+    context,
   );
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "78d4f7afda0a7962e180352d89199d587a9a96dd",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 Grok Linux fix: grok-session-index.ts now counts only a real mtime change as activity and gives half of the backlog inspections to the most recently changed folders. The paragraph's claims (new folders in changed groups and folders with new activity first, 1,024 inspections per poll, sliding window past the cap) remain accurate; no prose change.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-index.ts"]}
+  ]
+}

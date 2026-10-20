@@ -1,0 +1,7 @@
+{
+  "revision": "8703fcbe39f912c20b3c5090bb2518c0b3e3ae1a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed screenshot capture, targeted selection, fixture isolation, retry settlement, and baseline/comparator guidance against the added desktop and 390px conversation-unavailable captures and renamed Resync locators. Existing lifecycle and exact-comparator guidance remains accurate; partial browser fixture captures do not qualify native remote transport, Gallery acceptance, or sidebar freshness.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

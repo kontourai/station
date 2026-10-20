@@ -1,0 +1,7 @@
+{
+  "revision": "f3b67ae661d4760486f9dcee87da002ce262c832",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts with docs:mcp:generate after the module-map secret-binding sentence changed; the shipped topic text equals the canonical document byte for byte (docs-index-reachability checks it). The reference page itself describes the topic tool and is unaffected.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

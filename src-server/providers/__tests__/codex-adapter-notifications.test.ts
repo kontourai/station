@@ -456,6 +456,9 @@ describe('codex-adapter-notifications', () => {
 
     expect(events[0]).toMatchObject({
       method: 'runtime.error',
+      kind: 'quota_exhausted',
+      retryable: false,
+      failurePhase: 'failed',
       retriable: false,
       code: 'usageLimitExceeded',
     });

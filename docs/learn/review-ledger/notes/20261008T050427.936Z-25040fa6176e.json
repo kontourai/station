@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"config.ts delta arrived from main's landed settings work together with its own documentation; re-checked this document's claims against the merged route behavior; unchanged by this merge.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/project-sidebar/CustomizeDialog.tsx","src-ui/src/views/settings/settings-pages.ts","src-server/routes/system/config.ts"]}
+  ]
+}

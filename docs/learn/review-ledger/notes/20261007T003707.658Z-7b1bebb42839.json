@@ -1,0 +1,7 @@
+{
+  "revision": "3f3e0a595da6a50520b12ef547245f77e522d5ba",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped fast-checks real-selection fixture review: repository-wide buildTestImpactManifest discovery now occurs at describe collection, before the named plan-parity test. Real tracked-script selection, resource partition, exact unsharded-versus-shard equality, no-duplicate assertions and existing deadlines remain unchanged. Two exact Windows465 cold-setup failures and31.884s discovery diagnosis remain retained; this is fixture phase separation, not measured production performance improvement. Current3f Mac four-file357/357PASS; Windowsnew-source proof and main landing remain pending.","inputs":["docs/guides/testing.md","scripts/__tests__/fast-checks-shard-cli.test.ts"]}
+  ]
+}

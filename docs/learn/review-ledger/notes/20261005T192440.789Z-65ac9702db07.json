@@ -1,0 +1,71 @@
+{
+  "revision": "3f2715d9721f07afbe86917cbb6922cac2bbbf5f",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the new paragraph under 'Choosing a Project's folder' against workspace-authority.ts, coding-authority.ts (mayChooseWorkingDirectory, pairedDeviceMayNotChooseDirectory) and the five guarded handlers in orchestration.ts; the listed routes, the shared 403 code and the delegation/standard behaviour match the route test. The 'does not close' bullets still hold.","inputs":["docs/security/remote-access-threat-model.md","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the new 'Choosing a working folder on a session start' section against the five guarded handlers and the shared code; Project workspaces and operator behaviour unchanged. Existing sections untouched; projects.ts only swapped to the shared constant and helper, behaviour identical (project-working-directory-authority test still green).","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the new plain-folder paragraph against the guarded routes and the real-route test; the shell example at the end uses the operator credential, so it is unaffected. Project workspace.cwd text unchanged.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"coding-authority.ts gained mayChooseWorkingDirectory and a folder-refusal helper; the one coding:exec mention (line ~405) is about promotion-only scopes, still accurate. No claim about session-start folder choice.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the cwd and dispatch-scope passages (DispatchCwdAdmission, resolver Project cwd containment). The change adds a paired-device refusal before scopeDispatch and does not alter station-control scope, the start-time repeat or the resolver; passages remain accurate.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the plain-folder-target and dispatch-authority passages: they describe station-control callers, which keep scopeDispatch; the new rule applies only to paired-device callers and leaves them unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"The only cwd mention is an ACP connection's default working directory; the change touches request-body folder choice by paired devices, not connection config.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The workingDirectory mention is a Project create field already gated by the same rule (now through the shared helper); no SDK change and no directory-workspace claim.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"The workingDirectory mention is a package-import target path, unrelated to session-start folder choice.","inputs":["docs/guides/workspace-packages.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reads an agent.json install directory; no session-start folder claim. orchestration.ts change adds only a paired-device refusal.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"No folder-choice or working-directory claim; projects.ts change is a behaviour-identical swap to the shared constant and helper.","inputs":["examples/enterprise-layout/README.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"No claim about session-start folders or coding:exec; the touched code adds a paired-device folder refusal and leaves connections untouched.","inputs":["docs/guides/connections.md","src-server/routes/orchestration/orchestration.ts","src-server/security/coding-authority.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"No working-directory claim; projects.ts change is behaviour-identical.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"No working-directory or workspace claim; projects.ts change is behaviour-identical.","inputs":["docs/strategy/station-delivery-retirement.md","src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Cites docs/reference/api.md; the new api.md section describes a paired-device refusal and does not change the integration steps.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Describes attempt claims on portable intents; the new directory refusal sits before them and does not touch portable workspace kinds or claims.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Architecture overview with no folder-choice claim; the route change is a request-time refusal inside the existing orchestration routes.","inputs":["docs/architecture.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"No claim about session-start folder authority; the added helper sits beside approval-authority and reuses coding-authority.","inputs":["docs/architecture/abstraction-review.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Historical ADR on the orchestration chat flag; unaffected by an added refusal for paired devices naming a folder.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"SSE transport ADR; the change touches request validation only, not streaming.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Composer design; the UI never sends a directory workspace (grep of src-ui), so composer behaviour is unchanged.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Task-room requests use a Project workspace, which the change leaves alone.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"No claim about session-start folder choice; unchanged.","inputs":["docs/guides/agents.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Home transfer uses its own scope and routes; unaffected.","inputs":["docs/guides/home-transfer-controller.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"No folder-choice claim; unaffected.","inputs":["docs/guides/private-runner-partition.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"No folder-choice claim; unaffected.","inputs":["docs/guides/product-law-authoring.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Layout guide; the new file workspace-authority.ts sits beside approval-authority in routes/orchestration, consistent with the described layout.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Work-board authority is separate; no folder-choice claim.","inputs":["docs/guides/work-board-security.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"No claim about request-body folder choice; unaffected.","inputs":["docs/reference/config.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"No contract or schema change; the directory workspace shape is unchanged, only a paired-device refusal was added.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Skill experiences use foreground sends with Project or default targets; no directory claim.","inputs":["docs/reference/skill-experiences.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"No claim about paired-device folder choice; unaffected.","inputs":["docs/user/concepts.md","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checkpoints are Project-confined; unaffected.","inputs":["docs/user/workspace-checkpoints.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "77e171a090af5c9c81fd1d78c8740a6df5b551d3",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gains the new child-process test ios-web-build-version.test.ts in the process-heavy group, as the doc requires for new child-process tests. No other claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

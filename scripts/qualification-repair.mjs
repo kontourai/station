@@ -15,12 +15,34 @@ export function repairState(body) {
     !Number.isSafeInteger(state.failedRun) ||
     !/^[0-9a-f]{40}$/.test(state.failedSha) ||
     !Number.isFinite(Date.parse(state.openedAt)) ||
-    !Number.isFinite(Date.parse(state.lastStartedAt))
+    !Number.isFinite(Date.parse(state.lastStartedAt)) ||
+    (state.attemptConsumed !== undefined &&
+      typeof state.attemptConsumed !== 'boolean')
   )
     throw new Error('Invalid repair episode');
   return state;
 }
-export function nextRepairState(previous, run, { retry = false } = {}) {
+const REPAIR_AGENTS = ['codex'];
+export const NO_AGENT_REASON =
+  'No automated repair agent is configured (QUALIFICATION_REPAIR_AGENT); a person or a Station agent repairs this.';
+/**
+ * Resolve the QUALIFICATION_REPAIR_AGENT selector. Unset or blank means no
+ * automated agent (null); anything but a known agent fails closed.
+ */
+export function repairAgent(value) {
+  const agent = (value ?? '').trim();
+  if (!agent) return null;
+  if (!REPAIR_AGENTS.includes(agent))
+    throw new Error(
+      `Unknown QUALIFICATION_REPAIR_AGENT "${agent}"; expected one of: ${REPAIR_AGENTS.join(', ')} (or unset for no automated agent)`,
+    );
+  return agent;
+}
+export function nextRepairState(
+  previous,
+  run,
+  { retry = false, agent = true, capacityDeferred = false } = {},
+) {
   if (
     previous &&
     Date.parse(run.run_started_at) < Date.parse(previous.lastStartedAt)
@@ -35,9 +57,24 @@ export function nextRepairState(previous, run, { retry = false } = {}) {
     failedSha: run.head_sha,
     lastStartedAt: run.run_started_at,
     repairState: previous?.repairState || 'claimed',
+    // Legacy episodes have no reliable unconsumed-attempt proof; retain their
+    // existing no-automatic-retry behavior until explicit owner retry.
+    attemptConsumed: previous?.attemptConsumed ?? Boolean(previous),
   };
-  const claim = !previous || retry;
-  if (claim) state.repairState = 'claimed';
+  if (capacityDeferred) {
+    state.repairState = 'capacity-deferred';
+    return { state, action: 'update' };
+  }
+  // Without an agent nothing owns the episode: record needs-owner, never a claim.
+  if (!agent) {
+    state.repairState = 'needs-owner';
+    return { state, action: 'update' };
+  }
+  const claim = !state.attemptConsumed || retry;
+  if (claim) {
+    state.repairState = 'claimed';
+    state.attemptConsumed = true;
+  }
   return { state, action: claim ? 'claim' : 'update' };
 }
 /**
@@ -67,7 +104,7 @@ export function validateRepairRun(run, repository) {
     run.path !== '.github/workflows/main-qualification.yml' ||
     run.head_repository?.full_name !== repository ||
     run.head_branch !== 'main' ||
-    !['schedule', 'workflow_dispatch'].includes(run.event) ||
+    !['push', 'schedule', 'workflow_dispatch'].includes(run.event) ||
     run.status !== 'completed' ||
     !/^[0-9a-f]{40}$/.test(run.head_sha) ||
     !Number.isSafeInteger(run.id)
@@ -96,7 +133,7 @@ export function validateRepairPaths(paths) {
       );
   }
 }
-function issueBody(state, run, jobs) {
+function issueBody(state, run, jobs, agent) {
   const failures = jobs
     .filter(
       (job) => job.conclusion !== 'success' && job.conclusion !== 'skipped',
@@ -108,12 +145,16 @@ function issueBody(state, run, jobs) {
     .join('\n');
   return (
     `Scheduled full qualification is red or incomplete. Release promotion remains blocked.\n\n` +
-    `Owner: automated qualification repair; state: **${state.repairState}**.\n` +
+    (agent
+      ? `Owner: automated qualification repair; state: **${state.repairState}**.\n`
+      : `Owner: none assigned; state: **${state.repairState}**. ${NO_AGENT_REASON}\n`) +
     `Repair deadline: ${new Date(Date.parse(state.openedAt) + 24 * 60 * 60_000).toISOString()}.\n` +
     `Latest failed source: \`${state.failedSha}\`.\nRun: ${run.html_url}\n\n${failures}\n\n` +
-    `One bounded sweep owns this episode. Repeated runs update this report without starting another agent. ` +
-    `Escalate startup, build, authentication, or data-integrity regressions immediately. ` +
-    `Use the manual repair workflow with retry=true only after reviewing the previous attempt.\n\n` +
+    (agent
+      ? `One bounded sweep owns this episode. Repeated runs update this report without starting another agent. ` +
+        `Escalate startup, build, authentication, or data-integrity regressions immediately. ` +
+        `Use the manual repair workflow with retry=true only after reviewing the previous attempt.\n\n`
+      : `Repeated runs update this report. Escalate startup, build, authentication, or data-integrity regressions immediately.\n\n`) +
     `<!-- station-qualification:${JSON.stringify(state)} -->\n`
   );
 }
@@ -122,6 +163,7 @@ function output(name, value) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 async function prepare() {
+  const agent = repairAgent(process.env.QUALIFICATION_REPAIR_AGENT);
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   const id = event.workflow_run?.id || Number(process.env.QUALIFICATION_RUN);
   if (!Number.isSafeInteger(id) || id <= 0)
@@ -139,10 +181,30 @@ async function prepare() {
   if (issue?.state === 'open' && !previous)
     throw new Error('Open repair issue has no valid episode');
   const jobs = await listGithub(`actions/runs/${id}/jobs`, 'jobs');
+  if (
+    run.conclusion === 'cancelled' &&
+    !jobs.some((job) => job.name.endsWith('Full source qualification'))
+  ) {
+    output('claim', 'false');
+    return;
+  }
+  const capacityDeferred = jobs.some(
+    (job) =>
+      job.conclusion === 'failure' &&
+      job.steps?.some(
+        (step) =>
+          step.name === 'Admit fresh qualification before expensive fanout' &&
+          step.conclusion === 'failure',
+      ),
+  );
   const decision = nextRepairState(
     previous,
     { ...run, conclusion: qualificationConclusion(run, jobs) },
-    { retry: process.env.RETRY === 'true' },
+    {
+      retry: process.env.RETRY === 'true',
+      agent: Boolean(agent),
+      capacityDeferred,
+    },
   );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
@@ -154,7 +216,10 @@ async function prepare() {
       });
     return;
   }
-  const body = issueBody(decision.state, run, jobs);
+  const body =
+    (capacityDeferred
+      ? 'Capacity admission deferred before corpus execution. No automated source-repair attempt is launched; source remains unqualified.\n\n'
+      : '') + issueBody(decision.state, run, jobs, agent);
   const saved = await github(issue ? `issues/${issue.number}` : 'issues', {
     method: issue ? 'PATCH' : 'POST',
     body: { title: TITLE, body, state: 'open', labels: ['bug', 'P1'] },

@@ -8,12 +8,21 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 const NOTICE =
   "Unanswerable by the serving Station (no adapter for provider 'acme') — observed by station-7f3a at 2026-08-03T12:04:03.000Z.";
@@ -241,5 +250,42 @@ describe('MobileTaskSwitcher lane-move focus', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A delegated task running on a PAIRED Station: its record carries the
+ * peer's agent slug and conversation id, so activating it in the switcher
+ * must open its Activity detail and never rehydrate a local chat.
+ */
+describe('MobileTaskSwitcher on a paired-Station record', () => {
+  test('activating it opens Activity, not a chat on the peer conversation', async () => {
+    const [peerItem] = buildOrchestrationItems(
+      [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
+      [],
+    );
+    const onOpenConversation = vi.fn().mockResolvedValue(true);
+    const onOpenSession = vi.fn();
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={[peerItem]}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={onOpenConversation}
+        onOpenSession={onOpenSession}
+        now={Date.now()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Verify on the peer/ }),
+    );
+    await waitFor(() =>
+      expect(onOpenSession).toHaveBeenCalledWith('peer-delegation:abc'),
+    );
+    expect(onOpenConversation).not.toHaveBeenCalled();
   });
 });

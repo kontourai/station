@@ -5,6 +5,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type AppConfig,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -18,24 +19,35 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { TelemetryTier } from '@kontourai/station-contracts/product-telemetry';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import {
+  persistableCredentialProfiles,
+  projectPublicCredentialProfiles,
+} from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
-import { mayGrantFullAccess } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayGrantFullAccess,
+} from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -51,18 +63,31 @@ import { fullAccessRefusal } from '../orchestration/approval-authority.js';
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
 
 import {
+  COMMAND_NOT_GRANTED_CODE,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
+import {
   appConfigUpdateSchema,
   errorMessage,
   getBody,
   validate,
 } from '../schemas/schemas.js';
 import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
+import {
   captureConfigurationMutation,
   configurationActivationPayload,
   configurationMutationStatus,
 } from './configuration-activation.js';
 
-/** Legacy-file projection only. New application authority is private SQLite. */
+/**
+ * Legacy-file projection only. New application authority is private SQLite.
+ * Credential profiles go through the registry's own projection (#2966): an
+ * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
+ * is returned only as its value-free `envInvalid` marker.
+ */
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -77,11 +102,35 @@ function projectPublicAppConfig(config: Record<string, any>) {
             applicationReceipts: _receipts,
             ...safe
           } = recovery;
+          if (safe.profiles !== undefined) {
+            safe.profiles = projectPublicCredentialProfiles(safe.profiles);
+          }
           return [id, { ...settings, credentialRecovery: safe }];
         },
       ),
     ),
   };
+}
+
+function persistPublicSafeProfiles(
+  agentConnections: Record<string, any>,
+): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(agentConnections).map(([id, settings]) => {
+      const recovery = settings?.credentialRecovery;
+      if (!recovery || recovery.profiles === undefined) return [id, settings];
+      return [
+        id,
+        {
+          ...settings,
+          credentialRecovery: {
+            ...recovery,
+            profiles: persistableCredentialProfiles(recovery.profiles),
+          },
+        },
+      ];
+    }),
+  );
 }
 
 /**
@@ -208,6 +257,7 @@ export function createConfigRoutes(
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
   authorizeContributionMutation?: (request: Request) => boolean,
+  onAppConfigPersisted?: (config: AppConfig) => void,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -384,9 +434,49 @@ export function createConfigRoutes(
 
   // Update app config
   app.put('/app', validate(appConfigUpdateSchema), async (c) => {
+    let telemetryChanges:
+      | Partial<
+          Record<
+            'kontour' | 'operator',
+            { before: TelemetryTier; after: TelemetryTier }
+          >
+        >
+      | undefined;
+    const logRefusal = (reason: string) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+      logger.warn('App config update refused', {
+        reason,
+        principalKind: principal?.kind ?? 'unknown',
+        deviceKind: principal?.deviceKind ?? 'none',
+        ...(reason === 'telemetry_choice_not_granted' && telemetryChanges
+          ? { telemetryChanges }
+          : {}),
+      });
+    };
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (Object.hasOwn(body as object, 'telemetryTier')) {
+        const tiers = (body as Record<string, unknown>).telemetryTier;
+        if (
+          !tiers ||
+          typeof tiers !== 'object' ||
+          Array.isArray(tiers) ||
+          Object.entries(tiers).some(
+            ([publisher, tier]) =>
+              !['kontour', 'operator'].includes(publisher) ||
+              !['off', 'lite', 'full'].includes(tier),
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'telemetryTier must be an object with only kontour/operator publishers and off/lite/full values.',
+            },
+            400,
+          );
+      }
 
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`
@@ -404,6 +494,35 @@ export function createConfigRoutes(
           },
           400,
         );
+      }
+
+      // The terminal shell is a program Station will start; changing it is
+      // choosing a command.
+      if (Object.hasOwn(body as object, 'terminalShell')) {
+        const current = await configLoader.loadAppConfig();
+        if (changesAny(body as object, current, ['terminalShell'])) {
+          // An agent's station-control call is the internal principal, which
+          // the folder and command rule otherwise leaves to its own policy;
+          // the terminal shell is the one setting it may not change, as it
+          // may not raise the default approval mode to full access.
+          if (requestMayBeAnAgent(c.req.raw)) {
+            logRefusal('scope_agent_command_not_granted');
+            return c.json(
+              {
+                success: false,
+                code: COMMAND_NOT_GRANTED_CODE,
+                error:
+                  'An agent cannot change the terminal shell. The operator can, in Settings.',
+              },
+              403,
+            );
+          }
+          const commandRefused = refuseUngrantedCommandChoice(c);
+          if (commandRefused) {
+            logRefusal('scope_command_not_granted');
+            return commandRefused;
+          }
+        }
       }
 
       if (Object.hasOwn(body as object, 'logLevel')) {
@@ -449,6 +568,70 @@ export function createConfigRoutes(
       const presentedScope = grantedPairingScope(
         c as unknown as PairingScopeContextStore,
       );
+      if (
+        [
+          'productTelemetryEndpoint',
+          'productTelemetryKeyRef',
+          'otelTelemetryEndpoint',
+          'otelTelemetryKeyRef',
+        ].some((key) => Object.hasOwn(body as object, key))
+      ) {
+        if (requestMayBeAnAgent(c.req.raw)) {
+          logRefusal('scope_agent_telemetry_destination_not_granted');
+          return c.json(
+            {
+              success: false,
+              error:
+                'An agent cannot change telemetry choices, destinations or key references. The operator can, in Settings.',
+            },
+            403,
+          );
+        }
+        if (
+          !isOperatorInPersonNotAgent(c.req.raw) &&
+          (presentedScope === undefined ||
+            !pairingScopeIncludes(presentedScope, 'access:manage'))
+        ) {
+          logRefusal('scope_telemetry_destination_not_granted');
+          return c.json(
+            {
+              success: false,
+              error:
+                'An operator must configure telemetry choices, destinations and key references.',
+            },
+            403,
+          );
+        }
+        for (const name of [
+          'productTelemetryEndpoint',
+          'otelTelemetryEndpoint',
+        ]) {
+          const endpoint = (body as Record<string, unknown>)[name];
+          if (endpoint !== undefined && endpoint !== null && endpoint !== '') {
+            try {
+              if (typeof endpoint !== 'string') throw new Error();
+              const address = new URL(endpoint);
+              if (
+                !['http:', 'https:'].includes(address.protocol) ||
+                address.username ||
+                address.password ||
+                address.search ||
+                address.hash
+              )
+                throw new Error();
+            } catch {
+              return c.json(
+                {
+                  success: false,
+                  error:
+                    'Use a full HTTP(S) telemetry destination without embedded credentials, a query or a fragment.',
+                },
+                400,
+              );
+            }
+          }
+        }
+      }
       //
       // archive#1500 extends the SAME guard to the scoped
       // `contribution` map, before any consumer of it exists. That map's
@@ -469,6 +652,7 @@ export function createConfigRoutes(
         pairingScopeIncludes(presentedScope, PAIRING_SCOPE_INFERENCE_INVOKE)
       ) {
         configOps.add(1, { op: 'update_app_fleet_contribution_denied' });
+        logRefusal('scope_inference_contribution_not_granted');
         return c.json(
           {
             success: false,
@@ -529,6 +713,19 @@ export function createConfigRoutes(
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
       }
+      // `agentConnections` is a composite that replaces the stored value
+      // wholesale. Credential profiles written this way (including a settings
+      // import) are normalized like any registry write, so an invalid env
+      // overlay is persisted only as its value-free marker (#2966).
+      if (
+        accepted.agentConnections &&
+        typeof accepted.agentConnections === 'object' &&
+        !Array.isArray(accepted.agentConnections)
+      ) {
+        accepted.agentConnections = persistPublicSafeProfiles(
+          accepted.agentConnections as Record<string, any>,
+        );
+      }
       if (
         Object.hasOwn(accepted, 'builtinAgentEngineConnectionId') &&
         accepted.builtinAgentEngineConnectionId !== null
@@ -556,6 +753,14 @@ export function createConfigRoutes(
       // hung second PUT in tests/settings.spec.ts 'save persists changes').
       // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
+      const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
+        (key) => Object.hasOwn(body as object, key),
+      );
+      const mayRaiseTelemetry =
+        !requestMayBeAnAgent(c.req.raw) &&
+        (isOperatorInPersonNotAgent(c.req.raw) ||
+          (presentedScope !== undefined &&
+            pairingScopeIncludes(presentedScope, 'access:manage')));
       const priorConfig = await configLoader.loadAppConfig();
       // #2436: the Station default applies to every session start, the
       // unattended ones included, so raising it to full access needs the
@@ -569,9 +774,46 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
-      const update = (beginMutation: () => void) => {
+      const update = async (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.mutateAppConfig((current) => {
+        const updated = await configLoader.mutateAppConfig((current) => {
+          if (writesTelemetryChoice) {
+            const next = mergeAppConfigUpdate(current, accepted);
+            const rank = { off: 0, lite: 1, full: 2 } as const;
+            // DNT blocks sending without changing the underlying choice/default.
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+            ).publishers;
+            const publishers = new Set([
+              ...Object.keys(current.telemetryTier ?? {}),
+              ...Object.keys(next.telemetryTier ?? {}),
+            ]);
+            telemetryChanges = {};
+            for (const publisher of publishers) {
+              const key = publisher as keyof NonNullable<
+                AppConfig['telemetryTier']
+              >;
+              const before = current.telemetryTier?.[key] ?? defaults[key].tier;
+              const after = next.telemetryTier?.[key] ?? defaults[key].tier;
+              telemetryChanges[key] = { before, after };
+            }
+            if (
+              requestMayBeAnAgent(c.req.raw) ||
+              (Object.values(telemetryChanges).some(
+                ({ before, after }) => rank[after] > rank[before],
+              ) &&
+                !mayRaiseTelemetry)
+            )
+              throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+            if (
+              next.telemetryTier?.kontour === 'full' &&
+              current.telemetryTier?.kontour !== 'full'
+            )
+              throw new Error(
+                'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+              );
+          }
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -601,6 +843,9 @@ export function createConfigRoutes(
           }
           return accepted;
         });
+        // Telemetry withdrawal must not wait for unrelated Agent activation.
+        onAppConfigPersisted?.(updated);
+        return updated;
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -644,15 +889,31 @@ export function createConfigRoutes(
     } catch (error: unknown) {
       if (
         error instanceof Error &&
+        error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
+      ) {
+        logRefusal('telemetry_choice_not_granted');
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only the operator or a device with access:manage can raise telemetry tiers. Agents cannot change telemetry choices.',
+          },
+          403,
+        );
+      }
+      if (
+        error instanceof Error &&
         error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED
       ) {
         configOps.add(1, { op: 'update_app_full_access_default_refused' });
+        logRefusal('full_access_default_not_granted');
         return fullAccessRefusal(c);
       }
       if (
         error instanceof Error &&
         error.message === 'PROJECT_CONTRIBUTION_OPERATOR_REQUIRED'
-      )
+      ) {
+        logRefusal('project_contribution_operator_required');
         return c.json(
           {
             success: false,
@@ -661,6 +922,7 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

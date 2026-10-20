@@ -1,0 +1,7 @@
+{
+  "revision": "e258d82076814157b15e2bfd6332e405dd3db727",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-reviewed for #3612 (full-regression.yml resolve job: admission now waits up to 20 minutes for capacity, job timeout 10 to 30, receipt renamed .jsonl). This document makes no claim about admission failure, the resolve timeout or the receipt file; its full-regression ownership and caller claims remain accurate.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml"]}
+  ]
+}

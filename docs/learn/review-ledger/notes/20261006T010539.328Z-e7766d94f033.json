@@ -1,0 +1,7 @@
+{
+  "revision": "0bc9c15d1aafa5a9591ea28516ede3c9563707f4",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#3391 merge: the runsAt paragraph now names /api/boot's projects section, checked against createProjectCatalogueReader in projects.ts (withRunLocations on the operator branch, resolution deps shared from runtime-routes.ts); member views still omit it.","inputs":["docs/reference/shared.md"]}
+  ]
+}

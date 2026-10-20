@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed #3405 normal sender changes against the durable queue owner: callbacks report local enqueue acceptance without altering clientTurnId, claim classification, protected evidence, persistence, pruning or flush/replay. Forms keep uncertain sends locked and use existing recovery; callback retention through Retry does not add automatic replay. Existing queue policy remains accurate. Source review distinct from queue-runtime qualification.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

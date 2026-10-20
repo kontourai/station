@@ -1,4 +1,4 @@
-import { useQueryClient } from '@kontourai/station-sdk';
+import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useCallback, useMemo } from 'react';
 import { ConversationsContext } from './conversation-context';
 import type { ConversationsContextType } from './conversation-types';
@@ -12,12 +12,13 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   const fetchMessages = useCallback<ConversationsContextType['fetchMessages']>(
-    (apiBase, agentSlug, conversationId) =>
+    (apiBase, agentSlug, conversationId, isCurrent) =>
       conversationsStore.fetchMessages(
         apiBase,
         agentSlug,
         conversationId,
         queryClient,
+        isCurrent,
       ),
     [queryClient],
   );

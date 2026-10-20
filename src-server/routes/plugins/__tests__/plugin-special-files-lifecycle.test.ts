@@ -21,6 +21,7 @@ import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import {
   installPluginFromSource,
@@ -151,7 +152,7 @@ describe('a plugin with special files in its own directory (#2342 review)', () =
     );
     git(origin, 'commit', '-q', '-am', 'v2');
 
-    const app = createPluginRoutes(home, makeLogger());
+    const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
     const response = await app.request('/sock-git/update', { method: 'POST' });
     const body = (await response.json()) as Record<string, unknown>;
 

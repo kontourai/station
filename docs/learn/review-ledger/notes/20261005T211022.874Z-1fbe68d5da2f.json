@@ -1,0 +1,7 @@
+{
+  "revision": "9281b930f3c3128a9674cc333d11a1aa086ea632",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Round 5 for #3391: ProjectRunsAt now includes unchecked (contracts project.ts); documented unavailable as refusals only and unchecked as time-box or queued, not a refusal, matching project-resource-resolver.ts describeOne and withRunLocationTimeout.","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]}
+  ]
+}

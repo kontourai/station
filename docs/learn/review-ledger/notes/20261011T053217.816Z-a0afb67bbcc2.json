@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#529: connect-reconnect-banner/connect-retry only changed the banner card selector to [data-banner-id=...]:has([role=alert]) after the live region moved to the message cell; the matrix row (Connections lanes and what they cover) is unchanged and still accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

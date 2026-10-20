@@ -1,4 +1,7 @@
-import type { AdoptedSessionResult } from './orchestration.js';
+import type {
+  AdoptedSessionResult,
+  AdoptSessionTarget,
+} from './orchestration.js';
 import type { TaskCreateInput, TaskDispatchInput } from './task-graph.js';
 import { isWorkReference, type WorkReference } from './work-reference.js';
 
@@ -162,6 +165,8 @@ export interface ContinueSessionStarterLaunchInput {
   readonly starterId: 'continue-session';
   readonly operationId: string;
   readonly sourceSessionId: string;
+  /** #3386: where a conversation no project claims continues (`adoptSession`'s `target`). */
+  readonly target?: AdoptSessionTarget;
 }
 
 export type ContinueSessionStarterLaunchResult =

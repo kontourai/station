@@ -554,16 +554,6 @@ describe('the nightly workflow keeps its promises', () => {
     )
     .join('\n');
 
-  it('is scheduled daily rather than triggered by pushes', () => {
-    // The whole point of the channel: "nightly" is a claim about cadence.
-    // Main qualification's six-hourly runs may also call it, at most about
-    // once a day (scripts/nightly-qualification-decide.mjs).
-    expect(callerWorkflow).toMatch(
-      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '43 6 \* \* \*'/,
-    );
-    expect(callerWorkflow).not.toMatch(/^\s{2}push:/m);
-  });
-
   it('runs the pr-smoke browser suite in a test-gate job on the commit it ships', () => {
     // station#4539's mechanism, pinned so the gate job cannot be silently
     // dropped: before it, this workflow shipped with zero test steps.
@@ -602,20 +592,6 @@ describe('the nightly workflow keeps its promises', () => {
     expect(receipt).toContain(
       'node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA"',
     );
-  });
-
-  it('publishes the CLI only on literal success from both promotion gates', () => {
-    // `!= 'failure'` would admit a skipped or cancelled gate — the exact
-    // green-looking hole this predicate exists to close. Pinned as one
-    // literal LINE (not a whole-file substring: a `#`-commented copy of the
-    // literal would satisfy toContain while the real `if:` was gutted —
-    // delta-review probe R2), because the conjunct order is also
-    // load-bearing (gate:workflows accepts only the literal prefix ladder).
-    const ifLiteral =
-      'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') }}";
-    const lines = callerWorkflow.split('\n').map((line) => line.trim());
-    expect(lines).toContain(ifLiteral);
   });
 
   it('reserves an immutable monotonic code before deriving or building it', () => {

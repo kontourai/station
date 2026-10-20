@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"Re-read the Project flow-run route claim against projects.ts; this diff touches only the project list GET handler, not the flow/runs rejection path.","inputs":["docs/strategy/station-delivery-retirement.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "revision": "a40929bc9c23d2ec9613e161706dda4dd0b77a89",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Cloud-move preparation workspace-package caller paragraph against a409 import/packageGit delta: pack/inspect/unpack/verify ownership, import-project creation, no credential/execution transfer remain accurate; per-command external policy isolation replaces persistent refused keys without changing public APIs.","inputs":["docs/architecture/module-map.md","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed full claim guide and scoped workspace package delta: durable attempt identity/lookup/tombstones/capacity/no-replay contract is untouched by external Git policy isolation and pairing-test navigation. No new peer or provider proof.","inputs":["docs/guides/delegation-attempt-claims.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed controller identity/pairing/credential boundaries and package reference: imported Git config suppression is per command, never transports credentials or grants home activation, execution or controller authority. Remaining controller source claims unchanged by this delta.","inputs":["docs/guides/home-transfer-controller.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed workspace copy link and integration boundary at supported staged/working bytes vs Project registration/sign-in/execution; revised workspace guide describes suppression without broadening those claims.","inputs":["docs/guides/integrating-station.md","docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed full runner plan and scoped package/fixture delta: hosted Linux and leased container fleet routing/label/capacity contract unchanged; no runner reconfiguration or successful new container run claimed.","inputs":["docs/guides/private-runner-partition.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed full guide and scoped delta: product-law selection, exact behavior/fault observations and receipt meanings unchanged. Real import-route control at a409 failed409-vs200 and exactrestore65PASS; not canonical or browser proof.","inputs":["docs/guides/product-law-authoring.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed full guide vs scoped package/route/fixture changes: existing shared helper, server-route and e2e ownership locations and public subpath imports remain accurate; no moves, new public types or bypass of gate routing.","inputs":["docs/guides/repository-layout.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed full Board boundary and scoped package helper delta: first-party pane trust, Home-role and bounded owner projections unchanged; workspace codec isolation confers no Board, Home or cross-product authority.","inputs":["docs/guides/work-board-security.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed package codec source/callers and revised external-policy paragraph: remove repository-local attributes/excludes persistence, suppress both in non-contentPolicyQuery commands, preserve source global-ignore selection and content policy/index/files verification. At a409 134 focusedPASS; oldwrites mutation64P1F(200vs409)/byteexactrestore65PASS. No Windows, browser/container, transfer/provider or release proof.","inputs":["docs/guides/workspace-packages.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed encrypted workspace copy/import/verify sections and package helpers: CLI flags/receipt/fresh destination/content policy/quiescence/registration limits unchanged; per-command isolation restores guarded Git compatibility without transferring configuration or execution authority.","inputs":["docs/reference/cli.md","packages/shared/src/workspace-package-io.ts","packages/shared/src/workspace-package.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "1dc6c329b2cade0170ee9551d569f227ea8f322c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the compatibility follow-up to structured readiness diagnostics: the execution-routing gate recognizes the existing exact readiness argument list and its exact --format json variant, while requiring the same CLI readiness script and pre-push route. Other arguments and missing routes are not accepted. The real-repository positive control failed before this recognition fix and passes afterward; focused routing/readiness suites passed. This changes structural recognition of output formatting, not evidence-check selection, required standards or promotion admission.","inputs":["docs/guides/testing.md","scripts/evidence-check-execution-gate.mjs"]}
+  ]
+}

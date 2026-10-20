@@ -1,0 +1,9 @@
+{
+  "revision": "9e01e4cb6cf515955dea82793578ade49750fe9a",
+
+  "notes": [
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed only the owned index.css shell-frame delta: hidden fallback retained, supported clip prevents outer frame scroll, explicit min-height0. Brand/channel logo assets, token colours, icon packaging, library/template contents and authority remain unchanged; existing README-specific statements still match the source and package layout. Real Settings caller failed29px pre-fix and passed0px post-fix with320/390 nestedwheel proof; this is neither native icon installation nor Knowledge retrieval proof. No broad source refresh or old-WebView claim.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed only the owned index.css shell-frame delta: hidden fallback retained, supported clip prevents outer frame scroll, explicit min-height0. Brand/channel logo assets, token colours, icon packaging, library/template contents and authority remain unchanged; existing README-specific statements still match the source and package layout. Real Settings caller failed29px pre-fix and passed0px post-fix with320/390 nestedwheel proof; this is neither native icon installation nor Knowledge retrieval proof. No broad source refresh or old-WebView claim.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
+  ]
+}

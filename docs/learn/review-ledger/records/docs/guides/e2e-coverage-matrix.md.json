@@ -90,7 +90,9 @@
 
     "tests/skills.spec.ts",
 
-    "tests/task-first-home.spec.ts"
+    "tests/task-first-home.spec.ts",
+
+    "src-ui/src/views/MonitoringWidgets.css"
   ],
 
   "checks": [

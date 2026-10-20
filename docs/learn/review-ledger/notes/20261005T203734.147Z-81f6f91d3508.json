@@ -1,0 +1,13 @@
+{
+  "revision": "675463dcaa1baf3c67c24b7cea4fbd7cc0354f3d",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 round 4: re-read against ToolCallDisplay (isolateRightToLeft wraps maximal RTL runs only; openByDefault adds a cut label), display-text.ts (blank fillers in the strip and reveal sets, VS15/VS16 kept after an emoji), codex-adapter-events (shared displayText per line and for host/protocol) and the APNs/FCM re-bounding. Updated the auto-open, invisible-character, OS notification and RTL sentences. Each is pinned and fault-injected; the RTL order is also pinned by a Chromium layout check in orchestration-chat-flow.spec.ts.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/display-text.ts","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"#3382 round 4: APNs composeApnsAlertPlaintext and FCM fitContent now re-bound the raw title/body through osNotificationTitle/osNotificationBody at each smaller size, so a cut ends in an ellipsis and keeps a title's line-count marker; added that sentence. Field set, byte budgets and hide-content claims unchanged.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/delivery/apns-alert-channel.ts","src-server/services/notifications/delivery/fcm-alert-channel.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#3382 round 4: display-text widened its invisible/hidden sets (blank fillers) and boundedDisplayText keeps a trailing line-count marker when it cuts; the subpath bullet's summary still describes the module accurately. No prose change.","inputs":["docs/reference/shared.md","packages/shared/src/display-text.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"#3382 round 4: orchestration-chat-flow.spec.ts gained one test (RTL visual order of a pending command, measured from Chromium layout). The table row (transcript, tool activity and approval UI from synthetic canonical events) still describes the spec. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

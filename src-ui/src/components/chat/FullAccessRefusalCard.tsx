@@ -1,3 +1,7 @@
+import {
+  type ApprovalFullAccessRequester,
+  groupLimitedPeopleSteps,
+} from '@kontourai/station-contracts/orchestration';
 import { useState } from 'react';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 
@@ -36,21 +40,36 @@ export function FullAccessRefusalCard({
           person must choose it in Station, from a device the operator has
           allowed full access.
         </p>
+      ) : grant?.groupLimited ? (
+        // #3557: the person's group stops it. Making them Admin comes first;
+        // the device grant, when still needed, is the SECOND step.
+        <>
+          <p style={{ margin: '8px 0 0' }}>
+            <DeviceLabel requester={requester} capitalized /> belongs to a
+            person in the Member group, which doesn&apos;t allow full access.
+          </p>
+          <p style={{ margin: '8px 0 4px' }}>
+            Ask the operator to make them Admin on People:
+          </p>
+          <ol style={{ margin: 0, paddingLeft: '20px' }}>
+            {groupLimitedPeopleSteps(grant).map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          {grant.groupLimited.cli && (
+            <>
+              <p style={{ margin: '8px 0 4px' }}>
+                Then, on the Station&apos;s host, the operator runs:
+              </p>
+              <CommandBlock command={grant.groupLimited.cli} />
+            </>
+          )}
+        </>
       ) : (
         <>
           <p style={{ margin: '8px 0 0' }}>
             Ask the operator to allow full access for{' '}
-            {requester?.kind === 'device' ? (
-              <>
-                <strong>{requester.deviceName}</strong>{' '}
-                <span style={{ color: 'var(--text-muted)' }}>
-                  (id {requester.deviceId})
-                </span>
-              </>
-            ) : (
-              'this device'
-            )}
-            .
+            <DeviceLabel requester={requester} />.
           </p>
           {command && (
             <>
@@ -80,6 +99,26 @@ export function FullAccessRefusalCard({
   );
 }
 
+/** The requesting device by its (requester-chosen) name, as plain text. */
+function DeviceLabel({
+  requester,
+  capitalized = false,
+}: {
+  requester: ApprovalFullAccessRequester | undefined;
+  capitalized?: boolean;
+}) {
+  if (requester?.kind === 'device')
+    return (
+      <>
+        <strong>{requester.deviceName}</strong>{' '}
+        <span style={{ color: 'var(--text-muted)' }}>
+          (id {requester.deviceId})
+        </span>
+      </>
+    );
+  return <>{capitalized ? 'This device' : 'this device'}</>;
+}
+
 function CommandBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -99,7 +138,9 @@ function CommandBlock({ command }: { command: string }) {
           margin: 0,
           flex: 1,
           whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
+          // Break between words, so a device id stays whole and copies the
+          // way it reads; only a word too long for the line is split.
+          overflowWrap: 'anywhere',
           fontFamily: 'var(--font-mono, monospace)',
           fontSize: '0.9em',
         }}

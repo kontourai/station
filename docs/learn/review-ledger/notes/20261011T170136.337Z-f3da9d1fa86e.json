@@ -1,0 +1,7 @@
+{
+  "revision": "1b0a82ad418ed08f89544d2ed2ec6f3e9dea4973",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the follow-up and @ mention steps after the fix rounds: Queue default with Steer option, @ selection, chips and the 64-mention limit are unchanged; only picker placement, focus handling and Send/mode styling changed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/FileMentionAutocomplete.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

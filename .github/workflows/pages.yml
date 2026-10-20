@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - README.md
+      - corpus.json
       - docs/**
       - scripts/build-github-pages.mjs
       - package.json
@@ -25,10 +26,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -37,6 +38,31 @@ jobs:
 
       - name: Build Pages site
         run: npm run docs:pages:build
+
+      # The org hub and the shared docs MCP read
+      # https://kontourai.github.io/station/docs-bundle.json. docs-kit renders
+      # its own site from corpus.json; only the bundle is published, beside
+      # Station's own pages, whose docs/<path>.html URLs the bundle points at.
+      # The bundle is an add-on, so it fails open: if this step fails, the
+      # Station site still publishes, and keep_files leaves the previous
+      # docs-bundle.json on gh-pages (stale, shown as behind on the hub).
+      # Same reviewed Corpus 0.7 source pin as docs-kit.yml.
+      - name: Build docs-kit bundle
+        continue-on-error: true
+        run: >-
+          npx -y github:kontourai/corpus#b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05
+          corpus build
+          --out "$RUNNER_TEMP/docs-kit-site"
+          --base-url https://kontourai.github.io/station/
+
+      - name: Add docs-kit bundle to the Pages site
+        run: |
+          bundle="$RUNNER_TEMP/docs-kit-site/docs-bundle.json"
+          if [ -f "$bundle" ]; then
+            cp "$bundle" ./dist-pages/docs-bundle.json
+          else
+            echo "::warning::docs-kit bundle was not built; gh-pages keeps the previous docs-bundle.json"
+          fi
 
       - name: Publish Pages site
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0

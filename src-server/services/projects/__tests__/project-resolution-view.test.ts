@@ -526,19 +526,17 @@ describe('describeProjectResolution — failures it does NOT absorb', () => {
 
 describe('describeProjectResolution — multi-repo (station#1503, §10 slice 5)', () => {
   test('a PARTIALLY BOUND project renders 2 of 3 — the reason slice 5 depends on slice 4', async () => {
-    const harness = createHarness(async (path) => ({
-      ok: true,
-      remotes: [
-        {
-          name: 'origin',
-          url: path.includes('web')
-            ? 'git@github.com:acme/web.git'
-            : 'git@github.com:acme/api.git',
-        },
-      ],
-    }));
-    const apiCheckout = tempDir('station-ppi-view-api-');
+    const apiCheckout = tempDir('station-ppi-view-web-parent-api-');
     const webCheckout = tempDir('station-ppi-view-web-');
+    const checkoutRemotes = new Map([
+      [apiCheckout, 'git@github.com:acme/api.git'],
+      [webCheckout, 'git@github.com:acme/web.git'],
+    ]);
+    const harness = createHarness(async (path) => {
+      const url = checkoutRemotes.get(path);
+      if (!url) throw new Error(`Unexpected checkout: ${path}`);
+      return { ok: true, remotes: [{ name: 'origin', url }] };
+    });
     await saveProject(harness.adapter, { slug: 'acme' });
     writeManifestRecord(harness.home, 'acme', {
       id: 'prj_partial',

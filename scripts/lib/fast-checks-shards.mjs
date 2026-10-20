@@ -123,6 +123,16 @@ export function validateFastChecksPlan(plan) {
     )
   )
     errors.push('plan deferredLanes must be a list of named lanes');
+  // Optional here (older planners omit it); the merge-queue decision
+  // requires it and treats its absence as a reason to run full regression.
+  if (
+    plan.mergeQueueRegressionPaths !== undefined &&
+    (!Array.isArray(plan.mergeQueueRegressionPaths) ||
+      plan.mergeQueueRegressionPaths.some(
+        (path) => typeof path !== 'string' || path.length === 0,
+      ))
+  )
+    errors.push('plan mergeQueueRegressionPaths must be a list of paths');
   if (!Array.isArray(plan.groups)) {
     errors.push('plan groups must be a list');
     return errors;
@@ -245,7 +255,7 @@ function sameList(left, right) {
  * downloaded receipt file as `{ path, text }`. Returns findings; empty means
  * the required check may pass.
  * @param {{
- *   needs?: Record<string, { result?: string }>;
+ *   needs?: Record<string, { result?: string, outputs?: Record<string, string> }>;
  *   planText?: string;
  *   receipts: Array<{ path: string; text: string }>;
  *   shardCount?: number;
@@ -265,7 +275,14 @@ export function verifyFastChecks({
   const notes = [];
   for (const job of FAST_CHECKS_PART_JOBS) {
     const result = needs?.[job]?.result;
-    if (result !== 'success')
+    if (
+      result !== 'success' &&
+      !(
+        job === 'fast-checks-shard' &&
+        result === 'skipped' &&
+        needs?.['fast-checks-plan']?.outputs?.empty === 'true'
+      )
+    )
       findings.push(
         `${job} finished '${result ?? 'missing'}'; fast-checks requires success (a skipped or cancelled part is a failure)`,
       );
@@ -286,6 +303,9 @@ export function verifyFastChecks({
     findings.push(...planErrors.map((error) => `invalid plan: ${error}`));
     return { findings, notes };
   }
+  const omittedEmpty = needs?.['fast-checks-plan']?.outputs?.empty === 'true';
+  if (omittedEmpty && plan.fileCount !== 0)
+    findings.push('empty-shard admission requires an empty plan');
   const planSha256 = digestText(planText);
   if (plan.headSha !== headSha)
     findings.push(
@@ -335,6 +355,10 @@ export function verifyFastChecks({
   for (let index = 1; index <= shardCount; index += 1) {
     const shard = `${index}/${shardCount}`;
     const attempts = byShard.get(index);
+    if (!attempts && omittedEmpty && plan.fileCount === 0) {
+      notes.push(`shard ${shard}: no tests selected; no runner allocated`);
+      continue;
+    }
     if (!attempts) {
       findings.push(`shard ${shard} left no receipt`);
       continue;

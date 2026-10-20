@@ -180,6 +180,20 @@ export interface AttentionPeerRequestReference {
   taskId: string;
   requestId: string;
   requestType?: AttentionRequestType;
+  /**
+   * `delegatedInputAnswers`: the paired Station's Session and event id for
+   * the request, so an answer to an `input` request can be bound to it
+   * (`expectedInputRequest` on the delegated `continue`). Absent when the
+   * paired Station did not report them; no bound answer is then possible.
+   */
+  threadId?: string;
+  requestEventId?: string;
+  /**
+   * The paired Station's own check of this Station's credential on the
+   * route that answers the request. `false` means it would refuse; absent
+   * means it did not say (an older Station).
+   */
+  callerCanRespond?: boolean;
 }
 
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
@@ -325,6 +339,12 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   };
   /** The requesting device's display name, as recorded on the request. */
   deviceName: string;
+  /**
+   * The space-delimited scope the device asked for (or its offer carried),
+   * so the approval surface can list it and let the approver untick any
+   * before approving. Optional because an older Station does not send it.
+   */
+  requestedScope?: string;
   /**
    * Whether THE CALLER OF THIS READ could actually act on those approve/deny
    * routes — derived per response at the HTTP seam from the same two gates
@@ -491,7 +511,14 @@ export interface PluginLifecycleProposalAttentionItem
   openHref: string;
 }
 
+export interface ToolRequestAttentionItem extends AttentionItemBase {
+  kind: 'tool-request';
+  source: { requestId: string };
+  openHref: string;
+}
+
 export type AttentionItem =
+  | ToolRequestAttentionItem
   | ApprovalAttentionItem
   | PluginLifecycleProposalAttentionItem
   | SetupIncompleteAttentionItem
@@ -559,6 +586,7 @@ export const DECISION_RESOLVED_ATTENTION_KINDS: ReadonlySet<
   'gate-review',
   // #2323 S5: resolved by completing the change or dismissing the proposal.
   'plugin-lifecycle-proposal',
+  'tool-request',
 ]);
 
 /**
@@ -655,6 +683,8 @@ export type AttentionInputReplyContext =
       state: 'open';
       reference: AttentionRequestReference;
       agentId: string;
+      executionAgentId?: string;
+      expectedDefinitionFingerprint?: string;
       conversationId: string;
       provider: string;
       engineId: string;

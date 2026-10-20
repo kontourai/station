@@ -82,7 +82,7 @@ shared authorization.
 The local product's membership model remains one implicit operator, not a row
 in a member table — the following facts still describe that local authority:
 
-- `verifyOperatorCredential` — `src-server/services/ssh/environment-security-service.ts:330-342`
+- `verifyOperatorCredential` — `src-server/services/ssh/environment-security-service.ts:444-456`
 - the local-grant secret: possession of an owner-only file in the Station home
   *is* the authority (`runtime-routes.ts`, the `local-grant` route)
 - `TenantExecutionContext.source: 'request' | 'session' | 'operator'` —
@@ -119,6 +119,28 @@ Two classifications that are easy to get wrong, and were:
 fires. The landed attribution seam gives those device, presence, delegation,
 and Task-room actions stable principal references; it does not itself create
 the shared-membership model in (b).
+
+### Station groups (#3557)
+
+A person dimension on authorization, kept out of the scope string as R2
+requires: `<home>/security/station-groups.json` maps a person's principal id
+to a Station group (**Admin** or **Member**; unassigned means Member), and
+the group's ceiling (`@kontourai/station-contracts/station-groups`) caps the
+governed permissions of every device tied to that person. The person comes
+from the device's `principalBinding`, through the same
+`principalForDeviceBinding` request resolution uses, so the person a request
+acts as and the person whose group caps it cannot disagree. Groups never
+grant Project membership; Project roles stay per Project. See the
+[threat model](../security/remote-access-threat-model.md#scope-model).
+
+A personal access token (#3557) carries a copy of the minting person's
+binding, so it resolves to the same principal as their devices and sits
+under the same group. It is a credential of that person, not a principal of
+its own. A token tied to a Station local account (#3586) resolves to that
+account's deployment principal (`human:deployment:…`) without an account
+session, the same principal its owner's account session resolves to; the
+pairing service accepts it only while the account's standing is current
+(see the [threat model](../security/remote-access-threat-model.md#scope-model)).
 
 ## 3. The four contradictions this resolves
 

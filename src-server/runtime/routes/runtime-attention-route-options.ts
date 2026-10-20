@@ -50,31 +50,16 @@ export function runtimeAttentionRouteOptions(
         return false;
       }
     },
-    // Models the respond route's two gates on THIS Station, in its order:
-    // the HTTP boundary (credential + pairing scope for that exact path),
-    // then the station-control dispatch scope with the `approve` action on
-    // a remote task. The handler itself can still refuse (an inbound
-    // delegation peer, hosted mode, an unresolvable environment), and the
-    // paired Station authorizes on its side.
-    viewerMayRespondToPeerTask: (c, taskId) => {
-      const path = `/api/orchestration/delegations/${encodeURIComponent(taskId)}/respond`;
-      if (
-        !runtimeRequestPrincipalMayAccessHttpRoute(c.req.raw, deps.security, {
-          method: 'POST',
-          path,
-        })
-      )
-        return false;
-      return !(
-        'refused' in
-        scopeDispatch(
-          c,
-          deps.stationControlDispatchScope,
-          () => ({ kind: 'task', taskId, remote: true }),
-          'approve',
-        )
-      );
-    },
+    // Models the two gates this Station applies before the handler of the
+    // route that answers a paired-Station request: the HTTP boundary
+    // (credential + pairing scope for that exact path), then the
+    // station-control dispatch scope on a remote task. A decision posts to
+    // `respond` (`approve`); an input answer to `continue` (`execute`). The
+    // handler itself can still refuse (an inbound delegation peer, hosted
+    // mode, an environment it cannot resolve or that is not the task's
+    // recorded host), and the paired Station authorizes on its side.
+    viewerMayRespondToPeerTask: (c, taskId, requestType) =>
+      mayAnswerDelegatedRequest(deps, c, taskId, requestType, true),
     // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
     // SAME two gates the middleware applies to an approve/deny request, in
     // the same order: the pairing family's authority boundary
@@ -113,4 +98,43 @@ export function runtimeAttentionRouteOptions(
       );
     },
   };
+}
+
+/**
+ * Whether THIS request's caller passes the HTTP boundary and the
+ * station-control dispatch scope for the route that answers a delegated
+ * task's open request: `continue` with `execute` for an `input` question,
+ * `respond` with `approve` otherwise. `remote` names whether the task runs
+ * on another Station. A model of those two gates only.
+ */
+export function mayAnswerDelegatedRequest(
+  deps: {
+    security: CurrentRuntimeRequestPrincipalSecurity;
+    stationControlDispatchScope: StationControlDispatchScope | undefined;
+  },
+  c: Context,
+  taskId: string,
+  requestType: string | undefined,
+  remote: boolean,
+): boolean {
+  const answer = requestType === 'input';
+  const path = `/api/orchestration/delegations/${encodeURIComponent(taskId)}/${
+    answer ? 'continue' : 'respond'
+  }`;
+  if (
+    !runtimeRequestPrincipalMayAccessHttpRoute(c.req.raw, deps.security, {
+      method: 'POST',
+      path,
+    })
+  )
+    return false;
+  return !(
+    'refused' in
+    scopeDispatch(
+      c,
+      deps.stationControlDispatchScope,
+      () => ({ kind: 'task', taskId, remote }),
+      answer ? 'execute' : 'approve',
+    )
+  );
 }

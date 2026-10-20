@@ -12,17 +12,94 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 For runtime helpers, use explicit subpaths:
 
 - `@kontourai/station-shared/parsers`
+- `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
+- `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
+- `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
+- `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
+- `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
+
+## Recorded MCP app results
+
+`@kontourai/station-shared/mcp-app-result` exports
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
+See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
+## Product telemetry
+
+`@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
+exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
+inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
+the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
+and probe compatibility unchanged. It provides
+`parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
+unsupported versions, stale inventory revisions, unexpected fields, invalid
+timestamps, unclassified properties and invalid build provenance. It accepts
+1–20 observations per batch; HTTP byte limits, source authentication, durable
+commit, deduplication and namespace isolation belong to the receiver.
+The contract shape and event constants live in
+`@kontourai/station-contracts/product-telemetry`. Validation alone proves no
+collection, consent, durable storage or deployed service.
+`parseStationDailyPing` validates the declared Lite fields with the receiver's
+public registry/release catalogs, or with `semver` version admission using the
+same `mapRuntimeVersionToTelemetryVersion` validator as the sender. The broker's
+source configuration chooses the policy; publication still uses a fixed catalog.
+`custom` versions and `unknown` channel,
+distribution and layouts values are explicit sentinels; unknown object keys
+remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums
+and the local-only `skip` dismissal.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
+
+
+`parseProductTelemetryCommitReceipt` additionally requires the exact requested
+event-ID set, valid timestamp and matching inserted/duplicate counts before a
+sender can remove that batch. `parseProductTelemetryProbeRequest` and
+`parseProductTelemetryProbeReceipt` validate the separate content-free
+source/schema check. A compatible probe does not acknowledge disclosure,
+create an installation identity or establish an accepted observation. These
+parsers remain Node-only; the browser status SDK uses its own response boundary.
+
+## Native relay link codec
+
+`@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`.
+The [canonical implementation](../../packages/shared/src/native-relay-link.ts)
+validates the closed native link envelope, channel scheme and bounded fragment
+payload. Public route intent and installation-bound invitation parsing grant
+no Station trust, Device, account or Project authority. Receiving invitation
+secrets remains the native host's responsibility.
+
+The SDK and server use this published Shared leaf; Connect's existing
+`/native-relay-link` entry re-exports it for compatibility. There is one parser,
+with the existing wire format and rejection rules. Use a package release that
+contains the new subpath and a toolchain that handles its TypeScript source;
+source availability is not publication or native delivery proof. See the
+[link contract and custody boundary](connect.md#native-relay-link-publication).
 
 ## Skill experience validation
 
@@ -46,14 +123,75 @@ model, grant tools, install a plugin or establish runtime/release qualification.
 Use the [author learning path](../guides/authoring-skill-experiences.md) for
 proposal, preview, evaluation and revision review.
 
-## Harness question helpers
+## Input request helpers
 
-`@kontourai/station-shared/harness-questions` owns the browser-safe
-`readHarnessQuestionnaire`, `validateHarnessQuestionAnswers` and
-`harnessAnswerTexts` helpers. They parse bounded descriptors, validate a
-complete answer batch and translate selected IDs to display labels/custom
-text. They do not authorize a reply or prove engine delivery. Stable types
-come from `@kontourai/station-contracts/harness-questions`.
+`@kontourai/station-shared/input-request` is the one reader and validator for
+`station.input-request/v1` (#3390), the contract every "something asks the
+person a structured question" source maps into. Types come from
+`@kontourai/station-contracts/input-request`.
+
+- `readInputRequestForm` reads a stored form request strictly: an unknown key
+  anywhere, a bound exceeded, a duplicate field or option, or any `decision`
+  body is a refusal (null), never dropped. Every object is read by its own
+  keys: one whose prototype is not `Object.prototype` or `null` (an
+  `Object.create(...)` value, or a JSON `"__proto__"` key turned into a
+  prototype) is refused, so no inherited property is ever read as data. A
+  field may be named `constructor`, `toString` or any other ordinary name;
+  `__proto__` is refused, because the request route's schema drops that key
+  and an answer to it could never arrive. The MCP and harness adapters read
+  each engine or server payload through the same own-key snapshots
+  (`ownRecord`, `ownArray`) before mapping it. Raw MCP messages with a
+  `__proto__` schema property are refused at the connection transport before
+  SDK normalization, for legacy push requests and modern input-required results.
+- `inputRequestFromRequestEvent` reads a `request.opened` event's
+  `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire` or
+  `payload.mcpElicitation`, adapted to a validated form. The public legacy
+  `mcp-elicitation-form` reader delegates to this same admission owner.
+- `validateInputRequestContent` validates accepted content against the form
+  that was opened and throws the first problem, worded for the person. It
+  returns a detached, null-prototype snapshot of exactly what it checked
+  (each value read once), never the caller's object;
+  `inputRequestContentProblems` returns every problem by field. Nothing is
+  coerced or truncated. The browser renderer and the server's answer path run
+  the same function; the server runs it whatever the client did.
+- `approvalDecisionBody` derives an approval's `decision` body (allow once,
+  an optional session allow, deny) from what a session answer would grant;
+  `decisionOptionResponse` maps an option to the respond decision.
+- `inputRequestOutcome` maps a `request.resolved` status to the transcript
+  record's outcome.
+
+A form carries MCP elicitation's field vocabulary (string with length/format
+bounds, number, integer, boolean, choice, multi-choice, each with an
+optional `default`) plus four Station extensions: a field `header` (a short
+label of at most 64 characters, never blank when present), an option
+`description`, `allowCustom` on choice fields, and `secret`. A custom answer stands in an
+option's place as `{ "custom": "…" }`, so a field without `allowCustom` —
+every MCP field — keeps plain MCP content. A `decision` is never read from a
+payload, and a form can carry no effect: answering a decision is a grant and
+keeps the approval's own authority path, while a form answer is data returned
+to its source.
+
+| Source | Maps to | Adapter | Can express |
+| --- | --- | --- | --- |
+| Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields with their `header`, custom answer always |
+| Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `header`; `isOther` custom; `isSecret` |
+| MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no header, custom answer or secret |
+| Tool approvals (every engine) | `decision` | `approvalDecisionBody`, derived at read time | allow once, allow for the session where a grant is offered, deny |
+
+ACP permission requests are approvals and use the `decision` row. No other
+source is implemented.
+
+`@kontourai/station-shared/mcp-elicitation` holds only the MCP edge:
+`inputRequestFromMcpElicitation` maps a form-mode request into a form,
+refusing URL mode and anything outside the schema or over a bound.
+
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
+remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+for new callers. `readHarnessQuestionnaire`,
+`validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
+`harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
+translating to and from a form; answers are validated only by
+`validateInputRequestContent`.
 
 ## Request settlement
 
@@ -201,6 +339,7 @@ interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  askBeforeUse?: string[];
   unattendedAutoApprove?: string[];
   browser?: boolean;
 }
@@ -290,6 +429,8 @@ interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /** #3279: each person connects their own account (see the API reference). */
+  credentialOwnership?: { owner: 'principal'; allowInstanceFallback?: boolean };
 }
 
 interface ToolPermissions {
@@ -536,8 +677,56 @@ interface ProjectMetadata {
   layoutCount: number;
   hasKnowledge: boolean;
   defaultProviderId?: string;
+  position?: number;
 }
 ```
+
+### `ProjectRunLocations`
+
+```ts
+type ProjectRunLocations = Record<string, ProjectRunsAt>;
+
+type ProjectRunsAt =
+  | { kind: 'folder'; path: string }
+  | { kind: 'execution-root'; path: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'unchecked'; reason: string };
+```
+
+`GET /api/projects/run-locations` returns `ProjectRunLocations`: each
+Project's `ProjectRunsAt` by slug. It is a separate read from `GET
+/api/projects` and `/api/boot`'s `projects` section, which never carry it, so
+the Project list never waits on a project folder. The start composer reads it
+only while it is open and names the stored folder until it answers. It is for
+the operator only: a shared member gets an empty map.
+
+`ProjectRunsAt` is the directory the project resolves to on this Station, from
+the records the session start reads: the manifest, its binding, the working
+directory and the manifest's `executionRoot`. The identity is not verified: the
+start's git identity check is skipped, so a checkout of a different repository
+still reads as its directory here, and the start refuses it. It is not where
+every chat runs either: a chat in a worktree-isolated project runs in its own
+worktree. `none` means the project has no directory, so the agent decides: the
+home folder, an ACP connection's folder, or a private folder Station makes.
+`unavailable` means a start would be refused (a missing folder or binding, an
+execution root outside its checkout), and `reason` says why. `unchecked` means
+Station did not find out this time: the folder did not answer within the read's
+per-project time limit, or other folders were still being checked. It is not a
+refusal. The start composer shows the stored folder as not checked yet and lets
+the start resolve it.
+
+The read checks folders asynchronously and answers within that limit even when
+a drive does not respond, but a check on a drive that does not respond still
+holds one of the server's file-system threads (four by default,
+`UV_THREADPOOL_SIZE`) until the drive answers. So Station never has more than
+three folder checks out at once, which with the default pool always leaves a
+thread for the rest of the server. A check of a folder that is already being
+checked joins it, and further checks wait their turn within their project's
+limit. A project whose folder never got a turn reads `unchecked` with a reason
+that says so. While three folders on drives that do not respond are still being
+checked, no other folder gets a turn, so every project with a folder reads
+`unchecked` until one of those drives answers.
 
 ---
 
@@ -1063,7 +1252,10 @@ or explicitly configured integrations.
 The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
 policy separately from these Node transports. It filters URL schemes and emits
 directives; that alone is not complete CSP source-expression validation or
-browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+browser network-containment proof. `MCP_UI_NETWORK_BOOTSTRAP_TAG` disables direct
+peer/ICE constructors before authored code in the shared wrappers. Nested srcdoc
+can obtain fresh constructors, so this does not guarantee network isolation.
+Frame source declarations are refused. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
 
 ### types
 

@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Scoped review of verification authoring and resource classification guidance against the new Windows staging keeper. Its real PowerShell child uses bounded capture/windowsHide and is declared process-heavy; temporary directories use the tracked cleanup helper. Exact case executes actual workflow body and catches only-examples-mkdir removal with byte-identical restoration. No helper seam, cache, skip of an existing assertion, timeout override or authority change; guidance remains accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

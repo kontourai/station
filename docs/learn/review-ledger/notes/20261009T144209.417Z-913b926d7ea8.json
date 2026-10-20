@@ -1,0 +1,7 @@
+{
+  "revision": "03793b5c35582243a6017c5de658ef9cfa7b7954",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed first-paint HTML and external saved-theme script, shared startup geometry through platform and authority waits, canonical main.tsx theme/accent/branding application, and native launch template/appearance overlays. Browser checks covered light/dark preference precedence and narrow portrait/landscape layout; iOS storyboard compiled. Existing UI-token and white-label authority claims remain unchanged. Native OS appearance can differ from the saved WebView preference.","inputs":["docs/guides/theming.md","src-ui/src/index.css","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "6a77ecb78f27943d0dad7221d806187b07053253",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed against mcp-manager.ts: only the native knowledge tool cast changed from 'as unknown as Tool' to 'as Tool' (type-only, no runtime effect); connection, adaptation and catalog behavior are unchanged, so no prose change.","inputs":["deploy/public-ingress/README.md","src-server/runtime/mcp/mcp-manager.ts"]}
+  ]
+}

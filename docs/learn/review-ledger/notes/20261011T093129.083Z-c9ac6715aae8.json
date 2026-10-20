@@ -1,0 +1,23 @@
+{
+  "revision": "6b756e864320af709e3e0dd27f8044225418b8b1",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Scoped review of the single Docker dependency-stage addition. Root declares the telemetry receiver workspace; copying its manifest completes the existing managed install input set. No change to Station runtime admission, execution, data stores or public image availability. Overview still routes to deployment and module owners rather than claiming container success. No prose change; source-only review, keeper/container build unexecuted.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed container/source-caller evidence limits against the one manifest COPY repair and existing container-release test. The fix changes a production build input, not an abstraction or validation policy. The existing declared-workspace assertion already names the missing input; no duplicate test or source grep was added. No prose change; no baseline/restored test execution, image build or release proof.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/design/automations.md","note":"Scoped review of retained automation proposal status and implemented-foundation boundary against the manifest-only Docker change. Adding the declared broker workspace does not compose automation intake/dispatch, issue publication, unattended grants or cloud ingress. Existing no-complete-journey limits remain unchanged. No prose change; no automation/runtime/cloud experiment.","inputs":["docs/design/automations.md"]},
+
+    {"path":"docs/design/private-cloud-environment.md","note":"Reviewed private-cloud image/managed-graph separation and explicit sizing/restore limitations. The dependency layer now receives the declared telemetry workspace manifest while host modules remain excluded. No additional cloud resource, tenant boundary, network ingress, credential mount or workload qualification is introduced. No prose change; no image build, cloud provisioning or backup/restore proof.","inputs":["docs/design/private-cloud-environment.md","Dockerfile"]},
+
+    {"path":"docs/guides/deployment.md","note":"Re-read the source-build and independent monitoring sections. The added workspace manifest belongs to the existing platform-owned dependency layer before dependencies:ci; it does not copy host modules, enable a destination or expose the receiver. Preserve immutable provenance, UID1000, mounted home and separate development monitoring limitations. No prose change; no Docker build/context check, lifecycle replacement or deployed telemetry acceptance.","inputs":["docs/guides/deployment.md","Dockerfile"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed private-image versus multi-tenant integration and published-contract ownership against the manifest COPY repair. A complete workspace input set is necessary for managed container setup, not proof of tenant storage, hosted authentication, sandboxing or supported telemetry deployment. No API/SDK integration surface changes. No prose change; no private/cloud/hosted/provider execution.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Scoped review of the community source-built routing broker against its shared Dockerfile dependency stage. The additional telemetry workspace manifest is separate from the routing broker runtime and does not grant relay trust, provisioning, TURN credentials or application access. No runtime command/port/volume change. No prose change; no public broker, container, Windows or remote-client execution.","inputs":["docs/guides/self-hosted-broker.md","Dockerfile"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed historical integration assessments and current-source routing purpose against the manifest-only container fix. It adds no sibling internal import, package trust claim, commerce or hosted capability. Pinned workspace setup remains owned by Station lifecycle; actual receiver artifact/deployment acceptance stays pending. No prose change; no package installation, suite integration or release qualification.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"README.md","note":"Scoped review of source install, Docker availability/provenance and local-first/privacy entry claims against the one manifest COPY. Adding a declared workspace makes the container dependency inputs complete without shipping credentials or enabling telemetry. No default image, endpoint, port or installation claim changes. No prose change; no current registry, image build, runtime or privacy traffic proof.","inputs":["README.md","Dockerfile"]}
+  ]
+}

@@ -1,10 +1,24 @@
 // @vitest-environment jsdom
 
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationHandoffDialog } from '../components/chat-dock/ConversationHandoffDialog';
+import { acceptConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
+import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
+import type { AgentData } from '../contexts/AgentsContext';
+import {
+  hydrateActiveChats,
+  serializeActiveChats,
+} from '../contexts/active-chats-state';
+import { dispatchForeground } from '../lib/foregroundMessageDispatch';
+import type { ChatSession } from '../types';
 
 const handoffExecutionMessage = vi.fn();
+const sendExecutionMessage = vi.fn();
 const getConversationHandoffStatus = vi.fn();
 const useNewChatSelectionModel = vi.fn();
 const fenceConversationHandoff = vi.fn(
@@ -19,6 +33,7 @@ const fenceConversationHandoff = vi.fn(
 // fetcher.
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  sendExecutionMessage: (...args: unknown[]) => sendExecutionMessage(...args),
   handoffExecutionMessage: (...args: unknown[]) =>
     handoffExecutionMessage(...args),
   getConversationHandoffStatus: (...args: unknown[]) =>
@@ -33,6 +48,14 @@ vi.mock('../lib/outboundQueue', () => ({
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
   useNewChatSelectionModel: (...args: unknown[]) =>
     useNewChatSelectionModel(...args),
+}));
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useConversationContextBoundaryStatusQuery: () => ({ data: undefined }),
+}));
+vi.mock('../hooks/useOutboundQueueSnapshot', () => ({
+  useOutboundQueueSnapshot: () => ({ status: 'ready', turns: [] }),
 }));
 
 beforeAll(() => {
@@ -168,11 +191,228 @@ describe('ConversationHandoffDialog', () => {
       agentConnections: connections,
       selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
       modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      executionModelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
       defaultEffectiveModelForAgent: () => ({
         id: 'gpt-5',
         source: 'agent default',
       }),
     });
+  });
+
+  test('engine selection keeps the authored Agent through handoff, response loss, reload and acceptance', async () => {
+    const profile: AgentData = {
+      slug: agentId('reviewer'),
+      name: 'Security reviewer',
+      available: true,
+      definitionFingerprint: 'owned-profile-v1',
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    };
+    const binding: AgentData = {
+      slug: agentId('codex'),
+      name: 'Codex',
+      executionDefault: true,
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    };
+    const session: ChatSession = {
+      id: 'chat-override',
+      agentSlug: profile.slug,
+      agentName: profile.name,
+      conversationId: 'conversation-override',
+      currentSessionId: 'session-a',
+      status: 'idle',
+      messages: [],
+      input: '',
+      inputHistory: [],
+      attachments: [],
+      queuedMessages: [],
+      title: 'Review',
+      source: 'manual',
+      createdAt: 1,
+      updatedAt: 1,
+      hasUnread: false,
+    };
+    const accepted = vi.fn();
+    const overrideReceipt = {
+      ...receipt().handoff,
+      target: {
+        agentId: profile.slug,
+        executionAgentId: binding.slug,
+        expectedDefinitionFingerprint: 'accepted-profile-v1',
+        provider: 'codex',
+        engine: {
+          kind: 'connection' as const,
+          connectionId: engineConnectionId('codex'),
+        },
+        modelId: 'gpt-5',
+      },
+    };
+    handoffExecutionMessage
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce({ handoff: overrideReceipt });
+    function Composer() {
+      const dialogs = useConversationBoundaryDialogs({
+        agents: [profile, binding],
+        apiBase: 'http://station.test',
+        activeSession: session,
+        allSessions: [session],
+      });
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              dialogs.openExecutionHandoff({
+                id: 'gpt-5',
+                name: 'GPT-5',
+                executionAgentId: binding.slug,
+              })
+            }
+          >
+            Choose Codex engine
+          </button>
+          <button type="button" onClick={() => dialogs.openExecutionHandoff()}>
+            Use Agent defaults
+          </button>
+          {dialogs.handoffSource && (
+            <ConversationHandoffDialog
+              apiBase="http://station.test"
+              conversationId={session.conversationId!}
+              sessionId={session.id}
+              currentAgentId={profile.slug}
+              executionPreset={dialogs.handoffSource.executionPreset}
+              agents={[profile, binding]}
+              projects={[]}
+              initialMessage="Review the actual draft"
+              attachments={[]}
+              onAccepted={({ target, receipt: result }) => {
+                const patch = acceptConversationHandoffUiState(
+                  {
+                    ...session,
+                    expectedDefinitionFingerprint: 'predecessor-hash',
+                  },
+                  target,
+                  result,
+                  binding,
+                );
+                const [stored] = serializeActiveChats({
+                  [session.id]: { ...session, ...patch },
+                });
+                accepted(hydrateActiveChats([stored])[session.id]);
+              }}
+              onDispatchStarted={() => {}}
+              onDefiniteFailure={() => {}}
+              onClose={() => {}}
+            />
+          )}
+        </>
+      );
+    }
+    const first = render(<Composer />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose Codex engine' }),
+    );
+    expect(
+      (
+        screen.getByLabelText(
+          'First message to Security reviewer',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe('Review the actual draft');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Security reviewer' }),
+    );
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
+    const firstRequest = handoffExecutionMessage.mock.calls[0][2];
+    expect(firstRequest).toMatchObject({
+      message: 'Review the actual draft',
+      target: {
+        agent: {
+          kind: 'agent-execution-override',
+          agent: 'reviewer',
+          executionAgent: 'codex',
+          expectedDefinitionFingerprint: 'owned-profile-v1',
+        },
+        model: { override: 'gpt-5' },
+      },
+    });
+    first.unmount();
+    profile.definitionFingerprint = 'edited-after-response-loss';
+    const restored = render(<Composer />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose Codex engine' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry safely' }));
+    await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage.mock.calls[1][2]).toEqual(firstRequest);
+    expect(accepted.mock.calls[0][0]).toMatchObject({
+      agentSlug: 'reviewer',
+      executionAgentId: 'codex',
+      expectedDefinitionFingerprint: 'accepted-profile-v1',
+      provider: 'codex',
+      agentConnectionId: 'codex',
+      model: 'gpt-5',
+      currentSessionId: 'session-b',
+    });
+    const continued = accepted.mock.calls[0][0];
+    await dispatchForeground({
+      apiBase: 'http://station.test',
+      sessionId: session.id,
+      agentSlug: continued.agentSlug,
+      executionAgentId: continued.executionAgentId,
+      expectedDefinitionFingerprint: continued.expectedDefinitionFingerprint,
+      message: 'Follow up on that review',
+      clientTurnId: 'follow-up',
+    });
+    expect(sendExecutionMessage.mock.calls[0][1].target.agent).toEqual({
+      kind: 'agent-execution-override',
+      agent: 'reviewer',
+      executionAgent: 'codex',
+      expectedDefinitionFingerprint: 'accepted-profile-v1',
+    });
+    restored.unmount();
+    session.executionAgentId = binding.slug;
+    session.expectedDefinitionFingerprint = 'accepted-profile-v1';
+    handoffExecutionMessage.mockResolvedValueOnce({
+      handoff: {
+        ...overrideReceipt,
+        target: {
+          agentId: profile.slug,
+          provider: 'claude',
+          engine: {
+            kind: 'connection',
+            connectionId: engineConnectionId('claude'),
+          },
+        },
+      },
+    });
+    render(<Composer />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use Agent defaults' }));
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe(
+      '',
+    );
+    expect(
+      (
+        screen.getByLabelText(
+          'First message to Security reviewer',
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe('Review the actual draft');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Security reviewer' }),
+    );
+    await waitFor(() => expect(accepted).toHaveBeenCalledTimes(2));
+    expect(handoffExecutionMessage.mock.calls[2][2].target.agent).toBe(
+      'reviewer',
+    );
+    expect(handoffExecutionMessage.mock.calls[2][2].target).not.toHaveProperty(
+      'model',
+    );
+    expect(accepted.mock.calls[1][0].executionAgentId).toBeUndefined();
+    expect(
+      accepted.mock.calls[1][0].expectedDefinitionFingerprint,
+    ).toBeUndefined();
+    expect(accepted.mock.calls[1][0].agentSlug).toBe('reviewer');
+    expect(accepted.mock.calls[1][0].agentConnectionId).toBe('claude');
   });
 
   test('announces equivalent Agent and engine identity once', () => {

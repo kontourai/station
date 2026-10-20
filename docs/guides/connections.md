@@ -167,7 +167,112 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Invite a device to a relay Station
+
+Under **Connections → Computers**, the **Devices** list and its **Invite device**
+action appear when the selected
+Station has a configured connector and the caller can manage relay access. A
+Station operator can explicitly promote a paired Device with **Manage remote
+access** (`relay:manage`). This permission is absent from presets and default
+grants. It permits only the closed relay-management and Project access
+management routes; Project membership and its `manage-members` action remain
+independent requirements. It grants no Agent, terminal, or Task publication
+(share/unshare) authority.
+
+**Invite device** opens three steps:
+
+1. **Send the app link.** Choose the recipient app and copy its setup link. The
+   link supplies routing intent; it does not approve a Device or a Station
+   signing key.
+2. **Approve their phone.** The recipient opens the link and returns their setup
+   info. Paste it (surrounding message text is ignored); setup info for another
+   Station is refused before any write. **Approve and invite** approves that
+   exact installation and then creates its invitation. If the invitation's
+   outcome is uncertain, the action stays disabled instead of retrying; check
+   with the recipient before starting again.
+   This protection survives **Change** and closing/reopening the dialog only
+   within the current Devices panel and Station/account authority. Navigation,
+   reload, or an authority remount resets it. There is no durable invitation
+   deduplication or broker-status reconciliation; manually check with the
+   recipient before creating another invitation. Only choose **Allow another**
+   after that check.
+3. **Send the invitation.** Copy the invitation link and share the Station code
+   and key ID by a separate call or message so the recipient can confirm the
+   Station. Invitations are single-use. The default lifetime is 24 hours; choices are
+   5 minutes, 15 minutes, 1 hour, 24 hours, or **Never expires**. A non-expiring
+   invitation still permits only one redemption.
+
+After the three-step dialog, review the pending account-bound Device request
+in **Devices** and approve or decline it. Project access is a separate
+invitation and membership decision. Removing an installation approval is also
+a separate action and requires confirmation.
+
+Native registration and Project invitation acceptance accept a full Project
+invitation link or its code. They extract the token without switching the
+selected Station; the selected Station still validates it. Details about the
+separate approvals are available through the information controls.
+
+The desktop and native views use the same selected-Station authority. Native
+Project access controls require the Project's `manage-members` action, and
+writes are disabled without a current management or operate scope. The server
+rechecks Device authority, the actual human actor and account-provider
+currentness, plus the exact target approval before committing a decision.
+Connector issuer credentials stay in the runtime; these controls expose no
+issuer secret. See [the broker operator path](self-hosted-broker.md#station-invitation-controls)
+and [native verification limits](native-shell-verification.md#relay-management-source-integration).
+
+This is source integration with diagnostic checks, not a released Nightly or
+physical-device delivery receipt. For account-bound Devices, the gate admits only
+the exact native relay-management leaves with current Device proof and account
+binding/session. Management separately requires explicit `relay:manage`; a
+credential-only account-bound Device remains refused. The capabilities read
+returns `canManage: false` without management authority and grants nothing.
+Project access administration still requires Project IAM. See the
+[exact admission inventory](deployment-authentication.md#native-relay-management-admission).
+
 ## Saved Station addresses
+
+Choose **Manage Stations**, then **Connect a Station**. Enter its address, a pairing code,
+or scan a QR code. Station checks compatibility and displays the destination's
+reported identity. That public response is not a signing-key trust decision.
+In a browser, the destination must permit the current page's exact origin
+through its existing `--allowed-origin` startup setting. HTTPS pages may also
+block an HTTP destination. If identification fails, no access request has been
+submitted. Use the native app or open the destination directly for Device
+pairing when the browser cannot read its response. The current receiver also
+checks browser pairing-request provenance separately: Chromium requests from
+another page origin are refused even when discovery is allowed. That refusal
+does not create a pending request. Use the native app to request Device access,
+or open the receiver's own page; peer setup still belongs to the sending
+Station's trusted session.
+
+Choose either or both access requests:
+
+- **Use the destination from this device** saves this device's approved access.
+- **Let the current Station send work to the destination** requests a separate,
+  server-held delegation grant.
+
+Each request needs its own receiver approval. Peer enrollment also requires an
+operator-authorized session on the controlling Station; ordinary paired-device
+access cannot manage peer credentials. If that authority is unavailable, the
+dialog explains the limitation instead of asking for an operator key. Existing
+trusted approval surfaces remain the remedy; this flow does not implement
+remote operator elevation.
+
+Device access saves without replacing an existing selected Station. From a
+Project's Delegate dialog, setup preserves the draft and resource selection and
+returns there without submitting work. Peer approval and completion do not grant
+Project execution: the receiver must offer the exact resource, and its Agent
+must be available. Foreground peer threads remain unsupported in the Project
+default picker.
+
+Once the sending Station confirms a peer request, **Check approval** completes
+that existing enrollment. Before confirmation, **Retry this same request** keeps
+its retained identity and destination. Each state offers cancellation separately;
+retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
+revoke the receiver's grant before starting again. Cancelling a local pending
+request does not revoke an already approved receiver grant. A saved peer
+credential establishes permission, not observed reachability or Project readiness.
 
 Tap the connection dot on a phone, or the connection name on desktop, to
 choose a Station. A checkmark identifies the current Station, whose status is
@@ -294,12 +399,18 @@ uncertain activation needs its own status recovery; keep that setup open.
 
 
 Configured routes are not selected automatically. A configured row says
-**Device configured · not selected** until you choose **Use this Station**. A
-selected configured row distinguishes **account sign-in required** from
-**account session active** using the current native account scope; neither
+**Not in use** until you choose **Use this Station**. A selected configured row
+distinguishes **In use · sign in needed** from **In use** using the current native account scope; neither
 status says the workspace is connected. Sign in with the Station account only
 after selecting its route. Account sign-in does not approve a Device or create
 Project membership.
+
+Before account sign-in, the native member shell shows Station setup on the
+page. After sign-in, shared Projects come first and **Stations** opens the
+connection controls in a dialog. An empty Project list offers **Use a Project
+invitation** through that same dialog. Technical setup and the outbound
+delegation command stay behind **Advanced** disclosures; they do not supply
+additional authority.
 
 The selected route's **Accept account invitation** action requires that account
 session. Station returns a typed Project membership receipt with the exact
@@ -603,6 +714,25 @@ was able to read.
 
 ## Route an engine through a model proxy
 
+In **Models**, save an OpenAI-compatible connection with the proxy address and key.
+Then open **Engines → Claude Code** or **Engines → Codex**, select that connection
+under **Connect through**, and save. Choose a **Default model** from the discovered
+list and save it. **Check connection** sends one short message and reports whether
+the engine answered. A failed check is shown as **Check failed**; a model catalog
+alone does not override that result. **Refresh models** refreshes the catalog.
+
+Model requests use the proxy; the engine and its tools still run on this Station.
+
+The engine stores `config.proxyConnectionId`, referring to the saved Model
+connection. Its current key is resolved on each launch and never copied into
+engine settings. Codex uses provider arguments while keeping its config home.
+Changing settings alone does not rewrite a session's recorded route; a relaunch
+records the route it actually uses. Chat and work lists show **via <proxy name>**.
+
+The following environment/config-home options remain available for custom setups.
+Choosing **Your account** or a saved proxy in the UI explicitly replaces those
+custom connection settings.
+
 A Claude Code or Codex Engine connection can be configured to use a local
 model proxy. The proxy must support the chosen engine's requests; an
 Anthropic/OpenAI-compatible endpoint label alone does not establish that.
@@ -636,15 +766,49 @@ For example, if your local proxy expects a placeholder token:
 }
 ```
 
-For Codex, prefer `configHome` pointing at a dedicated home whose
+For custom Codex configurations, `configHome` can point at a dedicated home whose
 `config.toml` sets `model_provider` to the proxy's provider entry, so model
 discovery lists what the proxy serves.
 
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. Readiness does not apply the app-home opt-in or a
-selected credential profile.
+configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
+`CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
+Keychain entry is absent. An unreadable or malformed secure-store result stays
+unknown; it cannot borrow another namespace's login. These checks establish
+credential presence, rather than token validity. Readiness does not apply the
+app-home opt-in or a selected credential profile.
+
+On macOS, a Claude session that a Project member, a shared Agent or delegated
+work starts at full access runs inside Station's Seatbelt profile. Such a
+session cannot use your Keychain login, and Station never copies it there.
+Give it a credential of its own: set `ANTHROPIC_API_KEY`, or a
+`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, in the Claude
+connection's `env`. Without one, such a session runs at Auto, and says so. The
+optional **Confined Claude credential** readiness entry reports whether one is
+present. A confined session uses a Station-owned Claude configuration
+directory, so your own `CLAUDE.md`, settings, hooks, plugins and MCP
+configuration do not apply to it. A selected credential profile gets a
+confined copy of its own that starts empty, so a login held only in that
+profile does not reach it: the session runs at Auto until it has an
+environment credential. The readiness entry checks only the default confined
+home.
+
+A confined session also gets only an allowlisted environment. Variables you
+set in the connection's `env` pass, as do paths, locale, proxy and TLS
+settings, `CLAUDE_*` and `ANTHROPIC_*`, the git author and committer
+identity, and `EDITOR`/`VISUAL`. Everything else in Station's environment is
+dropped: `GH_TOKEN`, `NPM_TOKEN`, cloud keys, and toolchain variables such as
+`NVM_DIR`, `JAVA_HOME`, `GOPATH` or `PYENV_ROOT` (set them in the
+connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
+push with your SSH agent. In a linked worktree it can commit to its own
+branch, but `git stash`, `fetch` and `pull` are refused: they write shared
+refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
+change. On Linux and Windows such a session is
+refused, because no confinement exists for it there. See
+[confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
@@ -665,6 +829,75 @@ engine, which is already current — or have newer request fields rejected as
 unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
 unproxied connections are unaffected.
+
+### Give a credential profile its own routing
+
+A connection's `env` applies to every session of that Engine. A **credential
+profile** (a separate, Station-managed engine home per account) can also carry
+its own non-secret env overlay, so one account can run through a proxy while
+another talks to the provider directly. Set it with
+`station connections profile-env <engine> <profile-ref> --data=<json>` or
+`PUT /api/connections/agent/<engine>/credential-recovery/profiles/<profile-ref>/env`;
+the body replaces the whole overlay and `{"env":{}}` clears it. For example,
+to route a Claude Code profile through a local proxy and hide an inherited
+API key:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8318",
+    "ANTHROPIC_API_KEY": ""
+  }
+}
+```
+
+The overlay is meant for non-secret values, and Station refuses values that
+look like credentials. This is a heuristic, not a secret detector: a non-empty
+value is refused when its name ends in `KEY(S)`, `TOKEN(S)`, `SECRET(S)`,
+`PASSWORD(S)`, `PASSWD`, `CREDENTIAL(S)`, `AUTH`, `HEADER(S)` or `_PAT` (any
+case), or when the value carries URL userinfo (`http://user:pass@host`), an
+authorization or API-key header, or a `Bearer`/`Basic` credential. An empty
+string is allowed under any name so the profile can mask an inherited
+credential. `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `TMPDIR`, and Station-internal
+names are refused too. The whole overlay is refused rather than trimmed when
+any entry breaks these rules. A proxy token therefore cannot be set on a
+profile today: keep it in the profile's own engine home (its sign-in), or in
+the connection `env`, which applies to every profile.
+
+A session running under a profile sees, from lowest to highest precedence: the
+server's environment, the connection `env`, the profile overlay, the profile's
+own config-home key, then Station's engine temp directory
+([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
+one an Agent pins, the one credential recovery is trying, or else the
+connection's active profile. The overlay reaches Claude Code and Codex session
+starts and Codex quota reads for that profile. It is not applied to model
+discovery, adopted sessions and source-home resumes, login readiness checks,
+login/enrolment into the profile, or the per-profile usage read
+(`GET /api/connections/agent/<engine>/credential-usage`), which reads the
+profile home directly.
+
+If a saved overlay is invalid (for example after hand-editing
+`config/app.json`), or the connection's active profile cannot otherwise be
+prepared, the session start fails instead of running on the global engine
+configuration. Station does not keep the invalid values: the next profile
+change (or a settings save or import that includes the profiles) rewrites
+the overlay as an `envInvalid` marker that holds only the offending variable
+names, and `GET /config/app` never returns them. Until then a hand-edited
+value stays in `config/app.json`. The
+marker keeps the profile refused, so other profile changes cannot quietly
+un-route it. `station connections profiles` shows such a profile with
+`envInvalid` and the offending variable names, and the server log names them
+too. Replace the overlay with `profile-env` to repair
+it. Automatic credential recovery only switches to an enrolled
+profile whose overlay is identical to the active profile's; when every
+enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
+a profile by hand, or pinning one on an Agent, is not restricted this way.
+
+The overlay is not secret. It is visible to the engine and to every tool it
+runs (an agent can read these variables, for example from a shell), and to
+anyone who can read this Station's connection settings, not only to holders
+of the `access:manage` scope that the dedicated route requires. Do not put
+anything there that should stay private.
 
 ---
 
@@ -724,14 +957,19 @@ one. See [Agent configuration](agents.md#agent-configuration).
 
 The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or
-Favorites, and choose the exact model for this chat. Connections that still
+Favorites or Recent, and choose the exact model for this chat. Open Options
+for capability filters and the selected model's supported runtime controls.
+Connections that still
 need setup remain visible with their status, but cannot create an invalid
 selection.
 
 Favorites, recent choices, hidden models, and model order are saved on this
 device. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
-restores both the default connection and model.
+restores both the default connection and model for a model-only choice.
+An engine override instead offers **Use Agent defaults**; in an existing
+conversation this opens an explicit handoff back to the authored execution
+binding and model. It does not edit the saved Agent.
 
 ---
 
@@ -741,7 +979,9 @@ Connections has one clear home for each relationship:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
   authorization from observed reachability. **Add computer** asks whether to
-  pair a device, reach another Station, or run work over SSH.
+  invite a device, connect another Station, or run work over SSH. Connecting a
+  Station opens the same destination and independent-access journey as
+  **Connect a Station** in the Station manager.
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.
@@ -764,11 +1004,30 @@ WebSockets additionally require `terminal:operate`; **Standard** includes that
 scope along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
-never granted this way.
+never granted this way. A phone or browser that uses Station's **Request
+access** screen asks for full device access: Standard plus **Run commands**
+and **Skip approval prompts**. Whoever approves sees "asks for full device
+access" and approves it as asked, or opens **Limit access** to untick
+permissions first; only the operator can approve the two elevated ones. In
+**Needs attention** the request is one line with **Review**, which opens the
+details. (The share prompt's **Request pairing for this browser** still
+asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
+`access:manage` from the historical default grant; its first access change, in
+either place, removes it for good and says so.
+
+An operator can separately grant **Manage device access** (`access:devices`)
+to an already-paired Device. Its CLI and Paired devices panel can then list,
+change scopes, revoke and remove revoked records remotely, using that Device's
+own credential. Only the operator may grant or remove `access:devices`; it
+never comes from pairing defaults, legacy `access:manage` or permission to use
+full access. A person-bound Device also needs the Admin group ceiling. Account
+sign-in and transport admission remain independent requirements. See the
+[CLI setup](../reference/cli.md#environment).
 
 An operator can separately grant **Approve pairing requests** (`access:approve`).
 This allows that Device to list, approve, or deny pending requests, without
-Device-management access. A pairing notification opens the exact request in
+Device-management access. A Device tied to a person keeps it only while that
+person's Station group is Admin (#3557). A pairing notification opens the exact request in
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 

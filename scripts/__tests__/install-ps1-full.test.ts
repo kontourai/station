@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   cpSync,
@@ -640,8 +640,10 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
         );
         return { STATION_HOME: f.home };
       },
+      // A service installed before the launcher ran Windows services
+      // (its node.exe is the version's own, through `current`).
       message:
-        'Station service(s) svc run this install; install.ps1 cannot switch the version under a Windows service yet (#2675 slice W3)',
+        "Station service(s) svc run this install's version directly, not through the service launcher that updates it, and that version cannot install one. Migrate each in this order: 1)",
     },
     {
       name: 'default nightly home data it does not own',
@@ -698,6 +700,278 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
       `port ${port} is already in use on this host, and no portable nightly Station is installed to own it`,
     );
     expect(versionDirs(f)).toEqual([]);
+  });
+});
+
+describe('install.ps1 installer core: a launcher service in the update path (#2675 W3)', () => {
+  const LAUNCHER_SOURCE = join(
+    import.meta.dirname,
+    '../../packaging/portable-server/bin/station-launcher.mjs',
+  );
+
+  /** v12 installed, and a launcher service of it as `service install` records one. */
+  function serviceInstalled(): Fixture {
+    const f = fixture();
+    expect(
+      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+        STATION_INSTALL_NO_START: '1',
+      }).status,
+    ).toBe(0);
+    takeCliRuns(f);
+    const installRoot = real(f.installRoot);
+    mkdirSync(join(f.home, 'service'), { recursive: true });
+    writeFileSync(
+      join(f.home, 'service', 'svc.json'),
+      JSON.stringify({
+        platform: process.platform,
+        kind: 'archive',
+        installRoot,
+        instanceId: 'svc',
+        nodePath: join(installRoot, 'runtime', 'node.exe'),
+        repoPath: join(installRoot, 'current'),
+      }),
+    );
+    mkdirSync(join(f.installRoot, 'runtime'), { recursive: true });
+    cpSync(
+      LAUNCHER_SOURCE,
+      join(f.installRoot, 'runtime', 'station-launcher.mjs'),
+    );
+    writeFileSync(
+      join(f.installRoot, 'runtime', 'service-state.json'),
+      `${JSON.stringify({ protocol: 1, activeVersion: '0.7.0-nightly.12' })}\n`,
+    );
+    return f;
+  }
+
+  const unit = (active: boolean) =>
+    JSON.stringify({ active, present: true, enabled: true });
+
+  /** The core, run asynchronously, so a test can answer as the launcher. */
+  function coreAsync(f: Fixture, env: Record<string, string>) {
+    const child = spawn(process.execPath, [f.core, 'install'], {
+      cwd: f.dir,
+      windowsHide: true,
+      env: {
+        PATH: process.env.PATH ?? '',
+        HOME: join(f.dir, 'home'),
+        STATION_ROOT: f.stationRoot,
+        STATION_BIN_DIR: f.binDir,
+        STATION_CHANNEL: 'nightly',
+        STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: f.keyUrl,
+        STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+        STATION_INSTALL_TEST_HOST_TARGET: 'win32-x64',
+        STATION_TEST_CLI_LOG: f.log,
+        ...env,
+      },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    return new Promise<{
+      status: number | null;
+      stdout: string;
+      stderr: string;
+    }>((done) =>
+      child.once('close', (status) => done({ status, stdout, stderr })),
+    );
+  }
+
+  /** Answers the core's update request the way the launcher records a verdict. */
+  async function answerRequest(
+    f: Fixture,
+    verdict: 'committed' | 'rolled-back',
+  ): Promise<{ id: string; targetVersion: string }> {
+    const request = join(f.installRoot, 'runtime', 'update-request.json');
+    const deadline = Date.now() + 30_000;
+    while (!existsSync(request)) {
+      if (Date.now() > deadline) throw new Error('no update request arrived');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const queued = JSON.parse(readFileSync(request, 'utf8'));
+    unlinkSync(request);
+    writeFileSync(
+      join(f.installRoot, 'runtime', 'service-state.json'),
+      JSON.stringify({
+        protocol: 1,
+        activeVersion:
+          verdict === 'committed' ? queued.targetVersion : '0.7.0-nightly.12',
+        update: {
+          id: '11111111-1111-4111-8111-111111111111',
+          requestId: queued.id,
+          fromVersion: '0.7.0-nightly.12',
+          targetVersion: queued.targetVersion,
+          status: verdict,
+          ...(verdict === 'rolled-back'
+            ? { reason: 'candidate-exited:3' }
+            : {}),
+          attempts: 1,
+          finishedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    return queued;
+  }
+
+  function signed(f: Fixture, version: string) {
+    return signWindowsManifest(
+      f.dir,
+      buildWindowsArchive(f.dir, version, { sha: 'c'.repeat(40) }),
+      f.key,
+      NIGHTLY_KEY_ID,
+      { name: `manifest-${version}-${Math.random()}.json` },
+    );
+  }
+
+  it.each([
+    ['committed', 0, 'The Station service now runs 0.7.0-nightly.13.'],
+    [
+      'rolled-back',
+      1,
+      'The Station service kept 0.7.0-nightly.12: the update to 0.7.0-nightly.13 rolled-back (candidate-exited:3).',
+    ],
+  ] as const)(
+    'stages the version and hands a running service the switch, reporting its launcher verdict (%s)',
+    async (verdict, status, message) => {
+      const f = serviceInstalled();
+      const running = coreAsync(f, {
+        STATION_INSTALL_PUBLIC_MANIFEST_URL: signed(f, '0.7.0-nightly.13'),
+        STATION_TEST_SERVICE_UNIT: unit(true),
+      });
+      const queued = await answerRequest(f, verdict);
+      const result = await running;
+      expect(result.status, result.stderr).toBe(status);
+      expect(`${result.stdout}${result.stderr}`).toContain(message);
+      expect(result.stdout).toContain(
+        'Asked the Station service to switch to 0.7.0-nightly.13',
+      );
+      // The request names the exact staged version, which is complete.
+      expect(queued.targetVersion).toBe('0.7.0-nightly.13');
+      expect(
+        existsSync(
+          join(
+            f.installRoot,
+            'versions',
+            '0.7.0-nightly.13',
+            '.station-install-complete',
+          ),
+        ),
+      ).toBe(true);
+      // The launcher owns the switch: the installer moved nothing, and
+      // stopped and started nothing; it only asked whether the service runs.
+      expect(currentVersion(f)).toBe('0.7.0-nightly.12');
+      expect(verbs(takeCliRuns(f))).toEqual(['service@0.7.0-nightly.12']);
+    },
+  );
+
+  it('switches a stopped service with the install, leaves it stopped, and records the version for its launcher', () => {
+    const f = serviceInstalled();
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_TEST_SERVICE_UNIT: unit(false),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(currentVersion(f)).toBe('0.7.0-nightly.13');
+    const runs = takeCliRuns(f);
+    // Status, then the service stopped through its manager, then Station;
+    // nothing started beside a registered service.
+    expect(runs.map((run) => run.args.slice(0, 2).join(' '))).toEqual([
+      'service status',
+      'service stop',
+      `stop --base=${real(f.home)}`,
+    ]);
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(f.installRoot, 'runtime', 'service-state.json'),
+          'utf8',
+        ),
+      ),
+    ).toEqual({ protocol: 1, activeVersion: '0.7.0-nightly.13' });
+    expect(result.stdout).toContain(
+      'Station service svc was not running and was left stopped',
+    );
+  });
+
+  it.each([
+    ['pending', 'a supervised Station update is unfinished'],
+    ['needs-operator', 'a supervised Station update could not be rolled back'],
+  ])('refuses while the launcher records a %s update', (status, message) => {
+    const f = serviceInstalled();
+    writeFileSync(
+      join(f.installRoot, 'runtime', 'service-state.json'),
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: '0.7.0-nightly.12',
+        update: { status },
+      }),
+    );
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_TEST_SERVICE_UNIT: unit(true),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(message);
+    expect(versionDirs(f)).toEqual(['0.7.0-nightly.12']);
+    expect(takeCliRuns(f)).toEqual([]);
+  });
+
+  it('migrates a pre-W3 service in the order the refusal names: uninstall, install with no start, then the new version installs the service', () => {
+    const f = serviceInstalled();
+    const manifest = join(f.home, 'service', 'svc.json');
+    // As a pre-W3 CLI registered it: the version's node.exe through current.
+    const legacy = JSON.parse(readFileSync(manifest, 'utf8'));
+    writeFileSync(
+      manifest,
+      JSON.stringify({
+        ...legacy,
+        nodePath: join(legacy.installRoot, 'current', 'runtime', 'node.exe'),
+      }),
+    );
+    unlinkSync(join(f.installRoot, 'runtime', 'service-state.json'));
+    const refused = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'), {
+      STATION_TEST_SERVICE_UNIT: unit(true),
+    });
+    expect(refused.status).toBe(1);
+    const message = refused.stderr;
+    const steps = [
+      `1) ${real(f.binDir)}`,
+      'service uninstall --instance=<name>',
+      '2) rerun this installer with STATION_INSTALL_NO_START=1',
+      '3) ',
+      'service install --instance=<name> (now the new version',
+    ].map((step) => message.indexOf(step));
+    expect(
+      steps.every((index) => index >= 0),
+      message,
+    ).toBe(true);
+    expect([...steps].sort((a, b) => a - b)).toEqual(steps);
+    // The old CLI's reinstall would only register the same kind again; the
+    // sequence instead removes it first (step 1, its manifest goes)...
+    expect(versionDirs(f)).toEqual(['0.7.0-nightly.12']);
+    unlinkSync(manifest);
+    // ...then step 2 switches with no service and starts nothing, so step 3
+    // runs the new version's CLI.
+    const migrated = install(
+      f,
+      buildWindowsArchive(f.dir, '0.7.0-nightly.13'),
+      { STATION_INSTALL_NO_START: '1' },
+    );
+    expect(migrated.status, migrated.stderr).toBe(0);
+    expect(currentVersion(f)).toBe('0.7.0-nightly.13');
+    expect(verbs(takeCliRuns(f))).toEqual(['stop@0.7.0-nightly.12']);
+  });
+
+  it('refuses when the service backend cannot say whether the service runs', () => {
+    const f = serviceInstalled();
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.13'));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'could not determine whether Station service svc is running',
+    );
+    expect(versionDirs(f)).toEqual(['0.7.0-nightly.12']);
   });
 });
 

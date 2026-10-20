@@ -11,7 +11,10 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
-import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
+import type {
+  InputRequestForm,
+  InputRequestRecord,
+} from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
   EngineId,
@@ -137,6 +140,8 @@ export interface ComposerAttachmentStageSnapshot {
   expired?: boolean;
   /** See `ComposerAttachmentStageUpdate.capacityFull`. */
   capacityFull?: boolean;
+  /** See `ComposerAttachmentStageUpdate.callerUnresolved`. */
+  callerUnresolved?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;
@@ -158,6 +163,8 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
@@ -195,6 +202,7 @@ export interface ChatMessage {
     input?: any;
     result?: any;
     output?: any;
+    htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
     error?: string;
     errorText?: string;
     state?: string;
@@ -209,7 +217,13 @@ export interface ChatMessage {
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
-    questionnaire?: HarnessQuestionnaire;
+    /**
+     * #3390: an open form request (a harness question or a tool server's
+     * elicitation), answered on the pending-requests card.
+     */
+    inputRequest?: InputRequestForm;
+    /** #3390: an `input-request` part's record; see `MessagePart`. */
+    inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
@@ -226,6 +240,8 @@ export interface ChatMessage {
     runtimeErrorCode?: string;
     uiBlock?: UIBlock;
     toolCallId?: string;
+    /** Durable terminal result event, shared with streaming parts. */
+    sourceEventId?: string;
     flowRunAttached?: FlowRunBinding;
     flowGateVerdict?: FlowGateVerdictInfo;
     conversationHandoff?: import('@kontourai/station-contracts/orchestration').ConversationHandoffProjection;
@@ -293,6 +309,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -334,6 +351,15 @@ export interface ChatSession {
     createdAt: number;
     status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
     lastError?: string;
+    /** See ChatUIState.outboundQueuedTurns (active-chats-state.ts). */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;
@@ -351,6 +377,7 @@ export interface ChatSession {
   approvalTakeoverFailed?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
@@ -358,6 +385,9 @@ export interface ChatSession {
   stopPending?: boolean;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -378,6 +408,11 @@ export interface ChatSession {
   conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
   /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * The send awaiting its turn start is one Station's delivery lookup said it
+   * has (`received`): the session may still be starting.
+   */
+  pendingSendStationHasIt?: boolean;
   /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
   queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
@@ -431,6 +466,9 @@ export interface Tool {
   id: string;
   name: string;
   displayName?: string;
+  source?: string;
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+  builtin?: boolean;
   description?: string;
   kind?: 'mcp' | 'builtin' | 'custom';
   transport?: string;
@@ -442,11 +480,15 @@ export interface Tool {
   toolName?: string;
   group?: string;
   title?: string;
+  readOnly?: boolean;
+  classificationSource?: 'station' | 'publisher';
+  probe?: import('@kontourai/station-contracts/tool').ToolServerProbeResult;
   tools?: {
     name: string;
     toolName?: string;
     description?: string;
     readOnly?: boolean;
+    classificationSource?: 'station' | 'publisher';
     group?: string;
     title?: string;
     disabled?: boolean;

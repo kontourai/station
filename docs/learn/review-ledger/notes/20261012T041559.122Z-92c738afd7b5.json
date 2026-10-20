@@ -1,0 +1,7 @@
+{
+  "revision": "a1661992345fbd17bd20c3f9a9d1647dab77f049",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"ci-health.mjs now attributes a pull-request-family run with an empty pull_requests list by head label via commits/{sha}/pulls, then pulls?head=, using the ownership rule in owningPulls; unresolved runs keep an incomplete reason. The Per PR push row now says so. Other ci:health claims (windows, caps, incomplete reasons, mutation cases) unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-health.test.ts","scripts/ci-health.mjs"]}
+  ]
+}

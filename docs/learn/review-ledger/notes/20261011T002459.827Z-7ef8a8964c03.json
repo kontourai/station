@@ -1,0 +1,7 @@
+{
+  "revision": "5b37e855563960f43a539ccede63e8b9c9d6cdff",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the standalone Browser frame: its inner pane owns vertical spacing at all heights, removing the local responsive at-rule without changing the global mobile CSS baseline. Short-pane scrolling, clipped-banner reservation, and native/physical-device limits in the guide remain accurate. Prior CI94a9a211f5 passed; this spacing delta still requires final evidence.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.css"]}
+  ]
+}

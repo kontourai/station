@@ -1,0 +1,7 @@
+{
+  "revision": "33e2bc41d87db6264f19526830f8c3196b043a27",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed against this branch's change: apply-android-native-bootstrap.mjs now keeps the onCreate hook and inset bridge, strips the legacy Keyring.initializeNdkContext call and bridge, and refuses any other ndk_context initializer (tao 0.37 ndk_glue initializes it; ndk-context 0.1.1 asserts once). build-android.yml now runs reset-android-generated-project.mjs before init. Updated pipeline steps 3-4 to match. Checks: focused bootstrap/boundary/workflow-contract tests (210 passed), actionlint; local nightly-config release APK launched on an Android 16 emulator and a keyring-backed command resolved. Limit: physical device not exercised.","inputs":["docs/guides/android-build.md",".github/workflows/build-android.yml","scripts/apply-android-native-bootstrap.mjs"]}
+  ]
+}

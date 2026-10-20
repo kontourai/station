@@ -1,0 +1,7 @@
+{
+  "revision": "d63496d9454959e1805e85ae12c1bc85cee57c7d",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the new fixture test classification against existing owned-process and bounded readiness rules. All CLI children are owned and fail before readiness when prerequisites are missing; settled cleanup is asserted. Actual HTTP behavior and an injected wrong length are exercised; no new test-only production seam, timeout waiver, or runner bypass is added.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "5a194aab20dbb6b67819346c6cbd9dafb1c639c5",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"same tauri-context.mjs probe-budget delta; port and channel claims do not read probe timings; unchanged.","inputs":["docs/guides/release-channel-ports.md","scripts/tauri-context.mjs"]}
+  ]
+}

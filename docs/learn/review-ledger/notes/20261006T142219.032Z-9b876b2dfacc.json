@@ -1,0 +1,65 @@
+{
+  "revision": "dce9f79407cdfd4a17c9f734bf6dc2ec464676d2",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/architecture/abstraction-review.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/guides/agents.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/guides/connections.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["docs/user/workspace-checkpoints.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#3429 round 4: the only change to orchestration-service.ts is moving inheritedDispatchCanonicalCwd's JSDoc back onto its own function (comment placement only, no behavior). Claims in this document are unaffected.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "88283ec8be254f1fcc2466b0395d5de834b9f46a",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed historical supersession banner, CLI convergence consequence and no-migration rationale against session-client.ts profile-ID extraction. sendExecutionTargetChat now extracts authored Agent identity for presentation while new starts still pass the complete executionTarget to canonical orchestration. This does not restore historical flag instructions, expose the private provider or migrate data. Source review only; runtime and historical qualification not rerun.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed chat/delegate syntax and receiver-resolution/continuation paragraphs against sendExecutionTargetChat and sendOrchestrationChat. executionProfileAgentId handles string and override references for presentation; initial sends forward the complete target, while continuation retains the server-persisted binding and forwards only existing Environment/model intent. CLI flags and server-owned engine/credential resolution remain unchanged. Positive-effect forwarding is REASONED from source only; reported authentication-negative tests do not prove provider execution, and no tests were run in this review.","inputs":["docs/reference/cli.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed paired chat example and Saved Stations distinction against session-client.ts adaptation. Extracting profile ID for CLI presentation does not drop the initial request override, add a CLI engine-selection flag, or conflate saved API Station access with execution Environment/engine ownership. Initial target forwarding and bound continuation remain canonical. Source inspection only; authentication-negative evidence is not successful chat/provider proof, and published/runtime operation NOT_VERIFIED.","inputs":["packages/cli/README.md","packages/cli/src/commands/session-client.ts"]}
+  ]
+}

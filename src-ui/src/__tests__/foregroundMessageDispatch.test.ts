@@ -62,7 +62,43 @@ describe('dispatchForeground target', () => {
     attachmentQueueImported.mockClear();
   });
 
-  test('a project-scoped turn carries workspace and NO environment', async () => {
+  // `expectedEngine` is judged against THIS Station's catalog, so it travels
+  // only when the request is addressed to this Station explicitly. A Project
+  // turn without explicit placement resolves to the Project's configured
+  // Environment, which may be another Station.
+  describe('expectedEngine', () => {
+    const expectedEngine = { kind: 'station' } as const;
+
+    test('travels with an explicit current Environment (no Project)', async () => {
+      await dispatchForeground(baseInput({ expectedEngine }));
+      expect(dispatchedTarget()).toMatchObject({
+        environment: { kind: 'current' },
+        expectedEngine,
+      });
+    });
+
+    test.each([
+      ['an execution override', { executionAgentId: 'codex' }],
+      [
+        'an explicit current-Station placement',
+        { executionOnCurrentStation: true },
+      ],
+    ])('travels for %s even on a Project turn', async (_label, placement) => {
+      await dispatchForeground(
+        baseInput({ projectSlug: 'alpha', expectedEngine, ...placement }),
+      );
+      expect(dispatchedTarget()).toMatchObject({ expectedEngine });
+    });
+
+    test('is dropped on a Project turn without explicit placement', async () => {
+      await dispatchForeground(
+        baseInput({ projectSlug: 'alpha', expectedEngine }),
+      );
+      expect(dispatchedTarget()).not.toHaveProperty('expectedEngine');
+    });
+  });
+
+  test('a Project turn without explicit placement leaves its configured Environment authoritative', async () => {
     await dispatchForeground(baseInput({ projectSlug: 'alpha' }));
 
     const target = dispatchedTarget();
@@ -70,9 +106,18 @@ describe('dispatchForeground target', () => {
       agent: 'claude',
       workspace: { kind: 'project', projectSlug: 'alpha' },
     });
-    // The exclusivity is the point: a turn bound to a project must not also
-    // claim the current environment.
     expect(target).not.toHaveProperty('environment');
+  });
+
+  test('an explicit This Station choice preserves a plain authored Agent and Project workspace', async () => {
+    await dispatchForeground(
+      baseInput({ projectSlug: 'alpha', executionOnCurrentStation: true }),
+    );
+    expect(dispatchedTarget()).toMatchObject({
+      agent: 'claude',
+      workspace: { kind: 'project', projectSlug: 'alpha' },
+      environment: { kind: 'current' },
+    });
   });
 
   test('an unbound turn carries environment and NO workspace', async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "5671773ff687104fd6d210eac63ec1bb33c72edd",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Review round: service.ts only refuses to end an unproven launcher pid and names it; fs-windows-compat skips only read-only files; this document makes no claim about either, checked.","inputs":["docs/contexts/operations/CONTEXT.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

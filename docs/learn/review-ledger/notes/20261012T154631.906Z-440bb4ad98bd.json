@@ -1,0 +1,7 @@
+{
+  "revision": "ea68139b73a1767f7fd5126debfb042d6ead8815",
+
+  "notes": [
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#561 review fix round: resolveOwnedProcessOwner reuses this process's cached birth, and the release returned by registerOwnedChild (spawnOwnedChild and registerDetachedOwnedChild) logs instead of throwing on a failed record removal. Re-read the peer cleanup claim (closes the peer and its owned process tree); a failed record removal no longer throws, the claim stays accurate. No prose change.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

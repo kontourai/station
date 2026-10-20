@@ -1,0 +1,7 @@
+{
+  "revision": "794f0d9ba813786936af041b65b037955ea10831",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Fix round 2: reviewed affected shared-dialog dependency. The change contains Tab from a focused panel or non-control descendant at ResponsiveDialogSurface; it preserves initial-focus policy, chrome, viewport, styles, layering, history and return focus. Existing adoption, architecture, theme and contributor claims remain accurate; no prose change needed. Shared owner tests cover both directions and viewport modes; broader device/provider evidence is not claimed.","inputs":["src-ui/AGENTS.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

@@ -1,4 +1,4 @@
-import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
+import { isValidContextObservation } from '@kontourai/station-shared/usage-semantics';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { OrchestrationEvent } from './types';
 

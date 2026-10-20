@@ -250,6 +250,7 @@ function deriveSession(
     skillExperienceDraftInvalid: chatState.skillExperienceDraftInvalid,
     skillExperienceActive: chatState.skillExperienceActive,
     skillExperienceMode: chatState.skillExperienceMode,
+    taskShaping: chatState.taskShaping,
     conversationOpenState: chatState.conversationOpenState,
     conversationOpenPending: chatState.conversationOpenPending,
     conversationOpenFailed: chatState.conversationOpenFailed,
@@ -302,6 +303,10 @@ function deriveSession(
     openTurnShellSuperseded: chatState.openTurnShellSuperseded,
     conversationActivity: chatState.conversationActivity,
     sendAwaitingTurnStart: chatState.sendAwaitingTurnStart,
+    pendingSendStationHasIt:
+      chatState.sendAwaitingTurnStart === true &&
+      chatState.pendingClientTurnId !== undefined &&
+      chatState.deliveryChecks?.[chatState.pendingClientTurnId] === 'received',
     stopSettledTurnId: chatState.stopSettledTurnId,
     queueDrainSettling: chatState.queueDrainSettling,
     queuedMessageMetadata: chatState.queuedMessageMetadata,

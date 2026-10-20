@@ -2217,54 +2217,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "9984b4f1add18513822188c7fa07dbb9d3c39cfd23e57f81c77fd44659c1dec1",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "5a65bfd25beeaeda75bd6603375d360532c6a75645ea50b089191bc448839763",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "089f935d8ccfa5a82cb55ceb8a4390b73ea9aeac9320e1d1296a94d26c09678b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "febc91ba627eea43fd5850ad0ec93bebbb90c833e18e1425e0f9d0b76c6a599f",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "d5efa93824c9c60793bbd5147cbdbd82e27ad6c26f16c81487292eb8ff68bdb5",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "8cf6aab9553cea2bd7df2dbaca388a53c2f3df32399e6af381774341bbba81d5",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "5a49cca59bac49ed6aac56f79bf79923634c3760b981509f4e49c37582a7b776",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "d7bd1b65043bda92189f8a294e0828de0c7a16f85794af76f8d1506828c10e7c",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/plugins/distribution-profile-service.ts",
       "rule": "as-any",
       "fingerprint": "168cb857126c84e163e05298c256dfb3a5f3dbd4faf6ed712d1940f0c3e0dd9c",
@@ -2466,12 +2418,6 @@
       "file": "src-server/services/terminal/terminal-ws-server.ts",
       "rule": "as-unknown",
       "fingerprint": "5d68cbf34deb5f5f1809132b66dfa43c18a3c5b8a5e9311c4bf760cf24b26ec9",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/usage-telemetry-inventory.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0f3961ab077ab80c70fb1ec97e7fdec8a7fe432c244e98044c9925a6ae6ab30f",
       "reason": "legacy-cast"
     },
     {

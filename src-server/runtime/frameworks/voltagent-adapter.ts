@@ -35,9 +35,9 @@ import type { MCPToolProvenanceGeneration } from '../../services/orchestration/m
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import { stationDenial } from '../agents/denial-message.js';
 import {
-  currentScheduledPrincipal,
-  currentScheduledRunId,
-} from '../agents/scheduled-principal-context.js';
+  currentUnattendedPrincipal,
+  currentUnattendedRunId,
+} from '../agents/unattended-principal-context.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
@@ -50,6 +50,7 @@ import {
 } from '../native-output-declaration.js';
 import { runWithCurrentNativeOutputCall } from '../native-output-turn-grant.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
+import { addAgentTools } from '../tools/agent-tool-view.js';
 import {
   copyLoadedMCPToolProvenance,
   getLoadedMCPToolProvenance,
@@ -484,11 +485,103 @@ function chainAfterComposition(
   };
 }
 
+/**
+ * #323: VoltAgent (2.10) keeps constructor `temperature`/`maxOutputTokens`
+ * as per-call defaults but discards constructor `topP`; `topP` reaches the
+ * model only as a per-call option. Station registers the bare Agent (the
+ * wrapper's `raw`) as the live chat agent, so the default is bound onto the
+ * Agent instance itself rather than onto `VoltAgentWrapper`. A caller's own
+ * per-call `topP` still wins.
+ */
+function bindDefaultTopP(agent: Agent, topP: number | undefined): void {
+  if (topP === undefined) return;
+  const withTopP = (options: unknown) => {
+    const callOptions =
+      typeof options === 'object' && options !== null ? options : {};
+    return 'topP' in callOptions && callOptions.topP !== undefined
+      ? callOptions
+      : { ...callOptions, topP };
+  };
+  for (const method of [
+    'generateText',
+    'streamText',
+    'generateObject',
+    'streamObject',
+  ] as const) {
+    const original = agent[method];
+    Object.defineProperty(agent, method, {
+      configurable: true,
+      writable: true,
+      value: (input: unknown, options?: unknown, ...rest: unknown[]) =>
+        Reflect.apply(original, agent, [input, withTopP(options), ...rest]),
+    });
+  }
+}
+
+/** Live chat registers the raw Agent; model-only composition must survive that boundary. */
+function bindModelInputComposition(agent: Agent): void {
+  const streamText = agent.streamText;
+  Object.defineProperty(agent, 'streamText', {
+    configurable: true,
+    writable: true,
+    value(
+      input: string | ModelInputMessage[],
+      options?: {
+        composeModelInput?: ModelInputComposer;
+        hooks?: AgentHooks;
+        [key: string]: unknown;
+      },
+    ) {
+      const { composeModelInput, ...invokeOptions } = options ?? {};
+      // The tail is matched by id, so an authored message gets one
+      // before VoltAgent sees (and stores) it.
+      const authored: string | ModelInputMessage[] =
+        composeModelInput && Array.isArray(input)
+          ? input.map((message) =>
+              message.id ? message : { ...message, id: randomUUID() },
+            )
+          : input;
+      return Reflect.apply(streamText, agent, [
+        authored,
+        {
+          ...invokeOptions,
+          // #3112: VoltAgent persists (and titles from) the input it is handed,
+          // so it is handed the authored turn and the context joins only the
+          // messages prepared for the model.
+          ...(composeModelInput
+            ? {
+                hooks: {
+                  ...invokeOptions.hooks,
+                  onPrepareMessages: chainAfterComposition(
+                    composeInputAtModelSeam(authored, composeModelInput),
+                    // VoltAgent's own precedence: the caller's hook, else the
+                    // agent's.
+                    invokeOptions.hooks?.onPrepareMessages ??
+                      agent.hooks?.onPrepareMessages,
+                  ),
+                },
+              }
+            : {}),
+        },
+      ]);
+    },
+  });
+}
+
 class VoltAgentWrapper implements IAgent {
   constructor(
     private inner: Agent,
     private purposeEnabledToolNames: ReadonlySet<string> = new Set(),
-  ) {}
+    readonly instructions?: string | (() => string),
+    private readonly toolView?: (tools: ITool[]) => IAgent,
+  ) {
+    bindModelInputComposition(inner);
+  }
+
+  withAdditionalTools(tools: ITool[]): IAgent {
+    if (!this.toolView) throw new Error('Agent tool views are unavailable.');
+    return this.toolView(tools);
+  }
 
   get id() {
     return this.inner.name;
@@ -528,39 +621,10 @@ class VoltAgentWrapper implements IAgent {
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
-    const { composeModelInput, ...invokeOptions } = options ?? {};
-    // #3112: the tail is matched by id, so an authored message gets one
-    // before VoltAgent sees (and stores) it.
-    const authored: string | ModelInputMessage[] =
-      composeModelInput && Array.isArray(input)
-        ? (input as ModelInputMessage[]).map((message) =>
-            message.id ? message : { ...message, id: randomUUID() },
-          )
-        : input;
-    const result = await this.inner.streamText(authored as string, {
-      ...invokeOptions,
-      // #3112: VoltAgent persists (and titles from) the input it is handed,
-      // so it is handed the authored turn and the context joins only the
-      // messages prepared for the model.
-      ...(composeModelInput
-        ? {
-            hooks: {
-              ...invokeOptions.hooks,
-              onPrepareMessages: chainAfterComposition(
-                composeInputAtModelSeam(
-                  authored,
-                  composeModelInput as ModelInputComposer,
-                ),
-                // VoltAgent's own precedence: the caller's hook, else the
-                // agent's.
-                invokeOptions.hooks?.onPrepareMessages ??
-                  this.inner.hooks?.onPrepareMessages,
-              ),
-            },
-          }
-        : {}),
+    const result = await this.inner.streamText(input, {
+      ...options,
       context: contextWithToolDenialObservations(
-        invokeOptions.context,
+        options?.context,
         observedDenials,
       ),
     });
@@ -584,7 +648,15 @@ class VoltAgentWrapper implements IAgent {
     prompt: string,
     options?: any,
   ): Promise<IGenerateResult> {
-    return this.inner.generateObject(prompt, options);
+    const { structuredOutputSchema, signal, ...invokeOptions } = options ?? {};
+    if (!structuredOutputSchema)
+      throw new Error(
+        'Structured object generation requires structuredOutputSchema.',
+      );
+    return this.inner.generateObject(prompt, structuredOutputSchema, {
+      ...invokeOptions,
+      ...(signal ? { abortSignal: signal } : {}),
+    });
   }
 
   getMemory(): IMemory | null {
@@ -594,7 +666,9 @@ class VoltAgentWrapper implements IAgent {
 
   /** Access the underlying VoltAgent Agent (for framework-specific operations) */
   get raw(): Agent {
-    return this.inner;
+    return Object.assign(this.inner, {
+      withAdditionalTools: (tools: ITool[]) => this.withAdditionalTools(tools),
+    });
   }
 }
 
@@ -761,10 +835,10 @@ function voltAgentInvocationContext(
         }
       : {}),
     userId: context.userId,
-    traceId: currentScheduledRunId() ?? context.traceId,
+    traceId: currentUnattendedRunId() ?? context.traceId,
     delegation: (options?.delegation ??
       context.delegation) as InvocationContext['delegation'],
-    unattendedPrincipal: currentScheduledPrincipal(),
+    unattendedPrincipal: currentUnattendedPrincipal(),
   };
 }
 
@@ -1040,42 +1114,70 @@ export class VoltAgentFramework {
     const hooks = createVoltAgentLifecycleHooks(slug, sharedHooks);
 
     // Build agent
-    const normalizedTools = tools.map(toVoltAgentTool);
-    const purposeEnabledToolNames = new Set(
-      normalizedTools
-        .filter((tool) => purposeEnabledVoltTools.has(tool))
-        .map((tool) => tool.name),
-    );
-    const agent = new Agent({
-      name: slug,
-      instructions: opts.processedPrompt,
-      model,
-      memory,
-      // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
-      // objects) actually forward to the model; MCP/VoltAgent tools pass through.
-      tools: normalizedTools,
-      hooks,
-      ...(spec.guardrails && {
-        temperature: spec.guardrails.temperature,
-        maxOutputTokens:
-          spec.guardrails.maxTokens ?? config.appConfig.defaultMaxOutputTokens,
-        topP: spec.guardrails.topP,
-      }),
-      // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
-      // default is a stingy 10). Priority: agent guardrails > agent spec >
-      // app config > high default (no artificial limit).
-      maxSteps: resolveMaxSteps({
-        guardrailsMaxSteps: spec.guardrails?.maxSteps,
-        specMaxSteps: spec.maxSteps,
-        defaultMaxTurns: config.appConfig.defaultMaxTurns,
-      }),
-      ...(!spec.guardrails && config.appConfig.defaultMaxOutputTokens
-        ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
-        : {}),
-    });
+    const createToolView = (viewTools: ITool[]): IAgent => {
+      const normalizedTools = viewTools.map(toVoltAgentTool);
+      const purposeEnabledToolNames = new Set(
+        normalizedTools
+          .filter((tool) => purposeEnabledVoltTools.has(tool))
+          .map((tool) => tool.name),
+      );
+      const agent = new Agent({
+        name: slug,
+        instructions: opts.processedPrompt,
+        model,
+        memory,
+        // Normalize to real VoltAgent Tools so builtin/hand-rolled tools (plain
+        // objects) actually forward to the model; MCP/VoltAgent tools pass through.
+        tools: normalizedTools,
+        hooks,
+        ...(spec.guardrails && {
+          temperature: spec.guardrails.temperature,
+          maxOutputTokens:
+            spec.guardrails.maxTokens ??
+            config.appConfig.defaultMaxOutputTokens,
+        }),
+        // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
+        // default is a stingy 10). Priority: agent guardrails > agent spec >
+        // app config > high default (no artificial limit).
+        maxSteps: resolveMaxSteps({
+          guardrailsMaxSteps: spec.guardrails?.maxSteps,
+          specMaxSteps: spec.maxSteps,
+          defaultMaxTurns: config.appConfig.defaultMaxTurns,
+        }),
+        ...(!spec.guardrails && config.appConfig.defaultMaxOutputTokens
+          ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
+          : {}),
+      });
+      // #323 review: when both guardrails are set, temperature wins, which is
+      // what @ai-sdk/anthropic already does for Claude. Some providers forward
+      // both (Bedrock), and newer Claude models reject a request that carries
+      // both, so binding topP there would turn a silently ignored setting
+      // into a failing agent.
+      const topP = spec.guardrails?.topP;
+      if (topP !== undefined && spec.guardrails?.temperature !== undefined) {
+        opts.logger?.warn?.(
+          'guardrails.topP is ignored because guardrails.temperature is also set',
+          { agent: slug },
+        );
+      } else {
+        bindDefaultTopP(agent, topP);
+      }
+
+      return new VoltAgentWrapper(
+        agent,
+        purposeEnabledToolNames,
+        opts.processedPrompt,
+        (additions) => {
+          if (!config.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return createToolView(addAgentTools(tools, additions));
+        },
+      );
+    };
+    const wrapper = createToolView(tools);
 
     return {
-      agent: new VoltAgentWrapper(agent, purposeEnabledToolNames),
+      agent: wrapper,
       tools: tools as ITool[],
       memoryAdapter: opts.memoryAdapter,
       fixedTokens,
@@ -1161,46 +1263,58 @@ export class VoltAgentFramework {
     // the model with no prior context while the UI showed a full transcript.
     // Wired exactly as `createAgent` does, prompt-only view included, so the
     // `[CHAT_ERROR]` marker stays out of the model's reads but still renders.
-    const normalizedTools = (opts.tools || []).map(toVoltAgentTool);
-    const purposeEnabledToolNames = new Set(
-      normalizedTools
-        .filter((tool) => purposeEnabledVoltTools.has(tool))
-        .map((tool) => tool.name),
-    );
-    const agent = new Agent({
-      name: opts.name,
-      instructions: opts.instructions,
-      model: opts.model,
-      // Temp/default agents bypass persisted-agent loading, but must still
-      // register hand-rolled Station tools as real Volt tools.
-      tools: normalizedTools,
-      maxSteps: opts.maxSteps,
-      // archive#1834: temp agents used to get NO lifecycle hooks, so the
-      // default agent (and every scheduler//invoke/CLI call riding it)
-      // executed tools without ever evaluating beforeToolCall. Wired exactly
-      // as `createAgent` does when the caller supplies hooks.
-      ...(opts.hooks
-        ? {
-            hooks: createVoltAgentLifecycleHooks(
-              opts.agentId
-                ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
-                : opts.name,
-              conformAgentHooks('voltagent', opts.hooks),
-            ),
-          }
-        : {}),
-      ...(opts.memoryAdapter
-        ? {
-            memory: new Memory({
-              storage: createPromptOnlyMemoryView(
-                opts.memoryAdapter,
-                opts.agentId,
+    const createToolView = (viewTools: ITool[]): IAgent => {
+      const normalizedTools = viewTools.map(toVoltAgentTool);
+      const purposeEnabledToolNames = new Set(
+        normalizedTools
+          .filter((tool) => purposeEnabledVoltTools.has(tool))
+          .map((tool) => tool.name),
+      );
+      const agent = new Agent({
+        name: opts.name,
+        instructions: opts.instructions,
+        model: opts.model,
+        // Temp/default agents bypass persisted-agent loading, but must still
+        // register hand-rolled Station tools as real Volt tools.
+        tools: normalizedTools,
+        maxSteps: opts.maxSteps,
+        // archive#1834: temp agents used to get NO lifecycle hooks, so the
+        // default agent (and every scheduler//invoke/CLI call riding it)
+        // executed tools without ever evaluating beforeToolCall. Wired exactly
+        // as `createAgent` does when the caller supplies hooks.
+        ...(opts.hooks
+          ? {
+              hooks: createVoltAgentLifecycleHooks(
+                opts.agentId
+                  ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+                  : opts.name,
+                conformAgentHooks('voltagent', opts.hooks),
               ),
-            }),
-          }
-        : {}),
-    });
-    return new VoltAgentWrapper(agent, purposeEnabledToolNames);
+            }
+          : {}),
+        ...(opts.memoryAdapter
+          ? {
+              memory: new Memory({
+                storage: createPromptOnlyMemoryView(
+                  opts.memoryAdapter,
+                  opts.agentId,
+                ),
+              }),
+            }
+          : {}),
+      });
+      return new VoltAgentWrapper(
+        agent,
+        purposeEnabledToolNames,
+        opts.instructions,
+        (additions) => {
+          if (!opts.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return createToolView(addAgentTools(opts.tools ?? [], additions));
+        },
+      );
+    };
+    return createToolView(opts.tools ?? []);
   }
 
   async shutdown(): Promise<void> {

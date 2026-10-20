@@ -127,39 +127,42 @@ describe('owned process lifecycle', () => {
     expect(execution.isAlive()).toBe(false);
   });
 
-  test('records normal COMPLETE plus raw EOF as Job settlement even after wrapper close', async () => {
-    const child = Object.assign(mockChild(), {
-      pid: 4242,
-      connected: true,
-      kill: () => true,
-      send: () => true,
-      disconnect: () => {},
-    });
-    const execution = executeOwnedCommand(
-      'phase.exe',
-      [],
-      (() => child) as never,
-      'fixture',
-      {
-        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
-      },
-      { platform: 'win32' },
-    );
-    child.emit('message', {
-      type: 'owned-command-bound',
-      pid: 5151,
-      processStart: 'target-birth',
-      guard: { pid: 5152, start: 'guard-birth' },
-      jobBound: true,
-    });
-    child.emit('message', { type: 'owned-command-complete', status: 0 });
-    child.stdout.emit('end');
-    child.stderr.emit('end');
-    child.emit('close', 0, null);
+  test.each(['close', 'exit'] as const)(
+    'records normal COMPLETE plus raw EOF as Job settlement after wrapper %s',
+    async (wrapperEvent) => {
+      const child = Object.assign(mockChild(), {
+        pid: 4242,
+        connected: true,
+        kill: () => true,
+        send: () => true,
+        disconnect: () => {},
+      });
+      const execution = executeOwnedCommand(
+        'phase.exe',
+        [],
+        (() => child) as never,
+        'fixture',
+        {
+          resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        },
+        { platform: 'win32' },
+      );
+      child.emit('message', {
+        type: 'owned-command-bound',
+        pid: 5151,
+        processStart: 'target-birth',
+        guard: { pid: 5152, start: 'guard-birth' },
+        jobBound: true,
+      });
+      child.emit('message', { type: 'owned-command-complete', status: 0 });
+      child.stdout.emit('end');
+      child.stderr.emit('end');
+      child.emit(wrapperEvent, 0, null);
 
-    await expect(execution.promise).resolves.toMatchObject({ status: 0 });
-    expect(execution.isAlive()).toBe(false);
-  });
+      await expect(execution.promise).resolves.toMatchObject({ status: 0 });
+      expect(execution.isAlive()).toBe(false);
+    },
+  );
 
   test('settles an abort only after the launcher Job-settlement acknowledgement', async () => {
     const sent: unknown[] = [];
@@ -215,6 +218,8 @@ describe('owned process lifecycle', () => {
       },
       { platform: 'win32' },
     );
+    child.emit('exit', 0, null);
+    expect(execution.isAlive()).toBe(true);
     await expect(execution.terminate()).rejects.toThrow(/did not acknowledge/);
     expect(execution.settlementEvidence().barriers).toMatchObject({
       treeSettlementAcknowledged: false,
@@ -1025,27 +1030,63 @@ describe('owned process lifecycle', () => {
     expect(outcome.errors.at(-1)?.message).toMatch(/remained alive/);
   });
 
-  test('settles a real cooperative process tree without escalation', async () => {
-    const execution = executeOwnedProcess(
+  test('settles a real ready owned process tree without escalation', async () => {
+    const execution = executeOwnedCommand(
       process.execPath,
       [
         '-e',
-        "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)",
+        "process.on('SIGTERM', () => process.exit(0)); process.stdout.write('owned-ready\\n'); setInterval(() => {}, 1000)",
       ],
       undefined,
       'cooperative child',
-      { stdio: 'ignore' },
+      { stdio: ['ignore', 'pipe', 'ignore'] },
     );
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    await expect(
-      terminateSuiteExecution(execution, {
-        processLabel: 'cooperative child',
-        waitForSuiteSettlement,
-        terminationGraceMs: 1_000,
-        terminationForceMs: 1_000,
-      }),
-    ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
+    try {
+      await new Promise<void>((resolveReady, rejectReady) => {
+        const stdout = execution.child?.stdout;
+        if (!stdout)
+          return rejectReady(new Error('owned child stdout missing'));
+        let output = '';
+        let settled = false;
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          stdout.removeListener('data', onData);
+          if (error) rejectReady(error);
+          else resolveReady();
+        };
+        const onData = (chunk: Buffer) => {
+          output += chunk.toString('utf8');
+          if (output.includes('owned-ready\n')) finish();
+        };
+        const timer = setTimeout(
+          () => finish(new Error('owned child never announced readiness')),
+          10_000,
+        );
+        stdout.on('data', onData);
+        void execution.promise.then(
+          () => finish(new Error('owned child exited before readiness')),
+          (error: Error) => finish(error),
+        );
+      });
+      await expect(
+        terminateSuiteExecution(execution, {
+          processLabel: 'cooperative child',
+          waitForSuiteSettlement,
+          terminationGraceMs: 1_000,
+          terminationForceMs: 1_000,
+        }),
+      ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
+    } finally {
+      if (execution.isAlive())
+        await terminateSuiteExecution(execution, {
+          processLabel: 'cooperative child',
+          waitForSuiteSettlement,
+          terminationGraceMs: 1_000,
+          terminationForceMs: 1_000,
+        });
+    }
   });
 
   test('fails closed on Windows launcher close without a proven tree settlement', async () => {

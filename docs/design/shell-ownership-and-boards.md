@@ -7,9 +7,12 @@
 > [service](../../src-server/services/layouts/personal-layout-service.ts), and
 > [view](../../src-ui/src/views/PersonalBoardView.tsx); the
 > [sidebar](../../src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx)
-> consumes that surface. Still unbuilt: instance-shared Boards (storage only,
-> no route or UI), placing the Review layout kind on a Board, adding panes to
-> a Board from the UI, Board reorder and clone. Use the
+> consumes that surface. [Personal Board authoring](../user/personal-boards.md)
+> adds templates, a visual section editor, live projections and chat proposals
+> with explicit preview and Apply. Existing Layout tabs remain supported.
+> Still unbuilt: instance-shared Boards (storage only, no route or UI), placing
+> the Review layout kind on a Board, arbitrary plugin-pane composition from
+> the Board editor, Board-list reorder and clone. Use the
 > [pane authoring guide](../guides/workspace-pane-authoring.md) for the
 > current pane contract.
 >
@@ -114,23 +117,64 @@ identifiers that the local adapter currently binds to one directory.
 
 ### D3. The left panel lists places only
 
-The panel becomes:
+The workspace map keeps places in the sidebar and retains the app header:
 
 ```text
-Station · <instance> · <pairing status>          [search]
+Station                             (app header toggle)
 Home
 Activity
-BOARDS                                              +
-  Daily brief                       (personal)
-  CI wall                           (shared by operator)
-PROJECTS                                            +
-  Campfit          [J][M]  2 live  1 needs you
-    Coding · Tasks · Chat · Board · Knowledge      (layout chips)
-  Ferry                     1 live
+PROJECTS                                             +
+  Campfit                                  2 live [⌄]
+    Coding
+    Tasks
+    Chat
+    Research
+  Ferry                                    1 live
   Thread
-────────────────────────────────────────────────
-[avatars] 3 here          [bell 4]  [gear]
+PERSONAL BOARDS                                      +
+  Daily brief
+  Research desk
+─────────────────────────────────────────────────────
+[live work / participants] [Schedule] [Customize] [Settings]
 ```
+
+[Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
+record the exact reviewed revisions and limits.
+
+**Quiet tree refinement, accepted 2026-10-15.** The expanded desktop map is
+216px; its collapsed rail is 52px. Only the selected project's configured
+Layouts appear beneath it, as a vertical list. Up/Down/Home/End move within
+that list's single tab stop. The disclosure folds the selected project's
+views; project selection and Layout selection still use canonical guarded
+navigation.
+
+Clicking a collapsed project opens a popup with its Layouts followed by
+**Open project**. Layout and Board-availability reads are enabled only for visible
+expanded views or an explicitly opened rail popup. Failed Layout reads show
+Retry rather than treating cached data as current. Escape, focus leaving,
+outside pointer input, navigation and changing sidebar presentation dismiss
+the popup. The header's sidebar control toggles the desktop rail or the
+mobile drawer. The header retains breadcrumbs, its Layout picker,
+notifications, account and Station controls, and region controls.
+
+**Personal Boards** follows Projects and remains visible when empty; its
+`+` creates the first Board and focuses its name. Loading and failed reads
+remain visible, with Retry on failure and creation disabled until the list
+is available. The collapsed rail has one dashboard button that opens the
+personal Board list and its create action. Escape returns focus to that
+button; selecting a Board dismisses the popup. Palette creation with the
+rail collapsed opens the new Board without focusing an invisible rename.
+
+The expanded footer uses one row. The collapsed footer puts live work,
+Schedule, Customize and Settings in **Sidebar utilities**. The presence tray
+continues to distinguish published participants, live work, pending reads,
+failed reads and unsupported publication. Notifications stay in the header.
+
+Open chats and composer drafts no longer form sidebar sections. Their
+conversation and draft state remains in the chat dock and its inbox; the map
+does not duplicate that transient work. The obsolete section-visibility
+controls are removed from Appearance. Older device settings and preference
+backups retain their stored section values for compatibility.
 
 - **Home and Activity** keep their placed-surface semantics
   ([placement.md](placement.md)): each row opens its surface as the page
@@ -155,19 +199,17 @@ PROJECTS                                            +
   Owners: [`SessionTranscript`](../../src-ui/src/components/session-detail/SessionTranscript.tsx),
   [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
   and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
-- **Boards** is the project-less section. Personal Boards list first, then
-  instance-shared ones. The `+` creates a personal Board.
-- **Projects** keep their model. A project row shows a live-work count, a
-  needs-you count, and the avatars of members present. A project's layouts
-  render as a chip row under the name instead of a nested tree. The chip
-  treatment is a hierarchy decision (layouts are the project's children);
-  the visual is not decided here and may change.
-- **Chat is a layout chip.** A layout of kind `chat` already mounts the
-  fullscreen chat pane with its own inbox
-  (`src-ui/src/app-shell/project-layout-kind.ts`,
-  `src-ui/src/workspace-panes/ChatWorkspaceLayout.tsx`,
-  `src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx`). No conversation
-  list appears in the panel. The chat dock (⌘D) is unchanged.
+- **Personal Boards** is the project-less section following Projects. The
+  `+` creates a personal Board, including when none exist. Instance-shared
+  Boards remain unbuilt; no shared group is shown without a backing list.
+- **Projects** keep their model. Their live-work count reads the shared
+  session classifier. The selected project's child rows name its actual
+  Layout records; these are not a hard-coded list of built-in features.
+  Member presence and a separate project attention count remain subject to
+  their own backing projections; the map does not manufacture either.
+- **Chat is a Layout.** A configured Chat view opens the existing fullscreen
+  chat workspace. Individual conversations and composer drafts remain in
+  the chat dock (⌘D), which retains its own inbox.
 - **Footer**: live work and joined-room participants, Schedule, Customize, and
   Settings. Notifications remain in the header, and the command palette keeps
   its keyboard shortcut. Schedule and Customize do not occupy project-list rows.
@@ -178,8 +220,8 @@ The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
 the old Customize/System disclosure groups. The October settings simplification
 supersedes that entry-point placement: a separate **Customize** button opens a
-chooser for Agents, Skills, Engines & Models, and Plugins, with Developer gated
-by this device's flag. Schedule is a footer destination. Settings contains only
+chooser for Agents, Skills, Connections, and Plugins, with Developer gated
+by the Developer setting. Schedule is a footer destination. Settings contains only
 settings-topic navigation; its gear remains available from management screens.
 
 The destination registry owns `sidebar: { order }` for panel destinations and
@@ -214,7 +256,7 @@ its starter applied, and every link the inbox, Starter work and the
 retired-route redirect mint into Review would otherwise 404. When the API
 answers "no layout by that slug" for `review`, `ProjectLayoutRenderer`
 resolves the builtin definition instead, and writes nothing — so the
-project's layout chips still list only what someone actually added. Scoped to
+project's view list still names only what someone actually added. Scoped to
 `review` alone: `coding` and `tasks` read persisted configuration, where an
 absent record is not an empty one. Board placement is **deferred** and not implemented. When the slice-7 state
 mapping was recorded on [#2065](https://github.com/kontourai/station/issues/2065),

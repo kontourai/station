@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Scoped review of hook composition, queue composition and evidence limits against the staging prerequisite. The eight normal hook checks, required statuses and fail-closed submission path are unchanged. Windows floor adds only an explicit focused staging keeper and missing examples placeholder; normal CI/hooks and exact-head hosted/MQ outcomes remain required. Existing dated costs and broader native claims were not remeasured.","inputs":["docs/guides/code-quality.md",".github/workflows/windows-pr-verification.yml","docs/guides/testing.md"]}
+  ]
+}

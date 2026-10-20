@@ -11,7 +11,7 @@ function service() {
   const view = {
     profile: {
       id: '11111111-1111-4111-8111-111111111111',
-      name: 'Brian media',
+      name: 'Home media',
     },
     state: { phase: 'idle' },
   };
@@ -51,13 +51,13 @@ describe('SSH environment routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/station',
       }),
     });
     expect(created.status).toBe(201);
     expect(mock.add).toHaveBeenCalledWith({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/station',
     });
     const id = '11111111-1111-4111-8111-111111111111';
@@ -78,14 +78,14 @@ describe('SSH environment routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/station',
         launchMode: 'managed',
       }),
     });
     expect(created.status).toBe(201);
     expect(mock.add).toHaveBeenCalledWith({
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/station',
       launchMode: 'managed',
     });
@@ -98,7 +98,7 @@ describe('SSH environment routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        hostAlias: 'brian-media',
+        hostAlias: 'home-media',
         remoteProjectPath: '~/dev/station',
         launchMode: 'launch-everything',
       }),
@@ -199,7 +199,7 @@ describe('SSH environment routes', () => {
       environments: [
         {
           environmentId: 'env-1',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [],
         },
       ],
@@ -216,7 +216,7 @@ describe('SSH environment routes', () => {
         environments: [
           {
             environmentId: 'env-1',
-            environmentName: 'Brian media',
+            environmentName: 'Home media',
             sessions: [],
           },
         ],

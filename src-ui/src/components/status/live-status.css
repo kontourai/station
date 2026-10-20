@@ -78,7 +78,14 @@
 
 :root[data-page-hidden] .live-status-glyph *,
 :root[data-page-hidden] .chat-status-pill,
-:root[data-page-hidden] .chat-status-pill * {
+:root[data-page-hidden] .chat-status-pill *,
+:root[data-page-hidden] .tool-call__pulse,
+:root[data-page-hidden] .tool-call-batch__pulse,
+:root[data-page-hidden] .workflow-plan-panel__runtime-dot--live,
+:root[data-page-hidden] .workflow-plan-panel__runtime-dot--live::after,
+:root[data-page-hidden] .voice-pill,
+:root[data-page-hidden] .voice-pill::after,
+:root[data-page-hidden] .browser-pane__chip-dot::after {
   animation-play-state: paused !important;
 }
 
@@ -141,7 +148,7 @@
 }
 
 .chat-status-pill[data-entering="true"] {
-  animation: chat-status-pill-in var(--motion-slow) var(--ease-spring) both;
+  animation: chat-status-pill-in var(--motion-slow) var(--ease-spring) backwards;
 }
 
 button.chat-status-pill {
@@ -202,7 +209,8 @@ button.chat-status-pill {
   min-width: 0;
   align-items: center;
   gap: 7px;
-  animation: chat-status-pill-morph var(--motion-base) var(--ease-spring) both;
+  animation: chat-status-pill-morph var(--motion-base) var(--ease-spring)
+    backwards;
 }
 
 .chat-status-pill__label {
@@ -218,6 +226,15 @@ button.chat-status-pill {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* The verb a resync pill performs, so the remedy is visible, not only named
+   to assistive technology. */
+.chat-status-pill__action {
+  flex-shrink: 0;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .chat-status-pill__count {
@@ -265,7 +282,7 @@ button.chat-status-pill {
   line-height: 1.4;
   pointer-events: auto;
   transform-origin: top right;
-  animation: chat-status-pill-in var(--motion-base) var(--ease-spring) both;
+  animation: chat-status-pill-in var(--motion-base) var(--ease-spring) backwards;
 }
 
 .chat-status-pill__details p {

@@ -4,7 +4,10 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import {
+  isFirstSendFailure,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
@@ -32,6 +35,7 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { chatWaitsOnUser } from '../../utils/waiting-approvals';
+import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
   id: string;
@@ -40,6 +44,7 @@ export interface HomeWorkItem {
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
   kindLabel:
     | 'Durable Task'
+    | `Task · ${(typeof TASK_STATUS_LABELS)[TaskRecord['status']]}`
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
@@ -142,6 +147,15 @@ export interface HomeWorkItem {
    * even when `agentSlug` is present.
    */
   controlMode?: SessionControlMode;
+  /**
+   * Set only to `'peer'`, from the session's own `delegation.environmentKind`:
+   * the row is this Station's lifecycle record of a delegated task running
+   * on a PAIRED Station. The row-open policy reveals it in Activity rather
+   * than rehydrating a chat on the peer's conversation id. Distinct from
+   * `environmentId` below, which names the SSH environment a remote-session
+   * row was read from.
+   */
+  delegationEnvironmentKind?: 'peer';
   /**
    * archive#1097: set only on a `'remote-session'` item — the connected
    * SSH environment it was read from. Never set on a local item, and a
@@ -246,7 +260,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-interface RemoteHomeEnvironmentSessions {
+export interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];
@@ -268,6 +282,7 @@ export function buildHomeWorkItems({
   chats,
   sessions,
   tasks = [],
+  retainTaskChildren = false,
   agents,
   remoteEnvironments = [],
   chatItems: suppliedChatItems,
@@ -277,6 +292,7 @@ export function buildHomeWorkItems({
   chats: Record<string, ChatUIState>;
   sessions: OrchestrationSessionSummary[];
   tasks?: TaskRecord[];
+  retainTaskChildren?: boolean;
   agents: AgentSummary[];
   /**
    * archive#1097: optional remote-session read augmentation, never a
@@ -309,6 +325,7 @@ export function buildHomeWorkItems({
     orchestrationItems,
     tasks,
     currentSessionIdByConversation,
+    retainTaskChildren,
   );
   if (remoteEnvironments.length === 0) return localItems;
   // Remote items never participate in `mergeHomeWorkItems`'s chat/task/
@@ -398,7 +415,9 @@ function buildSessionWorkItem(
     // still folds to Home's own copy, which is a display fallback for an
     // absent value rather than a second derivation of it.
     projectLabel: sessionProjectLabel(session) ?? 'No project',
-    agentLabel: resolvedAgentLabel,
+    agentLabel: session.modelRoute
+      ? `${resolvedAgentLabel} · via ${session.modelRoute.label}`
+      : resolvedAgentLabel,
     // `model` is only the adapter's direct session field. A restored
     // orchestration row can instead carry its durable resolved identity in
     // `effectiveModel`; prefer it so a completed chat does not lose its
@@ -451,6 +470,9 @@ function buildSessionWorkItem(
       : {}),
     projectSlug: session.projectSlug,
     controlMode: session.controlMode,
+    ...(isPeerDelegationRecord(session)
+      ? { delegationEnvironmentKind: 'peer' as const }
+      : {}),
     ...(provenance
       ? {
           environmentId: provenance.environmentId,
@@ -518,6 +540,7 @@ function mergeHomeWorkItems(
   orchestrationItems: HomeWorkItem[],
   tasks: TaskRecord[],
   currentSessionIdByConversation: ReadonlyMap<string, string>,
+  retainTaskChildren: boolean,
 ): HomeWorkItem[] {
   const taskIdBySessionId = new Map(
     tasks
@@ -533,7 +556,10 @@ function mergeHomeWorkItems(
   // stamps local activity newer than every persisted Session; merging that
   // timestamp into a predecessor first would make it defeat its own child.
   for (const item of [...orchestrationItems, ...chatItems]) {
-    if (isPersistedTaskCorrelation(item, taskIdBySessionId)) {
+    if (
+      !retainTaskChildren &&
+      isPersistedTaskCorrelation(item, taskIdBySessionId)
+    ) {
       continue;
     }
     const key = localConversationIdentity(item);
@@ -830,14 +856,27 @@ function isPersistedTaskCorrelation(
   );
 }
 
+const TASK_STATUS_LABELS = {
+  todo: 'To do',
+  ready: 'To do',
+  triage: 'To do',
+  in_progress: 'In progress',
+  blocked: 'Blocked',
+  review: 'In review',
+  verification: 'In review',
+  done: SESSION_STATUS_WORDS.done,
+  canceled: 'Canceled',
+} as const satisfies Record<TaskRecord['status'], string>;
+
 function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
   return {
     id: task.id,
     kind: 'task',
-    kindLabel: 'Durable Task',
+    kindLabel: `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
-    agentLabel: task.agentId || 'Agent unavailable',
+    projectSlug: task.projectId || undefined,
+    agentLabel: task.agentId || 'No agent assigned',
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
     lifecycleLabel: taskLifecycleLabel(task),
@@ -846,7 +885,8 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
 }
 
 function taskLifecycleLabel(task: TaskRecord): HomeWorkItem['lifecycleLabel'] {
-  if (task.status === 'blocked') return 'Needs attention';
+  if (['blocked', 'review', 'verification'].includes(task.status))
+    return 'Needs attention';
   if (task.status === 'in_progress') return 'Running';
   if (task.status === 'done') return 'Completed';
   if (task.status === 'canceled') return 'Stopped';

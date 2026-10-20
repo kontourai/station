@@ -37,6 +37,7 @@
   RMDir /r "$INSTDIR\node_modules"
   RMDir /r "$INSTDIR\dist-server"
   RMDir /r "$INSTDIR\schemas"
+  RMDir /r "$INSTDIR\examples"
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

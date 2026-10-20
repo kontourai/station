@@ -22,7 +22,7 @@ describe('environment access methods', () => {
   it('creates a credential-free SSH reference and marks it host-managed', () => {
     const method = createHostTunnelAccessMethod({
       id: 'access:ssh:media-station',
-      hostAlias: ' brian-media ',
+      hostAlias: ' home-media ',
       remoteProjectPath: ' ~/dev/github/kontourai/station ',
     });
 
@@ -31,7 +31,7 @@ describe('environment access methods', () => {
       id: 'access:ssh:media-station',
       kind: 'host-tunnel',
       adapter: 'ssh',
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
     expect(JSON.stringify(method)).not.toMatch(

@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatSettingsPanel } from '../components/chat/ChatSettingsPanel';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { chooseOverflow, openOverflow } from './helpers/overflow-menu';
 
 const dismissSummary = vi.fn();
 const showSummary = vi.fn();
@@ -241,19 +242,55 @@ describe('ChatSettingsPanel accessibility', () => {
         }}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss summary' }));
+    // #3045: the row shows one labelled action; putting a summary away and
+    // bringing it back are the menu's, not two more buttons that wrap.
+    const group = screen
+      .getByRole('button', { name: 'Summarize chat' })
+      .closest('fieldset') as HTMLElement;
+    expect(
+      [...group.querySelectorAll('button:not([aria-haspopup])')].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(['Summarize chat']);
+    expect(
+      screen.queryByRole('button', { name: 'Dismiss summary' }),
+    ).toBeNull();
+
+    chooseOverflow('More summary actions', 'Dismiss summary');
     expect(dismissSummary).toHaveBeenCalledWith({
       agentSlug: 'station',
       conversationId: 'c1',
     });
     expect(panelProps.onClose).toHaveBeenCalledOnce();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Show dismissed summary' }),
-    );
+    chooseOverflow('More summary actions', 'Show dismissed summary');
     expect(showSummary).toHaveBeenCalledWith({
       agentSlug: 'station',
       conversationId: 'c1',
     });
+  });
+
+  test('distinguishes account display preferences, device options and server summary actions', () => {
+    render(
+      <ChatSettingsPanel
+        {...props()}
+        sessionSummary={{
+          isGenerating: false,
+          onGenerate: vi.fn(),
+          agentSlug: 'station',
+          conversationId: 'c1',
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Chat display preferences sync with your account when signed in. Device-specific options stay on this device.',
+      ),
+    ).toBeTruthy();
+    const group = screen
+      .getByRole('button', { name: 'Summarize chat' })
+      .closest('fieldset') as HTMLElement;
+    expect(group.textContent).toContain('Runs on the server');
+    expect(openOverflow('More summary actions')).toBeTruthy();
   });
 
   test('renders no session section when no conversation is active', () => {
@@ -287,5 +324,15 @@ describe('ChatSettingsPanel accessibility', () => {
       fireEvent.click(screen.getByText(item.name));
       expect(item.setter).toHaveBeenCalledWith(true);
     }
+    // Its description is resolved, not merely referenced: an id that names
+    // no element describes nothing.
+    const autoFloat = screen.getByRole('switch', {
+      name: 'Automatically show agent browser sessions',
+    });
+    const describedBy = autoFloat.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy as string)?.textContent).toMatch(
+      /float it over the chat/,
+    );
   });
 });

@@ -164,10 +164,11 @@ describe('veritas repo map (1.5)', () => {
   });
 
   it('keeps Veritas and Surface on compatible contracts and authors claim facets', () => {
-    // This assertion IS the compatibility declaration — nothing else in the
-    // repo records which majors Station is built against — so a major bump
-    // SHOULD red it until a human acknowledges the migration here. Surface
-    // 2 -> 3 was that acknowledgement (station#4440).
+    // Keep the reviewed root majors explicit: the next major bump must red
+    // this migration tripwire. For #3683, Veritas 1's schema-5/facet output
+    // and Station's Surface 6 reader were source-reviewed; Veritas keeps its
+    // own Surface 2 dependency. This is not full runtime qualification.
+    // The earlier Surface 2 -> 3 acknowledgement was station#4440.
     //
     // What it must NOT red on is where the dependency is declared or how it
     // is pinned. It went stale three ways at once: Veritas moved
@@ -177,7 +178,7 @@ describe('veritas repo map (1.5)', () => {
     // (conduit, dispatch, flow, thread, ... are all exact). So resolve from
     // either section and compare the major, not the range syntax.
     expect(dependencyMajor(packageJson, '@kontourai/veritas')).toBe(1);
-    expect(dependencyMajor(packageJson, '@kontourai/surface')).toBe(3);
+    expect(dependencyMajor(packageJson, '@kontourai/surface')).toBe(6);
     expect(claimStore.claims.length).toBeGreaterThan(0);
     for (const claim of claimStore.claims) {
       expect(claim.facet).toEqual(expect.any(String));

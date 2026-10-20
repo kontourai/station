@@ -1,0 +1,9 @@
+{
+  "revision": "c614aa71a77ad49b79fbfb3203b6778cd173d5b9",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the 696a71edb071..51c44744ce4 settings delta through real account context, device overlay, scoped row, accent control and authenticated partial-patch owners. Verified compound Answer delivery reset, explicit inherited approval fallback, same-Station boundary, paused offline mutation feedback and 409 reload recovery. Two isolated browser profiles shared theme/defaults while retaining independent sidebar layout; browser connectivity events exercised pause/reconnect; an intentionally stale model-picker save preserved the other browser value. The existing account/tenant HTTP and authority lifetime tests remain the owners for identity separation; physical devices and cross-Station sync are not established. Removed a redundant mutation guard after checking the installed observer reset-on-key-change contract.","inputs":["docs/design/settings-architecture.md","src-ui/src/contexts/AccountPreferencesContext.tsx","src-ui/src/views/settings/SettingsPageRow.tsx","src-ui/src/views/settings/AccountPreferencesSection.tsx","src-ui/src/views/settings/AccentColorPicker.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed only the Preferences across devices journey against 51c44744ce4. The new text names the actual Use default and Use inherited default controls, describes memory-only paused saves and their page-close limit, and directs composite conflict recovery to Reload saved preferences. Live isolated desktop/incognito browser checks confirmed shared account choices, separate sidebar state, explicit Full Access confirmation, server value unchanged while offline-event paused, and persistence after reconnect. Other guide claims are unchanged; native devices and provider execution are not requalified.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

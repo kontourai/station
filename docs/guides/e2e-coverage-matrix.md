@@ -41,9 +41,10 @@ intercepts before extending its evidence to a backend or provider.
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, the retired playbook redirect, and the detail header's two-labelled-action cap at 1280 and 390 pixels |
 | Registry | `registry`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
 | Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
+| Personal Boards | `personal-board-authoring` | Desktop and phone template/edit/preview/save/reload, live Task visibility, arriving proposal and explicit Apply, projectless chat picker, and legacy-tab fallback |
 | Plugins | `plugin-update`, `plugin-preview`, `plugin-pane-sdk-context`, `minimal-workspace-example`, `bundled-plugin-registry-lifecycle` | Update success/failure, permission denial, installed plugin panes rendering, settings, removal, and dialog containment |
 | Schedule | `schedule`, `schedule-runs` | CRUD, explicit run, filter/toggle, keyboard sorting, run history, output, and exact-run deep links |
-| Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, and sidebar/metric rendering; this does not establish telemetry producer completeness |
+| Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, stable toolbar actions at desktop and phone widths, and sidebar/metric rendering; this does not establish telemetry producer completeness |
 
 The [manifest](../../tests/e2e-manifest.mjs) assigns each spec's bucket and
 execution class. The [coverage runner](../../scripts/run-e2e-coverage.mjs) runs

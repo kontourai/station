@@ -1,14 +1,18 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterShape,
   ProviderSession,
 } from '../../../providers/adapter-shape.js';
 import { waitForReceipt } from '../../infra/receipt-bus.js';
+import { ToolLibraryService } from '../../plugins/tool-library-service.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
 import {
   buildAgentRunSummary,
@@ -21,6 +25,8 @@ import {
   startRecoveredOrchestrationSession,
   trackOrchestrationSession,
 } from '../orchestration-session-state.js';
+import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { SessionStartIndeterminateError } from '../session-turn-boundary.js';
 
 /**
  * archive#3476: the engine-start half of recovery, which boot no longer runs.
@@ -58,6 +64,95 @@ const OBSERVATION: SessionAnswerabilityObservation = {
   observedBy: 'test-instance#0',
   observedAt: '2026-08-03T00:00:00.000Z',
 };
+
+const recoveryTemp = trackTempDirs();
+
+test.each([
+  'withdrawn source',
+  'corrupt policy',
+  'missing definition',
+  'unsupported approval',
+])('recovery refuses %s without starting the engine', async (failure) => {
+  const home = recoveryTemp('recovered-tool-policy-');
+  const policy = new ToolLibraryService(home);
+  await policy.bindAgent('analyst', 'design-id', 'design', async () => {});
+  if (failure === 'withdrawn source')
+    await policy.setShared('reports', false, async () => {});
+  if (failure === 'corrupt policy') {
+    mkdirSync(join(home, 'security'), { recursive: true });
+    writeFileSync(join(home, 'security', 'tool-library.json'), '{}');
+  }
+  const provider = failure === 'unsupported approval' ? 'codex' : 'claude';
+  const resolver = createSessionAgentResolver({
+    loadAgentSpec: async () =>
+      failure === 'missing definition'
+        ? null
+        : {
+            name: 'Analyst',
+            project: 'design',
+            prompt: 'Read reports',
+            tools: {
+              mcpServers: ['reports'],
+              ...(failure === 'unsupported approval'
+                ? { askBeforeUse: ['reports_write'] }
+                : {}),
+            },
+          },
+    resolveToolServer: async () => null,
+    resolveSkillDir: async () => null,
+    validateProjectTools: async (slug, spec) =>
+      policy.assertAgent(slug, spec, 'design-id'),
+  });
+  const session: ProviderSession = {
+    provider,
+    threadId: 'recovered-analyst',
+    status: 'ready',
+    createdAt: '2026-10-15T00:00:00.000Z',
+    updatedAt: '2026-10-15T00:00:00.000Z',
+  };
+  const startSession = vi.fn(async () => session);
+  const adapter: ProviderAdapterShape = {
+    provider,
+    metadata: {
+      displayName: 'Recovery fixture',
+      description: 'Recovery policy test',
+      capabilities: ['agent-runtime'],
+    },
+    startSession,
+    sendTurn: async () => {
+      throw new Error('Unexpected turn start');
+    },
+    interruptTurn: async () => ({ outcome: 'no-active-turn' }),
+    respondToRequest: async () => {},
+    stopSession: async () => {},
+    listSessions: async () => [],
+    hasSession: async () => false,
+    stopAll: async () => {},
+    streamEvents: async function* () {},
+  };
+  await expect(
+    startRecovered({
+      session,
+      adapter,
+      options: {
+        readSessionStartMetadata: () => ({
+          agentSlug: 'analyst',
+          projectSlug: 'design',
+        }),
+        resolveSessionAgent: resolver,
+      },
+    }),
+  ).rejects.toThrow(
+    failure === 'withdrawn source'
+      ? 'does not allow reports'
+      : failure === 'corrupt policy'
+        ? 'permissions could not be verified'
+        : failure === 'missing definition'
+          ? 'could not be resolved'
+          : 'cannot enforce',
+  );
+  expect(startSession).not.toHaveBeenCalled();
+});
 
 describe('orchestration-session-state', () => {
   test('resolveOrchestrationAdapterForThread caches discovered ownership', async () => {
@@ -600,6 +695,9 @@ describe('orchestration-session-state', () => {
           method: 'runtime.error',
           severity: 'error',
           code: SESSION_RECOVERY_FAILED_CODE,
+          kind: 'unavailable',
+          retryable: true,
+          failurePhase: 'failed',
           retriable: true,
           message: expect.stringContaining(
             'started under a different engine connection configuration',
@@ -608,6 +706,25 @@ describe('orchestration-session-state', () => {
       );
       expect(eventStore.appendEventIfAbsent.mock.calls[0][0].message).toContain(
         'This conversation could not be reopened',
+      );
+    });
+
+    test('a recovered start with possible provider creation projects indeterminate metadata', async () => {
+      const { adapter, eventStore, session } = failingRecovery();
+      vi.mocked(adapter.startSession).mockRejectedValueOnce(
+        new SessionStartIndeterminateError(),
+      );
+      await run(adapter, eventStore, session);
+      expect(adapter.startSession).toHaveBeenCalledTimes(1);
+      expect(eventStore.appendEventIfAbsent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'runtime.error',
+          code: 'SESSION_START_INDETERMINATE',
+          kind: 'indeterminate',
+          retryable: false,
+          failurePhase: 'indeterminate',
+          retriable: false,
+        }),
       );
     });
 
@@ -4334,4 +4451,85 @@ test('nonblocking questions retain running/settled status and snapshot blocking 
     buildAgentRunSummary({ answerability: OBSERVATION, loaded, events })
       ?.status,
   ).toBe(settled);
+});
+
+test('configured sessions retain their actual safe proxy route and a direct re-launch clears it', () => {
+  const sessions = new Map<string, ProviderSession>();
+  const providers = new Map();
+  const apply = (modelRoute?: unknown) =>
+    projectOrchestrationEventToReadModel({
+      event: {
+        provider: 'codex',
+        threadId: 'proxy-route',
+        method: 'session.configured',
+        sessionId: 'proxy-route',
+        createdAt: '2026-10-03T00:00:00Z',
+        metadata: { modelRoute },
+      } as any,
+      threadProviders: providers,
+      sessionReadModel: sessions,
+    });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317/v1',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toEqual({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317',
+  });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'bad',
+    endpoint: 'https://user:key@proxy.example',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  });
+  apply();
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+});
+
+test('session summaries expose the captured route when the loaded runtime has no new route field', () => {
+  const route = {
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  };
+  const loaded: ProviderSession = {
+    provider: 'codex',
+    threadId: 'route-summary',
+    status: 'ready',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      eventId: 'route-summary-configured',
+      provider: 'codex',
+      threadId: loaded.threadId,
+      createdAt: loaded.createdAt,
+      method: 'session.configured',
+      sessionId: loaded.threadId,
+      metadata: { modelRoute: route },
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded,
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toEqual(route);
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded: { ...loaded, modelRoute: undefined },
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toBeUndefined();
 });

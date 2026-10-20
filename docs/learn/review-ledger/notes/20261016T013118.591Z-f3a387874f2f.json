@@ -1,0 +1,7 @@
+{
+  "revision": "d4c516219447b1b51587a5bd1acdfe81c5387acd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the testing guide against the gallery spec change: only the Activity New Task button locator label changed (New task -> New Task) to match the product label; no guide claim mentions that label or screen.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

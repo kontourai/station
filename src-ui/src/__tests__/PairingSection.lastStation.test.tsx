@@ -16,6 +16,11 @@ vi.mock('../hooks/useFeatureSettings', () => ({
   }),
 }));
 
+// #3557: tested on its own (PeopleSection.test); it needs a query client.
+vi.mock('../views/settings/OwnAccessTokensPanel', () => ({
+  OwnAccessTokensPanel: () => null,
+}));
+
 afterEach(() => {
   deviceSettingsStore.reset('openLastStationOnLaunch');
 });

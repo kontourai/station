@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; the orchestration routes accept expectedInputRequest on delegated continue, map binding refusals to 409, and decorate pendingRequest.callerCanRespond on a served read.","inputs":["docs/user/concepts.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

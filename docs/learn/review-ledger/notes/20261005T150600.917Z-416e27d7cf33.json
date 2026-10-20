@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Re-reviewed the connection id row against acp.ts and adapter-identity.ts after the fix round: the 400 now names the engine that owns the id (nativeRuntimeConnectionIds returns id -> owning engine), and the stored-collision advice is delete-and-re-add, since PUT /acp/connections/:id pins the id and no rename exists. Updated both claims.","inputs":["docs/guides/acp.md"]}
+  ]
+}

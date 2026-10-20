@@ -1,0 +1,7 @@
+{
+  "revision": "223988ce473367b4db32446f1a352ee038594fd3",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Re-reviewed the actual renderer after independent findings: static invalidations bypass animation throttling; renderApp explicitly releases the HTML boot renderer before every React entry including account/share and immediately-ready flows. Full channel imagery is selected from the profile tag/class. No native/storage/auth authority changed. Focused scheduler regressions catch both original reduced-motion failures and channel substitution. Fraunces Original-spacing splash, stage sources, static reduced-motion behavior and frame cleanup claims remain accurate.","inputs":["docs/guides/theming.md"]}
+  ]
+}

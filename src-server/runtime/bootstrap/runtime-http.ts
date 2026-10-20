@@ -9,7 +9,10 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
   STATION_ENVELOPE_HEADER,
@@ -32,6 +35,10 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import {
+  clientProtocolApplies,
+  evaluateClientProtocol,
+} from '../../security/client-protocol-admission.js';
 import {
   NativeDeviceRequestRefusedError,
   nativeDeviceOnlyObservationRoute,
@@ -74,6 +81,7 @@ import {
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
+import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -94,7 +102,7 @@ import { getTenantRequestContext } from './runtime-tenant-context.js';
 
 type RuntimeApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
-export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
+const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -567,8 +575,9 @@ async function admitNativeDeviceProofRequest(
   // refused with no credential fallback.
   if (
     c.req.raw.headers.has('authorization') ||
-    parseDeviceSessionCookie(c.req.raw.headers.get('cookie') ?? undefined) !==
-      undefined
+    /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?\s*=/.test(
+      c.req.raw.headers.get('cookie') ?? '',
+    )
   )
     return refused(
       403,
@@ -724,7 +733,10 @@ function configureRuntimeSecurity(
 ): void {
   const allowedOrigins = new Set(security.allowedOrigins ?? []);
   const limiter = new RuntimeAuthFailureLimiter(security);
+  const protocolAuditLimiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
+  const clientProtocolPolicy =
+    security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
@@ -750,7 +762,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -790,6 +802,36 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+    // ── #2962 client API protocol admission ──
+    // Before any credential check, so an outdated client is told to update
+    // rather than handed an authentication failure it cannot fix. CORS
+    // headers are already set above, so a browser can read the refusal.
+    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+      const refusal = evaluateClientProtocol(
+        c.req.header(CLIENT_PROTOCOL_HEADER),
+        clientProtocolPolicy,
+      );
+      if (refusal) {
+        // Bound audit emission without consuming the authentication budget.
+        // Keep answering protocol refusals after the audit budget is exhausted.
+        if (protocolAuditLimiter.retryAfterSeconds(limiterKey) === undefined) {
+          protocolAuditLimiter.recordFailure(limiterKey);
+          emitSecurityAudit(security, c, routeLabeler, {
+            event: 'station.auth.failure',
+            outcome: 'denied',
+            reason: refusal.body.error.code,
+            routeClass,
+            peerClass: effectivePeerClass,
+            transport: 'http',
+            timestamp: security.now?.() ?? Date.now(),
+            ...(refusal.body.error.clientProtocol === undefined
+              ? {}
+              : { clientProtocol: refusal.body.error.clientProtocol }),
+          });
+        }
+        return c.json(refusal.body, refusal.status);
+      }
     }
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
@@ -923,7 +965,13 @@ function configureRuntimeSecurity(
     const bearerCredential = parseStrictBearer(authorization);
     const cookieCredential =
       authorization === undefined
-        ? parseDeviceSessionCookie(c.req.header('cookie'))
+        ? parseDeviceSessionCookie(
+            c.req.header('cookie'),
+            security.resolveCredentialAuthority
+              ? (candidate) =>
+                  security.resolveCredentialAuthority!(candidate) !== undefined
+              : undefined,
+          )
         : undefined;
     const credential = bearerCredential ?? cookieCredential;
 
@@ -1058,6 +1106,7 @@ function configureRuntimeSecurity(
             path: c.req.path,
           },
           authority === 'operator-credential',
+          locality === 'home-possession',
         );
       if (!permitted) {
         if (cookieCredential) {
@@ -1366,44 +1415,69 @@ async function readBoundedBody(
   return bytes;
 }
 
+export function deviceSessionCookieName(
+  secure: boolean,
+  environmentId: string,
+): string {
+  const scope = createHash('sha256')
+    .update(environmentId)
+    .digest('hex')
+    .slice(0, 16);
+  return `${secure ? SECURE_DEVICE_SESSION_COOKIE : LOOPBACK_DEVICE_SESSION_COOKIE}-${scope}`;
+}
+
 export function parseDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   // Cookie jars are shared across ports. Other localhost applications can
   // legitimately contribute several KiB; bound the header at the Node HTTP
   // default while still validating only one exact Station credential below.
   if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
+  const names = new Set<string>();
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');
     if (separator <= 0) continue;
     const name = segment.slice(0, separator).trim();
     if (
       name !== SECURE_DEVICE_SESSION_COOKIE &&
-      name !== LOOPBACK_DEVICE_SESSION_COOKIE
+      name !== LOOPBACK_DEVICE_SESSION_COOKIE &&
+      !/^(?:__Host-)?station-device-[a-f0-9]{16}$/.test(name)
     ) {
       continue;
     }
     const candidate = segment.slice(separator + 1).trim();
-    if (!DEVICE_CREDENTIAL_PATTERN.test(candidate)) return undefined;
+    if (names.has(name) || !DEVICE_CREDENTIAL_PATTERN.test(candidate))
+      return undefined;
+    names.add(name);
     matches.push(candidate);
   }
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 1) return matches[0];
+  const current = recognizes ? matches.filter(recognizes) : [];
+  return current.length === 1 ? current[0] : undefined;
 }
 
 /** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
 export function parseSecureDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   if (!value || value.length > 16 * 1024) return undefined;
-  const hasSecureName = value.split(';').some((segment) => {
+  const credential = parseDeviceSessionCookie(value, recognizes);
+  if (!credential) return undefined;
+  const hasSecureCredential = value.split(';').some((segment) => {
     const separator = segment.indexOf('=');
     return (
       separator > 0 &&
-      segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE
+      segment.slice(separator + 1).trim() === credential &&
+      (segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE ||
+        /^__Host-station-device-[a-f0-9]{16}$/.test(
+          segment.slice(0, separator).trim(),
+        ))
     );
   });
-  return hasSecureName ? parseDeviceSessionCookie(value) : undefined;
+  return hasSecureCredential ? credential : undefined;
 }
 
 function hasCredentialQuery(url: string): boolean {
@@ -1481,7 +1555,7 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists)?\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
   // The receiver-side contribution query is a POST-carried read: it changes
@@ -1497,9 +1571,20 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
     READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
   )
     return [];
+  // A draft lease keeps its watcher alive. Successful draft revisions publish
+  // PLUGIN_DRAFTS_REBUILT; the pane's own query refetches otherwise.
+  if (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease\/?$/.test(path)
+  )
+    return [];
   const keys: string[] = [];
 
-  if (path.startsWith('/agents')) keys.push('agents');
+  if (
+    path.startsWith('/agents') &&
+    !(method === 'POST' && /^\/agents\/[^/]+\/chat\/?$/.test(path))
+  )
+    keys.push('agents');
   if (path.startsWith('/integrations')) keys.push('integrations');
   if (path.includes('/skills')) keys.push('skills');
   if (path.includes('/providers')) keys.push('providers');

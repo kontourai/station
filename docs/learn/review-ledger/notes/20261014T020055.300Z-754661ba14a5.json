@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Changed input SettingsView.tsx: only the Developer tools row description string changed (now also says it records transcript layout diagnostics). Grepped module-map for SettingsView/settings/developer-tools claims: it cites settings modules for shortcuts, import/export and knowledge roots, none of which this change touches. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]}
+  ]
+}

@@ -15,7 +15,7 @@ import { createMCPToolProvenanceGeneration } from '../../services/orchestration/
 import { BuiltinScheduler } from '../../services/scheduling/builtin-scheduler.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
-import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
+import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
 import { runWithNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createVoltAgentLifecycleHooks,
@@ -475,7 +475,7 @@ describe('VoltAgent lifecycle hooks', () => {
       beforeToolCall,
     });
 
-    await runWithScheduledPrincipal(
+    await runWithUnattendedPrincipal(
       { kind: 'scheduled-job', jobId: 'server-issued-job-a' },
       'receipt-run-1',
       async () => {
@@ -516,7 +516,7 @@ describe('VoltAgent lifecycle hooks', () => {
         (await resolve(tool, invocation)) === true,
     });
     const call = (jobId: string, runId: string) =>
-      runWithScheduledPrincipal(
+      runWithUnattendedPrincipal(
         { kind: 'scheduled-job', jobId },
         runId,
         async () => {
@@ -536,6 +536,50 @@ describe('VoltAgent lifecycle hooks', () => {
     await expect(call('server-job-b', 'run-b')).rejects.toMatchObject({
       code: 'TOOL_FORBIDDEN',
     });
+  });
+
+  it('passes a runtime-composed automation-rule principal to exact grants, not a sibling rule, same-id job or forged value', async () => {
+    const store = new UnattendedGrantStore(grantHome);
+    const rule = { kind: 'automation-rule' as const, ruleId: 'rule-a' };
+    await store.grantTool(principalKey(rule), 'lookup', 'operator');
+    const resolve = makeUnattendedGrantResolver(store, {
+      logger: { debug: vi.fn(), error: vi.fn() },
+    });
+    const seen: unknown[] = [];
+    const hooks = createVoltAgentLifecycleHooks('assistant', {
+      beforeToolCall: async (tool, invocation) => {
+        seen.push({
+          principal: invocation.unattendedPrincipal,
+          traceId: invocation.traceId,
+        });
+        return (await resolve(tool, invocation)) === true;
+      },
+    });
+    const call = (
+      principal: Parameters<typeof runWithUnattendedPrincipal>[0],
+      runId: string,
+    ) =>
+      runWithUnattendedPrincipal(principal, runId, async () => {
+        await hooks.onToolStart!({
+          agent: {} as any,
+          tool: { name: 'lookup' } as any,
+          context: operationContext(),
+          args: {},
+          options: {
+            ...toolOptions(runId),
+            unattendedPrincipal: { kind: 'automation-rule', ruleId: 'rule-a' },
+          },
+        });
+      });
+
+    await expect(call(rule, 'episode-run-a')).resolves.toBeUndefined();
+    expect(seen[0]).toEqual({ principal: rule, traceId: 'episode-run-a' });
+    await expect(
+      call({ kind: 'automation-rule', ruleId: 'rule-b' }, 'episode-run-b'),
+    ).rejects.toMatchObject({ code: 'TOOL_FORBIDDEN' });
+    await expect(
+      call({ kind: 'scheduled-job', jobId: 'rule-a' }, 'job-run'),
+    ).rejects.toMatchObject({ code: 'TOOL_FORBIDDEN' });
   });
 
   it('carries the discovered scheduler principal and receipt trace through the production scheduler Adapter into Volt hooks', async () => {

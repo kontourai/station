@@ -23,35 +23,17 @@ interface ChatDockActiveIdentityProps {
    * the header then names none rather than inventing one.
    */
   modelLabel?: string | null;
+  routeLabel?: string;
   inputOrigin?: OrchestrationInputOrigin;
   onClose: (id: string) => void;
 }
 
-/**
- * The active conversation's compact identity belongs to the dock header, not
- * to the action row below it. Keeping it as a component prevents the header
- * and tab bar from growing duplicate session/engine rendering paths (#1064).
- *
- * station#3309 (owner: "showing agent icons and metadata"): the row reads
- * AGENT-first. The agent's icon leads, then its name; the engine that executes
- * it and the model it runs follow. It used to open with the session title and
- * hang the engine chip off the end, which named the conversation but never the
- * thing answering in it.
- *
- * #1536 F reordered what comes after the name and collapsed the tail. The
- * conversation TITLE is now the row's flexible element and the engine and model
- * are ONE muted token behind it that gives way first: measured on a project
- * page, a 110-character project path left the title about one character while
- * "Claude Code" and "Opus 5" — two separately flex-positioned spans, each
- * `flex-shrink: 0` — overprinted each other. The agent identity still leads,
- * because that is #3309's finding and it is short; what changed is that the
- * label distinguishing THIS chat from the last one is no longer the first
- * thing to vanish.
- */
+/** Conversation title first; assistant and execution identity remain on the second line. */
 export function ChatDockActiveIdentity({
   session,
   agent,
   modelLabel,
+  routeLabel,
   originLabel,
   originProvider,
   inputOrigin,
@@ -72,7 +54,7 @@ export function ChatDockActiveIdentity({
         execution: agent.execution,
       })
     : null;
-  // The agent's own name now leads this row, so an engine chip repeating it
+  // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
   // already applies to an ACP connection's self-referential model (#894
@@ -91,15 +73,22 @@ export function ChatDockActiveIdentity({
       : engine;
   // The avatar's identity comes from the SESSION's committed agent slug, which
   // is present whether or not the enriched catalog resolved this agent, so the
-  // header and the transcript's message avatars stay the same picture. Artwork
-  // (`icon`) is the only part that needs the catalog; without it `AgentIcon`
-  // falls back to its slug-seeded identicon (station#1424) — a deterministic
-  // rendering of the id we hold, not a claim that this agent has artwork.
+  // identicon seed does not depend on the catalog. Artwork (`icon`) needs the
+  // catalog; without it `AgentIcon` falls back to its slug-seeded identicon
+  // (station#1424) — a deterministic rendering of the id we hold, not a claim
+  // that this agent has artwork.
+  //
+  // The engine mark (#3355) comes from an imported session's recorded
+  // provider, else from the catalog's engine for this agent. A local chat has
+  // no `originProvider`, so without the catalog fallback a Codex agent drew
+  // "CO" initials here even with the catalog healthy. This is not guaranteed
+  // to match every transcript avatar: a message row that carries its own
+  // `agentDisplayName` draws from that attribution, which has no engine id.
   const iconSubject = {
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
-    engineId: parseEngineId(originProvider),
+    engineId: parseEngineId(originProvider) ?? agent?.engineId,
   };
   // One muted token, not a pill plus a span: `engineChipLabel` already joins an
   // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
@@ -107,7 +96,13 @@ export function ChatDockActiveIdentity({
   // known, so the row names nothing it cannot derive.
   const engineTrail =
     originLabel ??
-    [engineChipLabel(engineChip), modelLabel].filter(Boolean).join(' · ');
+    [
+      engineChipLabel(engineChip),
+      modelLabel,
+      routeLabel ? `via ${routeLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">
@@ -119,29 +114,28 @@ export function ChatDockActiveIdentity({
         />
       )}
       <div className="chat-dock__active-identity-text">
-        {agentName && !originLabel && (
-          <strong className="chat-dock__active-identity-agent">
-            {agentName}
-          </strong>
-        )}
-        {/* `title` because this is the element that ellipsizes: the full label
-            has to stay readable, and hover is the channel that costs the row
-            nothing. */}
         <span
           className="chat-dock__active-identity-title"
           title={session.title}
         >
           {session.title}
         </span>
-        {engineTrail && (
-          <span
-            className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
-            title={engineTrail}
-          >
-            {originLabel && <AgentIcon agent={iconSubject} size={18} />}
-            {engineTrail}
-          </span>
-        )}
+        <span className="chat-dock__active-identity-context">
+          {agentName && !originLabel && (
+            <strong className="chat-dock__active-identity-agent">
+              {agentName}
+            </strong>
+          )}
+          {engineTrail && (
+            <span
+              className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
+              title={engineTrail}
+            >
+              {originLabel && <AgentIcon agent={iconSubject} size={18} />}
+              {engineTrail}
+            </span>
+          )}
+        </span>
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"

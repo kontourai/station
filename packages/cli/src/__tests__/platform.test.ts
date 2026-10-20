@@ -94,7 +94,9 @@ describe('inspectProcessFingerprint (station#3049)', () => {
     expect(first?.startToken).toMatch(
       process.platform === 'linux'
         ? /^linux:[0-9a-f-]+:\d+$/
-        : /^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/,
+        : process.platform === 'win32'
+          ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/
+          : /^[A-Z][a-z]{2} [A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} \d{4}$/,
     );
     expect(second).toEqual(first);
   });
@@ -356,6 +358,7 @@ describe('captureStableProcessFingerprint', () => {
     );
 
     const result = captureStableProcessFingerprint(41, {
+      platform: 'darwin',
       inspect,
       intervalMs: 20,
       now: () => elapsed,
@@ -376,6 +379,7 @@ describe('captureStableProcessFingerprint', () => {
     const stable = fingerprint('c');
 
     const result = captureStableProcessFingerprint(41, {
+      platform: 'darwin',
       inspect: () => stable,
       intervalMs: 25,
       now: () => elapsed,
@@ -395,6 +399,7 @@ describe('captureStableProcessFingerprint', () => {
     let generation = 0;
 
     const result = captureStableProcessFingerprint(41, {
+      platform: 'darwin',
       inspect: () => fingerprint(generation++ % 2 === 0 ? 'd' : 'e'),
       intervalMs: 20,
       now: () => elapsed,
@@ -422,6 +427,7 @@ describe('captureStableProcessFingerprint', () => {
     const observationBudget = Math.ceil(2_000 / 20) + 2;
 
     const result = captureStableProcessFingerprint(41, {
+      platform: 'darwin',
       inspect,
       intervalMs: 20,
       now: () => {
@@ -438,6 +444,156 @@ describe('captureStableProcessFingerprint', () => {
     expect(inspect.mock.calls.length).toBeLessThanOrEqual(observationBudget);
     expect(sleep.mock.calls.length).toBeLessThanOrEqual(observationBudget);
     expect(nowCalls).toBeLessThanOrEqual(observationBudget + 1);
+  });
+});
+
+// Windows (#2675): what `station start` records for its server and UI, and
+// what a stop by record checks before `taskkill /F /T`. Driven through the
+// real Windows probe with PowerShell replaced by a fake that answers as a
+// process table would.
+describe('inspectProcessFingerprint on Windows', () => {
+  const NODE = 'C:\\Station\\versions\\1.0.0\\runtime\\node.exe';
+  const BORN = '2026-10-11T09:15:02.1234560Z';
+  const base64 = (text: string) => Buffer.from(text, 'utf8').toString('base64');
+
+  /** A fake PowerShell: answers each pid's probe from `table`. */
+  function powershell(
+    table: Map<number, { birth: string; image: string } | 'gone'>,
+  ) {
+    return vi.fn((command: string, args: string[]) => {
+      expect(command).toBe(
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      );
+      const script = args.at(-1) ?? '';
+      const pid = Number(/GetProcessById\((\d+)\)/.exec(script)?.[1]);
+      const entry = table.get(pid);
+      if (!entry || entry === 'gone') {
+        throw Object.assign(new Error('exited 1'), { status: 1 });
+      }
+      return `${entry.birth}\r\n${base64(entry.image)}\r\n`;
+    });
+  }
+
+  it('records the start time and a digest of the executable image', () => {
+    const exec = powershell(new Map([[41, { birth: BORN, image: NODE }]]));
+    expect(
+      inspectProcessFingerprint(41, { platform: 'win32', exec: exec as never }),
+    ).toEqual({
+      pid: 41,
+      startToken: BORN,
+      commandDigest: createHashHex(NODE),
+    });
+    // One probe, which reads the start time on both sides of the image so a
+    // pid that changed owner mid-read fails instead of mixing two processes.
+    expect(exec).toHaveBeenCalledTimes(1);
+    const script = (exec.mock.calls[0][1] as string[]).at(-1) ?? '';
+    expect(script).toContain("$ErrorActionPreference = 'Stop'");
+    expect(script.indexOf('$before = Read-StationBirth')).toBeLessThan(
+      script.indexOf('MainModule.FileName'),
+    );
+    expect(script.indexOf('MainModule.FileName')).toBeLessThan(
+      script.indexOf('$after = Read-StationBirth'),
+    );
+    expect(script).toContain('if ($before -ne $after) { exit 3 }');
+  });
+
+  it('a pid Windows reused for another process does not match the record', () => {
+    const table = new Map([[41, { birth: BORN, image: NODE }]]);
+    const exec = powershell(table);
+    const recorded = inspectProcessFingerprint(41, {
+      platform: 'win32',
+      exec: exec as never,
+    });
+    expect(recorded).not.toBeNull();
+    const observe = () =>
+      inspectProcessFingerprint(41, { platform: 'win32', exec: exec as never });
+    const noLegacy = {
+      legacyInspect: () => null,
+      pinnedLstartInspect: () => null,
+    };
+
+    // Same process: matches.
+    expect(fingerprintMatchesRecorded(observe(), recorded, noLegacy)).toBe(
+      true,
+    );
+    // Reused by another node.exe started later: the start time differs.
+    table.set(41, { birth: '2026-10-11T09:47:30.0000010Z', image: NODE });
+    expect(fingerprintMatchesRecorded(observe(), recorded, noLegacy)).toBe(
+      false,
+    );
+    // Reused by another program with the same start time (a stepped clock):
+    // the image differs.
+    table.set(41, {
+      birth: BORN,
+      image: 'C:\\Windows\\System32\\notepad.exe',
+    });
+    expect(fingerprintMatchesRecorded(observe(), recorded, noLegacy)).toBe(
+      false,
+    );
+  });
+
+  it('fails closed on a failed probe or anything but a start time and an image path', () => {
+    const answers: Array<string | Error> = [
+      // The start time changed while the image was read (`exit 3`), access
+      // was refused, or the pid is gone.
+      Object.assign(new Error('exited 3'), { status: 3 }),
+      Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
+      `${BORN}\r\n`,
+      // A relative image, or an image printed raw rather than as Base64.
+      `${BORN}\r\n${base64('node.exe')}\r\n`,
+      `${BORN}\r\n${NODE}\r\n`,
+      // Not canonical Base64, or not UTF-8 underneath.
+      // 'QzpceA==' is canonical for C:\x; 'QzpceB==' decodes to it too.
+      `${BORN}\r\nQzpceB==\r\n`,
+      `${BORN}\r\n${Buffer.from([0x43, 0x3a, 0x5c, 0xe9]).toString('base64')}\r\n`,
+      // A UTF-8 byte-order mark before the path.
+      `${BORN}\r\n${Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(NODE)]).toString('base64')}\r\n`,
+      `10/11/2026 09:15:02\r\n${base64(NODE)}\r\n`,
+      `${BORN}\r\n${base64(NODE)}\r\nextra\r\n`,
+      '',
+    ];
+    for (const answer of answers) {
+      const exec = vi.fn(() => {
+        if (answer instanceof Error) throw answer;
+        return answer;
+      });
+      expect(
+        inspectProcessFingerprint(41, {
+          platform: 'win32',
+          exec: exec as never,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it('reads a non-ASCII image the same whatever code page the caller runs under', () => {
+    // The probe prints the image as Base64 of its UTF-8 bytes, so the output
+    // is ASCII and no console code page can change what is digested.
+    const image = 'C:\\Users\\José\\Station\\runtime\\node.exe';
+    const exec = powershell(new Map([[41, { birth: BORN, image }]]));
+    const probed = inspectProcessFingerprint(41, {
+      platform: 'win32',
+      exec: exec as never,
+    });
+    expect(probed?.commandDigest).toBe(createHashHex(image));
+    const script = (exec.mock.calls[0][1] as string[]).at(-1) ?? '';
+    expect(script).toContain(
+      '[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($image))',
+    );
+  });
+
+  it('captures the identity of a just-started child in one observation', () => {
+    const inspect = vi.fn(() => fingerprint('w'));
+    const sleep = vi.fn();
+    expect(
+      captureStableProcessFingerprint(41, {
+        platform: 'win32',
+        inspect,
+        sleep,
+      }),
+    ).toEqual(fingerprint('w'));
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });
 

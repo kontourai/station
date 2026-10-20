@@ -1,6 +1,6 @@
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -9,9 +9,13 @@ import {
 } from '../query-core';
 export async function fetchAttention(
   apiBase?: string,
+  options?: ClientRequestOptions,
 ): Promise<AttentionProjection> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(`${resolvedApiBase}/api/attention`);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/attention`,
+    options,
+  );
   const result = (await response.json()) as {
     success: boolean;
     data?: AttentionProjection;

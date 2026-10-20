@@ -1,0 +1,7 @@
+{
+  "revision": "e2d2e1b60e0605bd42c92cf7d7182e8ad41ec8e8",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed Project managed-engine authoring and dormant-session startup after delivery review: Station has no external binding, editor restores Station, and recovery propagates permission refusals plus the authored-definition gate. Four real-resolver recovery regressions failed before the fix; focused authoring, editor and resolver suites passed 193 tests. No live provider or browser/computer capability expansion is claimed.","inputs":["docs/guides/agents.md","src-server/runtime/routes/tool-library-runtime.ts","src-server/services/orchestration/session-agent-resolution.ts","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]}
+  ]
+}

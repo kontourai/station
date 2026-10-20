@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   acceptModelLaunchPlan,
   type EngineId,
@@ -9,7 +10,8 @@ import {
   modelSelectionReceipt,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -28,6 +30,7 @@ import type {
   LLMMessage,
   LLMStreamChunk,
 } from '../llm/model-provider-types.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { bedrockReportedUsage } from './ai-sdk-reported-usage.js';
 
@@ -67,6 +70,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       'tool-calls',
       'interrupt',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),
@@ -740,9 +744,10 @@ export class BedrockAdapter implements ProviderAdapterShape {
       createdAt: completedAt,
       turnId: options.turnId,
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message: options.message,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(options.input.threadId, {
       status: 'ready',
       updatedAt: completedAt,

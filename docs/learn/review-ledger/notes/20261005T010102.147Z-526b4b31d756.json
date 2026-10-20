@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/work-board-security.md","note":"actionlint-gate.mjs change only admits the exact merge-queue full-regression reusable call with read-only contents/actions; no work-board security claim depends on it.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

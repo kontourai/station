@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 
 /** Explicit syntax boundary for the portable client. Resolved bundle checks

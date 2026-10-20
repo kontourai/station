@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import {
+  CodeGlyph,
   EngineGlyph,
   FolderGlyph,
   GlobeGlyph,
@@ -29,6 +30,7 @@ export function ContextPickerOptions({
   selectedContext,
   onSelectContext,
   folderlessHint,
+  renderMark,
 }: {
   contextSearch: string;
   onContextSearchChange: (value: string) => void;
@@ -42,6 +44,11 @@ export function ContextPickerOptions({
    * engines, but an ACP engine's own folder or a private one.
    */
   folderlessHint: NewChatWorkspaceHint;
+  /**
+   * The row's mark, for a surface that draws its own (the start composer
+   * draws `ProjectIcon`). `undefined` from it keeps the default mark.
+   */
+  renderMark?: (option: NewChatModalContextOption) => ReactNode;
 }) {
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -67,9 +74,13 @@ export function ContextPickerOptions({
         }}
       />
       {filteredContextOptions.map((opt) => {
-        // A project with no folder runs its chats in the home folder.
+        // A project with no folder runs where the chosen Agent decides.
         const folderless =
-          opt.value !== GLOBAL_CONTEXT && !opt.workingDirectory?.trim();
+          opt.value !== GLOBAL_CONTEXT &&
+          !opt.unavailable &&
+          !opt.unchecked &&
+          !opt.workingDirectory?.trim();
+        const mark = renderMark?.(opt);
         return (
           <button
             type="button"
@@ -80,11 +91,13 @@ export function ContextPickerOptions({
           >
             <span className="new-chat-modal__dropdown-item-main">
               <span className="new-chat-modal__dropdown-item-label">
-                <LayoutIcon
-                  layout={{ name: opt.label, icon: opt.icon }}
-                  fallback={contextGlyph(opt.glyph)}
-                  size={24}
-                />
+                {mark ?? (
+                  <LayoutIcon
+                    layout={{ name: opt.label, icon: opt.icon }}
+                    fallback={contextGlyph(opt.glyph)}
+                    size={24}
+                  />
+                )}
                 <span>{opt.label}</span>
               </span>
               {opt.workingDirectory && (
@@ -93,6 +106,22 @@ export function ContextPickerOptions({
                 </span>
               )}
             </span>
+            {opt.unavailable && (
+              <span
+                className="new-chat-modal__no-cwd-badge"
+                title={opt.unavailable}
+              >
+                Can't start
+              </span>
+            )}
+            {opt.unchecked && (
+              <span
+                className="new-chat-modal__no-cwd-badge"
+                title={opt.unchecked}
+              >
+                Not checked
+              </span>
+            )}
             {folderless && (
               <span
                 className="new-chat-modal__no-cwd-badge"
@@ -109,11 +138,13 @@ export function ContextPickerOptions({
 }
 
 export function contextGlyph(
-  name: 'engine' | 'folder' | 'globe' | 'plug' | 'time' | undefined,
+  name: 'engine' | 'code' | 'folder' | 'globe' | 'plug' | 'time' | undefined,
 ) {
   switch (name) {
     case 'engine':
       return <EngineGlyph />;
+    case 'code':
+      return <CodeGlyph />;
     case 'folder':
       return <FolderGlyph />;
     case 'globe':

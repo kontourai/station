@@ -1,0 +1,7 @@
+{
+  "revision": "3a4d7160bd6f7d8b317740769f9a637fb5e3e33d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Round 3 PR #3850 delta only: reviewed telemetryConsentScreens endpoint fixture against the app-wide inactiveWithoutEndpoint guard. dialog-dnt now has an endpoint and retains DNT publisher reasons; settings-dnt still has none. Ran the documented --screens runner filter for all six telemetry screens, all passed, and inspected desktop and 390px PNGs. DNT lede remains DNT-specific. The targeted-capture and CI-renderer-only baseline procedure remains accurate; no laptop baselines written. Full 62-screen hosted capture and exact comparison remain unverified.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

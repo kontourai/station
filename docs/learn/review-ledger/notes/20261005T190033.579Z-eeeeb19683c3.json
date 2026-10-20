@@ -1,0 +1,7 @@
+{
+  "revision": "e713b510c4a610c4c42620e87107c5eac2fcf341",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Searched for access verbs, operator-credential and Paired devices claims; none describe access revoke/remove or the native-host panel copy, and the change only adds two host-only CLI verbs and panel 401 text, so existing claims remain accurate.","inputs":["docs/reference/connect.md","packages/cli/src/commands/environment.ts"]}
+  ]
+}

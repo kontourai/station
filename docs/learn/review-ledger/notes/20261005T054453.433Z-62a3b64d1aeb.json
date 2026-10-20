@@ -1,0 +1,7 @@
+{
+  "revision": "ee03da4b61b211ad8fa0204b013ea9f3ba1651e1",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"The launcher now retries Windows renames (#3363); protocol 1 and its persistence across updates are unchanged; checked.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packaging/portable-server/bin/station-launcher.mjs"]}
+  ]
+}

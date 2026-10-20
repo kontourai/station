@@ -1,0 +1,13 @@
+{
+  "revision": "e1eb72ebf107fc3819b270843d52f140caf9cc1d",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3394: testing.md changed only its ledger-merge measurement row (added notes in a compaction merge now count); routes to testing.md unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#3394: testing.md changed only its ledger-merge measurement row; routes cited here unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#3394: testing.md changed only its ledger-merge measurement row; routed test guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#3394: testing.md changed only its ledger-merge measurement row; fixture and helper requirements unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

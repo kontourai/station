@@ -1,4 +1,8 @@
-import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
+import type {
+  ChildWorkModel,
+  ChildWorkTerminalStatus,
+} from '@kontourai/station-contracts/child-work';
+import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -121,6 +125,7 @@ export type ChatContentPart = {
   input?: any;
   result?: any;
   output?: any;
+  htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
   error?: string;
   errorText?: string;
   state?: string;
@@ -148,6 +153,8 @@ export type ChatContentPart = {
   flowRunAttached?: FlowRunBinding;
   flowGateVerdict?: FlowGateVerdictInfo;
   conversationHandoff?: ConversationHandoffProjection;
+  /** #3390: an `input-request` part's record; see `MessagePart`. */
+  inputRequestRecord?: InputRequestRecord;
 };
 
 export type ChatMessage = {
@@ -190,11 +197,33 @@ export type ChatMessage = {
   changedFiles?: TurnChangedFiles;
 };
 
+/**
+ * A backgrounded child's settle, as the announcement that reports it. The
+ * fields are the child-work registry's own, never derived prose: `title` is
+ * the child's title and `summary` its engine-reported result, each absent
+ * when the registry has none.
+ */
+export interface BackgroundTaskNotice {
+  status: ChildWorkTerminalStatus;
+  title?: string;
+  summary?: string;
+}
+
 export type EphemeralMessage = ChatMessage & {
-  action?: { label: string; handler: () => void };
+  action?: {
+    label: string;
+    handler: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: 'unconfirmed-discard';
+  };
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
+  /**
+   * Rendered by `BackgroundTaskNoticeCard`. `content` keeps the plain-text
+   * form of the same notice for every reader that takes text.
+   */
+  backgroundTaskNotice?: BackgroundTaskNotice;
   /**
    * This notice says why a SEND did not go (a refused or failed send, a queued
    * message dropped), as opposed to slash-command output or a status line. The
@@ -213,6 +242,8 @@ export type EphemeralMessage = ChatMessage & {
    * set by `createEphemeralMessageState` — every producer goes through
    * `addEphemeralMessage` so this (and `id`/`timestamp`) is never missing. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
 };
 
 export type ToolCallState = {
@@ -309,6 +340,7 @@ export type ChatLiveUsage = {
 };
 
 export type ChatUIState = {
+  taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -337,6 +369,25 @@ export type ChatUIState = {
     lastError?: string;
     /** Preserved by the durable queue projection for pre-send merge undo. */
     mergedTurns?: Array<{ content: string }>;
+    /** Station's newest delivery-lookup answer for this row's key. */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
+    /**
+     * Pending, but an earlier row of the same chat was not sent: the outbox
+     * keeps a chat's order, so this one waits until that one is retried or
+     * discarded.
+     */
+    behindUnsent?: true;
+    /** No answer came back; Station's delivery lookup decides it. */
+    awaitingLookup?: true;
+    /** Claimed by a renderer still running: its send is under way there. */
+    sendUnderWay?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;
@@ -387,6 +438,33 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * Keys this window sent in this session whose turn Station has not started
+   * (as far as this window knows), newest last and bounded. A bubble whose key
+   * is here but which has no other delivery fact reads "Not confirmed" rather
+   * than delivered. Session-scoped and not persisted, like `deliveryChecks`.
+   */
+  localSendKeys?: readonly string[];
+  /**
+   * The pending send's key when its outbox row was written before the
+   * request (the send survives the app closing). Absent when the send went
+   * without one: attachments, a visual skill, or storage that failed or was
+   * too slow.
+   */
+  durableClientTurnId?: string;
+  /**
+   * What Station said about this chat's own sends, by send key: the delivery
+   * lookup's answer while a request is slow, and `started` once Station
+   * answered with the turn. Read by `messageDeliveryStateFor`. Observations,
+   * not state to restore: session-scoped and not persisted (a send outliving
+   * its page is the outbox's, which keeps its own answer).
+   */
+  deliveryChecks?: Readonly<
+    Record<
+      string,
+      import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome
+    >
+  >;
   /**
    * #2309: this composer submitted a turn and the server has not reported it
    * open yet. Set by the send paths together with `status: 'sending'`, and
@@ -493,6 +571,7 @@ export type ChatUIState = {
    * pick survives a reload and rides the next send.
    */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /**
    * #2436: the latest server-recorded posture decision this client has
    * folded, and its server global sequence. Persisted as a cache of the
@@ -576,6 +655,9 @@ export type ChatUIState = {
    * `undefined` means no outstanding picker request, a string is a requested
    * override, and `null` is an explicit request to use the engine default.
    */
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -691,6 +773,9 @@ export type ActiveChatMetadata = {
   provider?: EngineId;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -703,6 +788,7 @@ export type ActiveChatMetadata = {
 };
 
 export type PersistedActiveChat = {
+  taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -728,11 +814,15 @@ export type PersistedActiveChat = {
   title?: string;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
   /** See ChatUIState.queuedApprovalMode (#2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
   /**
@@ -767,9 +857,12 @@ export type PersistedActiveChat = {
   // sessionStorage payloads that still carry the old field.
   inputHistory?: string[];
   /**
-   * a follow-up the user typed and Station accepted into the
-   * queue is user-authored content that Station is holding on their behalf —
-   * losing it on reload is data loss, not state cleanup. Persisted with the
+   * Follow-ups the user typed while a turn was running, held on THIS DEVICE
+   * (Station has not seen them) until that turn ends and the drain sends
+   * them; the delivery state calls them held-on-device. They live in this
+   * tab's session storage, so they survive a reload but not the app or tab
+   * closing. User-authored content all the same — losing it on reload is
+   * data loss, not state cleanup. Persisted with the
    * reason the last drain failed so the queue can explain itself and offer a
    * retry after a reload. Deliberately unlike `ephemeralMessages`
    * (archive#1292): those are transient notices ABOUT a turn, this is the
@@ -1009,6 +1102,12 @@ export function hydrateActiveChats(
       title: text(session.title),
       model: text(session.model),
       modelSource: text(session.modelSource) as EffectiveModelSource,
+      executionAgentId: text(session.executionAgentId),
+      executionOnCurrentStation:
+        session.executionOnCurrentStation === true ? true : undefined,
+      expectedDefinitionFingerprint: text(
+        session.expectedDefinitionFingerprint,
+      ),
       requestedModel:
         session.requestedModel === null ? null : text(session.requestedModel),
       requestedModelSource: text(
@@ -1024,7 +1123,18 @@ export function hydrateActiveChats(
         const queued = isApprovalMode(session.queuedApprovalMode)
           ? session.queuedApprovalMode
           : migratedApprovalPick(session);
-        return queued ? { queuedApprovalMode: queued } : {};
+        return queued
+          ? {
+              queuedApprovalMode: queued,
+              ...(typeof session.queuedApprovalDefaultNamespace === 'string' &&
+              session.queuedApprovalDefaultNamespace.length <= 2048
+                ? {
+                    queuedApprovalDefaultNamespace:
+                      session.queuedApprovalDefaultNamespace,
+                  }
+                : {}),
+            }
+          : {};
       })(),
       ...(isApprovalMode(session.approvalPosture)
         ? {
@@ -1038,6 +1148,7 @@ export function hydrateActiveChats(
       defaultModelSource: text(
         session.defaultModelSource,
       ) as EffectiveModelSource,
+      taskShaping: session.taskShaping === true || undefined,
       projectSlug: text(session.projectSlug),
       projectName: text(session.projectName),
       executionMode: text(session.executionMode) as ExecutionMode,
@@ -1204,6 +1315,9 @@ export function serializeActiveChats(
       title: chat.title,
       model: chat.model,
       modelSource: chat.modelSource,
+      executionAgentId: chat.executionAgentId,
+      executionOnCurrentStation: chat.executionOnCurrentStation,
+      expectedDefinitionFingerprint: chat.expectedDefinitionFingerprint,
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
@@ -1211,7 +1325,15 @@ export function serializeActiveChats(
       // folded posture is a cache of the server's record, ordered by its
       // sequence, so a newer recorded event replaces it.
       ...(chat.queuedApprovalMode
-        ? { queuedApprovalMode: chat.queuedApprovalMode }
+        ? {
+            queuedApprovalMode: chat.queuedApprovalMode,
+            ...(chat.queuedApprovalDefaultNamespace
+              ? {
+                  queuedApprovalDefaultNamespace:
+                    chat.queuedApprovalDefaultNamespace,
+                }
+              : {}),
+          }
         : {}),
       ...(chat.approvalPosture
         ? {
@@ -1223,6 +1345,7 @@ export function serializeActiveChats(
         : {}),
       defaultModel: chat.defaultModel,
       defaultModelSource: chat.defaultModelSource,
+      taskShaping: chat.taskShaping,
       projectSlug: chat.projectSlug,
       projectName: chat.projectName,
       executionMode: chat.executionMode,
@@ -1319,10 +1442,15 @@ export function mergeChatUpdates(
    */
   droppedQueuedMessages: string[];
 } {
-  const nextUpdates =
+  let nextUpdates =
     'input' in updates && !('historyIndex' in updates)
       ? { ...updates, historyIndex: -1 }
       : updates;
+  if (
+    'queuedApprovalMode' in nextUpdates &&
+    !('queuedApprovalDefaultNamespace' in nextUpdates)
+  )
+    nextUpdates = { ...nextUpdates, queuedApprovalDefaultNamespace: undefined };
   const bounded =
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)
@@ -1407,6 +1535,9 @@ export function mergeChatUpdates(
     'executionMode' in nextUpdates ||
     'executionScope' in nextUpdates ||
     'agentConnectionId' in nextUpdates ||
+    'executionAgentId' in nextUpdates ||
+    'executionOnCurrentStation' in nextUpdates ||
+    'expectedDefinitionFingerprint' in nextUpdates ||
     'providerId' in nextUpdates ||
     'defaultProviderId' in nextUpdates ||
     'model' in nextUpdates ||
@@ -1414,6 +1545,7 @@ export function mergeChatUpdates(
     'requestedModel' in nextUpdates ||
     'requestedModelSource' in nextUpdates ||
     'requestedProviderOptions' in nextUpdates ||
+    'taskShaping' in nextUpdates ||
     'queuedApprovalMode' in nextUpdates ||
     'approvalPosture' in nextUpdates ||
     'defaultModel' in nextUpdates ||
@@ -1628,9 +1760,16 @@ export function createEphemeralMessageState(
     role: ChatRole;
     content: string;
     attachments?: any[];
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
     sendFailure?: boolean;
     queuedRetry?: boolean;
+    childWorkKey?: string;
+    backgroundTaskNotice?: BackgroundTaskNotice;
   },
   now: () => number,
   randomId: () => string,

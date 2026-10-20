@@ -3,6 +3,7 @@ import type {
   FirstRunState,
   FirstRunTransitionRequest,
 } from '@kontourai/station-contracts/config';
+import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
 import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -315,6 +316,40 @@ export function useModelsQuery(config?: QueryConfig<any>) {
   );
 }
 
+/**
+ * #3284: `GET /agents/:slug/mcp-prompts` — the MCP server prompts this agent
+ * is offered as slash commands, plus the servers whose prompts could not be
+ * read (so a missing command has a stated reason, not silence).
+ */
+export function useAgentMcpPromptsQuery(
+  agentSlug: string | null | undefined,
+  config?: QueryConfig<AgentMcpPromptListing>,
+) {
+  return useApiQuery(
+    agentMcpPromptsQueryKey(agentSlug ?? ''),
+    async (signal) => {
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/agents/${encodeURIComponent(agentSlug!)}/mcp-prompts`,
+        { signal, timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
+      );
+      return (await readEnvelopeOrThrow<AgentMcpPromptListing>(
+        response,
+      )) as AgentMcpPromptListing;
+    },
+    {
+      retry: false,
+      ...config,
+      enabled: !!agentSlug && (config?.enabled ?? true),
+    },
+  );
+}
+
+export const agentMcpPromptsQueryKey = (agentSlug: string): string[] => [
+  'agent-mcp-prompts',
+  agentSlug,
+];
+
 export interface AwsProfilesResult {
   profiles: string[];
   available: boolean;
@@ -613,4 +648,8 @@ export function useStatsQuery(
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import {
+  authenticatedFetch,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  readEnvelopeOrThrow,
+} from '../client/http';

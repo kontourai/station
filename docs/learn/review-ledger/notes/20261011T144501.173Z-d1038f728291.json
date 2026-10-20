@@ -1,0 +1,7 @@
+{
+  "revision": "d0036aa15a8c558c8beaedf95d963feb64d9f571",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Capture shows the closed start composer. StartComposer.css changes only touch start-menu__* rules and the phone scrim of open menus, and StartComposer.tsx only moves a constant import; the closed composer renders the same, so the capture stays accurate.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

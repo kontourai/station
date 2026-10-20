@@ -34,6 +34,7 @@ const LEAF = '/api/orchestration/station-control/declare-pull-request';
 const recorded: { path: string; body: unknown; internal: boolean }[] = [];
 let answer: unknown = { status: 'declared' };
 let server: ReturnType<typeof serve>;
+let answers: unknown[] = [];
 
 beforeAll(async () => {
   const app = new Hono();
@@ -43,7 +44,10 @@ beforeAll(async () => {
       internal: c.req.header(INTERNAL_API_TOKEN_HEADER) !== undefined,
       body: c.req.method === 'POST' ? await c.req.json() : undefined,
     });
-    return c.json(answer as never);
+    const response = answers.length ? answers.shift() : answer;
+    return response === undefined
+      ? c.text('Unavailable', 503)
+      : c.json(response as never);
   });
   let resolvePort!: (value: number) => void;
   const listening = new Promise<number>((resolve) => {
@@ -64,6 +68,7 @@ beforeEach(() => {
   __resetStationControlMcpTokensForTests();
   recorded.length = 0;
   answer = { status: 'declared' };
+  answers = [];
 });
 
 function memoryTransport() {
@@ -108,6 +113,10 @@ async function connect() {
         name: 'declare_pull_request',
         arguments: args,
       });
+    },
+    guide: (name: string, args: Record<string, unknown>) => {
+      id += 1;
+      return request(id, 'tools/call', { name, arguments: args });
     },
     list: () => {
       id += 1;
@@ -212,4 +221,138 @@ describe('declare_pull_request tool', () => {
     expect(entry.annotations.readOnlyHint).toBe(false);
     await client.close();
   });
+});
+
+test('guide MCP validates batch bounds before any REST write and forwards exact per-project targets', async () => {
+  const client = await connect();
+  const target = {
+    provider: 'github',
+    host: 'github.com',
+    owner: 'owner',
+    repository: 'repo',
+    ref: '42',
+    project: 'project-a',
+  };
+  const overflow = await client.guide('write_pull_request_guides', {
+    targets: Array.from({ length: 21 }, () => target),
+  });
+  expect(
+    overflow.error !== undefined || overflow.result?.isError === true,
+  ).toBe(true);
+  expect(recorded.filter((entry) => entry.internal)).toEqual([]);
+  answer = {
+    success: true,
+    data: {
+      enabled: true,
+      guide: null,
+      run: { state: 'Running' },
+      currentHeadSha: 'a'.repeat(40),
+      excerptContents: [],
+    },
+  };
+  const started = await client.guide('write_pull_request_guides', {
+    targets: [target],
+  });
+  expect(started.result.isError).not.toBe(true);
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: {},
+      internal: true,
+    },
+  ]);
+  recorded.length = 0;
+  await client.guide('read_pull_request_guide', { target });
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: undefined,
+      internal: true,
+    },
+  ]);
+  recorded.length = 0;
+  await client.guide('write_pull_request_guides', {
+    targets: [target],
+    force: true,
+  });
+  expect(recorded.filter((entry) => entry.internal)).toEqual([
+    {
+      path: '/api/pull-requests/github/github.com/owner/repo/42/guide',
+      body: { force: true },
+      internal: true,
+    },
+  ]);
+  await client.close();
+});
+
+test.each(['read_pull_request_guide', 'write_pull_request_guides'])(
+  '%s marks route refusals as MCP errors',
+  async (name) => {
+    const client = await connect();
+    const target = {
+      provider: 'github',
+      host: 'github.com',
+      owner: 'owner',
+      repository: 'repo',
+      ref: '42',
+      project: 'project-a',
+    };
+    answer = { success: false, error: 'Operator authentication required' };
+    const response = await client.guide(
+      name,
+      name === 'read_pull_request_guide' ? { target } : { targets: [target] },
+    );
+    expect(recorded.filter((entry) => entry.internal)).toHaveLength(1);
+    expect(response.result.isError).toBe(true);
+    await client.close();
+  },
+);
+
+test('a guide batch keeps admitted and refused targets while marking the batch as an MCP error', async () => {
+  const client = await connect();
+  const target = {
+    provider: 'github',
+    host: 'github.com',
+    owner: 'owner',
+    repository: 'repo',
+    ref: '42',
+    project: 'project-a',
+  };
+  answers = [
+    { success: true, data: { enabled: true, run: { state: 'Running' } } },
+    { success: false, error: 'Guide capacity reached' },
+  ];
+  const response = await client.guide('write_pull_request_guides', {
+    targets: [target, { ...target, ref: '43' }],
+  });
+  expect(response.result.isError).toBe(true);
+  const body = JSON.parse(response.result.content[0].text);
+  expect(
+    body.results.map(
+      (entry: { result: { success: boolean } }) => entry.result.success,
+    ),
+  ).toEqual([true, false]);
+  expect(recorded.filter((entry) => entry.internal)).toHaveLength(2);
+  await client.close();
+});
+
+test('a failed guide read returns an MCP error when the server cannot return JSON', async () => {
+  const client = await connect();
+  answer = undefined;
+  const response = await client.guide('read_pull_request_guide', {
+    target: {
+      provider: 'github',
+      host: 'github.com',
+      owner: 'owner',
+      repository: 'repo',
+      ref: '42',
+      project: 'project-a',
+    },
+  });
+  expect(response.result.isError).toBe(true);
+  expect(JSON.parse(response.result.content[0].text)).toEqual({
+    success: false,
+    error: 'Guide read failed. Check project and provider access.',
+  });
+  await client.close();
 });

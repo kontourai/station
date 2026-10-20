@@ -62,12 +62,6 @@
       "category": "icon"
     },
     {
-      "codepoint": "U+2302",
-      "character": "⌂",
-      "category": "icon",
-      "note": "The project sidebar Home affordance."
-    },
-    {
       "codepoint": "U+2304",
       "character": "⌄",
       "category": "icon"
@@ -81,11 +75,6 @@
     {
       "codepoint": "U+23F1",
       "character": "⏱",
-      "category": "icon"
-    },
-    {
-      "codepoint": "U+23F9",
-      "character": "⏹",
       "category": "icon"
     },
     {
@@ -257,11 +246,6 @@
     {
       "codepoint": "U+1F4C1",
       "character": "📁",
-      "category": "emoji"
-    },
-    {
-      "codepoint": "U+1F4C8",
-      "character": "📈",
       "category": "emoji"
     },
     {

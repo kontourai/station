@@ -1,0 +1,7 @@
+{
+  "revision": "a08619ae8b654b9b8c6b05ae430ce512742d71cb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 4 for #3391: the resolver change replaces the stuck cap with a process-wide FIFO limit of three unsettled list-read folder checks (MAX_UNSETTLED_FOLDER_CHECKS). Start-path resolution and the session-directory section's claims are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

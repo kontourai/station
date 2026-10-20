@@ -1,0 +1,7 @@
+{
+  "revision": "e20d1d00b2adc3d10722d6d3cdab9b8288b723e8",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3406 merge with main: the adoption disclosure now names attached-session-continuation-place.ts (#3435), checked: it calls realpathSync.native and resolveAttachedSessionProject with createPollRepositoryLookup() (default in-process locateRepository, synchronous lstat walk) and the default canonicalPath. Rest of the discovery paragraph unchanged from the reviewed delta round.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

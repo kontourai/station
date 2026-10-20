@@ -9,11 +9,19 @@ import {
 } from '../stream-orchestrator.js';
 
 describe('createElicitationCallback', () => {
-  test('binds a managed approval to its conversation for canonical task routing', async () => {
+  test('explicit Ask me still publishes a conversation-bound approval despite an automatic grant', async () => {
     const register = vi.fn().mockResolvedValue(true);
     const inject = vi.fn();
     const callback = createElicitationCallback(
-      { name: 'Reviewer', tools: { autoApprove: [] } } as any,
+      {
+        name: 'Reviewer',
+        prompt: 'Review tool calls',
+        tools: {
+          mcpServers: [],
+          autoApprove: ['*'],
+          askBeforeUse: ['repo_write'],
+        },
+      },
       new Map(),
       { register } as any,
       { inject } as any,
@@ -202,6 +210,7 @@ describe('writeSSEError', () => {
       type: 'error',
       errorText: 'The response stream failed.',
       statusCode: 429,
+      failureKind: 'rate_limited',
     });
     expect(writes[0]).not.toContain('sk-live-SECRET');
     expect(writes[0]).not.toContain('provider.example.test');

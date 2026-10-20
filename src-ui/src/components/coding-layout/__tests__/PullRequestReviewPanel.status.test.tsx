@@ -172,7 +172,7 @@ describe('pull request status', () => {
           {
             name: 'Windows PR portable floor',
             state: 'failure',
-            group: 'Windows PR Verification',
+            group: 'PR: Windows',
             url: 'https://github.com/kontourai/station/actions/runs/3/job/4',
           },
           { name: 'fast-checks', state: 'pending', group: 'CI' },

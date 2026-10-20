@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 
 const FACTORY = 'createEnvironmentRuntimeResourcePostureProbe';

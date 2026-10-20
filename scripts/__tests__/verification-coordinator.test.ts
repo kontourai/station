@@ -2130,11 +2130,14 @@ describe('verification coordinator', () => {
     });
     let firstStarted = false;
     let rejectedPhaseCalls = 0;
+    const controller = new AbortController();
+    const pending: ReturnType<typeof coordinateVerification>[] = [];
     const options = (worktree: string) => ({
       laneId: 'full-regression',
       root: temp.root,
       cwd: worktree,
-      heartbeatMs: 1,
+      heartbeatMs: 100,
+      signal: controller.signal,
       collectProvenance: () =>
         worktreeProvenance(worktree, `bounded-${worktree}`),
       hostCpuSampler: healthySampler(),
@@ -2149,10 +2152,13 @@ describe('verification coordinator', () => {
     });
     try {
       const owner = coordinateVerification(options(worktrees[0]));
+      pending.push(owner);
       await waitFor(() => firstStarted);
-      const waiters = [];
+      const waiters: ReturnType<typeof coordinateVerification>[] = [];
       for (const worktree of worktrees.slice(1, -1)) {
-        waiters.push(coordinateVerification(options(worktree)));
+        const waiter = coordinateVerification(options(worktree));
+        waiters.push(waiter);
+        pending.push(waiter);
         // A request lease is queued before the completion mutex reserves its
         // slot. Observe this caller's reservation before submitting the next.
         await waitFor(() =>
@@ -2167,7 +2173,11 @@ describe('verification coordinator', () => {
         );
       }
 
-      const rejected = await coordinateVerification(options(worktrees.at(-1)!));
+      const rejectedRequest = coordinateVerification(
+        options(worktrees.at(-1)!),
+      );
+      pending.push(rejectedRequest);
+      const rejected = await rejectedRequest;
       expect(rejected.disposition).toBe('executed');
       expect(rejected.receipt.terminal).toEqual({
         status: 'rejected',
@@ -2182,16 +2192,19 @@ describe('verification coordinator', () => {
       });
       expect(rejectedPhaseCalls).toBe(0);
 
-      const fast = await coordinateVerification({
+      const fastRequest = coordinateVerification({
         laneId: 'ci-fast',
         root: temp.root,
         cwd: fastWorktree,
-        heartbeatMs: 1,
+        heartbeatMs: 100,
+        signal: controller.signal,
         collectProvenance: () =>
           worktreeProvenance(fastWorktree, 'bounded-fast'),
         hostCpuSampler: healthySampler(),
         runner: async () => ({ status: 0 }),
       });
+      pending.push(fastRequest);
+      const fast = await fastRequest;
       // `passed` is not earnable here — see the note on the first ci:fast
       // admission assertion in this file (#1727 / station#1738).
       expect(fast.disposition).toBe('executed');
@@ -2206,7 +2219,9 @@ describe('verification coordinator', () => {
         })),
       );
     } finally {
-      releaseFirst?.();
+      releaseFirst();
+      controller.abort();
+      await Promise.allSettled(pending);
       temp.remove();
     }
   }, 30_000);
@@ -5788,6 +5803,16 @@ describe('verification coordinator host-pressure admission', () => {
       const clock = pressureClock();
       const requests = join(temp.root, 'requests');
       let calls = 0;
+      let samples = 0;
+      let observeQueued!: () => void;
+      const queued = new Promise<void>((resolve) => {
+        observeQueued = resolve;
+      });
+      let resumeWait!: () => void;
+      const resume = new Promise<void>((resolve) => {
+        resumeWait = resolve;
+      });
+      const tick = tickingWait(clock);
       try {
         // An earlier-arriving heavy lane, queued behind pressure, with a live
         // owner so it is a real FIFO contender.
@@ -5822,8 +5847,28 @@ describe('verification coordinator host-pressure admission', () => {
           heartbeatMs: 5,
           hostPressureWaitMs: 60_000,
           now: clock.now,
-          wait: tickingWait(clock),
-          hostCpuSampler: async () => sampleAt(clock, 40),
+          wait: async (ms: number) => {
+            if (samples >= 2) {
+              const waiting = verificationStatus({
+                root: temp.root,
+                capacity: 100,
+                now: clock.now(),
+              }).jobs.some(
+                (job) =>
+                  job.state === 'queued' &&
+                  job.hostPressure?.status === 'healthy',
+              );
+              if (waiting) {
+                observeQueued();
+                await resume;
+              }
+            }
+            await tick(ms);
+          },
+          hostCpuSampler: async () => {
+            samples += 1;
+            return sampleAt(clock, 40);
+          },
           collectProvenance: () => provenance(`fifo-later-${temp.root}`),
           runner: async () => {
             calls += 1;
@@ -5832,20 +5877,21 @@ describe('verification coordinator host-pressure admission', () => {
         });
         // The later lane reaches healthy but must remain queued behind the
         // earlier contender despite free capacity.
-        await waitFor(() =>
-          verificationStatus({ root: temp.root, capacity: 100 }).jobs.some(
-            (job) =>
-              job.state === 'queued' && job.hostPressure?.status === 'healthy',
-          ),
-        );
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        await Promise.race([
+          queued,
+          later.then(() => {
+            expect(calls).toBe(0);
+          }),
+        ]);
         expect(calls).toBe(0);
         // Removing the earlier contender lets the later lane admit in FIFO order.
         rmSync(earlier, { recursive: true, force: true });
+        resumeWait();
         const result = await later;
         expect(result.receipt.terminal.passed).toBe(true);
         expect(calls).toBe(1);
       } finally {
+        resumeWait();
         temp.remove();
       }
     },

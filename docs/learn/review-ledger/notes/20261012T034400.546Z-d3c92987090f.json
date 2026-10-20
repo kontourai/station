@@ -1,0 +1,15 @@
+{
+  "revision": "be473a9954436b0dc7c799a0dc03d4cb907995eb",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"PR3's runtime-routes changes: the member caller gains an accountToken resolver (an account-tied personal token is held to its account's Project membership; a token that stops resolving mid-request acts for no one, never operator rules), and People's canHoldTokens now comes from DevicePairingService.canHoldPersonalToken (true for Tailscale-tied people and, with a local-account directory of the same issuer, account-tied people). The Personal access tokens section already says a local-account person can hold a token, held to the account's membership, valid only while the account exists, is enabled and has not signed out everywhere; canHoldTokens is described as whether a token can be made for them. Accurate.","inputs":["docs/reference/api.md","packages/cli/src/commands/environment.ts","packages/connect/src/react/DevicePairingPanel.tsx"]},
+
+    {"path":"docs/architecture.md","note":"Flagged for runtime-routes.ts (PR3: account-token member caller and canHoldTokens derivation). Its runtime-routes references describe route composition at a level these changes do not alter; no claim about Project membership callers or personal tokens.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Flagged for runtime-routes.ts. Its runtime-routes mentions (composition of route families, request principal resolution) are unaffected: PR3 only adds a token branch inside the existing member-caller wiring and changes how People computes canHoldTokens. No edit, so the generated station-docs-content bundle is unchanged.","inputs":["docs/architecture/module-map.md","packages/connect/src/core/devicePairing.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Flagged for runtime-routes.ts. Its push claims (subscribe/unsubscribe need an identified paired device; a personal access token gets 403 device_pairing_required) are unchanged by PR3, which does not touch push routes; account-tied tokens are refused there exactly as Tailscale-tied ones.","inputs":["docs/guides/web-push-notifications.md","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Flagged for runtime-routes.ts. Its pairing and environment-reset claims are unaffected by the member-caller token branch and canHoldTokens derivation; it lists no People or token fields.","inputs":["docs/reference/connect.md","packages/cli/src/commands/environment.ts","packages/connect/src/__tests__/devicePairing.test.ts","packages/connect/src/core/devicePairing.ts","packages/connect/src/react/DevicePairingPanel.tsx"]}
+  ]
+}

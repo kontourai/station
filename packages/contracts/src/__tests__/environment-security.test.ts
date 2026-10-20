@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  deviceRequestedExtraScopes,
+  isDeviceRequestableScope,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
@@ -125,23 +127,6 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the twelve-token vocabulary, including distinct home transfer, home control, engine login, command execution, and full-access approval authorities', () => {
-    expect(PAIRING_SCOPES).toEqual([
-      'orchestration:read',
-      'orchestration:operate',
-      'terminal:operate',
-      'access:manage',
-      'inference:invoke',
-      'access:approve',
-      'consent:decide',
-      'home:transfer',
-      'home:control',
-      'engine:login',
-      'coding:exec',
-      'approval:full-access',
-    ]);
-  });
-
   test('the read-only preset is exactly orchestration:read', () => {
     expect(PAIRING_SCOPE_PRESETS['read-only']).toEqual([
       PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -284,7 +269,10 @@ describe('scoped pairing (station#1098)', () => {
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(12);
+    expect(granted).not.toContain('relay:manage');
+    expect(PAIRING_SCOPE_GRANT_PATHS['relay:manage']).toEqual([
+      'operator-promotion',
+    ]);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
@@ -555,5 +543,43 @@ describe('scoped pairing (station#1098)', () => {
     expect(isPairingScopeSubset(DEFAULT_GRANT_PAIRING_SCOPE, 'garbage')).toBe(
       false,
     );
+  });
+});
+
+describe('what a device may ask for at pairing', () => {
+  test('one requestable base plus requestable extras, never access:manage', () => {
+    // Literals, not read from the presets under test.
+    for (const scope of [
+      'orchestration:read',
+      'orchestration:read orchestration:operate terminal:operate',
+      'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      'orchestration:read coding:exec approval:full-access',
+    ])
+      expect(isDeviceRequestableScope(scope), scope).toBe(true);
+    for (const scope of [
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'approval:full-access',
+      'orchestration:read orchestration:operate',
+      'orchestration:read access:approve',
+      'orchestration:read home:control',
+      '',
+      'orchestration:read orchestration:read',
+    ])
+      expect(isDeviceRequestableScope(scope), scope).toBe(false);
+  });
+
+  test('the extras a request carries are the ones only the operator may keep', () => {
+    expect(
+      deviceRequestedExtraScopes(
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      ),
+    ).toEqual(['approval:full-access']);
+    expect(deviceRequestedExtraScopes(DEFAULT_GRANT_PAIRING_SCOPE)).toEqual([]);
+    expect(
+      pairingScopeIncludes(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      ),
+    ).toBe(true);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3386 fix round: follow-service and runtime-initialize changes concern attached-session polling (snapshot, setting, stale-slug refile); no Agent-guide claim touches them. No prose change.","inputs":["docs/guides/agents.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

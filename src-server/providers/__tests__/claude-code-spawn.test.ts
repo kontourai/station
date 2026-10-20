@@ -35,6 +35,42 @@ afterEach(() => {
 });
 
 describe('createClaudeEngineProcess', () => {
+  test('retirement waits for confirmed exit and fences later spawns', async () => {
+    vi.useFakeTimers();
+    const { engine, child } = start();
+    child.kill = vi.fn(() => true);
+    let retired = false;
+    const retirement = engine.terminate().then(() => {
+      retired = true;
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(retired).toBe(false);
+    child.exit(0);
+    await vi.advanceTimersByTimeAsync(100);
+    await retirement;
+    expect(retired).toBe(true);
+    expect(() =>
+      engine.spawn({
+        command: FAKE_CLAUDE_COMMAND,
+        args: [],
+        cwd: '/work',
+        env: {},
+        signal: new AbortController().signal,
+      }),
+    ).toThrow('has retired');
+  });
+
+  test('unconfirmed retirement is a failure rather than permission to resume elsewhere', async () => {
+    vi.useFakeTimers();
+    const { engine, child } = start();
+    child.kill = vi.fn(() => true);
+    const outcome = engine.terminate().then(
+      () => null,
+      (error) => error,
+    );
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(await outcome).toBeInstanceOf(Error);
+  });
   test("spawns as the SDK's default spawn does: piped stdio, the forwarded signal, the given env, no shell, windowsHide", () => {
     const env = { PATH: '/bin', TMPDIR: '/tmp/station' };
     const { child, signal } = start(env);

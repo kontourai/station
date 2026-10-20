@@ -110,7 +110,9 @@ export type WindowsArchive = {
  * STATION_TEST_CLI_FAIL names as `<verb>@<version>` for its own version, so
  * a test can make one release's `start` fail. Otherwise it exits 0. With
  * STATION_TEST_CLI_LINGER_MS, `start` leaves a detached process holding its
- * output open, as a started Station does.
+ * output open, as a started Station does. `service status` prints
+ * STATION_TEST_SERVICE_UNIT as its JSON's unit, as the service backend
+ * would report a Task Scheduler task.
  */
 const FIXTURE_STATION_CLI = `import { appendFileSync, readFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -140,6 +142,10 @@ if (args[0] === 'start' && process.env.STATION_TEST_CLI_LINGER_MS) {
     { detached: true, stdio: 'inherit', windowsHide: true },
   ).unref();
 }
+if (args[0] === 'service' && args[1] === 'status' && process.env.STATION_TEST_SERVICE_UNIT)
+  process.stdout.write(
+    JSON.stringify({ unit: JSON.parse(process.env.STATION_TEST_SERVICE_UNIT) }) + '\\n',
+  );
 process.exit(process.env.STATION_TEST_CLI_FAIL === \`\${args[0]}@\${version}\` ? 1 : 0);
 `;
 

@@ -1,0 +1,7 @@
+{
+  "revision": "c02ef802a431fee8e53b0cc7b37f966bd5bd2a0a",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Routes to the development guide; the guide's only change adds failing-shard annotations and a report artifact to the hosted CI description. The server instructions' routing and boundaries are unchanged.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

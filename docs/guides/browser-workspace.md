@@ -89,8 +89,8 @@ The proxy checks current target registrations on new connection decisions.
 ## Agent authority and human input
 
 The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
-provide status, open, close, navigate, resize, snapshot, click, type, press,
-scroll, wait and evaluation operations through
+provide status, open, close, navigate, resize, snapshot, click, hover, drag,
+select, type, press, scroll, color-scheme emulation, wait and evaluation operations through
 [browser-agent routes](../../src-server/routes/browser-agent.ts). They require
 a verified, bound calling Session, its recorded owner and Project, and current
 operator/admin standing. Bearer-exposed or delegated-custody credentials do not
@@ -126,8 +126,43 @@ session whose history no longer keeps it is refused rather than assumed.
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
+The [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+describes the proposed cross-engine binding and remaining action slices. Existing
+passthrough tokens have not been promoted to bound credentials.
+
+`browser_hover` accepts the same ref, locator or viewport CSS-pixel point as
+click. `browser_drag` takes `source` and `target` objects in that shape and sends
+a left-button pointer drag with twelve intermediate moves. Both ends must be
+visible together; it does not synthesize HTML drag data or transfer files.
+`browser_select` takes a ref or locator for a native `<select>` and exactly one
+`value` or `label`. It selects one enabled, exact matching option, clears the
+other selections and emits `input` and `change`; duplicate matches, disabled
+options/optgroups, selects disabled directly or by an ancestor fieldset, and
+non-select targets are refused `not-selectable`. The select is hit-tested; a
+covering element is refused `obscured` before selection. This Station-owned isolated-world operation does not require
+page evaluation permission. Its history records the selection method and text
+length, not the chosen value or label.
+
+`browser_color_scheme` accepts `scheme: "light"`, `"dark"` or `"system"`.
+It emulates the page's `prefers-color-scheme` media feature; system clears that
+override and follows the server browser's preference, not the viewer's Device.
+The override survives navigation on that target until changed or the browser
+session is reopened. Each human control claim sends a target-local reset to
+system through the live-surface binder; reset failures are logged. It is not a
+saved profile preference. These four actions are sensitive tools and claim the
+same control lease as click. Media history records each request once sent to
+CDP, including interrupted or failed requests; the entry does not prove the
+requested theme took effect. Other successful actions record their outcome. A
+human holder refuses the operation before page-changing steps.
+
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
-a live human holder. Watching needs no control lease. The pane's control line
+a live human holder. A human takeover invalidates existing snapshot refs,
+including after hand-back. A snapshot taken while a human holds control, or
+whose read overlaps any human hold, returns no usable refs, even when the same
+human reclaims control without advancing the epoch. A read without a bound
+lease also returns no usable refs. These snapshots omit actionable ref labels
+from their text. Take a fresh snapshot after hand-back to act
+by ref again. Watching needs no control lease. The pane's control line
 says who is driving in one word (**Agent** or **You**) with the float-over-chat's
 rule (the lease holder, or an Agent whose last input is under ten seconds old).
 There is no Take control button: a click or key on the page takes control, and
@@ -212,6 +247,17 @@ Viewport, Sessions, Agent access, Local servers and, last, Close session. On
 a coarse pointer or a window up to 768px wide every control is at least 44px
 and the row does not wrap; the path gives way first, then the host. The 390px
 check below found no control under 44px.
+
+On narrow screens, editing the address hides its navigation buttons until
+editing ends, leaving room for the URL. Back and forward occupy space on a fine
+pointer only while the toolbar is hovered or focused. Touch takeover hints say
+**Tap**. The console scrolls within its share of the pane; it does not force the
+live page beneath the dock. On the standalone Browser route, the page frame
+passes its available height through to both views. The actions menu fits between
+the current toolbar/banner stack and the dock, with its own scroll when needed.
+Very short panes scroll internally so the console retains readable rows and the
+page remains reachable. Escape cancels an unsubmitted address and restores the
+committed URL; leaving the field restores navigation while retaining its draft.
 
 ## State, evidence and remaining limits
 

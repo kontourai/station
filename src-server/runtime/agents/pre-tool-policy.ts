@@ -1,4 +1,9 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  externalMcpToolApprovalIdentity,
+  mcpToolApprovalKey,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
@@ -22,7 +27,8 @@ type ToolDenialReason =
   | 'delegation_deny_approvals'
   | 'unattended_grant_denied'
   | 'no_approval_channel'
-  | 'policy_evaluation_failed';
+  | 'policy_evaluation_failed'
+  | 'project_tool_policy';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -53,7 +59,7 @@ export type PreToolPolicyDecision =
       toolGrant?: true;
     }
   | { behavior: 'deny'; denial: ToolCallDenial }
-  | { behavior: 'ask' }
+  | { behavior: 'ask'; required?: true }
   | { behavior: 'defer' };
 
 /**
@@ -78,6 +84,10 @@ export type StagedPreToolPolicyEvaluator = (
 ) => Promise<PreToolPolicyDecision>;
 
 interface StagedPreToolPolicyDeps {
+  projectToolPolicy?: (
+    invocation: InvocationContext,
+    tool: ToolCallContext,
+  ) => void;
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;
@@ -163,6 +173,13 @@ const SCHEDULED_JOB_REMEDY =
 const SCHEDULED_JOB_STORE_UNAVAILABLE =
   'The unattended grant store could not be read, so no per-job grant was checked.';
 
+/** An Automation rule has the same narrower, per-principal standing grant. */
+const AUTOMATION_RULE_REMEDY =
+  'To allow it for this automation rule alone, an operator can instead record an unattended tool grant for the rule through /api/agents/unattended-grants, keyed by the exact tool name above.';
+
+const AUTOMATION_RULE_STORE_UNAVAILABLE =
+  'The unattended grant store could not be read, so no per-rule grant was checked.';
+
 /**
  * The opt-in is honoured on Station's engine only, so an external (ACP or
  * Claude) child is not sent to an edit that changes nothing there.
@@ -196,11 +213,24 @@ function unattendedGrantDenialPredicate(
   resolution: UnattendedGrantResolution,
 ): string {
   const predicate = `was denied for this unattended run. ${UNATTENDED_REMEDY}`;
-  if (invocation.unattendedPrincipal?.kind !== 'scheduled-job')
-    return predicate;
-  return resolution === 'store-unavailable'
-    ? `${predicate} ${SCHEDULED_JOB_STORE_UNAVAILABLE}`
-    : `${predicate} ${SCHEDULED_JOB_REMEDY}`;
+  const principal = invocation.unattendedPrincipal;
+  if (!principal) return predicate;
+  const unavailable = resolution === 'store-unavailable';
+  // Only principals with a stable, operator-grantable identity are offered
+  // the narrower standing grant; voice and delegated-child are not.
+  switch (principal.kind) {
+    case 'scheduled-job':
+      return `${predicate} ${unavailable ? SCHEDULED_JOB_STORE_UNAVAILABLE : SCHEDULED_JOB_REMEDY}`;
+    case 'automation-rule':
+      return `${predicate} ${unavailable ? AUTOMATION_RULE_STORE_UNAVAILABLE : AUTOMATION_RULE_REMEDY}`;
+    case 'voice':
+    case 'delegated-child':
+      return predicate;
+    default: {
+      const unhandled: never = principal;
+      return unhandled;
+    }
+  }
 }
 
 /** Station's own half of a config-protection denial, always present. */
@@ -425,6 +455,54 @@ export function createStagedPreToolPolicyEvaluator(
       }
     }
 
+    try {
+      deps.projectToolPolicy?.(invocation, tool);
+    } catch {
+      return deny(
+        'project_tool_policy',
+        tool.toolName,
+        'is no longer permitted by this Project.',
+      );
+    }
+
+    const approvalName = options.identity?.delegationToolName ?? tool.toolName;
+    const mapping = deps.toolNameMapping.get(approvalName);
+    const external =
+      options.interaction === 'external'
+        ? externalMcpToolApprovalIdentity(tool.toolName)
+        : { ambiguous: false, key: undefined };
+    const sourceKey =
+      options.interaction === 'external'
+        ? external.key
+        : mapping?.provenance
+          ? mcpToolApprovalKey(
+              mapping.provenance.integrationId,
+              mapping.provenance.originalToolName,
+            )
+          : external.key;
+    const explicitAsk =
+      (external.ambiguous && !!deps.spec.tools?.askBeforeUse?.length) ||
+      resolveAuthoredToolApproval(
+        [tool.toolName, approvalName, mapping?.original ?? approvalName],
+        deps.spec.tools?.autoApprove,
+        deps.spec.tools?.askBeforeUse,
+        sourceKey,
+      ) === 'ask';
+    if (explicitAsk) {
+      const review = await reviewWithGuardian(deps, tool, invocation);
+      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+        return review.decision;
+      if (invocation.delegation?.denyApprovals)
+        return delegatedApprovalDenial(tool.toolName, options.interaction);
+      if (options.interaction === 'managed' && !options.hasInteractiveApproval)
+        return deny(
+          'no_approval_channel',
+          tool.toolName,
+          'requires a person to approve this call.',
+        );
+      return { behavior: 'ask', required: true };
+    }
+
     if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };
 
     const guardian = await reviewWithGuardian(deps, tool, invocation);
@@ -480,10 +558,10 @@ export function createStagedPreToolPolicyEvaluator(
     //
     // What blocks a straight reorder is not that the signal is unavailable —
     // it exists and has three writers (`strands-adapter.ts`,
-    // `voltagent-adapter.ts` via `currentScheduledPrincipal()`, and
+    // `voltagent-adapter.ts` via `currentUnattendedPrincipal()`, and
     // `voice-session.ts`'s `kind: 'voice'`), and the scheduler establishes it
-    // at the route boundary through `runWithScheduledPrincipal`'s
-    // AsyncLocalStorage (`scheduled-principal-context.ts`;
+    // at the route boundary through `runWithUnattendedPrincipal`'s
+    // AsyncLocalStorage (`unattended-principal-context.ts`;
     // `runtime-route-support.ts`). The blocker is WHERE the external hook
     // runs: the Claude `PreToolUse` hook fires from the SDK message loop, on a
     // long-lived stream task outside any request scope, so an ALS read there

@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3331: the session-grant label is still computed once by toolRequestGrantLabel/toolRequestSessionGrant; on a phone ToolCallDisplay moves Allow Once/Deny into the shared RequestSheet and the grant label into its ActionRow overflow item. Prose now names that surface; no adapter or grant behavior changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

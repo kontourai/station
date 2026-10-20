@@ -1,0 +1,7 @@
+{
+  "revision": "5078876546db8fa8f0ce83ea3804b07acf639477",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Scoped 5078876546 SDK-reference integration review. Read public client/API routing and evidence boundaries at22-32 against the newly documented optional usage query subpaths. Root/client signatures, recorded authority, endpoint admission and installed-package/publication caveats remain intact; no provider, persistence or deployment behavior changes. Seven focused SDK/UI suites72PASS and local native-client bundle gate409944/410000 are diagnostic source/build evidence, not native simulator or hosted Gallery proof.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e713b510c4a610c4c42620e87107c5eac2fcf341",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the Paired devices revoke steps (lines ~215-218): UI revoke behavior unchanged; only the native-host 401 copy and static hint text changed in PairedDevicesPanel.tsx.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx"]}
+  ]
+}

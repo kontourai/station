@@ -31,6 +31,7 @@ describe('macOS nightly lane', () => {
       '../dist-server': 'dist-server',
       '../dist-desktop-runtime/node_modules': 'node_modules',
       '../schemas': 'schemas',
+      '../dist-desktop-runtime/examples': 'examples',
     });
     expect(config.plugins).toEqual({
       'deep-link': {

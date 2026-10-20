@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { exactProcessIdentity } from '../packages/shared/src/process-identity.mjs';
+import {
+  isWindowsRoundTripUtcIso,
+  PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+  probeExactProcessIdentity,
+} from '../packages/shared/src/process-identity.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { createWindowsOwnedControlStdin } from './lib/windows-owned-control-stdin.mjs';
 import {
   createWindowsOwnedProtocol,
@@ -41,6 +46,41 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 if (command) {
+  // Read through a separate native process, independently of the guard's BOUND
+  // claim. PowerShell startup must not consume the short identity-read budget.
+  const probeFailures = new Map();
+  const readIdentity = (pid) =>
+    probeExactProcessIdentity(pid, {
+      lookup(candidate) {
+        try {
+          const birth = execFileSyncBounded(
+            command.guardPath,
+            ['--identity', String(candidate)],
+            {
+              encoding: 'utf8',
+              windowsHide: true,
+              timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+              killSignal: 'SIGKILL',
+              maxBuffer: 4096,
+            },
+          ).trim();
+          if (!isWindowsRoundTripUtcIso(birth)) {
+            probeFailures.set(
+              candidate,
+              'native identity reader returned no canonical start time',
+            );
+            return null;
+          }
+          return birth;
+        } catch (error) {
+          probeFailures.set(
+            candidate,
+            String(error.message).replace(/\s+/g, ' ').slice(0, 240),
+          );
+          return null;
+        }
+      },
+    });
   const protocol = createWindowsOwnedProtocol();
   let guard;
   let published = false;
@@ -167,13 +207,29 @@ if (command) {
       const received = protocol.receive(record);
       if (!received.ok) return abort(received.error.message);
       if (received.action === 'bound') {
-        const target = exactProcessIdentity(received.pid);
-        const guardIdentity = guard.pid
-          ? exactProcessIdentity(guard.pid)
-          : null;
+        const targetProbe = readIdentity(received.pid);
+        const guardProbe = guard.pid
+          ? readIdentity(guard.pid)
+          : { state: 'unavailable' };
+        const target =
+          targetProbe.state === 'exact' ? targetProbe.identity : null;
+        const guardIdentity =
+          guardProbe.state === 'exact' ? guardProbe.identity : null;
         if (!target || target.start !== received.processStart || !guardIdentity)
           return abort(
-            'Windows owned guard binding did not match exact identities',
+            `Windows owned guard binding did not match exact identities: ${JSON.stringify(
+              {
+                targetState: targetProbe.state,
+                targetCreationMatches: target
+                  ? target.start === received.processStart
+                  : null,
+                guardState: guardProbe.state,
+                targetProbeFailure: probeFailures.get(received.pid) ?? '',
+                guardProbeFailure: guard.pid
+                  ? (probeFailures.get(guard.pid) ?? '')
+                  : '',
+              },
+            )}`,
           );
         process.send?.({
           type: 'owned-command-bound',

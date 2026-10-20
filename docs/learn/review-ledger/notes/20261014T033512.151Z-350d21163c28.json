@@ -1,0 +1,7 @@
+{
+  "revision": "fcead677c6ea2ffe9601b9f72f4fd678faf8d183",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed for the final fix round (sweep: client_turn/clientTurnId/idempotency, start failure, still starting, retryable codes, send signal; each hit read): a send whose session failed to start is refused with provider_session_start_failed and kept queued with Retry; a same-key retry whose earlier attempt held or released the key is refused with retryable client_turn_in_flight and its wait ends on release; the send cancellation signal is documented as server-owned only; the ACP start-failure log uses the Station logger. Merged origin/main touched none of these files. This document makes no claim contradicted by that; its statements remain accurate.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

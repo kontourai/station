@@ -1,0 +1,11 @@
+{
+  "revision": "def759f4bfd76f5f4c0461925597409f74f75dfd",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#561 delta: process-utils.ts changes only the releaseOwnedChildAfterGroupExit docstring (surviving groups are retained and reported, never reaped). The lab's owned-process teardown claims are unaffected. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#561 delta: process-utils.ts changes only the releaseOwnedChildAfterGroupExit docstring. The dated settled-owned-processes receipt is unaffected. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#561 delta: process-utils.ts changes only the releaseOwnedChildAfterGroupExit docstring. The peer owned-process-tree cleanup claim is unaffected. No prose change.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "15a3111992b0eb58000d004e8f19b858bcdc3841",
+
+  "notes": [
+    {"path":"docs/design/connection-broker.md","note":"The connection broker design cites the fresh native relay fixture guide only for its procedure and anchors; checked that the cited sections are unchanged apart from a placeholder operator name in step 4, so no claim here changes.","inputs":["docs/design/connection-broker.md","tests/tauri-shell/native-fresh-relay-fixture.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The native shell verification guide cites the fresh native relay fixture guide only for its procedure and anchors; checked that the cited sections are unchanged apart from a placeholder operator name in step 4, so no claim here changes.","inputs":["docs/guides/native-shell-verification.md","tests/tauri-shell/native-fresh-relay-fixture.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"The self-hosted broker guide cites the fresh native relay fixture guide only for its procedure and anchors; checked that the cited sections are unchanged apart from a placeholder operator name in step 4, so no claim here changes.","inputs":["docs/guides/self-hosted-broker.md","tests/tauri-shell/native-fresh-relay-fixture.md"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"The fixture guide's only change replaces the approving operator's first name in step 4 with the casey placeholder; the procedure, commands and cited anchors are unchanged.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]},
+
+    {"path":"docs/strategy/dogfood/dogfood-018-home-media-client-preflight/report.md","note":"Historical run record moved with its run id renamed to remove a private hostname; added a provenance line. Checked that the gates, evidence ids and digests are byte-identical to the original record and still join the evidence-retention ledger under the new run id. The record's historical classification and limits are unchanged.","inputs":["docs/strategy/dogfood/dogfood-018-home-media-client-preflight/report.md"]}
+  ]
+}

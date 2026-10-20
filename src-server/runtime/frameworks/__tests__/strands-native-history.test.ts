@@ -239,10 +239,28 @@ test('actual SDK isolates concurrent native conversations, approvals, model stat
       },
     },
   });
+  const viewA = agent.withAdditionalTools?.([
+    {
+      name: 'project_a',
+      description: 'Project A tool',
+      parameters: z.object({}),
+      execute: async () => 'a',
+    },
+  ]);
+  const viewB = agent.withAdditionalTools?.([
+    {
+      name: 'project_b',
+      description: 'Project B tool',
+      parameters: z.object({}),
+      execute: async () => 'b',
+    },
+  ]);
+  if (!viewA || !viewB)
+    throw new Error('Native Project tool views are unavailable.');
   const first = await correlated(
     'child-a',
     () =>
-      agent.streamText('turn-a', {
+      viewA.streamText('turn-a', {
         conversationId: 'child-a',
         userId: 'user-a',
       }),
@@ -251,7 +269,7 @@ test('actual SDK isolates concurrent native conversations, approvals, model stat
   const second = await correlated(
     'child-b',
     () =>
-      agent.streamText('turn-b', {
+      viewB.streamText('turn-b', {
         conversationId: 'child-b',
         userId: 'user-b',
       }),

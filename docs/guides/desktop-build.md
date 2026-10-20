@@ -52,6 +52,26 @@ macOS, Windows, and Linux requirements.
 
 ## Verify a fresh checkout
 
+For a slow or stalled context report, run
+`node scripts/tauri-context.mjs --platform windows --json --trace-probes`.
+The report stays JSON on stdout; stderr records each spawned probe's stable
+id, start/end phase, elapsed milliseconds and running/checked/failed/skipped
+status. If an outer timeout interrupts the report, starts without matching
+ends identify its active probes. Probe command limits and report exit status
+remain unchanged.
+
+Independent command and generated-tree probes run concurrently through the
+owned-process helper. Each retains its command deadline (10 seconds; the
+node-spawning version probes — node, npm and tauri-cli — carry 30 seconds
+because a cold Windows start can exceed the shorter bound while the tool is
+healthy; Apple device discovery retains 15 seconds), bounded output and
+process cleanup.
+A stalled tool stays failed in the report and findings; it does not prevent
+unrelated version probes from returning. The exported `buildContextReport`
+builder returns a promise; its CLI caller awaits the completed report.
+SIGINT and SIGTERM cancel active probes and await their process cleanup before
+the CLI exits with status 130 or 143, without printing a partial report.
+
 ```sh
 npm run dependencies:ci
 npm run verify:desktop-clean-checkout
@@ -75,11 +95,15 @@ This is not a byte-preservation check: further changes to an already-dirty path
 can keep the same status entry. Preserve and inspect intentional edits separately. Expected
 caches and outputs such as `dist-*` and `src-desktop/target/` remain ignored.
 
-The path-filtered Ubuntu job in
+The Ubuntu job in
 [desktop-clean-checkout.yml](../../.github/workflows/desktop-clean-checkout.yml)
-runs the same npm command for PR heads, `main` pushes and manual dispatches.
-Its separate Windows job exercises unsigned diagnostic NSIS packaging. Neither
-job's definition establishes that the current revision passed.
+runs the same npm command. The shared
+[delivery workflow](../../.github/workflows/delivery-validation.yml) selects it
+for affected PR heads after required source checks and for scheduled main
+qualification after the full corpus succeeds; manual dispatch remains available.
+It no longer starts independently on each `main` push. Its separate Windows job
+exercises unsigned diagnostic NSIS packaging. Neither job's definition
+establishes that the current revision passed.
 
 ## Startup readiness boundary
 
@@ -87,8 +111,11 @@ Packaged desktop startup has an explicit readiness and recovery boundary. Read
 [Recover a desktop start](../user/native-recovery.md) for the user behavior,
 logs, second-launch/tray distinction, and evidence limits. Read [Native shell
 verification](native-shell-verification.md) for the exact source checks and
-the physical-platform `NOT_VERIFIED` matrix. These build checks do not prove a
-native window, dialog, tray, or release package.
+the physical-platform `NOT_VERIFIED` matrix. A readiness deadline never
+restarts a still-booting sidecar; it offers Restart/Quit (in the macOS startup
+cover, or a dialog elsewhere) while a late start can still reveal the window.
+These build checks do not prove a native window, startup cover, dialog, tray,
+or release package.
 
 ## Committed-input policy
 
@@ -107,10 +134,10 @@ The earlier 2026-08-15 registry review is historical. The current checkout
 requests these direct versions; this list is not a claim that they remain the
 latest upstream releases:
 
-- Rust `tauri` 2.11.5
-- Rust `tauri-build` 2.6.3
-- npm `@tauri-apps/api` `^2.11.1`
-- npm `@tauri-apps/cli` `^2.11.5`
+- Rust `tauri` 2.12.1
+- Rust `tauri-build` 2.7.1
+- npm `@tauri-apps/api` `^2.12.4`
+- npm `@tauri-apps/cli` `^2.12.2`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The
@@ -118,6 +145,15 @@ manifest ranges do not by themselves identify the installed npm package version.
 Tauri's
 [dependency update guide](https://v2.tauri.app/develop/updating-dependencies/)
 before changing either side.
+
+The Rust process, deep-link, updater, haptics, and notification plugins use
+the same minor lines as their npm packages. The notification plugin is pinned
+to Rust `=2.7.0` with npm `2.7.0`; the updater uses Rust `=2.14.0` and npm
+`2.14.0`. Matching versions satisfy the CLI version guard, while native build
+and runtime evidence remain separate.
+`tauri:context` checks the selected
+toolchain and configuration; those checks alone do not prove a packaged shell
+works.
 
 ## Desktop Content Security Policy
 

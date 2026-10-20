@@ -5,10 +5,13 @@
  * `src-ui/src/contexts/onboarding-setup-store.ts` (subscribe/getSnapshot/
  * notify for `useSyncExternalStore`).
  *
- * Everything lives in ONE localStorage key (`ENVELOPE_STORAGE_KEY`):
+ * Device values and legacy portable choices live in ONE localStorage key (`ENVELOPE_STORAGE_KEY`):
  * `{ version, values }`, where `values` is a PARTIAL `DeviceSettings` — only
  * keys that have ever been explicitly set are present; every other key
  * resolves through `DEVICE_SETTINGS_REGISTRY`'s `defaultValue`.
+ *
+ * An authority-bound account overlay supplies portable preferences while signed
+ * in. Account reads and writes never enter this origin-wide envelope.
  *
  * On first construction (no envelope present yet), the store runs a
  * one-time migration: for every registered setting with a present prior
@@ -25,6 +28,11 @@
  */
 
 import {
+  ACCOUNT_PREFERENCE_KEYS,
+  type AccountPreferences,
+  type AccountPreferencesPatch,
+} from '@kontourai/station-contracts/account-preferences';
+import {
   DEVICE_SETTINGS_REGISTRY,
   type DeviceSettingDefinition,
   type DeviceSettings,
@@ -39,6 +47,7 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
+import { applyAccountPreferencePatch } from './account-preference-values';
 import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
@@ -676,6 +685,14 @@ const DEFINITIONS_BY_KEY = new Map(
 );
 
 class DeviceSettingsStore {
+  private persistenceFailed = false;
+  private account:
+    | {
+        values: AccountPreferences | undefined;
+        write: (patch: AccountPreferencesPatch) => void;
+        writable: boolean;
+      }
+    | undefined;
   private envelope: DeviceSettingsEnvelope;
   private snapshot: DeviceSettings;
   private listeners = new Set<Listener>();
@@ -818,11 +835,33 @@ class DeviceSettingsStore {
     for (const definition of DEVICE_SETTINGS_REGISTRY) {
       result[definition.key] = this.resolveValue(this.envelope, definition.key);
     }
+    if (this.account?.values) {
+      for (const key of ACCOUNT_PREFERENCE_KEYS) {
+        result[key] = Object.hasOwn(this.account.values, key)
+          ? this.account.values[key]
+          : DEFINITIONS_BY_KEY.get(key)!.defaultValue;
+      }
+      const features = {
+        ...this.resolveValue(this.envelope, 'featureSettings'),
+      };
+      for (const key of ['smoothReveal', 'bufferedDelivery'] as const) {
+        features[key] =
+          this.account.values[key] ??
+          (
+            DEFINITIONS_BY_KEY.get('featureSettings')!
+              .defaultValue as DeviceSettings['featureSettings']
+          )[key];
+      }
+      result.featureSettings = features;
+    }
     return result as unknown as DeviceSettings;
   }
 
   private persist(): void {
-    writeRaw(ENVELOPE_STORAGE_KEY, JSON.stringify(this.envelope));
+    this.persistenceFailed = !writeRaw(
+      ENVELOPE_STORAGE_KEY,
+      JSON.stringify(this.envelope),
+    );
   }
 
   private notify(): void {
@@ -889,7 +928,38 @@ class DeviceSettingsStore {
 
   isHydrated = (): boolean => this.hydratedState;
 
+  isPersistenceFailed = (): boolean => this.persistenceFailed;
+
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
+
+  /** Account values never enter the origin-wide device envelope. */
+  bindAccountPreferences = (
+    values: AccountPreferences | undefined,
+    write: (patch: AccountPreferencesPatch) => void,
+    writable = true,
+  ): (() => void) => {
+    const binding = { values, write, writable };
+    this.account = binding;
+    this.snapshot = this.resolve();
+    this.notify();
+    return () => {
+      if (this.account !== binding) return;
+      this.account = undefined;
+      this.snapshot = this.resolve();
+      this.notify();
+    };
+  };
+
+  private writeAccountPatch(patch: AccountPreferencesPatch): void {
+    const account = this.account;
+    if (!account) return;
+    if (account.writable && account.values) {
+      account.values = applyAccountPreferencePatch(account.values, patch);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
+    account.write(patch);
+  }
 
   /**
    * Adopts an imported envelope wholesale: throws
@@ -916,6 +986,18 @@ class DeviceSettingsStore {
 
   /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (read-merge-write, not a blind overwrite from this tab's stale snapshot). */
   merge = (partial: Partial<DeviceSettings>): void => {
+    if (this.account) {
+      const device = { ...partial };
+      const patch: AccountPreferencesPatch = {};
+      for (const key of ACCOUNT_PREFERENCE_KEYS) {
+        if (!Object.hasOwn(device, key)) continue;
+        Object.assign(patch, { [key]: device[key] });
+        delete device[key];
+      }
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      if (Object.keys(device).length === 0) return;
+      partial = device;
+    }
     const fresh = this.readPersistedEnvelope();
     this.applyEnvelope({
       ...fresh,
@@ -931,6 +1013,30 @@ class DeviceSettingsStore {
     key: K,
     value: DeviceSettings[K],
   ): void => {
+    if (
+      this.account &&
+      ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
+    ) {
+      if (!valuesEqual(this.snapshot[key], value))
+        this.writeAccountPatch({ [key]: value });
+      return;
+    }
+    if (this.account && key === 'featureSettings') {
+      const features = value as DeviceSettings['featureSettings'];
+      const patch: AccountPreferencesPatch = {};
+      for (const field of ['smoothReveal', 'bufferedDelivery'] as const) {
+        if (features[field] !== this.snapshot.featureSettings[field])
+          patch[field] = features[field] ?? null;
+      }
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      value = {
+        ...features,
+        smoothReveal: this.resolveValue(this.envelope, 'featureSettings')
+          .smoothReveal,
+        bufferedDelivery: this.resolveValue(this.envelope, 'featureSettings')
+          .bufferedDelivery,
+      } as DeviceSettings[K];
+    }
     const fresh = this.readPersistedEnvelope();
     const currentValue = this.resolveValue(fresh, key);
     if (valuesEqual(currentValue, value)) return;
@@ -957,6 +1063,16 @@ class DeviceSettingsStore {
    * the same true no-op `reset` already was.
    */
   resetMany = (keys: readonly (keyof DeviceSettings)[]): void => {
+    if (this.account) {
+      const patch: AccountPreferencesPatch = {};
+      for (const key of ACCOUNT_PREFERENCE_KEYS)
+        if (keys.includes(key)) patch[key] = null;
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      keys = keys.filter(
+        (key) =>
+          !ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key),
+      );
+    }
     const fresh = this.readPersistedEnvelope();
     const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
     if (stored.length === 0) return;

@@ -11,9 +11,11 @@ import {
 } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { RegionShells } from '../../app-shell/RegionShells';
 import { ambientChatPaneFailureContext } from '../../components/chat-dock/chatPaneFailureContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/navigation-store';
+import { RegionModelProvider } from '../../contexts/RegionModelContext';
 import { RegionPaneHost } from '../RegionPaneHost';
 
 /**
@@ -67,6 +69,11 @@ vi.mock('../../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '',
 }));
 
+vi.mock('../../components/chat-dock/ChatDock', () => ({
+  ChatDock: () => null,
+  renderAmbientChatPane: () => <ConversationSpecificCrash />,
+}));
+
 const STORE_KEY = 'chat-failure-store-key';
 const CONVERSATION_ID = 'conversation-that-crashes';
 const TITLE = 'Are you running the latest version? Run ls -la';
@@ -116,6 +123,34 @@ afterEach(() => {
   navigationStore.setActiveChat(null);
   window.localStorage.clear();
   delete (globalThis.navigator as { locks?: unknown }).locks;
+});
+
+test('deferred Chat renderer failures keep the region pane recovery actions', async () => {
+  navigationStore.setActiveChat(null);
+  render(
+    <RegionModelProvider>
+      <RegionShells />
+    </RegionModelProvider>,
+  );
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  await screen.findByTestId('chat-list');
+  act(() => navigationStore.setActiveChat(CONVERSATION_ID));
+  const failure = await screen.findByRole('region', {
+    name: 'Chat unavailable',
+  });
+  expect(within(failure).getByText(TITLE)).toBeTruthy();
+  expect(
+    within(failure).getByRole('button', { name: 'Close this chat' }),
+  ).toBeTruthy();
+  expect(
+    within(failure).getByRole('button', { name: 'Minimize' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    within(failure).getByRole('button', { name: 'Close this chat' }),
+  );
+  await screen.findByTestId('chat-list');
 });
 
 test('a crashed Chat pane names the conversation, shows the error, and goes back to the chat list', async () => {

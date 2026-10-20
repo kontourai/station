@@ -1,8 +1,10 @@
 import { useAgentsQuery } from '@kontourai/station-sdk';
 import { AgentGlyph } from '../components/icons/Glyph';
+import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { AGENTS_PANE_ID } from '../components/split-pane-metrics';
 import { type AgentData } from '../contexts/AgentsContext';
+import { dispatchNewChatIntent } from '../lib/newChatIntent';
 import type { NavigationView } from '../types';
 import { AgentsViewEditorPane } from './agent-editor/AgentsViewEditorPane';
 import { useAgentsViewModel } from './agent-editor/useAgentsViewModel';
@@ -156,11 +158,12 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
           promptIsRequired={promptIsRequired}
           createdNotice={createdNotice}
           onChat={() =>
-            window.dispatchEvent(
-              new CustomEvent('station:open-new-chat', {
-                detail: { agentSlug: selectedSlug },
-              }),
-            )
+            dispatchNewChatIntent({
+              selection: {
+                context: selectedAgent?.project || GLOBAL_CONTEXT,
+                agentSlug: selectedSlug || undefined,
+              },
+            })
           }
           agents={agents}
           selectedSlug={selectedSlug}

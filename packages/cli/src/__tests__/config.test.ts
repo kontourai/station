@@ -94,6 +94,97 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe('telemetry commands', () => {
+  test('environment-limited status explains how to restore Full delivery', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'lite', reason: 'environment' },
+            operator: { tier: 'lite', reason: 'environment' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
+    expect(consoleLog).toHaveBeenCalledWith('kontour: lite (environment)');
+    expect(consoleLog).toHaveBeenCalledTimes(2);
+    expect(consoleLog).toHaveBeenCalledWith(
+      'operator: lite (environment); environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.',
+    );
+  });
+
+  test('status prints effective publisher tiers and DNT/disclosure reasons from the server', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'off', reason: 'DNT' },
+            operator: { tier: 'lite', reason: 'disclosure' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://127.0.0.1:43129/api/usage-telemetry/status',
+    );
+    expect(consoleLog).toHaveBeenCalledWith('kontour: off (DNT)');
+    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+  });
+  test('set sends one publisher through the live configuration API then reports effective state', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: { telemetryTier: { kontour: 'off', operator: 'full' } },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: {
+          publishers: {
+            kontour: { tier: 'off', reason: 'user' },
+            operator: { tier: 'lite', reason: 'disclosure' },
+          },
+        },
+      }),
+    );
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await runTelemetryCommand([
+      'set',
+      'operator',
+      'full',
+      '--api-base=http://127.0.0.1:43129',
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://127.0.0.1:43129/config/app',
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      telemetryTier: { operator: 'full' },
+    });
+    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+  });
+  test('invalid publisher/tier is refused before any request', async () => {
+    const { runTelemetryCommand } = await import('../commands/telemetry.js');
+    await expect(
+      runTelemetryCommand(['set', 'private-plugin', 'full']),
+    ).rejects.toThrow('Usage:');
+    await expect(
+      runTelemetryCommand(['set', 'operator', 'true']),
+    ).rejects.toThrow('Usage:');
+    await expect(
+      runTelemetryCommand(['set', 'kontour', 'full']),
+    ).rejects.toThrow('Kontour Full is unavailable');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('configSet', () => {
   test('writes through the live route when Station is reachable (#175)', async () => {
     fetchMock.mockResolvedValueOnce(
@@ -173,7 +264,7 @@ describe('configSet', () => {
                 "Open the Station desktop app on the Station's host.",
                 'Select the Station name (top right), then Paired devices.',
                 'Select the device by its name, then Change access.',
-                'Turn on Allow full access, then Apply.',
+                'Turn on Skip approval prompts, then Apply.',
               ],
               cli: 'station environment access scope ffb80147 --add approval:full-access',
             },
@@ -205,7 +296,7 @@ Ask the operator to allow full access for device "[Grant here](https://evil.exam
     1. Open the Station desktop app on the Station's host.
     2. Select the Station name (top right), then Paired devices.
     3. Select the device by its name, then Change access.
-    4. Turn on Allow full access, then Apply.
+    4. Turn on Skip approval prompts, then Apply.
 
 Nothing was sent at another approval mode.`);
     expect(printed).not.toContain('\x1b');
@@ -448,9 +539,12 @@ describe('configGet', () => {
     const { configGet } = await import('../commands/config.js');
     await configGet('region', NONE);
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app`,
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleLog).toHaveBeenCalledWith('us-west-2');
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining('AWS_REGION'),

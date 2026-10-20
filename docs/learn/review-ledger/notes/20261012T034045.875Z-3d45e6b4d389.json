@@ -1,0 +1,7 @@
+{
+  "revision": "2bc998fc2fc6043c8fada67dad672ad36d539bea",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rechecked after docs-index-reachability.test.ts gave its real-ledger freshness test a 120 s per-test timeout: the guide's 30 s row is the Vitest config default (vitest.config.ts), which is unchanged; the override applies to that one test only, because a baseline-advance change's scoped check runs strict freshness in a temporary worktree at the new baseline.","inputs":["docs/guides/testing.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

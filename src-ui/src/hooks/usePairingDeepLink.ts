@@ -1,5 +1,6 @@
 import {
   type PairingDeepLinkChannel,
+  parseBrowserPairingLink,
   parsePairingDeepLink,
 } from '@kontourai/station-connect/pairing-deep-link';
 import { useEffect } from 'react';
@@ -21,6 +22,22 @@ export function usePairingDeepLink({
   onPairingPayload,
   onError,
 }: UsePairingDeepLinkOptions): void {
+  useEffect(() => {
+    const parsed = parseBrowserPairingLink(window.location.href);
+    if (!parsed) return;
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams(url.hash.slice(1));
+    hash.delete('station-pairing');
+    url.hash = hash.toString();
+    window.history.replaceState(
+      null,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    if (parsed.status === 'ok') onPairingPayload(parsed.payload);
+    else onError(parsed.message);
+  }, [onPairingPayload, onError]);
+
   useEffect(() => {
     if (!enabled || !clientChannel) return;
     let disposed = false;

@@ -44,9 +44,17 @@ by themselves produce a complete visual dialog.
 - Escape and backdrop-pointer dismissal when `dismissible` permits it;
 - dialog-history registration when a history host is present and
   `historyMode="entry"` applies;
-- the `responsive-surface-overlay` and `responsive-surface-panel` markers;
+- the `responsive-surface-overlay` and `responsive-surface-panel` markers, and
+  `data-sheet` on the overlay while it presents as a phone sheet (the
+  `useIsMobile` query), so a consumer styles its sheet without a page-local
+  media query;
 - an overlay context, linked to the surface it was opened from, so a menu
   inside it can take a layer above it (see [Action rows](#action-rows)).
+
+A consumer may keep its content mounted with `open={false}` to preserve a
+pending decision. The closed surface is hidden and releases dialog history and
+focus; reopening captures a new return-focus target. The approval sheet uses
+this lifecycle so dismissal cannot reset an in-flight answer.
 
 Give the surface an accessible name. Do not add a second document Escape
 listener, backdrop handler, focus trap or mount-time input focus. On a phone,
@@ -69,6 +77,18 @@ lands later in the cascade (today the Diff tools in the Coding side panel's
 head). Nested controls and overflowing content still need their own caller
 test.
 
+On a phone, a request that needs the person — a harness question, an MCP
+elicitation form or a tool approval (#3390) — keeps a compact card in the transcript and is answered in
+[`RequestSheet`](../../src-ui/src/components/chat/RequestSheet.tsx), one
+`ResponsiveDialogSurface` consumer shared by every such feature (#3331). It pins
+the feature's own action row below a scrolling body, fits its height to the
+content, and treats every dismissal path (backdrop, a swipe down on its grab
+strip, Escape, back, the close control) as hide-only: the request stays pending
+until one of its explicit actions answers it. `useRequestSheet(pending)` closes
+the sheet when an answer given on this page settles the request; a request
+resolved elsewhere leaves the pending list instead, which unmounts the card and
+its sheet together. Desktop keeps the feature's inline card.
+
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification and palette tiers as well as
@@ -76,7 +96,9 @@ sticky/dialog/system. A surface popover stays above the dock but below navigatio
 chrome; a modal dialog supersedes notification chrome.
 Do not use feature-local large z-index values to compensate for a wrong owner
 or stacking context. A blocking system surface must explicitly choose the
-system layer. Test stacked dialogs and notices together, not only in isolation.
+system layer. Transparent notification wrappers must let pointer events through;
+only their visible controls and panels take clicks. Test stacked dialogs and
+notices together, not only in isolation.
 
 Package-owned surfaces such as Station Connect retain their package boundary.
 They need their own behavior evidence; similar class names are not proof that
@@ -91,6 +113,16 @@ corresponding CSS conditions aligned. The documentation token `--bp-mobile`
 cannot be substituted into a CSS media query. Dock placement has a different
 policy: a wide coarse-pointer device can be bottom-only without being mobile.
 
+Content whose room depends on the dock rather than the window measures the
+dock. The session context card beside the Chat transcript
+([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts))
+reads the conversation surface's width with a `ResizeObserver` and shows only
+when the transcript keeps its 640px floor beside it; the same answer hides
+the header items it repeats, which live outside the dock body, so a CSS
+container query on the body could not reach them. A phone never shows it
+inline; there it opens as a sheet from the Chat actions sheet, because the
+phone bar's edge reserve holds only its two 44px controls.
+
 Use [useMobileVisualViewport](../../src-ui/src/hooks/useMobileVisualViewport.ts)
 at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
@@ -101,7 +133,12 @@ singleton: do not add redundant subscriptions in every nested panel.
 
 Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
 Keep one bounded scroll owner per region; use overscroll containment where a
-sheet should not scroll the page behind it. Apply safe-area values at the owning
+sheet should not scroll the page behind it. The outer `.app__main` frame uses
+`overflow: clip` where supported so section focus cannot pan the toolbar away;
+its explicit minimum sizes keep phone flex layouts shrinkable. Nested
+`.content-view` and region bodies retain their own scrolling. Older WebViews
+keep `overflow: hidden`; preventing their programmatic frame scroll is not
+established by the Chromium checks. Apply safe-area values at the owning
 boundary, accounting for nested surfaces rather than adding the same inset to
 every child. Terminal/editor phone controls should stay in one horizontally
 scrollable row; their input font must avoid mobile browser zoom. Test the real
@@ -138,21 +175,64 @@ picker uses 18px titles with up to two lines, Agent icons, 14px project/status
 metadata, and a pinned New chat action at the lower right. Project names wrap.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
-across the mobile bar, task picker, desktop inbox, the collapsed dock bar (icon
-only) and the open, empty dock, with a 44px minimum target and an accessible
-name. It opens the start composer: its two chips stay on one line (the Agent
-chip gives up width first) and the overflow sits with Start, so a phone gets
-the chips on row one and [⋯ … Start] on row two with no viewport query; every
-target is 44px, and the chip menus are edge sheets on a phone with their own
+across the task picker, desktop inbox, the collapsed dock bar (icon only) and
+the open, empty dock. The mobile bar composes the same conversation-plus glyph
+with its toolbar button styles. Both forms retain a 44px minimum target and
+an accessible name. It opens the start composer: its two chips stay on one line (the Agent
+chip gives up width first) and attach, mic and the overflow sit with Start, so
+a phone gets the chips on row one and [attach mic ⋯ … Start] on row two with no
+viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
 scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
+
+A page's one creation action uses
+[PageCreateAction](../../src-ui/src/components/PageCreateAction.tsx): the
+labelled primary button in the page header on desktop, and on phones a floating
+round "+" in the lower right, so the stacked header does not give it a row of
+its own. The "+" is [CreatePlusButton](../../src-ui/src/components/CreatePlusButton.tsx),
+the same control the picker footers use. It keeps the label as its accessible
+name, sits on the floating-action layer above `--dock-bottom-clearance` (dock,
+safe area and on-screen keyboard), stays below dialogs, and hides while a
+maximized chat or a detail sheet fills the screen. Use it only for creating
+something; Connections is the first adopter.
+
+The mobile chat header keeps the conversation title on one line with the
+assistant beneath it. Coding omits the repeated conversation crumb on its chat
+page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
+reachable. The Project control’s New chats caption names future context;
+it does not move the open conversation. A phone browser retries an unavailable Station without reloading, and
+rechecks on foreground or network return. A refused credential waits for explicit
+pairing; Request access opens the selected Station directly. Pairing inputs keep
+a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
+inside the available width. A disconnected
+phone starts with pairing and a computer-setup handoff. Host addresses and broker
+routes are under **Other ways to connect**. Native capability and coarse-pointer
+presentation determine that screen; narrow desktop browsers retain access to
+their current Station.
+
+The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+the same toolbar button family as its neighbours, retaining its accessible
+name. Source and component checks establish these placements and disabled
+states. The relay UX screenshot harness omits the real dock and uses stubbed
+data, so its geometry does not qualify dock/keyboard clearance, native operator
+flow, physical devices or a released Nightly.
 
 Shared panel entrances fade and translate upward by `--k-space-4` on mobile,
 without scaling touch targets. Existing surfaces with a directional entrance
 keep their own motion. The global reduced-motion reset still applies. Source
 rules describe the treatment; browser checks at narrow widths, both themes,
 long content and short heights establish whether controls remain reachable.
+
+The status pill's entry, body morph and details entrance use backwards fill in
+[their stylesheet](../../src-ui/src/components/status/live-status.css). Their
+final frame matches the resting opacity and transform, so completed effects
+release instead of retaining an animated stacking context. Exit and celebration
+effects retain their terminal frames; running status loops keep their existing
+lifetime. The Gallery regression observes the rendered pill through the Web
+Animations API and checks its resting styles after completion. Its visually
+hidden live announcement is anchored at the document origin so the body portal
+cannot add a scroll row below a dock that fills the viewport.
 
 ### Action rows
 
@@ -237,3 +317,12 @@ for controlled geometry. Its simulated keyboard does not replace a real
 browser/native keyboard run. The [testing guide](testing.md) explains how to
 record PASS, FAIL and NOT_VERIFIED without turning missing prerequisites into
 success.
+
+### Coding on a phone
+
+The built-in Coding layout keeps Chat in its workbench at phone widths, with
+Files, Diff, and Terminal available as drill-ins. It suspends the ambient chat
+controller and leaves unrelated dock state intact. Its chat header does not
+repeat the app toolbar’s navigation and Station controls. VisualViewport fitting
+bounds the workbench above the on-screen keyboard; actual device and browser
+checks remain necessary.

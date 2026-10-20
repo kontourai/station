@@ -6,16 +6,18 @@
  *   station environment access devices [--json]
  *   station environment access scope <device> --add=<scope,…> | --remove=<scope,…> | --set=<scope,…> [--dry-run]
  *   station environment access scopes [--json]
+ *   station environment access revoke <device> [--force]
+ *   station environment access remove <device> [--force]
  *
  * Everything here speaks to Station through a {@link DeviceAccessOperatorChannel}
- * and never learns how the operator was authenticated. Today the only channel
- * is the Station host's own (`openLocalOperatorChannel` in environment.ts:
- * loopback proof, then the home's operator credential), so a paired remote
- * CLI cannot reach these verbs. A later remote operator session would supply
- * a different channel and reuse this module unchanged.
+ * without owning authentication. environment.ts selects the proved local
+ * operator channel or a paired principal explicitly granted access:devices.
+ * The server authorizes the selected principal on every request.
  *
- * The routes are the existing ones: `GET /api/pairing/devices` and
- * `POST /api/pairing/devices/:id/scope` (operator only). A scope change is
+ * The routes are the existing ones: `GET /api/pairing/devices`,
+ * `POST /api/pairing/devices/:id/scope`, `DELETE /api/pairing/devices/:id`
+ * (revoke) and `DELETE /api/pairing/devices/:id/record` (remove a revoked
+ * record). A scope change is
  * computed from the device's current scope and sent with `expectedScope`, so
  * a change another operator made meanwhile is refused, not overwritten.
  */
@@ -88,6 +90,7 @@ export function parseDeviceScopeArgs(
   )
     throw usageError();
   const selector = parsed.positionals[2]!;
+  if (selector.trim() === '') throw usageError();
   const operations = (['add', 'remove', 'set'] as const).filter(
     (name) => parsed.flags[name] !== undefined,
   );
@@ -153,9 +156,13 @@ function parseDevice(value: unknown): DeviceAccessRow | undefined {
   };
 }
 
-/** The paired devices whose access is a live question (not revoked). */
+/**
+ * The paired devices whose access is a live question (not revoked), or with
+ * `{ revoked: true }` only the revoked records (what `remove` may delete).
+ */
 async function listPairedDevices(
   channel: DeviceAccessOperatorChannel,
+  options: { revoked?: boolean } = {},
 ): Promise<DeviceAccessRow[]> {
   const body = await channel.request('/api/pairing/devices');
   const devices =
@@ -168,11 +175,17 @@ async function listPairedDevices(
     .map(parseDevice)
     .filter(
       (device): device is DeviceAccessRow =>
-        device !== undefined && device.revokedAt === null,
+        device !== undefined &&
+        (device.revokedAt !== null) === (options.revoked === true),
     );
 }
 
 const shortId = (id: string) => id.slice(0, 8);
+
+/** The device by name and its FULL id, for a prompt about something irreversible. */
+function fullLabel(device: DeviceAccessRow): string {
+  return `"${terminalSafeText(device.name)}" (${terminalSafeText(device.id)})`;
+}
 
 function label(device: DeviceAccessRow): string {
   return `"${terminalSafeText(device.name)}" (${shortId(device.id)})`;
@@ -186,6 +199,7 @@ function label(device: DeviceAccessRow): string {
 function resolveDevice(
   devices: readonly DeviceAccessRow[],
   selector: string,
+  noMatch = `No paired device matches "${terminalSafeText(selector).slice(0, 64)}". List them with: station environment access devices`,
 ): DeviceAccessRow {
   const exact = devices.find((device) => device.id === selector);
   if (exact) return exact;
@@ -202,9 +216,7 @@ function resolveDevice(
         `"${terminalSafeText(selector).slice(0, 64)}" matches more than one paired device by ${how}: ${matches.map(label).join(', ')}. Use a longer id.`,
       );
   }
-  throw new Error(
-    `No paired device matches "${terminalSafeText(selector).slice(0, 64)}". List them with: station environment access devices`,
-  );
+  throw new Error(noMatch);
 }
 
 /** The scope a change leaves, in the vocabulary's canonical order. */
@@ -264,12 +276,31 @@ export async function runDeviceScopeCommand(
     throw new Error(
       `Device ${label(device)} holds a scope this CLI cannot read (${terminalSafeText(device.scope).slice(0, 256)}). Update the CLI, or change it in Station.`,
     );
-  const next = nextDeviceScope(current, args.change);
+  const requested = nextDeviceScope(current, args.change);
+  // A scope no device can be granted (`access:manage`, which older Stations
+  // gave every device by default) cannot survive a rewrite: Station refuses
+  // to store it again. So any real change drops it, and says so, exactly as
+  // the desktop app's access editor does. A change that asks for nothing new
+  // leaves the device alone.
+  const legacy = current.filter((token) => !isPairingScopeGrantable(token));
+  const changes =
+    requested.length !== current.length ||
+    requested.some((token) => !current.includes(token));
+  const next = changes
+    ? requested.filter((token) => isPairingScopeGrantable(token))
+    : requested;
   const before = current.join(' ');
   const after = next.join(' ');
   write(`Device ${label(device)} on ${channel.target}`);
   write(`  before: ${before}`);
   write(`  after:  ${after || '(none)'}`);
+  const dropped = changes
+    ? legacy.filter((token) => requested.includes(token))
+    : [];
+  if (dropped.length > 0)
+    write(
+      `  Also removes ${dropped.join(', ')}: an older Station version gave it to every device by default, and no device can be granted it again.`,
+    );
   if (next.length === 0)
     throw new Error(
       'A device must keep at least one scope. To remove its access entirely, revoke it in Station.',
@@ -313,7 +344,7 @@ export async function runDeviceScopeCommand(
   } catch (error) {
     if ((error as { code?: unknown }).code === 'scope_not_grantable')
       throw new Error(
-        `Device ${label(device)} still holds a scope that cannot be granted to a device (access:manage, from an older default grant), so Station will not rewrite its access with it kept. Remove it in the same change, e.g. --set=<the scopes it should keep>, or remove it first with --remove=access:manage.`,
+        `Station refused to keep a scope on ${label(device)} that no device can be granted. Run \`environment access devices\` to see its current access, then repeat this change.`,
       );
     if ((error as { code?: unknown }).code === 'scope_changed')
       throw new Error(
@@ -329,6 +360,137 @@ export async function runDeviceScopeCommand(
     `Updated. Live terminal and voice connections of this device reconnect under the new access.`,
   );
   reportFullAccessRevocation(answer, write);
+}
+
+export interface DeviceRemovalArgs {
+  readonly selector: string;
+  /** `--force`: the operator's typed approval, for a run with no terminal to ask. */
+  readonly force: boolean;
+}
+
+/**
+ * Parses `access revoke` / `access remove` in full, before any Station is
+ * contacted: one selector, and only the target and `--force` flags.
+ */
+export function parseDeviceRemovalArgs(
+  parsed: ParsedArgs,
+  usageError: () => Error,
+): DeviceRemovalArgs {
+  const allowed = ['api-base', 'station', 'force'];
+  if (
+    parsed.positionals.length !== 3 ||
+    !Object.keys(parsed.flags).every((name) => allowed.includes(name)) ||
+    (parsed.flags.force !== undefined && parsed.flags.force !== true) ||
+    // `startsWith('')` would match a lone device.
+    parsed.positionals[2]!.trim() === ''
+  )
+    throw usageError();
+  return {
+    selector: parsed.positionals[2]!,
+    force: parsed.flags.force === true,
+  };
+}
+
+/** Asks the operator; `null` when there is nobody to ask (no terminal). */
+export type DeviceRemovalConfirm =
+  | ((question: string) => Promise<boolean>)
+  | null;
+
+/**
+ * Both verbs end the device's record of access and are not undone by rerunning
+ * anything, so each is approved by `--force` or a person at a terminal, and a
+ * run with neither is refused before Station is contacted.
+ */
+export function requireDeviceRemovalApproval(
+  args: DeviceRemovalArgs,
+  verb: 'revoke' | 'remove',
+  confirm: DeviceRemovalConfirm,
+): void {
+  if (!args.force && !confirm)
+    throw new Error(
+      `access ${verb} is destructive and requires --force when stdin is non-interactive.`,
+    );
+}
+
+async function approve(
+  args: DeviceRemovalArgs,
+  confirm: DeviceRemovalConfirm,
+  question: string,
+): Promise<boolean> {
+  return args.force ? true : confirm ? confirm(question) : false;
+}
+
+/** The answer must name the device the operator chose, and that it is now revoked. */
+function requireRevokedDevice(
+  answer: unknown,
+  device: DeviceAccessRow,
+  what: string,
+): void {
+  const named = parseDevice(answer);
+  if (!named || named.id !== device.id || named.revokedAt === null)
+    throw new Error(
+      `Station returned a mismatched device after ${what}. Check the device in Station.`,
+    );
+}
+
+export async function runDeviceRevokeCommand(
+  channel: DeviceAccessOperatorChannel,
+  args: DeviceRemovalArgs,
+  confirm: DeviceRemovalConfirm,
+  write: (line: string) => void,
+): Promise<void> {
+  const device = resolveDevice(await listPairedDevices(channel), args.selector);
+  write(`Device ${label(device)} on ${channel.target}`);
+  write(`  scopes: ${device.scope}`);
+  if (
+    !(await approve(
+      args,
+      confirm,
+      `Revoke ${fullLabel(device)}? Its access ends immediately and cannot be restored; it can pair again later. Continue?`,
+    ))
+  )
+    throw new Error(
+      'Not revoked: the revoke was not approved. Nothing was changed.',
+    );
+  const answer = await channel.request(
+    `/api/pairing/devices/${encodeURIComponent(device.id)}`,
+    { method: 'DELETE' },
+  );
+  requireRevokedDevice(answer, device, 'the revoke');
+  write(
+    'Revoked. Its live terminal and voice connections are closed, and it can pair again later.',
+  );
+  reportFullAccessRevocation(answer, write, 'revoked');
+}
+
+export async function runDeviceRemoveCommand(
+  channel: DeviceAccessOperatorChannel,
+  args: DeviceRemovalArgs,
+  confirm: DeviceRemovalConfirm,
+  write: (line: string) => void,
+): Promise<void> {
+  const device = resolveDevice(
+    await listPairedDevices(channel, { revoked: true }),
+    args.selector,
+    `No revoked device record matches "${terminalSafeText(args.selector).slice(0, 64)}". A device that is still paired is revoked first: station environment access revoke <device>`,
+  );
+  write(`Revoked device ${label(device)} on ${channel.target}`);
+  if (
+    !(await approve(
+      args,
+      confirm,
+      `Delete the revoked record of ${fullLabel(device)}? The record cannot be restored. Continue?`,
+    ))
+  )
+    throw new Error(
+      'Not removed: the removal was not approved. Nothing was changed.',
+    );
+  const answer = await channel.request(
+    `/api/pairing/devices/${encodeURIComponent(device.id)}/record`,
+    { method: 'DELETE' },
+  );
+  requireRevokedDevice(answer, device, 'the record removal');
+  write('Removed the revoked record.');
 }
 
 const RESET_WAS: Record<string, string> = {
@@ -361,6 +523,7 @@ const STILL_REASON: Record<string, string> = {
 function reportFullAccessRevocation(
   answer: unknown,
   write: (line: string) => void,
+  change: 'scope changed' | 'revoked' = 'scope changed',
 ): void {
   const record =
     answer && typeof answer === 'object'
@@ -368,7 +531,7 @@ function reportFullAccessRevocation(
       : {};
   if (record.fullAccessRevocationError !== undefined)
     throw new Error(
-      'The scope was changed, but Station could not reset the conversations this device had put at full access. They keep their current approval mode until someone changes it. Check the Station log.',
+      `${change === 'revoked' ? 'The device was revoked' : 'The scope was changed'}, but Station could not reset the conversations this device had put at full access. They keep their current approval mode until someone changes it. Check the Station log.`,
     );
   const report = record.fullAccessRevocation as
     | {

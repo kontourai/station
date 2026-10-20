@@ -22,6 +22,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -150,7 +151,17 @@ async function serviceRun(): Promise<void> {
   publishServiceLivenessRecord(target, true);
   log('ready');
   link.onReady();
-  setInterval(() => link.tick(), 50);
+  setInterval(() => {
+    // STATION_FIXTURE_ACTIVE_EXIT names a file whose appearance makes the
+    // active child exit on its own (a crashed supervisor); it is consumed.
+    const crash = process.env.STATION_FIXTURE_ACTIVE_EXIT;
+    if (context.role === 'active' && crash && existsSync(crash)) {
+      rmSync(crash, { force: true });
+      log('active-exit');
+      process.exit(4);
+    }
+    link.tick();
+  }, 50);
 }
 
 async function main(): Promise<void> {

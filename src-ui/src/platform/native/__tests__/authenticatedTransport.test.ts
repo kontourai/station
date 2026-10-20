@@ -59,6 +59,104 @@ test('blocks credential requests after the development HTTP exception is removed
 });
 
 describe('native authenticated transport', () => {
+  test('retries a pre-HTTP DNS miss with fresh native request identity and rechecks authority', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command !== 'station_native_http_request') return;
+      attempts += 1;
+      queueMicrotask(() => {
+        if (attempts === 1)
+          emit({
+            type: 'error',
+            code: 'transport_dns',
+            detail: 'DNS unavailable',
+          });
+        else {
+          emit({ type: 'response', status: 204, headers: {}, bodyLength: 0 });
+          emit({ type: 'end' });
+        }
+      });
+    });
+    const guard = vi.fn();
+    const init = {
+      method: 'POST',
+      body: '{"decision":"acceptForSession"}',
+      authorityGuard: guard,
+    };
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/orchestration/commands',
+      init,
+    );
+    await vi.advanceTimersByTimeAsync(750);
+    expect((await pending).status).toBe(204);
+    const calls = bridge.invoke.mock.calls.filter(
+      ([command]) => command === 'station_native_http_request',
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].request.requestId).not.toBe(
+      calls[1][1].request.requestId,
+    );
+    expect(calls[0][1].request.body).toEqual(calls[1][1].request.body);
+    expect(guard.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('does not replay an approval after an HTTP 503 or an uncertain transport timeout', async () => {
+    for (const outcome of ['response', 'timeout'] as const) {
+      bridge.invoke.mockReset();
+      bridge.invoke.mockImplementation(async (command: string) => {
+        if (command !== 'station_native_http_request') return;
+        queueMicrotask(() => {
+          if (outcome === 'response') {
+            emit({ type: 'response', status: 503, headers: {}, bodyLength: 0 });
+            emit({ type: 'end' });
+          } else
+            emit({
+              type: 'error',
+              code: 'transport_timeout',
+              detail: 'Timed out',
+            });
+        });
+      });
+      const pending = nativeAuthenticatedTransport(
+        'https://station.example.test/api/orchestration/commands',
+        { method: 'POST', body: '{}' },
+      );
+      if (outcome === 'response') expect((await pending).status).toBe(503);
+      else
+        await expect(pending).rejects.toMatchObject({
+          code: 'transport_timeout',
+        });
+      expect(
+        bridge.invoke.mock.calls.filter(
+          ([command]) => command === 'station_native_http_request',
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
+  test('stops pre-HTTP DNS retries at three attempts', async () => {
+    vi.useFakeTimers();
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        queueMicrotask(() => emit({ type: 'error', code: 'transport_dns' }));
+    });
+    const outcome = nativeAuthenticatedTransport(
+      'https://station.example.test/api/orchestration/commands',
+      { method: 'POST', body: '{}' },
+    );
+    const refused = expect(outcome).rejects.toMatchObject({
+      code: 'transport_dns',
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await refused;
+    expect(
+      bridge.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_http_request',
+      ),
+    ).toHaveLength(3);
+  });
+
   beforeEach(() => {
     bridge.invoke.mockReset();
     bridge.channels.length = 0;

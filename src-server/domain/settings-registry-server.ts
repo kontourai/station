@@ -20,7 +20,6 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProjectSettingsOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import {
   APP_SETTINGS_REGISTRY,
-  acceptsSettingValue,
   type SettingProvenanceEntry,
   type SettingProvenanceSource,
 } from '@kontourai/station-contracts/settings-registry';
@@ -28,6 +27,7 @@ import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
+import { resolveSettingEnvironment } from './settings-environment.js';
 
 export {
   type SanitizeAppConfigUpdateResult,
@@ -141,20 +141,15 @@ export function buildAppConfigProvenance(
   for (const definition of APP_SETTINGS_REGISTRY) {
     const key = definition.key as string;
     if (key in provenance) continue;
-    const envFallback = definition.envFallback;
-    const envValue = process.env[envFallback ?? ''];
+    const environment = resolveSettingEnvironment(definition);
     // Naming the environment as the source is a claim that the environment's
     // value is what applies. It only is when the field's own validator would
     // accept it — `AWS_REGION=US-EAST-1` is discarded by the Bedrock resolver
     // as malformed, and a badge reading "Set by operator: AWS_REGION" over a
     // value nothing uses is this cluster's whole defect, reproduced live
     // during the round-2 boot check (archive#1557).
-    if (
-      envFallback &&
-      isStoredValue(envValue) &&
-      acceptsSettingValue(definition, (envValue as string).trim())
-    ) {
-      provenance[key] = { source: 'env', envVar: envFallback };
+    if (environment.envVar && environment.value !== undefined) {
+      provenance[key] = { source: 'env', envVar: environment.envVar };
       continue;
     }
     if (definition.defaultValue === undefined) continue;

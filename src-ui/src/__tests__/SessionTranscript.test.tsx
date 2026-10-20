@@ -19,6 +19,19 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  * answer lost its opening words and an early tool call vanished.
  */
 
+const markdownRendered = vi.hoisted(() => vi.fn());
+vi.mock('../components/chat/LazyMarkdown', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/chat/LazyMarkdown')>();
+  return {
+    ...actual,
+    LazyMarkdown: (props: Parameters<typeof actual.LazyMarkdown>[0]) => {
+      markdownRendered(props.children);
+      return <actual.LazyMarkdown {...props} />;
+    },
+  };
+});
+
 const windowState = vi.hoisted(() => ({
   events: [] as Array<{ sequence: number; event: unknown }>,
   watermark: 0,
@@ -135,6 +148,41 @@ beforeEach(() => {
 });
 
 describe('SessionTranscript source', () => {
+  test('a live delta only renders the growing message content', () => {
+    renderTranscript();
+    live([
+      ev({ method: 'turn.started', turnId: 'one', prompt: 'First question' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'one',
+        itemId: 'a1',
+        delta: 'Settled answer',
+      }),
+      ev({ method: 'turn.completed', turnId: 'one' }),
+      ev({ method: 'turn.started', turnId: 'two', prompt: 'Next question' }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'two',
+        itemId: 'a2',
+        delta: 'Growing',
+      }),
+    ]);
+    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(4);
+    markdownRendered.mockClear();
+    live([
+      ev({
+        method: 'content.text-delta',
+        turnId: 'two',
+        itemId: 'a2',
+        delta: ' answer',
+      }),
+    ]);
+    expect(screen.getByText('Growing answer')).toBeTruthy();
+    expect(markdownRendered.mock.calls.map(([text]) => text)).toEqual([
+      'Growing answer',
+    ]);
+  });
+
   test.each([
     { upgrade: false, title: 'Conversation could not be loaded' },
     { upgrade: true, title: 'Update Station to read this conversation' },
@@ -525,5 +573,46 @@ describe('conversationPartToContentParts (shared with chat)', () => {
         runtimeErrorCode: 'engine-session-binding-dead',
       }),
     ]);
+  });
+});
+
+describe('SessionTranscript transcript markers (station#3415)', () => {
+  test('a live compaction waits for its turn to close, then renders a marker line after it', () => {
+    const view = renderTranscript(true);
+    live([
+      ev({ method: 'turn.started', turnId: 'm1', prompt: 'Long task' }),
+      ev({ method: 'content.text-delta', turnId: 'm1', delta: 'Working.' }),
+      ev({
+        method: 'extension.notification',
+        turnId: 'm1',
+        namespace: 'codex-rollout',
+        type: 'context-compacted',
+        payload: { source: 'provider-event' },
+      } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ev({
+        method: 'content.text-delta',
+        turnId: 'm1',
+        delta: ' Still going.',
+      }),
+    ]);
+    // While the turn is open the marker shows nothing and the turn is one row.
+    expect(view.container.querySelector('.transcript-marker')).toBeNull();
+    expect(screen.getAllByTestId('session-transcript-message')).toHaveLength(2);
+    live([ev({ method: 'turn.completed', turnId: 'm1' })]);
+    view.setStreaming(false);
+    const marker = screen
+      .getByText('Context compacted during this turn')
+      .closest('.transcript-marker')!;
+    expect(marker).toBeTruthy();
+    expect(marker.closest('[data-testid="session-transcript-message"]')).toBe(
+      null,
+    );
+    // Prompt and the one answer row; the marker is not one of the rows.
+    const rows = screen.getAllByTestId('session-transcript-message');
+    expect(rows).toHaveLength(2);
+    expect(
+      rows[1]!.compareDocumentPosition(marker) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

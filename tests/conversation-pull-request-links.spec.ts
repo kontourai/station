@@ -385,7 +385,7 @@ const panePullRequest = (over: Record<string, unknown> = {}) => ({
   title: 'Report uptime from the health endpoint',
   body: null,
   state: 'OPEN',
-  author: { login: 'brian' },
+  author: { login: 'casey' },
   sourceBranch: 'feat/health-details',
   targetBranch: 'main',
   commits: 2,
@@ -554,6 +554,8 @@ test('at phone width every Diff pane control has a 44px target of its own, in bo
   await expect(
     page.getByRole('button', { name: 'Dashboard subtitle' }),
   ).toBeVisible();
+  // Each row's metadata is its author's login; both fixture rows share one.
+  await expect(page.getByText('casey', { exact: true })).toHaveCount(2);
   // The commit row belongs to Changes alone.
   await expect(page.getByLabel('Commit message')).toHaveCount(0);
   await page.getByRole('button', { name: 'Link a pull request' }).click();

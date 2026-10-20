@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -81,6 +82,8 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
         data: {
           acknowledged: false,
           inventoryRevision: 'rev',
+          envelope:
+            'Every event carries an observation ID, producer times and allowlisted build metadata.',
           events: {
             station_started: {
               description: 'Station completed startup.',
@@ -122,6 +125,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
     screen.getByText('platform'),
     'Settings disclosure did not render the published property',
   ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Every event carries an observation ID, producer times and allowlisted build metadata.',
+    ),
+  ).toBeTruthy();
   // #1600: the action names the decision it makes, here and in the modal, and
   // keeping the state the host is already in writes only the receipt.
   fireEvent.click(
@@ -133,7 +141,14 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
       'Settings disclosure acknowledgement did not call the receipt endpoint',
     ).toHaveBeenLastCalledWith(
       'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          acknowledgementProtocol: 2,
+          inventoryRevision: 'rev',
+        }),
+      },
     ),
   );
 });
@@ -195,72 +210,79 @@ test('a cold-boot 503 is a "not yet", not a cached terminal error', async () => 
   ).toBeTruthy();
 });
 
-test('a persistently failing acknowledgement does not trap the user behind the first-run dialog', async () => {
-  // The first-run disclosure covers the whole app, including the
-  // connection-recovery UI. Its acknowledgement can fail persistently — a
-  // revoked session, a 403, an unwritable receipt path — so the acknowledgement
-  // must not be the only way out, or the app becomes unusable with no recourse
-  //Dismissal is for this page only; the receipt is still
-  // what stops the disclosure coming back.
-  resetUsageTelemetryDisclosureDismissal();
-  authenticatedFetch.mockReset();
-  authenticatedFetch.mockImplementation(async (url: string) =>
-    String(url).endsWith('/acknowledgements')
-      ? new Response('{"success":false}', { status: 500 })
-      : new Response(
-          JSON.stringify({
-            data: {
-              acknowledged: false,
-              inventoryRevision: 'rev',
-              events: {
-                station_started: {
-                  description: 'Station completed startup.',
-                  properties: { platform: { domain: ['linux'] } },
+test.each([500, 426])(
+  'an acknowledgement failure %s does not trap the user behind the first-run dialog',
+  async (status) => {
+    // The first-run disclosure covers the whole app, including the
+    // connection-recovery UI. Its acknowledgement can fail persistently — a
+    // revoked session, a 403, an unwritable receipt path — so the acknowledgement
+    // must not be the only way out, or the app becomes unusable with no recourse
+    //Dismissal is for this page only; the receipt is still
+    // what stops the disclosure coming back.
+    resetUsageTelemetryDisclosureDismissal();
+    authenticatedFetch.mockReset();
+    authenticatedFetch.mockImplementation(async (url: string) =>
+      String(url).endsWith('/acknowledgements')
+        ? new Response('{"success":false}', { status })
+        : new Response(
+            JSON.stringify({
+              data: {
+                acknowledged: false,
+                inventoryRevision: 'rev',
+                events: {
+                  station_started: {
+                    description: 'Station completed startup.',
+                    properties: { platform: { domain: ['linux'] } },
+                  },
                 },
               },
-            },
-          }),
-          { status: 200 },
-        ),
-  );
+            }),
+            { status: 200 },
+          ),
+    );
 
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosure firstRun />
-      <div>App behind the dialog</div>
-    </QueryClientProvider>,
-  );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <UsageTelemetryDisclosure firstRun />
+        <div>App behind the dialog</div>
+      </QueryClientProvider>,
+    );
 
-  // Pin that there IS a dialog to be trapped by, so the dismissal assertion
-  // below cannot pass by the dialog never having rendered.
-  expect(await screen.findByRole('dialog')).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
-  );
+    // Pin that there IS a dialog to be trapped by, so the dismissal assertion
+    // below cannot pass by the dialog never having rendered.
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
 
-  // The failure is disclosed and the action stays available as a retry.
-  expect(
-    await screen.findByRole('alert'),
-    'a failed acknowledgement was not disclosed',
-  ).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: 'Try again' }),
-    'the retry affordance disappeared with the failure',
-  ).toBeTruthy();
-
-  // And there is a way out that does not depend on the write succeeding.
-  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-
-  await waitFor(() =>
+    // The failure is disclosed and the action stays available as a retry.
     expect(
-      screen.queryByRole('dialog'),
-      'the dialog survived an explicit dismissal, trapping the user',
-    ).toBeNull(),
-  );
-  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-  expect(screen.getByText('App behind the dialog')).toBeTruthy();
-  resetUsageTelemetryDisclosureDismissal();
-});
+      await screen.findByRole('alert'),
+      'a failed acknowledgement was not disclosed',
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Try again' }),
+      'the retry affordance disappeared with the failure',
+    ).toBeTruthy();
+    if (status === 426)
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Update this app',
+      );
+
+    // And there is a way out that does not depend on the write succeeding.
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog'),
+        'the dialog survived an explicit dismissal, trapping the user',
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByText('App behind the dialog')).toBeTruthy();
+    resetUsageTelemetryDisclosureDismissal();
+  },
+);
 
 /** The inventory the first-run step renders, answered from the server. */
 function inventoryResponse(
@@ -269,6 +291,7 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
 ) {
   return new Response(
@@ -279,6 +302,7 @@ function inventoryResponse(
         endpointConfigured: derived.endpointConfigured ?? false,
         telemetryEnabled: derived.telemetryEnabled ?? true,
         enabledSource: derived.enabledSource ?? 'default',
+        publishers: derived.publishers,
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -301,6 +325,7 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -346,6 +371,11 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   // And only AFTER the receipt landed: advancing on the click would leave a
@@ -368,7 +398,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -391,13 +421,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; one is configured on this Station.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured.',
   );
 });
 
@@ -430,6 +460,11 @@ test('#1582 A3: "Turn it off" writes the setting Settings reads, then acknowledg
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
@@ -575,6 +610,7 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -604,7 +640,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();
@@ -658,6 +694,11 @@ test('#1600: the modal offers the turn-it-off decision, and writes it', async ()
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   view.unmount();
@@ -669,7 +710,11 @@ test('#1600: an already-off host is offered the decision it can make, and keepin
   // labels follow the EFFECTIVE setting, and keeping a state only the
   // environment holds writes it down, because a decision resting on
   // `STATION_TELEMETRY_ENABLED` disappears the day that variable does.
-  const view = renderModal({ telemetryEnabled: false, enabledSource: 'env' });
+  const view = renderModal({
+    telemetryEnabled: false,
+    enabledSource: 'env',
+    endpointConfigured: true,
+  });
 
   expect(
     await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
@@ -840,3 +885,84 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
   ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
 });
+
+test.each([
+  ['full', 'off', 'Off'],
+  ['lite', 'off', 'Off'],
+  ['off', 'full', 'Full'],
+  ['lite', 'lite', 'Lite'],
+] as const)(
+  'under DNT, saving %s as %s writes the choice without acknowledging',
+  async (savedChoice, next, label) => {
+    const view = renderModal({
+      endpointConfigured: true,
+      telemetryEnabled: false,
+      publishers: {
+        kontour: { tier: 'off', reason: 'DNT', userChoice: 'lite' },
+        operator: { tier: 'off', reason: 'DNT', userChoice: savedChoice },
+      },
+    });
+    const choice = await screen.findByRole('radio', { name: label });
+    fireEvent.click(choice);
+    expect(choice).toHaveProperty('checked', true);
+    expect(updateConfig).not.toHaveBeenCalled();
+    const save = screen.getByRole('button', {
+      name: `Save operator choice as ${label}`,
+    });
+    expect(
+      screen.getByText(/DO_NOT_TRACK is active: nothing is sent/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Full will still require confirmation after DO_NOT_TRACK is removed/,
+      ),
+    ).toBeTruthy();
+    for (const choice of ['Off', 'Lite', 'Full'])
+      expect(screen.getByRole('radio', { name: choice })).toBeTruthy();
+    fireEvent.click(save);
+    expect(updateConfig.mock.calls.map((call) => call[0])).toEqual([
+      { telemetryTier: { operator: next } },
+    ]);
+    await act(async () => {
+      updateConfig.mock.calls[0][1]?.onSuccess?.({});
+    });
+    expect(
+      authenticatedFetch.mock.calls.filter((call) =>
+        String(call[0]).endsWith('/acknowledgements'),
+      ),
+    ).toEqual([]);
+    expect(
+      window.localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY),
+    ).toBeNull();
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+    if (next === 'full') {
+      renderModal({
+        telemetryEnabled: false,
+        publishers: {
+          kontour: { tier: 'lite', reason: 'default' },
+          operator: { tier: 'lite', reason: 'disclosure', userChoice: 'full' },
+        },
+      });
+      expect(await screen.findByRole('dialog')).toBeTruthy();
+      const allow = screen.getByRole('button', {
+        name: 'Allow Full usage telemetry',
+      });
+      expect(
+        authenticatedFetch.mock.calls.filter((call) =>
+          String(call[0]).endsWith('/acknowledgements'),
+        ),
+      ).toEqual([]);
+      fireEvent.click(allow);
+      await act(async () => {
+        updateConfig.mock.calls[0][1]?.onSuccess?.({});
+      });
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenLastCalledWith(
+          ACKNOWLEDGEMENTS_URL,
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    }
+  },
+);

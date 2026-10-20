@@ -1,0 +1,7 @@
+{
+  "revision": "984217d4673106649159a3ca945fa4f04668e063",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"This branch only regenerated the DesktopStartupReadiness topic in src-server/tools/station-docs-content.ts from the reviewed module-map section (overdue-without-restart deadline, late-ticket reveal, macOS cover Restart/Quit and key monitor, non-macOS dialog fallback, supervisor has no boot timeout). The canonical prose in this document is unchanged; the topic catalog and generator output match docs:mcp:generate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

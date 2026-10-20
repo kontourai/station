@@ -427,8 +427,8 @@ export async function finalizeChatRequest({
     }
   }
 
-  // An omitted cost means UNPRICED, never free. The metrics log preserves
-  // that signal for #463(b), which will make the aggregate consumer expose it.
+  // An omitted cost means UNPRICED, never free. `/monitoring/metrics` counts
+  // these apart (`unpricedCount`) instead of summing them as $0 (#463).
   ctx.metricsLog.push({
     timestamp: Date.now(),
     agentSlug: slug,

@@ -1,0 +1,7 @@
+{
+  "revision": "55553e45bf90748d03743bd6d63bbd2200975e9d",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 7 of the delivery-state change: the flush hook's 'chat gained a waiting row' trigger counts an invoking row as waiting and a chat as sendable only with no turn running (isTurnInFlight), so a claim and its deferred release no longer start the next send; a pass does not claim rows of a chat with a turn running; backstop: releaseDeferred stamps deferredAt, claimNext skips a row deferred less than OUTBOUND_DEFER_RETRY_MS (1.5s) ago, and the hook schedules one pass when the earliest wait ends; the lease comment no longer claims a delay. Its only changed input is the module map's outbound dispatch Behavior paragraph. Searched this document for outbox, outbound, flush, busy, deferred and attempt claims; none is affected. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]}
+  ]
+}

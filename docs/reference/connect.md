@@ -18,8 +18,11 @@ where — see
 
 ## Native relay link publication
 
-The `/native-relay-link` source entry exports `nativeRelayLinkScheme`,
-`encodeNativeRelayLink` and `parseNativeRelayLink`. It publishes or inspects the
+The `/native-relay-link` source entry re-exports `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink` from the published
+[`@kontourai/station-shared/native-relay-link`](shared.md#native-relay-link-codec)
+leaf. Connect retains this entry for compatibility; Shared owns the single
+canonical codec used by SDK and server consumers. It publishes or inspects the
 closed `station-native-relay-link/v1` envelope: public first-contact route
 intent, or an untrusted application-origin hint wrapping an unchanged native
 v2 installation-bound invitation. The distinct URI association carries the
@@ -145,8 +148,13 @@ The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station's native saved-route owner now composes this
 transport for a configured host-owned Device binding, obtaining fresh ICE for
 each peer. Its separate account bridge supplies continuation proof for bounded
-Project and authority reads. Unsupported resources and writes fail before
-peer creation; this is not a general operator Workspace transport. The CLI
+Project and authority reads, plus a dedicated fixed native account operation
+for the closed relay-management and Project access administration leaves.
+Unsupported resources and writes fail before peer creation; this is not a
+general operator Workspace transport. Management does not replace Project IAM
+or grant terminal, Agent or Task publication authority. Account-bound relay
+management requires current native Device/account proof and explicit
+`relay:manage`; a credential-only account-bound Device remains gated. The CLI
 continues to exclude these routes from default selection. Focused source tests do not establish executed
 Tauri IPC, packaged-client, physical-device or complete authenticated
 Project-journey evidence.
@@ -194,7 +202,10 @@ client-local summary derived from the handshake's `transports` block — not
 the same thing as the raw handshake document's own optional `capabilities`
 field (station#1095), which is a server-advertised map of named boolean
 feature flags (e.g. `sshEnvironments`, `webPushNotifications`) used for
-feature detection across a rolling client/server upgrade. See
+feature detection across a rolling client/server upgrade. Station-to-Station
+senders read it too: `delegatedInputAnswers` gates sending a bound answer
+(`expectedInputRequest`) to another Station's delegated task, as described in
+the [session API](session-api.md#bound-answers-to-a-paired-stations-question). See
 [docs/security/remote-access-threat-model.md](../security/remote-access-threat-model.md#surface-matrix)
 for that field's schema and absence-means-unsupported semantics, and
 `hasCapability()` from `@kontourai/station-sdk` for reading it.
@@ -219,7 +230,10 @@ redacted.
 
 `ConnectionHealthCoordinator` shares one sequential probe across UI consumers,
 uses bounded exponential retry with jitter, cancels when the environment or
-subscriber set changes, and wakes on browser online/visibility signals. The
+subscriber set changes, and wakes on browser online/visibility signals. In a
+hidden document it pauses polling and retries; `useConnectionStatus` probes
+again on foreground visibility, focus or pageshow. Non-DOM consumers keep their
+normal polling cadence. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
@@ -422,6 +436,104 @@ URL.
 
 ## one-time device pairing
 
+The Station host's **Connect a Station** journey can save Device access without
+activating the destination. `completeVerifiedPairing` accepts `activate: false`
+on its target; persistent approval requests carry `activateConnection: false`
+through completion. Both paths preserve an existing selected Station and keep
+native credential custody with the host. Hosts that omit the option retain
+the existing activation behavior.
+
+The new journey uses `bindApprovedEndpoint: true` to bind a browser grant to its
+exact approved address before saving the credential. Setup keeps an existing
+controller's Device access, including at the same address. Use the explicit
+Stations reconnect/repair flow to replace that access. An alternate address
+cannot replace the controller's route during setup. First-device identification does not require
+an existing controller, while peer management still does.
+
+Connect's root exports `savePendingExchange` alongside `loadPendingExchange`
+and `clearPendingExchange`. A host can retain the verified destination, target
+connection and activation policy before transferring the request into persistent
+approval chrome. These are Device-flow records, not the server-held peer journal.
+
+Pairing offers and pending requests can disclose `kind: 'device' | 'delegation'`;
+absence in an older response means Device. A server's requested delegation kind
+does not grant it approval authority. The public access-request route accepts
+the delegation intent only with the fixed delegation preset and without account
+binding or client-instance inputs. The receiving trusted approver sees **Station
+peer** separately from Device access.
+
+A Device's access request may also name `scope`: exactly one base from
+`DEVICE_REQUESTABLE_BASE_PRESETS` (Read-only or Standard) plus any of
+`DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Skip
+approval prompts**, `approval:full-access`). Anything else, and any `scope` beside a
+delegation, is refused with `invalid_request`. The device-pairing panel asks
+for all of it (full device access: Standard, `coding:exec` and
+`approval:full-access`), never the default grant's `access:manage`; an
+account-bound request asks for Standard.
+
+Every approval surface (the **Paired devices** inbox, **Needs attention**, and
+`station environment access approve --scope=<scope,…>`) lists what the request
+asks for, summarized ("asks for full device access"), and approves it as asked
+unless the approver narrows it under **Limit access** (or with `--scope`). In
+**Needs attention** the request is a one-line card whose **Review** opens a
+dialog with that summary and Approve/Deny. The confirm
+route takes the kept scope as `scope`, which must be a non-empty subset of the
+request; omitted, the device gets what it asked for. Requested extras are the
+operator's to grant: an approval that keeps one needs the operator credential or
+the desktop's own local grant, never an `access:approve` device or the
+unauthenticated at-the-machine approval, which may still approve the rest with
+the extras left out. The same rule covers an operator-created offer whose scope
+carries one. A delegation, relay or account-bound grant cannot be trimmed, and
+its **Needs attention** item carries no `requestedScope`; an account binding
+(operator only) approves the request as asked. The Station app never asks for
+an elevated grant on an account-bound request, so that matters only for an
+operator-created offer that carries one. Pairing with a Station
+that predates `scope` ignores it, and that Station's own approval surface shows
+the default grant it would issue. A request that names no scope still receives the historical
+default grant, which Station peers (`station environment access request`) and
+older clients rely on; a Station that predates the field ignores it. The 202
+response, and an approval refused with `approval_requires_operator`, carry
+`operatorCli`: the operator CLI command on that host
+(`npx @kontourai/station-cli@nightly` for a nightly Station, otherwise
+`npx @kontourai/station-cli@latest`). Connect shows it in the approve command
+it prints, and accepts only `station` or the published package through `npx`,
+so a Station cannot put other text in a command a person is asked to run.
+
+Ordinary Device invitations keep their existing encoded payload shape: default
+Device kind is omitted so older strict invitation parsers remain usable.
+Delegation invitations remain distinguishable and cannot be saved as interactive
+Device access.
+
+The server-held peer ceremony is composed by
+[PeerEnrollmentService](../../src-server/services/peers/peer-enrollment-service.ts)
+and the [peer routes](../../src-server/routes/environments/peer-credential-routes.ts).
+The controlling operator submits a stable UUID, exact origin and expected
+environment identity. Proofs and exchanged bearers stay in private server
+records; only enrollment metadata crosses the API. A reported environment ID is
+not signing-key verification. Redirects are refused, and public addresses require
+HTTPS; private/loopback HTTP remains supported for personal setup.
+
+Enrollment mutations use a shared durable lock and refresh their records before
+reservation, exchange, cancellation and pruning. Concurrent runtimes cannot
+consume the same proof or overbook the retained-record limit. Receiver fields
+and serialized private records are bounded before writing.
+
+An explicit completion checks the same receiver and exchanges once after
+approval, then publishes to the existing peer store under current authority.
+Duplicate starts with the same UUID and intent return the same record. A restart
+or lost response during a remote effect can leave **outcome unknown**, which does
+not authorize another exchange. If publication fails after the credential is
+retained privately, completion can retry publication without exchanging again.
+Local cancellation does not revoke a receiver grant. This enrollment neither
+offers a Project resource nor implements operator elevation, reciprocal access,
+provider-process migration or foreground peer execution.
+
+After an interrupted operation, a status read can report an unknown outcome
+without replaying it. Local cancellation remains available after reacquiring the
+durable lock. If the peer was already installed before its journal acknowledgement
+failed, status reconciles to connected and cancellation directs the operator to
+remove the saved peer instead of claiming the pending request was cancelled.
+
 For a browser already open at the Station URL, choose **Connections → Request
 access to this Station**. Station creates a rate-limited, five-minute request
 for that same origin without asking for a URL, camera, code, or operator
@@ -460,12 +572,31 @@ the public environment identity and checks a fresh nonce/HMAC response against
 that home's operator credential. These checks do not make an independently
 untrusted destination safe. Select the home and listener you operate.
 
+With no explicit target, host approval first discovers the live loopback listener
+in the CLI's selected Station home. This takes precedence over project and
+saved-default Stations. `--station`, `--api-base`, and `STATION_TARGET` remain
+explicit selections; a remote target is refused rather than redirected to a
+local instance. If discovery finds no listener, existing saved-local and port
+selection still applies. The CLI verifies the listener's environment identity
+and fresh proof before sending any operator credential.
+
 The command loads the operator credential inside the host process, sends it
 only to the loopback Station API, asks for interactive confirmation, and prints
 only request metadata. It refuses a non-loopback `--api-base`. For scripted SSH,
 `--latest --force` is available as an explicit noninteractive choice; it should
 be used only after reviewing `access list`. `access deny` uses the same local,
 non-secret boundary.
+
+The host's launcher sign-in session on the same computer may create invitations, decide pending
+requests and manage paired devices while its grant retains `access:manage`.
+This authority comes from the server's private host-possession and
+`ui-bootstrap` mint record, not from an ordinary paired Device carrying that
+scope. Invited Devices do not inherit it. It does not grant operator identity,
+passkey management or the native desktop consent broker's local-grant authority.
+The host browser cannot introduce protected management or consent scopes into
+an invitation, a pending request's final approved scope, or another Device's
+permissions. Ordinary Device-use grants, including running commands and full
+access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
 to the selected Station server. The existing client and the phone both connect
@@ -475,8 +606,8 @@ The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
 Choose **Create pairing code**, scan with the phone camera to open the selected
-installed Station channel, then review and approve the request. For Station’s
-in-app scanner, select **Scanner inside Station** above the QR instead.
+installed Station channel, then redeem the invitation. Creating it approves
+the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
@@ -495,10 +626,21 @@ and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
+For another browser, set **Browser app address** to a reachable Station web
+address and choose **Copy browser link**. That address must serve the web UI
+and proxy this same Station’s API. Its origin can differ from the API listener;
+the browser invitation uses the selected web origin for pairing and the session
+cookie. The link carries the offer in its fragment, opens the invitation review even in an
+unpaired browser and removes the proof from visible history before proceeding.
+The CLI equivalent is `station environment offer --browser-url=<web-origin>`.
+App links and raw scanner payloads remain available for installed Station apps.
+
 On the other device, choose **Scan a QR code** or **Enter a pairing code**, and
-name the device. The host must confirm the displayed name and scope. Only then
-can the browser atomically exchange the offer once for a random device
-credential. When
+name the device. An invitation approved at creation can be exchanged once for
+a random device credential. Legacy offers and offers created with
+`station environment offer --require-approval` still require the host to confirm
+the displayed name and scope before exchange. Unsolicited **Request access**
+requests always require approval. When
 the Station endpoint is the browser's own origin, the server returns only safe
 device/environment metadata and stores that credential in a host-only,
 persistent `HttpOnly` `SameSite=Strict` cookie. Closing and reopening the phone
@@ -515,8 +657,15 @@ other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
-credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
+credentials cannot create pairing offers. An explicitly promoted
+`access:devices` Device can list, change scopes, revoke and remove revoked
+records using the same authenticated principal in the Paired devices panel.
+Only the operator can grant or remove `access:devices`; a person-bound holder
+also needs the Admin group ceiling, and account-bound guest route restrictions
+remain independent. Other scopes, including `approval:full-access`, do not
+confer administration. See [device administration](api.md#administer-paired-device-access).
+A device explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's
 local grant, minted using proof of Station-home possession, can manage pairing
 within its current scope. Browser launcher grants do not inherit that authority.
@@ -525,7 +674,8 @@ The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,
 and prints the new secret to stdout after confirmation. Keep that output out of
 logs and shared terminals. `station environment reset` replaces the environment
-ID and operator credential and clears paired-device authority; its output is
+ID and operator credential and clears paired-device authority and personal
+access tokens; its output is
 metadata rather than the new credential. Both support explicit `--force` to
 bypass the prompt. The separately installed CLI refuses these operations when
 no host security service is supplied; use the host's repository launcher or
@@ -587,6 +737,34 @@ and fetch-SSE requests and the versioned first application frame for terminal
 and voice WebSockets. A `401` returns the connection to its masked
 credential-required recovery state. Reconnect/session continuity beyond this
 credential recovery is tracked in #303.
+
+The pairing client and UI health probe observe
+`compatibility.capabilities.clientProtocolHeader` in the public handshake
+before protected requests. The shared
+[header policy](../../packages/shared/src/client-protocol.ts) sends
+`X-Station-Client-Protocol` cross-origin in a browser only after that host
+advertises a numeric capability of at least 1. An absent capability removes
+the process-local observation; it is not persisted across page loads. The UI
+also clears the previous observation when a handshake starts. Only the
+latest-started handshake per origin may restore acceptance. Its non-OK
+response, invalid JSON or transport error leaves acceptance cleared, even if
+an older overlapping handshake succeeds. The next cross-origin request then
+carries no protocol header.
+Same-origin, Node and host-owned transport requests can carry the header
+without CORS negotiation. The SDK replaces any caller-supplied copy with its
+build's protocol. These declarations grant no credential or scope.
+
+The host checks paired-scope HTTP and the public pairing request,
+access-request and exchange before credentials: below `minClientProtocol` is
+`426 client_protocol_unsupported`, malformed is `400 client_protocol_invalid`,
+and absent means protocol 1. The handshake remains reachable. A protocol
+refusal requires correcting/updating the client rather than re-pairing to gain
+authority. Protocol refusals use a separate direct-socket-peer audit budget
+(default: 10 per 60 seconds), reusing the existing limiter and its 1,024-peer
+cap. Exhaustion suppresses only audits while every refusal receives 400/426.
+Refusals neither consult nor consume the authentication budget.
+The separate native Rust pairing exchange and direct fetch callers
+remain undeclared; terminal/voice WebSockets are outside this HTTP check.
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.
@@ -979,3 +1157,20 @@ triangle. This richer UI state is distinct from `ConnectionStatus`.
 ```tsx
 <ConnectionStatusDot status="connected" size={10} />
 ```
+
+## Browser session isolation on one host
+
+New browser sessions use an HttpOnly cookie whose name includes a stable hash
+of the Station environment identity. Signing in to another Station on the same
+host no longer replaces that cookie. HTTPS retains the `__Host-` prefix,
+Secure, Path=/ and SameSite=Strict; loopback HTTP retains its separate naming.
+The name is a namespace, not authentication: each Station still validates the
+credential, scope, locality and revocation through its own authority.
+
+Legacy cookie names remain readable. With several Station cookies present,
+the reader accepts exactly one credential recognized by the current Station;
+ambiguous current credentials, duplicate names and malformed Station cookies
+are refused. The same selection is used by consent, notification registration
+and secure application-session adoption. Unrelated browser cookies do not
+grant Station authority. A fresh launcher link can also be opened in an
+existing access screen without reloading; consumed links are never replayed.

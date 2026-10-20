@@ -2,7 +2,7 @@ import type { Skill } from '@kontourai/station-contracts/catalog';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
-import { agentCommandSkills } from '../utils/skill-commands';
+import { agentCommandSkills } from '../utils/skill-command-catalog';
 import { registerCommand } from './registry';
 
 // MCP command

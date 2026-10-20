@@ -5,6 +5,8 @@ on:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
       - "Nightly"
+      - "Nightly: Gallery"
+      - "Main: Qualification health"
       - "Main: Container smoke"
       - "PR: Secret scan"
       - "Repo: Dependency advisory"
@@ -203,6 +205,10 @@ jobs:
                 '3 · Stage portable fleet evidence / Admit portable bytes',
               ];
               if (!requiredJobs.every((name) => jobs.some((job) => job.name === name && job.conclusion === 'success'))) return;
+            } else if (workflowName === 'Nightly: Gallery') {
+              // API image review is optional; only the capture and exact diff
+              // settle a pixel-drift tracker.
+              if (!jobs.some((job) => job.name === 'Capture and diff screenshot gallery' && job.conclusion === 'success')) return;
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,

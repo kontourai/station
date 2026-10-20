@@ -1,0 +1,7 @@
+{
+  "revision": "0bd8f1e5ad04ef389ef15e58170d0312d85efbda",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated Docs MCP from current canonical111 topics including the existing Project tool defaults explanation and merged upstream topics. Inspected generator output and retained static bundled search/read contract; this records generated content refresh, not runtime/provider/release qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

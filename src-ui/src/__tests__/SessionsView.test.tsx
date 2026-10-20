@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { AttachedSessionSourceMetadata } from '@kontourai/station-contracts/provider';
 
 import {
@@ -60,6 +61,8 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+const agentCatalog: never[] = [];
+vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
 // refresh cadence can be read from the query rather than inferred.
 const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
@@ -74,6 +77,8 @@ let historyState = {
   historyRetrying: false,
   elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
 };
+/** Connection flags the attached detail reads from the real hook. */
+let streamFlags: { connectionInterrupted?: boolean } = {};
 let attentionItems: Array<Record<string, unknown>> = [];
 let attentionQueryState: {
   isLoading: boolean;
@@ -146,6 +151,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   return {
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
+    // The chat's per-message rating, inert here.
+    useFeedbackRatingsQuery: () => ({ data: [] }),
+    useSaveFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
+    useDeleteFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
     AdoptSessionError: class AdoptSessionError extends Error {
       failureClass: string;
       retryable: boolean;
@@ -183,7 +192,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       refetch: vi.fn(),
     }),
     // The open-chats refactor (archive#2683) renders shared membership metadata.
-    useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useAgentsQuery: () => ({ data: agentCatalog, isLoading: false }),
     useOrchestrationSessionsQuery: (config?: unknown) => {
       orchestrationSessionsQueryConfig.push(config);
       return {
@@ -314,12 +323,16 @@ vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
   }),
 }));
 
+// The chat's user avatar reads auth, which this harness does not provide.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
     connected: true,
     loadOlder,
     ...historyState,
+    ...streamFlags,
   }),
 }));
 
@@ -329,6 +342,43 @@ import {
   publishReferenceableConversations,
 } from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
+import { foldConversationTurns } from '../views/sessions/conversation-groups';
+
+function historicalSessions() {
+  return Array.from(
+    { length: 45 },
+    (_, index) =>
+      ({
+        provider: 'claude',
+        threadId: `history-${index}`,
+        conversationId: `history-${index}`,
+        displayTitle: `Historical work ${index}`,
+        lifecycleState: 'completed',
+        status: 'closed',
+        controlMode: 'station-owned',
+        answerability: { answerable: true },
+        isLoaded: false,
+        isPersisted: true,
+        eventCount: 3,
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: new Date(
+          Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+        ).toISOString(),
+      }) satisfies OrchestrationSessionSummary,
+  );
+}
+
+/**
+ * #3552: an external conversation continues from its composer — type, send,
+ * confirm once — exactly as the chat dock does.
+ */
+function continueFromComposer(message = 'carry on') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: message },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+}
 
 function renderView(
   sessionId?: string,
@@ -336,6 +386,7 @@ function renderView(
   intentToken?: number,
   onFocusConsumed?: () => void,
   apiBase = 'http://test.local',
+  onContinueInChat?: (threadId: string, draft: string) => void,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -354,6 +405,7 @@ function renderView(
           focusHint={nextFocusHint}
           intentToken={nextIntentToken}
           onFocusConsumed={nextOnFocusConsumed}
+          onContinueInChat={onContinueInChat}
         />
       </NavigationProvider>
     </QueryClientProvider>
@@ -487,6 +539,7 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    streamFlags = {};
     attentionItems = [];
     attentionQueryState = { isLoading: false, isError: false, error: null };
     attentionRefetch.mockClear();
@@ -550,6 +603,96 @@ describe('SessionsView', () => {
       matches: false,
       removeEventListener: vi.fn(),
     }));
+  });
+
+  test('bounds Earlier activity, pages history and searches beyond the mounted page', async () => {
+    sessions = historicalSessions();
+    const view = renderView();
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      20,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: 'Historical work 44' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        1,
+      ),
+    );
+    expect(rowButton('Historical work 44')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        20,
+      ),
+    );
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    more.focus();
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      40,
+    );
+    expect(document.activeElement).toBe(more);
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      45,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Show more earlier activity' }),
+    ).toBeNull();
+  });
+
+  test('keeps Earlier paging before the following external-session section', () => {
+    const history = historicalSessions();
+    sessions = [
+      ...history,
+      {
+        ...history[0],
+        threadId: 'external-probe',
+        conversationId: 'external-probe',
+        displayTitle: 'External probe',
+        controlMode: 'read-only-attached',
+        attachedSource: VERIFIED_ATTACHED_SOURCE,
+      },
+    ];
+    const { container } = renderView();
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    const lastHistory = rowButton('Historical work 19').closest(
+      '.split-pane__item-row',
+    );
+    const externalHeading = Array.from(
+      container.querySelectorAll('.split-pane__section-header'),
+    ).find((heading) => heading.textContent?.includes('From other apps'));
+    expect(lastHistory?.nextElementSibling).toBe(more);
+    expect(more.nextElementSibling).toBe(externalHeading);
+    expect(rowButton('External probe')).toBeTruthy();
+  });
+
+  test('keeps a deep-linked Earlier session visible beyond the first page', async () => {
+    sessions = historicalSessions();
+    const { container } = renderView('history-40');
+    await waitFor(() =>
+      expect(rowButton('Historical work 40').getAttribute('aria-current')).toBe(
+        'true',
+      ),
+    );
+    expect(container.querySelectorAll('.split-pane__item')).toHaveLength(21);
+    expect(
+      screen.queryByRole('button', { name: /^Historical work 39$/ }),
+    ).toBeNull();
+  });
+
+  test('reuses the mounted conversation fold when an unrelated render leaves list inputs unchanged', () => {
+    const view = renderView();
+    const before = vi.mocked(foldConversationTurns).mock.calls.length;
+    view.rerenderSession();
+    expect(vi.mocked(foldConversationTurns).mock.calls.length - before).toBe(0);
   });
 
   // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
@@ -1236,100 +1379,17 @@ describe('SessionsView', () => {
     );
   });
 
-  test('offers a top-level worker launcher before any sessions exist', () => {
+  test('New Task requests a shaping chat before any sessions exist', () => {
     sessions = [];
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
     renderView();
-
-    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
-
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole('dialog', { name: 'Delegate a task' }),
-    ).toBeTruthy();
-    expect(screen.queryByText('Child worker of')).toBeNull();
-  });
-
-  /**
-   * archive#1245 — a call site the issue does not list, found by its sweep.
-   *
-   * `closeDelegation` was `requestAnimationFrame( =>
-   * delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
-   * The trigger is a per-row control in the sessions list, and delegating
-   * invalidates that list — so the launcher's own action is what removes it,
-   * which is archive#1126 exactly. It now goes through
-   * `@kontourai/station-shared/return-focus`.
-   *
-   * COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
-   * needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
-   * `.focus` on an unfocusable node as successful.
-   */
-  describe('delegation launcher return focus (station#1245)', () => {
-    function withStubbedFrame<T>(run: (fire: () => void) => T): T {
-      let callback: FrameRequestCallback | null = null;
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        callback = cb;
-        return 1;
-      });
-      vi.stubGlobal('cancelAnimationFrame', () => {});
-      try {
-        return run(() => {
-          act(() => {
-            (callback as FrameRequestCallback | null)?.(0);
-          });
-        });
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    }
-
-    function openLauncher() {
-      const trigger = screen.getByRole('button', { name: 'New task' });
-      const starter = trigger.parentElement as HTMLElement;
-      trigger.focus();
-      fireEvent.click(trigger);
-      return { starter, trigger };
-    }
-
-    test('restores focus to the control that opened it', () => {
-      sessions = [];
-      renderView();
-      const { trigger } = openLauncher();
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        fire();
-      });
-
-      expect(document.activeElement).toBe(trigger);
-      expect(trigger.hasAttribute('tabindex')).toBe(false);
-    });
-
-    test('falls back to a surviving ancestor when delegating removed the trigger', () => {
-      sessions = [];
-      renderView();
-      const { starter, trigger } = openLauncher();
-      // The footer keeps a wrapper around the trigger; removing the trigger
-      // alone is what a refreshed pane does to a control it re-rendered.
-      const row = trigger;
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        // The refreshed list replaced the row the trigger lived on.
-        row.remove();
-        fire();
-      });
-
-      expect(document.activeElement).toBe(starter);
-      expect(document.activeElement).not.toBe(document.body);
-      expect(starter.getAttribute('tabindex')).toBe('-1');
-    });
+      screen.queryByRole('dialog', { name: 'Delegate a task' }),
+    ).toBeNull();
+    window.removeEventListener('station:shape-task', listener);
   });
 
   test('selects the exact session requested by the route', () => {
@@ -1588,6 +1648,28 @@ describe('SessionsView', () => {
       ).toBe(false);
       expect(sendTurn).toHaveBeenCalledTimes(1);
     });
+  });
+
+  test('#3382: an open request title is shown in display form beside Approve', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    feedEvents = [
+      {
+        provider: 'codex',
+        threadId: 'thread-alpha',
+        createdAt: '2026-06-28T00:00:03.000Z',
+        method: 'request.opened',
+        requestId: 'req-8',
+        requestType: 'approval',
+        title: `echo ${RLO}a\nrm -rf /`,
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+
+    const request = screen.getByTestId('session-request');
+    expect(request.querySelector('strong')!.textContent).toBe(
+      `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
   });
 
   test('surfaces an open request and resolves it', async () => {
@@ -2618,6 +2700,32 @@ describe('SessionsView', () => {
     expect(within(detail).queryByTestId('session-request')).toBeNull();
   });
 
+  test('an attached session says Station is unreachable only once the hook reports an interruption, not for a retrying history blip', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:terminal-1',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    historyState = {
+      ...historyState,
+      error: new Error('Failed to fetch'),
+      historyRetrying: true,
+    };
+    const view = renderView('external:claude:terminal-1');
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+    view.unmount();
+
+    streamFlags = { connectionInterrupted: true };
+    renderView('external:claude:terminal-1');
+    expect(
+      screen.getByText(
+        "Station isn't responding right now — retrying automatically.",
+      ),
+    ).toBeTruthy();
+  });
+
   test('continues an attached session into the returned Station child and keeps the source read only', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -2637,9 +2745,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-1');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(adoptSession).toHaveBeenCalledWith(
@@ -2659,10 +2765,50 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
+    // Without Chat to hand over to, the confirmed message waits in the
+    // continued session's message box; nothing is sent from here.
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+        .value,
+    ).toBe('carry on');
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
     ).toBeNull();
     expect(sessions[0]?.controlMode).toBe('read-only-attached');
+  });
+
+  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:handoff',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    const onContinueInChat = vi.fn();
+    renderView(
+      'external:claude:handoff',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onContinueInChat,
+    );
+    const composer = screen.getByRole('textbox', {
+      name: 'Message',
+    }) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onContinueInChat).toHaveBeenCalledWith(
+      'external:claude:handoff',
+      'My exact\nmessage',
+    );
+    expect(onContinueInChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptSession).not.toHaveBeenCalled();
+    expect(launchContinueSessionStarter).not.toHaveBeenCalled();
+    expect(composer.value).toBe('');
   });
 
   test('reuses the exact continuation operation after response loss and remount', async () => {
@@ -2685,17 +2831,13 @@ describe('SessionsView', () => {
         return child;
       });
     const first = renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     const operationId = adoptSession.mock.calls[0][0].operationId;
     first.unmount();
 
     renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(2));
     expect(adoptSession.mock.calls[1][0].operationId).toBe(operationId);
   });
@@ -2715,9 +2857,7 @@ describe('SessionsView', () => {
       controlMode: 'station-owned',
     });
     renderView('external:claude:later-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession).toHaveBeenCalledWith({
       sourceThreadId: 'external:claude:later-continuation',
@@ -2740,9 +2880,7 @@ describe('SessionsView', () => {
     );
 
     renderView('external:claude:corrupt-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await screen.findByText(
       "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it.",
@@ -2769,10 +2907,10 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:unsafe-retry');
+    continueFromComposer();
     const continueButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
-    fireEvent.click(continueButton);
 
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
@@ -2826,16 +2964,18 @@ describe('SessionsView', () => {
       });
 
     renderView(first.threadId);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Attached B/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     const secondButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
     expect(secondButton.getAttribute('disabled')).toBeNull();
     fireEvent.click(secondButton);
@@ -2886,9 +3026,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:cleanup-failure');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(screen.getByLabelText('Send input to session')).toBeTruthy(),
@@ -2918,17 +3056,13 @@ describe('SessionsView', () => {
     getStarterWork.mockRejectedValueOnce(new Error('status response lost'));
     adoptSession.mockResolvedValue(child);
     const first = renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     expect(adoptSession).not.toHaveBeenCalled();
     first.unmount();
 
     renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession.mock.calls[0][0]).toMatchObject({
       starterId: 'continue-session',
@@ -2951,7 +3085,7 @@ describe('SessionsView', () => {
       ),
     ).toBeTruthy();
     expect(
-      within(detail).queryByRole('button', { name: 'Continue in Station' }),
+      within(detail).queryByRole('textbox', { name: 'Message' }),
     ).toBeNull();
     expect(
       within(detail).queryByText('Started in Claude Code · Read only'),
@@ -2984,9 +3118,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3023,9 +3155,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-pending');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3074,9 +3204,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
     fireEvent.click(
@@ -3124,9 +3252,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(
       screen.getByRole('button', { name: /Worker task.*sibling/ }),
@@ -3688,8 +3814,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual(['Running · 3']);
-      expect(sectionHeadings(container)).toEqual(['Running · 3']);
+      expect(headings).toEqual(['Running · 2']);
+      expect(sectionHeadings(container)).toEqual(['Running · 2']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -3728,6 +3854,11 @@ describe('SessionsView', () => {
         {
           ...sessions[0],
           threadId: 'peer-delegation:847',
+          // The real writer's shape: the peer's target as the agent slug and
+          // the peer's conversation id.
+          assignedAgentSlug: 'codex',
+          conversationId: 'task-peer-847',
+          controlMode: 'station-owned',
           displayTitle: 'Run the peer checks',
           lifecycleState: 'queued',
           hasActiveTurn: false,
@@ -3747,6 +3878,8 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toContain('Run the peer checks');
       // The paired Station owns the turn: no local Stop… on its row.
       expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
+      // Its agent slug and conversation are the peer's: no local chat.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Open in chat');
     });
 
     test('every row carries a relative time', () => {
@@ -4816,7 +4949,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
       screen.getByText(
-        'Start a task with New task, or open a chat. What runs shows up here.',
+        'Start a task with New Task, or open a chat. What runs shows up here.',
       ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);

@@ -424,6 +424,9 @@ export class SessionEventReads {
         );
         return {
           sessionId: lineage.sessionId,
+          ...(detail?.session.provider
+            ? { provider: detail.session.provider }
+            : {}),
           ...(detail?.session.assignedAgentSlug
             ? { agentSlug: detail.session.assignedAgentSlug }
             : {}),
@@ -432,27 +435,9 @@ export class SessionEventReads {
       }),
       handoffs: this.deps
         .eventStore!.listConversationHandoffs(conversationId)
-        .map((marker) => {
-          const disclosure = this.deps.eventStore!.describeConversationHandoff(
-            marker,
-            'existing',
-          );
-          return {
-            predecessorSessionId: marker.predecessorSessionId,
-            sessionId: marker.sessionId,
-            idempotencyKey: marker.idempotencyKey,
-            targetAgentId: marker.targetAgentId,
-            ...(marker.targetConnectionId
-              ? { targetConnectionId: marker.targetConnectionId }
-              : {}),
-            ...(marker.targetModelId
-              ? { targetModelId: marker.targetModelId }
-              : {}),
-            createdAt: marker.createdAt,
-            carried: disclosure.carried,
-            reset: disclosure.reset,
-          };
-        }),
+        .map((marker) =>
+          this.deps.eventStore!.projectConversationHandoff(marker),
+        ),
       contextBoundaries,
       session: eventWindowSessionSummary(current!.session),
       events: window.events.map((event) => ({

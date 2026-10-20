@@ -12,7 +12,10 @@ import type { NotificationUrgency } from './notification.js';
 /** Registers (or re-registers after token rotation) the calling device. */
 export const NATIVE_PUSH_REGISTER_PATH = '/api/system/native-push/register';
 
-/** `DELETE` clears the calling device's own registration. */
+/**
+ * The calling device's own registration: `GET` answers
+ * {@link NativePushRegistrationStatus}, `DELETE` clears it.
+ */
 export const NATIVE_PUSH_REGISTRATION_PATH = '/api/system/native-push';
 
 /**
@@ -104,6 +107,19 @@ export interface NativePushRegistrationResponse {
    * `registrationId`; new after the registration is deleted.
    */
   payloadKey: string;
+}
+
+/**
+ * `GET` {@link NATIVE_PUSH_REGISTRATION_PATH}: whether the Station still holds
+ * a registration for the calling device. The phone compares it with what it
+ * stored, so a registration the Station dropped (the gateway answered that
+ * the token is gone, or the device was paired again) is noticed and
+ * re-registered. Carries no token or key.
+ */
+export interface NativePushRegistrationStatus {
+  registered: boolean;
+  /** The registration's id, or `null` when there is none. */
+  registrationId: string | null;
 }
 
 /**

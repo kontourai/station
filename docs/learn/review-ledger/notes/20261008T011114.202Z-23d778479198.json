@@ -1,0 +1,7 @@
+{
+  "revision": "14eeeb00a0105af3df80fbace66f5f296fa2d220",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts reference addition for HostResourceSnapshot. Existing package boundary and guidance remain accurate; the new type stays in the system-status domain and introduces no runtime helpers.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

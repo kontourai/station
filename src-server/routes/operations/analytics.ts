@@ -3,6 +3,11 @@
  */
 
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
+import type {
+  UsageExportPage,
+  UsageExportRequest,
+} from '@kontourai/station-contracts/usage-export';
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
@@ -12,6 +17,7 @@ import {
   type UsageRollupService,
   UsageRollupService as UsageRollupServiceImpl,
 } from '../../analytics/usage-rollup-service.js';
+import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { PeerCredential } from '../../services/peers/peer-credential-store.js';
 import { analyticsOps } from '../../telemetry/metrics.js';
 import {
@@ -19,14 +25,99 @@ import {
   errorMessage,
 } from '../schemas/schemas.js';
 
+function publicUsageStats(stats: UsageStats) {
+  const { byPrincipal: _operatorPrincipals, ...publicStats } = stats;
+  return publicStats;
+}
+
 export function createAnalyticsRoutes(
   usageAggregator: UsageAggregator | undefined,
   usageRollupService?: UsageRollupService,
   readAuthorityForRequest?: (request: Request) => UsageRollupReadAuthority,
   configuredPeers?: () => readonly (PeerCredential & { credential: string })[],
   localStationId = 'local',
+  canReadStationUsage?: (request: Request) => boolean,
+  usageExport?: (
+    context: AuthorityObservationRequestContext,
+    request: UsageExportRequest,
+  ) => Promise<{ page: UsageExportPage; assertCurrent(): Promise<void> }>,
 ) {
   const app = new Hono();
+
+  app.get('/usage-export', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (!usageExport)
+      return c.json({ error: { code: 'usage_export_unavailable' } }, 503);
+    const query = new URL(c.req.url).searchParams;
+    if (
+      [...query.keys()].some(
+        (key) =>
+          !['from', 'to', 'scope', 'pageSize', 'cursor'].includes(key) ||
+          query.getAll(key).length !== 1,
+      )
+    )
+      return c.json({ error: { code: 'invalid_usage_export' } }, 400);
+    const scope = query.get('scope') ?? 'individual';
+    if (scope !== 'individual' && scope !== 'personal-account')
+      return c.json({ error: { code: 'invalid_usage_export' } }, 400);
+    const { UsageExportRejected } = await import(
+      '../../analytics/usage-export-reader.js'
+    );
+    const { AuthorityObservationRejected, guardAuthorityObservationResponse } =
+      await import('../../services/identity/authority-observation.js');
+    try {
+      const selected = await usageExport(
+        { env: c.env, req: c.req },
+        {
+          from: query.get('from') ?? '',
+          to: query.get('to') ?? '',
+          scope,
+          ...(query.has('pageSize')
+            ? { pageSize: Number(query.get('pageSize')) }
+            : {}),
+          ...(query.has('cursor') ? { cursor: query.get('cursor')! } : {}),
+        },
+      );
+      return await guardAuthorityObservationResponse(
+        c.json({ success: true, data: selected.page }),
+        selected.assertCurrent,
+      );
+    } catch (error) {
+      if (
+        error instanceof UsageExportRejected ||
+        error instanceof AuthorityObservationRejected
+      )
+        return c.json({ error: { code: error.code } }, error.status);
+      return c.json({ error: { code: 'usage_export_unavailable' } }, 503);
+    }
+  });
+
+  app.get('/station-usage', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (canReadStationUsage?.(c.req.raw) !== true) {
+      return c.json(
+        { success: false, error: 'Station operator access required' },
+        403,
+      );
+    }
+    if (!usageAggregator) {
+      return c.json(
+        { success: false, error: 'Analytics not initialized' },
+        500,
+      );
+    }
+    try {
+      const stats = await usageAggregator.readStats();
+      analyticsOps.add(1, { op: 'get_station_usage' });
+      return c.json({
+        success: true,
+        data: stats,
+        scope: { kind: 'station', stationId: localStationId },
+      });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
 
   app.get('/usage', async (c) => {
     try {
@@ -37,7 +128,7 @@ export function createAnalyticsRoutes(
         );
       }
       analyticsOps.add(1, { op: 'get_usage' });
-      const stats = await usageAggregator.readStats();
+      const stats = publicUsageStats(await usageAggregator.readStats());
       const from = c.req.query('from');
       const to = c.req.query('to');
       if (from || to) {
@@ -254,7 +345,7 @@ export function createAnalyticsRoutes(
           500,
         );
       }
-      const stats = await usageAggregator.fullRescan();
+      const stats = publicUsageStats(await usageAggregator.fullRescan());
       analyticsOps.add(1, { op: 'rescan' });
       return c.json({
         success: true,

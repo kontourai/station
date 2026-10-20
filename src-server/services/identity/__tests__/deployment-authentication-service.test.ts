@@ -103,6 +103,19 @@ const request = (cookie = 'fixture_account=valid') =>
   });
 
 describe('deployment authentication identity boundary', () => {
+  test.each([
+    'station-device',
+    '__Host-station-device',
+    'station-device-0123456789abcdef',
+    '__Host-station-device-0123456789abcdef',
+  ])('refuses the device-cookie namespace for account cookie %s', (name) => {
+    const adapter = provider();
+    adapter.sessionCookies = [name];
+    expect(
+      () => new DeploymentAuthenticationService(adapter, () => now),
+    ).toThrow('Unsupported deployment authentication provider contract.');
+  });
+
   test('ignores unrelated device cookies and refuses duplicate or empty account credentials', async () => {
     const adapter = provider();
     const service = new DeploymentAuthenticationService(adapter, () => now);

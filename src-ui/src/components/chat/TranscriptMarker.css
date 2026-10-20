@@ -1,0 +1,23 @@
+/* station#3415: an engine fact between messages (context compacted, rewound),
+   drawn as a faint rule with a short centred label. Deliberately quieter than
+   a system notice: nothing here asks the reader to act. */
+.transcript-marker {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: var(--k-space-2) 0;
+  font-size: var(--k-text-xs);
+  color: var(--k-text-faint);
+}
+
+.transcript-marker__rule {
+  flex: 1;
+  min-width: var(--k-space-4);
+  border-top: 1px solid var(--k-line);
+}
+
+.transcript-marker__label {
+  min-width: 0;
+  text-align: center;
+  white-space: normal;
+}

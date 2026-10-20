@@ -185,7 +185,8 @@ export interface MonitoringAgentStat {
   model: string;
   conversationCount: number;
   messageCount: number;
-  cost: number;
+  // No `cost` (#463): nothing prices an agent's usage on this route. Older
+  // Stations sent an unmeasured `cost: 0`.
   healthy?: boolean;
 }
 
@@ -196,7 +197,7 @@ export interface MonitoringStatsData {
     activeAgents: number;
     runningAgents: number;
     totalMessages: number;
-    totalCost: number;
+    // No `totalCost` (#463): it summed the unmeasured per-agent `cost: 0`.
   };
 }
 
@@ -204,7 +205,13 @@ export interface MonitoringMetric {
   agentSlug: string;
   messageCount: number;
   conversationCount: number;
-  totalCost: number;
+  /**
+   * Sum of the priced completions' cost. Absent when none was priced: an
+   * unpriced completion is unknown spend, not free (#463).
+   */
+  totalCost?: number;
+  /** Completions with no price, which `totalCost` therefore leaves out. */
+  unpricedCount?: number;
 }
 
 export interface BrandingData {

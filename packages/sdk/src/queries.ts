@@ -1,3 +1,11 @@
+export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -33,6 +41,7 @@ export {
   type AgentCreateResult,
   type AgentTemplate,
   type AwsProfilesResult,
+  agentMcpPromptsQueryKey,
   createAgent,
   createAgentDetailed,
   deleteAgent,
@@ -45,6 +54,7 @@ export {
   updateAgent,
   updateAppConfig,
   updateAppLogLevel,
+  useAgentMcpPromptsQuery,
   useAgentQuery,
   useAgentsQuery,
   useAgentTemplatesQuery,
@@ -95,7 +105,6 @@ export {
   useResetUsageStatsMutation,
   useSaveFeedbackRatingMutation,
   useUsageQuery,
-  useUsageRollupQuery,
 } from './query-domains/analytics';
 export {
   AnswerShareAuthRequiredError,
@@ -122,7 +131,9 @@ export {
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
+  useIntegrationAccountQuery,
   useIntegrationQuery,
   useIntegrationsQuery,
   useKitLayoutQuery,
@@ -140,6 +151,7 @@ export {
   useSaveIntegrationMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
+  useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
   type AdoptOrchestrationSessionIntent,
@@ -212,6 +224,7 @@ export {
   type MessageSearchInstance,
   type MessageSearchResponse,
   type MessageSearchResult,
+  nativePushRegistrationStatus,
   type OrchestrationCommandDispatchResult,
   type OrchestrationCommandInput,
   type OrchestrationCommandReceipt,
@@ -384,6 +397,12 @@ export {
   peerCredentialQueries,
   usePeerCredentialsQuery,
 } from './query-domains/peerCredentials';
+export {
+  useBoardAttentionQuery,
+  useBoardRecentWorkQuery,
+  usePersonalBoardQuery,
+  useSavePersonalBoardMutation,
+} from './query-domains/personalBoards';
 export {
   type AgentHealthStatus,
   createWorkspaceHomeRoleRequest,
@@ -604,6 +623,30 @@ export {
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
 export {
+  fetchOwnAccessTokens,
+  fetchStationPeople,
+  isOperatorCredentialRequired,
+  isStationAccessUnavailable,
+  mintOwnAccessToken,
+  mintStationPersonToken,
+  OWN_ACCESS_TOKENS_QUERY_KEY,
+  type PersonalTokenInput,
+  revokeOwnAccessToken,
+  revokeStationPersonToken,
+  STATION_PEOPLE_QUERY_KEY,
+  StationAccessError,
+  type StationGroupChange,
+  setStationPersonGroup,
+  useMintOwnAccessTokenMutation,
+  useMintStationPersonTokenMutation,
+  useOwnAccessTokensQuery,
+  useRevokeOwnAccessTokenMutation,
+  useRevokeStationPersonTokenMutation,
+  useSetStationPersonGroupMutation,
+  useStationPeopleQuery,
+} from './query-domains/stationPeople';
+export { useStationUsageQuery } from './query-domains/stationUsage';
+export {
   type AuthStatusData,
   applyCoreUpdate,
   type BrandingData,
@@ -706,6 +749,12 @@ export {
   useUpdateTaskStatusMutation,
 } from './query-domains/taskGraph';
 export {
+  checkTelemetryConnection,
+  fetchTelemetryDeliveryStatus,
+  useCheckTelemetryConnectionMutation,
+  useTelemetryDeliveryStatusQuery,
+} from './query-domains/telemetryDelivery';
+export {
   type TrustBundleSourceVM,
   type TrustBundleSummaryVM,
   type TrustReportClaimVM,
@@ -716,6 +765,7 @@ export {
   useTrustBundlesQuery,
   useTrustReportQuery,
 } from './query-domains/trustBundles';
+export { useUsageRollupQuery } from './query-domains/usageRollup';
 export {
   type ReadinessInitResultVM,
   type ReadinessRequirementVM,
@@ -785,6 +835,7 @@ export {
   layoutCatalogRetryDelay,
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
+  PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
@@ -832,6 +883,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectsQuery,
   useProjectWorkspacePanesQuery,
   useReorderProjectsMutation,

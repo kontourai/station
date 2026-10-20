@@ -1,0 +1,7 @@
+{
+  "revision": "e5222483c52022e358f3f9d7e859a6f22aa136df",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Refreshed the current VoltAgent residual section against GHSA ranges, pnpm production reachability, and latest published core/logger versions; separated the 2026-08 intake as historical and tied the 30-day exact risk acceptance to P1 issue #3510. Vulnerable ingress exploitability remains unproven.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}

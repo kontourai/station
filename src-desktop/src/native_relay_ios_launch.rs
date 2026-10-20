@@ -1,5 +1,5 @@
 //! Capture cold launch options at the application's public delegate boundary.
-//! Tao 0.35.3 emits warm Opened events but drops first-scene URLContexts.
+//! Pinned Tao 0.37.1 declares the scene callback even without a scene manifest.
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
@@ -11,7 +11,7 @@ use tauri::AppHandle;
 
 struct LaunchHook {
     app: AppHandle,
-    scene: Option<Imp>,
+    scene: Imp,
     launch: Imp,
     open: Imp,
 }
@@ -46,7 +46,7 @@ pub(crate) fn install(app: AppHandle) -> Result<(), &'static str> {
     if objc2::MainThreadMarker::new().is_none() {
         return Err("main-thread");
     }
-    // Tao 0.35.3 declares its owned AppDelegate on UIResponder. UIKit's
+    // Tao 0.37.1 declares its owned AppDelegate on UIResponder. UIKit's
     // superclass is never wrapped; these are the app class's own methods.
     let class = AnyClass::get(c"AppDelegate").ok_or("app-class")?;
     if class.name() != c"AppDelegate"
@@ -56,12 +56,11 @@ pub(crate) fn install(app: AppHandle) -> Result<(), &'static str> {
     {
         return Err("app-superclass");
     }
-    let uses_scenes = unsafe { multiple_scenes_enabled()? };
-    let scene =
-        class.instance_method(sel!(application:configurationForConnectingSceneSession:options:));
-    if uses_scenes != scene.is_some() {
-        return Err("scene-mode-selector");
-    }
+    // Tao registers this method for UIKit's scene lifecycle even when the
+    // app's Info.plist has no scene manifest. Validate its actual ABI below.
+    let scene = class
+        .instance_method(sel!(application:configurationForConnectingSceneSession:options:))
+        .ok_or("scene-selector")?;
     let launch = class
         .instance_method(sel!(application:didFinishLaunchingWithOptions:))
         .ok_or("launch-selector")?;
@@ -85,61 +84,29 @@ pub(crate) fn install(app: AppHandle) -> Result<(), &'static str> {
     {
         return Err("app-abi-encoding");
     }
-    if scene.is_some_and(|method| {
-        method.arguments_count() != 5
-            || method.return_type().to_bytes() != b"@"
-            || (2..5).any(|index| {
-                method
-                    .argument_type(index)
-                    .is_none_or(|value| value.to_bytes() != b"@")
-            })
-    }) {
+    if scene.arguments_count() != 5
+        || scene.return_type().to_bytes() != b"@"
+        || (2..5).any(|index| {
+            scene
+                .argument_type(index)
+                .is_none_or(|value| value.to_bytes() != b"@")
+        })
+    {
         return Err("scene-configuration-abi");
     }
     HOOK.set(LaunchHook {
         app,
-        scene: scene.map(|method| method.implementation()),
+        scene: scene.implementation(),
         launch: launch.implementation(),
         open: open.implementation(),
     })
     .map_err(|_| "duplicate-install")?;
     unsafe {
-        if let Some(scene) = scene {
-            scene.set_implementation(std::mem::transmute::<SceneImp, Imp>(scene_options));
-        }
+        scene.set_implementation(std::mem::transmute::<SceneImp, Imp>(scene_options));
         launch.set_implementation(std::mem::transmute::<LaunchImp, Imp>(launch_options));
         open.set_implementation(std::mem::transmute::<OpenImp, Imp>(open_url));
     }
     Ok(())
-}
-
-unsafe fn multiple_scenes_enabled() -> Result<bool, &'static str> {
-    // Match Tao's actual configuration switch, not an inferred OS version.
-    let bundle_class = AnyClass::get(c"NSBundle").ok_or("bundle-class")?;
-    let bundle: *mut AnyObject = msg_send![bundle_class, mainBundle];
-    let info: *mut AnyObject = msg_send![bundle, infoDictionary];
-    let manifest_key = NSString::from_str("UIApplicationSceneManifest");
-    let manifest: *mut AnyObject = msg_send![info, objectForKey: &*manifest_key];
-    if manifest.is_null() {
-        return Ok(false);
-    }
-    let dictionary = AnyClass::get(c"NSDictionary").ok_or("manifest-class")?;
-    let is_dictionary: Bool = msg_send![manifest, isKindOfClass: dictionary];
-    if !is_dictionary.as_bool() {
-        return Err("manifest-shape");
-    }
-    let enabled_key = NSString::from_str("UIApplicationSupportsMultipleScenes");
-    let enabled: *mut AnyObject = msg_send![manifest, objectForKey: &*enabled_key];
-    if enabled.is_null() {
-        return Ok(false);
-    }
-    let number = AnyClass::get(c"NSNumber").ok_or("scene-flag-class")?;
-    let is_number: Bool = msg_send![enabled, isKindOfClass: number];
-    if !is_number.as_bool() {
-        return Err("scene-flag-shape");
-    }
-    let enabled: Bool = msg_send![enabled, boolValue];
-    Ok(enabled.as_bool())
 }
 
 unsafe fn is_relay_url(value: *mut AnyObject) -> bool {
@@ -300,10 +267,7 @@ unsafe extern "C-unwind" fn scene_options(
     let hook = HOOK
         .get()
         .expect("Station launch hook was installed before UIApplicationMain");
-    let original: SceneImp = std::mem::transmute(
-        hook.scene
-            .expect("Only the declared scene callback is wrapped"),
-    );
+    let original: SceneImp = std::mem::transmute(hook.scene);
     let configuration = original(this, selector, application, session, options);
     if let Err(stage) = install_scene_open(configuration) {
         use tauri::Manager;

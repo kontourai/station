@@ -42,7 +42,9 @@ import type {
   IWorkItemProvider,
   WorkItemProjectContext,
 } from '../../providers/provider-interfaces.js';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 const require = createRequire(import.meta.url);
 
@@ -163,14 +165,18 @@ export function createDefaultFlowAgentsCliRunner(
     runnerOptions.hardDeadlineSlackMs ?? DEFAULT_HARD_DEADLINE_SLACK_MS;
   return (binPath, args, options) =>
     new Promise<FlowAgentsCliResult>((resolvePromise) => {
+      const detached = process.platform !== 'win32';
       const child = spawn(process.execPath, [binPath, ...args], {
         cwd: options.cwd,
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
         // Own process group (POSIX) so a timeout can terminate the whole
         // tree — see killProcessTree above.
-        detached: process.platform !== 'win32',
+        detached,
       });
+      // #561: the timeout lives in this process, so register the group for
+      // the startup sweep.
+      if (detached) registerDetachedOwnedChild(child, 'flow-agents CLI');
       let stdout = '';
       let stderr = '';
       let timedOut = false;
@@ -231,6 +237,10 @@ export function createDefaultFlowAgentsCliRunner(
           exitCode: timedOut ? null : code,
         });
       });
+      // #776: a CLI that exits before reading its input must not end the
+      // server with an unlistened stdin EPIPE. Its exit code, settled on
+      // 'close', remains the result.
+      guardChildStdin(child.stdin);
       if (options.input !== undefined) child.stdin.write(options.input);
       child.stdin.end();
     });

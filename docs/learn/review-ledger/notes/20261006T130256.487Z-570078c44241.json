@@ -1,0 +1,7 @@
+{
+  "revision": "d40baf1321750d11c8e3ad23f0e5e60bea01b46b",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3406 review round: follow-service change is only the CanonicalizePath docblock (unread folders match nothing); the guide makes no attached-session discovery claim. No prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

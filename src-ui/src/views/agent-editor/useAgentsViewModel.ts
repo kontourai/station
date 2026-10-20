@@ -17,6 +17,7 @@ import {
   type AgentRunnability,
   agentRunnability,
 } from '../../components/agent-runnability';
+import { GLOBAL_CONTEXT } from '../../components/modals/new-chat-modal-utils';
 import {
   type AgentData,
   useAgentActions,
@@ -30,6 +31,7 @@ import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
+import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import type { NavigationView, Tool } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -364,11 +366,12 @@ export function useAgentsViewModel({
         filteredAgents,
         {
           onChat: (agent) =>
-            window.dispatchEvent(
-              new CustomEvent('station:open-new-chat', {
-                detail: { agentSlug: agent.slug },
-              }),
-            ),
+            dispatchNewChatIntent({
+              selection: {
+                context: agent.project || GLOBAL_CONTEXT,
+                agentSlug: agent.slug,
+              },
+            }),
           onFix: (_agent, route) => navigateFix(route),
         },
         { readinessKnown, devicePresentation },

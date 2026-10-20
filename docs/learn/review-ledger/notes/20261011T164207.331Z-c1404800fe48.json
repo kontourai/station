@@ -1,0 +1,7 @@
+{
+  "revision": "9357cb58eaa5f24274257fe80fb34267393c1546",
+
+  "notes": [
+    {"path":"docs/design/agent-engine-unification.md","note":"Updated §8.1: the start pickers carry the engine label as quiet text at the end of the Agent's name line (after the state badge, inside the select button) rather than a pill on its own line, and omit it where it repeats the Agent's name. Checked against AgentPickerRow.tsx/.css at this revision; other surfaces' chip claims unchanged.","inputs":["docs/design/agent-engine-unification.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Read the New chat/start composer mention against NewChatModal.tsx; this change adds the project icon and server run location to the chips but no claim here about onboarding, connections or chip contents changes.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

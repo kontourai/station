@@ -74,15 +74,37 @@ describe('taskGraph SDK domain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves a proposal refusal status for the accepting UI', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Accepted proposal must match the shaping answer',
+        }),
+        { status: 409 },
+      ),
+    );
+    await expect(
+      createTask({ projectId: 'alpha', title: 'Proposal' }),
+    ).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 409,
+      message: 'Accepted proposal must match the shaping answer',
+    });
+  });
+
   it('fetches tasks for a project', async () => {
     mockJsonResponse({ success: true, data: [{ id: 'task-1' }] });
 
     await expect(fetchTasks({ projectId: 'project-alpha' })).resolves.toEqual([
       { id: 'task-1' },
     ]);
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
       'http://example.test/api/tasks?projectId=project-alpha',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('keeps Task query keys isolated by task id', () => {
@@ -167,6 +189,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     ).resolves.toEqual({ id: 'task-2' });
     const [createUrl, createInit] = vi.mocked(fetch).mock.calls[0] as [
@@ -180,6 +204,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     );
     expect(new Headers(createInit.headers).get('Content-Type')).toBe(
@@ -410,9 +436,12 @@ describe('taskGraph SDK domain', () => {
       task: { id: 'task-3' },
       links: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
       'http://example.test/api/tasks/task-3/graph',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(2);
 
     mockJsonResponse({
       success: true,
@@ -422,8 +451,11 @@ describe('taskGraph SDK domain', () => {
       sessionId: 'session-1',
       links: [],
     });
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
       'http://example.test/api/tasks/sessions/session-1/relations',
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 });

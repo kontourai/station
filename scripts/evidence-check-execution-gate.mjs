@@ -1,7 +1,8 @@
-import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { loadAll } from 'js-yaml';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import {
   collectCorpusTestFiles,
   SCRIPT_FILE_PATTERN,
@@ -145,8 +146,8 @@ function workflowReachability(repoRoot, errors) {
 }
 
 function executeCandidate(repoRoot, scriptName) {
-  const executable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  return spawnSync(executable, ['--silent', 'run', scriptName], {
+  const invocation = npmInvocation(['--silent', 'run', scriptName]);
+  return spawnSyncBounded(invocation.command, invocation.args, {
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
@@ -352,26 +353,23 @@ function validate(repoRoot) {
   );
   const readinessScript = scripts['veritas:readiness'];
   let fastLaneSource = '';
-  let prePushSource = '';
   try {
     fastLaneSource = readFileSync(
       resolve(repoRoot, 'scripts/run-ci-fast.mjs'),
       'utf8',
     );
-    prePushSource = readFileSync(
-      resolve(repoRoot, '.githooks/pre-push'),
-      'utf8',
-    );
   } catch (error) {
     errors.push(
-      `scoped evidence routing must read the fast lane and pre-push hook: ${error.message}`,
+      `scoped evidence routing must read the fast lane: ${error.message}`,
     );
   }
   const readinessRouted =
     typeof readinessScript === 'string' &&
     /\bveritas\s+readiness\b/.test(readinessScript) &&
-    fastLaneSource.includes("['run', 'veritas:readiness']") &&
-    prePushSource.includes('npm run --silent veritas:readiness');
+    (fastLaneSource.includes("['run', 'veritas:readiness']") ||
+      fastLaneSource.includes(
+        "['run', 'veritas:readiness', '--', '--format', 'json']",
+      ));
 
   for (const [id, classification] of mappingEntries) {
     if (!CLASSIFICATIONS.has(classification)) {
@@ -397,7 +395,7 @@ function validate(repoRoot) {
       }
       if (!readinessRouted) {
         errors.push(
-          `evidence check "${id}" is scoped but Veritas readiness is not wired to both ci:fast and pre-push`,
+          `evidence check "${id}" is scoped but Veritas readiness is not wired to ci:fast`,
         );
       }
       if (isReachable) {

@@ -17,6 +17,15 @@ export async function dispatchForeground(input: {
   apiBase: string;
   sessionId: string;
   agentSlug: string;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
+  /**
+   * The engine the composer's snapshot showed for this Agent, as a
+   * precondition (`ExecutionTarget.expectedEngine`). Sent only for the first
+   * send of a chat and only to this Station: it can refuse, never select.
+   */
+  expectedEngine?: import('@kontourai/station-contracts/execution-target').ResolvedExecutionEngine;
   projectSlug?: string;
   conversationId?: string;
   requestedModel?: string | null;
@@ -144,10 +153,30 @@ export async function dispatchForeground(input: {
     input.apiBase,
     {
       target: {
-        ...(!input.projectSlug
+        ...(!input.projectSlug ||
+        input.executionAgentId ||
+        input.executionOnCurrentStation
           ? { environment: { kind: 'current' as const } }
           : {}),
-        agent: agentId(input.agentSlug),
+        agent: input.executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(input.agentSlug),
+              executionAgent: agentId(input.executionAgentId),
+              ...(input.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      input.expectedDefinitionFingerprint,
+                  }
+                : {}),
+            }
+          : agentId(input.agentSlug),
+        ...(input.expectedEngine &&
+        (!input.projectSlug ||
+          input.executionAgentId ||
+          input.executionOnCurrentStation)
+          ? { expectedEngine: input.expectedEngine }
+          : {}),
         ...(requestedModel || Object.keys(modelOptions ?? {}).length > 0
           ? {
               model: {

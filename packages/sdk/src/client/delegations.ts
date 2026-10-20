@@ -1,3 +1,5 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 /**
  * Canonical delegation fetchers (#977 Wave 2), inside the #167 DRY client
  * layer. Zero delegation fetchers existed on the portable client before this
@@ -42,12 +44,17 @@
  * this same file.
  */
 
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AgentId,
+  EngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
+import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import { envelopeError, type StationHttpError } from './api-error-message';
+import { getAttachmentStagingCapability } from './attachment-staging';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
 import { rethrowDeadline } from './request-deadline';
@@ -173,6 +180,8 @@ export interface DelegateTaskInput {
    * are server-produced handle fields, never caller-selected routing input.
    */
   prompt: string;
+  /** Current-host staged files; refused on hosts without delegationFiles support. */
+  attachmentRefs?: StagedAttachmentReference[];
   target: ExecutionTarget;
   parentTaskId?: string;
   /**
@@ -195,6 +204,7 @@ function delegationRequestProjection(
 ): DelegateTaskInput {
   return {
     prompt: input.prompt,
+    ...(input.attachmentRefs ? { attachmentRefs: input.attachmentRefs } : {}),
     target: input.target,
     ...(input.parentTaskId === undefined
       ? {}
@@ -282,11 +292,22 @@ export async function delegateTask(
   input: DelegateTaskInput,
   opts?: ClientRequestOptions,
 ): Promise<DelegatedTaskHandle> {
+  const request = input.attachmentRefs?.length
+    ? structuredClone(delegationRequestProjection(input))
+    : delegationRequestProjection(input);
+  if (request.attachmentRefs?.length) {
+    const capability = await getAttachmentStagingCapability(apiBase, opts);
+    if (capability.state !== 'supported' || capability.delegationFiles !== true)
+      throw new DelegationApiError(
+        'This Station does not support delegation files.',
+        'delegation_files_unsupported',
+      );
+  }
   const response = await mutateJson(
     `${apiBase}/api/orchestration/delegations`,
     'POST',
     opts,
-    delegationRequestProjection(input),
+    request,
   );
   return normalizeDelegationIdentity(
     await unwrapDelegationResponse<DelegatedTaskHandle>(response),
@@ -305,6 +326,14 @@ export interface DelegationTargetOption {
   description?: string;
   kind: 'agent';
   ready: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  executionReady?: boolean;
+  engineConnectionId?: string;
+  engineId?: EngineId;
+  engineName?: string;
   unavailableReason?: string;
   defaultModel?: string;
   models: Array<{ id: string; name: string; originalId: string }>;
@@ -349,6 +378,15 @@ export interface DelegatedTaskPendingRequest {
   id: string;
   title?: string;
   type?: string;
+  /** `delegatedInputAnswers`: the request's `request.opened` event id. */
+  eventId?: string;
+  /** The question as the serving Station presents it. */
+  body?: string;
+  /**
+   * The serving Station's check of the reading caller on the route that
+   * answers the request; absent when it did not evaluate one.
+   */
+  callerCanRespond?: boolean;
 }
 
 /**
@@ -537,6 +575,16 @@ export interface DelegatedTaskEvent {
   totalTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Provider-reported cache writes with the five-minute ephemeral TTL. */
+  cacheWriteTokens5m?: number;
+  /** Provider-reported cache writes with the one-hour ephemeral TTL. */
+  cacheWriteTokens1h?: number;
+  /** Opaque provider-reported service tier, at most 64 characters. */
+  serviceTier?: string;
+  /** Provider-reported tokens currently occupying the context window. */
+  contextTokens?: number;
+  /** Provider-reported total context-window capacity in tokens. */
+  contextWindowTokens?: number;
   verdict?: string;
   gateId?: string;
   runId?: string;
@@ -589,6 +637,17 @@ export async function observeDelegatedTaskEvents(
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Deliver `message` only as the answer to this exact open input request
+   * on the task's current Session. The serving Station refuses with
+   * `input_request_changed` when it is gone or replaced; forwarding to
+   * another Station requires its `delegatedInputAnswers` capability.
+   */
+  expectedInputRequest?: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+  };
   model?: string;
   /** station#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;
@@ -674,6 +733,13 @@ export interface InterruptDelegatedTaskInput
 
 export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
   interruptRequested: true;
+  /**
+   * What the stop actually did, as the Station that ran it derived it
+   * (`InterruptTurnResult['outcome']`). `no-active-turn` means nothing was
+   * interrupted: no turn was running, or the requested `turnId` was not the
+   * running one. Absent from a Station that does not report it.
+   */
+  interruptOutcome?: InterruptTurnResult['outcome'];
 };
 
 /**

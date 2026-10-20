@@ -12,7 +12,7 @@
  * `components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx`.
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   BANNER_RESERVED_HEIGHT_PROPERTY,
@@ -61,6 +61,15 @@ function stackedCards(element: Element): [number, number] {
     : 0;
   const top = 46 + index * 66;
   return [top, top + 60];
+}
+
+/** station#529: the live region is the message cell; card state lives on the card. */
+function bannerCard(): HTMLElement {
+  const card = screen
+    .getByRole('alert')
+    .closest<HTMLElement>('.banner-host__item');
+  if (!card) throw new Error('alert is not inside a banner card');
+  return card;
 }
 
 function presentBlocking(overrides: Record<string, unknown> = {}) {
@@ -141,7 +150,87 @@ describe('BannerHost space reservation', () => {
     presentBlocking({ overlay: true });
     const { container } = render(<BannerHost />);
 
-    expect(screen.getByRole('alert').getAttribute('data-overlay')).toBe('true');
+    expect(bannerCard().getAttribute('data-overlay')).toBe('true');
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('');
+  });
+
+  test('a reserving card clipped by its stack does not reserve its hidden portion', () => {
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 142];
+      if (element.hasAttribute('data-banner-id')) {
+        const top =
+          element.getAttribute('data-banner-id') === 'upper' ? 46 : 112;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'upper', priority: 101 });
+    presentBlocking({ id: 'lower' });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('102px');
+  });
+
+  test('a scroll-clipped stack reserves its visible cards and follows scrolling', () => {
+    let scrollOffset = 0;
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 106];
+      if (element.hasAttribute('data-banner-id')) {
+        const top =
+          (element.getAttribute('data-banner-id') === 'reserving' ? 46 : 112) -
+          scrollOffset;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'reserving', priority: 101 });
+    presentBlocking({ id: 'overlay', overlay: true });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('66px');
+
+    scrollOffset = 30;
+    fireEvent.scroll(stack);
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('36px');
+
+    scrollOffset = 66;
+    fireEvent.scroll(stack);
+    expect(
+      container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
+    ).toBe('');
+  });
+
+  test('a clipped overlay-only stack still reserves nothing', () => {
+    stubGeometry((element) => {
+      if (element.classList.contains('banner-host__stack')) return [46, 142];
+      if (element.hasAttribute('data-banner-id')) {
+        const top =
+          element.getAttribute('data-banner-id') === 'overlay-2' ? 46 : 112;
+        return [top, top + 60];
+      }
+      return stackedCards(element);
+    });
+    presentBlocking({ id: 'overlay-1', overlay: true });
+    presentBlocking({ id: 'overlay-2', overlay: true, priority: 101 });
+    const { container } = render(<BannerHost />);
+    const stack = container.querySelector<HTMLElement>('.banner-host__stack')!;
+    stack.style.overflowY = 'auto';
+    fireEvent.scroll(stack);
+
     expect(
       container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
     ).toBe('');
@@ -198,7 +287,7 @@ describe('BannerHost per-banner collapse', () => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
 
-    const card = screen.getByRole('alert');
+    const card = bannerCard();
     expect(card.dataset.collapsed).toBe('true');
     expect(card.className).toMatch(/banner-host__item--collapsed/);
     // Not a blank strip: the badge, the message and the remedy all survive.
@@ -219,7 +308,7 @@ describe('BannerHost per-banner collapse', () => {
     act(() => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
 
     // The poll that would otherwise undo the user's decision every 10s.
     presentBlocking({
@@ -227,7 +316,7 @@ describe('BannerHost per-banner collapse', () => {
       message: 'Changed copy.',
     });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
   });
 
   test('a new occurrence of the same condition arrives expanded', () => {
@@ -236,11 +325,11 @@ describe('BannerHost per-banner collapse', () => {
     act(() => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
-    expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
+    expect(bannerCard().dataset.collapsed).toBe('true');
 
     presentBlocking({ occurrence: 'host-moved' });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('an old occurrence coming back does not resurrect the old collapse', () => {
@@ -252,13 +341,13 @@ describe('BannerHost per-banner collapse', () => {
 
     // Superseded by a different occurrence, which arrives expanded...
     presentBlocking({ occurrence: 'host-moved' });
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
     //.and the first condition recurring is a new thing to read, not a
     // resumption of the showing the user collapsed. Same posture as
     // dismissal, whose suppression key is released the same way.
     presentBlocking({ occurrence: 'pairing-required' });
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('clear(prefix) releases the collapsed state with the banner', () => {
@@ -271,7 +360,7 @@ describe('BannerHost per-banner collapse', () => {
     act(() => bannerStore.clear('test:'));
     presentBlocking();
 
-    expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
+    expect(bannerCard().dataset.collapsed).toBeUndefined();
   });
 
   test('an exiting banner is never forced through the collapsed layout', () => {

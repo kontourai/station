@@ -17,13 +17,18 @@
 
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
-import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+  engineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type {
   InstalledSkillExperienceV1,
   SkillExperienceDefinitionV1,
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
+import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -35,9 +40,43 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
+import {
+  buildLastChosenModelBindingKey,
+  getLastChosenModelMap,
+  trackLastChosenModel,
+} from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+
+const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
+  complete: null,
+}));
+vi.mock('../components/chat-start/StartStationControl', () => ({
+  StartStationControl: ({
+    prompt,
+    onStarted,
+  }: ComponentProps<typeof StartStationControl>) => (
+    <button
+      type="button"
+      onClick={() => {
+        const handle: DelegatedTaskHandle = {
+          conversationId: 'task:remote',
+          taskId: 'task:remote',
+          sessionId: 'session:remote',
+          currentSessionId: 'session:remote',
+          status: 'dispatched',
+          environment: { kind: 'peer', id: 'env-kontour', name: 'Kontour' },
+          target: { kind: 'agent', id: agentId('assistant') },
+        };
+        remoteRun.complete = () => onStarted(handle, 'Kontour', prompt);
+      }}
+    >
+      Stage a remote task
+    </button>
+  ),
+}));
 
 const AGENT: AgentData = {
   slug: 'assistant',
@@ -73,7 +112,13 @@ const AUTHORED_CODEX: AgentData = {
 } as unknown as AgentData;
 
 const selectionModelState = {
-  models: [] as Array<{ id: string; providerId?: string }>,
+  models: [] as Array<{
+    id: string;
+    providerId?: string;
+    providerType?: string;
+    executionAgentId?: string;
+    expectedDefinitionFingerprint?: string;
+  }>,
   isGlobal: true as boolean,
   selectedProject: undefined as
     | { slug: string; name: string; workingDirectory?: string }
@@ -88,7 +133,15 @@ const selectionModelState = {
   refreshSetup: undefined as (() => Promise<void>) | undefined,
 };
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -118,6 +171,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: selectionModelState.agents }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceInventory.current,
     refetch: vi.fn(),
@@ -167,6 +222,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     modelChoices: {},
     setModelChoices: vi.fn(),
     modelsForAgent: () => selectionModelState.models,
+    executionModelsForAgent: () => selectionModelState.models,
     modelChoiceKey: (agent: AgentData) => agent.slug,
     defaultEffectiveModelForAgent: () => ({
       id: undefined,
@@ -223,6 +279,7 @@ beforeAll(() => {
 function renderModal(onSelect = vi.fn()) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -241,6 +298,7 @@ function renderForkModal(
 ) {
   render(
     <NewChatModal
+      projectIconBySlug={new Map()}
       agents={selectionModelState.agents}
       projects={[]}
       onSelect={onSelect}
@@ -275,12 +333,15 @@ test('late project context preserves the preferred fork Agent', () => {
       disclosure: 'Fork independently',
     },
   };
-  const view = render(<NewChatModal {...props} projects={[]} />);
+  const view = render(
+    <NewChatModal projectIconBySlug={new Map()} {...props} projects={[]} />,
+  );
   const source = () =>
     document.querySelector('button[data-agent-slug="assistant"]')!;
   expect(source().className).toContain('new-chat-modal__agent--selected');
   view.rerender(
     <NewChatModal
+      projectIconBySlug={new Map()}
       {...props}
       projects={[
         {
@@ -396,6 +457,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -422,6 +484,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -467,30 +530,32 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = renderModal();
     const row = clickAgent('downed');
     expect(row).toHaveProperty('disabled', true);
-    // One visible statement of the refusal (the shared readiness chip, in
-    // the same compact words the Agents list row uses) and one accessible
-    // description carrying the server's sentence.
-    expect(screen.getByText('Not set up')).toBeTruthy();
+    // Owner direction (2026-10-11): a row that cannot start is disabled and
+    // carries its one fixing button; no state chip repeats it. The server's
+    // sentence stays the row's accessible description.
+    const container = row.closest('.new-chat-modal__agent-row') as HTMLElement;
+    expect(container.querySelector('.agent-readiness__status')).toBeNull();
+    expect(
+      within(container).getByRole('button', { name: /Edit agent/ }),
+    ).toBeTruthy();
+    expect(row.getAttribute('aria-describedby')).toBe(
+      'agent-downed-unavailable',
+    );
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  test('the model trigger is disabled while the engine reports no catalog', () => {
-    // modelsForAgent is [] for every agent in this harness, so the trigger
-    // must not offer a picker that would open empty; the accessible name
-    // still says what the control is and the tooltip names why.
+  test('an Agent with no reported model and no catalog offers no model control', () => {
+    // modelsForAgent is [] for every agent in this harness and AGENT reports
+    // no model, so there is neither a picker to open nor a model to name: the
+    // row prints no "Model not reported" control (a named model with no
+    // catalog keeps a disabled trigger — AgentPickerRowPresentation.test).
     selectionModelState.agents = [AGENT];
     renderModal();
-    const trigger = document.querySelector(
-      '.new-chat-modal__model-trigger',
-    ) as HTMLButtonElement;
-    expect(trigger.disabled).toBe(true);
-    expect(trigger.getAttribute('aria-label')).toBe(
-      'Model: Model not reported',
-    );
-    expect(trigger.getAttribute('title')).toBe(
-      'This Agent has not reported a model catalog',
-    );
-    fireEvent.click(trigger);
+    expect(
+      document.querySelector(`[data-agent-slug="${AGENT.slug}"]`),
+    ).not.toBeNull();
+    expect(document.querySelector('.new-chat-modal__model-trigger')).toBeNull();
+    expect(screen.queryByText('Model not reported')).toBeNull();
     expect(
       document.querySelector('.new-chat-modal__model-picker-backdrop'),
     ).toBeNull();
@@ -700,11 +765,14 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       return document.getElementById(`agent-${slug}-unavailable`);
     }
 
-    test('the enableable row shows a "Not set up" chip and never paints the sentence', () => {
+    test('the enableable row offers Enable, no state chip, and never paints the sentence', () => {
       selectionModelState.agents = [LONG_ALIAS];
       renderModal();
 
-      expect(screen.getByText('Not set up')).toBeTruthy();
+      expect(screen.queryByText('Not set up')).toBeNull();
+      expect(
+        document.querySelector('[data-agent-action="enable"]'),
+      ).not.toBeNull();
       // The sentence is not a visible node: its only occurrence carries the
       // screen-reader-only class.
       const reason = reasonNode('codex');
@@ -756,7 +824,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       await waitFor(() => expect(materializeMock).toHaveBeenCalledTimes(1));
     });
 
-    test('the chip is inline with the name and Enable remains the row action', () => {
+    test('a fixable row is dimmed and disabled, with Enable as its action', () => {
       selectionModelState.agents = [LONG_ALIAS];
       renderModal();
 
@@ -768,34 +836,38 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       ) as HTMLElement;
       const side = container.querySelector('.new-chat-modal__agent-side');
       const name = container.querySelector('.new-chat-modal__agent-name');
-      const chip = container.querySelector('.status');
       const enable = container.querySelector('[data-agent-action="enable"]');
 
-      expect(chip?.textContent).toContain('Not set up');
-      // Inline with the name means the same row, immediately after the name
-      // element — not inside it (the name element carries only the name) and
-      // not in the quiet meta line below.
-      expect(name?.nextElementSibling).toBe(chip);
+      expect(select.disabled).toBe(true);
+      expect(name?.className).toContain('new-chat-modal__agent-name--dimmed');
+      expect(container.querySelector('.status')).toBeNull();
       expect(side?.contains(enable as Node)).toBe(true);
-      expect(select.contains(chip as Node)).toBe(true);
     });
 
-    // DESIGN.md §5: EVERY non-ready row carries a state, in the same words
-    // the Agents list uses — and the Agents list row renders the COMPACT
-    // badge (agentsViewHelpers `part="status" compact`), so the picker now
-    // does too. The full server sentence used to BE the badge label here; a
-    // paragraph for a chip that squeezed the row's own name to one letter
-    // while the sentence stayed in the accessibility tree either way. The
-    // visible state is short vocabulary; the sentence remains the row's
-    // accessible description.
-    test('a row with no enable signal states its need compactly and keeps the sentence for a11y', () => {
-      selectionModelState.agents = [UNAVAILABLE_AGENT];
+    // A row that cannot start and has NO fix of its own (a policy) would
+    // otherwise be a dead, dimmed row with no visible reason, so it keeps the
+    // shared compact state badge (the Agents list's word); the sentence stays
+    // its accessible description.
+    test('a blocked row with no fix states its need compactly and keeps the sentence for a11y', () => {
+      selectionModelState.agents = [
+        {
+          ...UNAVAILABLE_AGENT,
+          unavailableReason: 'An external policy currently prevents launch.',
+          unavailableFix: { kind: 'policy' },
+        } as AgentData,
+      ];
       renderModal();
 
-      expect(screen.queryByText('Needs: connection offline')).toBeNull();
+      expect(
+        screen.queryByText(
+          'Needs: An external policy currently prevents launch.',
+        ),
+      ).toBeNull();
       expect(screen.getByText('Not set up')).toBeTruthy();
       const reason = reasonNode('downed');
-      expect(reason?.textContent).toBe('connection offline');
+      expect(reason?.textContent).toBe(
+        'An external policy currently prevents launch.',
+      );
       expect(reason?.className).toContain(
         'new-chat-modal__agent-reason--assistive',
       );
@@ -862,6 +934,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -873,6 +946,7 @@ describe('start with working defaults', () => {
     expect(onSelect.mock.calls[0]?.[0]).toBe(AGENT);
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={selectionModelState.agents}
         projects={[]}
         onSelect={onSelect}
@@ -888,6 +962,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     const view = render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -899,6 +974,7 @@ describe('start with working defaults', () => {
     selectionModelState.loading = false;
     view.rerender(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -916,6 +992,7 @@ describe('start with working defaults', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -958,6 +1035,7 @@ describe('intent-first preparation', () => {
       let view!: ReturnType<typeof render>;
       const modal = () => (
         <NewChatModal
+          projectIconBySlug={new Map()}
           agents={selectionModelState.agents}
           projects={[]}
           onSelect={onSelect}
@@ -999,6 +1077,7 @@ describe('intent-first preparation', () => {
     const prompt = 'Reply exactly GOAL READY.\nUse no tools.';
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1025,6 +1104,7 @@ describe('intent-first preparation', () => {
     const onClose = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1050,6 +1130,7 @@ describe('intent-first preparation', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[ENABLEABLE_ALIAS]}
         projects={[]}
         onSelect={onSelect}
@@ -1106,6 +1187,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1123,7 +1205,11 @@ describe('visual skill selection through the New Chat picker', () => {
       { target: { value: 'My edited proposal' } },
     );
     expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    fireEvent.click(
+      document.querySelector(
+        'button[data-agent-slug="assistant"]',
+      ) as HTMLButtonElement,
+    );
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0].at(-1)).toMatchObject({
       namespace: 'authority-1',
@@ -1143,6 +1229,7 @@ describe('visual skill selection through the New Chat picker', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[AGENT]}
         projects={[]}
         onSelect={onSelect}
@@ -1159,7 +1246,11 @@ describe('visual skill selection through the New Chat picker', () => {
       screen.getByRole('textbox', { name: /What would you like to build/ }),
       { target: { value: 'Retain this' } },
     );
-    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    fireEvent.click(
+      document.querySelector(
+        'button[data-agent-slug="assistant"]',
+      ) as HTMLButtonElement,
+    );
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.getByText(/cannot start on this Station/)).toBeTruthy();
     expect(
@@ -1175,6 +1266,7 @@ describe('the start composer in the dock', () => {
   ) {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         startSurface
         agents={selectionModelState.agents}
         projects={[]}
@@ -1196,6 +1288,27 @@ describe('the start composer in the dock', () => {
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
   }
+
+  test.each([
+    ['new draft', 'new draft'],
+    ['submitted draft', ''],
+  ])(
+    'remote task completion preserves the latest draft (%s)',
+    (latest, expected) => {
+      remoteRun.complete = null;
+      start(undefined, { initialPrompt: 'submitted draft' });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Stage a remote task' }),
+      );
+      fireEvent.change(message(), { target: { value: latest } });
+      expect(remoteRun.complete).not.toBeNull();
+      act(() => remoteRun.complete!());
+      expect(message().value).toBe(expected);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Task started on Kontour',
+      );
+    },
+  );
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
@@ -1340,6 +1453,93 @@ describe('the start composer in the dock', () => {
   // Home's composer sends what its chips show; the dock starts exactly that
   // and never substitutes its own default.
   describe("a start carrying Home's selection", () => {
+    test('carries an explicit This Station selection for a plain Agent without fabricating an engine override', async () => {
+      selectionModelState.agents = [AGENT];
+      selectionModelState.recommendedAgent = AGENT;
+      selectionModelState.models = [
+        { id: 'chosen-model', providerId: 'provider' },
+      ];
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'Run here',
+        startSelection: {
+          context: '__global__',
+          agentSlug: AGENT.slug,
+          model: {
+            modelId: 'chosen-model',
+            providerId: 'provider',
+            providerOptions: {},
+            environmentId: 'current',
+          },
+        },
+      });
+      await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+      const call = onSelect.mock.calls[0];
+      expect(call[0]).toBe(AGENT);
+      expect(call[13]).toBeUndefined();
+      expect(call[14]).toBeUndefined();
+      expect(call[15]).toBe(true);
+    });
+
+    test('starts an authored profile on the chosen engine without changing its remembered default model', async () => {
+      const fingerprint = 'a'.repeat(64);
+      const profile: AgentData = {
+        slug: agentId('reviewer'),
+        name: 'Reviewer',
+        available: true,
+        definitionFingerprint: fingerprint,
+        model: 'claude-default',
+        execution: { agentConnectionId: engineConnectionId('claude') },
+      };
+      const binding: AgentData = {
+        slug: agentId('codex'),
+        name: 'Codex',
+        available: true,
+        executionDefault: true,
+        execution: { agentConnectionId: engineConnectionId('codex') },
+      };
+      selectionModelState.agents = [profile, binding];
+      selectionModelState.recommendedAgent = profile;
+      selectionModelState.models = [
+        {
+          id: 'gpt-5.4',
+          providerId: 'codex-provider',
+          providerType: 'codex',
+          executionAgentId: binding.slug,
+          expectedDefinitionFingerprint: fingerprint,
+        },
+      ];
+      const sourceMemory = buildLastChosenModelBindingKey(profile);
+      trackLastChosenModel(sourceMemory, 'claude-default');
+      const onSelect = start(vi.fn(), {
+        startWithDefault: true,
+        initialPrompt: 'Review these changes',
+        startSelection: {
+          context: '__global__',
+          agentSlug: profile.slug,
+          model: {
+            modelId: 'gpt-5.4',
+            executionAgentId: binding.slug,
+            expectedDefinitionFingerprint: fingerprint,
+            providerId: 'codex-provider',
+            providerType: 'codex',
+            providerOptions: { reasoningEffort: 'high' },
+          },
+        },
+      });
+      await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+      const call = onSelect.mock.calls[0];
+      expect(call[0]).toBe(profile);
+      expect(call[3]).toBe('Review these changes');
+      expect(call[4]).toBe('gpt-5.4');
+      expect(call[8]).toEqual({ reasoningEffort: 'high' });
+      expect(call[9]).toBe('codex-provider');
+      expect(call[10]).toBe('codex');
+      expect(call[13]).toBe(binding.slug);
+      expect(call[14]).toBe(fingerprint);
+      expect(getLastChosenModelMap()[sourceMemory]).toBe('claude-default');
+    });
+
     test('starts the chosen Agent with the chosen Model and runtime options', async () => {
       selectionModelState.agents = [AGENT, AUTHORED_CODEX];
       selectionModelState.recommendedAgent = AGENT;
@@ -1433,14 +1633,24 @@ describe('the start composer in the dock', () => {
       initialPrompt: 'From Home',
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     selectionModelState.isGlobal = false;
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1488,14 +1698,24 @@ describe('the start composer in the dock', () => {
       startSelection: { context: 'station', agentSlug: 'assistant' },
     };
     const view = render(
-      <NewChatModal {...props} projects={[]} projectsLoaded={false} />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[]}
+        projectsLoaded={false}
+      />,
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.queryByText(/no longer available/)).toBeNull();
     selectionModelState.selectedProject = station;
     view.rerender(
-      <NewChatModal {...props} projects={[station]} projectsLoaded />,
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        projects={[station]}
+        projectsLoaded
+      />,
     );
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][1]).toBe('station');
@@ -1562,6 +1782,44 @@ describe('the start composer in the dock', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  // A Model the composer's chip still holds from earlier in the tab, no longer
+  // in the engine's catalog, is refused at Start rather than sent for the
+  // engine to reject after it has half-created the session.
+  test('Start on a chip Model the catalog no longer lists is refused, not started', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'gone-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    expect(
+      await screen.findByText(/Model you selected is no longer available/),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('Start on a chip Model the catalog still lists starts', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'kept-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/no longer available/)).toBeNull();
+  });
+
   // Review finding: the dock builds a new draft object every render; a chip
   // the user removed must stay removed and stay out of the message.
   test('a removed context chip stays removed when the dock re-renders', () => {
@@ -1586,15 +1844,80 @@ describe('the start composer in the dock', () => {
       onSelect,
       onClose: vi.fn(),
     };
-    const view = render(<NewChatModal {...props} draftContext={draft()} />);
+    const view = render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     const chip = () =>
       screen.getByRole('button', { name: 'Request: Build a plugin' });
     fireEvent.click(chip());
     expect(chip().getAttribute('aria-pressed')).toBe('false');
-    view.rerender(<NewChatModal {...props} draftContext={draft()} />);
+    view.rerender(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        {...props}
+        draftContext={draft()}
+      />,
+    );
     expect(chip().getAttribute('aria-pressed')).toBe('false');
     fireEvent.change(message(), { target: { value: 'Just this' } });
     fireEvent.click(startButton());
     expect(onSelect.mock.calls[0][3]).toBe('Just this');
   });
+});
+
+test.each([false, true])(
+  'New Task uses the shared composer and the first send carries shaping context unless removed (%s)',
+  async (remove) => {
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startSurface
+        taskShaping
+      />,
+    );
+    const input = screen.getByPlaceholderText('Describe the idea…');
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(input, { target: { value: 'Show installer progress' } });
+    if (remove)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove Shaping a Task mode' }),
+      );
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][3]).toBe('Show installer progress');
+    expect(onSelect.mock.calls[0][17]).toEqual(
+      remove ? undefined : expect.stringContaining('station-task-proposal'),
+    );
+  },
+);
+
+test('New Task start surface retains its label and Escape closes it', () => {
+  const onClose = vi.fn();
+  render(
+    <NewChatModal
+      projectIconBySlug={new Map()}
+      agents={[AGENT]}
+      projects={[]}
+      onSelect={vi.fn()}
+      onClose={onClose}
+      startSurface
+      taskShaping
+    />,
+  );
+  expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
+    key: 'Escape',
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

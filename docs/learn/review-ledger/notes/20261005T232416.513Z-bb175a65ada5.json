@@ -1,0 +1,11 @@
+{
+  "revision": "d2e76d49f9b858019cfd15bf939f2ddfab21cec7",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed d2e76d49f9 delta: RelayOperatorPanel supplies the shared compact Empty required label Invite a device to connect only when approved surfaces and pending devices are both absent. Existing queries, permission decisions, invitation behavior, loading Skeleton and configured-read guard are unchanged. Connections guidance, native verification limits and module ownership remain accurate for this copy/type repair. Retained CI failure identifies the missing required prop; repaired-head UI typecheck, mounted tests, CI and installed-device acceptance are not yet verified.","inputs":["docs/guides/connections.md","src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed d2e76d49f9 delta: RelayOperatorPanel supplies the shared compact Empty required label Invite a device to connect only when approved surfaces and pending devices are both absent. Existing queries, permission decisions, invitation behavior, loading Skeleton and configured-read guard are unchanged. Connections guidance, native verification limits and module ownership remain accurate for this copy/type repair. Retained CI failure identifies the missing required prop; repaired-head UI typecheck, mounted tests, CI and installed-device acceptance are not yet verified.","inputs":["docs/guides/native-shell-verification.md","src-server/security/pairing-route-scopes.ts","src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed d2e76d49f9 delta: RelayOperatorPanel supplies the shared compact Empty required label Invite a device to connect only when approved surfaces and pending devices are both absent. Existing queries, permission decisions, invitation behavior, loading Skeleton and configured-read guard are unchanged. Connections guidance, native verification limits and module ownership remain accurate for this copy/type repair. Retained CI failure identifies the missing required prop; repaired-head UI typecheck, mounted tests, CI and installed-device acceptance are not yet verified.","inputs":["docs/architecture/module-map.md","src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]}
+  ]
+}

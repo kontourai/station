@@ -140,22 +140,18 @@ describe('one-revision native promotion contract', () => {
       rebuild_index: '$' + '{{ inputs.rebuild_index }}',
     });
     expect((stageCaller as any)?.secrets).toBe('inherit');
-    expect(caller?.needs).toEqual([
-      'test-gate',
-      'full-regression',
-      'native-stage',
-    ]);
-    expect(caller?.if).toContain(
-      "needs['full-regression'].result == 'success'",
-    );
+    expect(caller?.needs).toEqual(['test-gate', 'native-stage']);
+    expect(caller?.if).toContain("needs['test-gate'].result == 'success'");
     expect(caller?.if).toContain("needs['native-stage'].result == 'success'");
     expect(caller?.permissions).toEqual({
       contents: 'write',
+      actions: 'read',
       'id-token': 'write',
       attestations: 'write',
     });
     expect((caller as any)?.with).toEqual({
       source_sha: '$' + '{{ needs.test-gate.outputs.source_sha }}',
+      force_rebuild: '$' + "{{ inputs.rebuild_index != '' }}",
       build: '$' + '{{ needs.native-stage.outputs.build }}',
       marketing_version:
         '$' + '{{ needs.native-stage.outputs.marketing_version }}',
@@ -201,7 +197,7 @@ describe('one-revision native promotion contract', () => {
     });
     // iOS is built and audited during staging and only uploaded by the
     // publishing cohort from the same run's staged bytes (#1454).
-    expect(iosStageCaller?.needs).toBe('plan-cohort');
+    expect(iosStageCaller?.needs).toEqual(['plan-cohort', 'stage-macos']);
     expect((iosStageCaller as any)?.uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
@@ -227,7 +223,7 @@ describe('one-revision native promotion contract', () => {
       marketing_version: '$' + '{{ inputs.marketing_version }}',
       bundle_version: '$' + '{{ inputs.bundle_version }}',
     });
-    expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
+    expect(fleetCaller?.needs).toEqual(['test-gate']);
     expect((fleetCaller as any)?.uses).toBe(
       './.github/workflows/nightly-fleet-staging.yml',
     );
@@ -636,7 +632,10 @@ describe('one-revision native promotion contract', () => {
     ]) {
       expect(clearJob.if, id).not.toContain(`needs.${id}.result`);
     }
-    expect(clearJob.permissions).toEqual({ contents: 'write' });
+    expect(clearJob.permissions).toEqual({
+      contents: 'write',
+      actions: 'read',
+    });
     const clear = namedStep(
       clearJob,
       'Remove the exact promotion fence at the end of the run that created it',
@@ -1021,7 +1020,7 @@ describe('one-revision native promotion contract', () => {
     expect(dependencyStep).toBeGreaterThanOrEqual(0);
     expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
     for (const action of [
-      'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+      'anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
       'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
     ])
       expect(source).toContain(action);

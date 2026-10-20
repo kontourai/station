@@ -1,4 +1,4 @@
-import type { PermissionOption } from '@agentclientprotocol/sdk';
+import type { PermissionOption, StopReason } from '@agentclientprotocol/sdk';
 import { describe, expect, test } from 'vitest';
 import type {
   CanonicalRuntimeEvent,
@@ -13,6 +13,7 @@ import {
   mapAcpExtensionNotification,
   mapAcpSessionUpdate,
   mapAcpStopReasonToFinishReason,
+  mapAcpStopReasonToTurnCompletion,
 } from '../adapters/acp-adapter-events.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 
@@ -1250,15 +1251,30 @@ describe('mapAcpDecisionToApprovalStatus', () => {
   });
 });
 
-describe('mapAcpStopReasonToFinishReason — stopReason table', () => {
+describe('mapAcpStopReasonToTurnCompletion — stopReason table', () => {
+  // #354: a reason the shared finishReason vocabulary cannot express folds to
+  // 'other' but keeps its raw ACP value, so a refusal and an exhausted
+  // request budget are not indistinguishable from an ordinary stop.
   test.each([
-    ['end_turn', 'stop'],
-    ['max_tokens', 'max-tokens'],
-    ['cancelled', 'cancelled'],
-    ['max_turn_requests', 'other'],
-    ['refusal', 'other'],
-  ] as const)('%s -> %s', (reason, finishReason) => {
-    expect(mapAcpStopReasonToFinishReason(reason)).toBe(finishReason);
+    ['end_turn', { finishReason: 'stop' }],
+    ['max_tokens', { finishReason: 'max-tokens' }],
+    ['cancelled', { finishReason: 'cancelled' }],
+    [
+      'max_turn_requests',
+      { finishReason: 'other', stopReason: 'max_turn_requests' },
+    ],
+    ['refusal', { finishReason: 'other', stopReason: 'refusal' }],
+  ] as const)('%s -> %o', (reason, completion) => {
+    expect(mapAcpStopReasonToTurnCompletion(reason)).toEqual(completion);
+    expect(mapAcpStopReasonToFinishReason(reason)).toBe(
+      completion.finishReason,
+    );
+  });
+
+  test('an unrecognized engine reason is kept, bounded, as opaque text', () => {
+    expect(
+      mapAcpStopReasonToTurnCompletion('x'.repeat(200) as StopReason),
+    ).toEqual({ finishReason: 'other', stopReason: 'x'.repeat(64) });
   });
 });
 

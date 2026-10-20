@@ -5,17 +5,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-/**
- * Every user bubble in a chat with no Tasks offered "Add input to Task", and
- * clicking it opened a picker that said "Tasks are not available". The catalog
- * query was deferred until the dialog opened, so the affordance could not know
- * what the dialog was about to tell you.
- *
- * These drive the CONNECTED components — the ones that own the query — because
- * that is where the decision lives; the unconnected pair takes its rows from a
- * host adapter and has no availability question to answer.
- */
-
 const tasksQuery = vi.hoisted(() => ({
   state: {} as {
     data?: unknown[];
@@ -54,13 +43,19 @@ function renderUserInput() {
     <ConnectedAttachUserInputToTaskButton
       sessionId="session-1"
       eventId="event-1"
+      excerpt="Selected input"
     />,
   );
 }
 
-function renderAnswer() {
+function renderAnswer(projectId?: string) {
   return render(
-    <ConnectedAttachAnswerToTaskButton sessionId="session-1" turnId="turn-1" />,
+    <ConnectedAttachAnswerToTaskButton
+      sessionId="session-1"
+      turnId="turn-1"
+      excerpt="Selected answer"
+      projectId={projectId}
+    />,
   );
 }
 
@@ -77,7 +72,11 @@ describe('Task attachment affordances follow the Task catalog', () => {
     };
     render(
       <TurnActionsMenu
-        taskTarget={{ sessionId: 'session-1', turnId: 'turn-1' }}
+        taskTarget={{
+          sessionId: 'session-1',
+          turnId: 'turn-1',
+          excerpt: 'Selected answer',
+        }}
       />,
     );
     const trigger = screen.getByRole('button', { name: 'More answer actions' });
@@ -102,19 +101,46 @@ describe('Task attachment affordances follow the Task catalog', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  test('offers nothing when the catalog has settled with no Tasks', () => {
-    tasksQuery.state = { data: [], isSuccess: true };
-
-    renderUserInput();
-    expect(screen.queryByRole('button', { name: 'Add input to Task' })).toBe(
-      null,
-    );
-
-    renderAnswer();
-    expect(screen.queryByRole('button', { name: /Add this answer/ })).toBe(
-      null,
-    );
-  });
+  test.each(['answer', 'input'])(
+    'an empty catalog offers New Task from this for an exact %s',
+    async (kind) => {
+      tasksQuery.state = { data: [], isSuccess: true };
+      const listener = vi.fn();
+      window.addEventListener('station:shape-task', listener);
+      if (kind === 'answer') renderAnswer('alpha');
+      else renderUserInput();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: kind === 'answer' ? /Add this answer/ : 'Add input to Task',
+        }),
+      );
+      expect(
+        await screen.findByText(
+          kind === 'answer' ? 'No Tasks in this project yet.' : 'No Tasks yet.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('Tasks are not available')).toBeNull();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'New Task from this…' }),
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].detail.source).toEqual(
+        kind === 'answer'
+          ? {
+              sessionId: 'session-1',
+              turnId: 'turn-1',
+              excerpt: 'Selected answer',
+            }
+          : {
+              sessionId: 'session-1',
+              eventId: 'event-1',
+              excerpt: 'Selected input',
+            },
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      window.removeEventListener('station:shape-task', listener);
+    },
+  );
 
   test('offers the affordance when a Task exists', () => {
     tasksQuery.state = {

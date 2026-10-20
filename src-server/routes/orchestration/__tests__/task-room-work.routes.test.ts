@@ -27,146 +27,186 @@ import { createOrchestrationRoutes } from '../orchestration.js';
 
 const makeTempDir = trackTempDirs();
 
-test('the delegation route records one channel request and refuses a target outside its Task Project', async () => {
-  const directory = makeTempDir('task-room-work-route-');
-  const eventStore = new EventStore(join(directory, 'events.sqlite'));
-  const eventBus = new EventBus();
-  const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
-    eventBus,
-    eventStore,
-    logger: { debug: vi.fn(), warn: vi.fn() },
-  });
-  const principal = humanPrincipal('test', 'alice', 'Alice');
-  type Dispatch = NonNullable<
-    Parameters<typeof createOrchestrationRoutes>[1]['delegateTask']
-  >;
-  const start = vi.fn<Dispatch>(async (input) => {
-    if (!input.sessionId)
-      throw new Error('expected server-reserved session identity');
-    return { sessionId: input.sessionId };
-  });
-  const module = new TaskRoomWorkModule(join(directory, 'work.json'));
-  const scope = {
-    projectId: 'project',
-    projectSlug: 'demo',
-    roomProjectId: 'room-project',
-    taskCreatedAt: '2026-09-30T12:00:00.000Z',
-    requesterId: principal.id,
-  };
-  const app = createOrchestrationRoutes(service, {
-    eventBus,
-    logger: { debug: vi.fn() },
-    resolvePrincipal: () => principal,
-    delegateTask: start,
-    taskRoomWork: {
-      module,
-      authorize: async () => scope,
-      resolveContext: async () =>
-        createTaskRoomContext(
-          {
+test.each([undefined, 'codex'])(
+  'the delegation route records one request with binding %s and refuses a changed target or Task Project',
+  async (executionAgentId) => {
+    const directory = makeTempDir('task-room-work-route-');
+    const eventStore = new EventStore(join(directory, 'events.sqlite'));
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const principal = humanPrincipal('test', 'alice', 'Alice');
+    type Dispatch = NonNullable<
+      Parameters<typeof createOrchestrationRoutes>[1]['delegateTask']
+    >;
+    const start = vi.fn<Dispatch>(async (input) => {
+      if (!input.sessionId)
+        throw new Error('expected server-reserved session identity');
+      return { sessionId: input.sessionId };
+    });
+    const module = new TaskRoomWorkModule(join(directory, 'work.json'));
+    const scope = {
+      projectId: 'project',
+      projectSlug: 'demo',
+      roomProjectId: 'room-project',
+      taskCreatedAt: '2026-09-30T12:00:00.000Z',
+      requesterId: principal.id,
+    };
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      resolvePrincipal: () => principal,
+      delegateTask: start,
+      taskRoomWork: {
+        module,
+        authorize: async () => scope,
+        resolveContext: async () =>
+          createTaskRoomContext(
+            {
+              taskId: 'durable-task',
+              projectId: scope.projectId,
+              taskCreatedAt: scope.taskCreatedAt,
+            },
+            {
+              title: 'Objective',
+              description: 'Investigate',
+              documentRevision: 'revision-1',
+              text: 'Selected shared brief.',
+            },
+          ),
+      },
+    });
+    const send = (
+      projectSlug: string,
+      taskCreatedAt = scope.taskCreatedAt,
+      context?: { version: 'station.task-room-context/v1'; digest: string },
+      execution = executionAgentId,
+      modelId = 'model-a',
+    ) =>
+      app.request('/delegations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'Investigate this idea',
+          target: {
+            environment: { kind: 'current' },
+            agent: execution
+              ? {
+                  kind: 'agent-execution-override',
+                  agent: 'researcher',
+                  executionAgent: execution,
+                }
+              : 'researcher',
+            model: { override: modelId, options: { reasoningEffort: 'high' } },
+            workspace: { kind: 'project', projectSlug },
+          },
+          taskRoomRequest: {
             taskId: 'durable-task',
-            projectId: scope.projectId,
-            taskCreatedAt: scope.taskCreatedAt,
+            taskCreatedAt,
+            operationId: context ? 'request-context' : 'request-1',
+            ...(context ? { context } : {}),
           },
-          {
-            title: 'Objective',
-            description: 'Investigate',
-            documentRevision: 'revision-1',
-            text: 'Selected shared brief.',
-          },
-        ),
-    },
-  });
-  const send = (
-    projectSlug: string,
-    taskCreatedAt = scope.taskCreatedAt,
-    context?: { version: 'station.task-room-context/v1'; digest: string },
-  ) =>
-    app.request('/delegations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: 'Investigate this idea',
-        target: {
-          environment: { kind: 'current' },
-          agent: 'researcher',
-          workspace: { kind: 'project', projectSlug },
-        },
-        taskRoomRequest: {
+        }),
+      });
+    try {
+      const denied = await send('other-project');
+      expect(denied.status).toBe(403);
+      expect(start).not.toHaveBeenCalled();
+      const staleTask = await send('demo', '2026-09-29T12:00:00.000Z');
+      expect(staleTask.status).toBe(403);
+      expect(start).not.toHaveBeenCalled();
+      const first = await send('demo');
+      expect(first.status).toBe(200);
+      const firstBody = await readJson<{ data: TaskRoomWorkOutcome }>(first);
+      if (firstBody.data.kind !== 'recorded')
+        throw new Error('expected recorded request');
+      expect(firstBody.data).toMatchObject({
+        kind: 'recorded',
+        replayed: false,
+        record: {
           taskId: 'durable-task',
-          taskCreatedAt,
-          operationId: context ? 'request-context' : 'request-1',
-          ...(context ? { context } : {}),
+          agentId: 'researcher',
+          modelId: 'model-a',
+          modelOptionsDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+          ...(executionAgentId ? { executionAgentId } : {}),
+          requesterId: expect.stringMatching(/^task-room-requester:/),
+          state: 'dispatched',
         },
-      }),
-    });
-  try {
-    const denied = await send('other-project');
-    expect(denied.status).toBe(403);
-    expect(start).not.toHaveBeenCalled();
-    const staleTask = await send('demo', '2026-09-29T12:00:00.000Z');
-    expect(staleTask.status).toBe(403);
-    expect(start).not.toHaveBeenCalled();
-    const first = await send('demo');
-    expect(first.status).toBe(200);
-    const firstBody = await readJson<{ data: TaskRoomWorkOutcome }>(first);
-    if (firstBody.data.kind !== 'recorded')
-      throw new Error('expected recorded request');
-    expect(firstBody.data).toMatchObject({
-      kind: 'recorded',
-      replayed: false,
-      record: {
-        taskId: 'durable-task',
-        agentId: 'researcher',
-        requesterId: expect.stringMatching(/^task-room-requester:/),
-        state: 'dispatched',
-      },
-    });
-    const replay = await send('demo');
-    expect(replay.status).toBe(200);
-    expect(JSON.stringify(firstBody)).not.toContain(principal.id);
-    expect(
-      (await readJson<{ data: TaskRoomWorkOutcome }>(replay)).data,
-    ).toMatchObject({
-      kind: 'recorded',
-      replayed: true,
-      record: { sessionId: firstBody.data.record.sessionId },
-    });
-    expect(start).toHaveBeenCalledOnce();
-    expect(start.mock.calls[0][0]).toMatchObject({
-      sessionId: firstBody.data.record.sessionId,
-      parentTaskId: 'durable-task',
-      userId: principal.id,
-    });
-    const snapshot = createTaskRoomContext(
-      {
-        taskId: 'durable-task',
-        projectId: scope.projectId,
-        taskCreatedAt: scope.taskCreatedAt,
-      },
-      {
-        title: 'Objective',
-        description: 'Investigate',
-        documentRevision: 'revision-1',
-        text: 'Selected shared brief.',
-      },
-    );
-    if (!snapshot) throw new Error('Missing snapshot');
-    const withContext = await send('demo', scope.taskCreatedAt, {
-      version: snapshot.version,
-      digest: snapshot.digest,
-    });
-    expect(withContext.status).toBe(200);
-    expect(start.mock.calls[1][0].prompt).toContain('Selected shared brief.');
-    expect(
-      (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
-    ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });
-  } finally {
-    await service.shutdown();
-    eventStore.close();
-  }
-});
+      });
+      const replay = await send('demo');
+      expect(replay.status).toBe(200);
+      expect(JSON.stringify(firstBody)).not.toContain(principal.id);
+      expect(
+        (await readJson<{ data: TaskRoomWorkOutcome }>(replay)).data,
+      ).toMatchObject({
+        kind: 'recorded',
+        replayed: true,
+        record: { sessionId: firstBody.data.record.sessionId },
+      });
+      expect(start).toHaveBeenCalledOnce();
+      const changedEngine = await send(
+        'demo',
+        scope.taskCreatedAt,
+        undefined,
+        executionAgentId === 'codex' ? 'claude' : 'codex',
+      );
+      expect(changedEngine.status).toBe(409);
+      const changedModel = await send(
+        'demo',
+        scope.taskCreatedAt,
+        undefined,
+        executionAgentId,
+        'model-b',
+      );
+      expect(changedModel.status).toBe(409);
+      expect(start).toHaveBeenCalledOnce();
+      expect(start.mock.calls[0][0]).toMatchObject({
+        target: {
+          agent: executionAgentId
+            ? {
+                kind: 'agent-execution-override',
+                agent: 'researcher',
+                executionAgent: executionAgentId,
+              }
+            : 'researcher',
+        },
+        sessionId: firstBody.data.record.sessionId,
+        parentTaskId: 'durable-task',
+        userId: principal.id,
+      });
+      const snapshot = createTaskRoomContext(
+        {
+          taskId: 'durable-task',
+          projectId: scope.projectId,
+          taskCreatedAt: scope.taskCreatedAt,
+        },
+        {
+          title: 'Objective',
+          description: 'Investigate',
+          documentRevision: 'revision-1',
+          text: 'Selected shared brief.',
+        },
+      );
+      if (!snapshot) throw new Error('Missing snapshot');
+      const withContext = await send('demo', scope.taskCreatedAt, {
+        version: snapshot.version,
+        digest: snapshot.digest,
+      });
+      expect(withContext.status).toBe(200);
+      expect(start.mock.calls[1][0].prompt).toContain('Selected shared brief.');
+      expect(
+        (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
+      ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  },
+);
 
 test('real delegation refuses revoked Task authority at provider effects and leaves a clean turn boundary', async () => {
   const directory = makeTempDir('task-room-effect-');

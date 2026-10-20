@@ -2,6 +2,7 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
 import type { RegistryTrustConfiguration } from './registry-trust.js';
 import type { AgentConnectionSettings } from './tool.js';
@@ -16,6 +17,9 @@ export interface ApprovalGuardianConfig {
 }
 
 export interface AppConfig {
+  reviewGuidesEnabled?: boolean;
+  reviewGuideModel?: string;
+  reviewGuideInstructions?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
@@ -66,7 +70,17 @@ export interface AppConfig {
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
+  /** Per-publisher explicit choices; absent publishers default to Lite. */
+  telemetryTier?: Pick<TelemetryTierChoices, 'kontour' | 'operator'>;
+  /** @deprecated Compatibility input, migrated when app.json is loaded. */
   telemetryEnabled?: boolean;
+  /** Saved full product POST destination; takes precedence over environment fallback. */
+  productTelemetryEndpoint?: string;
+  /** Instance-owned, exact-destination SecretBinding reference; never inline key material. */
+  productTelemetryKeyRef?: string;
+  /** Collector base address and an exact instance secret reference, activated at process start. */
+  otelTelemetryEndpoint?: string;
+  otelTelemetryKeyRef?: string;
   registryUrl?: string;
   registryTrust?: RegistryTrustConfiguration;
   gitRemote?: string;
@@ -129,6 +143,15 @@ export interface AppConfig {
    * (e.g. a project that only wants explicitly-published bundles).
    */
   surfaceTrustFromVeritasEvidence?: boolean;
+  /**
+   * #3386: whether Activity follows Claude Code and Codex conversations found
+   * on this machine whose folder belongs to no project (listed under No
+   * project). **Default on** — `false` stops following them; conversations
+   * already read stay in Activity. Conversations inside a project are
+   * followed either way, and a hosted Station never follows these.
+   * Read every poll by `AttachedSessionFollowService`.
+   */
+  attachedSessionsOutsideProjects?: boolean;
   /**
    * Create the read-only `root:conversations` projection at personal startup
    * when absent. Default off. Disabling does not remove an existing root;

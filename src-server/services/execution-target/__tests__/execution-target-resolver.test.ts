@@ -73,6 +73,121 @@ function dependencies(
 }
 
 describe('resolveExecutionTarget', () => {
+  test.each([false, true])(
+    'explicit native binding preserves a native profile and rejects external transplantation (external=%s)',
+    async (external) => {
+      const resolve = resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: {
+            kind: 'agent-execution-override',
+            agent: agentId('writer'),
+            executionAgent: agentId('station'),
+            expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+          },
+        },
+        dependencies({
+          getAgent: async (_access, id) =>
+            id === 'writer'
+              ? {
+                  slug: 'writer',
+                  available: true,
+                  definitionFingerprint: `sha256:${'a'.repeat(64)}`,
+                  ...(external
+                    ? {
+                        execution: {
+                          agentConnectionId: engineConnectionId('claude'),
+                        },
+                      }
+                    : {}),
+                }
+              : { slug: 'station', available: true, executionDefault: true },
+        }),
+      );
+      if (external)
+        await expect(resolve).rejects.toThrow(
+          'cannot deliver the selected Agent profile on the Station engine',
+        );
+      else
+        expect((await resolve).receipt).toMatchObject({
+          agentId: 'writer',
+          executionAgentId: 'station',
+          provider: 'station-agent',
+          engine: { kind: 'station' },
+        });
+    },
+  );
+
+  test('execution defaults select their own model without changing the profile receipt identity', async () => {
+    const result = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: {
+          kind: 'agent-execution-override',
+          agent: agentId('writer'),
+          executionAgent: agentId('codex'),
+        },
+      },
+      dependencies({
+        getAgent: async (_access, id) =>
+          id === 'writer'
+            ? {
+                slug: 'writer',
+                available: true,
+                execution: {
+                  agentConnectionId: engineConnectionId('claude'),
+                  modelId: 'claude-model',
+                },
+              }
+            : {
+                slug: 'codex',
+                executionDefault: true,
+                engineDefault: true,
+                enable: { engineConnectionId: 'codex' },
+                available: false,
+                execution: {
+                  agentConnectionId: engineConnectionId('codex'),
+                  modelId: 'codex-model',
+                },
+              },
+      }),
+    );
+    expect(result.receipt).toMatchObject({
+      agentId: 'writer',
+      executionAgentId: 'codex',
+      provider: 'codex',
+      engine: { kind: 'connection', connectionId: 'codex' },
+    });
+    expect(result.modelId).toBe('codex-model');
+  });
+
+  test('an unavailable execution connection refuses even when its registry default exists', async () => {
+    await expect(
+      resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: {
+            kind: 'agent-execution-override',
+            agent: agentId('writer'),
+            executionAgent: agentId('codex'),
+          },
+        },
+        dependencies({
+          getAgent: async (_access, id) => ({
+            slug: id,
+            available: true,
+            executionDefault: id === 'codex',
+            execution: { agentConnectionId: engineConnectionId('codex') },
+          }),
+          getConnection: async () => ({
+            ...connection('codex'),
+            enabled: false,
+          }),
+        }),
+      ),
+    ).rejects.toThrow('disabled');
+  });
+
   test.each([
     ['worktree', 'worktree'],
     ['shared', 'shared'],
@@ -305,6 +420,104 @@ describe('resolveExecutionTarget', () => {
     });
   });
 
+  describe('expectedEngine precondition', () => {
+    const boundTo = (connectionId?: string) =>
+      vi.fn(async () => ({
+        slug: 'station',
+        available: true,
+        ...(connectionId
+          ? {
+              execution: {
+                agentConnectionId: engineConnectionId(connectionId),
+              },
+            }
+          : {}),
+      }));
+
+    test.each([
+      ['an unbound Agent, expecting Station', undefined, { kind: 'station' }],
+      [
+        'a bound Agent, expecting that connection',
+        'opencode',
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+    ] as const)('holds for %s', async (_label, bound, expectedEngine) => {
+      const result = await resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+          expectedEngine,
+        },
+        dependencies({ getAgent: boundTo(bound) }),
+      );
+      expect(result.engine).toEqual(
+        bound
+          ? { kind: 'connection', connectionId: bound }
+          : { kind: 'station' },
+      );
+    });
+
+    // The incident shape: the composer saw Station's own engine, the target
+    // resolves the Agent to an external engine. Refused, with nothing read.
+    test('refuses when the Agent now runs on an external engine, before reading its connection', async () => {
+      const getConnection = vi.fn();
+      const failure = await resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+          expectedEngine: { kind: 'station' },
+        },
+        dependencies({ getAgent: boundTo('opencode'), getConnection }),
+      ).catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        name: 'ExecutionEngineChangedError',
+        code: 'execution_engine_changed',
+        expected: { kind: 'station' },
+        actual: { kind: 'connection', connectionId: 'opencode' },
+      });
+      expect((failure as Error).message).toContain("'opencode'");
+      expect(getConnection).not.toHaveBeenCalled();
+    });
+
+    test.each([
+      [
+        'the Agent was external and is now Station',
+        undefined,
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+      [
+        'the Agent moved to another connection',
+        'codex',
+        { kind: 'connection', connectionId: engineConnectionId('opencode') },
+      ],
+    ] as const)('refuses when %s', async (_label, bound, expectedEngine) => {
+      await expect(
+        resolveExecutionTarget(
+          {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+            expectedEngine,
+          },
+          dependencies({ getAgent: boundTo(bound) }),
+        ),
+      ).rejects.toMatchObject({ code: 'execution_engine_changed' });
+    });
+
+    // A precondition can refuse but never choose: without a matching binding
+    // the expectation changes nothing about where the work runs.
+    test('absent expectation leaves resolution exactly as it was', async () => {
+      const result = await resolveExecutionTarget(
+        { environment: { kind: 'current' }, agent: agentId('station') },
+        dependencies({ getAgent: boundTo('opencode') }),
+      );
+      expect(result.engine).toEqual({
+        kind: 'connection',
+        connectionId: 'opencode',
+      });
+    });
+  });
+
   test('rejects unavailable Agents before reading an engine connection', async () => {
     const getConnection = vi.fn();
     await expect(
@@ -326,9 +539,72 @@ describe('resolveExecutionTarget', () => {
     expect(getConnection).not.toHaveBeenCalled();
   });
 
-  test('rejects a non-ready target-local engine connection', async () => {
-    await expect(
-      resolveExecutionTarget(
+  // #355: each refusal names its failed predicate and a remedy instead of
+  // one reasonless "not ready" for every cause.
+  test.each<{
+    name: string;
+    patch: Partial<ConnectionConfig>;
+    message: string;
+  }>([
+    {
+      name: 'a degraded status',
+      patch: { status: 'degraded' },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: degraded). Check this connection in Connections or run `station connections test codex`",
+    },
+    {
+      name: 'an error status, without echoing its readiness evidence',
+      patch: {
+        status: 'error',
+        readinessEvidence: {
+          evidenceVersion: 1,
+          level: 'catalog-ready',
+          observedAt: '2026-08-01T11:59:00.000Z',
+          freshness: 'fresh',
+          summary: 'Smoke failed',
+          smoke: {
+            status: 'failed',
+            freshness: 'fresh',
+            reasonCode: 'turn-failed',
+            reason: 'remote said: secret-token-abc',
+            turnLimit: 1,
+          },
+        },
+      },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: error). Check this connection in Connections or run `station connections test codex`",
+    },
+    {
+      name: 'a missing prerequisite',
+      patch: {
+        status: 'missing_prerequisites',
+        prerequisites: [
+          {
+            id: 'codex-cli',
+            name: 'Codex CLI',
+            description: 'The Codex command-line engine',
+            status: 'missing',
+            category: 'required',
+            installGuide: {
+              steps: ['Install Codex'],
+              commands: ['npm install -g @openai/codex'],
+            },
+          },
+        ],
+      },
+      message:
+        "Engine connection 'codex' is not ready for execution (status: missing_prerequisites): Codex CLI (codex-cli) is missing: Install Codex; run `npm install -g @openai/codex`",
+    },
+    {
+      name: 'a missing agent-runtime capability on a ready connection',
+      patch: { capabilities: ['acp'] },
+      message:
+        "Engine connection 'codex' does not advertise the agent-runtime capability, so it cannot run Agent sessions. Bind the Agent to an engine connection that provides an agent runtime",
+    },
+  ])(
+    'rejects a target-local engine connection with $name',
+    async ({ patch, message }) => {
+      const refusal = resolveExecutionTarget(
         {
           environment: { kind: 'current' },
           agent: agentId('codex'),
@@ -338,14 +614,13 @@ describe('resolveExecutionTarget', () => {
             slug: 'codex',
             execution: { agentConnectionId: engineConnectionId('codex') },
           }),
-          getConnection: async () => ({
-            ...connection('codex'),
-            status: 'missing_prerequisites',
-          }),
+          getConnection: async () => ({ ...connection('codex'), ...patch }),
         }),
-      ),
-    ).rejects.toThrow("Engine connection 'codex' is not ready for execution");
-  });
+      );
+      await expect(refusal).rejects.toThrow(message);
+      await expect(refusal).rejects.not.toThrow(/secret-token-abc/);
+    },
+  );
 
   test('rejects a project that disagrees with a verified SSH binding', async () => {
     await expect(

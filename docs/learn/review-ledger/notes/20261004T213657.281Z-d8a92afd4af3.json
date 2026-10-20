@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; orchestration-session-state folds those fields.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

@@ -166,3 +166,35 @@ a.guided-connect__action {
   text-align: center;
   text-decoration: none;
 }
+
+.guided-connect__setup,
+.guided-connect__advanced {
+  width: 100%;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-md);
+  line-height: 1.5;
+}
+.guided-connect__setup p {
+  margin: var(--k-space-3) 0;
+}
+.guided-connect__setup a {
+  color: var(--k-action);
+}
+.guided-connect__advanced {
+  text-align: left;
+}
+.guided-connect__advanced summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: var(--k-space-3) 0;
+  color: var(--k-text);
+}
+.guided-connect__advanced summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.guided-connect__destination
+  > .guided-connect__action
+  + .guided-connect__action {
+  margin-top: var(--k-space-3);
+}

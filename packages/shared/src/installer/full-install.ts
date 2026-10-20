@@ -17,8 +17,11 @@
  * - stop, switch, start, with the previous version restored when any step
  *   fails; then prune every version but the active and the previous one.
  *
- * A Station service in the update path is slice W3: until then an install
- * a service runs is refused, never switched under it.
+ * A Station service in the update path (slice W3): a service runs this
+ * install through the fixed launcher, which owns its own switch. A running
+ * one is handed the staged version as an update request, and its launcher
+ * trials it and keeps or rolls it back; a stopped one is switched with the
+ * install and left stopped, its launcher state recording the new version.
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -30,7 +33,6 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -39,6 +41,12 @@ import { connect } from 'node:net';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { STATION_CHANNEL_PORTS_DATA } from '../channel-ports.generated.js';
+import { renamePathSyncRetrying } from '../fs-windows-compat.js';
+import {
+  ServiceUpdateAlreadyRequestedError,
+  serviceUpdatePaths,
+  writeServiceUpdateRequest,
+} from '../service-launcher-protocol.js';
 import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
@@ -86,14 +94,18 @@ const CURRENT_NEXT = 'current.next';
  * its place; a crash between the two leaves only `current.next`, which
  * `recoverCurrent` finishes.
  */
-export function pointCurrentAt(installRoot: string, target: string): void {
+export function pointCurrentAt(
+  installRoot: string,
+  target: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const current = join(installRoot, 'current');
   const next = join(installRoot, CURRENT_NEXT);
   if (isLink(next)) unlinkSync(next);
   // 'junction' is ignored off Windows, where this makes a symlink.
   symlinkSync(target, next, 'junction');
-  if (process.platform === 'win32' && isLink(current)) unlinkSync(current);
-  renameSync(next, current);
+  if (platform === 'win32' && isLink(current)) unlinkSync(current);
+  renamePathSyncRetrying(next, current, { platform });
 }
 
 /**
@@ -101,12 +113,15 @@ export function pointCurrentAt(installRoot: string, target: string): void {
  * `current`, a `current.next` becomes it. With both, `current` stands and
  * the stale `current.next` goes.
  */
-export function recoverCurrent(installRoot: string): void {
+export function recoverCurrent(
+  installRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
   const current = join(installRoot, 'current');
   const next = join(installRoot, CURRENT_NEXT);
   if (!isLink(next)) return;
   if (isLink(current) || existsSync(current)) unlinkSync(next);
-  else renameSync(next, current);
+  else renamePathSyncRetrying(next, current, { platform });
 }
 
 function removeCurrent(installRoot: string): void {
@@ -225,7 +240,7 @@ function restoreFile(path: string, bytes: Buffer | null, mode: number): void {
   const stage = `${path}.restore.${process.pid}`;
   if (existsSync(stage)) unlinkSync(stage);
   writeExclusive(stage, bytes.toString('utf8'), mode);
-  renameSync(stage, path);
+  renamePathSyncRetrying(stage, path);
 }
 
 type Ports = { server: number; ui: number };
@@ -332,12 +347,16 @@ export function resolvePorts(
   };
 }
 
+type ArchiveService = { id: string; launcher: boolean };
+
 /**
  * Station services whose manifest says they run this install root's
  * `current` (the rule of install.sh's list_archive_services). A manifest
- * that cannot be read might be one of them, so it stops the run.
+ * that cannot be read might be one of them, so it stops the run. `launcher`:
+ * the service runs the fixed launcher with the node.exe frozen beside it
+ * (`service install` since slice W3), not a version directly.
  */
-function archiveServicesOf(paths: Paths): string[] {
+function archiveServicesOf(paths: Paths): ArchiveService[] {
   const directory = join(paths.stationHome, 'service');
   if (!existsSync(directory)) return [];
   const real = (path: string) => {
@@ -347,7 +366,7 @@ function archiveServicesOf(paths: Paths): string[] {
       return path;
     }
   };
-  const ids: string[] = [];
+  const services: ArchiveService[] = [];
   for (const name of readdirSync(directory).sort()) {
     if (!name.endsWith('.json')) continue;
     const file = join(directory, name);
@@ -368,11 +387,203 @@ function archiveServicesOf(paths: Paths): string[] {
       !same(real(manifest.installRoot), real(paths.installRoot))
     )
       continue;
-    ids.push(
-      typeof manifest.instanceId === 'string' ? manifest.instanceId : name,
+    const id = manifest.instanceId;
+    if (typeof id !== 'string' || !/^[a-z0-9._][a-z0-9._-]*$/.test(id))
+      fail(
+        `Station service manifest names an invalid instance: ${file}; nothing was changed`,
+      );
+    services.push({
+      id,
+      launcher:
+        typeof manifest.nodePath === 'string' &&
+        same(
+          manifest.nodePath,
+          join(manifest.installRoot, 'runtime', LAUNCHER_NODE),
+        ),
+    });
+  }
+  return services;
+}
+
+/** The node.exe `service install` freezes beside the launcher (W3, D4 a). */
+const LAUNCHER_NODE = 'node.exe';
+
+/**
+ * Whether a service is running, through the active version's own CLI, as
+ * install.sh's service_unit_state reads it: `active`, `registered` (the task
+ * exists but is not running) or `absent`. A backend that cannot say stops
+ * the run.
+ */
+function serviceUnitState(
+  context: Context,
+  dir: string,
+  paths: Paths,
+  id: string,
+): 'active' | 'registered' | 'absent' {
+  const { output } = runInstalledCliCapture(
+    context,
+    dir,
+    [
+      'service',
+      'status',
+      `--instance=${id}`,
+      `--base=${paths.stationHome}`,
+      '--json',
+    ],
+    paths,
+  );
+  let unit: Record<string, unknown> | undefined;
+  try {
+    unit = JSON.parse(output)?.unit;
+  } catch {
+    unit = undefined;
+  }
+  if (unit?.active === true) return 'active';
+  if (unit?.active === false) {
+    if (unit.present === true || unit.enabled === true) return 'registered';
+    if (unit.present === false) return 'absent';
+  }
+  return fail(
+    `could not determine whether Station service ${id} is running; nothing was changed (inspect it with: ${paths.launcher} service status --instance=${id})`,
+  );
+}
+
+/**
+ * The launcher's record (`runtime\service-state.json`), checked as install.sh
+ * checks it: an update the launcher left unfinished is finished by starting
+ * the service, never overwritten from here.
+ */
+function assertLauncherStateSettled(paths: Paths): boolean {
+  const file = join(paths.installRoot, 'runtime', 'service-state.json');
+  if (!existsSync(file)) return false;
+  let state: { update?: { status?: unknown } };
+  try {
+    state = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return fail(
+      `the Station service launcher state is unreadable: ${file}; nothing was changed`,
     );
   }
-  return ids;
+  if (state?.update?.status === 'pending')
+    fail(
+      `a supervised Station update is unfinished in ${paths.installRoot}; start the Station service to let its launcher finish or roll it back, then retry. Nothing was changed`,
+    );
+  if (state?.update?.status === 'needs-operator')
+    fail(
+      `a supervised Station update could not be rolled back in ${paths.installRoot}: the Station service could not restore its home and is stopped (see its log). Fix the cause, then retry the restore with: station service stop --instance=<name> && station service start --instance=<name>; retry this install once the service runs. Nothing was changed`,
+    );
+  return true;
+}
+
+/**
+ * Queues an update of the running service to the staged version and waits
+ * for the launcher's verdict (install.sh's hand_off_to_launcher): 0 when the
+ * service committed it, 1 when it rolled it back or refused it.
+ */
+async function handOffToLauncher(
+  context: Context,
+  paths: Paths,
+  version: string,
+): Promise<number> {
+  const { env, io } = context;
+  const updatePaths = serviceUpdatePaths(paths.installRoot);
+  let id: string;
+  try {
+    id = writeServiceUpdateRequest(paths.installRoot, version).id;
+  } catch (error) {
+    if (error instanceof ServiceUpdateAlreadyRequestedError)
+      fail('another Station update is already requested for this service');
+    throw error;
+  }
+  io.out(
+    `Asked the Station service to switch to ${version}; it trials the new version and keeps the current one if the trial fails.`,
+  );
+  const timeoutSeconds = Number(
+    env.STATION_INSTALL_HANDOFF_TIMEOUT_SECONDS || 1200,
+  );
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  const read = (file: string): Record<string, unknown> | null => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  for (;;) {
+    const result = read(updatePaths.result);
+    if (result?.requestId === id) {
+      if (result.status === 'up-to-date') {
+        io.out(`The Station service already runs ${result.version}.`);
+        return 0;
+      }
+      io.err(
+        `The Station service did not update (${result.status}): ${result.reason}`,
+      );
+      return 1;
+    }
+    const update = read(updatePaths.state)?.update as
+      | Record<string, unknown>
+      | undefined;
+    if (update?.requestId === id && update.status !== 'pending') {
+      if (update.status === 'committed') {
+        io.out(`The Station service now runs ${update.targetVersion}.`);
+        return 0;
+      }
+      io.err(
+        `The Station service kept ${update.fromVersion}: the update to ${update.targetVersion} ${update.status} (${update.reason}).`,
+      );
+      return 1;
+    }
+    if (Date.now() > deadline) {
+      io.err(
+        `The Station service has not finished the update after ${timeoutSeconds}s; it continues on its own (see station service status).`,
+      );
+      return 1;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+/**
+ * After this install switched `current` for a launcher service that is not
+ * running, its launcher state must name the same version, or its next start
+ * would move `current` back. Written by the service's own fixed launcher
+ * code, under its lock (install.sh's record_launcher_active_version).
+ */
+function recordLauncherActiveVersion(
+  context: Context,
+  paths: Paths,
+  version: string,
+): boolean {
+  const launcher = join(paths.installRoot, 'runtime', 'station-launcher.mjs');
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      [
+        "import { pathToFileURL } from 'node:url';",
+        'const { STATION_RECORD_LAUNCHER: launcher, STATION_RECORD_ROOT: root, STATION_RECORD_VERSION: version } = process.env;',
+        'const { recordServiceActiveVersion } = await import(pathToFileURL(launcher).href);',
+        'try { recordServiceActiveVersion(root, version); } catch (error) { console.error(error.message); process.exit(1); }',
+      ].join('\n'),
+    ],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      // Through the environment, not argv: the launcher runs itself as a
+      // program when argv[1] names it.
+      env: {
+        ...context.env,
+        STATION_RECORD_LAUNCHER: launcher,
+        STATION_RECORD_ROOT: paths.installRoot,
+        STATION_RECORD_VERSION: version,
+      },
+    },
+  );
+  if (result.status !== 0 && result.stderr)
+    context.io.err(result.stderr.trim());
+  return result.status === 0;
 }
 
 /** Whether anything accepts connections on a loopback port. */
@@ -450,6 +661,19 @@ function runInstalledCli(
   args: string[],
   paths: Paths,
 ): boolean {
+  const { status, output } = runInstalledCliCapture(context, dir, args, paths);
+  if (output !== '')
+    for (const line of output.split(/\r?\n/)) context.io.out(line);
+  return status === 0;
+}
+
+/** runInstalledCli without the relay: its status and output. */
+function runInstalledCliCapture(
+  context: Context,
+  dir: string,
+  args: string[],
+  paths: Paths,
+): { status: number | null; output: string } {
   const { node, entry } = versionPaths(dir);
   cliRuns += 1;
   const log = join(context.tmp, `station-cli-${process.pid}-${cliRuns}.log`);
@@ -472,10 +696,7 @@ function runInstalledCli(
   } finally {
     closeSync(fd);
   }
-  const output = readFileSync(log, 'utf8').trimEnd();
-  if (output !== '')
-    for (const line of output.split(/\r?\n/)) context.io.out(line);
-  return status === 0;
+  return { status, output: readFileSync(log, 'utf8').trimEnd() };
 }
 
 function stopStation(context: Context, dir: string | null, paths: Paths) {
@@ -518,12 +739,12 @@ function onPath(env: InstallerEnv, directory: string): boolean {
     );
 }
 
-/** The services refusal shared by install and uninstall (slice W3 lifts it). */
-function refuseArchiveServices(paths: Paths, action: string): void {
+/** install.sh's uninstall refusal: services first, then the install. */
+function refuseArchiveServices(paths: Paths): void {
   const services = archiveServicesOf(paths);
   if (services.length === 0) return;
   fail(
-    `Station service(s) ${services.join(' ')} run this install; install.ps1 cannot ${action} under a Windows service yet (#2675 slice W3). Remove each first with: ${paths.launcher} service uninstall --instance=<name>. Nothing was changed`,
+    `Station service(s) ${services.map((service) => service.id).join(' ')} run this install; remove each first with: ${paths.launcher} service uninstall --instance=<name>. Nothing was changed`,
   );
 }
 
@@ -555,11 +776,46 @@ export async function installArchive(context: Context): Promise<number> {
   recoverCurrent(paths.installRoot);
   activeInstalledVersion(paths);
   const ports = resolvePorts(env, paths.channel, readRecordedPorts(paths));
-  refuseArchiveServices(paths, 'switch the version');
-  if (existsSync(join(paths.installRoot, 'runtime', 'service-state.json')))
+  const services = archiveServicesOf(paths);
+  const legacy = services.filter((service) => !service.launcher);
+  if (legacy.length > 0)
     fail(
-      `a Station service launcher manages ${paths.installRoot}; install.ps1 cannot hand an update to it yet (#2675 slice W3). Nothing was changed`,
+      // The installed version's own CLI cannot install a launcher service
+      // on Windows (it predates W3), so reinstalling the service before
+      // upgrading would register the same kind again; the new version's
+      // CLI must do it, once the install has switched with no service.
+      `Station service(s) ${legacy.map((service) => service.id).join(' ')} run this install's version directly, not through the service launcher that updates it, and that version cannot install one. Migrate each in this order: 1) ${paths.launcher} service uninstall --instance=<name>; 2) rerun this installer with STATION_INSTALL_NO_START=1; 3) ${paths.launcher} service install --instance=<name> (now the new version's). Nothing was changed`,
     );
+  const launcherState = assertLauncherStateSettled(paths);
+  const active: string[] = [];
+  const registered: string[] = [];
+  const running = activeInstalledVersion(paths);
+  for (const { id } of services) {
+    if (running === null)
+      fail(
+        `Station service ${id} runs this install, but ${paths.current} names no installed version; nothing was changed`,
+      );
+    const unit = serviceUnitState(context, running, paths, id);
+    if (unit === 'active') active.push(id);
+    else if (unit === 'registered') registered.push(id);
+  }
+
+  // A running launcher service owns its switch: stage the version and hand
+  // it the update, which it trials and keeps or rolls back.
+  if (active.length > 0) {
+    const release = await prepareRelease(
+      context,
+      request,
+      paths,
+      'stage',
+      () => {
+        prepareOwnedInstallRoot(paths.installRoot, env);
+        prepareSafeDirectory(paths.versions);
+      },
+    );
+    if (release.outcome === 'nothing-to-do') return 0;
+    return handOffToLauncher(context, paths, release.payload.version);
+  }
   await assertNightlyCoexistence(env, paths, ports);
 
   const release = await prepareRelease(
@@ -597,7 +853,10 @@ export async function installArchive(context: Context): Promise<number> {
     },
   );
   if (release.outcome === 'nothing-to-do') return 0;
-  switchToRelease(context, paths, ports, release);
+  switchToRelease(context, paths, ports, release, {
+    registered,
+    launcherState,
+  });
   return 0;
 }
 
@@ -610,10 +869,15 @@ function switchToRelease(
   paths: Paths,
   ports: Ports,
   release: PreparedRelease,
+  services: { registered: string[]; launcherState: boolean },
 ): void {
   const { env, io } = context;
   const { payload, releaseDir } = release;
   const noStart = env.STATION_INSTALL_NO_START === '1';
+  // A registered service may start at any time; a second Station beside it
+  // would share its home and ports, so nothing is started and it stays
+  // stopped (install.sh does the same).
+  const startStationAfter = !noStart && services.registered.length === 0;
   const previousState = readIfPresent(paths.stateFile);
   const previousLauncher = readIfPresent(paths.launcher);
   const stagedLauncher = join(
@@ -649,6 +913,23 @@ function switchToRelease(
 
   let previous = release.previous;
   let displaced: string | null = null;
+  // Stopped through its manager, which also ends a launcher that is still
+  // on its way out.
+  for (const id of services.registered)
+    if (
+      previous === null ||
+      !runInstalledCli(
+        context,
+        previous,
+        ['service', 'stop', `--instance=${id}`, `--base=${paths.stationHome}`],
+        paths,
+      )
+    ) {
+      discardStaged();
+      fail(
+        `could not stop Station service ${id}; the running release was not changed`,
+      );
+    }
   if (!stopStation(context, previous, paths)) {
     discardStaged();
     fail(
@@ -664,7 +945,7 @@ function switchToRelease(
       if (displaced !== null) {
         if (existsSync(releaseDir) || isLink(releaseDir))
           removeTree(releaseDir);
-        renameSync(displaced, releaseDir);
+        renamePathSyncRetrying(displaced, releaseDir);
         previous = releaseDir;
       }
       if (previous !== null) {
@@ -675,7 +956,7 @@ function switchToRelease(
         // records, not on ports this run was asked for (install.sh's
         // restart_previous_station uses the new ones).
         if (
-          !noStart &&
+          startStationAfter &&
           !startStation(
             context,
             previous,
@@ -708,23 +989,23 @@ function switchToRelease(
       // moves aside (it stays the rollback target) and the verified one
       // takes its name, which `current` already names.
       displaced = `${releaseDir}.replaced.${process.pid}`;
-      renameSync(releaseDir, displaced);
+      renamePathSyncRetrying(releaseDir, displaced);
       previous = displaced;
-      renameSync(release.incoming, releaseDir);
+      renamePathSyncRetrying(release.incoming, releaseDir);
       sealTree(releaseDir);
       pointCurrentAt(paths.installRoot, releaseDir);
     } else if (previous === null || !same(previous, releaseDir)) {
       pointCurrentAt(paths.installRoot, releaseDir);
     }
-    renameSync(stagedLauncher, paths.launcher);
-    renameSync(stagedState, paths.stateFile);
+    renamePathSyncRetrying(stagedLauncher, paths.launcher);
+    renamePathSyncRetrying(stagedState, paths.stateFile);
   } catch (error) {
     io.err(`${(error as Error).message}`);
     rollback('could not publish the new release');
   }
 
   if (!noStart) {
-    if (!startStation(context, releaseDir, paths, ports))
+    if (startStationAfter && !startStation(context, releaseDir, paths, ports))
       rollback('the new release did not start');
     // Keep the active release and the one it replaced (the rollback
     // target); remove every other one, including stages a crashed install
@@ -745,6 +1026,14 @@ function switchToRelease(
     }
   }
 
+  if (
+    services.launcherState &&
+    !recordLauncherActiveVersion(context, paths, payload.version)
+  )
+    rollback(
+      'could not record the new version for the Station service launcher',
+    );
+
   io.out('');
   io.out(`Station ${payload.releaseTag} is installed at ${paths.current}`);
   io.out(`Launcher: ${paths.launcher}`);
@@ -752,11 +1041,17 @@ function switchToRelease(
     io.out(
       `Add ${paths.binDir} to PATH to run ${RINGS[paths.ring].launcher} from any directory.`,
     );
-  io.out(
-    noStart
-      ? `Start it with: ${paths.launcher} start`
-      : `Open http://localhost:${ports.ui}`,
-  );
+  if (services.registered.length > 0)
+    for (const id of services.registered)
+      io.out(
+        `Station service ${id} was not running and was left stopped; start it with: ${paths.launcher} service start --instance=${id}`,
+      );
+  else
+    io.out(
+      noStart
+        ? `Start it with: ${paths.launcher} start`
+        : `Open http://localhost:${ports.ui}`,
+    );
 }
 
 function assertOwnedRoot(root: string, markerName: string, signature: string) {
@@ -817,7 +1112,7 @@ export async function uninstallArchive(
     assertSafeRemoveTarget(paths.stationHome);
     assertOwnedRoot(paths.stationHome, DATA_ROOT_MARKER, DATA_ROOT_SIGNATURE);
   }
-  refuseArchiveServices(paths, 'uninstall');
+  refuseArchiveServices(paths);
   const active = activeInstalledVersion(paths);
   if (trustProblem === null) {
     if (!stopStation(context, active, paths))

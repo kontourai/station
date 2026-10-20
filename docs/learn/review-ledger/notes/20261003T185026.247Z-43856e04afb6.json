@@ -1,0 +1,89 @@
+{
+  "revision": "9623ad155b409f289f9fd6083db80372819c2a26",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/architecture.md","note":"#2962 review: the exports map adds one ./client-protocol subpath; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/architecture/module-map.md","note":"#2962 review: devicePairing.ts sends the header on pairing requests and reads an object-shaped runtime error code; http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/connection-broker.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/instance-registry.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/native-capabilities.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/notification-delivery.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"#2962 review: types.ts adds the client-protocol-unsupported failure reason; lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/android-build.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"#2962 review: package.json adds one ./client-protocol subpath export. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/connections.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony; runtime-request-security.ts adds an optional clientCompatibility test seam to RuntimeHttpSecurityOptions (not configuration). This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/native-releases.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/nightly.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/release-rings.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#2962 review: http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/store-entry.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/store-listing.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/theming.md","note":"#2962 review: http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/patterns/backend.md","note":"#2962 review: http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; package.json adds one ./client-protocol subpath export; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/patterns/frontend.md","note":"#2962 review: http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/reference/api.md","note":"#2962 review: environment-security.ts adds CLIENT_PROTOCOL_HEADER, its parser, limits and error codes; existing exports are unchanged; http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/reference/config.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony; runtime-request-security.ts adds an optional clientCompatibility test seam to RuntimeHttpSecurityOptions (not configuration). This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/reference/connect.md","note":"#2962 review: pairing tests cover the header and the 426 copy; classification maps a coded 426 to client-protocol-unsupported (decision-needed, still transient); devicePairing.ts sends the header on pairing requests and reads an object-shaped runtime error code; types.ts adds the client-protocol-unsupported failure reason; environment-security.ts adds CLIENT_PROTOCOL_HEADER, its parser, limits and error codes; existing exports are unchanged; http.ts only adds X-Station-Client-Protocol at the authenticatedFetch/getJson/mutateJson seam where no CORS preflight can refuse it; runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony; runtime-request-security.ts adds an optional clientCompatibility test seam to RuntimeHttpSecurityOptions (not configuration); environment-security-service.ts only exports the existing compatibility block as HOST_STATION_COMPATIBILITY; the handshake bytes are unchanged; serverHealth.ts sends the header on the probe. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/reference/env-vars.md","note":"#2962 review: runtime-http.ts adds the header to the CORS allow-list and a pre-credential client-protocol admission (426/400) on pairing-scope routes and the pairing ceremony. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/reference/shared.md","note":"#2962 review: package.json adds one ./client-protocol subpath export. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the client API protocol admission section and the new surface-matrix row written in this change against client-protocol-admission.ts and runtime-http.ts: scope, exemptions, status codes, CORS entry, WebSocket deferral reason and undeclared client paths are accurate."},
+
+    {"path":"docs/user/native-recovery.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"packages/shared/README.md","note":"#2962 review: the exports map adds one ./client-protocol subpath. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#2962 review: lib.rs only adds x-station-client-protocol to native_header_allowlisted (a non-authority compatibility header) with its unit assertion. This document makes no claim about request headers, CORS allow-lists, client protocol admission or these exports, so it remains accurate."}
+  ]
+}

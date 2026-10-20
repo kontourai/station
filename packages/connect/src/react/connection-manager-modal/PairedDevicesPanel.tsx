@@ -18,6 +18,19 @@ import { PairedDeviceList } from './PairedDeviceList';
 const REFRESH_INTERVAL_MS = 15_000;
 
 /**
+ * A native client without an explicit administration grant can use the host
+ * operator CLI instead (#2894, #3256).
+ */
+function hostCliRefusal(
+  hostAppName: string | undefined,
+  what: string,
+  verb: string,
+): string {
+  const command = verb.includes(' ') ? verb : `${verb} <device>`;
+  return `${hostAppName ?? 'This native host'} can’t ${what}. Run \`station environment access ${command}\` on the host, then reopen this list.`;
+}
+
+/**
  * Reviewing which devices can reach a Station, as its own destination.
  *
  * The registry was previously visible only inside the host pairing flow — a
@@ -71,7 +84,7 @@ export function PairedDevicesPanel({
     [allowManualCredentials, apiBase, getCredential, request],
   );
 
-  // Pairing credentials deliberately cannot administer the pairing family.
+  // Device changes require an explicit access:devices grant or the operator.
   // Keep an operator credential entered for this one management action in
   // component state only; it is neither persisted nor used for inventory reads.
   const deviceAdminFetch = useCallback(
@@ -123,7 +136,9 @@ export function PairedDevicesPanel({
         setLoadError(
           response.status === 401
             ? "This device's access to this Station needs review. Reconnect it, then try again."
-            : `This Station could not list its paired devices (HTTP ${response.status}).`,
+            : response.status === 403
+              ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
+              : `This Station could not list its paired devices (HTTP ${response.status}).`,
         );
         return;
       }
@@ -177,10 +192,16 @@ export function PairedDevicesPanel({
             response.status === 401
               ? allowManualCredentials
                 ? 'Changing a device’s access requires this Station’s operator credential. Enter it below and try again.'
-                : `${hostAppName ?? 'This native host'} can’t change a device’s access. Run \`station environment access scope <device> --add|--remove|--set\` on the host, then reopen this list.`
-              : response.status === 409
-                ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
-                : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
+                : hostCliRefusal(
+                    hostAppName,
+                    'change a device’s access',
+                    'scope <device> --add|--remove|--set',
+                  )
+              : response.status === 403
+                ? 'Device changes require Manage device access and a principal allowed by this Station’s account policy. Only the Station operator can grant or remove that administrative permission.'
+                : response.status === 409
+                  ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
+                  : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
           );
           return;
         }
@@ -203,78 +224,105 @@ export function PairedDevicesPanel({
     [allowManualCredentials, deviceAdminFetch, hostAppName, refresh],
   );
 
-  const revoke = useCallback(
-    async (device: PairedDevice) => {
-      if (busyIdsRef.current.has(device.id)) return;
+  /** One admin write per device at a time; the device shows busy meanwhile. */
+  const whileDeviceBusy = useCallback(
+    async (deviceId: string, work: () => Promise<void>) => {
+      if (busyIdsRef.current.has(deviceId)) return;
       setActionError(null);
-      busyIdsRef.current.add(device.id);
+      busyIdsRef.current.add(deviceId);
       setBusyIds(new Set(busyIdsRef.current));
       try {
-        const response = await deviceAdminFetch(
-          `/api/pairing/devices/${device.id}`,
-          { method: 'DELETE' },
-        );
-        if (!response.ok) {
-          setActionError(
-            response.status === 401
-              ? allowManualCredentials
-                ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
-                : `Revoking a device requires the operator credential managed by ${hostAppName ?? 'this native host'}. Update it there, then try again.`
-              : deviceRevokeError(response.status),
-          );
-          return;
-        }
-        setRevocation(
-          readFullAccessRevocation(
-            await response.json().catch(() => null),
-            device.name,
-          ),
-        );
-        await refresh();
-      } catch {
-        setActionError(
-          `This Station could not revoke “${device.name}”. Check the connection, then try again.`,
-        );
+        await work();
       } finally {
-        busyIdsRef.current.delete(device.id);
+        busyIdsRef.current.delete(deviceId);
         setBusyIds(new Set(busyIdsRef.current));
       }
     },
-    [allowManualCredentials, deviceAdminFetch, hostAppName, refresh],
+    [],
+  );
+
+  const revoke = useCallback(
+    async (device: PairedDevice) => {
+      await whileDeviceBusy(device.id, async () => {
+        try {
+          const response = await deviceAdminFetch(
+            `/api/pairing/devices/${device.id}`,
+            { method: 'DELETE' },
+          );
+          if (!response.ok) {
+            setActionError(
+              response.status === 401
+                ? allowManualCredentials
+                  ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
+                  : hostCliRefusal(hostAppName, 'revoke a device', 'revoke')
+                : response.status === 403
+                  ? 'Revoking devices requires Manage device access and a principal allowed by this Station’s account policy.'
+                  : deviceRevokeError(response.status),
+            );
+            return;
+          }
+          setRevocation(
+            readFullAccessRevocation(
+              await response.json().catch(() => null),
+              device.name,
+            ),
+          );
+          await refresh();
+        } catch {
+          setActionError(
+            `This Station could not revoke “${device.name}”. Check the connection, then try again.`,
+          );
+        }
+      });
+    },
+    [
+      allowManualCredentials,
+      deviceAdminFetch,
+      hostAppName,
+      refresh,
+      whileDeviceBusy,
+    ],
   );
 
   const removeRevoked = useCallback(
     async (device: PairedDevice) => {
-      if (busyIdsRef.current.has(device.id)) return;
-      setActionError(null);
-      busyIdsRef.current.add(device.id);
-      setBusyIds(new Set(busyIdsRef.current));
-      try {
-        const response = await deviceAdminFetch(
-          `/api/pairing/devices/${device.id}/record`,
-          { method: 'DELETE' },
-        );
-        if (!response.ok) {
-          setActionError(
-            response.status === 401
-              ? allowManualCredentials
-                ? 'Removing a revoked device record requires this Station’s operator credential. Enter it above and try again.'
-                : `Removing a revoked device record requires the operator credential managed by ${hostAppName ?? 'this native host'}. Update it there, then try again.`
-              : `This Station could not remove the revoked record for “${device.name}” (HTTP ${response.status}).`,
+      await whileDeviceBusy(device.id, async () => {
+        try {
+          const response = await deviceAdminFetch(
+            `/api/pairing/devices/${device.id}/record`,
+            { method: 'DELETE' },
           );
-          return;
+          if (!response.ok) {
+            setActionError(
+              response.status === 401
+                ? allowManualCredentials
+                  ? 'Removing a revoked device record requires this Station’s operator credential. Enter it above and try again.'
+                  : hostCliRefusal(
+                      hostAppName,
+                      'remove a device record',
+                      'remove',
+                    )
+                : response.status === 403
+                  ? 'Removing device records requires Manage device access and a principal allowed by this Station’s account policy.'
+                  : `This Station could not remove the revoked record for “${device.name}” (HTTP ${response.status}).`,
+            );
+            return;
+          }
+          await refresh();
+        } catch {
+          setActionError(
+            `This Station could not remove the revoked record for “${device.name}”. Check the connection, then try again.`,
+          );
         }
-        await refresh();
-      } catch {
-        setActionError(
-          `This Station could not remove the revoked record for “${device.name}”. Check the connection, then try again.`,
-        );
-      } finally {
-        busyIdsRef.current.delete(device.id);
-        setBusyIds(new Set(busyIdsRef.current));
-      }
+      });
     },
-    [allowManualCredentials, deviceAdminFetch, hostAppName, refresh],
+    [
+      allowManualCredentials,
+      deviceAdminFetch,
+      hostAppName,
+      refresh,
+      whileDeviceBusy,
+    ],
   );
 
   return (
@@ -288,9 +336,9 @@ export function PairedDevicesPanel({
         <label className="station-connect-edit__label">
           Operator credential for device changes
           <span className="station-connect-edit__hint">
-            Required only to revoke a device or remove its revoked record. It is
-            kept for this open panel and is never saved as a paired-device
-            credential.
+            Optional when this device has Manage device access. Otherwise the
+            operator credential authorizes access changes. It is kept for this
+            open panel and is never saved as a paired-device credential.
           </span>
           <input
             type="password"
@@ -304,9 +352,10 @@ export function PairedDevicesPanel({
         </label>
       ) : (
         <p className="station-connect-edit__hint">
-          {hostAppName ?? 'This native host'} manages the operator credential
-          for device changes. Revoke and remove actions use its authenticated
-          connection without exposing that credential here.
+          {hostAppName ?? 'This native host'} can list devices but does not hold
+          the operator credential. An explicit Manage device access grant allows
+          changes here; otherwise use <code>station environment access</code> on
+          the host.
         </p>
       )}
 

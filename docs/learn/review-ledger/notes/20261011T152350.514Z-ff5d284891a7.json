@@ -1,0 +1,7 @@
+{
+  "revision": "efd61a3096c6303690f1e41127d69ff4bd19a258",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Capture shows the closed start composer. StartComposer.css now styles open start menus from the overlay's data-sheet marker instead of media queries; the closed composer is unchanged.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

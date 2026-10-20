@@ -1,5 +1,5 @@
 name: "PR: CI"
-
+run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}
 on:
   push:
     branches: [main]
@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -62,12 +62,12 @@ jobs:
     needs: classify
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
       # Head sha in the identity for the same reason as fast-checks (#1445).
-      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
@@ -79,8 +79,10 @@ jobs:
       # Exactly 'true' or 'false', from the base-controlled detection step.
       # The aggregator fails on anything else.
       legacy: ${{ steps.mode.outputs.legacy }}
+      full-regression: ${{ steps.merge-decision.outputs.full-regression }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
+      empty: ${{ steps.plan.outputs.empty }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,10 +94,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -175,6 +177,7 @@ jobs:
           # Rollout handshake: a new planner under the old base workflow must
           # retain its fixed four-way split; older planners ignore this opt-in.
           STATION_FAST_CHECKS_ADAPTIVE_SHARDS: 'true'
+          STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS: 'true'
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
           # Parity with the lane step's env (review F1).
           STATION_TYPECHECK_SLOTS: '4'
@@ -185,13 +188,28 @@ jobs:
       # lets a re-run of this job replace the plan its dependents re-read.
       - name: Upload fast-checks plan
         if: ${{ steps.mode.outputs.legacy == 'false' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fast-checks-plan-${{ github.run_id }}
           path: ${{ runner.temp }}/fast-checks-plan/fast-checks-plan.json
           if-no-files-found: error
           overwrite: true
           retention-days: 14
+
+      # The authoritative plan is already on this runner; no second install,
+      # planner, artifact reader or cross-workflow trust is needed.
+      # Old candidates may lack this decision CLI: failure leaves no output,
+      # which the base-controlled full-regression guard treats as full.
+      - name: Decide merge integration from the authoritative plan
+        id: merge-decision
+        if: ${{ always() && !cancelled() && github.event_name == 'merge_group' }}
+        env:
+          HEAD_SHA: ${{ github.sha }}
+          PLAN_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          if ! node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"; then
+            echo 'full-regression=true' >> "$GITHUB_OUTPUT"
+          fi
 
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
@@ -203,16 +221,26 @@ jobs:
     # the plan succeeded (run 36308041839). The condition therefore names the
     # plan's own result: a shard runs only when the plan succeeded (which it
     # can only do under that job's admission guard) AND planned. A legacy
-    # candidate (transitional) skips the shards; anywhere else a skipped shard
-    # fails the aggregator. ci-fast-checks-job-graph.test.ts evaluates this
+    # candidate (transitional) or an explicitly empty plan skips the shards;
+    # the aggregator independently verifies an empty plan before accepting it. ci-fast-checks-job-graph.test.ts evaluates this
     # under GitHub's job-status semantics for every event.
-    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}
+    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}
     permissions:
       contents: read
     concurrency:
-      # The shard is part of the identity, or the legs would cancel each other.
-      group: ci-fast-shard-${{ matrix.shard }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
-      cancel-in-progress: true
+      # Two repository-wide PR shard slots retain every planned matrix leg.
+      # PR parity XOR shard parity distributes one-shard and four-shard plans.
+      # Required integration and diagnostics use separate source identities.
+      group: >-
+        ${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
+        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
+        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
+        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
+        (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
+        matrix.shard, github.event_name, github.event.pull_request.number || github.ref,
+        github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
     # shard runner itself) + actionlint (5) + install (15) + zsh (5) +
@@ -240,16 +268,16 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Download fast-checks plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fast-checks-plan-${{ github.run_id }}
           path: ${{ runner.temp }}/fast-checks-plan
@@ -289,10 +317,19 @@ jobs:
       - name: Provision and preflight zsh for process-heavy installer fixtures
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -330,11 +367,24 @@ jobs:
       # a re-run of a failed shard uploads beside the earlier attempt.
       - name: Upload fast-checks shard receipt
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fast-checks-receipt-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .kontourai/fast-checks/fast-checks-shard-receipt.json
           if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      # Diagnostics (#3101 C): a failing shard's whole redacted Vitest JSON
+      # report. Not verdict-bearing, and outside the receipt download pattern.
+      - name: Upload failing fast-checks Vitest reports
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fast-checks-vitest-reports-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .kontourai/fast-checks/vitest-reports/
+          if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
 
@@ -343,29 +393,23 @@ jobs:
     needs: classify
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
-      # PR numbers isolate candidate feedback from main's push lane. Event
-      # type keeps dispatches isolated from pushes on refs/heads/main.
-      #
-      # The head sha is part of the identity because the WORK is a commit, not
-      # a pull request. Without it, two runs for the same PR at different heads
-      # share a group, and `cancel-in-progress` resolves that collision by
-      # arrival order — which is not commit recency. Observed four times in one
-      # day (#1445): on #1345 the stale pre-rebase run survived and the current
-      # head's run was cancelled; on #1348, #1352 and #1353 the current head's
-      # own run was cancelled with nothing to replace it, leaving a required
-      # check in a state that is neither pass nor fail. #1348 had auto-merge
-      # armed and merged within minutes of a manual re-run.
-      #
-      # `cancel-in-progress` is kept and still does real work: it collapses
-      # duplicate runs for the SAME sha, which is what `edited` firing beside
-      # `synchronize` produces. What it can no longer do is cancel a run for a
-      # commit it is not about.
-      group: ci-fast-statics-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
-      cancel-in-progress: true
+      # Two repository-wide PR statics slots, with no pending replacement.
+      # Obsolete heads are cancelled by the trusted supersession workflow.
+      # Metadata-only edits never enter this source-job group.
+      group: >-
+        ${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
+        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
+        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
+        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) &&
+        'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
+        github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha,
+        github.event.pull_request.base.sha) }}
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     # The declared bounds sum to 53 minutes: actionlint install (5), a
     # bounded 20-minute Chromium installation, the fifteen-minute raw
@@ -376,22 +420,6 @@ jobs:
     # ci-workflow-contract.test.ts pins that it covers their sum.
     timeout-minutes: 55
     steps:
-      - name: Check out base policy for pull-request title gate
-        if: ${{ github.event_name == 'pull_request_target' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Validate base-controlled pull-request title
-        if: ${{ github.event_name == 'pull_request_target' }}
-        env:
-          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Veritas binds evidence to the PR base/head diff; a depth-1 merge
@@ -402,10 +430,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -478,24 +506,22 @@ jobs:
       - name: Run interactive workspace performance smoke
         run: npm run performance:workspace:smoke
 
-      # station#2290: enforce the initial-payload ratchet on the candidate
-      # that changes it. Keeping this in PR feedback prevents bundle growth
-      # from landing silently and billing the next contributor at pre-push.
-      - name: Enforce candidate UI bundle budget
-        run: npm run build:ui
-
       # Keep critical browser journeys inside the existing required check.
       # The separate manual diagnostic below depends on full-regression and
       # cannot supply pre-merge evidence when that manual job is skipped.
+      # Its clean instance startup runs build:ui, including the candidate bundle
+      # budget, before serving that same fresh build. Do not build it twice.
       - name: Verify critical browser journeys before merge
         env:
+          STATION_UI_BUNDLE_BUDGET: enforce
+          VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE: '0'
           STATION_REQUIRED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         timeout-minutes: 10
         run: npm run test:e2e:pr-smoke
 
       - name: Upload bounded fast-feedback diagnostics
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
         # whose work passed (station#2218).
@@ -505,6 +531,7 @@ jobs:
           path: |
             .kontourai/verification-receipts/
             .kontourai/verification-output/
+            .kontourai/test-impact/failed-reports/
             .kontourai/veritas/external/test-contract-review.json
             .kontourai/code-health/
             .kontourai/browser-evidence/
@@ -520,14 +547,17 @@ jobs:
           retention-days: 14
 
   fast-checks:
+    name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
     needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
-    # The required check. `always()` without `!cancelled()`, deliberately: a
+    # Source execution aggregate; the trusted source-policy reconciler owns
+    # admission independently of metadata-only check-suite replacement.
+    # `always()` without `!cancelled()`, deliberately: a
     # skipped required check reports success, so an aggregator that skipped
     # itself when a run was cancelled would let a cancelled run read green.
     # Running on cancellation instead fails it on the cancelled parts. The
     # event clause matches the part jobs', so pushes that are not heavy and
     # fork pull requests (fork-smoke) skip it exactly as before (#2709).
-    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -537,7 +567,7 @@ jobs:
       # request (#1445): without it, runs for one PR at different heads share
       # a group and `cancel-in-progress` resolves the collision by arrival
       # order, which is not commit recency.
-      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -561,7 +591,7 @@ jobs:
           LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
           case "$LEGACY" in
             false)
-              echo "$NEEDS" | jq -e '[to_entries[] | select(.key != "classify")] | length == 3 and all(.value.result == "success")' > /dev/null
+              echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or (.["fast-checks-plan"].outputs.empty == "true" and .["fast-checks-shard"].result == "skipped"))' > /dev/null
               ;;
             true)
               echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
@@ -580,21 +610,21 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Download fast-checks plan
         if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fast-checks-plan-${{ github.run_id }}
           path: ${{ runner.temp }}/fast-checks-plan
 
       - name: Download fast-checks shard receipts
-        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.fast-checks-plan.outputs.empty != 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: fast-checks-receipt-*-${{ github.run_id }}-*
           path: ${{ runner.temp }}/fast-checks-receipts
@@ -606,6 +636,128 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
+
+  source-policy:
+    name: Publish source admission
+    needs: [fast-checks, fork-smoke]
+    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    permissions: { contents: read, actions: read, statuses: write }
+    uses: ./.github/workflows/source-verification-policy.yml
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  delivery-plan:
+    name: Plan affected delivery checks
+    needs: [fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
+    if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }
+    outputs:
+      install: ${{ steps.plan.outputs.install }}
+      portable: ${{ steps.plan.outputs.portable }}
+      native: ${{ steps.plan.outputs.native }}
+      desktop: ${{ steps.plan.outputs.desktop }}
+      ecosystem: ${{ steps.plan.outputs.ecosystem }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
+      - id: plan
+        name: Classify the complete candidate diff using trusted policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          node scripts/pr-delivery-plan.mjs "$BASE_SHA" "$HEAD_SHA"
+
+  delivery-validation:
+    needs: delivery-plan
+    if: ${{ always() && !cancelled() && needs.delivery-plan.result == 'success' && (needs.delivery-plan.outputs.install == 'true' || needs.delivery-plan.outputs.portable == 'true' || needs.delivery-plan.outputs.native == 'true' || needs.delivery-plan.outputs.desktop == 'true' || needs.delivery-plan.outputs.ecosystem == 'true') }}
+    permissions: { contents: read }
+    uses: ./.github/workflows/delivery-validation.yml
+    with:
+      install: ${{ needs.delivery-plan.outputs.install == 'true' }}
+      portable: ${{ needs.delivery-plan.outputs.portable == 'true' }}
+      native: ${{ needs.delivery-plan.outputs.native == 'true' }}
+      desktop: ${{ needs.delivery-plan.outputs.desktop == 'true' }}
+      ecosystem: ${{ needs.delivery-plan.outputs.ecosystem == 'true' }}
+
+  pr-title:
+    # This check run is diagnostic. The required context is a mutable commit
+    # status so a corrected title can replace failure on the same source head.
+    name: PR title status publisher
+    if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    concurrency:
+      # Status ownership is repository + SHA + context, across PR numbers.
+      group: ci-pr-title-${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+      cancel-in-progress: false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3
+    steps:
+      - name: Mark title policy pending before setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: 'PR title policy', state: 'pending', description: 'Validating live title policy' }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);
+          NODE
+
+      - name: Check out workflow policy for pull-request title
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          repository: ${{ github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.workflow_sha || github.event.merge_group.base_sha }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Publish live title policy
+        id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/pr-title-check.mjs
+
+      # Best-effort failure also covers bootstrap/setup errors. Once pending
+      # was accepted, a rejected terminal write cannot restore earlier success.
+      - name: Fail title policy after publication or setup error
+        if: ${{ always() && steps.policy.outcome != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(`${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.STATUS_SHA}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ context: 'PR title policy', state: 'failure', description: 'Title policy validation or publication failed' }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!response.ok) throw new Error(`Title status publication failed: ${response.status}`);
+          NODE
 
   ui-bundle-delta:
     name: UI entry bundle delta (report only)
@@ -620,7 +772,7 @@ jobs:
     # minutes. Not a required check. The script scopes itself first (a PR
     # that touches no UI build input ends in seconds) and exits zero once
     # started, naming the reason in a notice when it cannot measure.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
@@ -640,10 +792,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -657,7 +809,7 @@ jobs:
     name: Fork pull-request smoke
     # This is intentionally exact: untrusted fork code is admitted only to an
     # ephemeral hosted runner, never to the persistent self-hosted fleet.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
     runs-on: ubuntu-22.04
@@ -667,20 +819,6 @@ jobs:
     # bounded steps + 3 minutes = 18; twenty leaves room for a slow install.
     timeout-minutes: 20
     steps:
-      - name: Check out base policy for pull-request title gate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Validate base-controlled pull-request title
-        env:
-          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/commit-message-gate.mjs --pull-request-title "$PULL_REQUEST_TITLE" "$PULL_REQUEST_NUMBER"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -689,10 +827,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -730,6 +868,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: background
       source_sha: ${{ github.sha }}
 
   # No separate browser-smoke job. It needed full-regression without
@@ -757,10 +896,10 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -820,13 +959,13 @@ jobs:
     # than inside it, so they neither spend its twelve-minute budget nor wait
     # on it. Not a required check (yet): a red here is feedback, and the
     # merge-queue regression still runs the same suites.
-    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
       # Same identity rule as fast-checks: the head sha is part of it, so a
       # run for an older commit can never cancel the current head's run.
-      group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+      group: ci-repo-scans-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # 53 suites measured at 73s wall on a dev host at load ~30 (82-125s at
@@ -843,10 +982,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -855,3 +994,54 @@ jobs:
 
       - name: Run repository source scans
         run: npm run test:repo-scans
+
+  diff:
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Validate combined candidate diff
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+          INTEGRATION_PAUSED: ${{ vars.STATION_INTEGRATION_PAUSED }}
+        run: |
+          if [[ "$INTEGRATION_PAUSED" == true ]]; then
+            echo '::error::Integration paused by the incident owner; see the qualification repair issue.'
+            exit 1
+          fi
+          git diff --check "$BASE_SHA" HEAD
+
+  # Fail-closed: runs unless the decision is exactly 'false', so a failed or
+  # missing plan job runs the full regression instead of skipping it.
+  merge-integration-full-regression:
+    needs: fast-checks-plan
+    if: ${{ always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false') }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      capacity_class: integration
+      source_sha: ${{ github.sha }}
+      allow_reuse: true
+
+  merge-queue-regression:
+    name: Merge-queue regression
+    if: always() && github.event_name == 'merge_group'
+    needs: [diff, fast-checks-plan, merge-integration-full-regression, fast-checks]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the candidate diff and the planned regression
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -r 'if .["fast-checks-plan"].outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \(.["merge-integration-full-regression"].result)" end'
+          echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and (.["merge-integration-full-regression"].result == "success" or (.["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["full-regression"] == "false" and .["merge-integration-full-regression"].result == "skipped"))' > /dev/null

@@ -25,6 +25,7 @@ import { openChatsStore } from '../contexts/open-chats-store';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // #928: Activity has no route left, so every Home affordance that used to
 // navigate to `{ type: 'activity' }` now reveals the region surface instead.
@@ -52,6 +53,9 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => authorityRef.current,
 }));
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => ({ deviceClass: 'host', hostName: 'Kontour' }),
+}));
 
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
@@ -74,6 +78,8 @@ function renderHomeView(
 }
 
 const fixtures = vi.hoisted(() => ({
+  setupError: null as unknown,
+  refreshSetup: vi.fn(async () => undefined),
   projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
   projectsByAuthority: {} as Record<
     string,
@@ -228,6 +234,11 @@ vi.mock('@kontourai/station-sdk', () => ({
       isSuccess: data !== undefined && !fixtures.projectsLoading,
     };
   },
+  useProjectRunLocationsQuery: () => ({
+    data: undefined,
+    isLoading: true,
+    isSuccess: false,
+  }),
   dispatchOrchestrationCommandWithReceipt: fixtures.discardDraft,
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
@@ -388,12 +399,13 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       runtimeFetching: false,
       modelsFetching: false,
       setupFetching: false,
-      setupError: null,
-      refreshSetup: async () => undefined,
+      setupError: fixtures.setupError,
+      refreshSetup: fixtures.refreshSetup,
       modelChoices: {},
       setModelChoices: () => undefined,
       modelChoiceKey: (agent: { slug: string }) => agent.slug,
       modelsForAgent: () => [],
+      executionModelsForAgent: () => [],
       defaultEffectiveModelForAgent: () => ({
         id: undefined,
         label: fixtures.defaultModelLabel,
@@ -473,6 +485,52 @@ describe('HomeView', () => {
     fixtures.tasksRefetch.mockClear();
     fixtures.inventoryRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
+    fixtures.setupError = null;
+    fixtures.refreshSetup.mockClear();
+  });
+
+  test('a failed setup read says what happened in plain words and retries', () => {
+    // What Chromium's Response.json() rejects with when a proxy answers with
+    // an HTML page: the composer used to print this sentence verbatim.
+    fixtures.setupError = new SyntaxError(
+      `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    );
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const alert = screen
+      .getAllByRole('alert')
+      .find((node) => node.classList.contains('start-composer__alert'));
+    expect(alert?.textContent).toContain(
+      'Station sent a response this app could not read.',
+    );
+    expect(alert?.textContent).not.toContain('DOCTYPE');
+    fireEvent.click(
+      within(alert as HTMLElement).getByRole('button', { name: 'Try again' }),
+    );
+    expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1);
+  });
+
+  test('a retry that fails again keeps the plain sentence and its retry', async () => {
+    const parse = new SyntaxError(
+      `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    );
+    fixtures.setupError = parse;
+    // refreshSetup rethrows the same query error (throwOnError).
+    fixtures.refreshSetup.mockRejectedValueOnce(parse);
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const alert = () =>
+      screen
+        .getAllByRole('alert')
+        .find((node) => node.classList.contains('start-composer__alert'));
+    fireEvent.click(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    );
+    await waitFor(() => expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(alert()?.textContent).not.toContain('DOCTYPE');
+    expect(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    ).toBeTruthy();
   });
 
   test('shows guided start/open actions with a concrete selected identity', () => {
@@ -1189,6 +1247,30 @@ describe('HomeView', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
+  // A delegated task running on a PAIRED Station: this Station holds only its
+  // lifecycle record, whose agent slug and conversation id are the peer's.
+  // Continuing it opens the Activity detail (where its request can be
+  // answered on the paired Station), never a local chat on the peer's ids.
+  test('opens a paired-Station record in Activity instead of rehydrating a chat', () => {
+    fixtures.sessions = [peerRecordSummary() as never];
+    const onNavigate = vi.fn();
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    renderHomeView({ continuation: null, onNavigate });
+
+    fireEvent.click(continueRow());
+
+    expect(focus).not.toHaveBeenCalled();
+    expect(showSurface).toHaveBeenCalledWith('activity', {
+      session: 'peer-delegation:abc',
+    });
+    expect(onNavigate).not.toHaveBeenCalled();
+    unregister();
+  });
+
   test('does not show a false empty state while orchestration sessions load and Tasks are empty', () => {
     fixtures.sessionsLoading = true;
     const { container } = renderHomeView({
@@ -1340,10 +1422,11 @@ describe('HomeView', () => {
 
     // Shown once: in the Continue card, not again in the list below it.
     expect(screen.getAllByText('Durable local work')).toHaveLength(1);
-    // The Continue row reads like every work row: the honest agent fallback
-    // and the project, never an invented Agent.
+    // The Continue row reads like every work row: no invented Agent, the
+    // project, and the Task's own status rather than a session lifecycle.
     expect(continueRow().textContent).toContain('Durable local work');
-    expect(continueRow().textContent).toContain('Agent unavailable · station');
+    expect(continueRow().textContent).toContain('No agent assigned · station');
+    expect(continueRow().textContent).toContain('Task · To do');
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
@@ -1726,7 +1809,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
         {
@@ -1742,7 +1825,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
-    expect(within(recent).getByText('Brian media')).toBeTruthy();
+    expect(within(recent).getByText('Home media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
     // The local session's own row must still render, unmarked by any
     // machine: exactly two rows carry one.
@@ -1755,7 +1838,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       ),
     ).toHaveLength(2);
 
-    // archive#1097: REMOTE_SESSION (env-a, "Brian
+    // archive#1097: REMOTE_SESSION (env-a, "Home
     // media") is the single most-recent item across every environment here
     // (14:00 vs. the local session's 13:00 and OTHER_REMOTE_SESSION's prior
     // day) — exactly the case that silently no-opped before the fix. The
@@ -1774,7 +1857,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1807,7 +1890,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       environments: [
         {
           environmentId: 'env-a',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           sessions: [REMOTE_SESSION],
         },
       ],
@@ -1872,7 +1955,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ];
     fixtures.remoteSessionsResult = {
       environments: [],
-      unavailable: [{ environmentId: 'env-a', environmentName: 'Brian media' }],
+      unavailable: [{ environmentId: 'env-a', environmentName: 'Home media' }],
     };
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
@@ -1881,7 +1964,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(within(recent).getByText(CODEX_SESSION_TITLE)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(
-      within(recent).getByText(/Brian media is unavailable right now/),
+      within(recent).getByText(/Home media is unavailable right now/),
     ).toBeTruthy();
   });
 
@@ -1892,7 +1975,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       authenticationRequired: [
         {
           environmentId: 'env-auth',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           action: 'provision_peer_credential',
         },
       ],
@@ -1901,7 +1984,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
     expect(
-      screen.getByText(/Brian media requires a peer credential/i),
+      screen.getByText(/Home media requires a peer credential/i),
     ).toBeTruthy();
     expect(
       screen.getByText(/Add or replace its pairing credential/i),

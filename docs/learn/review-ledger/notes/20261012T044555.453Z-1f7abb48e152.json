@@ -1,0 +1,7 @@
+{
+  "revision": "28e824e856b1d160adae03edb47fa548681c2fe5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3564 re-review of the publisher-exceptions passage: memory-adapter-conversations.ts still publishes conversation documents through publishJsonFileWithOwnedLock under its own per-conversation in-process queue, not the cross-process lock. The only change there is that deleteConversationAssets also unlinks the transcript's .ndjson.torn quarantine file. Claim unchanged and accurate.","inputs":["docs/architecture/module-map.md","src-server/adapters/file/memory-adapter-conversations.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed ConnectionService engine attribution and Engine identity boundaries against connection-service.ts, adapter-identity.ts and routes/connections/acp.ts after the fix round (owner map, reworded 400 and warning). The paragraph's claims are unchanged and still accurate; the ACP guide owns the refusal wording. No prose change.","inputs":["docs/architecture/module-map.md","src-server/providers/adapter-identity.ts","src-server/routes/connections/acp.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}

@@ -204,9 +204,10 @@ const STEERING_FILES = [
  * The git directory and common directory `target/.git` leads to, as git
  * resolves them: a directory is the git directory; a file names it
  * (`gitdir: <path>`, relative to `target`); a `commondir` file inside it
- * names the common directory (relative to the git directory).
+ * names the common directory (relative to the git directory). Both are
+ * symlink-resolved; `null` when the entry names nothing readable.
  */
-async function locateGitDirectories(
+export async function locateGitDirectories(
   target: string,
   dotGit: string,
   dotGitStats: BigIntStats,

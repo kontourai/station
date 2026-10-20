@@ -1,0 +1,59 @@
+{
+  "path": "deployment/telemetry/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Source review of an optional, unqualified private companion profile: standalone bundled receiver target, private database/operator/OTel/dashboard credentials, split networks, bounded pinned diagnostic pipeline and retained stores. Describes explicit consumer, source, runtime, backup/restore and release qualification gaps.",
+
+  "limits": "Only source inspection, YAML syntax parsing, TypeScript syntax parsing, formatting and whitespace checks have run for this new profile. Compose rendering, pinned binary validation, built entrypoint credential controls, container graph/build/runtime, actual Station delivery/query, DELTA restart/rate/histogram behavior, backup/restore/upgrade/rollback and release publication remain NOT_EXECUTED. Existing private dogfood and earlier receiver fixtures are separate historical evidence.",
+
+  "sources": [
+    "Dockerfile",
+
+    "deployment/telemetry/collector.yaml",
+
+    "deployment/telemetry/compose.yaml",
+
+    "deployment/telemetry/grafana-dashboards.yaml",
+
+    "deployment/telemetry/grafana-datasources.yaml",
+
+    "deployment/telemetry/prometheus.yml",
+
+    "deployment/telemetry/tempo.yaml",
+
+    "docs/guides/deployment.md",
+
+    "monitoring/grafana/dashboards/station.json",
+
+    "packages/telemetry-broker/README.md",
+
+    "packages/telemetry-broker/build.mjs",
+
+    "packages/telemetry-broker/src/main.ts",
+
+    "packages/telemetry-broker/src/store.ts",
+
+    "src-server/telemetry.ts",
+
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "deploy/push-gateway/src/channel-ledger.ts",
+
+    "deployment/telemetry/compose.tunnel.yaml",
+
+    "deployment/telemetry/cloudflared.example.yaml",
+
+    "packages/telemetry-broker/src/client-address.ts"
+  ],
+
+  "checks": [
+    "YAML syntax parsed through pinned js-yaml; not actual consumer validation",
+
+    "Changed receiver TypeScript syntax parsed and Biome read-only check passed; no type/runtime acceptance",
+
+    "git diff --check"
+  ]
+}

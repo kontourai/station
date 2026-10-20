@@ -37,6 +37,11 @@ const experienceRead = vi.hoisted(() => ({
   inventory: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
   refetch: vi.fn(),
 }));
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
     namespace: 'authority-1',
@@ -44,6 +49,8 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useAgentsQuery: () => ({ data: [] }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceRead.inventory,
     refetch: experienceRead.refetch,
@@ -51,7 +58,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => screenSize.mobile,
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({
@@ -119,6 +127,7 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       modelPickerAgent,
       setModelPickerAgent,
       modelsForAgent: () => models,
+      executionModelsForAgent: () => models,
       modelChoiceKey: (agent: AgentData) =>
         `${input.selectedContext}:${agent.slug}`,
       defaultEffectiveModelForAgent: () => ({
@@ -196,6 +205,7 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     onSelect,
     onClose,
     requestAuthority: authority,
+    projectIconBySlug: new Map<string, string>(),
   };
   const view = render(<ModalHarness {...defaults} {...props} />);
   return {

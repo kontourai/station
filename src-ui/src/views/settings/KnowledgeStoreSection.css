@@ -39,7 +39,7 @@
   border-radius: 0.25rem;
   background: var(--bg-secondary, var(--bg-primary));
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   color: var(--text-primary);
   word-break: break-all;
 }

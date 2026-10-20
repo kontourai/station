@@ -1,4 +1,6 @@
+import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import { describe, expect, test } from 'vitest';
+import { PrincipalUnresolvedError } from '../../../services/identity/principal-resolver.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { createAttachmentStagingRoutes } from '../attachment-staging.js';
 
@@ -204,4 +206,33 @@ describe('attachment staging routes', () => {
       expect.objectContaining({ stageId: grant.stageId, state: 'pending' }),
     ]);
   });
+
+  // #545: an unresolvable caller is an authz refusal. /prepare and DELETE
+  // reported it as "unavailable" with no code, and /reconcile let it escape
+  // to the unhandled-error 500.
+  test.each([
+    ['prepare', '/prepare', 'POST', JSON.stringify(descriptor)],
+    ['reconcile', '/reconcile', 'POST', JSON.stringify({ stageIds: [] })],
+    ['cancel', '/stage-unknown', 'DELETE', undefined],
+  ] as const)(
+    '%s answers an unresolvable caller with the principal_unresolved code',
+    async (_name, path, method, body) => {
+      const routes = createAttachmentStagingRoutes({
+        service: new AttachmentStagingService(),
+        currentOwner: () => {
+          throw new PrincipalUnresolvedError('no identity or authority fact');
+        },
+      });
+      const response = await routes.request(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(body ? { body } : {}),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: 'Unable to resolve a principal: no identity or authority fact',
+        code: PRINCIPAL_UNRESOLVED_CODE,
+      });
+    },
+  );
 });

@@ -1,0 +1,80 @@
+extensions:
+  bearertokenauth/instance:
+    header: x-api-key
+    scheme: ""
+    filename: /run/private/otel-key
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 4194304
+        auth:
+          authenticator: bearertokenauth/instance
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 384
+    spike_limit_mib: 64
+  transform/privacy:
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.installation.id", "os.type"])
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.installation.id", "os.type"])
+      - context: scope
+        statements:
+          - keep_keys(attributes, [])
+      - context: span
+        statements:
+          - keep_keys(attributes, ["gen_ai.operation.name", "gen_ai.provider.name", "gen_ai.request.model", "gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "http.request.method", "http.response.status_code"])
+          - set(name, "station.operation")
+          - set(status.message, "")
+          - set(trace_state, "")
+          - set(events, [])
+          - set(links, [])
+          - truncate_all(attributes, 128)
+  deltatocumulative:
+    max_streams: 10000
+    max_stale: 5m
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+    timeout: 5s
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 256
+      num_consumers: 2
+
+service:
+  extensions: [bearertokenauth/instance]
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, deltatocumulative, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, batch]
+      exporters: [otlphttp/tempo]

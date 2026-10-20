@@ -1,0 +1,7 @@
+{
+  "revision": "be3bf00a988573d6e71fe01ac57e601905d78d92",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read the member Agent paragraphs (agent-audience-gate links) after #3284 classified POST /agents/:slug/mcp-prompts/run as a turn. The text says a turn on an admitted Agent returns 403 member_agent_turns_unavailable and catalog edits return member_agent_catalog_read_only; prompt run now follows the former, so the claims still hold. No prose change.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/agent-audience-gate.ts"]}
+  ]
+}

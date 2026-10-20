@@ -1,0 +1,7 @@
+{
+  "revision": "15d2bb17433c673f7a713bd511ef290d408a2c62",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"EXECUTED: Reviewed the operator-device-access proposal (S1 telemetry, peer classes host-direct/host-ui-proxy/off-host, desktop local-grant credential and native broker bearer attachment) against the #2962 delta in src-desktop/src/lib.rs, src-server/security/runtime-request-security.ts and src-server/services/ssh/environment-security-service.ts at origin/main...HEAD. The delta adds x-station-client-protocol to the native header allowlist as a compatibility signal carrying no authority, an optional clientCompatibility test seam that production omits, and a clientProtocolHeader capability in the exported HOST_STATION_COMPATIBILITY handshake block. None changes credential resolution, operator-credential authority, forwarding-evidence classification or the desktop keychain path the document describes. No prose change. NOT_VERIFIED: live desktop/native broker behavior and any off-host deployment.","inputs":["docs/design/operator-device-access.md","src-server/services/ssh/environment-security-service.ts","src-desktop/src/lib.rs","src-server/security/runtime-request-security.ts"]}
+  ]
+}

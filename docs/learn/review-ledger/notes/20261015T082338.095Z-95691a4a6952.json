@@ -1,0 +1,7 @@
+{
+  "revision": "b130938b0a6cc06c2b599ca4be87f4d9d61e89f8",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 6 fixture correction: re-read epoch retirement and Last known claims against the final seven caller probes. Added required runtime provenance to the typed conversation fixtures; the cache probe now checks rendered recovery before retired cache contents. UI typecheck and 261/261 focused tests pass. Repeated all seven clean committed controls at b130938b0a6: five single failures and two two-case failures, all on stuck Last known; each restores 33/33. No production delta from the reviewed repair.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]}
+  ]
+}

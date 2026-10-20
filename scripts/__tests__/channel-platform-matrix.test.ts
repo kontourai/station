@@ -164,6 +164,14 @@ describe('cross-platform release channel matrix', () => {
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'station-channel-icons-'));
+    const publicAssets = join(fixture, 'src-ui/public');
+    mkdirSync(publicAssets, { recursive: true });
+    writeFileSync(join(publicAssets, 'favicon.png'), 'station-mark');
+    for (const channel of ['dev', 'beta', 'nightly'])
+      writeFileSync(
+        join(publicAssets, `favicon-${channel}.png`),
+        `station-${channel}-mark`,
+      );
     for (const [channel, identity] of Object.entries(
       ANDROID_CHANNEL_IDENTITY,
     )) {
@@ -214,6 +222,14 @@ describe('cross-platform release channel matrix', () => {
         expect(
           readFileSync(join(resources, 'mipmap-mdpi/ic_launcher.png'), 'utf8'),
         ).toBe(channel);
+        expect(
+          readFileSync(
+            join(resources, 'drawable/station_startup_logo.png'),
+            'utf8',
+          ),
+        ).toBe(
+          channel === 'stable' ? 'station-mark' : `station-${channel}-mark`,
+        );
         if (channel !== 'stable') {
           expect(
             readFileSync(
@@ -225,6 +241,35 @@ describe('cross-platform release channel matrix', () => {
         expect(
           readFileSync(join(resources, 'values/strings.xml'), 'utf8'),
         ).toContain(`>${identity.appName}<`);
+        const adaptive = readFileSync(
+          join(resources, 'mipmap-anydpi-v33/ic_launcher.xml'),
+          'utf8',
+        );
+        expect(adaptive).toContain(
+          '<monochrome android:drawable="@drawable/station_launcher_monochrome"',
+        );
+        expect(adaptive).toContain('@mipmap/ic_launcher_foreground');
+        const monochrome = readFileSync(
+          join(resources, 'drawable/station_launcher_monochrome.xml'),
+          'utf8',
+        );
+        expect(monochrome).toContain('android:fillType="evenOdd"');
+        // The rounded tile's farthest corner must fit Android's guaranteed
+        // 66dp safe circle, before a launcher applies its own mask.
+        const scale = Number(
+          monochrome.match(/android:scaleX="([\d.]+)"/)?.[1],
+        );
+        const topEdge = monochrome.match(
+          /android:pathData="M([\d.]+),([\d.]+)L/,
+        );
+        expect(topEdge).not.toBeNull();
+        const half = 12 - Number(topEdge![2]);
+        const corner = Number(topEdge![1]) - Number(topEdge![2]);
+        const farthest =
+          (Math.SQRT2 * (half - corner) + corner) * scale * (108 / 24);
+        expect(farthest).toBeGreaterThan(0);
+        expect(farthest).toBeLessThanOrEqual(33);
+        expect(monochrome).toMatch(/android:pathData="M[^"]+Z"/);
         expect(
           readFileSync(
             join(resources, 'values/ic_launcher_background.xml'),

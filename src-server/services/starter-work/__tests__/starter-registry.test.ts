@@ -639,6 +639,23 @@ describe('StarterRegistry', () => {
     });
   });
 
+  it('carries the chosen continuation target to the owner (#3386)', async () => {
+    const { registry, continueSession } = await fixture();
+    await registry.launchContinueSession(
+      {
+        starterId: 'continue-session',
+        operationId: 'continue-op-target',
+        sourceSessionId: 'external-session',
+        target: { kind: 'own-folder' },
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+    );
+    expect(continueSession).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { kind: 'own-folder' } }),
+    );
+  });
+
   it('does not continue a missing or Station-owned source Session', async () => {
     const { registry, continueSession } = await fixture();
     await expect(

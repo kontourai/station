@@ -1,0 +1,7 @@
+{
+  "revision": "1db5ec59775f59fb329c708b516a7dc0fb0bdb0f",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round 2 final fixture review: replayCodexCapture now uses recorded JSONL frame timestamps when useCapturedTimestamps is true. Both real-writer Codex fixtures show distinct start/end values and elapsed 0:05 / 0:04; the card uses start/end first and reported duration when timestamps are absent. The split-row spawn, queued follow-up and whole-turn streaming contracts remain as reviewed at 679e1170d69. Restored seven-file regression: 89 passed and one existing TODO. No live provider, native or Gallery claim.","inputs":["docs/design/placement.md"]}
+  ]
+}

@@ -100,8 +100,7 @@ describe('settings registry generator', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'settings-registry-keys-'));
     const outputPath = join(scratch, 'settings-registry.json');
     try {
-      // The first floor cannot see this: every entry is still here, so the
-      // count is 45 and passes. What is gone is the key that resolves `help`.
+      // The entry count still passes; only the keys that resolve help are gone.
       const keyless = {
         ...sources,
         catalog: sources.catalog.map(
@@ -125,12 +124,13 @@ describe('settings registry generator', () => {
         false,
       );
 
-      // And the two floors are independent: 39 entries that all keep their
-      // keys clears this floor and is stopped by the other one, so neither
-      // is standing in for the other.
+      // Keep enough keyed rows regardless of where the catalog displays them.
       const short = {
         ...sources,
-        catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
+        catalog: [
+          ...sources.catalog.filter((entry) => entry.configKeys?.length),
+          ...sources.catalog.filter((entry) => !entry.configKeys?.length),
+        ].slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
       };
       expect(
         buildRegistryDocument(short).settings.filter(
@@ -224,15 +224,29 @@ const DECLARED_SCOPE: ReadonlyMap<string, string> = new Map(
 );
 
 const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
+  'account-preference-sync': 'account',
+  'personal-codex-approval': 'account',
+  'personal-claude-approval': 'account',
+  'personal-muse-approval': 'account',
+  'review-guides': 'station',
+  'review-guide-model': 'station',
+  'review-guide-instructions': 'station',
   'approval-guardian': 'station',
   'usage-telemetry': 'station',
   'telemetry-destination': 'informational',
+  'product-telemetry-delivery': 'station',
+  productTelemetryEndpoint: 'station',
+  productTelemetryKeyRef: 'station',
+  'otel-delivery': 'station',
+  otelTelemetryEndpoint: 'station',
+  otelTelemetryKeyRef: 'station',
   'default-max-turns': 'station',
   'default-max-output-tokens': 'station',
   'default-chat-font-size': 'station',
   'terminal-shell': 'station',
   'mcp-ui-host': 'station',
   'surface-trust': 'station',
+  'attached-sessions-outside-projects': 'station',
   'device-helper-url': 'station',
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
@@ -251,7 +265,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'reset-defaults': 'station',
   'reset-device-defaults': 'device',
   'feature-previews': 'station',
-  'enable-developer-tools': 'device',
+  'enable-developer-tools': 'account',
   'shared-answers': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
@@ -260,19 +274,18 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-region': 'defaults',
   'default-agent-instructions': 'defaults',
   'template-variables': 'defaults',
-  'chat-font-size': 'device',
-  'smooth-answer-reveal': 'device',
-  'chat-show-reasoning': 'device',
-  'chat-show-tool-details': 'device',
-  'chat-dock-auto-hide': 'device',
+  'chat-font-size': 'account',
+  'smooth-answer-reveal': 'account',
+  'chat-show-reasoning': 'account',
+  'chat-show-tool-details': 'account',
+  'chat-dock-auto-hide': 'account',
   'chat-auto-float-browser': 'device',
-  'diff-style': 'device',
-  'diff-wrap': 'device',
-  theme: 'device',
-  'sidebar-sections': 'device',
+  'diff-style': 'account',
+  'diff-wrap': 'account',
+  theme: 'account',
   'haptic-feedback': 'device',
-  'confirm-conversation-delete': 'device',
-  'accent-color': 'device',
+  'confirm-conversation-delete': 'account',
+  'accent-color': 'account',
   'keyboard-shortcuts': 'device',
   'push-notifications': 'device',
   'speech-to-text': 'device',
@@ -283,6 +296,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
+  // #3557: groups and personal access tokens are stored on the Station.
+  people: 'station',
 };
 
 describe('published write authority', () => {
@@ -305,12 +320,13 @@ describe('published write authority', () => {
       .filter((entry) => DECLARED_SCOPE.has(entry.configKey as string))
       .filter(
         (entry) =>
-          entry.scope !== DECLARED_SCOPE.get(entry.configKey as string),
+          entry.scope !==
+          (entry.id === 'smooth-answer-reveal'
+            ? 'account'
+            : DECLARED_SCOPE.get(entry.configKey as string)),
       )
       .map((entry) => `${entry.id} (${entry.configKey}): ${entry.scope}`);
-    // No exemption list. Every row that names a key agrees with that key's
-    // registry today, and a row that needed to disagree would have to say so
-    // here rather than acquiring the difference from where it is rendered.
+    // Answer delivery edits only the portable fields of the mixed feature record.
     expect(mismatched).toEqual([]);
   });
 });

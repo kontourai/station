@@ -36,7 +36,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { load } from 'js-yaml';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { SECURITY_CODEQL_CONFIG } from './actionlint-gate.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

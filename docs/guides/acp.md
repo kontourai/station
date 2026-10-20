@@ -84,9 +84,28 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 2. Spawns the configured command as a subprocess via `ACPProcess`
 3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
-   its persisted resume cursor only after validating the connection identity,
-   execution fingerprint and live `agentCapabilities.loadSession` capability;
-   then the adapter calls `connection.loadSession()` for that native session.
+   its persisted resume cursor only after validating the connection identity
+   and execution fingerprint, and that the engine advertises a way to
+   reattach. When the engine advertises `sessionCapabilities.resume`, the
+   adapter calls `session/resume`, which restores the native session without
+   replaying it. It falls back to `connection.loadSession()` when `resume` is
+   not advertised, or when the engine answers it with method-not-found and
+   advertises `loadSession`. Any other resume failure fails the start rather
+   than loading: the fallback is closed, so an unexplained resume failure is
+   reported instead of hidden behind a replayed load.
+   On `session/load`, ACP has the agent replay the whole conversation as
+   `session/update` notifications before it answers. Station already stored
+   that history, so while the session reattaches the adapter does not publish
+   message, thought, tool or plan updates; commands, mode, config and usage
+   updates still apply. A turn sent before the start finishes waits for it
+   (up to 15 seconds, before orchestration takes the thread's turn-start
+   claim, so Stop is never held behind it) instead of racing it. A Stop or
+   an explicit cancel ends the wait with nothing sent. Past the wait it is
+   refused with the retryable code `provider_session_starting`, which the
+   client queues and re-sends. If the start fails, the send is refused with
+   `provider_session_start_failed` and stays queued with a Retry.
+   Station's restore eligibility upstream of the adapter still requires
+   `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 
 `OrchestrationService` reconstructs the start input with `existing.resumeCursor`
 when it must re-establish an adapter Session. A malformed cursor, changed
@@ -97,7 +116,13 @@ See `src-server/providers/adapters/acp-adapter.ts` and
 
 ### Connection Lifecycle (Connections Hub)
 
-Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, calling `initialize()`/`newSession()`, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity:
+Independently of any chat session, each configured connection is periodically probed for availability by spawning a short-lived subprocess, completing `initialize` and opening a session to read its modes and config options, then tearing it down. This is what backs the Connections Hub UI and `GET /acp/status`, and is unaffected by chat activity.
+
+The probe does not leave a new stored session behind on each run (#3411). Agents that persist sessions would otherwise collect one per probe, about 240 a day per connection. If the agent advertises `session/delete`, the probe deletes its session after reading it. Otherwise, if it advertises `session/resume` or `loadSession`, the background sweep reattaches to the session the probe created earlier.
+
+A reattached session can answer from its own stored state rather than the agent's current defaults. Grok Build, for example, reports the model and reasoning effort saved in the session. The probe therefore mints a fresh session, and reattaches to that one from then on, in four cases: every user-initiated probe (Reconnect, a connection edit, a provider change), a change in the agent name or version reported at `initialize`, a retained session six hours old, and a Station restart or connection re-registration. A changed default can therefore show up to six hours late unless the user presses Reconnect.
+
+Stored sessions now grow by a few a day per connection instead of one per probe. Reattaching still writes to the agent's store: Grok appends about 670 bytes to the session's update log per resume, roughly 160 KB a day per connection, compared with about 30 MB a day before. An agent that advertises none of these methods still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used, because it frees runtime resources and does not remove the stored session. Station does not delete sessions that leaked before this change; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
 | Status | Meaning |
 |---|---|
@@ -135,8 +160,8 @@ The default exists independently of probe/readiness state. The Agent row carries
 
 Sending a message to an ACP-connected agent is identical, from the UI's perspective, to sending a message to any other External agent:
 
-1. The UI selects the persisted Agent row; it does not read or submit engine connection metadata.
-2. The UI posts the Agent through `POST /api/orchestration/chat`; the server resolves the Agent's binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
+1. The UI selects the persisted Agent profile. An explicit conversation override can additionally name a receiver-owned default execution Agent; it does not submit engine URLs or credentials.
+2. The UI posts the profile and any explicit execution binding through `POST /api/orchestration/chat`; the server resolves and validates that binding and supplies the ACP adapter with its connection ID — see [`docs/reference/session-api.md`](../reference/session-api.md).
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
@@ -177,7 +202,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
 
-Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity; namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
+Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
 ### Turn-failure enrichment from a co-reported notification
 
@@ -334,7 +359,7 @@ Station answers each request that does arrive by the chat's approval mode ([answ
 | Ask | Shows it to a person |
 | Auto | Allows a file edit (ACP kind `edit`); shows anything else to a person |
 | Full access | Allows it (on the full-access floor nothing asks). In a session that is not `host`-confined, applies Auto instead: an ACP engine has no process sandbox |
-| Default, after Station took over | Ask, reported as "Default — Ask first", as on other engines (`resolveDefaultPick`). For OpenCode this survives the engine exiting (an idle park, a crash): the takeover is read from the engine's own durable report that it ran a Station mode, not only from memory, so a respawned OpenCode is not silently handed back to its own settings. The chip learns the applied mode from the engine's reports, which a reloaded page has not seen yet: until the next turn starts, it reads "Default — OpenCode's own settings" there while the server applies Ask |
+| Default, after Station took over | Ask, reported as "Ask — Ask first", as on other engines (`resolveDefaultPick`). For OpenCode this survives the engine exiting (an idle park, a crash): the takeover is read from the engine's own durable report that it ran a Station mode, not only from memory, so a respawned OpenCode is not silently handed back to its own settings. The chip learns the applied mode from the engine's reports, which a reloaded page has not seen yet: until the next turn starts, it reads "Engine default — OpenCode's own settings" there while the server applies Ask |
 
 A pick takes effect from the next turn, like every engine's: it is recorded as a `session.approval-mode-set` decision and reaches the adapter with that turn. Moving between Ask and Auto needs no restart. OpenCode reads its rules only at launch, so Station's first mode on a chat, and every move into or out of full access, relaunches OpenCode and resumes the same ACP session in the new process: `session/resume` when the engine advertises it (OpenCode does; no history is replayed), otherwise `session/load` with its replay dropped. The new process is started and the session resumed in it first, while the old process keeps running (two `opencode acp` processes can hold one session at once); only after the resume succeeds does the new process take over and the old one stop. The session's Mode (`build`/`plan`) and model are then re-applied if the resumed session reports others, so the conversation, Mode and model carry over.
 
@@ -456,12 +481,12 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. |
+| `id` | ✓ | Clean unique engine-connection identifier; the owned default Agent uses the same text ID in the Agent namespace. It may not be an id a native runtime engine already answers to (such as `codex` or `claude`): `POST /acp/connections` and `POST /acp/registry/:id/install` refuse one with a 400 that names the engine already using it, because engine attribution keys on the connection id and would label the native engine's Agents `acp`. A connection stored with such an id before this check still loads; attribution keeps the native engine for that id and the server logs a warning naming it, so delete that connection and add it again under a different id (an update cannot change a connection's id). |
 | `name` | ✓ | Display name shown in the UI. |
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
-| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace is scoped by this directory. |
+| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
 ### Runtime API
@@ -476,6 +501,13 @@ DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 ```
+
+Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
+command for Station to run, so a paired device needs the operator's
+`coding:exec` grant (the operator in person never does); otherwise the route
+answers `403` with `code: 'command-not-granted'` and saves nothing. Renaming or
+toggling a connection, listing, removing and reconnecting keep their ordinary
+tier. Reconnect only re-probes the stored command and cannot change it.
 
 ### SSE Status Events
 
@@ -553,6 +585,25 @@ initialization with `station acp connections reconnect <connection-id>` after
 addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
+
+A new session on a model the engine's fresh `session/new` options did not offer
+is refused by the adapter with the `model_not_advertised` code
+(`SessionStartRefusedError`). The start is settled rather than uncertain: the
+receipt is `rejected`, the thread is not fenced behind "Station may already have
+started this session", and a fresh start's session ends with the engine's
+refusal as its cause (lifecycle `failed`, which survives a reload). In the chat
+composer the
+error offers no Retry (the same model is refused again), re-reads the Agent
+catalog, the ACP connection list and the engine inventory, because the
+composer's snapshot of those is what let the model be chosen, and keeps the
+draft: choose another model and send again, and the conversation continues in a
+successor session. This is the case where the Agent's engine changed after the
+snapshot was taken (the built-in Station Agent re-binds to an external engine
+once its ACP handshake completes). The engine is still spawned and handshaked
+before it can refuse: Station does not refuse from the connection list's cached
+model options, because those come from a probe session that can differ from the
+session a start actually creates. A refusal whose process teardown cannot be
+confirmed stays an uncertain start.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An

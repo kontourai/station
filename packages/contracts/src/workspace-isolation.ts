@@ -42,6 +42,8 @@ export interface WorktreeSessionMetadata {
   path: string;
   branch: string;
   baseRef: string;
+  /** Resolved commit used to create this worktree; absent on older records. */
+  baseCommit?: string;
   cleanupPolicy: WorktreeCleanupPolicy;
   preserveOnFailure: boolean;
   createdAt: string;

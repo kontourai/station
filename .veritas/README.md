@@ -13,18 +13,18 @@ active contract.
 ## Gate
 
 ```bash
-npm run veritas:shadow          # alias: veritas readiness --working-tree
+npm run veritas:shadow          # alias: readiness --working-tree
 npm run veritas:readiness       # same, explicit name
-npm run veritas:readiness:diff  # veritas readiness --changed-from main --changed-to HEAD
-npm run veritas:coverage        # veritas readiness --check coverage --working-tree
+npm run veritas:readiness:diff  # readiness --changed-from main --changed-to HEAD
+npm run veritas:coverage        # readiness --check coverage --working-tree
 ```
 
 For the installed CLI's readiness command, exit 0 means no blocking failures;
 1 means an evidence-check or blocking-policy failure; 2 means a configuration
 or runtime error. Read the report's selected scope, warnings, skipped checks
 and evidence identities as well as the exit code. It is not a deployment or
-all-tests-complete certificate. `veritas explain <ruleId>` or
-`veritas explain --file <path>` prints targeted guidance.
+all-tests-complete certificate. `npx --no @kontourai/veritas explain <ruleId>` or
+`npx --no @kontourai/veritas explain --file <path>` prints targeted guidance.
 
 Readiness reports are generated under `.kontourai/veritas/evidence/`. The
 installed CLI's generated Surface projection uses
@@ -51,7 +51,7 @@ own runtime locations. Neither path is protected policy source.
   [fast runner](../scripts/run-ci-fast.mjs) are the command owners.
 - `fallow-advisory`: external-tool advisory evidence; requires the `fallow` CLI and is not a default check.
 
-Check-family dispositions live in `.veritas/proof-families/repo-guardrails.families.json`, declared to Veritas through `evidence.evidenceInventoryManifests` so `veritas readiness --check coverage` reports verification weight and freshness.
+Check-family dispositions live in `.veritas/proof-families/repo-guardrails.families.json`, declared to Veritas through `evidence.evidenceInventoryManifests` so `npm run veritas:coverage` reports verification weight and freshness.
 
 ## Delivery-Conduct Standards (just-in-time guidance)
 
@@ -64,7 +64,7 @@ Check-family dispositions live in `.veritas/proof-families/repo-guardrails.famil
 | `read-paths-join-exactly-and-never-write` | sidecar/trust-bundle joins, freshness and fold modules | exact match or `unavailable` naming candidates; read paths perform no writes; no producer, no claim |
 | `verification-conduct-sentinels-and-fault-injection` | the protocol document and four pinned honesty tests (`guardrail-known-bad-fixtures`, `verification-receipt`, `vitest-worktree-exclusion`, `catch-log`) | sentinel-form exit evidence; commit-first fault injection with byte-identical restore; an uncaught injection is a stop signal |
 
-Read them with `veritas explain --file <path>` (or `--work-area product.src-ui.trust-surfaces` / `product.src-server.evidence-services`, the two work areas added for these surfaces — both routed to the lane their parent area already runs, so naming a surface adds guidance and no evidence command).
+Read them with `npx --no @kontourai/veritas explain --file <path>` (or `--work-area product.src-ui.trust-surfaces` / `product.src-server.evidence-services`, the two work areas added for these surfaces — both routed to the lane their parent area already runs, so naming a surface adds guidance and no evidence command).
 
 These add **no new gate**. These four rules' artifact assertions check the presence of named surfaces and
 pinned tests. Test behavior requires an actual execution selected by its lane;
@@ -83,7 +83,7 @@ one of their named files selects a focused Evidence Check through
 `evidenceCheckIds`, and a missing, skipped, or failed check blocks readiness.
 Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
 in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
-Use `veritas explain --file <path>` before editing a routed seam.
+Use `npx --no @kontourai/veritas explain --file <path>` before editing a routed seam.
 The pre-edit `gate:for` route presents matching guidance. Station's tracked
 `.codex/hooks.json` contains the Veritas Governance Kit's Codex `PreToolUse`
 definition. Tracked `.codex/config.toml` enables the hooks feature. Install the
@@ -112,10 +112,11 @@ The review ledger records document purpose separately from source review.
 
 `docs:truth:gate` already includes the ledger freshness test through
 `docs:foundations:test`. It is selected as required Veritas evidence, including
-through `ci:fast`'s readiness call and the pre-push hook. There, freshness is
+through required hosted `fast-checks-statics` and its `ci:fast` readiness call.
+There, freshness is
 scoped: a stale record blocks when the change's own diff touches its document,
 a recorded source or the record itself. In the merge queue, on `main` and in
-Nightly static verification the same test only reports staleness, so another
+Scheduled full qualification the same test only reports staleness, so another
 PR's change cannot dequeue this one; a Nightly sweep keeps one tracking issue
 for what remains. The separate same-repository PR source-scan job reports
 freshness too and is not a required status check. A normal reader build can
@@ -128,7 +129,7 @@ source drift. See [documentation maintenance](../docs/guides/documentation.md#ge
 None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
-Hosted `fast-checks` now aggregates an affected-test plan, one to four planned shards, and
+Hosted `fast-checks` now aggregates an affected-test plan, zero to four planned shards, and
 `fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
 scope and includes its Veritas readiness call. The required documentation
 evidence is unioned with default, routed or explicitly selected checks; it

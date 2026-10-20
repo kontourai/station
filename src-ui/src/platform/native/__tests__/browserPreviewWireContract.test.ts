@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 
 type WireVariant = {

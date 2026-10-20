@@ -25,9 +25,17 @@
  *
  * Every mutating call carries a `requestKey`. The key table
  * (`session-control-request-keys.ts`) makes a retry deliver once, and the
- * delivery seam (`session-message-delivery.ts`) decides whether the message
+ * delivery seam (`@kontourai/monument`) decides whether the message
  * starts a turn or steers the running one.
  */
+
+import {
+  deliverSessionMessage,
+  parseSessionDeliveryDecision,
+  type SessionMessageDelivery,
+  type SessionMessageDeliveryPorts,
+  type SessionSendMode,
+} from '@kontourai/monument';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type HostedTenantRegistry,
@@ -53,13 +61,6 @@ import {
   sessionControlRequestDigest,
 } from '../../services/orchestration/session-control-request-keys.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
-import {
-  deliverSessionMessage,
-  type SessionDeliveryBranch,
-  type SessionMessageDelivery,
-  type SessionMessageDeliveryPorts,
-  type SessionSendMode,
-} from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import {
   evaluateSessionWait,
@@ -302,7 +303,7 @@ function keyRefusal(
               success: false,
               code: 'request_key_caller_capacity',
               error:
-                'This session has too many requests still unresolved (indeterminate). Repeat those calls with their original requestKeys to resolve them before sending more.',
+                'This session has too many recent requests whose outcome is unknown (indeterminate). Repeat those calls with their original requestKeys to re-check them. A request that stays indeterminate stops counting against this limit seven days after it was first sent.',
             },
             429,
           )
@@ -310,7 +311,8 @@ function keyRefusal(
             {
               success: false,
               code: 'request_key_capacity',
-              error: 'Station is holding too many unexpired request keys.',
+              error:
+                'Station is holding too many recent request keys. Completed keys and indeterminate ones older than seven days do not count; try again later.',
             },
             429,
           );
@@ -322,17 +324,6 @@ const notFound = (c: Context) =>
     { success: false, code: 'session_not_found', error: 'Session not found' },
     404,
   );
-
-/** `start:<threadId>` / `steer:<threadId>`: the branch an attempt pinned. */
-function parseDecision(
-  decision: string | undefined,
-): { branch: SessionDeliveryBranch; threadId: string } | undefined {
-  if (!decision) return undefined;
-  const split = decision.indexOf(':');
-  const branch = decision.slice(0, split);
-  if (split < 1 || (branch !== 'start' && branch !== 'steer')) return undefined;
-  return { branch, threadId: decision.slice(split + 1) };
-}
 
 type SendAttempt = SessionControlAttempt<SendToSessionResult | RequestFailure>;
 
@@ -561,7 +552,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         sessionControlRequestDigest([body.sessionId, body.mode, body.text]),
         async (resume): Promise<SendAttempt> => {
           // A re-driven attempt acts on the Session its first attempt chose.
-          const pinned = parseDecision(resume.decision);
+          const pinned = parseSessionDeliveryDecision(resume.decision);
           const threadId = pinned?.threadId ?? target.threadId;
           // The pinned Session may no longer be the current one the scope
           // check ran on: it must pass the same checks before it is acted on.

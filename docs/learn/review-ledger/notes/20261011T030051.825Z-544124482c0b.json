@@ -1,0 +1,7 @@
+{
+  "revision": "e6debe6797162ee70053f5c115f9e2480f8ce032",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the three inherited cb877 nightly deployment entries and their exact deterministic JSON-to-Markdown projection. Entry validation and rendering match; linked workflow 38094285896 is completed/success at cb877, and the completed-startup fix is an ancestor. These are frozen upstream release records: this review does not renew artifact availability, installed/native behavior or qualification for the receiver merged head.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

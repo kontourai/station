@@ -1,0 +1,7 @@
+{
+  "revision": "b831b54ab203c25e76981a5965a436dd6e0f1aa4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rendered #3719 at b831b54ab203c25e76981a5965a436dd6e0f1aa4: created a real Project and two unassigned Tasks through authenticated APIs, kept both agentId and sessionId absent, and observed Continue Task · In review plus Recent work Task · To do, each with No agent assigned. Captured and inspected /tmp/lane8-desktop-dark.png, /tmp/lane8-desktop-light.png (1280x1000), /tmp/lane8-mobile-dark.png, /tmp/lane8-mobile-light.png (390x844 CSS pixels). Used existing data-theme styling for theme variants. Task title, assignment and status are legible with no row clipping at both widths; shared Idle lane heading remains. Stopped home19. Only one instance name was used; pre-capture startup needed correction for temporary-HOME mise trust and a commit-during-build identity mismatch, which safely stopped that attempt. No full gates, hosted checks, physical-device, or provider qualification.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

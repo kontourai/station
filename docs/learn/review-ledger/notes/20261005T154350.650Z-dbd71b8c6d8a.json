@@ -1,0 +1,7 @@
+{
+  "revision": "28e5469b332d7cdc0f2860edd37119c24f9f0820",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Checked resolver claims against project-resource-resolver.ts: the live identity check on every resolution route and start is unchanged (identity parameter defaults to verify); the list-read describeProjectRunLocation skips only the git remote read and never reports bound to a resolution consumer. The A3 note about listProjects workingDirectory consumers remains accurate for those consumers.","inputs":["docs/design/portable-project-identity.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

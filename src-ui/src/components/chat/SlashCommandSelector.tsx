@@ -43,9 +43,11 @@ export function SlashCommandSelector({
             ? 'Custom'
             : cmd.source === 'skill'
               ? 'Skill'
-              : cmd.source === 'builtin'
-                ? 'Platform'
-                : undefined,
+              : cmd.source === 'mcp-prompt'
+                ? 'MCP'
+                : cmd.source === 'builtin'
+                  ? 'Platform'
+                  : undefined,
       metadata: cmd,
     }));
   }, [query, commands]);

@@ -1,0 +1,7 @@
+{
+  "revision": "2488dbd1ca930ed20f2c2b641d4c7094e8e08a68",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after the outbox list's unconfirmed-row layout moved to class hooks in QueuedMessages.css; the composer design's delivery-state paragraph is unchanged and still accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.css"]}
+  ]
+}

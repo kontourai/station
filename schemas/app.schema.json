@@ -6,6 +6,9 @@
   "type": "object",
   "required": ["defaultModel", "invokeModel", "structureModel"],
   "properties": {
+    "reviewGuidesEnabled": { "type": "boolean", "default": false },
+    "reviewGuideModel": { "type": "string", "maxLength": 255 },
+    "reviewGuideInstructions": { "type": "string", "maxLength": 4000 },
     "region": {
       "type": "string",
       "description": "AWS region for Bedrock (e.g., us-east-1)",
@@ -189,9 +192,37 @@
       "enum": ["trace", "debug", "info", "warn", "error"],
       "description": "Minimum severity Station writes to its server logs."
     },
+    "telemetryTier": {
+      "type": "object",
+      "properties": {
+        "kontour": { "enum": ["off", "lite", "full"] },
+        "operator": { "enum": ["off", "lite", "full"] }
+      },
+      "additionalProperties": false
+    },
     "telemetryEnabled": {
       "type": "boolean",
-      "description": "Allow documented anonymous product usage telemetry when an endpoint is configured."
+      "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off both built-in publishers."
+    },
+    "productTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "productTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "otelTelemetryEndpoint": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https?://[^\\s?#@]+$"
+    },
+    "otelTelemetryKeyRef": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "mobileDeviceHubUrl": {
       "type": "string",
@@ -232,6 +263,10 @@
     "surfaceTrustFromVeritasEvidence": {
       "type": "boolean",
       "description": "Surface the trust bundle embedded in the latest Veritas evidence record as a project Trust bundle. Default on."
+    },
+    "attachedSessionsOutsideProjects": {
+      "type": "boolean",
+      "description": "Follow Claude Code and Codex conversations found on this machine whose folder belongs to no project, listed under No project in Activity. Default on; hosted Stations never follow them."
     },
     "knowledgeStores": {
       "type": "boolean",

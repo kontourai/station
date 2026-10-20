@@ -7,6 +7,7 @@ import type { ChatSession } from '../types';
 const fetchCapability = vi.fn();
 const fetchWindow = vi.fn();
 const fetchConversationWindow = vi.fn();
+const invalidateCapability = vi.fn();
 // Models the SDK budget contract the production module owns: three automatic
 // recoveries per host/session, replenished only by an explicit reset. An
 // always-true mock here silently disables the cap the recovery tests assert.
@@ -50,6 +51,8 @@ vi.mock('@kontourai/station-sdk', async () => ({
   resetSessionEventWindowCapabilityRecovery: (...args: unknown[]) =>
     resetRecovery(...(args as [string, string])),
   resetSessionEventWindowCapabilityCache: vi.fn(),
+  invalidateSessionEventWindowCapabilityCache: (...args: unknown[]) =>
+    invalidateCapability(...args),
   SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS: 30_000,
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
@@ -157,6 +160,40 @@ describe('useActiveChatTranscript', () => {
           .map((row) => row.content)
           .join(''),
       ).toBe('AB');
+      const messages = view.result.current.messages;
+      const events = view.result.current.events;
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e4', 'content.text-delta', {
+              threadId: 'another-thread',
+              delta: 'unrelated',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          4,
+        ),
+      );
+      expect(view.result.current.messages).toBe(messages);
+      expect(view.result.current.events).toBe(events);
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e5', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-fresh',
+              itemId: 'answer',
+              delta: 'C',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          5,
+        ),
+      );
+      expect(
+        view.result.current.messages.find((row) => row.role === 'assistant')
+          ?.content,
+      ).toBe('ABC');
     } finally {
       view.unmount();
       activeChatsStore.removeChat(id);
@@ -1081,6 +1118,77 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
+  test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+        event('e4', 'content.text-delta', { turnId: 'turn-1', delta: 'two' }),
+        event('e5', 'turn.completed', { turnId: 'turn-1' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(3));
+    expect(
+      result.current.messages.map((message) => [
+        message.id,
+        message.role,
+        message.contentParts?.map((part) => `${part.type}:${part.content}`),
+      ]),
+    ).toEqual([
+      ['e1:user', 'user', ['text:go']],
+      ['e1:assistant', 'assistant', ['text:onetwo']],
+      [
+        'e3:transcript-marker',
+        'system',
+        ['transcript-marker:Context compacted during this turn'],
+      ],
+    ]);
+  });
+
+  test('station#3415: a marker inside the open turn renders nothing above the streaming turn', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'go' }),
+        event('e2', 'content.text-delta', { turnId: 'turn-1', delta: 'one' }),
+        event('e3', 'extension.notification', {
+          turnId: 'turn-1',
+          namespace: 'codex-rollout',
+          type: 'context-compacted',
+          payload: { source: 'provider-event' },
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', {
+        ...baseSession,
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-1',
+      } as ChatSession),
+    );
+    await waitFor(() =>
+      expect(result.current.messages[0]?.contentParts?.[0]?.content).toBe('go'),
+    );
+    expect(
+      result.current.messages.filter((message) => message.role === 'system'),
+    ).toEqual([]);
+  });
+
   test('preserves durable tool-result event identity through replay mapping', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
@@ -1142,6 +1250,83 @@ describe('useActiveChatTranscript', () => {
     );
     expect(result.current.upgradeRequired).toBe(false);
     expect(fetchWindow).not.toHaveBeenCalled();
+  });
+
+  test('superseded capability reads cannot consume recovery or leave a retry after unmount', async () => {
+    vi.useFakeTimers();
+    let finish!: (value: boolean | undefined) => void;
+    const capability = new Promise<boolean | undefined>((resolve) => {
+      finish = resolve;
+    });
+    fetchCapability.mockReturnValue(capability);
+    const { result, unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    act(() => {
+      void result.current.reload();
+      void result.current.reload();
+    });
+    await act(async () => finish(undefined));
+    expect(claimRecovery).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    const requests = fetchCapability.mock.calls.length;
+    unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(fetchCapability).toHaveBeenCalledTimes(requests);
+  });
+
+  test('manual history Retry keeps failed observation unavailable until the recovered transcript arrives', async () => {
+    let cachedFailure = true;
+    fetchCapability.mockImplementation(async () =>
+      cachedFailure ? undefined : true,
+    );
+    invalidateCapability.mockImplementation(() => {
+      cachedFailure = false;
+    });
+    const recoveredWindow = {
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', {
+          turnId: 'turn-1',
+          prompt: 'Recovered chat',
+        }),
+      ],
+    };
+    let resolveRecovery!: (page: typeof recoveredWindow) => void;
+    const recovery = new Promise<typeof recoveredWindow>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    fetchWindow.mockReturnValue(recovery);
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.error).toBeDefined());
+    expect(fetchWindow).not.toHaveBeenCalled();
+    act(() => {
+      result.current.reload();
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    await act(async () => {
+      resolveRecovery(recoveredWindow);
+      await recovery;
+    });
+    await waitFor(() =>
+      expect(
+        result.current.messages.some(
+          (message) => message.content === 'Recovered chat',
+        ),
+      ).toBe(true),
+    );
+    expect(result.current.error).toBeUndefined();
+    invalidateCapability.mockReset();
   });
 
   test('reports a responding host without the capability as requiring an upgrade', async () => {
@@ -2564,6 +2749,126 @@ describe('useActiveChatTranscript', () => {
       await Promise.resolve();
     });
     vi.unstubAllGlobals();
+  });
+
+  // An ACP `session/load` history replay was once persisted as turn-less
+  // content between the resumed `session.started` and the next turn. Shapes
+  // follow the stored events (content scrubbed); the replayed row must not
+  // sink below the newer turns.
+  test('a stored resume replay stays above the turns that follow it', async () => {
+    const acp = (
+      sequence: number,
+      createdAt: string,
+      fields: Record<string, unknown>,
+    ) => ({
+      sequence,
+      event: {
+        eventId: `acp-${sequence}`,
+        provider: 'acp',
+        threadId: 'thread-1',
+        createdAt,
+        ...fields,
+      },
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 12,
+      hasMore: false,
+      events: [
+        acp(1, '2026-10-13T20:30:00.000Z', {
+          method: 'turn.started',
+          turnId: 'turn-a',
+          prompt: 'first question',
+          attachments: [],
+        }),
+        acp(2, '2026-10-13T20:30:05.000Z', {
+          method: 'content.text-delta',
+          turnId: 'turn-a',
+          itemId: 'msg_a',
+          delta: 'first answer',
+        }),
+        acp(3, '2026-10-13T20:30:06.000Z', {
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        acp(4, '2026-10-13T23:35:07.000Z', {
+          method: 'session.started',
+          sessionId: 'thread-1',
+          initialState: 'created',
+        }),
+        acp(5, '2026-10-13T23:35:08.901Z', {
+          method: 'content.reasoning-delta',
+          itemId: 'msg_a',
+          delta: 'replayed thinking',
+        }),
+        acp(6, '2026-10-13T23:35:08.913Z', {
+          method: 'content.text-delta',
+          itemId: 'msg_a',
+          delta: 'replayed first answer',
+        }),
+        acp(7, '2026-10-13T23:35:08.914Z', {
+          method: 'tool.started',
+          itemId: 'call_replay',
+          toolCallId: 'call_replay',
+          toolName: 'list_projects',
+          toolKind: 'other',
+          arguments: {},
+        }),
+        acp(8, '2026-10-13T23:35:08.915Z', {
+          method: 'tool.completed',
+          itemId: 'call_replay',
+          toolCallId: 'call_replay',
+          toolName: 'list_projects',
+          toolKind: 'other',
+          status: 'success',
+          output: '[]',
+        }),
+        acp(9, '2026-10-13T23:35:10.456Z', {
+          method: 'session.configured',
+          sessionId: 'thread-1',
+        }),
+        acp(10, '2026-10-13T23:35:10.666Z', {
+          method: 'turn.started',
+          turnId: 'turn-b',
+          prompt: 'second question',
+          attachments: [],
+        }),
+        acp(11, '2026-10-13T23:35:22.000Z', {
+          method: 'content.text-delta',
+          turnId: 'turn-b',
+          itemId: 'msg_b',
+          delta: 'second answer',
+        }),
+        acp(12, '2026-10-13T23:35:59.934Z', {
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(5));
+
+    const rows = result.current.messages.map((row) => ({
+      role: row.role,
+      turnId: row.turnId,
+      content: row.content,
+    }));
+    expect(rows.map((row) => row.content)).toEqual([
+      'first question',
+      'first answer',
+      'replayed first answer',
+      'second question',
+      'second answer',
+    ]);
+    expect(rows.at(-1)).toEqual({
+      role: 'assistant',
+      turnId: 'turn-b',
+      content: 'second answer',
+    });
   });
 
   test('decorates a retained live answer after transcript merging', async () => {

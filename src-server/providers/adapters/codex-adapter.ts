@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import {
@@ -12,26 +13,39 @@ import type {
   ConnectionQuotaSnapshotUpdate,
 } from '@kontourai/station-contracts/connection-quota';
 import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
+  ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
 } from '@kontourai/station-contracts/provider';
 import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import {
-  harnessAnswerTexts,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  assertRequiredConfinementObserved,
+  observedConfinementRecord,
+} from '../../security/confinement/confinement-provider.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -77,6 +91,7 @@ import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   decodeChatAttachments,
   rejectFileAttachments,
@@ -87,7 +102,10 @@ import {
 } from '../sessions/session-source-affinity.js';
 import { readLeadingLine } from '../sessions/transcript-file-io.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import {
   codexRunningChildTurnId,
   codexRunningChildTurns,
@@ -125,12 +143,21 @@ import {
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
+  describeCodexSandboxGap,
+  observeCodexSandboxPosture,
+  requiredByReportedPolicy,
+} from './codex-confinement.js';
+import {
   type CodexToolServerSkip,
   resolveCodexMcpServers,
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
-import { codexQuestionnaire } from './harness-questions.js';
+import { codexAnswers, codexInputRequest } from './harness-questions.js';
+import {
+  nativeResumeBindingKey,
+  nativeSessionIdentityKey,
+} from './native-resume-binding.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
@@ -146,14 +173,17 @@ interface CodexAdapterOptions {
   /**
    * App-home profile env (archive#896 wave 2, agent-engine-unification.md §6.1's
    * overlay model, channel 2) — `undefined` when the codex
-   * connection has not opted in (`config.useAppHome`) or on any resolution
-   * failure; the caller degrades to `undefined` rather than throwing.
-   * Applied at `startSession` only — model discovery deliberately keeps
-   * today's byte-identical global env (Ambiguity C).
+   * connection has not opted in (`config.useAppHome`). For a selected
+   * credential profile it is the profile's env overlay under its `CODEX_HOME`
+   * (#2966), and a failure throws `CredentialProfileEnvironmentError`,
+   * which `resolveAppHomeEnv` never degrades. Applied at `startSession` and
+   * quota reads only — model discovery deliberately keeps today's
+   * byte-identical global env (Ambiguity C).
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
   ) => Promise<ResolvedAppHome | undefined>;
+  nativeSessionOwnership?: NativeSessionOwnership;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -168,6 +198,7 @@ interface CodexAdapterOptions {
    * credentials, so it never blocks a spawn.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Readiness seams, injectable so the installed branch and the probe's
    * environment are exercised on any host (a host without `codex` would
@@ -695,6 +726,12 @@ export function projectCodexQuotaSnapshot(
 export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
+  private readonly continuity: ProviderContinuityCapabilities = {
+    resume: 'same-session',
+    fork: 'none',
+    rewind: 'none',
+    resumeIdentity: 'require-match',
+  };
   readonly metadata = {
     // #2880: Codex's `serverRequest/resolved` acknowledges the request closed.
     approvalAcknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
@@ -710,7 +747,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
-    continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
+    durability: STEERING_ENGINE_DURABILITY,
+    continuity: this.continuity,
     connectionId: engineConnectionId('codex'),
     builtin: true,
     engineId: engineId('codex'),
@@ -773,6 +811,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   private quotaSnapshotGeneration = 0;
 
   constructor(private readonly options: CodexAdapterOptions = {}) {
+    if (options.nativeSessionOwnership)
+      this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
       options.processFactory ??
       ((env, extraArgs) => createCodexProcess(undefined, env, extraArgs));
@@ -839,7 +879,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     // station#2072: the quota probe is an app-server child of this
     // connection too — it sees the connection env merged under the
     // resolved profile home, same precedence as the session spawn.
-    const connectionEnvForQuota = await this.resolveConnectionEnv();
+    const quotaLaunch = await this.resolveConnectionLaunch();
+    const connectionEnvForQuota = quotaLaunch.env;
     let processHandle: ReturnType<typeof createCodexProcess> | undefined;
     const pending = new Map<
       string,
@@ -852,11 +893,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
     let stdout: ReturnType<typeof createInterface> | undefined;
     try {
-      processHandle = this.processFactory(
-        appHomeEnv
-          ? { ...connectionEnvForQuota, ...appHomeEnv }
-          : connectionEnvForQuota,
-      );
+      const quotaEnv = appHomeEnv
+        ? { ...connectionEnvForQuota, ...appHomeEnv }
+        : connectionEnvForQuota;
+      processHandle = quotaLaunch.args.length
+        ? this.processFactory(quotaEnv, quotaLaunch.args)
+        : this.processFactory(quotaEnv);
       stdout = createInterface({ input: processHandle.stdout });
       stdout.on('line', (line) => {
         let message: any;
@@ -1175,10 +1217,13 @@ export class CodexAdapter implements ProviderAdapterShape {
     // The credential-profile app-home env stays session-scoped (archive#896
     // pin above) — profile homes are per-account credential state, the
     // connection env is connection-level routing.
-    const connectionEnv = await this.resolveConnectionEnv();
-    const processHandle = connectionEnv
-      ? this.processFactory(connectionEnv)
-      : this.processFactory();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
+    const processHandle = connectionLaunch.args.length
+      ? this.processFactory(connectionEnv, connectionLaunch.args)
+      : connectionEnv
+        ? this.processFactory(connectionEnv)
+        : this.processFactory();
     let termination: Promise<void> | null = null;
     const terminate = () => {
       termination ??= terminateCodexProcess(processHandle);
@@ -1351,6 +1396,12 @@ export class CodexAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    if (
+      input.requireNativeResumeIdentity &&
+      !isResumeCursor(input.resumeCursor)
+    ) {
+      throw new Error('An exact native resume requires a valid Codex cursor.');
+    }
     return this.startWithReservation(input);
   }
 
@@ -1387,6 +1438,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
   ): Promise<void> {
+    this.options.nativeSessionOwnership?.assertMutable(threadId);
     const source = this.validateDiscardRecovery(threadId, recovery);
     const cursor = isResumeCursor(recovery?.resumeCursor)
       ? recovery.resumeCursor
@@ -1714,6 +1766,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&
@@ -1757,12 +1810,52 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the ambient env. An explicit configHome lands here exactly when no
     // profile/affinity home did (the runtime resolves only one of
     // configHome/useAppHome into these layers).
-    const connectionEnv = await this.resolveConnectionEnv();
+    const connectionLaunch = await this.resolveConnectionLaunch();
+    const connectionEnv = connectionLaunch.env;
     const spawnEnv =
       connectionEnv && appHomeEnv
         ? { ...connectionEnv, ...appHomeEnv }
         : (connectionEnv ?? appHomeEnv);
-    const processHandle = this.processFactory(spawnEnv, toolServers.configArgs);
+    const configurationHome =
+      spawnEnv?.CODEX_HOME ??
+      process.env.CODEX_HOME ??
+      join(homedir(), '.codex');
+    const ownershipBindingKey = nativeResumeBindingKey(
+      this.provider,
+      configurationHome,
+      null,
+    );
+    const resumeBindingKey = sourceAffinity
+      ? undefined
+      : nativeResumeBindingKey(
+          this.provider,
+          configurationHome,
+          resolvedHome?.profileRef ?? null,
+        );
+    if (
+      input.nativeResumeBindingKey &&
+      input.nativeResumeBindingKey !== resumeBindingKey
+    ) {
+      throw new Error(
+        'The native conversation belongs to a different engine home or credential profile.',
+      );
+    }
+    if (resumeCursor)
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(
+          this.provider,
+          ownershipBindingKey,
+          resumeCursor.codexThreadId,
+        ),
+        input.threadId,
+        Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
+      );
+    const processHandle = this.processFactory(
+      spawnEnv,
+      connectionLaunch.args.length
+        ? [...connectionLaunch.args, ...(toolServers.configArgs ?? [])]
+        : toolServers.configArgs,
+    );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -1801,6 +1894,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.transport.handleProcess(record);
 
     try {
+      assertExecutionOverrideDelivery(
+        input.metadata,
+        toolServers.report?.undelivered ?? [],
+      );
       await this.transport.sendRequest(record, 'initialize', {
         clientInfo: {
           name: 'station',
@@ -1827,15 +1924,29 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.reviewIsolation,
         input.confinement,
       );
+      // #2494 D1: a workspace session Station sends no mode to still asks
+      // Codex for its sandbox at thread level, with `approvalPolicy` left
+      // unset so Codex's own configuration keeps governing approvals. Codex
+      // configured `never` + `danger-full-access` then runs confined from the
+      // start instead of being refused; only a Codex that still reports
+      // something wider is refused below.
+      const sandboxRequest =
+        approvalKnobs?.sandbox ??
+        (input.confinementPlan?.policyBasis === 'workspace-floor'
+          ? ('workspace-write' as const)
+          : undefined);
       const approvalWire = approvalKnobs
         ? {
             approvalPolicy: approvalKnobs.approvalPolicy,
             sandbox: approvalKnobs.sandbox,
           }
-        : {};
+        : sandboxRequest
+          ? { sandbox: sandboxRequest }
+          : {};
       const result = adoption
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
+            ...(sandboxRequest ? { sandboxRequest } : {}),
             serviceTier: modelOptions.fastMode ? 'fast' : null,
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
@@ -1865,7 +1976,81 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      if (
+        resumeCursor &&
+        (input.requireNativeResumeIdentity ||
+          this.options.nativeSessionOwnership) &&
+        codexThread.id !== resumeCursor?.codexThreadId
+      ) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          ...providerFailure('session_gone'),
+          severity: 'error',
+          code: ENGINE_SESSION_BINDING_DEAD_CODE,
+          retriable: false,
+          message:
+            'The engine opened a different native conversation; the requested resume was refused.',
+          metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new Error(
+          'The engine opened a different native conversation; the requested resume was refused.',
+        );
+      }
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      // #2494: the confinement record comes from Codex's response, never
+      // from the sandbox Station sent. A start whose policy requires
+      // confinement and whose engine does not report it applied is refused
+      // here, before it is claimed or announced; the catch below stops the
+      // process. The requirement also follows the approval policy Codex
+      // reports: a workspace session Codex runs at `never` (its own
+      // configuration, when Station sent no knobs) requires confinement too.
+      const plan = requiredByReportedPolicy(
+        input.confinementPlan,
+        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+      );
+      const sandboxEvidence = {
+        requested: sandboxRequest,
+        reported: reportedSandbox,
+        workspace: input.cwd,
+        permittedRoots: [engineSpawnTmpDirPath()],
+      };
+      const confinementRecord = plan
+        ? observedConfinementRecord(
+            plan,
+            plan.mechanism === 'codex-sandbox'
+              ? observeCodexSandboxPosture(sandboxEvidence)
+              : 'configured-but-failed',
+          )
+        : undefined;
+      // INVARIANT (#2494 D5): this refusal runs before `session.started` is
+      // published below. `ConfinementRefusedError` is a
+      // `SessionStartRefusedError`, whose contract lets the start boundary
+      // settle the thread only because no session was announced: moving this
+      // after the publish would leave an announced session with no end.
+      if (confinementRecord)
+        assertRequiredConfinementObserved(
+          confinementRecord,
+          this.provider,
+          describeCodexSandboxGap(sandboxEvidence),
+        );
       this.transport.setCodexThreadId(record, codexThread.id);
+      this.options.nativeSessionOwnership?.claim(
+        nativeSessionIdentityKey(
+          this.provider,
+          ownershipBindingKey,
+          codexThread.id,
+        ),
+        input.threadId,
+      );
       const nativeResumeCursor = {
         codexThreadId: codexThread.id,
         ...(sourceAffinity
@@ -1883,15 +2068,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
-      // #2559: the sandbox the thread actually runs in. Codex reports it on
-      // start, resume and fork alike; when it does not, what Station asked
-      // for is the best-known value.
-      const reportedSandbox = readCodexSandboxPolicy(
-        (result as { sandbox?: unknown } | undefined)?.sandbox,
-      );
       record.threadSandbox = reportedCodexThreadSandbox(
         reportedSandbox,
-        approvalKnobs?.sandbox,
+        sandboxRequest,
       );
       // #2559 R5: what `session.configured` reports is the sandbox Codex
       // said the thread runs in; the requested mode only when it said
@@ -1902,6 +2081,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
+        modelRoute: connectionLaunch.route,
         status: 'ready',
         model: reportedModelFromInit ?? input.modelId,
         updatedAt: this.now().toISOString(),
@@ -1922,6 +2102,9 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          ...(confinementRecord
+            ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
+            : {}),
           ...(adoption
             ? {
                 continuation: 'native-fork',
@@ -1942,6 +2125,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        [NATIVE_RESUME_BINDING_METADATA_KEY]: resumeBindingKey,
+        [NATIVE_RESUME_IDENTITY_METADATA_KEY]:
+          resumeCursor?.codexThreadId === codexThread.id
+            ? 'matched'
+            : undefined,
         usageAccountKey: resolvedHome
           ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
           : undefined,
@@ -2000,6 +2188,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // resolution-stage undelivered entries session-agent-resolution.ts
       // already recorded, so passing the previous metadata as inputMetadata
       // preserves that report.
+      baseConfiguredMetadata.modelRoute = connectionLaunch.route;
       const configuredMetadata = toolServers.report
         ? mergeCapabilityDeliveryMetadata(
             baseConfiguredMetadata,
@@ -2121,6 +2310,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption: CodexNativeAdoption,
     execution: {
       approvalKnobs?: CodexExecutionKnobs;
+      /** #2494 D1: the thread-level sandbox asked for when no knobs are sent. */
+      sandboxRequest?: CodexExecutionKnobs['sandbox'];
       serviceTier: string | null;
       config?: Record<string, unknown>;
     },
@@ -2141,7 +2332,9 @@ export class CodexAdapter implements ProviderAdapterShape {
               approvalPolicy: execution.approvalKnobs.approvalPolicy,
               sandbox: execution.approvalKnobs.sandbox,
             }
-          : {}),
+          : execution.sandboxRequest
+            ? { sandbox: execution.sandboxRequest }
+            : {}),
         serviceTier: execution.serviceTier,
         ...(execution.config ? { config: execution.config } : {}),
         ephemeral: false,
@@ -2360,9 +2553,19 @@ export class CodexAdapter implements ProviderAdapterShape {
    * block a spawn (the credential-profile branch of `resolveAppHomeEnv`
    * above stays the only fail-closed one).
    */
+  private async resolveConnectionLaunch(): Promise<
+    ReturnType<typeof engineProxyLaunch>
+  > {
+    if (this.options.getConnectionLaunch)
+      return this.options.getConnectionLaunch();
+    return { env: await this.resolveConnectionEnv(), args: [] };
+  }
+
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {
@@ -2376,6 +2579,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
     const turnStartedAt = Date.now();
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -2904,19 +3108,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
 
     if (pending.method === 'item/tool/requestUserInput') {
-      const questionnaire = codexQuestionnaire(pending.payload);
+      const form = codexInputRequest(pending.payload);
       if (
-        !questionnaire ||
+        !form ||
         !context?.expectedRequestEventId ||
         context.expectedRequestEventId !== pending.openedEventId ||
         decision === 'acceptForSession'
       )
         throw new Error('Inspect this question before answering it.');
-      const answers =
+      const content =
         decision === 'accept'
-          ? validateHarnessQuestionAnswers(questionnaire, context?.answers)
+          ? validateInputRequestContent(form, context?.inputContent)
           : undefined;
-      if (decision !== 'accept' && context?.answers !== undefined)
+      if (decision !== 'accept' && context?.inputContent !== undefined)
         throw new Error('A cancelled question cannot carry answers.');
       record.pendingApprovals.delete(requestId);
       this.transport.replyToApproval(record, {
@@ -2925,20 +3129,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         method: pending.method,
         ...(pending.blocking === false ? { blocking: false } : {}),
         result: {
-          answers: answers
-            ? Object.fromEntries(
-                questionnaire.questions.map((question) => [
-                  question.id,
-                  { answers: harnessAnswerTexts(question, answers) },
-                ]),
-              )
-            : {},
+          answers: content ? codexAnswers(form, content) : {},
         },
         status: mapApprovalResolutionStatus(decision),
       });
       return;
     }
-    if (context?.answers !== undefined)
+    if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
     const outcome = resolveApprovalOutcome(
@@ -2974,6 +3171,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     // needs its station-control MCP token; a session that never had one is
     // a no-op (revokeStationControlMcpToken tolerates an unknown id).
     this.options.revokeStationControlMcpAuth?.(threadId);
+    this.options.nativeSessionOwnership?.retired(threadId);
+  }
+
+  async retireSession(threadId: string) {
+    try {
+      await this.stopSession(threadId);
+      return { status: 'retired' as const };
+    } catch {
+      return { status: 'indeterminate' as const };
+    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {

@@ -181,17 +181,38 @@ describe('KnowledgeFileTransactions', () => {
   });
 
   test('every writable knowledge adapter uses the shared seam and owns no raw mutation calls', async () => {
-    for (const file of [
-      'src-server/knowledge-store/adapters/default-store.ts',
-      'src-server/knowledge-store/adapters/obsidian-store.ts',
-      'src-server/services/knowledge/knowledge-storage.ts',
-      'src-server/services/knowledge/knowledge-documents.ts',
-    ]) {
+    for (const [file, seam] of [
+      [
+        'src-server/knowledge-store/adapters/default-store.ts',
+        /new KnowledgeFileTransactions\(this\.root\)/,
+      ],
+      [
+        'src-server/knowledge-store/adapters/obsidian-store.ts',
+        /new KnowledgeFileTransactions\(this\.root\)/,
+      ],
+      // Legacy project documents use ProjectFileTransactions' document
+      // capability, so the store adapters' engine can leave Station alone.
+      [
+        'src-server/services/knowledge/knowledge-storage.ts',
+        /new ProjectFileTransactions\(input\.dataDir\)\.(?:mutate|read)Documents\(/,
+      ],
+      [
+        'src-server/services/knowledge/knowledge-documents.ts',
+        /mutateKnowledgeDocuments/,
+      ],
+    ] as const) {
       const source = await readFile(join(process.cwd(), file), 'utf8');
-      expect(source).toMatch(
-        /new KnowledgeFileTransactions\((?:this\.root|input\.storageDir|storageDir)\)|mutateKnowledgeDocuments/,
-      );
+      expect(source).toMatch(seam);
     }
+    expect(
+      await readFile(
+        join(
+          process.cwd(),
+          'src-server/services/knowledge/knowledge-storage.ts',
+        ),
+        'utf8',
+      ),
+    ).not.toMatch(/KnowledgeFileTransactions/);
 
     // Derived, not listed: any knowledge module that imports a file mutation
     // from `fs` (sync or promise form) bypasses the seam, whether or not it

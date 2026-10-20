@@ -1,0 +1,7 @@
+{
+  "revision": "33e2bc41d87db6264f19526830f8c3196b043a27",
+
+  "notes": [
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed against this branch's change: apply-android-native-bootstrap.mjs now keeps the onCreate hook and inset bridge, strips the legacy Keyring.initializeNdkContext call and bridge, and refuses any other ndk_context initializer (tao 0.37 ndk_glue initializes it; ndk-context 0.1.1 asserts once). build-android.yml now runs reset-android-generated-project.mjs before init. The header's claim that Android generation owns backup exclusions is unchanged; the record never described ndk_context initialization. No prose change.","inputs":["docs/design/mobile-credential-authority.md","scripts/apply-android-native-bootstrap.mjs"]}
+  ]
+}

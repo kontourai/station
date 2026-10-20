@@ -1,12 +1,14 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
   type EngineId,
   PROVIDER_CODEX,
 } from './provider.js';
+import type { ProviderFailure } from './provider-failure.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -365,6 +367,15 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
   prompt?: string;
+  /**
+   * The idempotency key of the send this turn came from
+   * (`OrchestrationSendTurnInput.clientTurnId`), stamped by Station when the
+   * accepted send produced this event — never by an adapter. Lets the sending
+   * client match its own message to the turn exactly. Absent on events
+   * persisted before it existed, on steers, and on turns no keyed send
+   * produced (an engine-opened turn, another app's transcript).
+   */
+  clientTurnId?: string;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
@@ -396,6 +407,14 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.completed';
   turnId: string;
   finishReason?: 'stop' | 'tool-calls' | 'max-tokens' | 'cancelled' | 'other';
+  /**
+   * #354: the engine's own stop reason, carried only when `finishReason`'s
+   * shared vocabulary cannot express it (it then reads `'other'`). Opaque
+   * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
+   * which would otherwise be indistinguishable from any other `'other'`
+   * stop. It does not change the turn's outcome: the turn still completed.
+   */
+  stopReason?: string;
   outputText?: string;
   /**
    * station#1182: additive, back-compat (absent on every event persisted
@@ -597,7 +616,11 @@ export interface ToolOutputReceipt {
 }
 
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
+  /** Bounded page display reference retained independently of output excerpts. */
+  htmlReply?: HtmlReplyReference;
   method: 'tool.completed';
+  /** Station stamps this from an already-open tool definition, never from result metadata. */
+  mcpAppResourceUri?: string;
   itemId: string;
   toolCallId: string;
   toolName: string;
@@ -790,7 +813,10 @@ export interface RequestDeliveryEvent extends CanonicalRuntimeEventBase {
   engineStatus?: ApprovalStatus;
 }
 
-export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
+/** Stored events and third-party plugins may predate failure classification. */
+export interface RuntimeErrorEvent
+  extends CanonicalRuntimeEventBase,
+    Partial<ProviderFailure> {
   method: 'runtime.error';
   severity: Extract<RuntimeSeverity, 'error'>;
   message: string;
@@ -1251,3 +1277,16 @@ export type CanonicalRuntimeEvent =
   | ExtensionEvent
   | ChildWorkUpdatedEvent
   | ConversationForkedEvent;
+
+/** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
+export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;
+
+/** A session-source fragment whose emitter supplies the common envelope. */
+export type ProviderRuntimeErrorBody = Omit<
+  ProviderRuntimeErrorEvent,
+  'eventId' | 'provider' | 'threadId' | 'createdAt'
+>;
+
+export type ProviderRuntimeEvent =
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
+  | ProviderRuntimeErrorEvent;

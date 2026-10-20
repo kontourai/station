@@ -1,0 +1,7 @@
+{
+  "revision": "236da2b7338eb40434c59612ae9e410aaea5066a",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the Agent guide delta: action descriptions move to named disclosures and approvals are inline. Persisted Agent IDs, engine connection IDs and schema behavior are unchanged, so the supported-surface inventory remains accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]}
+  ]
+}

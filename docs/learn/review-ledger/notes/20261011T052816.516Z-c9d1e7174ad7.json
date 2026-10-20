@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#463: station monitoring stats/metrics print the raw route JSON (surfaces.ts requestAndPrint); the CLI reference describes only the command shapes, which are unchanged.","inputs":["docs/reference/cli.md","src-server/routes/operations/monitoring.ts"]}
+  ]
+}

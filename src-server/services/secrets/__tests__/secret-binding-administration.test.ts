@@ -9,6 +9,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SecretRunner } from '@kontourai/station-contracts/datum-secret-reference';
+import type {
+  CredentialOwner,
+  TelemetryDestinationGrant,
+} from '@kontourai/station-contracts/secret-binding';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 
@@ -43,6 +47,9 @@ import {
   FileSecretBindingAdministration,
   SecretBindingConflictError,
   SecretBindingIntegrationService,
+  SecretBindingNotFoundError,
+  SecretBindingPersonCreateError,
+  SecretBindingPersonGrantError,
   SecretBindingResolutionError,
 } from '../secret-binding-administration.js';
 
@@ -63,6 +70,211 @@ async function home(): Promise<string> {
 afterEach(async () => {
   await Promise.all(
     homes.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
+
+describe('instance telemetry destination authority', () => {
+  const product: TelemetryDestinationGrant = {
+    kind: 'instance-telemetry-destination',
+    transport: 'product',
+    destination: 'https://receiver.test/v1/product/events',
+  };
+  test('an exact transport/destination grant persists without crossing MCP or ACP authority and revocation fences a captured key', async () => {
+    const root = await home();
+    const reads = vi.fn(() => 'private-product-material');
+    const audit = vi.fn();
+    const options = {
+      secretRunner: { ...runner, readKeychain: reads },
+      environment: { PRODUCT_KEY: 'private-product-material' },
+      logger: { info: audit },
+    };
+    const service = new FileSecretBindingAdministration(root, options);
+    await service.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 1,
+    });
+    const reopened = new FileSecretBindingAdministration(root, options);
+    for (const [transport, destination] of [
+      ['otel', product.destination],
+      ['product', 'https://other-receiver.test/v1/product/events'],
+      ['product', 'https://receiver.test/v1/product/probes'],
+      ['product', 'https://receiver.test/v1/product/events/'],
+    ] as const)
+      await expect(
+        reopened.resolveForTelemetry({
+          id: 'product-source',
+          transport,
+          destination,
+        }),
+      ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    await expect(
+      reopened.resolveForIntegration({
+        integrationId: 'product-source',
+        secretEnvRefs: { TOKEN: 'product-source' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await expect(
+      reopened.resolveForAcpProvider({
+        connectionId: 'product-source',
+        providerId: 'main',
+        secretHeaderRefs: { 'x-api-key': 'product-source' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    const resolved = await reopened.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    expect(resolved.key).toBe('private-product-material');
+    expect(resolved.revision).toBe(2);
+    expect(resolved.assertCurrent).not.toThrow();
+    await reopened.revoke({ id: 'product-source', expectedRevision: 2 });
+    expect(resolved.assertCurrent).toThrow(SecretBindingResolutionError);
+    await expect(
+      reopened.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'binding_revoked' });
+    expect(reads).not.toHaveBeenCalled();
+    const document = await readFile(
+      join(root, 'security', 'secret-bindings.json'),
+      'utf8',
+    );
+    expect(document).not.toContain('private-product-material');
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(
+      'private-product-material',
+    );
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(
+      'https://receiver.test',
+    );
+    expect(
+      (await reopened.get('product-source'))?.telemetryDestinationGrants,
+    ).toEqual([product]);
+  });
+
+  test('ungrant and replacement invalidate existing material and a person-owned record cannot supply the shared emitter', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { PRODUCT_KEY: 'product-material' },
+    });
+    await service.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 1,
+    });
+    const first = await service.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    await service.ungrant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 2,
+    });
+    expect(first.assertCurrent).toThrow();
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    const documentPath = join(root, 'security', 'secret-bindings.json');
+    const afterRemoval = JSON.parse(await readFile(documentPath, 'utf8'));
+    expect(afterRemoval.bindings['product-source']).not.toHaveProperty(
+      'telemetryDestinationGrants',
+    );
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 3,
+    });
+    const beforeReplacement = await service.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    await service.replace({
+      id: 'product-source',
+      name: 'Replaced source',
+      authRef: { env: 'PRODUCT_KEY' },
+      expectedRevision: 4,
+    });
+    expect(beforeReplacement.assertCurrent).toThrow();
+    const legacyPerson = JSON.parse(await readFile(documentPath, 'utf8'));
+    legacyPerson.bindings['product-source'].owner = {
+      kind: 'principal',
+      principalId: 'human:tailscale-serve:alice',
+    };
+    await writeFile(documentPath, JSON.stringify(legacyPerson), {
+      mode: 0o600,
+    });
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    await expect(
+      service.grant({
+        id: 'product-source',
+        grant: { ...product, transport: 'otel' },
+        expectedRevision: 5,
+        viewer: { principalId: 'human:tailscale-serve:alice' },
+      }),
+    ).rejects.toBeInstanceOf(SecretBindingPersonGrantError);
+  });
+
+  test.each([
+    'https://user:secret@receiver.test/events',
+    'https://receiver.test/events?key=secret',
+    'https://receiver.test/events#secret',
+    'file:///tmp/receiver',
+    'not-a-url',
+  ])(
+    'refuses unsafe telemetry destination %s without persisting a grant',
+    async (destination) => {
+      const root = await home();
+      const service = new FileSecretBindingAdministration(root);
+      await service.create({
+        id: 'product-source',
+        name: 'Product source',
+        authRef: { env: 'PRODUCT_KEY' },
+      });
+      await expect(
+        service.grant({
+          id: 'product-source',
+          grant: { ...product, destination },
+          expectedRevision: 1,
+        }),
+      ).rejects.toThrow('Invalid telemetry destination grant');
+      expect((await service.get('product-source'))?.revision).toBe(1);
+    },
   );
 });
 
@@ -701,5 +913,242 @@ describe('FileSecretBindingAdministration', () => {
       operation: 'establish',
       outcome: 'failure',
     });
+  });
+});
+
+describe('secret binding ownership (#3279)', () => {
+  const ALICE = 'human:tailscale-serve:alice';
+  const BOB = 'human:tailscale-serve:bob';
+  /**
+   * `grant` refuses a person's binding, so a grant on one exists only in a
+   * document written before that refusal or edited by hand. Add one to the
+   * record exactly as the writer persisted it.
+   */
+  /**
+   * `create` refuses a person owner for now, so a person-owned record exists
+   * only in a document written earlier or edited by hand. Create the record
+   * through the real writer, then set the owner it would have persisted.
+   */
+  const seedPersonOwned = async (
+    service: InstanceType<typeof FileSecretBindingAdministration>,
+    root: string,
+    input: { id: string; name: string; authRef: { env: string } },
+    owner: CredentialOwner,
+  ) => {
+    await service.create(input);
+    const path = join(root, 'security', 'secret-bindings.json');
+    const document = JSON.parse(await readFile(path, 'utf8'));
+    document.bindings[input.id].owner = owner;
+    await writeFile(path, JSON.stringify(document), { mode: 0o600 });
+  };
+  const seedLegacyGrant = async (
+    root: string,
+    id: string,
+    grant: { integrationId: string; envName: string },
+  ) => {
+    const path = join(root, 'security', 'secret-bindings.json');
+    const document = JSON.parse(await readFile(path, 'utf8'));
+    document.bindings[id].grants = [{ kind: 'mcp-integration-env', ...grant }];
+    await writeFile(path, JSON.stringify(document), { mode: 0o600 });
+  };
+
+  test('a pre-#3279 binding document reads as instance-owned and keeps resolving for the shared child', async () => {
+    const root = await home();
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(root, 'security'), { recursive: true, mode: 0o700 });
+    const timestamp = '2026-01-01T00:00:00.000Z';
+    // The exact shape the pre-#3279 writer persisted: no `owner` key.
+    await writeFile(
+      join(root, 'security', 'secret-bindings.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: {
+          'legacy-token': {
+            id: 'legacy-token',
+            name: 'Legacy token',
+            authRef: { env: 'LEGACY_TOKEN' },
+            revision: 2,
+            grants: [
+              {
+                kind: 'mcp-integration-env',
+                integrationId: 'legacy-mcp',
+                envName: 'TOKEN',
+              },
+            ],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        },
+      }),
+      { mode: 0o600 },
+    );
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { LEGACY_TOKEN: 'legacy-value' },
+    });
+    expect(await service.list()).toEqual([
+      expect.objectContaining({
+        id: 'legacy-token',
+        owner: { kind: 'instance' },
+      }),
+    ]);
+    // Every viewer sees the shared binding, as before.
+    expect(await service.list({ principalId: ALICE })).toHaveLength(1);
+    const resolution = await service.resolveForIntegration({
+      integrationId: 'legacy-mcp',
+      secretEnvRefs: { TOKEN: 'legacy-token' },
+    });
+    expect(resolution.environment).toEqual({ TOKEN: 'legacy-value' });
+    // A later write keeps the record ownerless (byte-compatible).
+    await service.replace({
+      id: 'legacy-token',
+      name: 'Legacy token renamed',
+      authRef: { env: 'LEGACY_TOKEN' },
+      expectedRevision: 2,
+    });
+    const persisted = JSON.parse(
+      await readFile(join(root, 'security', 'secret-bindings.json'), 'utf8'),
+    );
+    expect(persisted.bindings['legacy-token']).not.toHaveProperty('owner');
+  });
+
+  test('a person-owned binding is visible, mutable, and materializable only for its owner', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { ALICE_TOKEN: 'alice-value' },
+    });
+    // Nothing can consume a person's binding yet, so none can be created,
+    // even by its would-be owner; a malformed owner is still invalid.
+    for (const owner of [
+      { kind: 'principal', principalId: ALICE },
+      { kind: 'principal-project', principalId: ALICE, projectSlug: 'sales' },
+    ] as const) {
+      await expect(
+        service.create({
+          id: 'alice-new',
+          name: 'Alice new',
+          authRef: { env: 'ALICE_TOKEN' },
+          owner,
+          viewer: { principalId: ALICE },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingPersonCreateError);
+    }
+    await expect(
+      service.create({
+        id: 'device-owned',
+        name: 'Device owned',
+        authRef: { env: 'ALICE_TOKEN' },
+        owner: { kind: 'principal', principalId: 'not-a-principal' },
+        viewer: { principalId: 'not-a-principal' },
+      }),
+    ).rejects.toThrow('Invalid secret binding owner');
+    expect(await service.list({ principalId: ALICE })).toEqual([]);
+    await seedPersonOwned(
+      service,
+      root,
+      { id: 'alice-mail', name: 'Alice mail', authRef: { env: 'ALICE_TOKEN' } },
+      { kind: 'principal', principalId: ALICE },
+    );
+    expect(
+      (await service.get('alice-mail', { principalId: ALICE }))?.owner,
+    ).toEqual({ kind: 'principal', principalId: ALICE });
+    expect(await service.list({ principalId: BOB })).toEqual([]);
+    expect(await service.list()).toEqual([]);
+    expect(await service.get('alice-mail', { principalId: BOB })).toBeNull();
+    await expect(
+      service.revoke({
+        id: 'alice-mail',
+        expectedRevision: 1,
+        viewer: { principalId: BOB },
+      }),
+    ).rejects.toThrow('Secret binding not found.');
+    // Shared consumers name no principal, so even the owner cannot grant;
+    // another person still gets not-found from the same call.
+    for (const grant of [
+      { kind: 'mcp-integration-env', integrationId: 'mail', envName: 'TOKEN' },
+      {
+        kind: 'acp-provider-header',
+        connectionId: 'conn-mail',
+        providerId: 'provider-mail',
+        headerName: 'X-Mail-Token',
+      },
+    ] as const) {
+      await expect(
+        service.grant({
+          id: 'alice-mail',
+          grant,
+          expectedRevision: 1,
+          viewer: { principalId: ALICE },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingPersonGrantError);
+      await expect(
+        service.grant({
+          id: 'alice-mail',
+          grant,
+          expectedRevision: 1,
+          viewer: { principalId: BOB },
+        }),
+      ).rejects.toBeInstanceOf(SecretBindingNotFoundError);
+    }
+    expect(
+      await service.get('alice-mail', { principalId: ALICE }),
+    ).toMatchObject({ revision: 1, grants: [] });
+    // Resolution still refuses a legacy grant for anyone but the owner.
+    await seedLegacyGrant(root, 'alice-mail', {
+      integrationId: 'mail',
+      envName: 'TOKEN',
+    });
+    const refs = { TOKEN: 'alice-mail' };
+    // A shared child (no principal) and another person are refused.
+    for (const principalId of [undefined, BOB]) {
+      await expect(
+        service.resolveForIntegration({
+          integrationId: 'mail',
+          secretEnvRefs: refs,
+          ...(principalId ? { principalId } : {}),
+        }),
+      ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    }
+    const own = await service.resolveForIntegration({
+      integrationId: 'mail',
+      secretEnvRefs: refs,
+      principalId: ALICE,
+    });
+    expect(own.environment).toEqual({ TOKEN: 'alice-value' });
+  });
+
+  test('a Project-narrowed binding resolves only in that Project', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { CRM: 'crm-value' },
+    });
+    await seedPersonOwned(
+      service,
+      root,
+      { id: 'alice-crm', name: 'Alice CRM', authRef: { env: 'CRM' } },
+      { kind: 'principal-project', principalId: ALICE, projectSlug: 'sales' },
+    );
+    await seedLegacyGrant(root, 'alice-crm', {
+      integrationId: 'crm',
+      envName: 'K',
+    });
+    const refs = { K: 'alice-crm' };
+    await expect(
+      service.resolveForIntegration({
+        integrationId: 'crm',
+        secretEnvRefs: refs,
+        principalId: ALICE,
+        projectSlug: 'support',
+      }),
+    ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    expect(
+      (
+        await service.resolveForIntegration({
+          integrationId: 'crm',
+          secretEnvRefs: refs,
+          principalId: ALICE,
+          projectSlug: 'sales',
+        })
+      ).environment,
+    ).toEqual({ K: 'crm-value' });
   });
 });

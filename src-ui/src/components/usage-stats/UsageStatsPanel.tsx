@@ -1,3 +1,4 @@
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { useActivityUsageQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -23,7 +24,7 @@ import { UsageDrillDownModal } from './UsageDrillDownModal';
 import { UsagePeriodSelector } from './UsagePeriodSelector';
 import { UsageSummaryCards } from './UsageSummaryCards';
 import { UsageTrendChart } from './UsageTrendChart';
-import { getAverageCostPerMessage, getTotalUsageConversations } from './utils';
+import { getTotalUsageConversations } from './utils';
 import './UsageStatsPanel.css';
 
 type DrillDownType = 'model' | 'agent' | null;
@@ -71,6 +72,8 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
     | undefined;
   const historyGap = describeDailyHistoryGap(
     data.lifetime?.engineUsageCoverage,
+    data.snapshot,
+    data.unallocated?.date,
   );
 
   if (!rangeSummary) {
@@ -100,10 +103,13 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
     );
   }
 
-  const avgCostPerMessage = getAverageCostPerMessage({
-    totalCost: rangeSummary.totalCost,
-    totalMessages: rangeSummary.totalMessages,
-  });
+  const datedUsage: UsageStats['byDate'] = data.byDate ?? {};
+  const costMeasured =
+    data.snapshot?.projection !== 'retained-source-v1' ||
+    Object.values(datedUsage).some(
+      (day) =>
+        day.reportedCostUsd !== undefined || day.estimatedCostUsd !== undefined,
+    );
   return (
     <>
       <div className="usage-stats-cards">
@@ -115,13 +121,12 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
         />
         <StatCard
           icon={<MoneyGlyph />}
-          label="Cost"
-          value={`$${rangeSummary.totalCost.toFixed(2)}`}
-        />
-        <StatCard
-          icon={<ChartGlyph />}
-          label="Avg/Message"
-          value={`$${avgCostPerMessage.toFixed(4)}`}
+          label="Recorded cost"
+          value={
+            costMeasured
+              ? `$${rangeSummary.totalCost.toFixed(2)}`
+              : 'Not reported'
+          }
         />
         <StatCard
           icon={<CalendarGlyph />}
@@ -176,7 +181,6 @@ export function UsageStatsPanel() {
   if (!usageStats) return null;
 
   const { lifetime, byModel, byAgent } = usageStats;
-  const avgCostPerMessage = getAverageCostPerMessage(lifetime);
   const totalConversations = getTotalUsageConversations(lifetime);
 
   return (
@@ -186,26 +190,29 @@ export function UsageStatsPanel() {
           <span>
             <ChartGlyph />
           </span>
-          <span>Usage Statistics</span>
+          <span>Usage</span>
         </h3>
       </div>
 
-      <p className="usage-period-note">
-        Lifetime summaries retain historical totals. Engine model totals use the
-        session’s latest model; use usage receipts for comparisons across
-        models.
-      </p>
+      {usageStats?.snapshot?.projection !== 'retained-source-v1' && (
+        <p className="usage-period-note">Older summary · rebuild to refresh.</p>
+      )}
       <UsagePeriodSelector value={period} onChange={setPeriod} />
 
       {range ? (
         <UsagePeriodSection from={range.from} to={range.to} />
       ) : (
         <UsageSummaryCards
-          avgCostPerMessage={avgCostPerMessage}
+          daysActive={lifetime.daysActive}
           engineUsageCoverage={lifetime.engineUsageCoverage}
           totalConversations={totalConversations}
           totalCost={lifetime.totalCost}
           totalMessages={lifetime.totalMessages}
+          costMeasured={
+            usageStats.snapshot?.projection !== 'retained-source-v1' ||
+            lifetime.reportedCostUsd !== undefined ||
+            lifetime.estimatedCostUsd !== undefined
+          }
         />
       )}
 
@@ -217,7 +224,7 @@ export function UsageStatsPanel() {
               control that appears to scope numbers it doesn't (the
               station#3214/#3222 defect class). */}
           <p className="usage-period-note">
-            Lifetime figures — the period above does not filter them.
+            Model and agent breakdowns · all time
           </p>
         </div>
       )}
@@ -230,6 +237,7 @@ export function UsageStatsPanel() {
         onAgentClick={(agentId) => setDrillDown({ type: 'agent', id: agentId })}
         onModelClick={(modelId) => setDrillDown({ type: 'model', id: modelId })}
         totalMessages={lifetime.totalMessages}
+        unallocatedModelMessages={usageStats.unallocated?.model.messages}
       />
 
       {drillDown && (

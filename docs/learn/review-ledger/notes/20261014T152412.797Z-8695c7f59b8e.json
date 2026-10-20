@@ -1,0 +1,7 @@
+{
+  "revision": "3843b2f367569eb0c183374252017037e8e638e6",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed modified orchestration-chat-flow browser case: mobile/narrow dock geometry, proxy 408 without Station envelope, unavailable inspection that keeps decisions locked, then resolved inspection. Health policy stays unchanged and the fixture uses its documented 4xx exclusion. Browser case passed; whole PR browser lane not run here.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

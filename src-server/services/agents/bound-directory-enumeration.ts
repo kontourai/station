@@ -10,6 +10,7 @@ import { type ChildProcessByStdio, spawn } from 'node:child_process';
 import type { Stats } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 
 const HELPER_PATH = fileURLToPath(
   new URL('./bound-directory-enumeration-helper.mjs', import.meta.url),
@@ -219,6 +220,9 @@ export async function enumerateBoundDirectory(options: {
         finish();
       }
     });
+    // #776: a helper that exits before reading its request fails closed
+    // instead of an unlistened stdin EPIPE ending the server.
+    guardChildStdin(child.stdin, () => finish());
     child.stdin.end(
       JSON.stringify({ intent: 'enumerateBoundDirectory', expected, limits }),
     );
@@ -304,6 +308,7 @@ export async function publishBoundDirectoryFileExclusive(options: {
         finish();
       }
     });
+    guardChildStdin(child.stdin, () => finish());
     child.stdin.end(
       JSON.stringify({
         intent: 'publishBoundDirectoryFileExclusive',

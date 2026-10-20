@@ -1,0 +1,7 @@
+{
+  "revision": "3b6fa63b5f0746d1cd93c291fb8244a3755b5c93",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Fix round 5 of the delivery-state change: a claim whose renderer is proven gone (its Web Lock released) is public awaitingLookup and dismissUnconfirmed withdraws it, rechecking that liveness under the queue lock (unknown liveness never counts as gone); another window's change notice starts a flush pass without syncHeld when the refreshed projection shows a row this window may send now; this renderer's own claim is sendUnderWay only while one of its flush passes holds it (drainInFlight); the sendUnderWay comment now says exactly that; composer popover Escape and outside-tap unit tests. Rewrote the cross-window paragraph: a change notice starts a send only for a message the window may send now (for example one held back by a settled send in a window that then closed), never re-holding follow-ups; a closed window's claim offers Check and Discard…, and the discard rechecks that the window is gone; a window's own claim reads Sending only while its own send is in progress. Checked against the same code and the outbox browser check, which now expects Discard… on the closed window's send.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

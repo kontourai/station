@@ -76,11 +76,20 @@ describe('buildStationResetPlan', () => {
     // someone opting out — and the registry default is `true`. Clearing it
     // would turn telemetry back on under the word "reset".
     const plan = buildStationResetPlan(
-      fileProvenance('telemetryEnabled', 'registryUrl'),
+      fileProvenance('telemetryEnabled', 'telemetryTier', 'registryUrl'),
     );
 
     expect(plan.delta).toEqual({ registryUrl: null });
     expect(plan.delta).not.toHaveProperty('telemetryEnabled');
+    expect(plan.delta).not.toHaveProperty('telemetryTier');
+    const saved = {
+      telemetryTier: { operator: 'off', kontour: 'off' },
+      registryUrl: 'https://registry.test',
+    };
+    expect({ ...saved, ...plan.delta }.telemetryTier).toEqual({
+      operator: 'off',
+      kontour: 'off',
+    });
     expect(RESETTABLE_STATION_SETTING_KEYS).not.toContain('telemetryEnabled');
     expect(plan.labels).not.toContain('Usage telemetry');
   });
@@ -139,11 +148,18 @@ describe('buildStationResetPlan', () => {
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
+      // #3386: conversations outside projects in Activity.
+      'attachedSessionsOutsideProjects',
       'mobileDeviceHubUrl',
       // Sources
       'registryUrl',
       'disableDefaultSkillRegistries',
       'distributionProfile',
+      // Telemetry destinations and credential references are Station settings.
+      'productTelemetryEndpoint',
+      'productTelemetryKeyRef',
+      'otelTelemetryEndpoint',
+      'otelTelemetryKeyRef',
       // Permissions
       'approvalGuardian',
       'defaultApprovalMode',
@@ -157,6 +173,9 @@ describe('buildStationResetPlan', () => {
       'workspaceCheckpoints',
       // #3188: resume a usage-limit stop at the provider's reset.
       'usageLimitAutoResume',
+      'reviewGuidesEnabled',
+      'reviewGuideModel',
+      'reviewGuideInstructions',
       // Chat
       'defaultChatFontSize',
     ]);

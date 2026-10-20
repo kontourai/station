@@ -1,6 +1,12 @@
+import { cpSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as esbuild from 'esbuild';
+import {
+  SUPERVISOR_BUNDLE_NAME,
+  supervisorBuildOptions,
+} from './packages/supervisor/build-options.mjs';
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
+import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 
@@ -43,6 +49,7 @@ const shared = {
     js: [
       "import { createRequire as __stationCreateRequire } from 'node:module'; const require = __stationCreateRequire(import.meta.url);",
       `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
+      `globalThis.__STATION_AUTHOR_TELEMETRY_ENDPOINT__ = ${JSON.stringify(authorTelemetryEndpoint(serverBuildIdentity?.channel))};`,
     ].join('\n'),
   },
 };
@@ -50,13 +57,35 @@ const shared = {
 const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
 
 await generateStationDocs({ check: true });
+mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
+for (const name of ['LICENSE', 'NOTICE']) {
+  cpSync(`packaging/licenses/cedar/${name}`, `${serverDir}/third-party/cedar/${name}`);
+}
 
 await Promise.all([
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/cedar-policy-probe.ts'],
+    outfile: `${serverDir}/cedar-policy-probe.js`,
+  }),
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/services/secrets/telemetry-key-materialization-child.ts',
+    ],
+    outfile: `${serverDir}/telemetry-key-materialization-child.js`,
+  }),
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/index.ts'],
     outfile: `${serverDir}/command-station.js`,
   }),
+  // The process supervisor holds listeners and hands them between core
+  // generations. It is self-contained (Node built-ins only) and does not share
+  // the server banner or externals: it must run with no node_modules beside it.
+  esbuild.build(
+    supervisorBuildOptions(`${serverDir}/${SUPERVISOR_BUNDLE_NAME}`),
+  ),
   esbuild.build({
     ...shared,
     entryPoints: ['./src-server/tools/station-control-server.ts'],
@@ -138,6 +167,15 @@ await Promise.all([
     ...shared,
     entryPoints: ['./src-server/services/plugins/plugin-draft-build-child.ts'],
     outfile: `${serverDir}/plugin-draft-build-child.js`,
+  }),
+  // #3406: attached-session discovery reads session folders in this helper
+  // process, spawned via an import.meta.url-relative path like the one above.
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/services/orchestration/attached-session-path-child.ts',
+    ],
+    outfile: `${serverDir}/attached-session-path-child.js`,
   }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev

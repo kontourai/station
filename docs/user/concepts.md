@@ -4,6 +4,16 @@ Station uses a small set of user-facing concepts. Transport names, process
 details, and internal record shapes stay out of the way unless setup or
 diagnosis requires them.
 
+## Start with a computer, AI, and a conversation
+
+Your computer runs Station and your AI apps. Choose an AI and send a message.
+A phone connects to that computer to use the same conversations and files.
+
+Add a **Project** when you want to work in a folder or share context. Save a
+custom **Agent** when you want reusable instructions and tools. Choose **Run a
+task…** when you want tracked work you can return to. These choices can wait
+until you need them; starting a chat does not require creating each one.
+
 ## Station And Device
 
 - A **Station** is the host you connect to and work on.
@@ -60,6 +70,34 @@ for the current supported model services and engines and their setup details.
 Example: “Explain this function” can be a direct chat. “Refactor this module,
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.
+
+When a conversation status/history read or an inbox read fails, retained
+conversation rows say **Last known:** before their computed status. The status
+uses a muted style without a pulsing indicator or running clock. The transcript's
+background-work indicator also says **Last known**. Each reader keeps its own failure until that reader succeeds; loading older
+history does not clear a failed current-history read. A live update past the
+failed observation’s sequence within the same stream epoch supersedes that failure individually: it verifies
+current status, even if the older read fails after that update. The sequence is
+captured when the read starts. A stream epoch change (such as replacing the
+orchestration database) resets sequence fences and retires pending old-epoch
+reads. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
+reader recovers. Hiding and
+showing a row preserves its last-known status. Observations are released when
+the conversation is absent from the loaded inventory and no row or reader
+references it, or its authority query cache is cleared. A released reader cannot
+recreate an observation when its pending read settles. Other conversations and
+Stations retain their own observations. Use **Resync** on the
+conversation or **Refresh inbox** to request fresh observations.
+
+**Messages held by Station** lists follow-ups already stored in the open
+conversation's server inbox, including those submitted from another client.
+Its pending count covers waiting and sending messages. A failed read says
+unavailable; it does not mean the queue is empty. **Refresh** reads it again.
+**Remove** withdraws a waiting message when your identity is allowed to do so;
+a message already being sent cannot be removed. An unknown delivery outcome
+stays visible without being counted as pending. This list is separate from
+browser-local queued drafts; the composer's ordinary Queue action still uses
+those local drafts.
 
 ## Gates, Evidence, And Receipts
 

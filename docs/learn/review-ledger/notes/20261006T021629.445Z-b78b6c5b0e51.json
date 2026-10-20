@@ -1,0 +1,7 @@
+{
+  "revision": "328d605bf595baa7c3363c5066d31bf8231b3eb0",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Rechecked after a formatting-only commit: the qualification repair agent defaults to none (episode recorded needs-owner, no claim, no Codex run); QUALIFICATION_REPAIR_AGENT=codex opts in and any other value fails closed. This document's description matches.","inputs":["docs/guides/releasing.md","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-repair.mjs"]}
+  ]
+}

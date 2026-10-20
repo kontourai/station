@@ -58,7 +58,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 const SDK_SOURCE_PREFIX = 'packages/sdk/src/';
 const SDK_PACKAGE_NAME = '@kontourai/station-sdk';

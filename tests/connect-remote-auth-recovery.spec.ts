@@ -1,6 +1,12 @@
 import { createHmac } from 'node:crypto';
+import type { SavedConnection } from '@kontourai/station-connect';
 import { buildStationProofMessage } from '@kontourai/station-contracts';
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import type {
+  DevicePairingAccessRequestResponse,
+  PublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
@@ -43,11 +49,14 @@ async function openConnections(page: Page) {
     name: 'Enter a host address',
     exact: true,
   });
+  const otherWays = accessRequired.getByText('Other ways to connect', {
+    exact: true,
+  });
   const addressInput = dialog.getByPlaceholder(
     'https://station.example.ts.net',
   );
   const managerControl = dialog.getByRole('button', {
-    name: /^(?:Request access|Add a Station address|Scan a QR code|Enter a pairing code|Paired devices)$/,
+    name: /^(?:Request access|Add a Station address|Connect a Station|Scan a QR code|Enter a pairing code|Paired devices)$/,
   });
   const addComputer = page.getByRole('button', {
     name: 'Add computer',
@@ -66,12 +75,15 @@ async function openConnections(page: Page) {
       async () =>
         (await managerControl.first().isVisible()) ||
         (await requestAccess.isVisible()) ||
+        (await otherWays.isVisible()) ||
         (await addComputer.isVisible()) ||
         (await controlThisStation.isVisible()),
       { timeout: 15_000 },
     )
     .toBe(true);
   if (!(await managerControl.first().isVisible())) {
+    if ((await otherWays.isVisible()) && !(await requestAccess.isVisible()))
+      await otherWays.click();
     if (await requestAccess.isVisible()) {
       await requestAccess.click();
       return dialog;
@@ -273,6 +285,10 @@ for (const fixture of [
 
     await page.goto('/');
 
+    await page
+      .getByRole('region', { name: 'Station access required' })
+      .getByText('Other ways to connect', { exact: true })
+      .click();
     const pairingAction = page
       .getByRole('button', { name: 'Enter a host address' })
       .first();
@@ -281,6 +297,7 @@ for (const fixture of [
     // established; pairing begins on the credential-free public surface.
     expect(statusAuthorizations).toEqual([]);
     expect(pluginAuthorizations).toEqual([]);
+    await pairingAction.scrollIntoViewIfNeeded();
     const actionBox = await pairingAction.boundingBox();
     expect(actionBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(actionBox?.x).toBeGreaterThanOrEqual(0);
@@ -368,22 +385,60 @@ for (const fixture of [
         body: JSON.stringify({ error: 'fixture route not found' }),
       }),
     );
-    await page.route('**/.well-known/station/v1', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          schemaVersion: 1,
-          environmentId: ENVIRONMENT_ID,
-          authentication: { scheme: 'bearer', protocolVersion: 1 },
-          transports: { http: 1, sse: 1, websocket: 1 },
-          compatibility: {
-            serverVersion: '0.4.1',
-            protocolVersion: 1,
-            minClientProtocol: 1,
-          },
-        }),
-      }),
+    const receiverHandshake: PublicStationHandshake = {
+      schemaVersion: 1,
+      environmentId: ENVIRONMENT_ID,
+      authentication: { scheme: 'bearer', protocolVersion: 1 },
+      transports: { http: 1, sse: 1, websocket: 1 },
+      compatibility: {
+        serverVersion: '0.4.1',
+        protocolVersion: 1,
+        minClientProtocol: 1,
+        capabilities: { remoteAuth: 1, devicePairing: 1, environmentProof: 1 },
+      },
+    };
+    const pendingRequest: DevicePairingAccessRequestResponse = {
+      environmentId: ENVIRONMENT_ID,
+      kind: 'device',
+      requestId: 'request-credential-recovery',
+      offerId: 'offer-credential-recovery',
+      proof: Buffer.alloc(32, 8).toString('base64url'),
+      expiresAt: Date.now() + 60_000,
+    };
+    for (const endpoint of [FIRST_ENDPOINT, SECOND_ENDPOINT]) {
+      await page.route(`${endpoint}/.well-known/station/v1`, (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        expect(route.request().headers().authorization).toBeUndefined();
+        return route.fulfill({ json: receiverHandshake });
+      });
+    }
+    await page.route(
+      `${FIRST_ENDPOINT}/.well-known/station/v1/pairing/access-request`,
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        expect(route.request().headers().authorization).toBeUndefined();
+        expect(route.request().postData()).not.toContain(CREDENTIAL);
+        return route.fulfill({ status: 202, json: pendingRequest });
+      },
+    );
+    await page.route(
+      `${FIRST_ENDPOINT}/.well-known/station/v1/pairing/exchange`,
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        expect(route.request().headers().authorization).toBeUndefined();
+        expect(route.request().postDataJSON()).toMatchObject({
+          offerId: pendingRequest.offerId,
+          requestId: pendingRequest.requestId,
+          proof: pendingRequest.proof,
+        });
+        return route.fulfill({
+          status: 409,
+          json: { error: 'request_not_confirmed' },
+        });
+      },
     );
     await page.route('**/.well-known/station/v1/proof', (route) => {
       expect(route.request().headers().authorization).toBeUndefined();
@@ -500,30 +555,75 @@ for (const fixture of [
 
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
+    await expect(page.getByTestId('app-toolbar-connection')).toBeVisible();
     await dismissSetupLauncher(page);
-    const connectionsCard = await openConnections(page);
-    await openAddStationAddress(connectionsCard);
-    // Scoped to the dialog, the way the sibling test above already does it.
-    // "Add Station" is the MODAL's own `<h2>` title
-    // (`ConnectionManagerModalContent.tsx:822-826`), so walking two parents up
-    // from it lands on the modal header — which does not contain the form.
-    await connectionsCard
-      .getByPlaceholder('Name (optional)')
-      .fill('Phone Station');
-    await connectionsCard
-      .getByPlaceholder('https://station.example.ts.net')
-      .fill(FIRST_ENDPOINT);
-    await connectionsCard
-      .getByRole('button', { name: 'Add', exact: true })
-      .click();
-
-    // The add flow now continues straight into authorising the new host
-    // (archive#986) instead of returning to the list. This test exercises the
-    // manual credential-recovery path (via Edit), so back out of the
-    // pairing panel first without completing the exchange.
+    const activeBeforeSetup = await page.evaluate(() =>
+      localStorage.getItem('station-connect-connections-active'),
+    );
+    expect(activeBeforeSetup).not.toBeNull();
+    const controllerUrl = await page.evaluate((activeId) => {
+      const profiles: SavedConnection[] = JSON.parse(
+        localStorage.getItem('station-connect-connections') ?? '[]',
+      );
+      return profiles.find((profile) => profile.id === activeId)?.url;
+    }, activeBeforeSetup);
+    expect(controllerUrl).toBe(new URL(page.url()).origin);
+    await page.getByTestId('app-toolbar-connection').click();
     await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Back' })
+      .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+      .click();
+    const setupDialog = page.getByRole('dialog');
+    await setupDialog
+      .getByRole('button', { name: 'Connect a Station', exact: true })
+      .click();
+    await setupDialog
+      .getByRole('textbox', { name: 'Station address', exact: true })
+      .fill(FIRST_ENDPOINT);
+    await setupDialog
+      .getByRole('button', { name: 'Continue', exact: true })
+      .click();
+    await expect(
+      setupDialog.getByText(ENVIRONMENT_ID, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      setupDialog.getByRole('checkbox', {
+        name: `Use ${FIRST_ENDPOINT} from this device`,
+        exact: true,
+      }),
+    ).toBeChecked();
+    await expect(
+      setupDialog.getByRole('checkbox', {
+        name: new RegExp(`send work to ${FIRST_ENDPOINT}$`),
+      }),
+    ).not.toBeChecked();
+    await setupDialog
+      .getByRole('button', { name: 'Request selected access', exact: true })
+      .click();
+    await setupDialog
+      .getByRole('button', { name: 'Request access', exact: true })
+      .click();
+    await expect(
+      setupDialog.getByText(/Device access requested/),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        localStorage.getItem('station-connect-connections-active'),
+      ),
+    ).toBe(activeBeforeSetup);
+    await setupDialog
+      .getByRole('button', { name: 'Done', exact: true })
+      .click();
+    // This keeper recovers a previously held credential, not a new receiver grant.
+    await page
+      .getByRole('button', { name: 'Cancel request', exact: true })
+      .click();
+    await page.getByTestId('app-toolbar-connection').click();
+    await page
+      .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+      .click();
+    const connectionsCard = page.getByRole('dialog');
+    await (await openConnectionActionsMenu(connectionsCard, FIRST_ENDPOINT))
+      .getByRole('menuitem', { name: 'Check reachability', exact: true })
       .click();
 
     // archive#4512 (M4): the health probe against this freshly-added,
@@ -545,9 +645,12 @@ for (const fixture of [
       .poll(() => remoteStatusAuthorizations.some((value) => value === null))
       .toBe(true);
 
-    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
+    await (await openConnectionActionsMenu(connectionsCard, FIRST_ENDPOINT))
       .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
+    await connectionsCard
+      .getByPlaceholder('Name', { exact: true })
+      .fill('Phone Station');
     const credentialInput = connectionsCard.getByLabel(
       'Station access credential',
     );
@@ -559,14 +662,6 @@ for (const fixture of [
     });
     await expect(connectionSave).toBeEnabled();
     await connectionSave.click();
-    await expect(
-      page.getByText('Credential required', { exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByText("This device isn't authorised on this Station", {
-        exact: true,
-      }),
-    ).toHaveCount(0);
     await expect
       .poll(() =>
         page.evaluate(
@@ -587,16 +682,42 @@ for (const fixture of [
         ),
       )
       .toBe(true);
+    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
+      .getByRole('menuitem', { name: 'Check reachability', exact: true })
+      .click();
     await expect
-      .poll(async () => {
-        await (
-          await openConnectionActionsMenu(connectionsCard, 'Phone Station')
-        )
-          .getByRole('menuitem', { name: 'Check reachability', exact: true })
-          .click();
-        return remoteStatusAuthorizations.includes(`Bearer ${CREDENTIAL}`);
-      })
+      .poll(() => remoteStatusAuthorizations.includes(`Bearer ${CREDENTIAL}`))
       .toBe(true);
+    await expect(
+      page.getByText('Credential required', { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("This device isn't authorised on this Station", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await connectionsCard
+      .getByRole('button', {
+        name: 'View details for Phone Station',
+        exact: true,
+      })
+      .click();
+    await connectionsCard
+      .getByRole('button', { name: 'Switch to Phone Station', exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const activeId = localStorage.getItem(
+            'station-connect-connections-active',
+          );
+          const profiles = JSON.parse(
+            localStorage.getItem('station-connect-connections') ?? '[]',
+          ) as Array<{ id: string; name: string }>;
+          return profiles.find((profile) => profile.id === activeId)?.name;
+        }),
+      )
+      .toBe('Phone Station');
     assertNoApi401 = true;
     const codingReposStatus = await page.evaluate(async (endpoint) => {
       // The SDK barrel is published by the on-demand half of the shared-module

@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"#561: runShellCommand now writes an owned-process registry record for its detached command group (registerDetachedOwnedChild), released after the group exits; the record carries a label, not the command line. Re-read the attachCommandEvidenceResult and producer-pin rationale: command execution, output capture, exit and timeout semantics are unchanged. No prose change.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","src-server/services/flow/flow-run-service.ts"]}
+  ]
+}

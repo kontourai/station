@@ -1,0 +1,7 @@
+{
+  "revision": "536ba4e4b3ecd4fa546ac63ad89cce2db221c437",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Final review retains newest unresolved incidents independently per native and CLI leg and admits each successful terminal leg even if the other leg failed. API scenarios prove neither newer skipped qualification nor native-only recovery clears an unresolved CLI incident. Recovery guidance dispatches Nightly for reserved delivery failures and forced qualification only for source health. No live publication claim.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]}
+  ]
+}

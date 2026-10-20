@@ -167,6 +167,8 @@ describe('same-device relay credential aliases (station#2386)', () => {
         service.verifyCredential(credential),
       resolveGrantedScope: (credential: string) =>
         service.identifyDevice(credential)?.scope,
+      identifyDevice: (credential: string) =>
+        service.identifyDevice(credential),
     };
     expect(
       await credentialAuthorizedForScope(
@@ -2780,13 +2782,77 @@ describe('confirmRequest approval guard (station#1490)', () => {
     service: DevicePairingService,
     requesterPosition: PairingRequesterPosition,
     name = 'Tunnel probe',
+    scope?: string,
   ) {
     return service.requestAccess({
       endpoint: 'https://station.example.test',
       deviceName: name,
       requesterPosition,
+      ...(scope ? { scope } : {}),
     });
   }
+
+  test('an unauthenticated approval may not keep an elevated grant a device asked for, only approve without it', () => {
+    const { service } = harness();
+    const access = accessRequest(
+      service,
+      'off-box',
+      'Casey phone',
+      'orchestration:read orchestration:operate terminal:operate approval:full-access',
+    );
+
+    expect(() =>
+      service.confirmRequest(access.requestId, FLOOR_APPROVAL),
+    ).toThrowError(
+      expect.objectContaining({ code: 'approval_requires_operator' }),
+    );
+    expect(
+      service.confirmRequest(access.requestId, FLOOR_APPROVAL, undefined, {
+        scope: 'orchestration:read orchestration:operate terminal:operate',
+      }).status,
+    ).toBe('confirmed');
+    expect(
+      service.exchange({
+        offerId: access.offerId,
+        proof: access.proof,
+        requestId: access.requestId,
+      }).device.scope,
+    ).toBe('orchestration:read orchestration:operate terminal:operate');
+  });
+
+  test('an approval keeps a non-empty part of the request, never more, and never trims a delegation', () => {
+    const { service } = harness();
+    const access = accessRequest(
+      service,
+      'off-box',
+      'Casey phone',
+      'orchestration:read',
+    );
+    for (const scope of ['orchestration:read coding:exec', '', 'nonsense'])
+      expect(() =>
+        service.confirmRequest(
+          access.requestId,
+          { kind: 'presented-credential' },
+          undefined,
+          { scope },
+        ),
+      ).toThrowError(expect.objectContaining({ code: 'invalid_request' }));
+    const delegation = service.requestAccess({
+      endpoint: 'https://station.example.test',
+      deviceName: 'Peer Station',
+      requesterPosition: 'off-box',
+      kind: 'delegation',
+      scope: 'orchestration:read orchestration:operate',
+    });
+    expect(() =>
+      service.confirmRequest(
+        delegation.requestId,
+        { kind: 'presented-credential' },
+        undefined,
+        { scope: 'orchestration:read' },
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_request' }));
+  });
 
   test('refuses an unauthenticated approval of a request whose origin is unproven', () => {
     const { service } = harness();

@@ -154,6 +154,7 @@ describe('e2e manifest', () => {
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/native-conversation-restart.spec.ts',
       'tests/chat-send-again-failed-turn.spec.ts',
+      'tests/message-delivery-recovery.spec.ts',
       'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
@@ -222,6 +223,7 @@ describe('e2e manifest', () => {
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      'tests/connect-modal.spec.ts',
       'tests/conversation-timeline.spec.ts',
       'tests/mobile-chat-composer.spec.ts',
       'tests/agents-readiness-board.spec.ts',
@@ -256,6 +258,7 @@ describe('e2e manifest', () => {
       // UX audit D9/D8: both reset instance-wide state (the notification
       // store and attention acknowledgements; two fixed project slugs).
       'tests/notifications-attention.spec.ts',
+      'tests/personal-board-authoring.spec.ts',
       'tests/board-visibility.spec.ts',
       // Creates and revision-checks a real personal Board through the shared
       // instance API, so it cannot run beside another stateful product spec.
@@ -447,6 +450,34 @@ describe('e2e manifest', () => {
     expect(env.PATH).toBe(
       [nodeDirectory, '/usr/local/bin', '/usr/bin'].join(separator),
     );
+  });
+
+  it('lets a chat-route intercept that only forwards or holds the real send through, and nothing that could answer it', () => {
+    const passThrough = `page.route('**/api/orchestration/chat', async (route) => {
+      const body = route.request().postDataJSON();
+      if (forward) await route.fetch();
+      held(body);
+    });`;
+    expect(
+      foregroundReceiptFixtureErrors('tests/hold.spec.ts', passThrough),
+    ).toEqual([]);
+    for (const handler of [
+      // Fulfils.
+      'async (route) => { await route.fetch(); return route.fulfill({ status: 200 }); }',
+      // Hands the route to something that may fulfil it.
+      'async (route) => respond(route)',
+      // A named handler cannot be inspected here.
+      'handler',
+    ]) {
+      expect(
+        foregroundReceiptFixtureErrors(
+          'tests/mock.spec.ts',
+          `page.route('**/api/orchestration/chat', ${handler});`,
+        ),
+      ).toEqual([
+        `tests/mock.spec.ts mocks /api/orchestration/chat without the shared foreground-receipt fixture (${FOREGROUND_RECEIPT_FIXTURE}).`,
+      ]);
+    }
   });
 
   it('refuses an inline foreground chat receipt and an unfixtured chat-route mock (station#3800)', () => {

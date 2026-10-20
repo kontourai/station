@@ -114,6 +114,14 @@ export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
+ * Administer already-paired devices: list, change scopes, revoke, and remove
+ * revoked records. Only the operator may grant or remove this permission;
+ * its holder cannot delegate it. No preset or historical default grants it.
+ * This permits granting other device permissions, including full access,
+ * without granting operator identity, account administration, or peer access.
+ */
+export const PAIRING_SCOPE_ACCESS_DEVICES = 'access:devices' as const;
+/**
  * Fleet inference (archive#1398, `docs/design/inference-fleet.md` §3.3):
  * invoke a *model completion* on this Station's contributed connections, and
  * read which models it contributes. Deliberately NOT `orchestration:operate`:
@@ -155,6 +163,11 @@ export const PAIRING_SCOPE_INFERENCE_INVOKE = 'inference:invoke' as const;
  * approval authority there grants the most to the least-known party.
  */
 export const PAIRING_SCOPE_ACCESS_APPROVE = 'access:approve' as const;
+
+/** Manage this Station's relay invitations and pending native enrollment.
+ * Granted explicitly by the operator to an already-paired device; never a
+ * preset, default grant, Project role, or permission to share Project work. */
+export const PAIRING_SCOPE_RELAY_MANAGE = 'relay:manage' as const;
 
 /**
  * Decide (approve or deny) a pending {@link ConsentTransaction} on the
@@ -281,8 +294,10 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_RELAY_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -335,7 +350,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * The pairing-UI presets: "Read-only" pairs a device that can only
  * read/stream state, "Standard" additionally grants control (mutate + open a
  * terminal) but withholds `access:manage` — a paired device, however
- * broadly scoped, can never manage other devices or pairing offers itself.
+ * broadly scoped, needs a separate access:devices grant to manage existing
+ * devices. Pairing offers remain operator-only.
  *
  * `delegation` (archive#1123, `docs/design/station-peer-pairing.md`
  * §2) is a THIRD preset, not a reuse of `standard`: every call
@@ -444,11 +460,13 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
   [PAIRING_SCOPE_ACCESS_MANAGE]: ['default-grant'],
+  [PAIRING_SCOPE_ACCESS_DEVICES]: ['operator-promotion'],
   [PAIRING_SCOPE_INFERENCE_INVOKE]: ['preset'],
   // archive#1887: the only token whose sole path is an operator promoting an
   // already-paired device. In no preset (elevation at pairing time grants the
   // most to the least-known device) and never in the default grant.
   [PAIRING_SCOPE_ACCESS_APPROVE]: ['operator-promotion'],
+  [PAIRING_SCOPE_RELAY_MANAGE]: ['operator-promotion'],
   // archive#3677: same posture as access:approve — operator promotion only.
   // The operator itself decides consent by credential identity, not via this
   // token (see the PAIRING_SCOPE_CONSENT_DECIDE doc block).
@@ -466,9 +484,13 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
-  // #2412: operator promotion only, for the reasons on its docblock.
+  // #2412 / #2436: still the operator's grant, for the reasons on their
+  // docblocks. A device may ASK for either at pairing
+  // (DEVICE_REQUESTABLE_EXTRA_SCOPES; the Station app asks for everything),
+  // but asking grants nothing: only the operator credential or the desktop's
+  // own local grant may keep one when approving. That approval is the
+  // operator promoting the device at pairing time, never a pairing preset.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
-  // #2436: operator promotion only, for the reasons on its docblock.
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
@@ -500,9 +522,19 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     summary:
       'Can manage pairing offers and devices. Held only by older default grants; never granted to a device here.',
   },
+  [PAIRING_SCOPE_ACCESS_DEVICES]: {
+    label: 'Manage device access',
+    summary:
+      'Can list devices, change their permissions (including full access), revoke access and remove revoked records. Only the Station operator can grant or remove this administrative permission.',
+  },
   [PAIRING_SCOPE_INFERENCE_INVOKE]: {
     label: 'Fleet inference',
     summary: 'Can request model completions from this Station.',
+  },
+  [PAIRING_SCOPE_RELAY_MANAGE]: {
+    label: 'Manage remote access',
+    summary:
+      'Can invite and approve relay devices, and manage Project access where their IAM role allows.',
   },
   [PAIRING_SCOPE_ACCESS_APPROVE]: {
     label: 'Approve pairing requests',
@@ -533,9 +565,9 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
       "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
   },
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: {
-    label: 'Allow full access',
+    label: 'Skip approval prompts',
     summary:
-      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+      "Can put a chat, or an Agent's default, in full access mode: the agent runs with no sandbox and no approval prompts, as you. It grants no other permission. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
   },
 };
 
@@ -554,6 +586,57 @@ export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
 /** The space-delimited scope string a UI preset resolves to. */
 export function pairingScopePresetString(preset: PairingScopePreset): string {
   return PAIRING_SCOPE_PRESETS[preset].join(' ');
+}
+
+/**
+ * What a device may ask for in its own access request
+ * (`PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH`, body `scope`): one base,
+ * Read-only or Standard, plus any of {@link DEVICE_REQUESTABLE_EXTRA_SCOPES}.
+ * The Station app and browser ask for everything (Standard and both extras);
+ * the operator sees the request and may limit it before approving. A request that names no scope still receives
+ * {@link DEFAULT_GRANT_PAIRING_SCOPE}, which Station peers and older clients
+ * rely on; nothing a device asks for includes `access:manage`.
+ */
+export const DEVICE_REQUESTABLE_BASE_PRESETS = [
+  'read-only',
+  'standard',
+] as const satisfies readonly PairingScopePreset[];
+
+/**
+ * The elevated grants a device may ask for at pairing time. Asking grants
+ * nothing by itself: keeping one when approving needs the operator, never an
+ * `access:approve` device or an unauthenticated approval.
+ * The same rule covers an operator-created offer that carries one. Every
+ * other elevated grant stays operator-added after pairing.
+ */
+export const DEVICE_REQUESTABLE_EXTRA_SCOPES = [
+  PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+] as const satisfies readonly PairingScope[];
+
+/**
+ * Whether `scope` is something a device may ask for: exactly one requestable
+ * base preset, plus only requestable extras.
+ */
+export function isDeviceRequestableScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope);
+  if (!tokens) return false;
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  const base = tokens.filter((token) => !extras.includes(token));
+  return DEVICE_REQUESTABLE_BASE_PRESETS.some((preset) => {
+    const presetTokens: readonly PairingScope[] = PAIRING_SCOPE_PRESETS[preset];
+    return (
+      base.length === presetTokens.length &&
+      presetTokens.every((token) => base.includes(token))
+    );
+  });
+}
+
+/** The requestable extras `scope` carries: what only the operator may keep. */
+export function deviceRequestedExtraScopes(scope: string): PairingScope[] {
+  const tokens = parsePairingScope(scope) ?? [];
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  return tokens.filter((token) => extras.includes(token));
 }
 
 /**
@@ -627,7 +710,9 @@ export function isPairingScopeSubset(
  * too — that is the switch that turns a silent misbehavior into a
  * "update your app" verdict.
  */
-export const STATION_COMPAT_PROTOCOL_VERSION = 1;
+// Protocol 2 adds revision-bound product disclosure acknowledgements. Core
+// protocol-1 callers remain admitted; this optional feature negotiates separately.
+export const STATION_COMPAT_PROTOCOL_VERSION = 2;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less
@@ -642,6 +727,76 @@ export const STATION_COMPAT_MIN_CLIENT_PROTOCOL = 1;
  * itself to speak the older contract.
  */
 export const STATION_COMPAT_MIN_SERVER_PROTOCOL = 1;
+
+/**
+ * Request header in which a client states the client API protocol
+ * ({@link STATION_COMPAT_PROTOCOL_VERSION}) it was built against, as one
+ * decimal integer.
+ *
+ * A compatibility signal, never authority: it decides only whether a host
+ * still serves the contract the caller speaks. It grants nothing, and a caller
+ * that lies about it only chooses which refusal it receives.
+ */
+export const CLIENT_PROTOCOL_HEADER = 'X-Station-Client-Protocol';
+
+/**
+ * Key in {@link StationCompatibility.capabilities} (value: the version of this
+ * header contract, 1) by which a host says it allow-lists
+ * {@link CLIENT_PROTOCOL_HEADER} in its CORS preflight. A browser client sends
+ * the header cross-origin only to a host it has seen advertise this, because a
+ * host released before the header would refuse the preflight and strand a
+ * client that is otherwise compatible with it.
+ */
+export const CLIENT_PROTOCOL_HEADER_CAPABILITY = 'clientProtocolHeader';
+
+/**
+ * The protocol a request WITHOUT {@link CLIENT_PROTOCOL_HEADER} is read as:
+ * every client built before the header existed spoke protocol 1. Absence is
+ * therefore admitted while a host's minimum is 1 and refused once it rises.
+ */
+export const LEGACY_CLIENT_PROTOCOL = 1;
+
+/**
+ * Largest value {@link CLIENT_PROTOCOL_HEADER} may carry. A larger value is
+ * malformed and refused, never clamped: the protocol moves only on
+ * contract-breaking changes, so four digits is far beyond any real client.
+ */
+export const MAX_CLIENT_PROTOCOL = 9999;
+
+/** A host refuses a client protocol below its minimum with this code (HTTP 426). */
+export const CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE =
+  'client_protocol_unsupported';
+/** A host refuses an unparseable {@link CLIENT_PROTOCOL_HEADER} with this code (HTTP 400). */
+export const CLIENT_PROTOCOL_INVALID_ERROR_CODE = 'client_protocol_invalid';
+
+export type ClientProtocolHeaderReading =
+  | { kind: 'absent' }
+  | { kind: 'declared'; protocol: number }
+  | { kind: 'malformed' };
+
+/**
+ * Parse a {@link CLIENT_PROTOCOL_HEADER} value exactly. Only one decimal
+ * integer from 1 to {@link MAX_CLIENT_PROTOCOL}, without sign, leading zero,
+ * or surrounding text, is declared. Repeated headers arrive joined
+ * (`"2, 3"`) and are malformed, as is an empty value: a present header is
+ * never quietly read as absent.
+ */
+export function readClientProtocolHeader(
+  value: string | null | undefined,
+): ClientProtocolHeaderReading {
+  if (value === null || value === undefined) return { kind: 'absent' };
+  // Length first, so an oversized value is refused before it is converted.
+  if (
+    value.length > String(MAX_CLIENT_PROTOCOL).length ||
+    !/^[1-9][0-9]*$/.test(value)
+  ) {
+    return { kind: 'malformed' };
+  }
+  const protocol = Number(value);
+  return protocol <= MAX_CLIENT_PROTOCOL
+    ? { kind: 'declared', protocol }
+    : { kind: 'malformed' };
+}
 
 /**
  * The compatibility block a host advertises on the public handshake.
@@ -700,6 +855,8 @@ export interface StationClientCompatibilityPolicy {
 }
 
 export interface DevicePairingOffer {
+  /** Absent on older hosts; those offers are interactive Device grants. */
+  kind?: PairedDeviceKind;
   protocolVersion: typeof DEVICE_PAIRING_PROTOCOL_VERSION;
   environmentId: string;
   offerId: string;
@@ -712,6 +869,8 @@ export interface DevicePairingOffer {
 }
 
 interface DevicePairingRequestBase {
+  /** Receiver-owned grant category, visible before approval. */
+  kind?: PairedDeviceKind;
   requestId: string;
   offerId: string;
   deviceName: string;
@@ -756,6 +915,7 @@ export type DevicePairingConfirmation = DevicePairingRequest & {
 
 /** A public access request is pending until explicit authority confirms it. */
 export interface DevicePairingAccessRequestResponse {
+  kind?: PairedDeviceKind;
   environmentId: string;
   offerId: string;
   proof: string;
@@ -763,6 +923,12 @@ export interface DevicePairingAccessRequestResponse {
   expiresAt: number;
   accountCandidate?: DeviceAccountBindingCandidate;
   requireAccountBinding?: true;
+  /**
+   * The operator CLI command on the Station's host, for the approve command
+   * the requester shows (`npx @kontourai/station-cli@nightly` on a nightly).
+   * Absent from a Station that predates it; a client then shows `station`.
+   */
+  operatorCli?: string;
 }
 
 /**
@@ -785,7 +951,7 @@ export type PairedDeviceRevocation =
   | { state: 'unobserved-before-revocation-provenance' }
   | {
       state: 'recorded';
-      actor: 'operator-credential';
+      actor: 'operator-credential' | 'device-access';
       reason: 'owner-request';
     }
   | {
@@ -844,6 +1010,11 @@ export interface PairedDevice {
    * migrates it in place the same way `scope` itself was migrated
    * (archive#1098 R4). Never absent on a value read out of the service.
    */
+  /**
+   * #3557: present only on a personal access token resolved as a headless
+   * device of its owner; never persisted in the device registry.
+   */
+  readonly credentialKind?: 'personal-token';
   kind: PairedDeviceKind;
   createdAt: number;
   /**
@@ -901,6 +1072,11 @@ export interface PairedDevice {
    * device paired before this field existed has no such key at all.
    */
   requester?: TailscaleServeRequester;
+  /**
+   * #3557: device lists only. What a live device may use now: `scope`
+   * capped by its person's Station group (equal to `scope` when untied).
+   */
+  effectiveScope?: string;
   /**
    * Ephemeral connection state, added only by the access-management listing.
    * It is not persisted with a paired device and never includes session ids.
@@ -1113,6 +1289,22 @@ export interface StationCapabilityFlags {
    * before the wire with a typed code.
    */
   executionPreparation?: boolean;
+  /**
+   * This build understands the opt-in `expectedInputRequest` field on
+   * `POST /api/orchestration/delegations/:taskId/continue`: it delivers the
+   * follow-up only as the answer to that exact open input request on the
+   * task's current Session (same `threadId`, `requestId` and
+   * `requestEventId`), re-checked when the engine is invoked, and refuses
+   * with `input_request_changed` when that request is gone or replaced. Its
+   * delegated-task snapshot's `pendingRequest` then also carries `eventId`,
+   * the presented `body` and, for an authenticated read, `callerCanRespond`.
+   *
+   * A sender MUST gate sending `expectedInputRequest` on this flag: an older
+   * receiver's schema silently drops the unknown field and would deliver the
+   * text as an ordinary, unbound follow-up turn. A STATIC protocol fact
+   * about this build, never a statement that any request is open.
+   */
+  delegatedInputAnswers?: boolean;
 }
 
 export interface PublicStationHandshake {
@@ -1311,4 +1503,32 @@ export interface FullAccessRevocationReport {
     }[];
     readonly total: number;
   };
+}
+
+/** Secret-free server-owned enrollment observation. Project execution consent is separate. */
+export interface PeerEnrollment {
+  id: string;
+  apiBase: string;
+  environmentId: string;
+  label: string | null;
+  status:
+    | 'pending'
+    | 'connected'
+    | 'denied'
+    | 'expired'
+    | 'unavailable'
+    | 'identity-changed'
+    | 'failed'
+    | 'outcome-unknown'
+    | 'persistence-failed'
+    | 'cancelled';
+  expiresAt: number;
+  error?: string;
+}
+
+export interface PeerEnrollmentInput {
+  id: string;
+  apiBase: string;
+  environmentId: string;
+  label?: string;
 }

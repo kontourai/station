@@ -1,0 +1,7 @@
+{
+  "revision": "cc4357355b6931968876ec6a18a08ba7f790105a",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Reviewed submission and load-failure claims against the removal of composer preloading. The eager catalog is unchanged; Station dispatch still dynamically loads on submission and awaits the built-in command loader before execution; ACP passthrough remains direct and a load failure sends nothing. Parser/skill/MCP execution semantics are unchanged. The command implementation loader now has no eager warm effect.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useSlashCommandHandler.ts"]}
+  ]
+}

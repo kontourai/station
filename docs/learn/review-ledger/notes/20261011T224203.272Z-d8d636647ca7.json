@@ -1,0 +1,9 @@
+{
+  "revision": "af5040f984bc9cc07344101c56dbcbcac7bf0639",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Flagged because packages/cli/src/help.ts changed. The only change there adds [--scope=<scope,…>] to the `station environment access approve` usage line so help matches the flags environment.ts already parses. This ADR cites help.ts only for `station doctor --migrate-playbooks [--dry-run]` and the launcher availability of that helper; neither the doctor entry nor the playbook migration flags changed, so its claims hold.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Flagged because packages/cli/src/help.ts changed. The change only adds [--scope=<scope,…>] to the `station environment access approve` usage line (help now matches the parser). This guide's CLI claims concern skill and skill-experience commands, none of whose help entries changed, so it stays accurate.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]}
+  ]
+}

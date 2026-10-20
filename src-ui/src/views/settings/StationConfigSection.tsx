@@ -16,6 +16,7 @@
  * reader who follows `?view=` lands somewhere the row is not.
  */
 
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -31,14 +32,14 @@ import { renderSettingRow } from './registry-row';
 import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 import type { SettingsSectionId } from './settings-catalog';
+import { TelemetryTierSettings } from './TelemetryTierSettings';
 
 /**
  * The Station-document keys each section renders, in render order.
  *
- * Every key here was in the single `STATION_CONFIG_KEYS` list this module
- * used to hold; nothing was added and nothing dropped, which
- * `station-config-section.test.tsx` asserts against a literal inventory of
- * that list. It also asserts each key's catalog row names the section it is
+ * The original split and later additions retain an independent literal
+ * inventory in `station-config-section.test.tsx`. It also asserts each
+ * key's catalog row names the section it is
  * rendered under — the placement and the deep link are two statements about
  * the same row, and they are only true together.
  */
@@ -50,6 +51,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'terminalShell',
     'mcpUiHost',
     'surfaceTrustFromVeritasEvidence',
+    'attachedSessionsOutsideProjects',
     'mobileDeviceHubUrl',
   ],
   // Where this Station gets agents, skills, plugins and layouts.
@@ -58,9 +60,13 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'disableDefaultSkillRegistries',
     'distributionProfile',
   ],
-  // Whether anything is sent. Where it would go is a derived status line with
-  // no writer, so it is a `PageRow` in `SettingsView`, not a registry row.
-  telemetry: ['telemetryEnabled'],
+  telemetry: [
+    'telemetryTier',
+    'productTelemetryEndpoint',
+    'productTelemetryKeyRef',
+    'otelTelemetryEndpoint',
+    'otelTelemetryKeyRef',
+  ],
   // What agents may do without asking.
   permissions: ['approvalGuardian', 'defaultApprovalMode'],
   // What a run starts with and what bounds it.
@@ -71,6 +77,9 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
     'usageLimitAutoResume',
+    'reviewGuidesEnabled',
+    'reviewGuideModel',
+    'reviewGuideInstructions',
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize'],
@@ -149,6 +158,7 @@ export function StationConfigSection({
   embedded = false,
   containerScope,
   projectOverride,
+  telemetryPublishers,
 }: {
   /** Which section's keys to render; see `STATION_SETTING_KEYS_BY_SECTION`. */
   section: StationSettingsSectionId;
@@ -172,10 +182,23 @@ export function StationConfigSection({
    */
   containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
+  telemetryPublishers?: Record<
+    'kontour' | 'operator',
+    TelemetryPublisherStatus
+  >;
 }) {
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
   ).map((key) => {
+    if (key === 'telemetryTier')
+      return (
+        <TelemetryTierSettings
+          key={key}
+          config={config}
+          onChange={onChange}
+          publishers={telemetryPublishers}
+        />
+      );
     const definition = REGISTRY_BY_KEY.get(key);
     if (!definition) return null;
     // A project may override only the keys the contract lists, and only

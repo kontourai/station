@@ -37,10 +37,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
-import { iosTestFlightChannel } from './ios-testflight-channel.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const IOS_ICON_CHANNELS = Object.freeze([
+  'stable',
+  'beta',
+  'nightly',
+  'dev',
+]);
 
 export const IOS_APP_ICON_CATALOG =
   'src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset';
@@ -66,7 +71,40 @@ function catalogDir(root) {
 }
 
 function channelSetDir(channel, root) {
-  return join(root, 'src-desktop', iosTestFlightChannel(channel).iosIconSet);
+  if (!IOS_ICON_CHANNELS.includes(channel))
+    fail(`unknown icon channel ${JSON.stringify(channel)}`);
+  return join(root, 'src-desktop', 'icons', channel, 'ios');
+}
+
+export function iosIconChannelForConfig(root = ROOT, overlayPath) {
+  const base = JSON.parse(
+    readFileSync(join(root, 'src-desktop/tauri.conf.json'), 'utf8'),
+  );
+  const overlay = overlayPath
+    ? JSON.parse(readFileSync(resolve(root, overlayPath), 'utf8'))
+    : {};
+  const identifier = overlay.identifier ?? base.identifier;
+  const channel = identifier?.startsWith('io.kontourai.station.dev.')
+    ? 'dev'
+    : {
+        'io.kontourai.station': 'stable',
+        'io.kontourai.station.beta': 'beta',
+        'io.kontourai.station.nightly': 'nightly',
+      }[identifier];
+  if (!channel) fail(`Unknown configured iOS Station identity: ${identifier}`);
+  return channel;
+}
+
+function assertCommittedIconSet(channel, root) {
+  const setDir = channelSetDir(channel, root);
+  const manifest = JSON.parse(
+    readFileSync(join(root, 'assets/brand/station-icon-manifest.json'), 'utf8'),
+  );
+  for (const name of channelSetFilenames(setDir)) {
+    const path = `src-desktop/icons/${channel}/ios/${name}`;
+    if (manifest.outputs[path] !== sha256(readFileSync(join(setDir, name))))
+      fail(`${path} differs from the generated icon manifest`);
+  }
 }
 
 /** Filenames the catalog's Contents.json references, deduplicated, sorted. */
@@ -139,10 +177,9 @@ export function assertOpaqueIosPngs(setDir) {
 }
 
 /**
- * Replace the freshly initialized catalog's PNGs with the channel's committed
- * set. Fails closed when the set lacks a file Contents.json references, or
- * when any file the catalog already held survives (i.e. the committed set IS
- * the template — the exact defect this exists to prevent).
+ * Restore the channel's generated set after init, including repeat builds
+ * whose catalog already has the correct icons. The manifest authenticates
+ * the source set independently of the catalog Tauri just wrote.
  */
 export function applyIosChannelIcons(channel, { root = ROOT } = {}) {
   const catalog = catalogDir(root);
@@ -154,26 +191,10 @@ export function applyIosChannelIcons(channel, { root = ROOT } = {}) {
     fail(
       `${setDir} lacks ${missing.join(', ')} referenced by ${join(catalog, 'Contents.json')}`,
     );
-
-  // What the catalog holds before the copy is what `tauri ios init` just
-  // wrote (the workflow pins apply to the line after init). No set file may
-  // equal its pre-apply counterpart: a set that shares bytes with the template
-  // IS the template. A catalog that already holds the set is refused for the
-  // same reason — this step has no way to tell the two apart, and nothing
-  // needs to apply twice without an init in between.
-  const before = new Map();
+  assertCommittedIconSet(channel, root);
   for (const name of readdirSync(catalog)) {
-    if (PNG_NAME.test(name))
-      before.set(name, sha256(readFileSync(join(catalog, name))));
+    if (PNG_NAME.test(name)) unlinkSync(join(catalog, name));
   }
-  const survivors = required.filter(
-    (name) => before.get(name) === sha256(readFileSync(join(setDir, name))),
-  );
-  if (survivors.length > 0)
-    fail(
-      `${survivors.join(', ')} in ${setDir} are byte-identical to what the catalog already holds; apply expects the catalog \`tauri ios init\` just wrote, and a ${channel} set equal to it is Tauri's default icon`,
-    );
-  for (const name of before.keys()) unlinkSync(join(catalog, name));
   for (const name of available) {
     copyFileSync(join(setDir, name), join(catalog, name));
   }
@@ -187,6 +208,7 @@ export function applyIosChannelIcons(channel, { root = ROOT } = {}) {
 export function verifyIosChannelIcons(channel, { root = ROOT } = {}) {
   const catalog = catalogDir(root);
   const setDir = channelSetDir(channel, root);
+  assertCommittedIconSet(channel, root);
   const files = catalogFilenames(catalog);
   const mismatched = [];
   for (const name of files) {
@@ -204,7 +226,7 @@ export function verifyIosChannelIcons(channel, { root = ROOT } = {}) {
       `catalog ${catalog} does not match the ${channel} set ${setDir}: ${mismatched.join(', ')}`,
     );
   return {
-    iconSet: iosTestFlightChannel(channel).iosIconSet,
+    iconSet: `icons/${channel}/ios`,
     iconSetFiles: files,
     iconSetSha256: channelSetDigest(setDir),
     catalogMatchesChannelSet: true,
@@ -284,7 +306,7 @@ function option(args, name) {
 function main(args) {
   const [command, channel] = args;
   if (command === 'apply') {
-    if (args.length !== 2) fail('usage: apply <channel>');
+    if (args.length !== 2) fail('usage: apply <stable|beta|nightly|dev>');
     const { files } = applyIosChannelIcons(channel);
     process.stdout.write(
       `Applied the ${channel} iOS icon set to the catalog (${files.length} files)\n`,
@@ -295,7 +317,9 @@ function main(args) {
     const appDir = option(args, 'app');
     const receiptPath = option(args, 'receipt');
     if (!appDir || !receiptPath || args.length !== 6)
-      fail('usage: verify <channel> --app <Payload/*.app> --receipt <path>');
+      fail(
+        'usage: verify <stable|beta|nightly|dev> --app <dir> --receipt <path>',
+      );
     const receipt = existsSync(receiptPath)
       ? JSON.parse(readFileSync(receiptPath, 'utf8'))
       : {};
@@ -317,7 +341,7 @@ function main(args) {
     return;
   }
   fail(
-    'usage: apply <channel> | verify <channel> --app <dir> --receipt <path>',
+    'usage: apply <stable|beta|nightly|dev> | verify <channel> --app <dir> --receipt <path>',
   );
 }
 

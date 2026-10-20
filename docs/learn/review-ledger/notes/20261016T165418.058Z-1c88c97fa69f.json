@@ -1,0 +1,17 @@
+{
+  "revision": "0668e66a54c61ff2d73d0bd612db74bf2a298485",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Gallery renderer guidance against both digest-pinned1.64.1 workflows and ci-workflow-contract assertions. Local checks enforce lock-resolved Playwright version and SHA256 syntax; they do not fetch/validate registry objects. The revised OCI index/platform manifest/config content-digest review is a separate requirement from container/browser execution and Gallery pixel review. Baseline changes remain separately reviewed commits and Gallery report-only behavior is unchanged. Registry hash validation was reported by the parent; this reviewer did not run the container, pixels or suites.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the testing-guide Gallery-only delta and code-quality testing/verification references. Scoped hook selection, transfer evidence, source-versus-runtime distinction and independent review requirements are unchanged. The new OCI-content review language does not create a local hook/browser result or relax protected governance. scripts/__tests__/veritas-repo-map.test.ts retains exact Veritas major1 and explicit Surface major6 migration tripwires plus all facet/required-check assertions; no protected configuration changed. This is source/delta review, not executed readiness or runtime qualification.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the testing-guide Gallery renderer amendment against script-scope evidence rules. Digest syntax/source/registry review remains distinct from executed container/pixel proof, consistent with fail-closed diagnostics, settled exits and focused-check requirements. No generated verification schedule, script routing, test-effectiveness or publication rule changes; no runtime proof inferred.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the testing-guide Gallery renderer-only amendment. Server public-contract/service ownership, focused route/service testing and installed-read authority/freshness instructions remain accurate; OCI registry source validation adds no provider, request or runtime execution claim. No server owner behavior or server-scope instruction changed.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the testing-guide Gallery renderer-only amendment. UI scope still requires actual mounted interaction/layout evidence rather than source-string or DOM proof; registry digest validation is explicitly separate from browser and pixel execution. Canonical navigation, shared primitives, accessibility and focused UI evidence requirements remain unchanged.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the testing-guide Gallery renderer-only amendment. Hermetic fixtures, real actions, prerequisites, exact fixture identity and source-versus-journey evidence remain required. The amended guide does not turn OCI hashes or image-reference syntax into capture/browser success and retains separately reviewed baseline updates. No fixture rule, test selection or runtime journey was relaxed.","inputs":["tests/AGENTS.md"]}
+  ]
+}

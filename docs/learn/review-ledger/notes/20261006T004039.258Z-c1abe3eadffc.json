@@ -1,0 +1,7 @@
+{
+  "revision": "f53294edd8d016bc94c6714b2c1d317e45766eb2",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Updated the Elicitation row for #3284: only a request that could elicit counts as in flight; on the 2026-07-28 era that is tools/call, prompts/get and resources/read (listings, ping and completion do not count), and on the 2025 era every request counts because the spec sets no limit on which request a server elicits during. Checked against NON_ELICITING_METHODS_2026 and clientRequestMethod in mcp-connection.ts, the SDK's EXTENDED_RESULT_TYPE_METHODS, and mcp-elicitation-connection.test.ts in both eras.","inputs":["docs/design/mcp-ui-host.md","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

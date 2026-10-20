@@ -1,0 +1,7 @@
+{
+  "revision": "19091bb53a3ae119a00afc5ef189ae4565f5f458",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Recorded executed merged-source browser failure at an inert startup root, explicit modal-readiness fixture repair and4/4 final geometry passes; six-screen local capture/recovery assertions,33 fixture guard tests andE2E types passed. Local rendering remains separate from old hosted references and fresh hosted integration qualification.","inputs":["docs/reviews/workspace-map-20261015/README.md","tests/sidebar-geometry.spec.ts"]}
+  ]
+}

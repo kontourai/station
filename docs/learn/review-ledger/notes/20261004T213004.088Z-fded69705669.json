@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/design/channel-home-authority.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; the handshake contract adds the delegatedInputAnswers flag.","inputs":["docs/design/channel-home-authority.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

@@ -1,7 +1,6 @@
 # #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 
-Status: W1 and W2 implemented (see section 6); W3 is designed here, not
-built. W2 kept the profile-only rule for install roots and added ACLs on top
+Status: W1, W2 and W3 implemented (see sections 6, 8 and 9). W2 kept the profile-only rule for install roots and added ACLs on top
 of it (section 8). Base: `origin/main` 8608541b9. Slices A, B1, B2, C, D and E have
 merged. #2954 (installers must not treat bootstrap ports as explicit) is still
 open.
@@ -363,3 +362,48 @@ W3 needs, beyond section 4:
   directory on `current` while the installer replaces the junction. The W2
   Windows smoke exercises exactly this path without a service; a service
   wrapper adds its own `cmd.exe`, which W3 must exercise too.
+
+## 9. W3 as built
+
+- **Execution path (D4 option a).** `service install` copies the active
+  version's `runtime\node.exe` to `<installRoot>\runtime\node.exe` beside the
+  launcher, once the old task has stopped (Windows cannot replace a running
+  program). The wrapper runs that pair from `<installRoot>\runtime`, so its
+  `cmd.exe` keeps no working directory on `current` and the launcher holds no
+  version open. The manifest's `nodePath` names the frozen copy, which is how
+  `install.ps1` tells a launcher service from one installed before W3.
+- **Relaunch (decision, measured fact: Task Scheduler reruns nothing).** The
+  launcher supervises itself on win32, inside its own process, with no new
+  scheduled job: where it would exit for systemd or launchd to restart it
+  (the active child exited, or a transition threw, such as a failed restore),
+  `main` starts a fresh run that recovers from `service-state.json` exactly as
+  a restarted launcher does, after 5 s doubling to 60 s (reset after a
+  10-minute run). Durable state bounds it the same way: restore attempts are
+  counted and end in `needs-operator`, where a run waits. Rejected
+  alternatives: a `cmd.exe` `goto` loop in the wrapper (it would restart the
+  launcher after `service stop` too, and needs a stop marker), and a second
+  scheduled task (a standing job, against the owner's preference).
+  Residual: if the launcher process itself dies, nothing restarts it until
+  the next logon or `service start`.
+- **Stopping.** `/End` ends only the wrapper. The launcher polls its parent
+  (the wrapper) every second and stops when it is gone, so `service stop`, the
+  Task Scheduler UI's End and an uninstall all reach it. It stops its child by
+  closing their IPC channel, which `service run` answers with its orderly
+  shutdown (Windows has no SIGTERM; `kill` is TerminateProcess). `service
+  stop` ends the task, waits up to the launcher's stop budget plus 15 s for
+  its lock to be released, ends it by pid (start time checked) if needed, then
+  stops by record. It no longer stops Station before the task: the launcher
+  would read that as a crash and relaunch.
+- **`current`.** The launcher's `pointCurrentAt` uses the junction,
+  remove-then-rename and `current.next` rule of `installer/full-install.ts`,
+  and each launcher run starts with `recoverCurrent`. Ported, not imported
+  (the launcher stands alone); a parity test runs both over every layout.
+- **Staging.** `stageServiceUpdate` runs `packagedInstallerCommand`, so on
+  win32 the service stages with the version's `install.ps1`
+  (`STATION_INSTALL_STAGE_ONLY=1`), which finds its own Node.js.
+- **install.ps1.** A running launcher service gets the staged version as an
+  update request, and the verdict decides the exit status; a registered,
+  stopped one is stopped through its manager, switched and recorded under the
+  launcher's lock, and left stopped; a pending or needs-operator update is
+  refused; a pre-W3 service is refused with the reinstall command. Uninstall
+  still refuses while a service runs the install.

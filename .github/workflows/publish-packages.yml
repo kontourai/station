@@ -40,6 +40,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/full-regression.yml
     with:
+      capacity_class: release
       source_sha: ${{ github.sha }}
 
   publish:
@@ -98,13 +99,22 @@ jobs:
       # each package's own `publishConfig`. Preflight check 4 fails the job if a
       # registry credential is configured but unresolvable.
       #
-      # Publishing uses the frozen dependency lifecycle install. The npm CLI
-      # remains the OIDC publisher; pnpm owns only dependency installation.
+      # Publishing uses the frozen dependency lifecycle install. pnpm owns
+      # dependency installation AND, since @changesets/cli 3.x selects `pnpm
+      # publish` for this pnpm workspace, the publish itself: pinned pnpm
+      # 11.25.0 (the `packageManager` field) does its own trusted-publishing
+      # OIDC exchange, as npm does (its CHANGELOG: "Make trusted publishing
+      # (OIDC) take precedence over a configured static `_authToken` in `pnpm
+      # publish`"). The npm >= 11.5.1 floor in the preflight below therefore
+      # no longer guards the actual publisher; the pinned pnpm does. It still
+      # guards the `npm` that changesets uses for `npm view` reads and that
+      # a manual bootstrap publish uses. Whether the floor check should move
+      # to pnpm is a follow-up; this block deliberately leaves it as it was.
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
 
@@ -334,6 +344,34 @@ jobs:
       - name: Build Connect
         run: cd packages/connect && npm run build
 
+      # @kontourai/monument's top-level `exports` point at src/*.ts for
+      # Station; the entry points a consumer gets live in its `publishConfig`
+      # and name dist/. Only pnpm applies that override (npm ignores
+      # publishConfig.exports), and `changeset publish` runs `pnpm publish`
+      # here because the workspace is pnpm. Nothing builds dist/ implicitly:
+      # the root .npmrc sets ignore-scripts=true, so a `prepack` hook would not
+      # run. The smoke installs the packed tarball in a scratch consumer under
+      # plain node and fails the dispatch before `changeset publish` can burn
+      # a version with `.ts` entry points.
+      #
+      # Both steps run only for a publish dispatch AND only once the package is
+      # public, so a `tsc` failure here can never block the version PR or the
+      # publish of the other packages while Monument is private. The gate reads
+      # `private` from the manifest with the preflight's own truthiness rule
+      # (`if (pkg.private) continue`, so the string "true" is private too) and
+      # fails closed: a manifest that cannot be parsed fails the job.
+      - name: Is Monument public?
+        id: monument
+        run: node scripts/monument-pack-smoke.mjs --is-public
+
+      - name: Build Monument
+        if: env.PUBLISH_RUN == 'true' && steps.monument.outputs.public == 'true'
+        run: cd packages/monument && npm run build
+
+      - name: Smoke the Monument tarball
+        if: env.PUBLISH_RUN == 'true' && steps.monument.outputs.public == 'true'
+        run: node scripts/monument-pack-smoke.mjs --no-build
+
       # STATION_CLI_BUILD_CHANNEL=stable, read by build-metadata.mjs's
       # deriveCliBundleMetadata and baked into the bundle's
       # globalThis.__STATION_CLI_BUNDLE__ (what `station --version` reports).
@@ -374,9 +412,12 @@ jobs:
       #   org/repo: kontourai/station
       #   workflow: publish-packages.yml
       #   allowed actions: must include `npm publish`. Per npm's trusted-publishers
-      #     doc, configurations created after 2026-05-20 require selecting at least
-      #     one action explicitly. `changeset publish` shells out to plain
-      #     `npm publish` (@changesets/cli 2.31.1), so a stage-only publisher would
+      #     doc, configurations created after 2026-09-03 default to `npm stage
+      #     publish` only, and direct `npm publish` is an extra allowed action
+      #     you must opt into. `changeset publish` publishes with the
+      #     workspace's package manager (@changesets/cli 3.x picks `pnpm
+      #     publish` for this pnpm workspace; getPublishTool), so a
+      #     stage-only publisher would
       #     exchange a token — the preflight would go green — and then refuse the
       #     publish. The preflight cannot see this; only the label on npmjs.com can.
       #
@@ -412,8 +453,9 @@ jobs:
       #     2. On npmjs.com, the package's Settings -> Trusted Publisher:
       #        add a GitHub Actions publisher for org/repo kontourai/station,
       #        workflow filename publish-packages.yml, and select `npm
-      #        publish` under allowed actions (required for configurations
-      #        created after 2026-05-20).
+      #        publish` under allowed actions (configurations created after
+      #        2026-09-03 default to `npm stage publish` only; direct publish is
+      #        opt-in).
       #   Only after both steps does this preflight — and every subsequent
       #   automated dispatch — go green for @kontourai/station-cli. This is
       #   intentional fail-closed behavior, not a bug: merging the code change
@@ -450,6 +492,29 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
+      - name: Select version PR credential boundary
+        id: version-operation
+        run: node scripts/version-pr-operation.mjs
+
+      - name: Mint version PR installation token
+        if: steps.version-operation.outputs.version-pr == 'true'
+        id: version-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.STATION_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.STATION_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: station
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Require version PR installation token
+        if: steps.version-operation.outputs.version-pr == 'true'
+        env:
+          VERSION_PR_TOKEN: ${{ steps.version-token.outputs.token }}
+        run: |
+          test -n "$VERSION_PR_TOKEN" || { echo '::error::Version PR installation token is missing'; exit 1; }
+
       - name: Create Release PR or Publish
         id: changesets
         # v2.1.1, NOT v1.x (station#3710): v1.9.0's API-commit path bundles
@@ -468,8 +533,12 @@ jobs:
         with:
           # v2 requires the token as an INPUT; the GITHUB_TOKEN env var is
           # explicitly not a substitute (v2.0.0 release notes).
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          publish-script: ${{ env.PUBLISH_RUN == 'true' && 'npm run publish-packages' || '' }}
+          # App-generated PR events reach protected-base pull_request_target
+          # checks. The required-token step prevents fallback on mint failure.
+          github-token: ${{ steps.version-operation.outputs.version-pr == 'true' && steps.version-token.outputs.token || github.token }}
+          # An App-authenticated action can only version, even if changesets
+          # disappear between planning and the action's own state read.
+          publish-script: ${{ env.PUBLISH_RUN == 'true' && steps.version-operation.outputs.version-pr != 'true' && 'npm run publish-packages' || '' }}
           version-script: npm run version-packages
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
@@ -486,13 +555,9 @@ jobs:
         # v3 replaces the allocating walk outright. If this step OOMs again,
         # that is NEW evidence; reopen station#3710 rather than re-raising.
         #
-        # No NPM_TOKEN / NODE_AUTH_TOKEN by design. This repo has no Actions
-        # secrets at all (`gh api repos/kontourai/station/actions/secrets`
-        # returns total_count 0), so `${{ secrets.NPM_TOKEN }}` had always
-        # expanded to the empty string — a phantom reference that made the
-        # workflow read as token-authenticated while authenticating as nobody.
-        # Authentication is the job's OIDC id-token, exchanged by npm with the
-        # registry against the trusted publishers named above.
+        # No NPM_TOKEN / NODE_AUTH_TOKEN by design. The installation credential
+        # above is for GitHub version-PR writes only. npm authentication remains
+        # the job's OIDC id-token, exchanged with the trusted publishers above.
         #
         # NPM_CONFIG_PROVENANCE is deliberately NOT set. The job now runs on
         # github-hosted ubuntu-latest (station#683): npm trusted publishing
@@ -533,7 +598,7 @@ jobs:
       - name: Mint the ledger push token
         id: ledger_token
         if: env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -587,7 +652,7 @@ jobs:
       - name: Retain this run's deploy ledger files
         if: ${{ always() && env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true' }}
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: deploy-ledger-npm-${{ github.run_id }}
           path: |

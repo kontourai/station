@@ -57,17 +57,24 @@ one standalone file, so `scripts/install-script-generated.mjs` projects that
 table, the pinned signing keys from `config/release-manifest-keys.json`,
 portable targets from `packages/shared/src/portable-server-targets.mjs`, and
 Node.js pins from `config/portable-server-node-runtime.json` into generated
-blocks. It does the same for the Windows `install.ps1`: the channel list,
-the pinned win32-x64 Node.js zip, and the installer core bundled from
+blocks, along with each channel's default signed manifest from
+`scripts/lib/public-release-locations.mjs`. It does the same for the Windows
+`install.ps1`: the channel list, the default manifests, the pinned win32-x64
+Node.js zip, and the installer core bundled from
 `packages/shared/src/installer/` (which carries the signing keys and the
 shared manifest verifier). `npm run install-script:check` fails when either
 installer is stale, and `node scripts/install-script-generated.mjs --sync`
 rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
-(`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
-nightly key; the authenticated GitHub-release path serves stable and beta
-only. This is the installer contract; publication is tracked separately in #2675. Stable and
+whose envelope names the pinned nightly key; the authenticated GitHub-release
+path serves stable and beta only. With no
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` (unset or empty), both installers use
+the rolling
+`https://github.com/kontourai/station/releases/download/portable-nightly/station-portable-nightly-manifest.json`,
+and the install state records that URL for upgrades. An explicit URL
+overrides it; verification is the same either way. Stable and beta have no
+such default yet (#2960). Stable and
 beta also accept a signed public manifest through the same variable. The
 release workflows can publish one per ring (`portable-stable`,
 `portable-preview`) once the owner enables them; see
@@ -208,9 +215,11 @@ with the same variables, files and messages:
 - ports come from `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`,
   then the recorded ports, then the channel's. Unlike `install.sh`, it never
   reads `STATION_SERVER_PORT`/`STATION_UI_PORT`;
-- the downgrade and same-version-new-bytes refusals, with the
-  `STATION_VERSION` plus `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the
-  nightly coexistence refusals above;
+- the downgrade and same-version-new-bytes refusals, the refusal of a
+  manifest older than the newest release the install root already accepted
+  (`.station-release-accepted.json`), each with the `STATION_VERSION` plus
+  `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the nightly coexistence
+  refusals above;
 - stop, switch, start, restoring the previous version (or removing a first
   install) when a step fails; the restored version starts on the ports its
   restored state records (install.sh restarts it on the new ones); `STATION_INSTALL_NO_START=1` skips the start.
@@ -248,10 +257,24 @@ when that Station stops; PowerShell itself returns as soon as the install
 does. A console, `irm | iex` and `station upgrade` are unaffected, and
 `STATION_INSTALL_NO_START=1` avoids it.
 
-A Station service is not switched on Windows yet (#2675 slice W3): an install
-or uninstall whose install root a service runs is refused, with the remedy.
+A Station service of the install (#2675 slice W3) is a Task Scheduler task
+that runs the fixed service launcher, which owns the switch. When it is
+running, `install.ps1` stages the new version and queues it as an update
+request (`runtime\update-request.json`); the launcher trials it and keeps or
+rolls it back, and `install.ps1` reports that verdict (exit 0 when it
+committed, 1 otherwise). When it is registered but stopped, `install.ps1`
+stops it through its manager, switches `current`, records the version for its
+launcher, starts nothing, and leaves it stopped. An update the launcher left
+unfinished, or one it could not roll back, is refused until the service
+finishes it. A service installed before the launcher ran Windows services is
+refused with a migration in order: `service uninstall` with the installed
+version, `install.ps1` again with `STATION_INSTALL_NO_START=1`, then `service
+install` with the new version (the old version's CLI cannot install a launcher
+service, so reinstalling it first would refuse again); and
+`install.ps1 uninstall` still refuses while any service runs the install.
 `station upgrade` from a Windows archive install re-runs the active
-version's `install.ps1` through the system Windows PowerShell.
+version's `install.ps1` through the system Windows PowerShell; the same rules
+apply.
 
 ## Platform identity matrix
 

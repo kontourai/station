@@ -1,0 +1,7 @@
+{
+  "revision": "362387fb5a43ca513154e401f712c7a476f7c0e4",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Rechecked after the DNT decision reminder comment edit: comment-only change now scopes the local reminder to the API base it is keyed by; the reference's claims that the reminder is browser-local, revision-bound and never an acknowledgement still match UsageTelemetryDisclosure.tsx.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/UsageTelemetryDisclosure.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9bc5d46aefd834166120c62f14a8307ef1d81e3c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Independent review corrected the Full access negative fixture to contain exactly the current explicit token set minus consent:decide; the missing-relay and historical incomplete-set controls remain. The guide relay promotion and separate IAM claims are unaffected. deviceActivity focused baseline passed 40/40 on 9bc5d46aef; a clean-revision mutation allowing Full access without consent made the corrected assertion fail at line 270, with 39 other tests passing; exact owner restoration passed 40/40. Scoped review of packages/connect/src/__tests__/deviceActivity.test.ts only; prior release and native evidence limits remain.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/deviceActivity.test.ts"]}
+  ]
+}

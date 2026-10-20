@@ -1,0 +1,204 @@
+/* Shared People UI (#3586): the divided person list and its rows, used by
+   Settings › People and a Project's People and access. People read as one
+   list: tight rows with dividers. An open person gets the card treatment
+   inside it. */
+
+.person-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.person-list__filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  max-width: 20rem;
+}
+
+.person-list__filter-label {
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  padding: 0;
+}
+
+.person-list__filter-input {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  min-width: 0;
+}
+
+.person-list__filter-input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+/* Nothing matched the filter: one quiet line, not a framed card. */
+.person-list__none {
+  margin: 0;
+  padding: 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.person-row {
+  min-width: 0;
+}
+
+.person-row + .person-row {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.person-row--open {
+  background: var(--k-panel-raised);
+}
+
+.person-row:first-child {
+  border-top-left-radius: var(--k-radius-md);
+  border-top-right-radius: var(--k-radius-md);
+}
+
+.person-row:last-child {
+  border-bottom-left-radius: var(--k-radius-md);
+  border-bottom-right-radius: var(--k-radius-md);
+}
+
+.person-row__header {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-3) var(--k-space-1) 0;
+  min-width: 0;
+}
+
+/* The whole row (bar its controls) is the toggle. */
+.person-row__toggle,
+.person-row__static {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--k-space-1) var(--k-space-2) var(--k-space-1) var(--k-space-3);
+}
+
+.person-row__toggle {
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.person-row__toggle[aria-disabled="true"] {
+  cursor: default;
+}
+
+.person-row__toggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
+.person-row__chevron {
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  transition: transform var(--k-dur) var(--k-ease);
+}
+
+.person-row__toggle[aria-expanded="true"] .person-row__chevron {
+  transform: rotate(90deg);
+}
+
+.person-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.person-row__name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.person-row__name {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  /* One line in the collapsed row; the full name is the row's title. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person-row__meta {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  word-break: break-word;
+}
+
+.person-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: 0 var(--k-space-4) var(--k-space-4) var(--k-space-6);
+  min-width: 0;
+}
+
+/* The Project invitation form (`InviteFlow`). */
+.invite-flow {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.invite-flow label:not(.cb) {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+.invite-flow input:not([type="checkbox"]),
+.invite-flow select {
+  min-height: 44px;
+  max-width: 100%;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--k-space-2);
+  font: inherit;
+}
+
+.invite-flow__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.invite-flow__help {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--k-text-muted);
+}
+
+.invite-flow > .button {
+  justify-self: start;
+  width: fit-content;
+  min-height: 44px;
+}

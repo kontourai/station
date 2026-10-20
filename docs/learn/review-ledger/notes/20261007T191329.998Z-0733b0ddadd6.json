@@ -1,0 +1,7 @@
+{
+  "revision": "b29a477094fecece2e6cdca5068619e5b2be505a",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the full recorded orchestration-chat-flow input delta and current seven-spec manifest/fixture, browser-health and runner clauses. Final title selector matches ToolApprovalSheet canonical attentionWord; geometry, theme, busy/refusal/settled and decision assertions remain. Executed admitted product-runner Chromium selection on b29a477: all four approval keepers across orchestration and mobile sheets passed, E2E typecheck and fixture policy passed. Mobile-sheet selectors are the same three replacements as shared66b2 and introduce no new documented contract. This is focused synthetic-event/browser proof, not the whole PR smoke suite, provider/native/physical or release qualification.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

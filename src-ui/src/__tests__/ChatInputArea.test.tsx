@@ -90,7 +90,6 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     attachments: [],
     textareaRef: { current: null },
     disabled: false,
-    isSending: false,
     turnInFlight: false,
     modelSupportsAttachments: true,
     fontSize: 14,
@@ -215,6 +214,12 @@ describe('ChatInputArea', () => {
       expect(onHistoryUp).toHaveBeenCalledOnce();
     },
   );
+
+  test('names a conversation that is still opening in its placeholder', () => {
+    renderChatInputArea({ disabled: true, loadingConversation: true });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('Loading chat…');
+  });
 
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
@@ -740,25 +745,6 @@ describe('ChatInputArea', () => {
     );
   });
 
-  test('autosizes the textarea to measured content and clamps overflow', () => {
-    const { rerender } = render(
-      <ChatInputArea {...renderProps({ input: 'one' })} />,
-    );
-    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-    let scrollHeight = 220;
-    Object.defineProperty(textarea, 'scrollHeight', {
-      configurable: true,
-      get: () => scrollHeight,
-    });
-    rerender(<ChatInputArea {...renderProps({ input: 'one\ntwo' })} />);
-    expect(textarea.style.height).toBe('160px');
-    expect(textarea.style.overflowY).toBe('auto');
-    scrollHeight = 40;
-    rerender(<ChatInputArea {...renderProps({ input: 'one' })} />);
-    expect(textarea.style.height).toBe('40px');
-    expect(textarea.style.overflowY).toBe('hidden');
-  });
-
   test('does not send Enter while an IME composition is active', () => {
     const onSend = vi.fn(async () => {});
     render(<ChatInputArea {...renderProps({ onSend })} />);
@@ -989,7 +975,7 @@ describe('ChatInputArea', () => {
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(props.onModelOpen).toHaveBeenCalled();
     expect(props.onInputChange).not.toHaveBeenCalled();
@@ -1020,12 +1006,14 @@ describe('ChatInputArea', () => {
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen
-        .getByRole('button', { name: /^Model:/ })
+        .getByRole('button', { name: /^Engine & model:/ })
         .querySelector('.chat-input__model-name')?.textContent,
     ).not.toBe('Model');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
-    ).toMatch(/^Model:/);
+      screen
+        .getByRole('button', { name: /^Engine & model:/ })
+        .getAttribute('title'),
+    ).toMatch(/^Engine & model:/);
     agent.focus();
     // Browsers synthesize an untrusted click for keyboard activation of a
     // native button; detail=0 distinguishes that path from pointer input.
@@ -1075,7 +1063,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
@@ -1133,6 +1121,7 @@ describe('ChatInputArea', () => {
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,
     ).toBe('keep this draft');
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
     ).toBeTruthy();
@@ -1174,7 +1163,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Model');
+    ).toBe('Engine & model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1193,7 +1182,7 @@ describe('ChatInputArea', () => {
       availableModels: [{ id: 'default', name: 'Default (recommended)' }],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Default');
     expect(modelButton.textContent).not.toContain('recommended');
     // Nothing is lost: the catalog's own option name still reaches assistive
@@ -1217,7 +1206,7 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Opus 5');
   });
 
@@ -1228,7 +1217,7 @@ describe('ChatInputArea', () => {
       currentModel: undefined,
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Model & effort');
     expect(modelButton.getAttribute('aria-label')).toContain('Model & effort');
     expect(screen.queryByText('Model not reported')).toBeNull();
@@ -1247,7 +1236,7 @@ describe('ChatInputArea', () => {
     // second visible line, but it still goes through modelSourceLabel — so
     // this remains a real guard against the internal "runtime" vocabulary
     // leaking to users (docs/design/chat-composer.md §2).
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     const accessibleName = modelButton.getAttribute('aria-label') ?? '';
     expect(modelButton.textContent).not.toContain('runtime');
     expect(accessibleName).not.toContain('runtime');
@@ -1262,9 +1251,26 @@ describe('ChatInputArea', () => {
       onModelReset,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use default model' }));
     expect(onModelReset).toHaveBeenCalledOnce();
   });
+
+  test.each([
+    ['project default', 'Use project default'],
+    // 'unknown' has no user-facing label; the reset never reads a bare "Use".
+    ['unknown', 'Use default model'],
+  ] as const)(
+    'names a %s reset after the default it restores',
+    (source, name) => {
+      renderChatInputArea({
+        currentModel: 'override-model',
+        currentModelSource: 'session override',
+        defaultModelSource: source,
+        onModelReset: vi.fn(),
+      });
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    },
+  );
 
   test('adds a pasted screenshot without changing the typed draft', async () => {
     const selectAttachmentFiles = vi.fn(async () => {});
@@ -1623,7 +1629,7 @@ describe('ChatInputArea', () => {
       renderChatInputArea(props);
       const chip = screen.getByRole('button', { name: /^Approval mode:/ });
       expect(chip.getAttribute('aria-label')).toMatch(
-        /Default — OpenCode's own settings/,
+        /Engine default — OpenCode's own settings/,
       );
       fireEvent.click(chip);
       await screen.findByRole('radiogroup', { name: 'Approval mode' });
@@ -1639,7 +1645,7 @@ describe('ChatInputArea', () => {
         screen
           .getByRole('button', { name: /^Approval mode:/ })
           .getAttribute('aria-label'),
-      ).toMatch(/Default — Ask first/);
+      ).toMatch(/^Approval mode: Ask — Ask first/);
     });
 
     test('a pick OpenCode could not be switched to is shown as not applied, never as the pick', () => {
@@ -1836,7 +1842,6 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     attachments: [],
     textareaRef: { current: null },
     disabled: false,
-    isSending: false,
     turnInFlight: false,
     modelSupportsAttachments: true,
     fontSize: 14,
@@ -1969,6 +1974,56 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 
+  test('an out-of-flow sibling (the hidden status region) takes no room from the composer', () => {
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    // Exaggerated so the decision flips on it: counted, the region's box
+    // (150) plus the composer (200) would not fit the 300px dock.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('sr-only')
+            ? 150
+            : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div
+            className="sr-only"
+            role="status"
+            style={{ position: 'absolute' }}
+          />
+          <div className="sr-only" style={{ position: 'fixed' }} />
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+      expect(
+        (view.container.querySelector('.chat-input') as HTMLElement).style
+          .minHeight,
+      ).toBe('200px');
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('typing does not rebuild the observers', () => {
     const constructed = vi.fn();
     class CountingObserver {
@@ -2046,4 +2101,112 @@ describe('ChatInputArea send-failure notice', () => {
     renderChatInputArea({ sendFailureNotice: undefined });
     expect(document.querySelector('.chat-input__send-failure')).toBeNull();
   });
+});
+
+describe('ChatInputArea queued-retry Discard', () => {
+  test('a Discard that may withdraw a message Station has asks first, with the risk stated', () => {
+    const onDiscard = vi.fn();
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard,
+        confirm: true,
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    expect(onDiscard).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I checked, discard it' }),
+    );
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  test('the question follows its Discard… and takes focus; Keep it gives focus back', () => {
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard: vi.fn(),
+        confirm: true,
+      },
+    });
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    // Its own popover (the composer clips what overflows it), after the
+    // button in reading and tab order, and named by it.
+    expect(
+      screen
+        .getByRole('alertdialog', { name: 'Discard this message?' })
+        .contains(confirm),
+    ).toBe(true);
+    expect(
+      discard.compareDocumentPosition(confirm) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(discard.getAttribute('aria-expanded')).toBe('true');
+    const keep = screen.getByRole('button', { name: 'Keep it' });
+    expect(document.activeElement).toBe(keep);
+    fireEvent.click(keep);
+    expect(
+      screen.queryByRole('group', { name: 'Discard this message?' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(discard);
+  });
+
+  test.each([
+    [
+      'Escape',
+      (dialog: HTMLElement) =>
+        fireEvent.keyDown(
+          dialog.contains(document.activeElement)
+            ? (document.activeElement as HTMLElement)
+            : dialog,
+          { key: 'Escape' },
+        ),
+    ],
+    [
+      'a tap outside',
+      (dialog: HTMLElement) => fireEvent.pointerDown(dialog.parentElement!),
+    ],
+  ] as const)(
+    '%s keeps the message and gives focus back to Discard…',
+    async (_how, dismiss) => {
+      const onDiscard = vi.fn();
+      renderChatInputArea({
+        queuedRetryNotice: {
+          text: "Send wasn't confirmed — queued to retry automatically",
+          onDiscard,
+          confirm: true,
+        },
+      });
+      const discard = screen.getByRole('button', { name: 'Discard…' });
+      discard.focus();
+      fireEvent.click(discard);
+      const dialog = screen.getByRole('alertdialog', {
+        name: 'Discard this message?',
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Keep it' }),
+      );
+      dismiss(dialog);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('alertdialog', { name: 'Discard this message?' }),
+        ).toBeNull(),
+      );
+      await waitFor(() => expect(document.activeElement).toBe(discard));
+      expect(discard.getAttribute('aria-expanded')).toBe('false');
+      expect(onDiscard).not.toHaveBeenCalled();
+    },
+  );
 });

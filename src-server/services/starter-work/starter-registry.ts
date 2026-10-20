@@ -1,7 +1,10 @@
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
+import type {
+  AdoptedSessionResult,
+  AdoptSessionTarget,
+} from '@kontourai/station-contracts/orchestration';
 import type { SchedulerManualRunReceipt } from '@kontourai/station-contracts/scheduler';
 import type {
   ContinueSessionStarterLaunchInput,
@@ -130,6 +133,8 @@ export type StarterSessionOwner = {
   continue(input: {
     sourceSessionId: string;
     operationId: string;
+    /** #3386: `adoptSession`'s `target`, passed through unchanged. */
+    target?: AdoptSessionTarget;
     /**
      * #2493: the launching request's full-access grant. The adopted child's
      * confinement stamp records it (`host` only with one), the same as a
@@ -700,6 +705,7 @@ export class StarterRegistry {
       continuation = await this.sessions.continue({
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
+        ...(input.target ? { target: input.target } : {}),
         fullAccessGrant,
         owner,
         ...(clientOrigin ? { clientOrigin } : {}),

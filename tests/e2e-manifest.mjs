@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 export const E2E_AUDIT_PATTERN =
   /localhost:(3141|3000|5274)|waitForTimeout\(|test\.skip\(/;
@@ -136,6 +136,41 @@ function containsRouteFulfill(node) {
 }
 
 /**
+ * A route handler that only reads the request and forwards it to the real
+ * Station (`route.request()`, `route.fetch()`), never fulfilling it or handing
+ * the route to anything else: an intercept that holds or observes a real
+ * send, not a receipt mock. Anything else is treated as a mock.
+ */
+function isPassThroughRouteHandler(handler) {
+  if (
+    !handler ||
+    !(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) ||
+    handler.parameters.length === 0 ||
+    !ts.isIdentifier(handler.parameters[0].name)
+  )
+    return false;
+  const routeName = handler.parameters[0].name.text;
+  let passThrough = !containsRouteFulfill(handler.body);
+  const visit = (candidate) => {
+    if (!passThrough) return;
+    if (ts.isIdentifier(candidate) && candidate.text === routeName) {
+      const parent = candidate.parent;
+      if (
+        !parent ||
+        !ts.isPropertyAccessExpression(parent) ||
+        parent.expression !== candidate ||
+        !['request', 'fetch'].includes(parent.name.text)
+      )
+        passThrough = false;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(handler.body);
+  return passThrough;
+}
+
+/**
  * archive#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
  * its body carries the exact provider turn identity — `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) and the route itself
@@ -179,7 +214,8 @@ export function foregroundReceiptFixtureErrors(filePath, text) {
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === 'route' &&
       node.arguments.length > 0 &&
-      isForegroundChatRouteLiteral(node.arguments[0])
+      isForegroundChatRouteLiteral(node.arguments[0]) &&
+      !isPassThroughRouteHandler(node.arguments[1])
     ) {
       mocksChatRoute = true;
     }
@@ -320,13 +356,14 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
+    'tests/subagent-transcript-cards.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
-    'tests/sidebar-file-intake.spec.ts',
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
+    'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
@@ -346,6 +383,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -354,13 +392,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
+    'tests/composer-capabilities.spec.ts',
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
-    'tests/connect-modal.spec.ts',
     'tests/connect-retry.spec.ts',
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
@@ -371,6 +409,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/mcp-elicitation-form.spec.ts',
+    'tests/mobile-request-sheet.spec.ts',
+    'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -379,6 +420,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-recovery.spec.ts',
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
+    'tests/chat-settings-and-task-notices.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -394,6 +436,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns real receiver pairing state and temporary credential files.
+    'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
     'tests/conversation-timeline.spec.ts',
     // Retains the short-viewport composer acceptance screenshot beside the
@@ -445,6 +489,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // and re-creates two projects by fixed slug. Both are instance-wide
     // mutations no sibling spec can be running alongside.
     'tests/notifications-attention.spec.ts',
+    'tests/personal-board-authoring.spec.ts',
     'tests/board-visibility.spec.ts',
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
@@ -538,6 +583,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/message-delivery-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "A composer send whose page is reloaded (the app closed) while its request is still open: once after Station started the turn and the answer was lost, once before Station received it. The reloaded app must ask the delivery lookup about the same key and end with exactly one turn in the conversation's durable event window: no resend after started, one same-key resend after not-received. Live because the turn ledger, the in-flight record and the event window are the real server's.",
     exceptions: [],
   },
   {
@@ -742,16 +797,6 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/sidebar-file-intake.spec.ts',
-    bucket: 'product',
-    surface: 'Sidebar file intake',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
     exceptions: [],
   },
   {
@@ -984,6 +1029,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/transcript-load-stability.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Transcript geometry while a long Markdown-heavy conversation loads on a CPU-throttled 390x844 phone: the conversation-open read and the late row chunks are held behind explicit gates, and a per-frame sampler proves an unscrolled transcript settles at its newest message, a scrolled-up reader keeps their row, the virtualized handoff never blanks the viewport, and Scroll to bottom glides monotonically to the end. Browser-local page.route fixtures only; writes only testInfo outputs.',
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-replay.spec.ts',
     bucket: 'product',
     surface: 'Chat',
@@ -1098,6 +1153,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#613: proves mid-turn queue reorder, inline edit, and boundary drain (in the reordered order) for a runtime chat session via the mock orchestration SSE harness.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/composer-capabilities.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "One composer capability contract at desktop and 390px: a file attached through the start composer's picker is staged by the new chat and rides its first send, and a running turn keeps the paperclip usable while saying why files cannot steer or queue, blocking the send until the turn ends or they are removed, with Stop at the controls row's edge. Page-scoped HTTP fixtures and the mock orchestration SSE harness.",
     exceptions: [],
   },
   {
@@ -1288,6 +1353,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/server-older-banner.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#2675: the "server is older than this app" banner, rendered by the real ServerOlderLaunchCheck through the real BannerHost with the real index.css token layers, in both themes at desktop and 390px phone width: the one-click "Update server" offer and the manual-remedy variant fit without a horizontal page scroll, and clicking the update moves the same banner to the service update\'s progress. Captures each state for a person to look at. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts; only the SDK core-update hooks and the connected-server context are stubbed; no live instance or server.',
+    exceptions: [],
+  },
+  {
     path: 'tests/banner-stack-bound.spec.ts',
     bucket: 'product',
     surface: 'Shell',
@@ -1422,6 +1497,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/subagent-transcript-cards.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'A subagent spawned by a tool call renders one inline transcript card at its spawn point, folded from child-work.updated events: Running with its live status line and reported model, then Completed with elapsed time and a result preview, expandable to the full summary and usage, and still inside the viewport at 390px.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agents-pane.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1439,6 +1524,33 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mcp-elicitation-form.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mobile-request-sheet.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/input-request.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3390 one station.input-request/v1 renderer at 1280 and 390x844: Claude single/multi/custom questions with a required-field error marked and focused on its field, a Codex secret answer, MCP defaults pre-selected, an approval decision, transcript records for resolved requests including one resolved on another device, and a pre-#3390 stored harness question that still renders and answers.',
     exceptions: [],
   },
   {
@@ -1525,7 +1637,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone. At a keyboard-height 390x560 viewport it proves the start sheet scrolls only its body, never a squeezed header.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-settings-and-task-notices.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
     exceptions: [],
   },
   {
@@ -1664,7 +1786,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence.',
+      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence. Off the win32 reference platform the workload is skipped up front (REFERENCE_OS_MISMATCH) and only a NOT_VERIFIED receipt is emitted, so this bucket launches no browser or Station there (#577).',
     exceptions: [],
   },
   {
@@ -1814,6 +1936,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#3806 real browser journey: Project add-pane admission, all-kind references, pointer and keyboard geometry, title/camera, exact missing-only cleanup, undo, and reload persistence through the real board routes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/personal-board-authoring.spec.ts',
+    bucket: 'product',
+    surface: 'Personal Boards',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real owner-scoped API and desktop/mobile authoring: template, edit, preview-before-save, reload persistence, arriving proposal and explicit Apply.',
     exceptions: [],
   },
   {

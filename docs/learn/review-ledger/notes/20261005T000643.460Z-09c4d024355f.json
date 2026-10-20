@@ -1,0 +1,7 @@
+{
+  "revision": "a9f50936add68186a9697b924cd9b654def9653e",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"#3149 added one paragraph to docs/guides/testing.md (dependency-derived changed-test targets); this file only routes to that guide and its routed anchors and commands still resolve; no claim here changes.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

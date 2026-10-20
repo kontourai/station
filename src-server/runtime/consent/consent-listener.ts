@@ -189,7 +189,12 @@ function resolveListenerAuthority(
   cookieHeader: string | undefined,
   transactionId: string,
 ): ListenerAuthority | null {
-  const deviceCredential = parseDeviceSessionCookie(cookieHeader);
+  const deviceCredential = parseDeviceSessionCookie(
+    cookieHeader,
+    (candidate) =>
+      deps.credentials.verifyOperatorCredential(candidate) ||
+      deps.credentials.identifyDevice(candidate) !== null,
+  );
   if (deviceCredential !== undefined) {
     const authority = consentDecisionAuthority(
       deps.credentials,

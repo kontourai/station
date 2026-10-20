@@ -215,6 +215,11 @@ export type ConnectionFailureReason =
   | 'access-method-mismatch'
   | 'authentication-failed'
   | 'unsupported-capability-version'
+  /**
+   * #2962 — the host refused this client's API protocol (HTTP 426
+   * `client_protocol_unsupported`): this app, not the host, is too old.
+   */
+  | 'client-protocol-unsupported'
   | 'timeout'
   /**
    * Nothing answered: a thrown fetch (DNS failure, refused socket, no route).

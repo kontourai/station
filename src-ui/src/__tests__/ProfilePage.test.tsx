@@ -38,6 +38,8 @@ const analyticsState = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   AuthStatusBadge: () => <div>Auth badge</div>,
+}));
+vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
   useUsageRollupQuery: () => ({
     data: { coverage: [], rows: [], receipts: [] },
     isLoading: false,
@@ -47,6 +49,17 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 vi.mock('../components/profile/StationPeoplePanel', () => ({
   StationPeoplePanel: () => <div>Paired profiles</div>,
+}));
+vi.mock('../components/profile/MyAccessPanel', () => ({
+  MyAccessPanel: () => <div>My access</div>,
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => null,
+}));
+
+vi.mock('../components/usage-stats/StationUsagePanel', () => ({
+  StationUsagePanel: () => <div>Station operator overview</div>,
 }));
 
 vi.mock('../components/badges/AchievementsBadge', () => ({
@@ -113,6 +126,16 @@ describe('ProfilePage', () => {
     expect(
       container.querySelectorAll('.profile-usage-graph__bar'),
     ).toHaveLength(14);
+  });
+
+  test('mounts diagnostic reads only while the disclosure is open', async () => {
+    render(<ProfilePage />);
+    expect(screen.queryByText('Insights')).toBeNull();
+    const summary = screen.getByText('Diagnostics').closest('summary')!;
+    fireEvent.click(summary);
+    await waitFor(() => expect(screen.getByText('Insights')).toBeTruthy());
+    fireEvent.click(summary);
+    await waitFor(() => expect(screen.queryByText('Insights')).toBeNull());
   });
 
   test('renders the empty hero graph state when no recent usage exists', () => {

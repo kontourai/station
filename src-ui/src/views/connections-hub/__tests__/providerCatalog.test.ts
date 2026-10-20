@@ -288,3 +288,27 @@ describe('provider catalog presentation', () => {
     });
   });
 });
+
+test('a failed engine connection check does not render as Ready beside a live catalog', () => {
+  const result = resolveProviderPresentation({
+    id: 'codex',
+    kind: 'agent',
+    type: 'codex',
+    name: 'Codex',
+    enabled: true,
+    status: 'ready',
+    setup: { state: 'ready', detected: true, configured: true },
+    prerequisites: [],
+    href: '',
+    readinessEvidence: {
+      evidenceVersion: 1,
+      level: 'catalog-ready',
+      observedAt: '2026-10-03T00:00:00Z',
+      freshness: 'fresh',
+      summary: 'Connection check failed',
+      smoke: { status: 'failed', freshness: 'fresh', turnLimit: 1 },
+    },
+  });
+  expect(result.readiness).toBe('Check failed');
+  expect(result.actionLabel).toBe('Check connection');
+});

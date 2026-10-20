@@ -10,6 +10,11 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import {
+  requiresDependencyPatchBinding,
+  validateDependencyPatchBinding,
+  verifyDependencyPatchBinding,
+} from './lib/dependency-patch-binding.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
 import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
@@ -40,6 +45,16 @@ const RESIDUAL_FIELDS = new Set([
   'trackingUrl',
   'expires',
   'recheckTrigger',
+]);
+const REMEDIATION_FIELDS = new Set([
+  'scope',
+  'package',
+  'version',
+  'advisory',
+  'severity',
+  'owner',
+  'reason',
+  'trackingIssue',
 ]);
 const COUNTS = ['info', 'low', 'moderate', 'high', 'critical', 'total'];
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -244,8 +259,10 @@ function parseAudit(scope, input, reachability, resolvedVersions = {}) {
     }
     for (const advisory of uniqueAdvisories.values()) {
       if (
-        reachability === 'production' &&
-        RESIDUAL_SEVERITIES.has(advisory.severity)
+        (reachability === 'production' &&
+          RESIDUAL_SEVERITIES.has(advisory.severity)) ||
+        (advisory.package === 'node-forge' &&
+          advisory.advisory === 'GHSA-86w9-cpqp-85rv')
       ) {
         for (const version of resolvedPackageVersions(
           scope,
@@ -314,7 +331,8 @@ function validateExceptions(input, scopes, now) {
     if (
       field !== 'version' &&
       field !== 'exceptions' &&
-      field !== 'residuals'
+      field !== 'residuals' &&
+      field !== 'remediations'
     ) {
       throw new Error(`exception config has unknown field: ${field}`);
     }
@@ -333,6 +351,46 @@ function validateExceptions(input, scopes, now) {
   const warnings = [];
   const validated = [];
   const keys = new Set();
+  const remediations = Object.hasOwn(config, 'remediations')
+    ? config.remediations
+    : [];
+  if (!Array.isArray(remediations))
+    throw new Error('remediations must be an array');
+  const remediationKeys = new Set();
+  for (const [index, record] of remediations.entries()) {
+    const label = `remediation ${index + 1}`;
+    assertRecord(record, label);
+    if (
+      Object.keys(record).some(
+        (key) => !REMEDIATION_FIELDS.has(key) && key !== 'patchBinding',
+      )
+    )
+      errors.push(`${label} has unknown field`);
+    for (const field of REMEDIATION_FIELDS) {
+      if (typeof record[field] !== 'string' || !record[field].trim())
+        errors.push(`${label} ${field} must be a non-empty string`);
+    }
+    if (
+      record.package !== 'node-forge' ||
+      record.advisory !== 'GHSA-86w9-cpqp-85rv' ||
+      record.severity !== 'high'
+    )
+      errors.push(`${label} unsupported remediation`);
+    if (
+      !/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/.test(
+        record.trackingIssue,
+      )
+    )
+      errors.push(`${label} trackingIssue must be an exact GitHub issue URL`);
+    try {
+      validateDependencyPatchBinding(record);
+    } catch (error) {
+      errors.push(`${label} ${error.message}`);
+    }
+    const key = exceptionKey(record);
+    if (remediationKeys.has(key)) errors.push(`${label} is a duplicate`);
+    remediationKeys.add(key);
+  }
   for (const [index, rawException] of config.exceptions.entries()) {
     if (
       !rawException ||
@@ -392,6 +450,8 @@ function validateExceptions(input, scopes, now) {
         `exception ${index + 1} is a duplicate for ${exception.scope}:${exception.package}:${exception.advisory}`,
       );
     keys.add(key);
+    if (remediationKeys.has(key))
+      errors.push(`exception ${index + 1} duplicates a remediation`);
     validated.push(exception);
   }
   const residuals = [];
@@ -408,7 +468,7 @@ function validateExceptions(input, scopes, now) {
     }
     const residual = rawResidual;
     const unknown = Object.keys(residual).filter(
-      (field) => !RESIDUAL_FIELDS.has(field),
+      (field) => !RESIDUAL_FIELDS.has(field) && field !== 'patchBinding',
     );
     if (unknown.length > 0)
       errors.push(`${label} has unknown field: ${unknown.join(', ')}`);
@@ -441,6 +501,16 @@ function validateExceptions(input, scopes, now) {
         warnings,
         `${residual.package} ${residual.advisory}`,
       );
+    if (
+      Object.hasOwn(residual, 'patchBinding') ||
+      requiresDependencyPatchBinding(residual)
+    ) {
+      try {
+        validateDependencyPatchBinding(residual);
+      } catch (error) {
+        errors.push(`${label} ${error.message}`);
+      }
+    }
     const key = residualKey(residual);
     if (residualKeys.has(key))
       errors.push(
@@ -449,7 +519,7 @@ function validateExceptions(input, scopes, now) {
     residualKeys.add(key);
     residuals.push(residual);
   }
-  return { errors, validated, residuals, warnings };
+  return { errors, validated, residuals, remediations, warnings };
 }
 
 export function evaluateAuditPolicy(
@@ -505,15 +575,18 @@ export function evaluateAuditPolicy(
     errors: exceptionErrors,
     validated: exceptions,
     residuals,
+    remediations,
     warnings: expiryWarnings,
   } = validateExceptions(exceptionConfig, knownScopes, now);
   const allFindings = parsed.flatMap((entry) => entry.findings);
   const acceptedFindings = [];
+  const patchedFindings = [];
   const blockingFindings = [];
   const trackedResiduals = [];
   const untrackedResiduals = [];
   const usedExceptions = new Set();
   const usedResiduals = new Set();
+  const usedRemediations = new Set();
   const uniqueFindings = new Map(
     allFindings.map((finding) => [
       finding.version
@@ -542,10 +615,48 @@ export function evaluateAuditPolicy(
         untrackedResiduals.push(finding);
         continue;
       }
+      if (
+        Object.hasOwn(matchingResidual, 'patchBinding') ||
+        requiresDependencyPatchBinding(matchingResidual)
+      ) {
+        try {
+          verifyDependencyPatchBinding(
+            options.root ?? REPO_ROOT,
+            matchingResidual,
+          );
+        } catch (error) {
+          exceptionErrors.push(
+            `${finding.scope}:${finding.package}: ${error.message}`,
+          );
+          untrackedResiduals.push(finding);
+          continue;
+        }
+      }
       trackedResiduals.push(finding);
       continue;
     }
     if (!BLOCKING_SEVERITIES.has(finding.severity)) continue;
+    const remediation = remediations.find(
+      (record) => exceptionKey(record) === exceptionKey(finding),
+    );
+    if (remediation) {
+      usedRemediations.add(remediation);
+      try {
+        if (
+          finding.version !== remediation.version ||
+          finding.severity !== remediation.severity
+        )
+          throw new Error('remediation version or severity mismatch');
+        verifyDependencyPatchBinding(options.root ?? REPO_ROOT, remediation);
+        patchedFindings.push(finding);
+      } catch (error) {
+        exceptionErrors.push(
+          `${finding.scope}:${finding.package}: ${error.message}`,
+        );
+        blockingFindings.push(finding);
+      }
+      continue;
+    }
     const matchingIdentity = exceptions.find(
       (exception) => exceptionKey(exception) === exceptionKey(finding),
     );
@@ -569,6 +680,12 @@ export function evaluateAuditPolicy(
         `unused exception for ${exception.scope}:${exception.package}:${exception.advisory}`,
       );
     }
+  }
+  for (const record of remediations) {
+    if (auditedScopes.has(record.scope) && !usedRemediations.has(record))
+      exceptionErrors.push(
+        `unused remediation for ${record.scope}:${record.package}:${record.version}:${record.advisory}`,
+      );
   }
   for (const residual of residuals) {
     // A full-graph audit does not establish production reachability. Only
@@ -595,6 +712,7 @@ export function evaluateAuditPolicy(
     ),
     blockingFindings,
     acceptedFindings,
+    patchedFindings,
     trackedResiduals,
     untrackedResiduals,
     exceptionErrors,
@@ -614,6 +732,11 @@ export function formatPolicyReport(result) {
   for (const finding of result.acceptedFindings) {
     lines.push(
       `ACCEPTED ${finding.scope}: ${finding.package} ${finding.advisory} (${finding.severity})`,
+    );
+  }
+  for (const finding of result.patchedFindings) {
+    lines.push(
+      `PATCHED ${finding.scope}/${finding.reachability}: ${finding.package}@${finding.version} ${finding.advisory} (${finding.severity}; installed bytes verified)`,
     );
   }
   for (const finding of result.trackedResiduals) {
@@ -1035,6 +1158,7 @@ export async function runPolicyCli({
   decide = dependencyAuditDecision,
   runAudits = collectAudits,
   env = process.env,
+  root = REPO_ROOT,
 } = {}) {
   const decision = decide();
   if (!decision.required) {
@@ -1061,10 +1185,10 @@ export async function runPolicyCli({
   );
   const audits = await runAudits(scopes);
   const exceptions = readJson(
-    path.join(SCRIPT_DIR, 'dependency-advisory-exceptions.json'),
+    path.join(root, 'scripts/dependency-advisory-exceptions.json'),
     'exception config',
   );
-  const result = evaluateAuditPolicy(audits, exceptions);
+  const result = evaluateAuditPolicy(audits, exceptions, { root });
   console.log(formatPolicyReport(result));
   for (const annotation of formatExpiryAnnotations(result, env))
     console.log(annotation);

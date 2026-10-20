@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   type ApprovalMode,
   approvalModeChipLabel,
@@ -31,6 +32,7 @@ const loadComposerModeSheet = () =>
 interface ApprovalModeChipProps {
   /** The session's clean engine-connection identity (for example `codex`). */
   engineConnectionId?: string | null;
+  isNewSession?: boolean;
   /**
    * Resolved from the bound connection's authoritative engine capability
    * matrix. Undefined is intentionally distinct from `unsupported`: this
@@ -104,6 +106,7 @@ interface ApprovalModeChipProps {
  */
 export function ApprovalModeChip({
   engineConnectionId,
+  isNewSession = false,
   toolPolicyDelivery,
   sessionOverride,
   agentDefault,
@@ -112,6 +115,7 @@ export function ApprovalModeChip({
   sessionOverrideState,
   onChange,
 }: ApprovalModeChipProps) {
+  const account = useAccountPreferences();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   if (!approvalModeKnobSupported(engineConnectionId)) {
@@ -130,6 +134,14 @@ export function ApprovalModeChip({
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
     stationDefault: notApplied ? undefined : stationDefault,
+    personalDefault:
+      !notApplied &&
+      isNewSession &&
+      (engineConnectionId === 'codex' ||
+        engineConnectionId === 'claude' ||
+        engineConnectionId === 'muse')
+        ? account.data?.values.interactiveApprovalModes?.[engineConnectionId]
+        : undefined,
   });
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
@@ -143,6 +155,11 @@ export function ApprovalModeChip({
   const displayedMode = isOverride
     ? effective.mode
     : (appliedMode ?? effective.mode);
+  const reviewerDisclosure =
+    engineConnectionId === 'codex' &&
+    (displayedMode === 'ask' || displayedMode === 'auto')
+      ? ' Codex reviewer not reported here; sandbox escalations may be approved automatically.'
+      : '';
   // #2436: the server applies the recorded posture at every turn start, on
   // every send path, so "takes effect next turn" is true of any requested
   // pick. The exception is a full access Claude refused because the session
@@ -202,13 +219,15 @@ export function ApprovalModeChip({
       : isOverride
         ? approvalModeChipLabel(displayedMode)
         : notApplied
-          ? // #3290: visibly not the Default-after-takeover chip.
+          ? // #3290: visibly not the chip a mode Station applied shows.
             appliedMode
             ? `${approvalModeChipLabel(appliedMode)} · kept`
             : 'Own settings'
           : agentDefaultShown
             ? `${approvalModeChipLabel(effective.mode)} (agent default)`
-            : 'Default';
+            : displayedMode === 'connection-default'
+              ? 'Engine default'
+              : approvalModeChipLabel(displayedMode);
   const notAppliedNote =
     notApplied && isApprovalMode(sessionOverride)
       ? ` — ${approvalModeLabel(sessionOverride)} was not applied: Station couldn't switch the engine to its approval rules`
@@ -218,12 +237,17 @@ export function ApprovalModeChip({
       ? selectedLabel
       : agentDefaultShown
         ? `${chipText} — ${approvalModeLabel(effective.mode)}`
-        : notApplied
-          ? appliedMode
-            ? selectedLabel
-            : `${chipText} — ${selectedLabel}`
-          : `Default — ${selectedLabel}`
+        : notApplied && appliedMode
+          ? selectedLabel
+          : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
+  const sourceNote = isOverride
+    ? 'Only this chat'
+    : appliedMode
+      ? 'Confirmed by the engine'
+      : effective.mode === 'connection-default'
+        ? 'Engine settings; active mode not confirmed'
+        : `From ${effective.source === 'account default' ? 'your saved default' : effective.source}`;
 
   return (
     <>
@@ -244,12 +268,12 @@ export function ApprovalModeChip({
            by what they see. The pending state's short form ("Full access ·
            pending") is not a substring of the long form, so it is composed in
            explicitly rather than replaced. */
-        aria-label={
+        aria-label={`${
           isPendingApply
             ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
             : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}`}
+        }${reviewerDisclosure}`}
+        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
       >
         <span className="chat-input__chip-stack">
@@ -271,6 +295,12 @@ export function ApprovalModeChip({
             engineConnectionId,
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
+            sourceNote,
+            pendingNote,
+            activeMode: appliedMode
+              ? approvalModeLabel(appliedMode)
+              : undefined,
+            isNewSession,
           }}
           pending={null}
         />

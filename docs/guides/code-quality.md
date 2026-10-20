@@ -30,7 +30,7 @@ change surface feeds, using the hook's scope deciders. Run it before editing;
 its output selects evidence and prints guidance but does not execute those
 checks or grant permission to publish.
 
-The pre-push hook runs eight checks, in this order. Costs in this table are
+The pre-push hook runs six checks, in this order. Costs in this table are
 historical measurements, not deadlines or guarantees on the current host. The hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts:
 
@@ -41,14 +41,23 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
-| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. The invocation is unconditional here, while Veritas uses changed scope to select rules and routed checks. Selected commands may inspect repository-wide state. Readiness also evaluates standards and protected-policy authority; it is not identical to the governance proof |
-| `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
+
+Repository-wide Veritas readiness and all typecheck lanes belong to required
+hosted `fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
+`scripts/run-ci-fast.mjs`. The required `fast-checks` aggregate rejects any
+non-success statics result. Local pushes retain cheap lint/governance and
+commit checks plus scoped transfer, static and SDK checks.
 
 Before the first check the hook resolves the bounded host-pressure liveness
 scale once and exports it to every step (see the
 [testing guide](testing.md#host-pressure-liveness-scale-3302)); it never changes
 a budget or assertion.
+
+A push that only adds clean merges of `origin/main` onto the tip the remote
+already holds skips the transfer, static-gate and SDK-barrel rows; the other three still run, and every row runs for a conflict
+resolution, an edited merge or any new commit of the author's
+([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
 
 The transfer check has a finite capture **liveness timeout**, which only bounds
 a hung subprocess; it is not a performance score or a product budget. It
@@ -189,17 +198,18 @@ specific regressions; they cannot guarantee that new code has no defects.
 
 ## Local CI pipeline
 
-Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
-`npm run ci:fast` before pushing. The pre-push hook enforces its scoped gates;
-the merge queue verifies the latest-main composition. The [testing guide](testing.md)
-owns the full schedule and promotion-completion requirements.
+Use `npm run gate:for -- <paths>` before editing and run its focused checks.
+Push through the normal scoped gates; required hosted PR checks own broad
+integration feedback, and the merge queue verifies the latest-main composition.
+The [testing guide](testing.md#what-counts-as-tested) owns local diagnosis,
+the full schedule and promotion-completion requirements.
 
 The push hook clears repository-local Git routing variables before launching
 checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, one to four planned
+In hosted CI, required `fast-checks` aggregates the affected-test plan, zero to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit

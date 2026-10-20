@@ -351,6 +351,9 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       credentialMintKind: (credential: string) =>
         pairing.credentialMintKind(credential),
       devicePairing: pairing,
+      getPublicHandshake: async () => ({
+        environmentId: pairing.environmentId(),
+      }),
     });
   }
 
@@ -681,6 +684,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
+              readUsageReceiptExport:
+                orchestration!.readUsageReceiptExport.bind(orchestration),
               ...(orchestrationExtras.flowReads
                 ? {
                     listSessionReadModel:
@@ -1864,12 +1869,48 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         await invoke('/api/projects/example/access', undefined, operator),
       );
       expect(before.members).toHaveLength(1);
+      const authenticate = vi.spyOn(h.localAccounts!.service, 'authenticate');
+      const accept = vi.spyOn(h.membership!.service, 'accept');
       const accepted = await invoke(
         '/api/account-auth/accept-invitation',
         { token },
         { Cookie },
       );
-      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      const authResults = await Promise.allSettled(
+        authenticate.mock.results
+          .filter((result) => result.type === 'return')
+          .map((result) => result.value),
+      );
+      const acceptance = await Promise.allSettled(
+        accept.mock.results
+          .filter((result) => result.type === 'return')
+          .map((result) => result.value),
+      );
+      const diagnosis = {
+        response: await accepted.clone().text(),
+        authentication: authResults.map((result) =>
+          result.status === 'fulfilled'
+            ? {
+                kind: result.value.kind,
+                reason:
+                  'reason' in result.value ? result.value.reason : undefined,
+                samePrincipal:
+                  result.value.kind === 'authenticated' &&
+                  result.value.principal.id === account.principal.id,
+              }
+            : { kind: 'thrown' },
+        ),
+        acceptance: acceptance.map((result) =>
+          result.status === 'rejected' && result.reason instanceof Error
+            ? {
+                kind: result.reason.name,
+                code: Reflect.get(result.reason, 'code'),
+                stack: result.reason.stack?.split('\n').slice(0, 8),
+              }
+            : { kind: result.status },
+        ),
+      };
+      expect(accepted.status, JSON.stringify(diagnosis)).toBe(200);
       expect(await responseData<unknown>(accepted)).toEqual({
         scope: view.scope,
         grantsDeviceAccess: false,
@@ -2725,6 +2766,198 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(unscoped.status).toBe(403);
+    });
+
+    test('canonical usage export binds the real request principal and refuses unbound Device attribution', async () => {
+      const h = await principalSetup({
+        usageRollup: true,
+        seed: (store) =>
+          store.appendEvent({
+            eventId: 'verified-person:usage',
+            threadId: 'whois-owned',
+            provider: 'claude',
+            method: 'token-usage.updated',
+            createdAt: new Date().toISOString(),
+            promptTokens: 13,
+          }),
+      });
+      try {
+        const day = new Date().toISOString().slice(0, 10);
+        const path = `/api/analytics/usage-export?from=${day}&to=${day}`;
+        const unbound = await h.app.request(
+          path,
+          { headers: { Authorization: `Bearer ${h.paired.credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unbound.status, await unbound.text()).toBe(403);
+        const headers = {
+          Authorization: `Bearer ${OPERATOR_SECRET}`,
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+            JSON.stringify({
+              provider: 'tailscale-serve',
+              login: 'owner@github',
+            }),
+          ).toString('base64url'),
+        };
+        const verified = await h.app.request(
+          path,
+          { headers },
+          LOOPBACK_SERVE_PROXY_ENV,
+        );
+        const body = (await verified.json()) as {
+          data?: {
+            observations: Array<{
+              receipts: Array<{ threadId?: string; inputTokens?: number }>;
+            }>;
+          };
+        };
+        expect(verified.status, JSON.stringify(body)).toBe(200);
+        expect(
+          body.data?.observations.flatMap((row) =>
+            row.receipts.map((receipt) => [
+              receipt.threadId,
+              receipt.inputTokens,
+            ]),
+          ),
+        ).toEqual([['whois-owned', 13]]);
+        const offer = h.pairing.createOffer({
+          endpoint: 'https://station.example.test',
+        });
+        const pending = h.pairing.requestPairing({
+          requesterPosition: 'off-box',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: 'Person-bound analytics reader',
+          source: 'tailnet',
+          requester: { provider: 'tailscale-serve', login: 'owner@github' },
+        });
+        const approval = await h.app.request(
+          `/api/pairing/requests/${pending.requestId}/confirm`,
+          {
+            method: 'POST',
+            headers: operatorHeaders,
+            body: JSON.stringify({ bindVerifiedIdentity: true }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(approval.status, await approval.text()).toBe(200);
+        const bound = h.pairing.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        });
+        const boundResponse = await h.app.request(
+          path,
+          { headers: { Authorization: `Bearer ${bound.credential}` } },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(boundResponse.status, await boundResponse.text()).toBe(200);
+        h.pairing.revokeDevice(bound.device.id, 'operator-credential');
+        expect(
+          (
+            await h.app.request(
+              path,
+              { headers: { Authorization: `Bearer ${bound.credential}` } },
+              REMOTE_TAILNET_ENV,
+            )
+          ).status,
+        ).toBe(401);
+      } finally {
+        await h.roomRuntime.close();
+        h.store.close();
+      }
+    });
+
+    test('usage export uses the authenticated account and fences its queued body after account revocation', async () => {
+      let active = true;
+      const provider: DeploymentAuthenticationProvider = {
+        version: DEPLOYMENT_AUTHENTICATION_VERSION,
+        issuer: 'urn:station:analytics-account-fixture',
+        displayName: 'Analytics fixture accounts',
+        sessionCookies: ['export_account'],
+        endpoints: [
+          { path: '/logout', methods: ['POST'], operation: 'logout' },
+        ],
+        authenticate: async (request) =>
+          active && request.headers.get('cookie') === 'export_account=present'
+            ? {
+                kind: 'authenticated',
+                session: {
+                  subject: 'export-person',
+                  displayName: 'Export person',
+                  sessionId: 'export-session',
+                  authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+                  expiresAt: new Date(Date.now() + 60000).toISOString(),
+                  contacts: [],
+                },
+              }
+            : { kind: 'absent' },
+        handle: async () => new Response(null, { status: 204 }),
+      };
+      const service = new DeploymentAuthenticationService(provider);
+      const h = await setup('device', true, {
+        service,
+        publicOrigin: 'https://station.example.test',
+      });
+      try {
+        const headers = {
+          Cookie: 'export_account=present',
+          Authorization: `Bearer ${h.paired.credential}`,
+        };
+        const identity = await service.authenticate(
+          new Request('https://station.example.test', { headers }),
+        );
+        if (identity.kind !== 'authenticated')
+          throw new Error('Fixture account did not authenticate');
+        seedConversations(h.store, [['account-owned', identity.principal.id]]);
+        h.store.appendEvent({
+          eventId: 'account-owned:usage',
+          threadId: 'account-owned',
+          provider: 'claude',
+          method: 'token-usage.updated',
+          createdAt: new Date().toISOString(),
+          promptTokens: 17,
+        });
+        const day = new Date().toISOString().slice(0, 10);
+        const path = `/api/analytics/usage-export?from=${day}&to=${day}`;
+        const response = await h.app.request(
+          path,
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        const body = (await response.json()) as {
+          data?: {
+            observations: Array<{
+              receipts: Array<{ threadId?: string; inputTokens?: number }>;
+            }>;
+          };
+        };
+        expect(response.status, JSON.stringify(body)).toBe(200);
+        expect(
+          body.data?.observations.flatMap((row) =>
+            row.receipts.map((receipt) => [
+              receipt.threadId,
+              receipt.inputTokens,
+            ]),
+          ),
+        ).toEqual([['account-owned', 17]]);
+        const queued = await h.app.request(
+          path,
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        active = false;
+        await expect(queued.text()).rejects.toThrow(
+          'Authority observation ended before response delivery',
+        );
+        expect(
+          (await h.app.request(path, { headers }, REMOTE_TAILNET_ENV)).status,
+        ).not.toBe(200);
+      } finally {
+        await h.roomRuntime.close();
+        h.store.close();
+      }
     });
 
     /** Agent conversations (thread id, owner) the knowledge adapter lists. */

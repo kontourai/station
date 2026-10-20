@@ -1,0 +1,7 @@
+{
+  "revision": "f08f5927ddfab1c7126dd48fba3e2e34be416cd3",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Historical proposal, dependent via docs/guides/acp.md. The ACP guide gained one clause about attached-session transcript markers; this record's historical problem and phase table make no claim about extension rendering and stay accurate as history.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

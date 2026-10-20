@@ -1,0 +1,7 @@
+{
+  "revision": "c3707bab8c4516c52f0de635423319798336754b",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Reviewed Android channel staging of day/night colors and the canonical centered favicon window drawable, including preserved launcher colors and dev artwork. Reviewed activity bootstrap ordering: the window mark is installed before Tauri super.onCreate, and the WebView starts transparent so native artwork covers the pre-paint gap without a timer or privileged bridge. Existing generated-project and icon verification boundaries remain unchanged. Channel and bootstrap focused checks passed; exact native runtime evidence is kept separate.","inputs":["src-desktop/icons/README.md"]}
+  ]
+}

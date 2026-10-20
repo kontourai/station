@@ -1,0 +1,23 @@
+{
+  "revision": "e618db5119d01c6a3e35fe061fea7b51c5f955f7",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382: re-read the preview limits against tool-request-preview.ts boundedPreviewLine (display-text sanitiser, line split on LF/CR/CRLF/U+2028/U+2029, ' ⏎ ' join, '(+N lines)' marker kept inside the 160 code-point bound), request-presentation.ts presentToolRequest (title and body parts in display form), ToolCallDisplay.tsx (a pending multi-line command opens its details; details print args raw) and tool-call-labels.ts commandTarget. Added the multi-line sentence and the display-form bullet; the one-field-per-family and redaction limits are unchanged. Checked by the focused tests at each surface (preview, toast handler, toast render, inbox projection, transcript row).","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/tool-request-preview.ts","src-server/services/orchestration/request-presentation.ts","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts","packages/shared/src/display-text.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#3382: the export map gains ./display-text (a .ts leaf, browser-safe: no Node imports). Added it to the explicit-subpath list; the rest of the page's export-map and subpath claims are unchanged.","inputs":["docs/reference/shared.md","packages/shared/package.json","packages/shared/src/display-text.ts"]},
+
+    {"path":"packages/shared/README.md","note":"#3382: the only export-map change is ./display-text -> ./src/display-text.ts. The README's claims (explicit subpaths, mostly .ts with .mjs Node leaves, Node 24, root is a compatibility barrel) still hold; the new leaf is not added to the root barrel.","inputs":["packages/shared/README.md","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"#3382: package.json change is one new explicit subpath export (./display-text). The page's shared-package statements (explicit helper subpaths, package exports own the surface) still hold; no prose change.","inputs":["docs/architecture.md","packages/shared/package.json","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"#3382: package.json change is one new ./display-text export; the guide's /build import and plugin build claims do not depend on it. No prose change.","inputs":["docs/guides/build-your-first-plugin.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3382: package.json change is one new ./display-text export, unrelated to Dialog/ResponsiveDialogSurface or the installed UI exports this guide covers. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/theming.md","note":"#3382: package.json change is one new ./display-text export, unrelated to theme tokens or UI package exports. No prose change.","inputs":["docs/guides/theming.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3382: package.json change is one new explicit ./display-text subpath; the 'explicit shared helper subpaths, never the bare root' rule still holds and request-presentation.ts follows it. No prose change.","inputs":["docs/patterns/backend.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3382: package.json change is one new explicit ./display-text subpath, which src-ui imports by subpath as the table requires. No prose change.","inputs":["docs/patterns/frontend.md","packages/shared/package.json"]}
+  ]
+}

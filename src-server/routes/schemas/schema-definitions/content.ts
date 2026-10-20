@@ -9,6 +9,7 @@ import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
+import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import {
   SETUP_IMPORT_MAX_ITEMS,
   SETUP_IMPORT_MAX_SOURCE_ID_LENGTH,
@@ -19,6 +20,7 @@ import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
 } from '../../../../src-shared/authored-artifact-limits.js';
+import { personalBoardDefinitionSchema } from './personal-board.js';
 
 /** Mirrors `SkillSourceContext` in `@kontourai/station-contracts/catalog`. */
 const skillSourceContextSchema = z.object({
@@ -217,6 +219,16 @@ export const projectCreateSchema = z
     workingDirectory: z.string().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
+    toolDefaults: z
+      .object({
+        mcpServers: z
+          .array(z.string().min(1).max(128).refine(isSafeToolServerId))
+          .max(32)
+          .optional(),
+        knowledge: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     // #2144 slice 2 — the three Station settings a project may override
     // (`PROJECT_OVERRIDABLE_APP_SETTING_KEYS`), spelled as the project
     // record spells them. Declared explicitly rather than left to
@@ -279,6 +291,16 @@ const layoutComponentRefSchema = z.union([
 ]);
 
 const layoutConfigSchema = z.record(z.unknown()).superRefine((config, ctx) => {
+  for (const field of ['dashboard', 'dashboardProposal']) {
+    if (config[field] === undefined) continue;
+    const result = personalBoardDefinitionSchema.safeParse(config[field]);
+    if (!result.success)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: result.error.issues[0]?.message ?? 'Invalid Board definition',
+      });
+  }
   const tabs = config.tabs;
   if (tabs === undefined) return;
   if (!Array.isArray(tabs)) {

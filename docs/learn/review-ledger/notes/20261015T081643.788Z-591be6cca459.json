@@ -1,0 +1,7 @@
+{
+  "revision": "929c9210d4ecd37cd77d8a247ebb286e916861d8",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 6: re-read Last known and epoch-retirement claims against history, older history, all three open consumers, query cache reset and retained feed guards. Coherent late sequence-100 responses cannot poison new-epoch stream-2 recovery. 261/261 focused and seven injected failures with 33/33 restorations. Browser evidence pending; no release claim.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/contexts/work-observation.ts","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

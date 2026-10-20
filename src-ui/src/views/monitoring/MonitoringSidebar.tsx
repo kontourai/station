@@ -90,10 +90,10 @@ export function MonitoringSidebar({
                     className={`health-dot ${agent.healthy === false ? 'unhealthy' : agent.healthy === true ? 'healthy' : 'unknown'}`}
                     title={
                       agent.healthy === false
-                        ? 'Unhealthy'
+                        ? 'Model or memory not configured'
                         : agent.healthy === true
-                          ? 'Healthy'
-                          : 'Status unknown'
+                          ? 'Model and memory configured'
+                          : 'Configuration unknown'
                     }
                   ></span>
                   {agent.name}
@@ -106,7 +106,9 @@ export function MonitoringSidebar({
               {agent.status === 'running' &&
                 runningConversations.length > 0 && (
                   <div className="running-conversations">
-                    <div className="conversations-label">Active Chats</div>
+                    <div className="conversations-label">
+                      Started conversations
+                    </div>
                     {runningConversations.map((conversation) => (
                       <div
                         key={conversation.id}

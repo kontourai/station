@@ -1,0 +1,15 @@
+{
+  "revision": "baf4ac22a4188331b94eb2d6703ead07f9ee8ac0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3386 pre-push fix: attached-session-adoption.ts now expands the reservation's projectRoot with resolve(expandTilde(...)) at the read (stored-path guard). The value was already canonical; no behavior or claim in this document changes. No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3386 pre-push fix: attached-session-adoption.ts now expands the reservation's projectRoot with resolve(expandTilde(...)) at the read (stored-path guard). The value was already canonical; no behavior or claim in this document changes. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3386 pre-push fix: attached-session-adoption.ts now expands the reservation's projectRoot with resolve(expandTilde(...)) at the read (stored-path guard). The value was already canonical; no behavior or claim in this document changes. No prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#3386 pre-push fix: attached-session-adoption.ts now expands the reservation's projectRoot with resolve(expandTilde(...)) at the read (stored-path guard). The value was already canonical; no behavior or claim in this document changes. No prose change.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 pre-push fix: attached-session-adoption.ts now expands the reservation's projectRoot with resolve(expandTilde(...)) at the read (stored-path guard). The value was already canonical; no behavior or claim in this document changes. No prose change.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-adoption.ts"]}
+  ]
+}

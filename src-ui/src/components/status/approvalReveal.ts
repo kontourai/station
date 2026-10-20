@@ -37,6 +37,13 @@ function isRendered(element: HTMLElement): boolean {
 
 function focusCard(card: HTMLElement) {
   card.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  const sheetTrigger = card.querySelector<HTMLButtonElement>(
+    '.request-sheet-trigger:not(:disabled)',
+  );
+  if (sheetTrigger) {
+    sheetTrigger.click();
+    return;
+  }
   card
     .querySelector<HTMLButtonElement>('.tool-call__approve-btn:not(:disabled)')
     ?.focus({ preventScroll: true });

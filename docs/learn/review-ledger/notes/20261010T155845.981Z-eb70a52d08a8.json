@@ -1,0 +1,7 @@
+{
+  "revision": "d63496d9454959e1805e85ae12c1bc85cee57c7d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed install-smoke-file-server.test.ts resource ownership: real CLI children join the existing process-heavy lane, expose bounded readiness, and settle via owned-command cleanup. Cases cover three origins, HEAD length/no body, exact GET bytes, replacement artifacts, malformed URL and method/path refusal, and missing directory failure. Injected wrong Content-Length failed the named test assertion; byte-identical restoration passed. No corpus/deadline weakening.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs","scripts/install-smoke-file-server.mjs","scripts/__tests__/install-smoke-file-server.test.ts"]}
+  ]
+}

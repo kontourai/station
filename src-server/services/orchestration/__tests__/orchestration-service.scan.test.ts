@@ -40,26 +40,44 @@ describe('OrchestrationService', () => {
     return declaration + rest.slice(0, next?.index ?? rest.length);
   }
 
-  describe('the cooperative-stop settle-read precedes the quarantine gate (source invariant)', () => {
+  describe('the cooperative-stop settle-read is reached by a declined event and follows the append (source invariant)', () => {
     /**
-     * Slice 10 (archive#4204): moving `settleCompletedTurn` below the quarantine
-     * gate changes observable behavior ONLY for a quarantined thread with
+     * Slice 10 (archive#4204): a settle the quarantine gate's decline can
+     * skip changes observable behavior ONLY for a quarantined thread with
      * an in-flight cooperative stop — a state no runtime fixture had ever
      * constructed, so the perturbation was 100% green under the whole
      * suite. The ordering's owner is this scan; its behavioral complement
      * is the I2 guard fixture beside the stop tests.
+     *
+     * #3561: the settle used to precede the gate. It now follows the append,
+     * so a failed append leaves the stop pending, and the gate no longer
+     * returns early: the decline is a flag, and the body returns `false` for
+     * it only after the settle. The settle also precedes the in-memory
+     * observers (#3561 review F3). The #3561 integration tests own the "not
+     * before the append" half behaviorally.
      */
-    test('publishCanonicalEvent settles a completed stop before it can decline the event', () => {
+    test('publishCanonicalEvent settles a completed stop after the append and before it can decline the event', () => {
       const source = readFileSync(
         join(__dirname, '..', 'orchestration-service.ts'),
         'utf8',
       );
       const body = readMethodBody(source, '\n  private publishCanonicalEvent(');
-      const settle = body.indexOf('.settleCompletedTurn(');
       const gate = body.indexOf('this.quarantinedThreads.has(');
-      expect(settle).toBeGreaterThanOrEqual(0);
+      const append = body.indexOf('this.appendCanonicalEvent(');
+      const settle = body.indexOf('.settleCompletedTurn(');
+      const decline = body.indexOf('if (!committed) return false;');
       expect(gate).toBeGreaterThanOrEqual(0);
-      expect(settle).toBeLessThan(gate);
+      expect(append).toBeGreaterThan(gate);
+      expect(settle).toBeGreaterThan(append);
+      expect(decline).toBeGreaterThan(settle);
+      // #3561 review F3: the settle precedes the in-memory observers, so one
+      // that throws after the commit cannot strand the stop.
+      expect(body.indexOf('this.observeCommittedEvent(')).toBeGreaterThan(
+        decline,
+      );
+      // Nothing between the gate and the settle may return: a return there
+      // would let a declined event skip the settle.
+      expect(body.slice(gate, settle)).not.toMatch(/\breturn\b/);
       // Exactly one dispatch of the settle, file-wide (double-settle guard).
       // RAW scan, comments included: a service-side comment that writes the
       // literal call form `.settleCompletedTurn(` would red this on its own
@@ -91,7 +109,11 @@ describe('OrchestrationService', () => {
         source,
         '\n  private async consumeAdapterEvents(',
       );
-      const gate = body.indexOf('if (!this.projectAndPublishEvent(');
+      // #3560: the gate is the retrying wrapper around projectAndPublishEvent.
+      // #3561: matched across line breaks, since its argument list wraps.
+      const gatePattern = /if \(\s*!\(await this\.publishObservedEvent\(/g;
+      const gates = [...body.matchAll(gatePattern)];
+      const gate = gates[0]?.index ?? -1;
       const postHoc = body.indexOf('.applyPostHocToolPolicies(');
       const spool = body.indexOf('.spoolCommandEvidence(');
       expect(gate).toBeGreaterThanOrEqual(0);
@@ -99,9 +121,7 @@ describe('OrchestrationService', () => {
       expect(spool).toBeGreaterThan(postHoc);
       // The gate must be the ONLY one in the body: with two, the ingest
       // calls could sit above the real gate and still be `> gate`.
-      expect(body.split('if (!this.projectAndPublishEvent(').length - 1).toBe(
-        1,
-      );
+      expect(gates).toHaveLength(1);
       // Exactly one dispatch of each across the SERVICES TREE, not just this
       // file (review M2): before slice 11 both were private members of this
       // class, so "file-wide" was "everywhere". They are public members of an

@@ -1,0 +1,7 @@
+{
+  "revision": "da57b678357d3e124585d309994152e9d834e0c4",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"Delta review for #2675 (changed: packages/cli/src/commands/lifecycle.ts, packages/shared/src/process-identity.mjs). lifecycle.ts: a supervised stop's refusal now names every unverified process, and an unreadable identity is refused without advising to drop the record; searched for stop/fingerprint claims, none contradicted. process-identity.mjs: the Windows image probe refuses a leading BOM; no claim here concerns it.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/lifecycle.ts","packages/shared/src/process-identity.mjs"]}
+  ]
+}

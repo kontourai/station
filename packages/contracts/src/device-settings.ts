@@ -5,8 +5,8 @@
  *
  * One definition per setting persisted to the single versioned browser
  * store (`station-device-settings-v1`, `src-ui/src/lib/device-settings-store.ts`).
- * Unlike `APP_SETTINGS_REGISTRY`, these settings never round-trip to the
- * server — they are this browser/client's own preferences. Each entry also
+ * Account-portable keys are declared in `account-preferences.ts`; the active
+ * account overlays their legacy device values. Other keys remain client-only. Each entry also
  * names the prior, pre-unification localStorage key it replaces so the
  * store can run a one-time migration and Export/Import can still read old
  * files.
@@ -261,6 +261,7 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
   /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
@@ -410,7 +411,7 @@ export interface DeviceSettingDefinition<
   K extends keyof DeviceSettings = keyof DeviceSettings,
 > {
   key: K;
-  scope: 'device';
+  scope: 'device' | 'account';
   descriptor: SettingValueDescriptor;
   label: string;
   /**
@@ -646,10 +647,10 @@ function priorReadModelPickerPreferences(
 export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'theme',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'enum', values: ['light', 'dark'] },
     label: 'Theme',
-    help: 'The interface renders in this color scheme on this device.',
+    help: 'The interface renders in this color scheme in your interface.',
     description: 'Light or dark interface theme.',
     priorStorageKey: 'theme',
     // Confirmed against index.css: no `data-theme` attribute resolves the
@@ -658,10 +659,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'accentColor',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'string' },
     label: 'Accent color',
-    help: 'Accent-colored interface elements use this color on this device instead of the theme’s own.',
+    help: 'Accent-colored interface elements use this color in your interface instead of the theme’s own.',
     description: 'Custom UI accent color (hex). Unset uses the theme default.',
     priorStorageKey: 'station-accent-color',
     defaultValue: null,
@@ -708,10 +709,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatDockAutoHide',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Auto-hide chat dock',
-    help: 'An idle, open chat dock collapses to its bar after five seconds on this device.',
+    help: 'An idle, open chat dock collapses to its bar after five seconds in your interface.',
     description: 'Collapse an idle, open chat dock to its bar after 5s.',
     priorStorageKey: 'chatDockAutoHide',
     // Confirmed against useChatDockState.ts: `=== 'true'` (absent → false).
@@ -737,10 +738,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'diffStyle',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'enum', values: ['unified', 'split'] },
     label: 'Diff view style',
-    help: 'Changed files on this device show as one column or as two side-by-side columns.',
+    help: 'Changed files in your interface show as one column or as two side-by-side columns.',
     description: 'Unified or side-by-side diff rendering.',
     priorStorageKey: 'station.diff.style',
     // Confirmed against DiffPanel.tsx: only 'split' flips it, else 'unified'.
@@ -748,14 +749,23 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'diffWrap',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Diff line wrap',
-    help: 'Long diff lines wrap on this device instead of scrolling sideways.',
+    help: 'Long diff lines wrap in your interface instead of scrolling sideways.',
     description: 'Wrap long diff lines instead of horizontal scroll.',
     priorStorageKey: 'station.diff.wrap',
     // Confirmed against DiffPanel.tsx: `=== '1'` (absent → false).
     defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'inboxScope',
+    scope: 'device',
+    descriptor: { kind: 'string' },
+    label: 'Inbox scope',
+    help: 'Limit the inbox to one project or Station on this device.',
+    description: 'Selected project or Station filter for the inbox.',
+    defaultValue: 'all',
   }),
   defineDeviceSetting({
     key: 'inboxOpen',
@@ -853,10 +863,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'modelPickerPreferences',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'composite' },
     label: 'Model picker preferences',
-    help: 'The model picker on this device orders, hides, and highlights models as you arranged them.',
+    help: 'The model picker in your interface orders, hides, and highlights models as you arranged them.',
     description:
       'Favorite, recent, hidden, and manually ordered models in the model picker.',
     priorStorageKey: SHARED_PRIOR_DEVICE_SETTINGS_KEY,
@@ -871,10 +881,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   // URL params) — no `priorStorageKey` for any of them.
   defineDeviceSetting({
     key: 'chatShowReasoning',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Show reasoning',
-    help: 'Chat messages on this device include the model’s reasoning steps.',
+    help: 'Chat messages in your interface include the model’s reasoning steps.',
     description: 'Display model reasoning steps in chat messages.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -882,10 +892,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatShowToolDetails',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Show tool details',
-    help: 'Tool calls in chat on this device can be expanded to read their arguments and results.',
+    help: 'Tool calls in chat in your interface can be expanded to read their arguments and results.',
     description: 'Allow expanding tool calls to view arguments and results.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -903,10 +913,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatFontSize',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
     label: 'Chat font size',
-    help: 'Chat messages render at this size on this device, ahead of the Station-configured default.',
+    help: 'Chat messages render at this size in your interface, ahead of the Station-configured default.',
     description:
       'Font size for chat messages (10-24px). Unset follows the Station-configured default.',
     // `null` (not a number) is the confirmed absent-value behavior: it means
@@ -949,12 +959,12 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'confirmConversationDelete',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Ask before deleting a conversation',
     // Renders beside the control in BOTH states, so it cannot describe only
     // the on state (#2144 slice 6 fix round 1).
-    help: 'When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.',
+    help: 'When on, deleting a conversation in your interface asks for confirmation first; deleting is not undoable either way.',
     description:
       'Show a confirmation before deleting a conversation. Turning this off deletes immediately, which cannot be undone. Clearing all conversations always asks.',
     // #2144 slice 6: default on. The delete is not undoable and the confirm
@@ -964,15 +974,14 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'developerToolsEnabled',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Enable developer tools',
-    help: 'The Developer surface appears in this device’s sidebar and command palette.',
+    help: 'The Developer surface appears in your sidebar and command palette.',
     description:
-      'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way.',
+      'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette in your interface. Deep links to /developer keep working either way.',
     // archive#3313: developer surfaces are opt-in; which navigation entries a
-    // device shows is that device's preference, so this never round-trips to
-    // the server.
+    // device shows is that device's preference, with account scope while signed in.
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1077,6 +1086,7 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'codingPanels',
   'dockSlotPlacement',
   'chatDockProjectSlug',
+  'inboxScope',
   'inboxOpen',
   'inboxSections',
   'projectSidebarCollapsed',

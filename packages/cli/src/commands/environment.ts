@@ -4,9 +4,11 @@ import {
   decodeDevicePairingPayload,
   encodeDevicePairingPayload,
   exchangeDevicePairing,
+  knownOperatorCli,
   requestCurrentStationAccess,
 } from '@kontourai/station-connect/device-pairing';
 import {
+  encodeBrowserPairingLink,
   encodePairingDeepLink,
   PAIRING_LINK_REMEDY,
   type PairingDeepLinkChannel,
@@ -18,9 +20,15 @@ import type {
 } from '@kontourai/station-contracts';
 import {
   buildStationProofMessage,
+  DEFAULT_PAIRING_SCOPE_PRESET,
+  PAIRING_SCOPES,
+  type PairingScope,
   PUBLIC_STATION_PROOF_PATH,
+  pairingScopePresetString,
+  parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
 import QRCode from 'qrcode';
 import {
@@ -34,6 +42,7 @@ import {
   parseCoreArgs,
   printJson,
   type ResolvedApiBase,
+  rememberResolvedApiBase,
   requestJson,
   requirePositional,
   resolveApiBase,
@@ -42,8 +51,12 @@ import {
 } from './core-api.js';
 import {
   type DeviceAccessOperatorChannel,
+  parseDeviceRemovalArgs,
   parseDeviceScopeArgs,
   renderGrantableScopes,
+  requireDeviceRemovalApproval,
+  runDeviceRemoveCommand,
+  runDeviceRevokeCommand,
   runDeviceScopeCommand,
   runDevicesCommand,
 } from './device-access.js';
@@ -231,17 +244,19 @@ const USAGE = `Usage:
   station environment credential rotate [--force]
   station environment reset [--force]
   station environment access list [--api-base=<loopback-url>|--station=<name>]
-  station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
+  station environment access approve [<request-id-or-offer-id>|--latest] [--scope=<scope,…>] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
-  station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
-  station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
+  station environment access devices [--json] [--api-base=<url>|--station=<name>]
+  station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<url>|--station=<name>]
   station environment access scopes [--json]
+  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
+  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
-  station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
+  station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
   station environment list [--api-base=<url>]
   station environment show <id> [--api-base=<url>]
@@ -403,6 +418,9 @@ interface EnvironmentOfferInvocation {
   payloadOnly: boolean;
   advertiseUrl?: string;
   clientChannel: Exclude<PairingDeepLinkChannel, 'dev'>;
+  scope?: string;
+  requireApproval: boolean;
+  browserUrl?: string;
 }
 
 interface VerifiedLocalOfferHost {
@@ -436,14 +454,24 @@ function parseEnvironmentOfferInvocation(
       'payload-only',
       'advertise-url',
       'client-channel',
+      'scope',
+      'require-approval',
+      'browser-url',
     ]) ||
     (parsed.flags.tailscale !== undefined && parsed.flags.tailscale !== true) ||
+    (parsed.flags['require-approval'] !== undefined &&
+      parsed.flags['require-approval'] !== true) ||
     (parsed.flags['payload-only'] !== undefined &&
       parsed.flags['payload-only'] !== true)
   ) {
     throw usageError();
   }
   const advertiseUrl = parsed.flags['advertise-url'];
+  const browserUrl = parsed.flags['browser-url'];
+  if (browserUrl !== undefined) {
+    if (typeof browserUrl !== 'string') throw usageError();
+    encodeBrowserPairingLink({ payload: '', browserUrl });
+  }
   const clientChannel = parsed.flags['client-channel'];
   if (
     clientChannel !== undefined &&
@@ -472,7 +500,26 @@ function parseEnvironmentOfferInvocation(
       throw usageError();
     }
   }
+  const scope =
+    typeof parsed.flags.scope === 'string'
+      ? parsed.flags.scope.split(',').join(' ')
+      : undefined;
+  if (
+    parsed.flags.scope !== undefined &&
+    (!scope || !parsePairingScope(scope)?.length)
+  ) {
+    throw usageError();
+  }
+  if (
+    parsed.flags['payload-only'] === true &&
+    (scope || parsed.flags['require-approval'])
+  ) {
+    throw usageError();
+  }
   return {
+    requireApproval: parsed.flags['require-approval'] === true,
+    ...(typeof browserUrl === 'string' ? { browserUrl } : {}),
+    ...(scope ? { scope } : {}),
     tailscale: parsed.flags.tailscale === true,
     ...(tailscaleServePort !== undefined
       ? { tailscaleServePort: Number(tailscaleServePort) }
@@ -554,7 +601,9 @@ async function resolveEnvironmentOfferPublication(
 async function mintEnvironmentPairingOffer(
   host: VerifiedLocalOfferHost,
   publication: TailscaleOfferEndpoint | undefined,
-  advertiseUrl?: string,
+  advertiseUrl: string | undefined,
+  scope: string | undefined,
+  preapproved: boolean,
 ): Promise<DevicePairingOffer> {
   try {
     return parseDevicePairingOffer(
@@ -566,6 +615,8 @@ async function mintEnvironmentPairingOffer(
         },
         body: JSON.stringify({
           endpoint: advertiseUrl ?? publication?.endpoint ?? host.apiBase,
+          ...(scope ? { scope } : {}),
+          ...(preapproved ? { approval: 'on-create' } : {}),
         }),
       }),
     );
@@ -585,18 +636,22 @@ function formatEnvironmentOfferOutput(input: {
   qr: string;
   publication?: TailscaleOfferEndpoint;
   pairingLink: string;
+  browserLink?: string;
 }): string {
   const endpoint = new URL(input.offer.endpoint).origin;
   const expires = new Date(input.offer.expiresAt).toISOString();
   return [
     'Station device pairing offer',
     `Endpoint: ${endpoint}`,
+    `Pairing code: ${input.offer.manualCode}`,
     `Expires: ${expires}`,
+    `Access: ${input.offer.scope}`,
     input.publication
       ? `Reachability: published privately on this tailnet as ${input.publication.endpoint}.`
       : 'Reachability: this offer uses loopback, so a phone cannot reach it directly. Use a reviewed reachable endpoint through the existing Connections UI.',
     'Payload (one-time pairing offer; scan or paste into Join):',
     input.payload,
+    ...(input.browserLink ? ['Open in a browser:', input.browserLink] : []),
     'Open in selected Station client:',
     input.pairingLink,
     'If the operating system has no app for that custom scheme:',
@@ -633,6 +688,14 @@ async function runEnvironmentOfferCommand(
     host,
     publication,
     invocation.advertiseUrl,
+    // A QR or link is for a person's device: the Paired devices panel's grant,
+    // never `access:manage`. `--payload-only` is the desktop SSH launcher's
+    // machine flow, which keeps the Station's default grant.
+    invocation.payloadOnly
+      ? undefined
+      : (invocation.scope ??
+          pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)),
+    !invocation.payloadOnly && !invocation.requireApproval,
   );
   const payload = encodeDevicePairingPayload(offer);
   if (invocation.payloadOnly) {
@@ -652,6 +715,14 @@ async function runEnvironmentOfferCommand(
       qr,
       publication,
       pairingLink,
+      ...(invocation.browserUrl
+        ? {
+            browserLink: encodeBrowserPairingLink({
+              payload,
+              browserUrl: invocation.browserUrl,
+            }),
+          }
+        : {}),
     }),
   );
   return true;
@@ -794,6 +865,8 @@ interface PairingRequestView {
   // that `access list` prints.
   offerId?: string;
   deviceName: string;
+  /** What the device asked for (or its offer carried), when readable. */
+  scope?: string;
   source: 'same-origin' | 'pairing-code' | 'tailnet';
   requester?: {
     provider: 'tailscale-serve';
@@ -814,8 +887,9 @@ async function requestBareJson<T>(
   apiBase: string,
   path: string,
   init?: RequestInit,
+  fetcher: typeof fetch = fetch,
 ): Promise<T> {
-  const response = await fetch(
+  const response = await fetcher(
     `${apiBase}${path}`,
     withRequestTimeout({ ...init, redirect: 'error' }),
   );
@@ -832,10 +906,16 @@ async function requestBareJson<T>(
   if (!response.ok) {
     // The bare pairing routes answer `{ error: <code> }`; keep the code and
     // status on the error (#1796) so a caller branches on them, not on text.
-    const code =
+    const error =
       value && typeof value === 'object' && !Array.isArray(value)
         ? (value as { error?: unknown }).error
         : undefined;
+    const code =
+      typeof error === 'string'
+        ? error
+        : error && typeof error === 'object' && !Array.isArray(error)
+          ? (error as { code?: unknown }).code
+          : undefined;
     throw Object.assign(
       new Error(describeBareJsonFailure(response.status, value)),
       {
@@ -970,7 +1050,13 @@ function parsePairingRequest(value: unknown): PairingRequestView {
       throw new Error('Station returned an invalid device access request.');
     }
   }
-  return request as PairingRequestView;
+  // The requested scope is shown and trimmed, never trusted as authority;
+  // an unreadable one is simply not shown.
+  const scope =
+    typeof request.scope === 'string' && parsePairingScope(request.scope)
+      ? request.scope
+      : undefined;
+  return { ...(request as PairingRequestView), scope };
 }
 
 function parsePairingRequestList(value: unknown): PairingRequestView[] {
@@ -1072,10 +1158,50 @@ function suggestDirectAccessInvocation(
 ): string {
   const base = `station environment access ${action} --api-base=${apiBase}`;
   if (action === 'list') return `${base}.`;
+  if (action === 'revoke' || action === 'remove')
+    return `${base} <device>. Interactively this prompts for confirmation; pass --force only for non-interactive/scripted use.`;
   return (
     `${base} <request-id>. Interactively this prompts for confirmation; ` +
     'pass --force only for non-interactive/scripted use.'
   );
+}
+
+/**
+ * The scope `--scope` keeps of a request: its tokens, each one the device
+ * asked for, in the vocabulary's order. Refused for an account binding, which
+ * confirms the request as asked, and for a request whose scope this Station
+ * did not report.
+ */
+function approvalKeptScope(
+  request: PairingRequestView,
+  flag: string | boolean,
+  bindAccount: boolean,
+): string {
+  if (typeof flag !== 'string')
+    throw new Error(
+      '--scope needs the scopes to keep, e.g. --scope=orchestration:read',
+    );
+  if (bindAccount)
+    throw new Error('--scope cannot be combined with --bind-account.');
+  const requested = request.scope ? parsePairingScope(request.scope) : null;
+  if (!requested)
+    throw new Error(
+      'This Station did not report what the request asks for, so --scope cannot narrow it. Update the Station, or approve without --scope.',
+    );
+  const tokens = flag
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0)
+    throw new Error('--scope needs at least one scope to keep.');
+  for (const token of tokens)
+    if (!(requested as readonly string[]).includes(token))
+      throw new Error(
+        `${JSON.stringify(terminalSafeText(token).slice(0, 64))} is not something this request asks for. It asks for: ${requested.join(', ')}.`,
+      );
+  return PAIRING_SCOPES.filter((token: PairingScope) =>
+    tokens.includes(token),
+  ).join(' ');
 }
 
 function accessRequestLabel(request: PairingRequestView): string {
@@ -1106,6 +1232,9 @@ function pairingRequestListEntry(
   return {
     deviceName: request.deviceName,
     ...(requestedBy !== undefined ? { requestedBy } : {}),
+    ...(request.scope !== undefined
+      ? { asksFor: parsePairingScope(request.scope) }
+      : {}),
     ...(request.accountCandidate
       ? { accountCandidate: request.accountCandidate }
       : {}),
@@ -1267,7 +1396,9 @@ export async function pairSavedStation(
     `Requested device access to ${origin} as "${deviceName}".\n` +
       `Request id: ${requestId}\n` +
       'Waiting for approval on the host… ' +
-      `Approve it there with: station environment access approve ${requestId} --force`,
+      // The host's own CLI, as the Station named it (`station` from one
+      // that predates the field).
+      `Approve it there with: ${knownOperatorCli(access.operatorCli) ?? 'station'} environment access approve ${requestId} --force`,
   );
 
   const timeoutMs = timeoutSeconds * 1000;
@@ -1456,6 +1587,32 @@ async function runAccessRequestCommand(
   return true;
 }
 
+/** A bare host command prefers the live listener in its own runtime home. */
+function resolveLocalOperatorTarget(
+  parsed: ReturnType<typeof parseCoreArgs>,
+  projectHome: string,
+): ResolvedApiBase {
+  if (
+    parsed.flags['api-base'] !== undefined ||
+    parsed.flags.station !== undefined ||
+    process.env.STATION_TARGET
+  ) {
+    return resolveApiBaseDetailed(parsed);
+  }
+  const activeLocal = readActiveLocalStation({
+    path: activeLocalStationPath(projectHome),
+  });
+  if (activeLocal) {
+    const resolved: ResolvedApiBase = {
+      apiBase: activeLocal,
+      source: 'active-local',
+    };
+    rememberResolvedApiBase(resolved);
+    return resolved;
+  }
+  return resolveApiBaseDetailed(parsed);
+}
+
 /**
  * The operator channel on this Station's own host (#1796: shared by the
  * pairing-request verbs and the device-scope verbs). A loopback listener
@@ -1472,13 +1629,7 @@ async function openLocalOperatorChannel(
   resolved: ReturnType<typeof resolveApiBaseDetailed>;
   apiBase: string;
 }> {
-  // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
-  // these verbs used to call) also names the saved Station a target resolved
-  // through — from an explicit `--station=<name>`, but equally from
-  // STATION_TARGET, a project selection, or the default Station. All of
-  // those already routed through a named profile before this fix; everything
-  // below applies uniformly to every one of them, not only the flag.
-  const resolved = resolveApiBaseDetailed(parsed);
+  const resolved = resolveLocalOperatorTarget(parsed, dependencies.projectHome);
   const apiBase = resolved.apiBase;
   const targetProfile = resolved.station
     ? findProfile(resolved.station)
@@ -1487,11 +1638,10 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny/devices/scope) operate only on a Station ' +
-            'running on this same machine, so a script can never approve device access on a Station ' +
-            "it merely has network reach to. Run this command directly on that Station's host, " +
+            'Environment-security commands (access list/approve/deny and operator passkeys) operate only on a Station ' +
+            "running on this same machine. Run this host-operator command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny and operator passkeys) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
@@ -1834,6 +1984,56 @@ async function runOperatorPasskeysCommand(
   }
 }
 
+async function openDeviceAccessChannel(
+  parsed: ReturnType<typeof parseCoreArgs>,
+  action: string,
+  dependencies: EnvironmentCommandDependencies,
+): Promise<DeviceAccessOperatorChannel> {
+  const resolved = resolveApiBaseDetailed(parsed);
+  const profile = resolved.station ? findProfile(resolved.station) : undefined;
+  if (
+    isLoopbackApiBase(resolved.apiBase) &&
+    (!profile || profile.localService?.baseDir)
+  ) {
+    const local = await openLocalOperatorChannel(parsed, action, dependencies);
+    return {
+      request: local.requestOperatorJson,
+      target: describeResolvedTargetForHuman(local.resolved),
+    };
+  }
+  // The paired channel uses only the selected principal's credential. It
+  // never reads or sends this machine's unrelated operator credential.
+  if (!configureApiCredential(parsed, resolved.apiBase))
+    throw new Error(
+      'This Station needs a paired CLI credential. Pair with it first; its operator must explicitly grant this device access:devices to administer device access.',
+    );
+  const request =
+    dependencies.request ??
+    ((apiBase: string, path: string, init?: RequestInit) =>
+      requestBareJson(apiBase, path, init, authenticatedFetch));
+  return {
+    target: describeResolvedTargetForHuman(resolved),
+    request: async (path, init) => {
+      try {
+        return await request(resolved.apiBase, path, init);
+      } catch (error) {
+        const { status, code } = pairingErrorSignal(error);
+        if (code === 'account_bound_device_route_forbidden')
+          throw new Error(
+            'This Station restricts account-bound guest principals to its guest routes. Device administration is outside that policy, even with access:devices. Use an operator-approved personal device or the host operator channel.',
+            { cause: error },
+          );
+        if (status === 403)
+          throw new Error(
+            'Station refused this device-access action. Administration requires an explicit access:devices grant. Only the Station operator can grant or remove access:devices itself; other device permissions and legacy access:manage do not authorize administration.',
+            { cause: error },
+          );
+        throw error;
+      }
+    },
+  };
+}
+
 async function runLocalAccessCommand(
   args: string[],
   dependencies: EnvironmentCommandDependencies,
@@ -1843,9 +2043,16 @@ async function runLocalAccessCommand(
 
   const action = parsed.positionals[1];
   if (
-    !['list', 'approve', 'deny', 'devices', 'scope', 'scopes'].includes(
-      action ?? '',
-    )
+    ![
+      'list',
+      'approve',
+      'deny',
+      'devices',
+      'scope',
+      'scopes',
+      'revoke',
+      'remove',
+    ].includes(action ?? '')
   ) {
     throw usageError();
   }
@@ -1863,6 +2070,26 @@ async function runLocalAccessCommand(
     );
     return true;
   }
+  if (action === 'revoke' || action === 'remove') {
+    const removalArgs = parseDeviceRemovalArgs(parsed, usageError);
+    // A person at a terminal confirms after the device is resolved (so the
+    // question names it); with no terminal and no --force, refuse now.
+    const confirm =
+      dependencies.isInteractive && dependencies.confirm
+        ? dependencies.confirm
+        : null;
+    requireDeviceRemovalApproval(removalArgs, action, confirm);
+    const channel = await openDeviceAccessChannel(parsed, action, dependencies);
+    await (action === 'revoke'
+      ? runDeviceRevokeCommand
+      : runDeviceRemoveCommand)(
+      channel,
+      removalArgs,
+      confirm,
+      dependencies.stdout ?? console.log,
+    );
+    return true;
+  }
   if (action === 'devices' || action === 'scope') {
     if (
       action === 'devices' &&
@@ -1873,15 +2100,7 @@ async function runLocalAccessCommand(
       throw usageError();
     const scopeArgs =
       action === 'scope' ? parseDeviceScopeArgs(parsed, usageError) : undefined;
-    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
-      parsed,
-      action,
-      dependencies,
-    );
-    const channel: DeviceAccessOperatorChannel = {
-      request: requestOperatorJson,
-      target: describeResolvedTargetForHuman(resolved),
-    };
+    const channel = await openDeviceAccessChannel(parsed, action, dependencies);
     const write = dependencies.stdout ?? console.log;
     if (scopeArgs) await runDeviceScopeCommand(channel, scopeArgs, write);
     else
@@ -1911,7 +2130,7 @@ async function runLocalAccessCommand(
         'latest',
         'force',
         ...(action === 'approve'
-          ? ['bind-person', 'bind-account', 'personal-device']
+          ? ['bind-person', 'bind-account', 'personal-device', 'scope']
           : []),
       ]) ||
       (parsed.flags['bind-person'] !== undefined &&
@@ -2017,6 +2236,14 @@ async function runLocalAccessCommand(
       '--personal-device is required only when a request presents an account-binding choice.',
     );
   }
+  // `--scope` keeps only part of what the device asked for, as the approval
+  // surfaces' Limit access list does. It can only narrow the request;
+  // without it the device gets what it asked for.
+  const keptScope =
+    action === 'approve' && parsed.flags.scope !== undefined
+      ? approvalKeptScope(selected, parsed.flags.scope, bindAccount)
+      : undefined;
+  const asksFor = keptScope ?? selected.scope;
   const force = parsed.flags.force === true;
   if (!force) {
     if (!dependencies.isInteractive) {
@@ -2029,7 +2256,7 @@ async function runLocalAccessCommand(
       throw new Error(
         `${action === 'approve' ? 'Approving' : 'Denying'} device access requires --force when stdin is non-interactive, ` +
           `so a script can never silently grant a stranger's device access to this Station without a human confirming ` +
-          `${accessRequestLabel(selected)} first. Rerun: station environment access ${action} ${selected.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : personalDevice ? ' --personal-device' : ''}${rerunTarget}`,
+          `${accessRequestLabel(selected)}${action === 'approve' && asksFor ? ` (it would get ${asksFor.split(' ').join(', ')})` : ''} first. Rerun: station environment access ${action} ${selected.requestId}${keptScope ? ` --scope=${keptScope.split(' ').join(',')}` : ''} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : personalDevice ? ' --personal-device' : ''}${rerunTarget}`,
       );
     }
     if (!dependencies.confirm) {
@@ -2039,6 +2266,7 @@ async function runLocalAccessCommand(
     }
     const confirmed = await dependencies.confirm(
       `${action === 'approve' ? 'Approve' : 'Deny'} device access for ${accessRequestLabel(selected)} ` +
+        `${action === 'approve' && asksFor ? `with ${asksFor.split(' ').join(', ')} ` : ''}` +
         `on ${describeResolvedTargetForHuman(resolved)}${bindPerson ? ` and recognize this device as ${terminalSafeText(selected.requester!.login)} when it reconnects` : bindAccount ? ` and bind it to account ${terminalSafeText(selected.accountCandidate!.displayName)} from ${terminalSafeText(selected.accountCandidate!.issuer)} with subject ${terminalSafeText(selected.accountCandidate!.subject)}; this requires that account to sign in again, currently supports viewing permitted Projects only, and does not grant Project membership or personal access` : personalDevice ? '; approve it as an ordinary Personal Device whose selected scope remains until revocation and is not limited by account Project membership' : ''}?`,
     );
     if (!confirmed) {
@@ -2050,16 +2278,20 @@ async function runLocalAccessCommand(
   const path = `/api/pairing/requests/${encodeURIComponent(selected.requestId)}${
     action === 'approve' ? '/confirm' : ''
   }`;
+  const approveBody = {
+    ...(bindAccount
+      ? { bindAccountIdentity: true }
+      : bindPerson
+        ? { bindVerifiedIdentity: true }
+        : {}),
+    ...(keptScope !== undefined ? { scope: keptScope } : {}),
+  };
   const result = await requestOperatorJson(path, {
     method: action === 'approve' ? 'POST' : 'DELETE',
-    ...(bindPerson || bindAccount
+    ...(Object.keys(approveBody).length > 0
       ? {
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            bindAccount
-              ? { bindAccountIdentity: true }
-              : { bindVerifiedIdentity: true },
-          ),
+          body: JSON.stringify(approveBody),
         }
       : {}),
   });

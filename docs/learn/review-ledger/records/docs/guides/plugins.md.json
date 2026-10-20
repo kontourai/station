@@ -110,7 +110,13 @@
 
     "src-ui/src/components/plugins/plugin-frame-runtime.ts",
 
-    "src-ui/src/core/PluginRegistry.ts"
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "src-ui/src/components/registry/PluginRegistryGate.tsx",
+
+    "src-ui/src/components/DeferredCapabilityBoundary.tsx",
+
+    "src-ui/src/views/RegistryView.tsx"
   ],
 
   "checks": [

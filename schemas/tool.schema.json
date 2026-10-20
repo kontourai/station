@@ -190,6 +190,31 @@
               "additionalProperties": false
             }
           ]
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "group": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "readOnly": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
@@ -277,6 +302,20 @@
         "type": "string"
       },
       "description": "Hint of tool names exposed by MCP server"
+    },
+    "credentialOwnership": {
+      "type": "object",
+      "description": "Each person connects their own account; turns use only the credential of the principal they run as (#3279).",
+      "properties": {
+        "owner": {
+          "const": "principal"
+        },
+        "allowInstanceFallback": {
+          "type": "boolean"
+        }
+      },
+      "required": ["owner"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

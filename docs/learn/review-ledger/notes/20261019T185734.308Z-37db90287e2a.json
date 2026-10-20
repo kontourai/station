@@ -1,0 +1,7 @@
+{
+  "revision": "338e04ed595cf445134a53faefe304bcecfeae64",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"timeline.ts compactTurnText now scans only as far as the label needs; its output is pinned identical to the previous collapse-trim-cut definition across whitespace, surrogate and length cases (transcriptTurnLandmarks.test.ts), so the replay landmark labels described here are unchanged.","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/replay/timeline.ts"]}
+  ]
+}

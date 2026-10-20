@@ -1,0 +1,7 @@
+{
+  "revision": "50a79380e2436abb7ef3be6d05981bbc22223f16",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed restored pending-form lifecycle and the exact request-event response contract after unifying reload admission. Canonical and legacy MCP forms learn the request turn before withholding one-click approval actions, so a later turn abort retires them like live requests. Two new reload cases fail under the old early-return defect and pass after restoration; existing caller/response authority, refusal and no-secret record boundaries remain. No new provider/native proof.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

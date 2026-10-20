@@ -1,0 +1,7 @@
+{
+  "revision": "553228202e2493a061ef1957ee3513e97c41c503",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Scoped Connect relay-scope repair: reviewed Manage remote access claim against the elevated editor picker, PairedDeviceList and PairedDevicesPanel captured expectedScope submission, and setDeviceScope operator authority and complete replacement persistence. Existing guide remains accurate: relay:manage is explicitly promoted and absent from presets/default grants; Project IAM remains separate. Added the previously unmapped picker and keeper sources. Focused mounted Apply/preservation and scope-label checks passed 63/63 on 553228202e; removing only the relay picker entry made both relay cases and vocabulary keeper fail, restored 63/63. Full access fixture explicitly includes relay; prior incomplete-set negatives remain. This note covers only these three new sources and the relay claim, not historical review debt, native device, hosted qualification or release proof.","inputs":["docs/guides/connections.md","packages/connect/src/react/connection-manager-modal/DeviceScopeEditor.tsx","packages/connect/src/__tests__/DeviceScopeEditor.test.tsx","packages/connect/src/__tests__/deviceActivity.test.ts"]}
+  ]
+}

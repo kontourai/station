@@ -43,6 +43,12 @@ device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
+Post-init resource staging restores the amber Dev app-icon set from the
+explicit Dev build configuration, even when init preserves a Stable project
+specification. The completion command checks the input catalog
+and compares the packaged iPhone @2x icon pixels with that set. This does not
+prove every compiled asset rendition or an installed home-screen update.
+
 ## Qualify native relay link intake
 
 The [iOS intake implementation](../../src-desktop/src/native_relay_ios_launch.rs)
@@ -51,6 +57,12 @@ the [host custody owner](../../src-desktop/src/native_relay_link_intake.rs)
 emits public metadata and opaque handles only. An iOS source check includes
 those platform branches; a desktop Rust test does not compile the callback
 module. Neither check proves installed delivery or OS storage.
+
+Pinned Tao 0.37.1 registers its scene-configuration callback even when the
+app has no scene manifest. The intake hook validates that callback's actual
+class and ABI before wrapping it; manifest absence does not mean the method
+is absent. Keep this contract aligned with the resolved Tao source when
+upgrading Tauri. A source match does not replace the installed launch checks.
 
 Qualification requires the same installed app identity, channel and actual
 proof-key surface as the operator-approved native v2 invitation. Exercise
@@ -151,6 +163,23 @@ native adapter tests cover recovery, exhaustion, cancellation, authority
 changes, and non-replayable failures. Those tests do not establish real
 WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
+## Resolver recovery and approval uncertainty
+
+Both native authenticated requests and the credential-free public handshake
+retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
+native client disables redirects, so this resolver failure precedes HTTP
+dispatch. Each authenticated retry preserves the scoped binding and rechecks
+authority. Cancellation stops the wait; the reserved health probe is not
+retried. HTTP 503, timeouts and lost responses do not authorize replay.
+
+Manual history Retry invalidates the cached capability observation before
+loading again. Failed history or continuation observation displays Status
+unavailable instead of asserting that a cached Working timer is current.
+Approval delivery has a separate bounded send and inspection path; see
+[tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery).
+Adapter and browser tests are diagnostic evidence, separate from a real shell,
+physical phone, notification lifecycle or release-provider journey.
+
 ## Native foreground dispatch deadlines
 
 The native HTTP broker waits up to 60 seconds for response headers on
@@ -210,6 +239,40 @@ Keychain accounts, plus loopback broker, coturn and Pion fixtures. The adapter
 and supervisor unit tests use injected boundaries. Neither their passing result
 nor the existence of the shell lane establishes a completed native run here.
 Mobile background renewal and packaged-platform acceptance remain separate.
+
+### Relay-management source integration
+
+The Connections [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+is mounted in desktop and selected native relay views. It supports setup-link
+copy, exact installation approval/revocation, single-use invitation issuance,
+and pending account-bound Device approval/denial. Native Project access controls
+are visible only with `manage-members`; writes also require management or
+operate scope. `relay:manage` is explicitly operator-promoted, not a default or
+preset grant, and never substitutes for Project IAM.
+
+The [native account owner](../../src-desktop/src/native_account_operations.rs)
+and [SDK continuation](../../packages/sdk/src/client/application-session-native.ts)
+prepare management POSTs through a dedicated bounded host operation. The generic
+read operation remains GET/HEAD only. The server route and authority owners
+recheck the actual actor, provider currentness and target approval after awaits.
+Full Project invitation links are accepted as token input without changing the
+selected Station.
+
+This records inspected source integration, not a completed native delivery.
+The mounted server/account/native-proof composition suite at `07a7d02ff0`
+has an executed 35/35 receipt and maintained fault/restoration controls. It uses
+controlled peer transport and an external broker stub, with real account/proof
+checks and surface-registry effects. Device approve/deny coverage is admission
+only (`503 enrollment_unavailable`), not an enrollment-decision result. It does
+not exercise Rust IPC, a native shell or physical delivery.
+The account-bound gate now admits exact native relay-management leaves with
+current Device/account proof and separate management scope; credential-only
+account-bound Devices remain refused. This inspected source change does not
+turn a composition keeper into native runtime qualification. Existing simulator
+records for #3114, #3190 and #3199 remain evidence of their own earlier journeys;
+they do not qualify these new operator controls. Released Nightly, physical
+iOS/Android, process-lifecycle and two-human operator/recipient verification
+remain **NOT_VERIFIED** for this delta.
 
 ### Native protected Project pilot
 
@@ -318,9 +381,13 @@ The static test pins release-channel hidden-window configuration and the one
 native reveal authority. The renderer does not commit startup readiness; the
 native shell requests that commit itself. The Rust lane
 proves pure readiness and sidecar-supervisor transitions, including stale
-generation, deadline, retry, service recovery-surface recommit, and the
-four automatic respawns before the fifth counted exit is terminal. None launches
-a packaged app or sees a native dialog.
+generation, a deadline that never restarts the sidecar, late-ticket reveal,
+explicit retry, service recovery-surface recommit, and the four automatic
+respawns before the fifth counted exit is terminal. Desktop crate tests also
+drive the deadline, Restart/Quit and dialog routing through a recording host,
+and on macOS the cover's pure key routing. None launches a packaged app or sees
+the native cover or dialog; the macOS-only cover tests do not run on the Linux
+Desktop Rust lane.
 
 For the existing hostile-plugin browser test, use a distinct disposable home,
 a unique instance, and an OS-allocated non-default port block. Keep allocation,
@@ -389,21 +456,57 @@ backend, a recovery-surface commit can admit the mounted shell without a
 sidecar ticket. This establishes recovery UI readiness, not backend availability.
 
 The native host arms a 30-second deadline for each epoch. If readiness is still
-waiting, it normally shows Retry/Exit once. A pending activation instead starts
-another readiness epoch; activation after failure also resumes readiness.
-An owned sidecar with a current ticket gets one non-disruptive reprobe. If that
-does not settle and another retry follows, or there is no current ticket,
-the host requests an owned-sidecar restart. A non-owned backend receives a
-recovery-surface recommit, never a durable-service restart. These effects are
-routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
+waiting, the epoch becomes overdue: the host offers Restart/Quit once and keeps
+the sidecar running. The deadline never restarts, reprobes or signals the
+sidecar, and an overdue epoch still admits the exact late ticket, identity
+proof and mount, so a slow cold boot reveals the window on its own. (Before
+this, the deadline restarted a still-booting sidecar; a 30-40 s cold boot then
+looped indefinitely.) Restart is the only route to a process effect: an owned
+sidecar with a current ticket gets one non-disruptive reprobe, and if that does
+not settle and Restart is chosen again, or there is no current ticket, the host
+requests an owned-sidecar restart. A non-owned backend re-runs the native
+recovery commit (so a late renderer mount still reveals), never a
+durable-service restart. Quit exits only
+while the same epoch is still overdue. Activation never restarts. These effects
+are routed by [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
+sidecar supervisor itself has no boot or handshake timeout; it waits for the
+generation-tagged handshake or child exit.
 
 On macOS, pending activation may present a native-owned cover so the WebView
-can render while the proof proceeds. Application content remains covered until
-identity and mount readiness converge. Other desktop platforms retain the
-hidden-window behavior. Interactive second launch, accepted deep link, and
-macOS reopen use this authority; explicit background/tray-only launches can
-suppress activation. Home/schema preparation refusals before supervisor setup
-have a separate Exit-only dialog and start no backend.
+can render while the proof proceeds. It shows the application icon and
+**Starting Station**; when the epoch becomes overdue it switches in place to
+**Station is taking longer than usual to start.** with native **Restart**
+(default) and **Quit** buttons, replacing the former modal alert. The read-only
+`startup_window_admitted` observation waits for a visible window and, on macOS,
+checks the main-thread view hierarchy for actual cover removal and restored
+WebView opacity. The readiness phase alone can precede that cover task. The
+WebView's launch animation counts time only after that observation, while
+native identity proof and window reveal retain their own authority. A ready
+app skips an unseen intro; it does not wait for the native cover to start a
+brand animation. While the
+cover is up, a window-scoped key monitor evicts the hidden WebView from first
+responder (WebKit can retake it) and routes key-down/key-up events (modifier-only
+`flagsChanged` events still reach the page): it maps Return to Restart, lets
+Tab/Space operate only the cover's buttons, swallows Escape and typing, and
+passes only app and window management Command shortcuts, identified by the
+typed ASCII letter or, for a non-ASCII character, the US ANSI key position. A cover task that fails, including an early
+return inside the WebView callback, falls back to a non-blocking dialog once
+per epoch. Closing the covered window only hides it; recovery is deferred and
+each cover change decides on the main thread when it applies whether to order
+the window front, so neither a queued cover nor the late reveal brings it back
+until the next activation. An overdue
+background (tray-only) launch defers that cover until activation. Application
+content remains covered until identity and mount readiness converge; reveal
+removes the cover and its buttons. Other desktop platforms retain the
+hidden-window behavior and show a native dialog with **Restart**, **Quit** and
+**Keep Waiting**; dismissal keeps waiting and re-offers the choice after 30,
+60, then every 120 seconds while still overdue. That dialog (and the macOS
+fallback alert) can remain open after a late reveal, where its buttons are
+inert. Interactive
+second launch, accepted deep link, and macOS reopen use this authority;
+explicit background/tray-only launches can suppress activation. Home/schema
+preparation refusals before supervisor setup have a separate Exit-only dialog
+and start no backend.
 
 The sidecar supervisor in
 [`src-desktop/src/bundled_server_state.rs`](../../src-desktop/src/bundled_server_state.rs)
@@ -417,7 +520,7 @@ Interpret evidence narrowly:
 
 | Observation | It establishes | It does not establish |
 | --- | --- | --- |
-| Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, dialog rendering, real process lifetime, or package behavior |
+| Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, cover or dialog rendering, real process lifetime, or package behavior |
 | Startup-readiness static test passes | Source wiring for native proof and renderer-mount separation | An executed authenticated Tauri IPC exchange, a visible window, or correct pixels |
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
@@ -425,9 +528,9 @@ Interpret evidence narrowly:
 
 Window recreation exists, but this review establishes no automatic
 renderer-process-death detection, kill-the-WebView command, or physically
-proved bounded renderer-reload loop. There is no packaged startup/retry/Exit
+proved bounded renderer-reload loop. There is no packaged startup/Restart/Quit
 journey receipt here. A missing mount stays
-behind the native cover and reaches the existing Retry/Exit surface; it never
+behind the native cover and reaches the overdue Restart/Quit surface; it never
 authorizes WebsiteData deletion or a CSP bypass.
 Do not invent a `tauri-driver` command or claim that the browser test exercises those features.
 The historical renderer/stdio work is
@@ -496,18 +599,24 @@ Checkout Doctor reports local tool and runtime prerequisites. Packaged Doctor
 uses the target command: it reports the selected endpoint, discovery reachability,
 saved credential state and configured local service. Neither reports native-window state.
 Service status checks a durable installed service, not a Desktop-owned sidecar.
-The shell log can show a timeout warning, a secondary-launch request, or an
-invalid desktop log level; it cannot prove that a dialog was visible, that a
-user chose Retry/Exit, that a window drew, or that a macOS Apple Event callback
-did not panic before output flushed.
+The shell log can show an overdue-startup warning, the Restart/Quit choice, a
+secondary-launch request, or an invalid desktop log level; it cannot prove
+that the cover or a dialog was visible or that a window drew.
+
+The shell's panic hook appends each Rust panic's message, source location,
+thread and backtrace to `crash.log` beside `station.log`, synchronously and
+before chaining to the default hook, so a panic that then aborts inside a macOS
+Apple Event callback (`panic_cannot_unwind`) still leaves its payload when the
+log directory is writable. It records the panic; it does not prevent the
+abort. An Objective-C exception crossing into Rust (`__rust_foreign_exception`)
+never reaches the hook. Only the hook's recording is unit-tested; a packaged
+abort that produced a `crash.log` entry has not been observed.
 
 For the macOS abort class, record separately whether launch used Finder/Dock
 or a direct executable: [archive#3496](https://github.com/kontourai/station-archive/issues/3496)
-reports the Apple Event path as the observed distinction. There is currently
-no established app-owned persisted panic capture or current reproducible trigger,
-so preserve the package,
-system crash report, timestamp, channel, and launch method rather than claiming
-the normal shell log explains it.
+reports the Apple Event path as the observed distinction. There is no current
+reproducible trigger, so preserve the package, `crash.log`, system crash
+report, timestamp, channel, and launch method.
 
 ## Current development simulator and public fixture receipts
 
@@ -576,7 +685,7 @@ person separately before claiming fresh relay-only acceptance.
 
 | Target or behavior | Current runnable evidence | Required physical evidence | Status |
 | --- | --- | --- | --- |
-| macOS packaged startup, Retry/Exit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/dialog, and launch-method record | **NOT_VERIFIED** |
+| macOS packaged startup, overdue cover Restart/Quit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/cover, and launch-method record | **NOT_VERIFIED** |
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
 | Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |

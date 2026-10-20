@@ -17,6 +17,15 @@ import type {
 import type { AgentOwnershipFinding } from './project-reference-integrity.js';
 import type { ModelOption } from './tool.js';
 
+export const AGENT_PROFILE_CAPABILITIES = [
+  'instructions',
+  'skills',
+  'toolServers',
+  'toolSelection',
+] as const;
+export type AgentProfileCapability =
+  (typeof AGENT_PROFILE_CAPABILITIES)[number];
+
 /**
  * Shared wire projection returned by the enriched Agent catalog.
  *
@@ -57,6 +66,14 @@ export interface EnrichedAgentProjection {
   engineDisplayName?: string;
   engineConnectionType?: string;
   engineDefault?: boolean;
+  /** This identity is a receiver-owned registry execution default. */
+  executionDefault?: boolean;
+  /** Receiver-computed identity of the owned authored definition, excluding execution. */
+  definitionFingerprint?: string;
+  /** Authored requirements; absent means the definition was not verified. */
+  profileCapabilities?: AgentProfileCapability[];
+  /** Known static refusals on the bound engine; absent means unknown. */
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
   /** How this definition was first created (`AgentSpec.provenance`). */
   provenance?: AgentSpec['provenance'];
   /**

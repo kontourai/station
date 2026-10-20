@@ -111,6 +111,37 @@ const SHIPPED_SOURCE = {
   note: "Static documentation bundled with Station. This is not live state: it does not describe this Station's agents, runs, jobs, projects, or settings.",
 } as const;
 
+const STATION_DOCS_TOOLS = [
+  {
+    name: 'list_station_docs_topics',
+    title: 'Browse documentation',
+    description:
+      "List topics in Station's SHIPPED DOCUMENTATION, including the architecture learning tree. Filter parentId to manual, architecture, or a branch id returned by this tool. Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+  {
+    name: 'get_station_docs_topic',
+    title: 'Read documentation',
+    description:
+      "Read one topic of Station's SHIPPED DOCUMENTATION by id (use list_station_docs_topics for the ids). Returns bundled documentation, never live state: it describes how Station works in general, not this Station's agents, runs, or settings.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+  {
+    name: 'search_station_docs',
+    title: 'Search documentation',
+    description:
+      "Case-insensitive substring search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+];
+
+export function stationDocsToolCatalog() {
+  return STATION_DOCS_TOOLS;
+}
+
 export function createStationDocsMcpServer(): McpServer {
   const server = new McpServer(
     {
@@ -130,8 +161,9 @@ export function createStationDocsMcpServer(): McpServer {
   server.registerTool(
     'list_station_docs_topics',
     {
-      description:
-        "List topics in Station's SHIPPED DOCUMENTATION, including the architecture learning tree. Filter parentId to manual, architecture, or a branch id returned by this tool. Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
+      ...STATION_DOCS_TOOLS[0],
+      annotations: { readOnlyHint: true },
+      _meta: { 'ai.kontour/tool-group': 'Documentation' },
       inputSchema: z.object({
         parentId: z
           .string()
@@ -153,8 +185,9 @@ export function createStationDocsMcpServer(): McpServer {
   server.registerTool(
     'get_station_docs_topic',
     {
-      description:
-        "Read one topic of Station's SHIPPED DOCUMENTATION by id (use list_station_docs_topics for the ids). Returns bundled documentation, never live state: it describes how Station works in general, not this Station's agents, runs, or settings.",
+      ...STATION_DOCS_TOOLS[1],
+      annotations: { readOnlyHint: true },
+      _meta: { 'ai.kontour/tool-group': 'Documentation' },
       inputSchema: z.object({
         id: z.string().describe('Topic id, e.g. "station-overview".'),
       }),
@@ -175,8 +208,9 @@ export function createStationDocsMcpServer(): McpServer {
   server.registerTool(
     'search_station_docs',
     {
-      description:
-        "Case-insensitive substring search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+      ...STATION_DOCS_TOOLS[2],
+      annotations: { readOnlyHint: true },
+      _meta: { 'ai.kontour/tool-group': 'Documentation' },
       inputSchema: z.object({
         query: z.string().describe('Substring to look for, e.g. "approval".'),
         limit: z

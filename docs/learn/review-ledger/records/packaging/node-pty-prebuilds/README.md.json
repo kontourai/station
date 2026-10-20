@@ -16,15 +16,17 @@
 
     "packaging/node-pty-prebuilds/manifest.json",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/dependency-lifecycle.test.ts",
 
     "scripts/lib/dependency-lifecycle-policy.mjs",
 
     "scripts/lib/elf-symbol-floor.mjs",
 
-    "scripts/verify-node-pty-prebuild.mjs"
+    "scripts/verify-node-pty-prebuild.mjs",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

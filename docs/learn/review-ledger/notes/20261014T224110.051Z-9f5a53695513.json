@@ -1,0 +1,7 @@
+{
+  "revision": "464ffaeb2e2a837b28c49f447fb61c56fbacf196",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList gained a last-known background banner prop; no AI-UI bridge claim depends on the banner","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

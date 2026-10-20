@@ -29,6 +29,7 @@ import {
   useSetCredentialProfileEnrollmentMutation,
   useSetCredentialRecoveryAutomaticPolicyMutation,
   useSkillsQuery,
+  useSmokeAgentConnectionMutation,
   useTestAgentConnectionMutation,
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
@@ -67,6 +68,7 @@ import {
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import { EngineAccountOverview } from './EngineAccountOverview';
+import { EngineProxySettings } from './EngineProxySettings';
 import {
   blockingPrerequisite,
   resolveProviderPresentation,
@@ -99,6 +101,21 @@ interface AgentConnectionViewProps {
  */
 function isAddedEngine(connection: AgentConnectionViewData): boolean {
   return connection.setup?.state !== 'available';
+}
+
+function enginePresentation(connection: AgentConnectionViewData) {
+  return resolveProviderPresentation({
+    id: connection.id,
+    kind: 'agent',
+    type: connection.type,
+    name: connection.name,
+    enabled: connection.enabled,
+    status: connection.status,
+    prerequisites: connection.prerequisites,
+    readinessEvidence: connection.readinessEvidence,
+    setup: connection.setup,
+    href: '',
+  });
 }
 
 export function AgentConnectionView({
@@ -231,7 +248,8 @@ export function AgentConnectionView({
     },
   });
 
-  const testMutation = useTestAgentConnectionMutation();
+  const testMutation = useSmokeAgentConnectionMutation();
+  const refreshMutation = useTestAgentConnectionMutation();
 
   // The handshake retry the refusal sentence names (enriched-agents.ts). The
   // bridge's live connection set is the same projection the reconnect route
@@ -294,12 +312,17 @@ export function AgentConnectionView({
         })
         .map((connection) => ({
           id: connection.id,
-          name: connection.name,
+          name:
+            connection.config.modelRoute &&
+            typeof connection.config.modelRoute === 'object' &&
+            'label' in connection.config.modelRoute
+              ? `${connection.name} · via ${String(connection.config.modelRoute.label)}`
+              : connection.name,
           // The third segment used to be `connectionTypeLabel(type)`, which
           // either repeated the row's own name ("Claude Code · Claude Code")
           // or printed a slug for a type the map had missed ("muse").
           // The row is already named; the subtitle says what is true of it.
-          subtitle: `${connectionStatusLabel(connection.status)} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
+          subtitle: `${enginePresentation(connection).readiness} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
           icon: (
             <BrandIcon
               name={connection.name}
@@ -348,19 +371,7 @@ export function AgentConnectionView({
   const capabilityInventory = (form as AgentConnectionViewData | null)
     ?.capabilityInventory;
   const continuity = (form as AgentConnectionViewData | null)?.continuity;
-  const providerPresentation = form
-    ? resolveProviderPresentation({
-        id: form.id,
-        kind: 'agent',
-        type: form.type,
-        name: form.name,
-        enabled: form.enabled,
-        status: form.status,
-        prerequisites: form.prerequisites,
-        setup: form.setup,
-        href: '',
-      })
-    : null;
+  const providerPresentation = form ? enginePresentation(form) : null;
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const devicePresentation = useDevicePresentation();
   // The SAME derivation the presentation used, not a second copy of it.
@@ -537,11 +548,21 @@ export function AgentConnectionView({
             </div>
 
             {(form.type === 'claude' || form.type === 'codex') && (
-              <EngineAccountOverview
-                connectionId={form.id}
-                engine={form.type}
+              <EngineProxySettings
+                connection={form}
+                onChange={(config) => setField('config', config)}
+                onManageModels={() =>
+                  onNavigate({ type: 'connections-models' })
+                }
               />
             )}
+            {!form.config.proxyConnectionId &&
+              (form.type === 'claude' || form.type === 'codex') && (
+                <EngineAccountOverview
+                  connectionId={form.id}
+                  engine={form.type}
+                />
+              )}
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}
@@ -551,6 +572,47 @@ export function AgentConnectionView({
                 devicePresentation={devicePresentation}
               />
             )}
+
+            <div className="editor-field">
+              <label className="editor-label" htmlFor="agent-default-model">
+                Default model
+              </label>
+              <select
+                id="agent-default-model"
+                className="editor-input"
+                value={String(form.config.defaultModel || '')}
+                onChange={(event) =>
+                  setConfigField('defaultModel', event.target.value)
+                }
+              >
+                <option value="">Let the engine choose</option>
+                {Boolean(form.config.defaultModel) &&
+                  !runtimeCatalogVisibleModels(form).some(
+                    (model) => model.id === form.config.defaultModel,
+                  ) && (
+                    <option value={String(form.config.defaultModel)}>
+                      {String(form.config.defaultModel)} (not currently listed)
+                    </option>
+                  )}
+                {runtimeCatalogVisibleModels(form).map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              <p className="editor-help">
+                Models reported by this connection. Save connection changes
+                before refreshing this list.
+              </p>
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={() => refreshMutation.mutate(form.id)}
+                disabled={dirty || refreshMutation.isPending}
+              >
+                Refresh models
+              </button>
+            </div>
 
             <details className="provider-detail__advanced">
               <summary>Advanced</summary>
@@ -665,30 +727,6 @@ export function AgentConnectionView({
                       : 'No native continuity capability declared by this connection.'}
                   </p>
                 </div>
-
-                {'defaultModel' in form.config && (
-                  <div className="editor-field">
-                    <label
-                      className="editor-label"
-                      htmlFor="agent-default-model"
-                    >
-                      Default model
-                    </label>
-                    <input
-                      id="agent-default-model"
-                      className="editor-input"
-                      value={String(form.config.defaultModel || '')}
-                      onChange={(event) =>
-                        setConfigField('defaultModel', event.target.value)
-                      }
-                      placeholder="App default"
-                    />
-                    <p className="editor-help">
-                      Optional app-scoped default model hint. Leave blank to
-                      inherit the app default.
-                    </p>
-                  </div>
-                )}
 
                 {form.type === 'claude' && (
                   <ClaudeSkillsMaterializationField
@@ -911,24 +949,18 @@ export function AgentConnectionView({
                 >
                   {saveMutation.isPending ? 'Saving…' : 'Save'}
                 </button>
-                {/*
-                 * Named for what it does. `testConnection`'s agent branch runs
-                 * no probe at all -- it returns
-                 * `!hasRequiredMissing(connection.prerequisites)`, derived from
-                 * the projection already on screen. What genuinely re-checks is
-                 * the query invalidation the mutation triggers, which re-reads
-                 * the server's prerequisite probe. "Check again" promised a
-                 * connection test and delivered a refresh.
-                 */}
                 <button
                   type="button"
                   className="editor-btn"
-                  onClick={() => testMutation.mutate(form.id)}
-                  disabled={testMutation.isPending}
+                  onClick={() =>
+                    testMutation.mutate({
+                      id: engineConnectionId(form.id),
+                      confirmed: true,
+                    })
+                  }
+                  disabled={testMutation.isPending || dirty}
                 >
-                  {testMutation.isPending
-                    ? 'Re-checking…'
-                    : 'Re-check prerequisites'}
+                  {testMutation.isPending ? 'Checking…' : 'Check connection'}
                 </button>
               </div>
               {/*
@@ -939,11 +971,19 @@ export function AgentConnectionView({
                * region; they update from the refetch. All this needs to say is
                * that the refetch happened.
                */}
-              {testMutation.data && (
-                <p className="editor-help">
-                  Prerequisites re-checked. Status above reflects the result.
-                </p>
-              )}
+              <p className="editor-help">
+                Checking sends one short message and uses a small amount of your
+                model allowance. Save changes first.
+              </p>
+              {testMutation.data &&
+                testMutation.data.smoke.testedAt ===
+                  form.readinessEvidence?.smoke.testedAt && (
+                  <p className="editor-help">
+                    {testMutation.data.smoke.status === 'passed'
+                      ? 'Connected — your engine answered successfully.'
+                      : 'Couldn’t connect. Check the connection settings, then try again.'}
+                  </p>
+                )}
               {testMutation.error && (
                 <p className="editor-error">
                   {testMutation.error instanceof Error

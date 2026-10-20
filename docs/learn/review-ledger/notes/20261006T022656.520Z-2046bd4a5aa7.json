@@ -1,0 +1,7 @@
+{
+  "revision": "cbdca03fc84c8e4ed4a0bf4e6299e8f0f0159b70",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#3391 round 8: the dock's run-locations read moved from ChatDock into DockNewChatModal (the lazily loaded composer wrapper ChatDockModalStack renders only while the start composer is open); ChatDock now differs from main only by passing projectIconBySlug. Searched this document for dock, composer and Project-list claims; the chat-composer chip claim (folder from the separate run-locations read, only while shown) still holds and nothing else is affected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

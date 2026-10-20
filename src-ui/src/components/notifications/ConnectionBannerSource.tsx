@@ -160,6 +160,7 @@ export function ConnectionBannerSource() {
   const loopbackFromElsewhere =
     isLoopbackEndpoint(endpoint) &&
     !isDesktop &&
+    new URL(endpoint).origin !== window.location.origin &&
     failureStreak >= 3 &&
     reason !== 'busy';
 

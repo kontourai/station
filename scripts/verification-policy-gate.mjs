@@ -104,6 +104,12 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the renderer-wide native platform scan; see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
@@ -126,6 +132,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // The Corpus decision registry and the numbered-ADR freeze; see
+  // run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([
@@ -140,7 +149,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // itself red, and for why readiness runs last of the three.
   Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // station#4273: the typecheck invariant and its stated precondition. This
   // allowlist is the CANONICAL declaration — `run-ci-fast.mjs` must match it
   // exactly, which is what keeps "what the gate says it runs" and "what the
@@ -211,9 +223,9 @@ export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
   'docs/guides/development.md',
 ]);
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
-  'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
+  'Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
-  'Nightly and tagged preview and stable promotions',
+  'Scheduled main qualification and tagged Preview/Stable',
   'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);

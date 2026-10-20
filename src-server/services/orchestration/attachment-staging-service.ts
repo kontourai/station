@@ -317,12 +317,14 @@ export class AttachmentStagingService {
   /**
    * Atomically bind completed references to the resolved foreground turn, then
    * hydrate them. A reference may never move to another turn, including a
-   * retry whose client turn identity changed.
+   * retry whose client turn identity changed. Internal inspection validates that
+   * same owner/reference/binding contract without moving an unbound upload.
    */
   bindAndHydrate(
     owner: AttachmentStageOwner,
     references: readonly StagedAttachmentReference[],
     binding: { threadId: string; clientTurnId: string },
+    options?: { inspectOnly?: true },
   ): ChatAttachmentInput[] {
     this.cleanup();
     const records = references.map((reference) => {
@@ -362,10 +364,11 @@ export class AttachmentStagingService {
     });
     // All references are validated before any binding changes, so a bad
     // sibling cannot leave a legal partial batch attached to a turn.
-    for (const record of records) {
-      record.binding = { ...binding };
-      record.bindingExpiresAt = this.now() + this.ttlMs;
-    }
+    if (!options?.inspectOnly)
+      for (const record of records) {
+        record.binding = { ...binding };
+        record.bindingExpiresAt = this.now() + this.ttlMs;
+      }
     return records.map((record) => {
       return {
         ...descriptorOf(record),

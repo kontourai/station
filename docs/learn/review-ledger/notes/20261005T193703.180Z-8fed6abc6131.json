@@ -1,0 +1,11 @@
+{
+  "revision": "d2addf5896b0572a965f0c83edbe96a7e73991e6",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3386 Phase B ownership: added that conversations Station runs through an OpenCode connection are not listed twice. Checked OpenCodeSessionSource.ownedNativeSessionId (acp + resumeCursor.acpSessionId) and PollSessionSnapshot.ownedThroughSource via isStationOwnedProviderCursor (hook taken byte-identical from the Grok lane 3350af2e36); proven by opencode-session-follow.test.ts owned-session case.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 Phase B ownership: the follow service also treats a session a source declares Station-owned (ownedNativeSessionId, used for ACP-run OpenCode) as owned. This reference's attached-session claims (observation roots, continuation, Claude ancestry) remain accurate; no prose change.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3386 Phase B ownership: follow-service change adds source-declared Station ownership for attached sessions. This guide's only nearby claims concern attention deduplication, unaffected; no prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

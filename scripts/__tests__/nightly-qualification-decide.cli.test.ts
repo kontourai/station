@@ -85,7 +85,10 @@ describe('nightly-qualification-decide CLI against a git repository', () => {
       .replace(/\.\d{3}Z$/, 'Z');
     // The cohort's record job writes the row as a ledger-only commit-back.
     const ledgerBack = commit(
-      [row('nightly-android', source, longAgo)],
+      [
+        row('nightly-android', source, longAgo),
+        row('nightly-desktop', source, longAgo),
+      ],
       'docs(ledger): record nightly-android 0.1.11-nightly.2466.3 from run 37021990417',
     );
 

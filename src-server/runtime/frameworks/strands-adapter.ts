@@ -1,8 +1,10 @@
-import type { UIMessage } from 'ai';
+import { asSchema, type UIMessage } from 'ai';
+import { z } from 'zod';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
 } from '../../services/agents/runtime-agent-identity.js';
+import { addAgentTools } from '../tools/agent-tool-view.js';
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -30,9 +32,9 @@ import type { StorageAdapter } from '@voltagent/core';
 import { excludeChatErrorMarkers } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { createLogger } from '../../utils/logger.js';
 import {
-  currentScheduledPrincipal,
-  currentScheduledRunId,
-} from '../agents/scheduled-principal-context.js';
+  currentUnattendedPrincipal,
+  currentUnattendedRunId,
+} from '../agents/unattended-principal-context.js';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -125,11 +127,18 @@ class StrandsAgentWrapper implements IAgent {
       companion?: NativeMemoryHistoryCompanion;
       isHistoryCurrent?: () => Promise<boolean>;
     },
+    readonly instructions?: string | (() => string),
+    private readonly toolView?: (tools: ITool[]) => IAgent,
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
     this.tools = tools;
     this._invocationCtx = invocationCtx;
+  }
+
+  withAdditionalTools(tools: ITool[]): IAgent {
+    if (!this.toolView) throw new Error('Agent tool views are unavailable.');
+    return this.toolView(tools);
   }
 
   /** VoltAgent compat — used by server-core's handleGetAgents / handleListTools */
@@ -184,9 +193,9 @@ class StrandsAgentWrapper implements IAgent {
           }
         : {}),
       userId: options?.userId,
-      traceId: currentScheduledRunId() ?? this._invocationCtx.traceId,
+      traceId: currentUnattendedRunId() ?? this._invocationCtx.traceId,
       delegation: options?.delegation,
-      unattendedPrincipal: currentScheduledPrincipal(),
+      unattendedPrincipal: currentUnattendedPrincipal(),
     };
     // The bag itself stays EMPTY of trusted data: invocationState is the
     // SDK's tool-writable scratch space, so the context is bound out-of-band
@@ -440,7 +449,13 @@ class StrandsAgentWrapper implements IAgent {
         model: this.strandsAgent.model,
         systemPrompt: (this.strandsAgent as any).systemPrompt,
         tools: [],
-        structuredOutputSchema: schema,
+        structuredOutputSchema: schema._zod
+          ? schema
+          : z.fromJSONSchema(
+              (await asSchema(schema).jsonSchema) as Parameters<
+                typeof z.fromJSONSchema
+              >[0],
+            ),
       });
       const result = await tempAgent.invoke(prompt);
       const text = result.toString();
@@ -512,6 +527,7 @@ export class StrandsFramework {
       companion?: NativeMemoryHistoryCompanion,
       ownedInvocation?: InvocationContext,
       isHistoryCurrent?: () => Promise<boolean>,
+      viewTools: ITool[] = tools,
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
@@ -525,7 +541,7 @@ export class StrandsFramework {
         messages: history,
         systemPrompt: resolvedPrompt,
         tools: createStrandsFunctionTools(
-          tools,
+          viewTools,
           deniedToolCalls,
           purposeEnabledToolNames,
         ),
@@ -543,7 +559,7 @@ export class StrandsFramework {
         model,
         opts.memoryAdapter as unknown as IMemory,
         invocationCtx,
-        tools,
+        viewTools,
         {
           agentKey: slug,
           adapter: opts.memoryAdapter,
@@ -552,8 +568,20 @@ export class StrandsFramework {
           fork:
             history === undefined
               ? (messages, owner, invocation, current) =>
-                  makeWrapper(messages, owner, invocation, current)
+                  makeWrapper(messages, owner, invocation, current, viewTools)
               : undefined,
+        },
+        opts.processedPrompt,
+        (additions) => {
+          if (!config.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return makeWrapper(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            addAgentTools(tools, additions),
+          );
         },
       );
       if (history)
@@ -569,7 +597,7 @@ export class StrandsFramework {
         resolvedModel,
         getLastStreamUsage: () => wrapper._lastStreamUsage,
         findMCPToolProvenance: (runtimeName) =>
-          tools
+          viewTools
             .filter((tool) => tool.name === runtimeName)
             .map(getLoadedMCPToolProvenance)
             .find((provenance) => provenance !== undefined),
@@ -650,6 +678,7 @@ export class StrandsFramework {
       companion?: NativeMemoryHistoryCompanion,
       ownedInvocation?: InvocationContext,
       isHistoryCurrent?: () => Promise<boolean>,
+      viewTools: ITool[] = opts.tools ?? [],
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
@@ -658,7 +687,7 @@ export class StrandsFramework {
         messages: history,
         systemPrompt: resolved,
         tools: createStrandsFunctionTools(
-          opts.tools || [],
+          viewTools,
           deniedToolCalls,
           purposeEnabledToolNames,
         ),
@@ -701,7 +730,7 @@ export class StrandsFramework {
         opts.model,
         (opts.memoryAdapter as unknown as IMemory) ?? null,
         invocationCtx,
-        opts.tools,
+        viewTools,
         {
           agentKey: opts.agentId,
           adapter: opts.memoryAdapter,
@@ -710,8 +739,20 @@ export class StrandsFramework {
           fork:
             history === undefined
               ? (messages, owner, invocation, current) =>
-                  makeWrapper(messages, owner, invocation, current)
+                  makeWrapper(messages, owner, invocation, current, viewTools)
               : undefined,
+        },
+        opts.instructions,
+        (additions) => {
+          if (!opts.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return makeWrapper(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            addAgentTools(opts.tools ?? [], additions),
+          );
         },
       );
       if (history && opts.memoryAdapter) {
@@ -762,11 +803,11 @@ export class StrandsFramework {
 
     return {
       model: dispatchModel
-        ? createStrandsAiSdkModel(dispatchModel, {
+        ? await createStrandsAiSdkModel(dispatchModel, {
             spec,
             appConfig: config.appConfig,
           })
-        : createStrandsManagedModel({
+        : await createStrandsManagedModel({
             providerConnection: binding.providerConnection,
             modelId: binding.modelId,
             spec,

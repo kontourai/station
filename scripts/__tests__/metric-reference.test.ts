@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
 import { DOCS_TRUTH_GATE_LANES } from '../docs-truth-gate-aggregate.mjs';

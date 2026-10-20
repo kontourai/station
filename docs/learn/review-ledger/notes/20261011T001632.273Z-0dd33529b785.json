@@ -1,0 +1,7 @@
+{
+  "revision": "ba0269e234b8e1f18be0d5f4e77f8cdabb429029",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed added optional product receiver path against disclosed sender and strict shared parser, source/operator credential boundaries, transaction commit/dedupe and scoped received-observation query. Retains unknown delivery coverage and canonical personal accounting separation. Other monitoring/profile/instrument paths are unchanged by the receiver; managed dependency delta adds pinnedPG and private Node-only package without changing OTel settings. LivePG16.14 receiver evidence is not a deployed collector or Station/native acceptance receipt.","inputs":["docs/guides/monitoring.md","pnpm-lock.yaml","packages/telemetry-broker/src/store.ts","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/main.ts","packages/telemetry-broker/README.md"]}
+  ]
+}

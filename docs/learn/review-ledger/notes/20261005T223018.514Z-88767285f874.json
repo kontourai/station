@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed the cited testing-guide change: it documents the already reviewed Windows floor resource-staging keeper and base-controlled main-first dependency. The dedicated keeper executes real PowerShell/filesystem with only Cargo consumer stub; directory proof is distinct from real compilation, UI/server behavior, packaged contents and canonical qualification. Existing scoped instructions, assertion/default-deadline requirements, real caller/fixture rules and authority boundaries remain unchanged; no source change to this instruction file is needed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

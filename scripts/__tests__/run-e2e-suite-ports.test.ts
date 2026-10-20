@@ -98,36 +98,39 @@ describe('E2E browser session bootstrap', () => {
     );
   });
 
-  test('exchanges the launcher capability for the browser session cookie', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers({
-        'set-cookie': `station-device=${sessionCredential}; Path=/; HttpOnly; SameSite=Strict`,
-      }),
-    });
+  test.each(['station-device', 'station-device-0123456789abcdef'])(
+    'exchanges the launcher capability for the %s browser session cookie',
+    async (cookieName) => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          'set-cookie': `${cookieName}=${sessionCredential}; Path=/; HttpOnly; SameSite=Strict`,
+        }),
+      });
 
-    await expect(
-      issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
-    ).resolves.toBe(sessionCredential);
-    // station#3876: the exchange lands on the UI PORT — the authority
-    // `station start` prints — so the host fixture is minted over the journey
-    // an operator actually takes, and a regression in the proxy's locality
-    // attestation reddens that fixture instead of hiding behind a
-    // direct-socket mint no user performs. The Origin stays the UI origin:
-    // that is where the cookie will be presented.
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'http://127.0.0.1:5274/.well-known/station/v1/pairing/ui-bootstrap',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Origin: 'http://localhost:5274',
+      await expect(
+        issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
+      ).resolves.toBe(sessionCredential);
+      // station#3876: the exchange lands on the UI PORT — the authority
+      // `station start` prints — so the host fixture is minted over the journey
+      // an operator actually takes, and a regression in the proxy's locality
+      // attestation reddens that fixture instead of hiding behind a
+      // direct-socket mint no user performs. The Origin stays the UI origin:
+      // that is where the cookie will be presented.
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'http://127.0.0.1:5274/.well-known/station/v1/pairing/ui-bootstrap',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:5274',
+          },
+          body: JSON.stringify({ token }),
         },
-        body: JSON.stringify({ token }),
-      },
-    );
-  });
+      );
+    },
+  );
 
   test('refuses an exchange with no UI port to land on', async () => {
     // The dialled authority is the loopback `Host` the proxy attests
@@ -142,16 +145,25 @@ describe('E2E browser session bootstrap', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test('fails closed when the exchange omits a valid cookie', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers(),
-    });
-    await expect(
-      issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
-    ).rejects.toThrow('omitted a valid session cookie');
-  });
+  test.each([
+    undefined,
+    `unrelated=${sessionCredential}; Path=/`,
+    `station-device-short=${sessionCredential}; Path=/`,
+    `station-device-0123456789abcdeg=${sessionCredential}; Path=/`,
+    'station-device-0123456789abcdef=short; Path=/',
+  ])(
+    'fails closed when the exchange omits a valid cookie (%s)',
+    async (cookie) => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(cookie ? { 'set-cookie': cookie } : undefined),
+      });
+      await expect(
+        issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
+      ).rejects.toThrow('omitted a valid session cookie');
+    },
+  );
 });
 
 describe('runE2EExecutionPhases', () => {
@@ -1904,11 +1916,82 @@ describe('establishedUserPlaywrightEnv', () => {
   });
 });
 
+/**
+ * Every external-session source root the server reads, from the server source
+ * itself: a new engine's `STATION_EXTERNAL_<ENGINE>_SOURCE_ROOT` joins this
+ * list without anyone editing it, and the assertion below then fails until
+ * the e2e runner isolates it too. An unisolated root makes the e2e server tail
+ * the host's real history (#3465: Grok sessions' toasts covered the Coding
+ * rail).
+ */
+function serverExternalSourceRootVariables(): string[] {
+  const names = new Set<string>();
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__' && entry.name !== 'node_modules')
+          walk(path);
+      } else if (/\.(ts|mts|js|mjs)$/.test(entry.name)) {
+        for (const match of readFileSync(path, 'utf8').matchAll(
+          // `process.env.X`, an injected `env.X`, and `env['X']` / `env["X"]`.
+          /\benv(?:\.|\[\s*['"])(STATION_EXTERNAL_[A-Z0-9_]+_SOURCE_ROOT)\b/g,
+        ))
+          names.add(match[1]);
+      }
+    }
+  };
+  walk(resolve(import.meta.dirname, '../../src-server'));
+  return [...names].sort();
+}
+
+describe('e2eProviderConfigEnv external source isolation', () => {
+  test('the server-derived list still sees the known engines', () => {
+    // Pinned literal beside the derived list, so a scan that silently finds
+    // nothing cannot pass the isolation test below vacuously.
+    expect(serverExternalSourceRootVariables()).toEqual(
+      expect.arrayContaining([
+        'STATION_EXTERNAL_CLAUDE_SOURCE_ROOT',
+        'STATION_EXTERNAL_CODEX_SOURCE_ROOT',
+        'STATION_EXTERNAL_GROK_SOURCE_ROOT',
+        'STATION_EXTERNAL_OPENCODE_SOURCE_ROOT',
+      ]),
+    );
+  });
+
+  test.each(['product', 'smoke-live', 'first-run', 'extended'])(
+    'isolates every external source root the server reads (%s)',
+    (suite) => {
+      // Any root the runner asks for gets its own fixture path, so this test
+      // does not need to know the runner's key names.
+      const roots = new Proxy({} as Record<string, string>, {
+        get: (_target, key) => `/fixture/${String(key)}`,
+      });
+      const env = e2eProviderConfigEnv(suite, roots, {}) as Record<
+        string,
+        string | undefined
+      >;
+      const variables = serverExternalSourceRootVariables();
+      const unisolated = variables.filter(
+        (name) => !env[name]?.startsWith('/fixture/'),
+      );
+      expect(unisolated).toEqual([]);
+      const paths = variables.map((name) => env[name]);
+      expect(new Set(paths).size).toBe(paths.length);
+    },
+  );
+});
+
 describe('suiteStationE2EEnv', () => {
   test.each(['smoke-live', 'product', 'first-run'])(
     'keeps %s history isolated with the correct authentication boundary',
     (suite) => {
-      const roots = { claude: '/fixture/claude', codex: '/fixture/codex' };
+      const roots = {
+        claude: '/fixture/claude',
+        codex: '/fixture/codex',
+        opencode: '/fixture/opencode',
+        grok: '/fixture/grok',
+      };
       const inherited = {
         CLAUDE_CONFIG_DIR: '/host/claude',
         CODEX_HOME: '/host/codex',
@@ -1916,6 +1999,8 @@ describe('suiteStationE2EEnv', () => {
       const env = e2eProviderConfigEnv(suite, roots, inherited);
       expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
       expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
+      expect(env.STATION_EXTERNAL_OPENCODE_SOURCE_ROOT).toBe(roots.opencode);
+      expect(env.STATION_EXTERNAL_GROK_SOURCE_ROOT).toBe(roots.grok);
       expect(env.CLAUDE_CONFIG_DIR).toBe(
         suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
       );

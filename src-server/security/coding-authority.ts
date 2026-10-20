@@ -94,6 +94,54 @@ export function mayRunCommandsOnHost(
 }
 
 /**
+ * The refusal code for choosing a folder on this computer without the
+ * authority to run commands there. One code for every route that takes a
+ * folder, so the Project routes and the session-start routes cannot answer
+ * the same rule two ways.
+ */
+export const WORKING_DIRECTORY_NOT_GRANTED_CODE =
+  'working-directory-not-granted' as const;
+
+/**
+ * The refusal code for choosing a command Station will run (an engine
+ * connection's command and arguments, a tool server's, a shell). The decision
+ * is {@link refusesWorkingDirectoryChoice}, the same one as for a folder: a
+ * caller who can make Station run a command it chose can run commands.
+ */
+export const COMMAND_NOT_GRANTED_CODE = 'command-not-granted' as const;
+
+/**
+ * Choosing a working folder takes the same authority as running commands
+ * there: the folder is where an engine session or a Project's coding routes
+ * run. The one rule behind `POST /api/projects`' and `PUT
+ * /api/projects/:slug`' `workingDirectory` and behind a session start that
+ * names a plain folder.
+ */
+export function mayChooseWorkingDirectory(
+  request: Request,
+  grantedScope: string | undefined,
+): boolean {
+  return mayRunCommandsOnHost(request, grantedScope);
+}
+
+/**
+ * Whether a request that names a folder must be refused. Fail closed: it is
+ * refused unless the caller is Station's own server code (a station-control
+ * tool call is confined by `scopeDispatch`) or
+ * {@link mayChooseWorkingDirectory} passes (the operator in person, or a
+ * device holding `coding:exec`). A caller of any other kind, including one
+ * added later, is refused.
+ */
+export function refusesWorkingDirectoryChoice(
+  request: Request,
+  grantedScope: string | undefined,
+): boolean {
+  if (getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal')
+    return false;
+  return !mayChooseWorkingDirectory(request, grantedScope);
+}
+
+/**
  * #2436 (owner decision 2026-09-23): whether this request may put a session,
  * or an Agent's default, at full access (approval posture `never`). The
  * operator in person, or a caller the auth boundary accepted whose granted

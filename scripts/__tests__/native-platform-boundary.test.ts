@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   EXPECTED_APPIMAGE_REMOVED_RESOURCES,
@@ -139,40 +139,34 @@ describe('native-platform-boundary', () => {
     ).toEqual([]);
   });
 
-  test('initializes the Android application context before Tauri starts', () => {
+  // tao 0.37 initializes ndk_context in its own onCreate and ndk_context
+  // asserts a single initialization; a second one from the activity aborted
+  // every launch of nightly 0.1.11-nightly.2474.
+  test('leaves the Android application context to tao', () => {
     const activity = readFileSync(
       'src-desktop/gen/android/app/src/main/java/io/kontourai/station/MainActivity.kt',
       'utf8',
     );
-    const keyring = readFileSync(
-      'src-desktop/gen/android/app/src/main/java/io/crates/keyring/Keyring.kt',
-      'utf8',
-    );
-
-    expect(keyring).toContain('package io.crates.keyring');
-    expect(keyring).toContain('System.loadLibrary("station_ai_lib")');
-    expect(keyring).toContain(
-      'external fun initializeNdkContext(context: Context)',
-    );
-
-    const initializeIndex = activity.indexOf(
-      'Keyring.initializeNdkContext(applicationContext)',
-    );
-    const tauriStartIndex = activity.indexOf(
-      'super.onCreate(savedInstanceState)',
-    );
-    expect(initializeIndex).toBeGreaterThanOrEqual(0);
-    expect(tauriStartIndex).toBeGreaterThan(initializeIndex);
+    expect(activity).not.toContain('initializeNdkContext');
+    expect(activity).not.toContain('io.crates.keyring');
+    expect(activity).toContain('super.onCreate(savedInstanceState)');
+    expect(
+      existsSync(
+        'src-desktop/gen/android/app/src/main/java/io/crates/keyring/Keyring.kt',
+      ),
+    ).toBe(false);
   });
 
   test('permits only the AppImage relocation overlay to remove the raw runtime resource', () => {
     expect(EXPECTED_APPIMAGE_REMOVED_RESOURCES).toEqual({
       '../dist-server': null,
       '../dist-desktop-runtime/node_modules': null,
+      '../dist-desktop-runtime/examples': null,
     });
     expect(EXPECTED_APPIMAGE_RUNTIME_FILES).toEqual({
       'usr/share/Station/dist-server': '../dist-server',
       'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
+      'usr/share/Station/examples': '../dist-desktop-runtime/examples',
     });
     expect(
       findTauriResourceBoundaryViolations(

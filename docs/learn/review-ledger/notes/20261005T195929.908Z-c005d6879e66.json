@@ -1,0 +1,7 @@
+{
+  "revision": "998c252bf8c2eb3714ad7c6613381e801a5dbcfc",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"#3410 round 1: docs/guides/agents.md gained one sentence about harness question headers; this inventory makes no claim about questions or their rendering, so it stands.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]}
+  ]
+}

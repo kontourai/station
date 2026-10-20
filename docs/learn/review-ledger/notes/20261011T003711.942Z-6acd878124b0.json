@@ -1,0 +1,7 @@
+{
+  "revision": "06075acd37c975b3ab38d3d0b0f45434b2a1b27b",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed final private index cleanup and relocation of the live qualifier into its pg dependency owner. Its public npm command is unchanged; only path/import resolution changed, not storage/control assertions. Fresh artifact46680e7466a5b76494c9d079e3e95f2d122d5027959237f408850b3a4b96a1bf passed14livePG16.14 checks. Source/app/store/main unchanged; earlier independent d274artifact receipt remains separate. No new dependency, override, install or public package API was added.","inputs":["packages/telemetry-broker/README.md","package.json#/scripts/qualify:telemetry-broker","scripts/qualify-telemetry-broker.mjs","packages/telemetry-broker/qualify.mjs","packages/telemetry-broker/src/index.ts"]}
+  ]
+}

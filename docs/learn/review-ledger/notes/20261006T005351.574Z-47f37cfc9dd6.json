@@ -1,0 +1,11 @@
+{
+  "revision": "0349671048f0c5f4b9de7acd2f8a0df51de12828",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3386 Phase B: stop() now waits at most stopPollWaitMs (default 5 s) for a poll in flight, logs if the bound is hit, then closes the sources. No claim in this document describes follower shutdown or poll timing; no prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 Phase B: stop() now waits at most stopPollWaitMs (default 5 s) for a poll in flight, logs if the bound is hit, then closes the sources. No claim in this document describes follower shutdown or poll timing; no prose change.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Phase B: stop() now waits at most stopPollWaitMs (default 5 s) for a poll in flight, logs if the bound is hit, then closes the sources. No claim in this document describes follower shutdown or poll timing; no prose change.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

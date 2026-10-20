@@ -1,0 +1,7 @@
+{
+  "revision": "9badffb575695a6107656ba9cf8b4bdf88c2a811",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Fix round 4: reread the complete design and current draft/submission explanation, then inspected the ChatMessageList delta and current submitForm/UIBlockActionsContext caller. This change adds standalone child transcript rows and adjusts row-count/virtualization handling; form draft identity, admission callbacks, follow-up dispatch, recovery and the in-memory lifecycle are unchanged. The current contract explanation remains accurate; historical proposal and live-evidence classifications remain unchanged.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

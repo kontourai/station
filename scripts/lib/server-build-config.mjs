@@ -1,4 +1,7 @@
 export const STATION_SERVER_EXTERNALS = [
+  // Keep the official Node glue beside its package-relative WASM asset.
+  // Desktop and portable staging consume this same runtime closure.
+  '@cedar-policy/cedar-wasm',
   'fsevents',
   'esbuild',
   'node-pty',

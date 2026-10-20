@@ -14,16 +14,25 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
+import { PublishedHtmlReply } from './PublishedHtmlReply';
 import { StreamingMarkdown } from './StreamingMarkdown';
+import {
+  SubagentCardsForCalls,
+  SubagentTranscriptCard,
+} from './SubagentTranscriptCard';
 import {
   ToolCallBatchBoundary,
   usePreloadToolCallBatch,
 } from './ToolCallBatchBoundary';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import { TurnActivityProgress } from './TurnActivityProgress';
-import { splitToolCallRuns } from './tool-call-runs';
+import { isToolCallPart, splitToolCallRuns } from './tool-call-runs';
+import { useTranscriptChildBlocks } from './transcript-child-work';
 import { UIBlockRenderer } from './UIBlockRenderer';
+import { uiBlockIdentity } from './ui-block-identity';
 
 export type StreamingMessageProps = {
   sessionId: string;
@@ -101,7 +110,7 @@ export function deriveActivityLabel(
 /**
  * Renders a streaming assistant message with loading indicator.
  */
-export function StreamingMessageView({
+function StreamingMessageWithApps({
   sessionId,
   agentIcon,
   agentIconStyle,
@@ -122,11 +131,13 @@ export function StreamingMessageView({
   streamingText,
   contentParts,
   contentRevision,
+  appTools,
 }: StreamingMessageProps & {
   streamingText: string;
   hasContent: boolean;
   contentParts: ChatContentPart[];
   contentRevision: number;
+  appTools: ReadonlySet<string>;
 }) {
   const isMobile = useIsMobile();
   // The status-labelled wait's clock: this row's mount, exactly as before
@@ -166,7 +177,17 @@ export function StreamingMessageView({
   // chunk) marks a batch in-progress (latest-call headline) whenever one
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
-  const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  const baseBlocks = useMemo(
+    () =>
+      splitToolCallRuns(
+        streamingText
+          ? [...contentParts, { type: 'text', content: streamingText }]
+          : contentParts,
+        appTools,
+      ),
+    [contentParts, streamingText, appTools],
+  );
+  const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -197,31 +218,51 @@ export function StreamingMessageView({
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
+          if (block.type === 'html-reply')
+            return (
+              <PublishedHtmlReply key={block.key} reference={block.reference} />
+            );
+          if (block.type === 'subagent')
+            return (
+              <SubagentTranscriptCard key={block.key} child={block.child} />
+            );
           if (block.type === 'tool-call-run') {
             if (!renderToolCall) return null;
             // Same inline threshold as the settled renderer
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
             // change shape when the turn settles. Solo calls stay a
             // row; 2+ consecutive calls become one updating line.
+            // Same subagent cards, in the same place, as the settled row.
+            const subagents = (
+              <SubagentCardsForCalls
+                key={`subagents:${block.key}`}
+                calls={block.calls}
+              />
+            );
             if (block.calls.length <= INLINE_RUN_LIMIT) {
-              return block.calls.map(({ part, index }) =>
-                renderToolCall(part, index),
-              );
+              return [
+                ...block.calls.map(({ part, index }) =>
+                  renderToolCall(part, index),
+                ),
+                subagents,
+              ];
             }
             const inlineRows = block.calls.map(({ part, index }) =>
               renderToolCall(part, index),
             );
-            return (
+            return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
                 pending={inlineRows}
-              />
-            );
+              />,
+              subagents,
+            ];
           }
 
           const { index: i, part } = block;
+          if (isToolCallPart(part)) return renderToolCall?.(part, i) ?? null;
           if (
             part.type === 'reasoning' &&
             part.content &&
@@ -231,10 +272,35 @@ export function StreamingMessageView({
             return renderReasoning(part.content, i, hasAnswerText);
           }
           if (part.type === 'text' && part.content) {
-            return <StreamingMarkdown key={i} content={part.content} />;
+            const current = i === contentParts.length;
+            return (
+              <div
+                className={current ? 'streaming-tip' : undefined}
+                key={block.key ?? i}
+              >
+                <StreamingMarkdown content={part.content} />
+                {current && block === blocks.at(-1) && (
+                  <div className="stream-caret-line" aria-hidden="true">
+                    <span className="stream-caret" />
+                  </div>
+                )}
+              </div>
+            );
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            return <UIBlockRenderer key={i} block={part.uiBlock} />;
+            const identity = uiBlockIdentity(contentParts, i, sessionId);
+            return (
+              <UIBlockRenderer
+                key={identity}
+                instanceKey={identity}
+                block={part.uiBlock}
+              />
+            );
+          }
+          if (part.type === 'input-request' && part.inputRequestRecord) {
+            return (
+              <InputRequestRecordRow key={i} record={part.inputRequestRecord} />
+            );
           }
           if (part.type === 'file') {
             // An image a tool returned mid-turn (a screenshot the agent took)
@@ -245,25 +311,6 @@ export function StreamingMessageView({
           }
           return null;
         })}
-
-        {/* Current streaming text — rendered as markdown with throttled
-            updates. The wrapper carries the trailing shimmer (transform-only
-            overlay) and a fixed-box blinking caret at the tip; both animate
-            on a CSS clock independent of the token buffer, so a token pause
-            never reads as frozen (station#2651). */}
-        {streamingText && (
-          <div className="streaming-tip">
-            {/* archive#3354: an unclosed trailing fence renders plain and is
-                never tokenized until it closes. */}
-            <StreamingMarkdown content={streamingText} />
-            {/* Terminal-style cursor on its own compact line — placement is
-                identical during the Suspense fallback and after the markdown
-                chunk loads (see .stream-caret-line in index.css). */}
-            <div className="stream-caret-line" aria-hidden="true">
-              <span className="stream-caret" />
-            </div>
-          </div>
-        )}
 
         {!suppressActivity &&
           (activityHint?.kind === 'retrying' ||
@@ -308,6 +355,18 @@ export function StreamingMessageView({
         )}
       </div>
     </div>
+  );
+}
+
+export function StreamingMessageView(
+  props: Omit<Parameters<typeof StreamingMessageWithApps>[0], 'appTools'>,
+) {
+  return (
+    <TranscriptAppTools calls={props.contentParts}>
+      {(appTools) => (
+        <StreamingMessageWithApps {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
   );
 }
 

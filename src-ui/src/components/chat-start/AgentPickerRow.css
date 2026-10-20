@@ -1,0 +1,46 @@
+/* The Agent row owns the hover highlight (`.new-chat-modal__agent-row:hover`
+   in index.css), so its select button stays clear on hover: the global
+   `button:hover` outranks the button's own transparent background and painted
+   a rounded box over half the row and its accent bar. Disabled rows too:
+   a disabled button still matches `:hover`. */
+.new-chat-modal__agent:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* The name line: avatar, name, the engine pill, then a state only when one
+   stops a start. A grid rather than the header's flex row, so the space goes
+   in priority order: the name grows to its full width before the engine's
+   flexible track gets any, so the engine pill is the first thing to give up
+   width, and a state badge keeps its own. (Weighted flex shrink clipped the
+   name while the engine kept half its text.) Doubled class: index.css's flex
+   rule has equal specificity, and this must not depend on load order. */
+.new-chat-modal__agent-header.new-chat-modal__agent-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr) auto;
+}
+.new-chat-modal__agent-header > .new-chat-modal__agent-name {
+  grid-column: 2;
+}
+.new-chat-modal__agent-header > .new-chat-modal__agent-engine {
+  grid-column: 3;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  /* A track squeezed to nothing must clip the pill's own padding too, or a
+     grey stub of it paints past the line's edge. */
+  overflow: hidden;
+}
+/* The shared quiet pill (EngineChip.css), allowed to ellipsize here. */
+.new-chat-modal__agent-engine > .engine-chip__pill {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.new-chat-modal__agent-header
+  > .agent-readiness__status.agent-readiness__status {
+  grid-column: 4;
+  /* The state keeps one line; doubled to outrank the caution tone's own
+     white-space at equal specificity. */
+  white-space: nowrap;
+}

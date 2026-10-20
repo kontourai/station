@@ -290,6 +290,89 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     expect(streamText).toHaveBeenCalledTimes(2);
   });
 
+  // #3581: the durable invocation point precedes the agent call.
+  test('records invocation before the agent call, and runs nothing when that record fails', async () => {
+    const events: string[] = [];
+    let failBegin = true;
+    class RecordingStore extends ChatTurnDedupStore {
+      override beginInvocation(clientTurnId: string): void {
+        events.push('beginInvocation');
+        if (failBegin) throw new Error('injected durable failure');
+        super.beginInvocation(clientTurnId);
+      }
+    }
+    const recordingStore = new RecordingStore(
+      join(dir, 'recording-chat-turn-dedup.sqlite'),
+    );
+    const streamText = vi.fn(async () => {
+      events.push('streamText');
+      return {
+        fullStream: emptyStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      };
+    });
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: recordingStore });
+    const app = buildApp(ctx, agent, recordingStore);
+
+    const failed = await app.request('/chat?clientTurnId=turn-begin', {
+      method: 'POST',
+    });
+    expect(readSSEEvents(await failed.text())).toContainEqual(
+      expect.objectContaining({ type: 'error' }),
+    );
+    expect(streamText).not.toHaveBeenCalled();
+    // Nothing was invoked, so the claim was released and a retry runs.
+    failBegin = false;
+    const retried = await app.request('/chat?clientTurnId=turn-begin', {
+      method: 'POST',
+    });
+    await retried.text();
+    expect(events).toEqual([
+      'beginInvocation',
+      'beginInvocation',
+      'streamText',
+    ]);
+  });
+
+  // #3559: retention must never turn an old key back into a new one.
+  test('a retry of an evicted clientTurnId is refused as indeterminate and never re-runs the agent', async () => {
+    const cappedStore = new ChatTurnDedupStore(
+      join(dir, 'capped-chat-turn-dedup.sqlite'),
+      2,
+    );
+    const streamText = vi.fn(async () => ({
+      fullStream: emptyStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: cappedStore });
+    const app = buildApp(ctx, agent, cappedStore);
+    // Same-millisecond rows are evicted in key order, so turn-a goes first.
+    for (const clientTurnId of ['turn-a', 'turn-b', 'turn-c']) {
+      const response = await app.request(`/chat?clientTurnId=${clientTurnId}`, {
+        method: 'POST',
+      });
+      await response.text();
+    }
+    expect(streamText).toHaveBeenCalledTimes(3);
+
+    const retry = await app.request('/chat?clientTurnId=turn-a', {
+      method: 'POST',
+    });
+    expect(retry.status).toBe(409);
+    expect(await retry.json()).toMatchObject({
+      success: false,
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+    });
+    expect(streamText).toHaveBeenCalledTimes(3);
+  });
+
   test('omitting clientTurnId never dedups (back-compat)', async () => {
     const streamText = vi.fn(async () => ({
       fullStream: emptyStream(),

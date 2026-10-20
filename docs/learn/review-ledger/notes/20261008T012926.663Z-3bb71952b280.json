@@ -1,0 +1,7 @@
+{
+  "revision": "4f3420076563610cb155a2efa2a25a60b8163368",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Executed combined main-repair source4f34200765 on desktop-win Node24.18, npm11.16, pinned pnpm11.25 and readonly actionlint1.7.12. Unchanged main5326/f160 vocabulary scanner blob77c9 had exactly3FAIL/30PASS/2POSIX-only skips across the two focused owners: native relative-path keys failed canonical guard, retired-word allowlist and speller lookups. Only3 comparison strings normalize backslashes; recursive/native filesystem paths, source words, allowed entries and assertions remain unchanged. Fixed and exact-restored suites33PASS/2POSIX-only skips; clean-commit slash-removal control restores exactly3FAIL/17PASS in the existing word keeper. No new tests or production seam. The word test is unmapped in docs impact; this metadata-only portability correction changes no documented UI word/interaction or public journey, so no unrelated guide/source refresh. Context diagnostics retain separate unchanged report and trace; actual real npm/Tauri, missing-command and tracing keepers passed on this host. Earlier POSIX missing-command diagnostic control is separate from the UNKNOWN hosted Node24.21 failed-npm reason. Desktop guide prose stays accurate and unchanged. These are focused source/dev-host receipts, not feature CI, render, packaged native, hosted24.21 or release qualification.","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}

@@ -289,6 +289,12 @@ export function sanitizeRuntimeConfig(
     // Precedence (configHome wins over useAppHome; a selected credential
     // profile wins over both) is documented on AgentConnectionSettings.config
     // and enforced at spawn assembly, not here.
+    if (
+      typeof config.proxyConnectionId === 'string' &&
+      config.proxyConnectionId.trim()
+    ) {
+      sanitized.proxyConnectionId = config.proxyConnectionId.trim();
+    }
     const env = sanitizeConnectionEnvMap(config.env);
     if (Object.keys(env).length > 0) sanitized.env = env;
     const configHome = sanitizeConnectionConfigHome(config.configHome);

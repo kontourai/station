@@ -22,8 +22,6 @@
 
     "config/product-laws.json",
 
-    "package.json",
-
     "packages/cli/src/commands/cloud-project-import.ts",
 
     "packages/cli/src/commands/cloud.ts",
@@ -92,7 +90,9 @@
 
     "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
-    "tests/container-self-host.spec.ts"
+    "tests/container-self-host.spec.ts",
+
+    "package.json#/dependencies/@kontourai~1console-ui"
   ],
 
   "checks": [

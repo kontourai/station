@@ -6,6 +6,10 @@ import {
 } from '@kontourai/station-connect';
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import type {
+  OwnAccessView,
+  ToolLibraryView,
+} from '@kontourai/station-contracts/tool-library';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -41,6 +45,10 @@ const sharedDetails = vi.hoisted(() => ({
 }));
 const navigation = vi.hoisted(() => ({
   navigate: vi.fn(),
+}));
+
+vi.mock('../../project-settings/AccessSection', () => ({
+  AccessSection: () => null,
 }));
 
 vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -114,6 +122,8 @@ const summary: ProjectSharedTaskSummary = {
   sharedAt: '2026-09-23T12:01:00.000Z',
 };
 
+const toolLibraryReads: string[] = [];
+
 function installSharedTaskTransport() {
   const apiBase = 'https://station.example.test';
   setClientCredentialResolver(() => ({
@@ -131,6 +141,52 @@ function installSharedTaskTransport() {
         input instanceof Request ? input.url : input.toString(),
       );
       const segments = url.pathname.split('/').map(decodeURIComponent);
+      if (url.pathname.startsWith('/api/tool-library/')) {
+        toolLibraryReads.push(url.pathname);
+        const data =
+          url.pathname === '/api/tool-library/access'
+            ? ({
+                principalId: 'member-admin',
+                name: 'Administrator',
+                station: {
+                  name: 'Shared Station',
+                  operator: false,
+                  canInstallTools: false,
+                },
+                projects: [
+                  {
+                    id: project.id,
+                    slug: project.slug,
+                    name: project.name,
+                    role: 'admin',
+                    canManageAgents: true,
+                    canManageTools: false,
+                    canExecute: false,
+                  },
+                ],
+              } satisfies OwnAccessView)
+            : url.pathname === '/api/tool-library/catalog'
+              ? ({
+                  sources: [],
+                  operator: false,
+                  canManageAgents: true,
+                  canManagePolicy: false,
+                  project: {
+                    id: project.id,
+                    slug: project.slug,
+                    name: project.name,
+                  },
+                  policy: { mode: 'all', sources: [], revision: 1 },
+                  engines: [],
+                } satisfies ToolLibraryView)
+              : url.pathname ===
+                  `/api/tool-library/projects/${project.slug}/agents`
+                ? []
+                : undefined;
+        if (!data)
+          throw new Error(`Unexpected tool-library read: ${url.pathname}`);
+        return Response.json({ success: true, data });
+      }
       if (url.pathname.endsWith('/shared-work'))
         return Response.json({
           success: true,
@@ -218,6 +274,7 @@ afterEach(() => {
   sdk.detailFailure = undefined;
   sdk.projectOptions = [];
   sdk.operatorHook.mockClear();
+  toolLibraryReads.length = 0;
   sharedWork.read.mockReset();
   sharedDetails.publication.mockReset();
   sharedDetails.history.mockReset();
@@ -428,6 +485,29 @@ test('still requires the enrolled credential over a relay route', async () => {
   expect(sdk.projectOptions[0]).toMatchObject({ requireCredential: true });
 });
 
+test('an admin opens Agent management before the member page reads the tool library', async () => {
+  sdk.memberView = { ...project, actions: ['view', 'manage-members'] };
+  sharedWork.read.mockResolvedValue([summary]);
+  renderPage();
+  await screen.findByText('Review the shared design');
+  expect(toolLibraryReads).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Agents and tools' }));
+  await screen.findByRole('button', { name: 'New agent' });
+  await screen.findByText('Admin in this Project');
+  await waitFor(() =>
+    expect(toolLibraryReads).toContain(
+      `/api/tool-library/projects/${project.slug}/agents`,
+    ),
+  );
+  expect([...toolLibraryReads].sort()).toEqual(
+    [
+      '/api/tool-library/access',
+      '/api/tool-library/catalog',
+      `/api/tool-library/projects/${project.slug}/agents`,
+    ].sort(),
+  );
+});
+
 test('an operator Project update invalidates the member-aware Project page detail cache', async () => {
   sdk.memberView = project;
   sharedWork.read.mockResolvedValue([summary]);
@@ -435,9 +515,19 @@ test('an operator Project update invalidates the member-aware Project page detai
   _setApiBase('https://station.example.test');
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () =>
-      Response.json({ success: true, data: { updated: true } }),
-    ),
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+      );
+      if (
+        url.pathname === `/api/projects/${project.slug}` &&
+        init?.method === 'PUT'
+      )
+        return Response.json({ success: true, data: { updated: true } });
+      throw new Error(
+        `Unexpected Project update request: ${init?.method ?? 'GET'} ${url.pathname}`,
+      );
+    }),
   );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },

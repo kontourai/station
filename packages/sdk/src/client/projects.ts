@@ -16,6 +16,7 @@ import {
   type ProjectConfig,
   type ProjectIconCandidate,
   type ProjectMetadata,
+  type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
 import {
   isWellFormedProjectResolutionView,
@@ -158,6 +159,21 @@ export async function listProjectViews(
   const value = await unwrapOrThrow<unknown>(response);
   if (!Array.isArray(value)) throw new Error('Invalid Project catalogue.');
   return value.map((project) => parseProjectView<ProjectMetadata>(project));
+}
+
+/**
+ * `GET /api/projects/run-locations` — where each Project's chats run, by slug
+ * (#3391). Operator only: a shared member receives an empty map.
+ */
+export async function listProjectRunLocations(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectRunLocations> {
+  const response = await getJson(`${apiBase}/api/projects/run-locations`, opts);
+  const value = await unwrapOrThrow<unknown>(response);
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid Project run locations.');
+  return value as ProjectRunLocations;
 }
 
 /** `GET /api/projects/:slug` — get a project. */

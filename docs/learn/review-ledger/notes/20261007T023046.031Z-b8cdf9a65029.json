@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Reviewed #3405 sender delta against slash command entry and precedence: forms send ordinary tagged text and request queueOnBusy follow-up semantics. Optional admission observation leaves slash parsing, handled results, expansion, lazy dispatcher and normal command routing unchanged. Guide prose remains accurate; no live MCP/ACP prompt proof.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

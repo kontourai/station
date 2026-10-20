@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-15",
+  "sourceRevision": "6622ab4f153660cf04ccec3f5f798c5743e6c882",
+  "base": "6b4e443ae26d06640c82ba995db985dfecd38b24",
+  "scope": "Local browser and iOS Safari simulator, existing signed-in Codex account. No physical/native/release qualification. Screenshots are actual pixels; crops only frame originals.",
+  "screenshots": [
+    {
+      "path": "round3-header-before.png",
+      "original": "browser-screenshot-localhost-mv9yhbri-cb17322c.png",
+      "source": "9ab189b5bec",
+      "note": "Header labels overflow trailing actions; original viewport1280x800.",
+      "sha256": "6cf8473194259054483307b90e25e3c37420acd0c661569374376c2a0cb8f341"
+    },
+    {
+      "path": "round3-header-after.png",
+      "original": "browser-screenshot-localhost-mv9yu9mw-8d4d39e7.png",
+      "source": "6622ab4f153",
+      "note": "Actual rebuilt header with popup fully visible; original viewport1280x800.",
+      "sha256": "8b0a6e5e4ba6693204416c4a9793a50c8cbdaacbe3da7436951c7c31fe783806"
+    },
+    {
+      "path": "round3-terminal-before.png",
+      "original": "browser-screenshot-localhost-mv9whe9l-01e548d1.png",
+      "source": "not separately recorded",
+      "note": "Unavailable terminal showed a writable fallback; original viewport1280x800.",
+      "sha256": "abe3c522b3157492a4907ab9c11ae0ba999e12f25c3cad6ad150d6c092f46a12"
+    },
+    {
+      "path": "round3-terminal-recovery.png",
+      "original": "browser-screenshot-localhost-mv9wusr3-1904c6dd.png",
+      "source": "round-three intermediate before final copy trim",
+      "note": "Explicit recovery replaces misleading fallback; later final copy is shorter.",
+      "sha256": "d591f0fb507203820999acacb11dbb7b077d44a6b5699de6d5b676216de202b8"
+    },
+    {
+      "path": "round3-phone-waiting.png",
+      "original": "station-r3-phone-waiting.png",
+      "source": "round-three intermediate before final copy trim",
+      "note": "Actual code pairing waiting for exact operator approval in Safari simulator.",
+      "sha256": "7516dfe4069504ad33a7e13e1ac35f05817f51947eb1fc9b2575b617e5af62de"
+    },
+    {
+      "path": "round3-phone-after.png",
+      "original": "station-r3-phone-final2.png",
+      "source": "6622ab4f153",
+      "note": "Negative evidence: health timeout and unrelated first-run engine reminder after authored server restart. This is not a successful final phone capture.",
+      "sha256": "f74720cbc1a602e71d0d15398130e8a8c8d7047224fcb0bb0c4a1592ad8eb871"
+    },
+    {
+      "path": "round3-phone-recovery.png",
+      "original": "station-r3-phone-final.png",
+      "source": "9ab189b5bec",
+      "note": "Real transient health timeout after authored server restart; retained as negative evidence.",
+      "sha256": "60cd69cef9d6d06aa1a1cdf6b15ce5bab5ecae67b5eb5e4b0123859fc21abfa4"
+    },
+    {
+      "path": "round3-loading-after.png",
+      "original": "browser-screenshot-localhost-mv9yslsp-20f7755d.png",
+      "source": "6622ab4f153",
+      "note": "Plain pending layout with existing Back button. Unrelated first-run engine notice also visible.",
+      "sha256": "e374f0885ad4355f349501468c4aba7999dd149fd439e1c301226a2a88c3a7f3"
+    },
+    {
+      "path": "round3-terminal-live.png",
+      "original": "browser-screenshot-localhost-mv9yxzg9-e2c0af2c.png",
+      "source": "6622ab4f153",
+      "note": "Actual rebuilt terminal after echo/pwd, viewport resize, sleep30 and Ctrl+C followed by R3_INTERRUPT_OK. Prompt reflow retains visual artifacts; full Terminal epic remains open.",
+      "sha256": "02d44a90cbe5bce9983ddfe6f3677797d19fa5be5ffe48c392275725f4ebd180"
+    }
+  ],
+  "crops": "Header crops frame x240..1280, y40..240 from the original1280x800 captures; no UI pixels changed."
+}

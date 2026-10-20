@@ -1,5 +1,6 @@
 import {
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
   PAIRING_SCOPE_CODING_EXEC,
@@ -9,6 +10,7 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_RELAY_MANAGE,
   type PairingScope,
   type PairingScopePreset,
   parsePairingScope,
@@ -131,6 +133,16 @@ const ELEVATED_GRANTS: ReadonlyArray<{
   {
     token: PAIRING_SCOPE_HOME_CONTROL,
     ...scopeCopy(PAIRING_SCOPE_HOME_CONTROL),
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_RELAY_MANAGE,
+    ...scopeCopy(PAIRING_SCOPE_RELAY_MANAGE),
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_ACCESS_DEVICES,
+    ...scopeCopy(PAIRING_SCOPE_ACCESS_DEVICES),
     elevated: true,
   },
   {

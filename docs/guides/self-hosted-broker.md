@@ -107,6 +107,44 @@ admission still require a live lease.
 
 Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
+## Station invitation controls
+
+A configured StationRuntime owns the connector invitation issuer through
+[`RelayInvitationOwner`](../../src-server/services/connections/relay-invitation-owner.ts).
+The [management routes](../../src-server/routes/system/relay-management-routes.ts)
+receive public routing and signing-trust facts, validate recipient setup against
+that exact Station/enrollment, approve or revoke exact native surfaces, issue
+single-use installation-bound invitations, and approve or deny pending Device
+requests. The WebView and SDK never receive the connector issuer credential.
+
+The [Connections panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
+shows **Devices** and **Invite device** for current operators and explicitly promoted
+`relay:manage` Devices. This is the **Manage remote access** permission; presets
+and default pairing grants exclude it. Invitation lifetime defaults to 24 hours,
+with 5-minute, 15-minute, 1-hour and non-expiring choices. Non-expiring does not
+remove single-use redemption or exact installation-key binding. Setup links
+remain public route intent until the independent signing-key comparison and
+surface approval complete.
+
+Management decisions carry the actual typed human actor. The authority owner
+rechecks Device scope, actor binding and account currentness, refreshes the
+account provider after asynchronous work, and rechecks the target approval
+before issuing or revoking it. Project access management still requires the
+Project role; relay management conveys no terminal, Agent or Task publication
+authority. Native writes use a dedicated fixed account-operation preparer;
+the generic account read signer remains GET/HEAD only.
+
+The source route tables and account-bound gate share an exact native relay-leaf
+classifier. Current Device proof/account binding and session remain required,
+and management independently requires `relay:manage`. Credential-only
+account-bound Devices remain refused; capabilities are a neutral false without
+management authority. [Project IAM](deployment-authentication.md#native-relay-management-admission)
+is unchanged.
+These source controls and diagnostic tests do not establish a released Nightly,
+physical-device or two-human relay onboarding result. Follow the
+[connection steps](connections.md#invite-a-device-to-a-relay-station) and
+[native verification limits](native-shell-verification.md#relay-management-source-integration).
+
 ## Operator-owned community deployment
 
 [The community deployment bundle](../../deployment/self-hosted-broker/compose.yaml)

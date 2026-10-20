@@ -142,6 +142,10 @@ describe('SessionModelPicker', () => {
   test('selects a model and provider-supported effort directly', () => {
     const props = renderPicker();
 
+    expect(
+      screen.queryByRole('combobox', { name: 'Thinking effort' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.click(screen.getByRole('option', { name: /GPT-5.5/ }));
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
@@ -159,10 +163,20 @@ describe('SessionModelPicker', () => {
       },
     });
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'recents' },
+    });
+    expect(
+      within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
+        'option',
+      ),
+    ).toHaveLength(1);
+    expect(screen.getByRole('option', { name: /GPT-5.5/ })).toBeTruthy();
   });
 
   test('removes the effort override when model default is selected', () => {
     const props = renderPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
       { target: { value: '' } },
@@ -197,6 +211,7 @@ describe('SessionModelPicker', () => {
       runtimeOptions: {},
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     const autoMode = screen.getByRole('checkbox', { name: 'Auto mode' });
     expect(screen.getAllByRole('checkbox', { name: 'Auto mode' })).toHaveLength(
       1,
@@ -361,15 +376,17 @@ describe('SessionModelPicker', () => {
     });
 
     expect(
-      screen.getByRole('button', { name: 'LiteLLM · Local' }),
+      screen.getByRole('option', { name: 'LiteLLM · Local · Setup required' }),
     ).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getByRole('button', { name: 'Bedrock · Prod' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'bedrock-prod' },
+    });
     const bedrockModel = screen.getByRole('option', {
-      name: /GPT-5.6Bedrock · Prod · gpt-5.6/,
+      name: /GPT-5.6Bedrock · Prod/,
     });
     expect(
       screen.queryByRole('option', {
-        name: /GPT-5.6Codex · Work · gpt-5.6/,
+        name: /GPT-5.6Codex · Work/,
       }),
     ).toBeNull();
     fireEvent.click(bedrockModel);
@@ -398,6 +415,7 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(screen.getByText(/200k/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(screen.queryByText('Vision')).toBeTruthy();
     expect(screen.getByRole('option', { name: /Plain/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
@@ -531,7 +549,11 @@ describe('SessionModelPicker', () => {
         },
       ],
     });
-    expect(screen.queryByRole('group')).toBeNull();
+    expect(
+      within(screen.getByRole('listbox', { name: 'Models' })).queryByRole(
+        'group',
+      ),
+    ).toBeNull();
     expect(screen.getByRole('option', { name: /sonnet/ })).toBeTruthy();
   });
 
@@ -553,7 +575,9 @@ describe('SessionModelPicker', () => {
         { id: 'gpt-5.5', name: 'GPT-5.5' },
       ],
     });
-    const options = screen.getAllByRole('option');
+    const options = within(
+      screen.getByRole('listbox', { name: 'Models' }),
+    ).getAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('GPT-5.6'),
       expect.stringContaining('Claude Sonnet 4.5'),
@@ -617,6 +641,7 @@ describe('SessionModelPicker', () => {
       runtimeOptions: { effort: 'high' },
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     const select = screen.getByRole('combobox', { name: 'Thinking effort' });
     expect(select.className).toContain('editor-select');
 
@@ -636,7 +661,9 @@ describe('SessionModelPicker', () => {
   test('renders the selected-model check glyph on the selected option only', () => {
     renderPicker();
 
-    const options = screen.getAllByRole('option');
+    const options = within(
+      screen.getByRole('listbox', { name: 'Models' }),
+    ).getAllByRole('option');
     const withCheck = options.filter((option) =>
       option.querySelector('.session-model-picker__model-check'),
     );

@@ -465,9 +465,10 @@ describe('station-control session search and rename (#176)', () => {
         const found = await tool(caller, 'search_sessions', {
           query: 'cobalt',
         });
-        expect([caller.channel, found.isError, sessionIds(found.body)]).toEqual(
-          [caller.channel, false, ['carol-chat']],
-        );
+        expect(
+          [caller.channel, found.isError, sessionIds(found.body)],
+          `search_sessions ${caller.channel}: ${JSON.stringify(found.body)}`,
+        ).toEqual([caller.channel, false, ['carol-chat']]);
         expect(JSON.stringify(found.body)).not.toMatch(
           /DAVE-MARKER|OPERATOR-MARKER|TASK-MARKER/,
         );
@@ -858,10 +859,16 @@ describe('station-control session search and rename (#176)', () => {
       ).toBe(false);
       for (const target of ['carol-p1-conv', 'carol-p2-conv']) {
         const refused = await rename(bearer('carol-global'), target);
-        expect([target, refused.isError, refused.body.code]).toEqual([
+        expect([
+          target,
+          refused.isError,
+          refused.body.code,
+          refused.body.reason,
+        ]).toEqual([
           target,
           true,
-          'station_control_assurance_insufficient',
+          'station_control_out_of_scope',
+          'project-from-global',
         ]);
         expect((await stored(target)).titleSource).toBe('prompt');
       }
@@ -870,13 +877,17 @@ describe('station-control session search and rename (#176)', () => {
       expect(
         (await rename(delegated('carol-p1'), 'carol-p1-conv')).isError,
       ).toBe(false);
-      for (const target of ['carol-p2-conv', 'carol-person-conv']) {
+      for (const [target, reason] of [
+        ['carol-p2-conv', 'other-project'],
+        ['carol-person-conv', 'global-space'],
+      ] as const) {
         const refused = await rename(delegated('carol-p1'), target);
-        expect([target, refused.isError, refused.body.code]).toEqual([
+        expect([
           target,
-          true,
-          'station_control_assurance_insufficient',
-        ]);
+          refused.isError,
+          refused.body.code,
+          refused.body.reason,
+        ]).toEqual([target, true, 'station_control_out_of_scope', reason]);
       }
       expect((await stored('carol-p2-conv')).titleSource).toBe('prompt');
       // A bound caller acting for the same person is not confined to one

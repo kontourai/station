@@ -13,7 +13,7 @@ import { isBuiltin } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sanitizedGitEnvironment } from '../../../../scripts/lib/git-environment.mjs';
 import { resolveNpmCli } from '../../../../scripts/lib/npm-cli.mjs';
@@ -260,7 +260,7 @@ describe('published CLI bundle', () => {
     // Pairing offers render a terminal QR code; qrcode is the reviewed,
     // runtime-only encoder used by that command.
     expect(manifest.dependencies ?? {}).toEqual({
-      '@napi-rs/keyring': '2.1.0',
+      '@napi-rs/keyring': '2.1.1',
       qrcode: '^1.5.4',
     });
     expect(optionalPeers).toContain('esbuild');

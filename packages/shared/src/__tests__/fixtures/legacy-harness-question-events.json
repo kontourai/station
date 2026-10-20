@@ -1,0 +1,187 @@
+{
+  "provenance": "Captured at fa7922b732 (before #3390) by running the real writers: the Claude adapter's canUseTool for AskUserQuestion persisted through the real EventStore (claude-inline-approval.integration.test.ts harness), and the Codex adapter's item/tool/requestUserInput mapping read off its event stream (codex-adapter-permission-reply.test.ts harness). Engine inputs are the shapes those suites already use. Do not edit by hand: these are the stored payload shapes the #3390 reader must keep reading.",
+  "claude": {
+    "eventId": "2f2ec051-1809-4772-843d-d688eb2cf880",
+    "provider": "claude",
+    "threadId": "claude-inline",
+    "createdAt": "2026-10-05T17:59:58.068Z",
+    "requestId": "4c6707be-2e32-4c2d-83d1-e8a26beef5cf",
+    "method": "request.opened",
+    "requestType": "approval",
+    "title": "The agent has questions for you",
+    "payload": {
+      "questionnaire": {
+        "questions": [
+          {
+            "id": "0",
+            "header": "Target",
+            "prompt": "Where should we deploy?",
+            "options": [
+              {
+                "id": "0",
+                "label": "Staging",
+                "description": "Try first"
+              },
+              {
+                "id": "1",
+                "label": "Production",
+                "description": "Release"
+              }
+            ],
+            "multiple": false,
+            "allowCustom": true,
+            "secret": false
+          },
+          {
+            "id": "1",
+            "header": "Checks",
+            "prompt": "Which checks should run first?",
+            "options": [
+              {
+                "id": "0",
+                "label": "Unit",
+                "description": "Fast"
+              },
+              {
+                "id": "1",
+                "label": "Browser",
+                "description": "Slow"
+              },
+              {
+                "id": "2",
+                "label": "Lint",
+                "description": ""
+              }
+            ],
+            "multiple": true,
+            "allowCustom": true,
+            "secret": false
+          }
+        ]
+      },
+      "toolName": "AskUserQuestion",
+      "toolCallId": "toolu-inline-1",
+      "toolInput": {
+        "questions": [
+          {
+            "question": "Where should we deploy?",
+            "header": "Target",
+            "multiSelect": false,
+            "options": [
+              {
+                "label": "Staging",
+                "description": "Try first"
+              },
+              {
+                "label": "Production",
+                "description": "Release"
+              }
+            ]
+          },
+          {
+            "question": "Which checks should run first?",
+            "header": "Checks",
+            "multiSelect": true,
+            "options": [
+              {
+                "label": "Unit",
+                "description": "Fast"
+              },
+              {
+                "label": "Browser",
+                "description": "Slow"
+              },
+              {
+                "label": "Lint",
+                "description": ""
+              }
+            ]
+          }
+        ]
+      },
+      "suggestions": [],
+      "claudeAsk": {}
+    },
+    "sessionState": "review_pending",
+    "previousState": "queued",
+    "transitionReason": "review_requested",
+    "transitionSource": "runtime"
+  },
+  "codex": {
+    "eventId": "8edbed30-2f7a-4829-9c7f-e6c400a2824a",
+    "provider": "codex",
+    "threadId": "thread-permission-reply",
+    "createdAt": "2026-10-05T17:59:58.401Z",
+    "requestId": "20dcc518-75de-4dd8-b050-3c61a08e8634",
+    "method": "request.opened",
+    "requestType": "approval",
+    "title": "The agent has questions for you",
+    "payload": {
+      "threadId": "codex-thread",
+      "turnId": "turn-1",
+      "itemId": "questions-1",
+      "isBlocking": true,
+      "autoResolutionMs": null,
+      "questions": [
+        {
+          "id": "deployment",
+          "header": "Deploy",
+          "question": "Where should we deploy?",
+          "isOther": true,
+          "isSecret": false,
+          "options": [
+            {
+              "label": "Staging",
+              "description": "Try first"
+            },
+            {
+              "label": "Production",
+              "description": "Release"
+            }
+          ]
+        },
+        {
+          "id": "credential",
+          "header": "Credential",
+          "question": "Enter the temporary credential",
+          "isOther": false,
+          "isSecret": true,
+          "options": null
+        }
+      ],
+      "questionnaire": {
+        "questions": [
+          {
+            "id": "deployment",
+            "header": "Deploy",
+            "prompt": "Where should we deploy?",
+            "options": [
+              {
+                "id": "0",
+                "label": "Staging",
+                "description": "Try first"
+              },
+              {
+                "id": "1",
+                "label": "Production",
+                "description": "Release"
+              }
+            ],
+            "multiple": false,
+            "allowCustom": true,
+            "secret": false
+          },
+          {
+            "id": "credential",
+            "header": "Credential",
+            "prompt": "Enter the temporary credential",
+            "options": [],
+            "multiple": false,
+            "allowCustom": true,
+            "secret": true
+          }
+        ]
+      }
+    }
+  }
+}

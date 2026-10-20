@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
 import { Button } from '../Button';
-import { CheckGlyph } from '../icons/Glyph';
+import { CheckGlyph, CopyGlyph } from '../icons/Glyph';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './CodeBlockFrame.css';
 
@@ -89,7 +89,9 @@ export function CodeBlockFrame({
         ) : copyState === 'failed' ? (
           "Can't copy"
         ) : (
-          'Copy'
+          <>
+            <CopyGlyph /> Copy
+          </>
         )}
       </Button>
     </ResponsiveSurfaceActions>

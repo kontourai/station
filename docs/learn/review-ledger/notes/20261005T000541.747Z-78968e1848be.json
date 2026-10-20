@@ -1,0 +1,7 @@
+{
+  "revision": "6b491071c48fae50f685ff005c6dc4dceff2ee51",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3149: added the per-diff dependency-derived explicit targets (sibling @kontourai/* package.json section or lockfile importer version change selects suites importing the package; transitive lockfile changes not followed; >16 importers defer to test-full), checked against scripts/lib/dependency-change-scan.mjs and dependencyChangeEdges. The 32-explicit-target paragraph and the ci:fast invariant categories remain accurate; the native-platform ratchet joined the statics as one more fixed invariant.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/__tests__/run-ci-fast.test.ts","scripts/run-changed-verification.mjs","scripts/run-ci-fast.mjs","scripts/test-impact-manifest.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

@@ -74,6 +74,9 @@ const BASE_EVENTS = [
 
 async function seedMonitoringRoutes(page: Page) {
   const historyRequests: string[] = [];
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill({ json: { success: true, data: [] } }),
+  );
 
   await page.addInitScript(() => {
     class MockEventSource extends EventTarget {
@@ -190,7 +193,70 @@ async function seedMonitoringRoutes(page: Page) {
 }
 
 test.describe('Monitoring', () => {
-  test('monitoring covers history, filters, search, sidebar, metrics, and time ranges', async ({
+  for (const width of [1440, 430]) {
+    for (const theme of ['dark', 'light']) {
+      test(`keeps Live and Clear All in place when the time range changes at ${width}px in ${theme}`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await seedMonitoringRoutes(page);
+        await page.goto('/developer/telemetry');
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        const live = page.getByRole('button', { name: 'LIVE', exact: true });
+        const clear = page.getByRole('button', {
+          name: 'CLEAR ALL',
+          exact: true,
+        });
+        await expect(live).toBeVisible();
+        await expect(clear).toBeVisible();
+        await expect(page.locator('.time-filter-button')).toContainText(
+          'Last 5 min',
+        );
+        await expect(page.getByTestId('monitoring-active-sessions')).toHaveText(
+          '0',
+        );
+        await page.evaluate(() => document.fonts.ready);
+        const readActions = () =>
+          page.locator('.monitoring-toolbar').evaluate((toolbar) => {
+            const origin = toolbar.getBoundingClientRect();
+            return [
+              ...toolbar.querySelectorAll('.live-mode-toggle, .btn-secondary'),
+            ].map((button) => {
+              const rect = button.getBoundingClientRect();
+              return {
+                x: rect.x - origin.x,
+                y: rect.y - origin.y,
+                width: rect.width,
+                height: rect.height,
+              };
+            });
+          });
+        const initialActions = await readActions();
+        expect(initialActions).toHaveLength(2);
+
+        await page.getByRole('button', { name: /Last 5 min/i }).click();
+        await page
+          .getByRole('button', { name: 'Relative', exact: true })
+          .click();
+        await page.getByRole('button', { name: /Last 30 days/i }).click();
+        await expect(page.locator('.time-filter-button')).toContainText(
+          'Last 30 days',
+        );
+        await expect.poll(readActions).toEqual(initialActions);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: testInfo.outputPath('monitoring-controls.png'),
+        });
+      });
+    }
+  }
+
+  test('monitoring covers history, filters, search, sidebar counts, and time ranges', async ({
     page,
   }) => {
     const { historyRequests } = await seedMonitoringRoutes(page);
@@ -216,16 +282,16 @@ test.describe('Monitoring', () => {
       page.getByRole('heading', { name: 'Monitoring' }),
     ).toBeVisible();
     await expect(
-      page.getByLabel(/Monitoring connection connected/i),
+      page.getByText('Event stream: connected', { exact: true }),
     ).toBeVisible();
     await expect(page.getByText('Planner Agent')).toBeVisible();
     await expect(page.getByText('Review Agent')).toBeVisible();
-    await expect(page.getByText('2 Active • 1 Historical')).toBeVisible();
-    // exact:true — the bare form strict-mode-collides with the time-range
-    // sublabel whenever the wall-clock minute matches the metric (e.g.
-    // "02:19 PM" vs totalMessages 19). Found at S2 close; inherited flake.
-    await expect(page.getByText('19', { exact: true })).toBeVisible();
-    await expect(page.getByText('Messages', { exact: true })).toBeVisible();
+    await expect(page.getByText('2 Configured • 1 Historical')).toBeVisible();
+    const messageCounts = page
+      .locator('.meta-item')
+      .filter({ hasText: 'Messages:' })
+      .locator('.meta-value');
+    await expect(messageCounts).toHaveText(['12', '7']);
 
     const logEntries = page.locator('.log-entry');
     await expect(logEntries).toHaveCount(5);

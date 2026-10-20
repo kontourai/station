@@ -1,0 +1,7 @@
+{
+  "revision": "c7d1440569b0cd745cd607922f263b7d0431b81b",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"#3411: re-reviewed the Connection Lifecycle section against acp-probe.ts runProbe and the new acp-probe-session.ts. Rewrote the probe description: it opens a session to read modes/configOptions and, per advertised capability, deletes it (session/delete), reattaches to its own earlier session (session/resume preferred, else loadSession) with session/list recovery only in the private probe workspace, or creates a new one each run with a one-time warning. Stated that session/close is not used and leaked sessions are not deleted by Station. Status table unchanged. Evidence: acp-probe-session-reuse.test.ts drives the real ACPProcess against a fake persisting agent; fixture evidence only, not a live engine run.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-probe.ts","src-server/services/acp/acp-probe-session.ts"]}
+  ]
+}

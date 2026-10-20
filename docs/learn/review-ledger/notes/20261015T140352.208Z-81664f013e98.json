@@ -1,0 +1,33 @@
+{
+  "revision": "4e75b111ee9bd936a6d52d28f2eb15cbbb8fe057",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Delta-reviewed ToolDef probe display metadata against the engine/tool diagram and extension boundary: tool transport, execution, approval and authorization ownership are unchanged; bounded descriptions/categories are inert discovery snapshots. No prose change required.","inputs":["docs/architecture.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta-reviewed AgentPluginLoader read-only package projection and transient probe claims plus Knowledge server boundaries against MCPService. Probes add bounded display metadata but still avoid local package overrides; picker snapshots grant no runtime authority. No architectural prose change required.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Delta-reviewed transient connection, local claim custody, principal-account and MCP Apps boundaries against tools routes and probe metadata additions. No transport/resource/call authorization or credential custody changed; the discovery projection is separate from App admission. No prose change required.","inputs":["docs/design/mcp-ui-host.md","src-server/routes/agents/__tests__/tools.routes.test.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked Integration, Tool, Engine and MCP passthrough definitions against additive probe.tools metadata. No new toolset entity, agent identity, ownership or execution concept was introduced; existing terms remain accurate.","inputs":["docs/glossary.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked SDK reconnect return documentation against the shipped integration-material requirements and plugin entry route. No deployment, endpoint, credential setup or hosting requirement changed; the SDK reference owns the additive discovery result.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked MCP tool metadata/discovery and Registry versus Plugins ownership against bounded probe metadata and the picker. Plugin admission, installation, permissions and Apps rendering are unchanged. No prose change required.","inputs":["docs/guides/plugins.md","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the updated Agent guide against the retained identity removal checklist. Tool browsing changes neither persisted Agent IDs nor engine connection identity; no synthetic identity, alias or migration was introduced. No prose change required.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Checked live package MCP projection and read-only definitions against MCPService. Returned discovery metadata is ephemeral for package sources; probes still never materialize a shadow integration or mutate package definitions. No prose change required.","inputs":["docs/reference/agent-plugins.md","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed GET integration catalog and reconnect projection against tool routes, MCPService, raw-name projection and schema. Documented bounded probe.tools and HTTP-success versus probe.ok distinction. Route and service suites passed; metadata does not establish current execution authority.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked canonical ToolDef ownership and explicit mcp-tool-selection subpath guidance against additive contract metadata. Shared exports and identity-normalization behavior are unchanged; no runtime helper moved into contracts. No prose change required.","inputs":["docs/reference/shared.md","packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked static documentation boundary against the Docs MCP factory refactor: descriptions and handlers remain static, with additive titles, read-only annotations and Documentation category. Catalog listing imports no operational client or credential owner. Docs server tests and docs:mcp:check passed; no prose change required.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-mcp-server.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed setup against disabled-on-create integration behavior and the shared Add tools picker. Corrected discovery instructions to enable then refresh before selecting status_panel. MCP Apps resource/call and browser isolation behavior are unchanged.","inputs":["examples/mcp-ui-demo/README.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked instruction routing against the SDK reference addition. Public reconnect hook returns a typed redacted projection; owning SDK documentation, focused consumer tests and remote Query conventions remain applicable. No instruction change required.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed final picker freshness delta: explicit discovery metadata is scoped to the open picker and superseded by changed authoritative listing content. Reopening discards ephemeral results; saved names missing from current catalog remain selected and visibly counted. Shared create/copy/edit workflows and fixed versus future selection remain as documented; 247 focused tests plus restored mutation suite passed.","inputs":["docs/guides/agents.md","src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/utils.ts","src-ui/src/views/agent-editor/AgentToolPicker.tsx","src-ui/src/views/agent-editor/AgentToolPicker.css","packages/sdk/src/query-domains/catalog.ts"]}
+  ]
+}

@@ -29,6 +29,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 /** #2589: the threads the fake orchestration service reports ephemeral. */
 const ephemeralThreads = new Set<string>();
+const attachedThreads = new Set<string>();
 
 function baseEvent(overrides: Record<string, unknown> = {}) {
   return {
@@ -208,6 +209,8 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     wireTurnCompletionNotifications(
       bus,
       {
+        isReadOnlyAttachedSession: (threadId: string) =>
+          attachedThreads.has(threadId),
         isEphemeralSession: (threadId) => {
           // #2589: the fail-soft path, a lookup that cannot answer.
           if (threadId === 'thread-lookup-throws')
@@ -226,6 +229,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 
   afterEach(async () => {
     ephemeralThreads.clear();
+    attachedThreads.clear();
     await notificationService.shutdown();
     rmSync(dir, { force: true, recursive: true });
   });
@@ -283,6 +287,16 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         sessionKind: 'runtime',
       });
       expect(isCardAlerted(notification!)).toBe(onCard);
+    },
+  );
+
+  test.each(['turn.completed', 'turn.aborted', 'runtime.error'])(
+    'a readable external transcript never delivers a %s notification',
+    async (method) => {
+      attachedThreads.add('thread-1');
+      await emit('orchestration:event', { event: baseEvent({ method }) });
+      expect(await notificationService.list()).toEqual([]);
+      expect(logger.warn).not.toHaveBeenCalled();
     },
   );
 
@@ -829,6 +843,8 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
     wireTurnCompletionNotifications(
       bus,
       {
+        isReadOnlyAttachedSession: (threadId: string) =>
+          attachedThreads.has(threadId),
         isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
         resolveSessionPresenceSubject: () =>
           orchestrationStreamPresenceSubjectForSession('owner-1'),
@@ -1020,6 +1036,8 @@ describe('wireInternalStopRedispatchFailureNotifications (station#3525 fix round
     wireInternalStopRedispatchFailureNotifications(
       bus,
       {
+        isReadOnlyAttachedSession: (threadId: string) =>
+          attachedThreads.has(threadId),
         isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
         resolveSessionPresenceSubject: (threadId) =>
           resolveSessionPresenceSubject(threadId),
@@ -1160,6 +1178,8 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
       const dispose = wireTurnCompletionNotifications(
         bus,
         {
+          isReadOnlyAttachedSession: (threadId: string) =>
+            attachedThreads.has(threadId),
           isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),
@@ -1232,6 +1252,8 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
       const dispose = wireTurnCompletionNotifications(
         bus,
         {
+          isReadOnlyAttachedSession: (threadId: string) =>
+            attachedThreads.has(threadId),
           isEphemeralSession: (threadId) => ephemeralThreads.has(threadId),
           resolveSessionPresenceSubject: () =>
             orchestrationStreamPresenceSubjectForSession('owner-1'),

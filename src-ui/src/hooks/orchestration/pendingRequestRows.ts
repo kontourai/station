@@ -1,5 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
@@ -77,6 +77,33 @@ function openApprovalRequests(
  * transcript message, and never re-bound onto another same-named call. Each
  * card names its own request, thread and event.
  */
+/**
+ * #3382: Codex's command approval names no argument bag; its payload is the
+ * app-server's raw params, with the command in `command`. Carrying it as the
+ * row's `{command}` makes the card a command row like any other: it counts
+ * the command's lines, opens its details when pending, and shows the raw
+ * command there. Only `command` is read, as a string or an argv array, and
+ * only for a plain command approval.
+ */
+function commandOnlyArgs(
+  payload: Record<string, unknown> | undefined,
+): { command: string | string[] } | undefined {
+  // A network prompt or a stdin write is not a request to run the command:
+  // its title says what it is ("network access to …", "input to a running
+  // command"), and a "Run …" label would misstate it.
+  if (payload?.networkApprovalContext != null || payload?.kind === 'writeStdin')
+    return undefined;
+  const command = payload?.command;
+  if (typeof command === 'string' && command.trim()) return { command };
+  if (
+    Array.isArray(command) &&
+    command.length > 0 &&
+    command.every((part) => typeof part === 'string')
+  )
+    return { command: command as string[] };
+  return undefined;
+}
+
 export function unansweredApprovalRequests(
   messages: readonly ChatMessage[],
   events: readonly CanonicalRuntimeEvent[],
@@ -108,12 +135,14 @@ export function unansweredApprovalRequests(
   }
   const unanswered = open.filter(
     (request) =>
-      readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
+      inputRequestFromRequestEvent(request) !== null ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
+    const inputRequest = inputRequestFromRequestEvent(request);
+    const args = toolInput ?? commandOnlyArgs(request.payload);
     const toolCallId = request.payload?.toolCallId;
     return {
       type: 'tool-invocation',
@@ -128,17 +157,11 @@ export function unansweredApprovalRequests(
       ...(typeof request.payload?.toolKind === 'string'
         ? { toolKind: request.payload.toolKind }
         : {}),
-      ...(toolInput !== undefined ? { args: toolInput } : {}),
+      ...(args !== undefined ? { args } : {}),
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
-      ...(readHarnessQuestionnaire(request.payload?.questionnaire)
-        ? {
-            questionnaire: readHarnessQuestionnaire(
-              request.payload?.questionnaire,
-            )!,
-          }
-        : {}),
+      ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),

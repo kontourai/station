@@ -1,0 +1,7 @@
+{
+  "revision": "8fa79fed049e7d252ccd96929d91405cf96bcfda",
+
+  "notes": [
+    {"path":"docs/design/cloud-move.md","note":"Checked against a fixture-only rename: the bound test changed only a placeholder SSH host alias, its display name and derived ids to a neutral value; no production behavior, interface or documented claim changed.","inputs":["docs/design/cloud-move.md","src-desktop/src/ssh_launcher.rs"]}
+  ]
+}

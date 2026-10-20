@@ -1,0 +1,7 @@
+{
+  "revision": "734eade61f127aa31de35b371dea2f37262238ba",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed serialization-only sprintf patch repair: minified license/empty context removed from hunk; all added/deleted runtime lines identical and installed source/min SHA unchanged after managedci0/verify0. Lock changes only3patchhashreferences and exact residual.patchBinding.patchSha256; scope/version/GHSA/Node24/expiryOct13/trust/reachability/precision limits unchanged. ActualinstalledbindingGOOD/oldhashBAD/payloaddriftBAD/restoredGOOD. Committedactualmergebase4709...old165fa diffcheckexit2/new60b233exit0; normal same-scope attestation uses6dayauthoritywindow beforeOct13, no acceptance extension. Historicalruntimeproof remains byte-bound; newsourceCI/hosted/landing separate.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml","scripts/dependency-advisory-exceptions.json"]}
+  ]
+}

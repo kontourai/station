@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../contexts/ModelsContext', () => ({
   useModels: () => [],
@@ -9,7 +9,21 @@ vi.mock('../contexts/ModelCapabilitiesContext', () => ({
   useModelCapabilities: () => ({}),
 }));
 
-import { ModelSelector } from '../components/ModelSelector';
+import {
+  ModelSelector,
+  ModelSelectorAutocomplete,
+} from '../components/ModelSelector';
+import { deviceSettingsStore } from '../lib/device-settings-store';
+import {
+  modelPreferenceKey,
+  readModelPickerPreferences,
+} from '../settings/modelPickerPreferences';
+
+beforeEach(() => {
+  window.localStorage.clear();
+  deviceSettingsStore.reloadFromStorage();
+});
+afterEach(cleanup);
 
 describe('ModelSelector', () => {
   test('lets you pick a model from the provided catalog', () => {
@@ -44,5 +58,46 @@ describe('ModelSelector', () => {
     // A "Use..." option is offered for the typed id, and selecting it commits it.
     fireEvent.mouseDown(screen.getByText(/Use .claude-opus-4-9./));
     expect(onChange).toHaveBeenCalledWith('claude-opus-4-9');
+  });
+});
+
+describe('/model selection', () => {
+  test('shows model icons, skips unavailable routes with the keyboard and records the accepted route', () => {
+    const onSelect = vi.fn();
+    render(
+      <ModelSelectorAutocomplete
+        query=""
+        onClose={vi.fn()}
+        onSelect={onSelect}
+        models={[
+          {
+            id: 'blocked',
+            name: 'Blocked route',
+            providerType: 'codex',
+            available: false,
+            unavailableReason: 'Skills unavailable',
+          },
+          {
+            id: 'ready',
+            name: 'Ready route',
+            providerId: 'claude-local',
+            providerType: 'claude',
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText('Skills unavailable')).toBeTruthy();
+    expect(
+      document.querySelectorAll('.brand-icon--codex, .brand-icon--claude'),
+    ).toHaveLength(2);
+    fireEvent.mouseDown(screen.getByText('Blocked route'));
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ready', providerId: 'claude-local' }),
+    );
+    expect(readModelPickerPreferences().recents).toEqual([
+      modelPreferenceKey('claude-local', 'ready'),
+    ]);
   });
 });

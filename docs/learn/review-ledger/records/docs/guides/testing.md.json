@@ -42,8 +42,6 @@
 
     "docs/plans/documentation-code-audit.md",
 
-    "package.json",
-
     "scripts/__tests__/changed-verification.test.ts",
 
     "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
@@ -148,7 +146,75 @@
 
     "scripts/run-vitest-corpus.mjs",
 
-    "scripts/__tests__/run-vitest-corpus.test.ts"
+    "scripts/__tests__/run-vitest-corpus.test.ts",
+
+    "scripts/__tests__/windows-resource-staging.test.ts",
+
+    "scripts/__tests__/veritas-readiness-evidence.test.ts",
+
+    "scripts/evidence-check-execution-gate.mjs",
+
+    "scripts/install-ci-ubuntu-packages.sh",
+
+    ".github/workflows/gallery-pr-check.yml",
+
+    ".github/workflows/nightly-gallery.yml",
+
+    "scripts/actionlint-gate.mjs",
+
+    "scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts",
+
+    "scripts/vitest-resource-manifest.mjs",
+
+    "scripts/proof-repo-guardrails.mjs",
+
+    "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts",
+
+    "tests/screenshots.baseline.json",
+
+    "tests/screenshots.baseline/overlay-dock-project-bound.png",
+
+    "tests/screenshots.baseline/overlay-dock-project-mismatch.png",
+
+    "scripts/lib/owned-process.mjs",
+
+    "scripts/tsc-slot.mjs",
+
+    "scripts/lib/typecheck-host-slots.mjs",
+
+    "scripts/__tests__/typecheck-host-slots.test.ts",
+
+    "scripts/install-smoke-file-server.mjs",
+
+    "scripts/__tests__/install-smoke-file-server.test.ts",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    "scripts/lib/vitest-error-reporter.mjs",
+
+    "scripts/gallery-review-evidence.mjs",
+
+    "scripts/__tests__/gallery-review-evidence.test.ts",
+
+    "scripts/screenshot-diff.mjs",
+
+    "scripts/__tests__/screenshot-diff.test.ts",
+
+    "scripts/pr-ci-supersession.mjs",
+
+    ".github/workflows/pr-ci-supersession.yml",
+
+    "scripts/__tests__/pr-ci-supersession.test.ts",
+
+    "scripts/lib/live-service-verification.mjs",
+
+    "scripts/pr-title-check.mjs",
+
+    "scripts/__tests__/pr-title-check.test.ts"
   ],
 
   "checks": [

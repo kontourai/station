@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
@@ -3021,6 +3027,127 @@ describe('Project Routes', () => {
       id: canonicalRemote,
       canonicalRemote,
       ...(role ? { role } : {}),
+    });
+
+    test('GET /run-locations names where each project runs, including a folderless project bound through its manifest (#3370)', async () => {
+      const { app, storage, projectHomeDir } = createResolutionApp(
+        remotesOk(['git@github.com:acme/mono.git']),
+      );
+      const checkout = createTempProjectHome();
+      mkdirSync(join(checkout, 'packages', 'app'), { recursive: true });
+      await saveProject(storage, 'acme');
+      writeRawManifest(
+        projectHomeDir,
+        'acme',
+        JSON.stringify({
+          schemaVersion: 1,
+          id: 'prj_acme',
+          repos: [gitRepo('github.com/acme/mono')],
+          executionRoot: {
+            repoId: 'github.com/acme/mono',
+            path: 'packages/app',
+          },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+      // Bound through the route that really writes bindings.
+      const bind = await app.request('/acme/bind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: checkout }),
+      });
+      expect(bind.status).toBe(200);
+      const folder = createTempProjectHome();
+      await saveProject(storage, 'plain', folder);
+      await saveProject(storage, 'notes');
+
+      const list = await json(await app.request('/'));
+      const body = await json(await app.request('/run-locations'));
+
+      // The list itself never carries them (#3391).
+      expect(list.data.filter((project: any) => 'runsAt' in project)).toEqual(
+        [],
+      );
+      expect(body.data).toEqual({
+        acme: {
+          kind: 'execution-root',
+          path: realpathSync(join(checkout, 'packages', 'app')),
+        },
+        plain: { kind: 'folder', path: folder },
+        notes: { kind: 'none' },
+      });
+    });
+
+    test('GET / answers without waiting on any project folder (#3391)', async () => {
+      const describeProjectRunLocations = vi.fn(
+        () => new Promise<never>(() => {}),
+      );
+      const { app, storage } = createResolutionApp(remotesOk([]), {
+        resolveProjectResource: async () => {
+          throw new Error('the list must not resolve resources');
+        },
+        describeProjectRunLocations,
+      } as any);
+      await saveProject(storage, 'plain', '/mnt/not-responding');
+
+      const response = await Promise.race([
+        app.request('/'),
+        new Promise<'held'>((resolve) =>
+          setTimeout(() => resolve('held'), 2_000),
+        ),
+      ]);
+
+      expect(response).not.toBe('held');
+      const body = await json(response as Response);
+      expect(body.data.map((project: any) => project.slug)).toEqual(['plain']);
+      expect(body.data[0]).not.toHaveProperty('runsAt');
+      expect(describeProjectRunLocations).not.toHaveBeenCalled();
+    });
+
+    test('a member gets no run locations: none on GET /, and an empty map from GET /run-locations', async () => {
+      const { storage, projectHomeDir, bindings, manifests } =
+        createResolutionApp();
+      await saveProject(storage, 'shared', createTempProjectHome());
+      const app = createProjectRoutes(
+        new ProjectService(storage) as any,
+        storage as any,
+        projectHomeDir,
+        {
+          resolution: {
+            resolver: new ProjectResourceResolver({
+              homeDir: projectHomeDir,
+              source: storage,
+              bindings,
+              manifests,
+              readRemotes: remotesOk([]) as any,
+            }) as any,
+            manifests,
+            bindings,
+            readRemotes: remotesOk([]) as any,
+          },
+          memberProjectAdmissions: async () => [
+            {
+              scope: {
+                stationId: 'station',
+                localProjectId: 'id-shared',
+                portableProjectId: 'portable-shared',
+                localProjectSlug: 'shared',
+              },
+              actions: ['view' as const],
+            },
+          ],
+          projectCatalogueCurrent: async () => true,
+        },
+      );
+
+      const body = await json(await app.request('/'));
+      const locations = await app.request('/run-locations');
+
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]).not.toHaveProperty('runsAt');
+      expect(locations.status).toBe(200);
+      expect(await json(locations)).toEqual({ success: true, data: {} });
     });
 
     test('GET /:slug/resolution reports `not-backing` for a project that declares nothing and realizes nothing', async () => {

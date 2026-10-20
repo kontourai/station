@@ -617,7 +617,7 @@ describe('withStableIds (AC1 identity-alias fix, review finding)', () => {
           ...item({ id: 'remote:env-a:thread-1' }),
           kind: 'remote-session',
           environmentId: 'env-a',
-          environmentLabel: 'Brian media',
+          environmentLabel: 'Home media',
         },
       ],
       aliasMap,

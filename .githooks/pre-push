@@ -81,6 +81,24 @@ npm run --silent lint:check
 echo "[station pre-push] repository governance proof"
 npm run --silent proof:repo-governance
 
+# #3101 slice F: a push that only merges origin/main, cleanly, onto the tip
+# the remote already holds adds no content of the author's. The remote tip is
+# the record of the last push this hook accepted (git moves the ref only after
+# this hook exits 0), main's commits were gated by the merge queue, and the
+# required CI checks gate the combined head after the push. "Main" is the
+# remote's own refs/heads/main (ls-remote on $1), never a local ref. So the scoped,
+# expensive lanes below are skipped for such a push. A conflict resolution, an
+# edit amended into the merge, a new non-merge commit, or any git failure is
+# not pure, and every lane runs. scripts/prepush-pure-merge.mjs owns the rule.
+pure_merge_of_main=0
+echo "[station pre-push] pure merge of main?"
+if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "${1:-}"; then
+  pure_merge_of_main=1
+fi
+
+if [[ "$pure_merge_of_main" -eq 1 ]]; then
+  echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel"
+else
 echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
 
@@ -116,37 +134,11 @@ node scripts/check-prepush-static-gates.mjs
 echo "[station pre-push] SDK public barrel"
 node scripts/check-prepush-sdk-barrel.mjs
 
-# ~15s on an idle host, ~35s typical, 75s here at load 48. This is the most
-# expensive UNCONDITIONAL step in the hook, and it earns that because until
-# 2026-09-14 nothing ran it at all: not ci:fast, not this hook, and not
-# full:regression either, while every AGENTS.md in the repo tells contributors
-# to run `veritas readiness` and address any FAIL lines. It cannot be scoped
-# by path the way the steps above are — its evidence-checks execute
-# repository-wide commands, and its artifact and instruction-file rules read
-# repository state rather than a diff — so "which paths did this push touch"
-# does not predict its verdict.
-#
-# It runs after `proof:repo-governance` and not before, because it re-executes
-# that proof as a routed evidence-check: when the proof is what broke, the
-# step above has already said so in four seconds under its own name.
-echo "[station pre-push] Veritas readiness"
-npm run --silent veritas:readiness
+# Required hosted fast-checks-statics owns repository-wide Veritas readiness
+# and every typecheck lane through FAST_STATIC_COMMANDS in run-ci-fast.mjs.
+# Keep local checks cheap or scoped to the distinct transfer/static/SDK contracts.
 
-# ~50-90s (51s wall measured here end to end, preconditions included, with
-# the lanes run concurrently; station#4273 recorded 82s for the
-# aggregate alone), and
-# only when this push changes something a tsc project reads — a .ts/.tsx/
-# .mts/.cts source, any tsconfig, a manifest, or a patch. Everything else in
-# this hook is seconds-scale; this one is not, which is why it is the only
-# step here gated on its inputs for cost rather than for relevance. A
-# docs-only, workflow-only or .mjs-only push pays nothing.
-#
-# `ci:fast` already runs the same aggregate on every pull request, so this
-# does not close a merge gap — it moves the finding to the author, before the
-# push, instead of a CI cycle later where an intervening merge-queue candidate
-# inherits the red.
-echo "[station pre-push] typecheck (scoped to TypeScript inputs)"
-node scripts/check-prepush-typecheck.mjs
+fi
 
 # Instant. The ref lines were collected during the deletion-skipping loop
 # above (stdin reads once), re-emitted verbatim in git's own four-field form

@@ -1,0 +1,7 @@
+{
+  "revision": "8edc3ce7ee07cc8c1990c994cfed0c6fa95fb2ed",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Re-read after scripts/__tests__/tauri-context.test.ts changed (#3623): the test's stall stubs now publish their pid atomically, the test waits for one complete signalable pid, and cleanup refuses pid 0/1 and the runner's own pid and group. The guide's claim (lines 72-73) that SIGINT and SIGTERM cancel active probes and await their cleanup is about scripts/tauri-context.mjs, which this change does not touch, and those tests still assert it. No prose change is needed.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/tauri-context.test.ts"]}
+  ]
+}

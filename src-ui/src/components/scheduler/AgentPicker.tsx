@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useMemo, useRef, useState } from 'react';
 import {
   type AgentData,
   useAgentCatalogRead,
@@ -8,6 +7,10 @@ import {
 import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CheckGlyph } from '../icons/Glyph';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../ResponsiveDialogSurface';
 import { Empty, SkeletonList } from '../state';
 import {
   schedulerAgentOptions,
@@ -38,7 +41,6 @@ export function AgentPicker({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
   const selected = agents.find((a) => a.slug === value);
   const selectedRunnability = schedulerAgentRunnability(agents, value);
 
@@ -50,31 +52,6 @@ export function AgentPicker({
         a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q),
     );
   }, [eligible, filter]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        triggerRef.current?.contains(e.target as Node) ||
-        dropRef.current?.contains(e.target as Node)
-      )
-        return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const [pos, setPos] = useState<{
-    top: number;
-    left: number;
-    width: number;
-  } | null>(null);
-  useEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
-  }, [open]);
 
   const toolCount = (a: AgentData) => {
     const tc = a.toolsConfig;
@@ -172,71 +149,76 @@ export function AgentPicker({
         )}
         <ArrowDownGlyph className="choice-caret" />
       </button>
-      {open &&
-        pos &&
-        createPortal(
-          <div
-            ref={dropRef}
-            className="agent-picker__dropdown"
-            style={{ top: pos.top, left: pos.left, width: pos.width }}
-          >
-            {eligible.length > 1 && (
-              <div className="agent-picker__filter-wrap">
-                <input
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Filter agents…"
-                  onClick={(e) => e.stopPropagation()}
-                  className="agent-picker__filter"
-                />
-              </div>
-            )}
-            {filtered.map((a) => {
-              const runnability = agentRunnability(a);
-              return (
-                <button
-                  type="button"
-                  key={a.slug}
-                  disabled={!runnability.runnable}
-                  onClick={() => select(a.slug)}
-                  className={`agent-picker__option ${a.slug === value ? 'agent-picker__option--selected' : ''}`}
-                >
-                  <AgentIcon agent={a} size={28} />
-                  <div className="agent-picker__option-info">
-                    <div className="agent-picker__option-name">
-                      {a.name}
-                      <span className="agent-picker__option-slug">
-                        {a.slug}
-                      </span>
-                    </div>
-                    <div className="agent-picker__option-meta">
-                      {runnability.runnable ? (
-                        <>
-                          {a.model || 'default model'}
-                          {toolCount(a) > 0 ? ` · ${toolCount(a)} tools` : ''}
-                        </>
-                      ) : (
-                        <span className="agent-picker__option-reason">
-                          Not runnable here — {runnability.reason}
-                        </span>
-                      )}
-                    </div>
+      {open && (
+        <ResponsiveDialogSurface
+          layer="popover"
+          ariaLabel="Choose scheduled Agent"
+          onClose={() => setOpen(false)}
+          historyMode="entry"
+          anchorRef={triggerRef}
+          returnFocusTarget={triggerRef.current}
+          overlayClassName="composer-popover-overlay"
+          panelClassName="composer-popover-panel agent-picker__dropdown"
+        >
+          <ResponsiveDialogHeader
+            title="Agent"
+            closeLabel="Close Agent picker"
+            onClose={() => setOpen(false)}
+          />
+          {eligible.length > 1 && (
+            <div className="agent-picker__filter-wrap">
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter agents…"
+                onClick={(e) => e.stopPropagation()}
+                className="agent-picker__filter"
+              />
+            </div>
+          )}
+          {filtered.map((a) => {
+            const runnability = agentRunnability(a);
+            return (
+              <button
+                type="button"
+                key={a.slug}
+                disabled={!runnability.runnable}
+                onClick={() => select(a.slug)}
+                className={`agent-picker__option ${a.slug === value ? 'agent-picker__option--selected' : ''}`}
+              >
+                <AgentIcon agent={a} size={28} />
+                <div className="agent-picker__option-info">
+                  <div className="agent-picker__option-name">
+                    {a.name}
+                    <span className="agent-picker__option-slug">{a.slug}</span>
                   </div>
-                  {a.slug === value && (
-                    <span className="agent-picker__check">
-                      <CheckGlyph />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-            {filtered.length === 0 && (
-              /* empty-state action: filter reset is adjacent */
-              <Empty variant="compact" label="No matching agents" />
-            )}
-          </div>,
-          document.body,
-        )}
+                  <div className="agent-picker__option-meta">
+                    {runnability.runnable ? (
+                      <>
+                        {a.model || 'default model'}
+                        {toolCount(a) > 0 ? ` · ${toolCount(a)} tools` : ''}
+                      </>
+                    ) : (
+                      <span className="agent-picker__option-reason">
+                        Not runnable here — {runnability.reason}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {a.slug === value && (
+                  <span className="agent-picker__check">
+                    <CheckGlyph />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            /* empty-state action: filter reset is adjacent */
+            <Empty variant="compact" label="No matching agents" />
+          )}
+        </ResponsiveDialogSurface>
+      )}
     </>
   );
 }

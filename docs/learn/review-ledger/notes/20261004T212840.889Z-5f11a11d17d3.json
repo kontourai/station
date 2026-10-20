@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; the orchestration contract adds the matching peerPendingRequest fields.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]}
+  ]
+}

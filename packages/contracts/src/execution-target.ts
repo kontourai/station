@@ -1,4 +1,5 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type { ExecutionConfinementRecord } from './execution-confinement.js';
 import type {
   ExecutionPreparationReceipt,
   ExecutionPreparationRequirement,
@@ -88,19 +89,78 @@ export interface ExecutionModelRequest {
   options?: Readonly<Record<string, unknown>>;
 }
 
+/** An override names a receiver-owned default engine Agent, preserving the profile. */
+export type ExecutionAgentRef =
+  | AgentId
+  | {
+      kind: 'agent-execution-override';
+      agent: AgentId;
+      executionAgent: AgentId;
+      expectedDefinitionFingerprint?: string;
+    };
+
+export function executionProfileAgentId(ref: ExecutionAgentRef): AgentId {
+  return typeof ref === 'string' ? ref : ref.agent;
+}
+
+export function executionBindingAgentId(ref: ExecutionAgentRef): AgentId {
+  return typeof ref === 'string' ? ref : ref.executionAgent;
+}
+
 /**
  * Canonical cross-surface address for foreground chat and durable delegation.
  *
  * The public target deliberately contains no provider, engine, connection,
  * endpoint, transport, or credential selector. The selected Environment
- * resolves its own Agent binding and model launch plan.
+ * resolves its own Agent binding and model launch plan. The one engine-shaped
+ * field, `expectedEngine`, is a precondition the Environment checks against its
+ * own resolution and can only refuse on; it chooses nothing.
  */
 export interface ExecutionTarget {
   environment: EnvironmentRef;
-  agent: AgentId;
+  agent: ExecutionAgentRef;
   model?: ExecutionModelRequest;
   workspace?: WorkspaceTarget;
+  /**
+   * A PRECONDITION, never a selector: the engine this caller's own view of the
+   * Agent showed it running on. The target Environment still resolves the
+   * binding itself and alone decides where the work runs. When that
+   * resolution names a different engine the request is refused with
+   * `EXECUTION_ENGINE_CHANGED_CODE` before anything starts, so a caller
+   * working from a stale snapshot is told, not run somewhere it did not see.
+   *
+   * Absent states no expectation. A receiver from before this field ignores
+   * it, so a caller needing the guarantee must know its receiver's version.
+   * The shape is the resolution receipt's own `engine` (`ResolvedExecutionEngine`),
+   * which is why it names nothing a caller could use to aim a request.
+   */
+  expectedEngine?: ResolvedExecutionEngine;
 }
+
+/**
+ * The request's `expectedEngine` did not match the engine the target
+ * Environment resolved the Agent to. Nothing started; re-read the Agent and
+ * choose again.
+ */
+export const EXECUTION_ENGINE_CHANGED_CODE = 'execution_engine_changed';
+
+/**
+ * Why Station refused to continue a conversation in its persisted workspace
+ * (#3568): the project context, worktree binding or directory it was bound to
+ * is missing, moved, corrupt or no longer matches. Nothing started. Station
+ * reports one of these as a held follow-up's `reasonCode`.
+ */
+export const CONTINUATION_WORKSPACE_REFUSAL_CODES = [
+  'continuation_workspace_project_context_missing',
+  'continuation_workspace_corrupt_worktree_binding',
+  'continuation_workspace_worktree_gone',
+  'continuation_workspace_different_project',
+  'continuation_workspace_worktree_moved',
+  'continuation_workspace_direct_mismatch',
+  'continuation_workspace_unbound',
+] as const;
+export type ContinuationWorkspaceRefusalCode =
+  (typeof CONTINUATION_WORKSPACE_REFUSAL_CODES)[number];
 
 export const EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION =
   'station.execution-resolution/v1' as const;
@@ -132,10 +192,23 @@ export interface ExecutionResolutionReceipt {
   resolvedAt: string;
   environmentId: EnvironmentId;
   agentId: AgentId;
+  /** Receiver-owned execution default used instead of the profile binding. */
+  executionAgentId?: AgentId;
+  definitionFingerprint?: string;
   engine: ResolvedExecutionEngine;
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   workspace?: ResolvedWorkspaceTarget;
   /** Present only for a `project-portable-prepared` intent that matched. */
   preparation?: ExecutionPreparationReceipt;
+  /**
+   * #2494: the started session's confinement, read back from its latest
+   * `session.started` record after the start. Never present at resolution
+   * time: the posture comes from the started engine's report, which does
+   * not exist yet when the binding is resolved. Absent on the foreground
+   * chat handle (which does not attach it yet), on a delegation whose start
+   * record was not stored or readable when the handle returned, and for a
+   * start that recorded none.
+   */
+  confinement?: ExecutionConfinementRecord;
 }

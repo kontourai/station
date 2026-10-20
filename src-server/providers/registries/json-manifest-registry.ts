@@ -71,6 +71,7 @@ export { RegistryInstallAliasFormatError } from './registry-install-aliases.js';
  * become uninstallable by declaring a kind.
  */
 interface ManifestPlugin {
+  providesTools?: boolean;
   id: string;
   displayName: string;
   description: string;
@@ -354,6 +355,14 @@ export class JsonManifestRegistryProvider
     private readonly logger?: Pick<Logger, 'warn'>,
   ) {}
 
+  get displayName(): string {
+    try {
+      return new URL(this.manifestUrl).hostname || basename(this.manifestUrl);
+    } catch {
+      return basename(this.manifestUrl);
+    }
+  }
+
   get registryKey(): string {
     return this.getRegistryKey();
   }
@@ -414,6 +423,9 @@ export class JsonManifestRegistryProvider
         .digest('hex'),
       items: entries.map((plugin) => ({
         id: plugin.id,
+        ...(plugin.providesTools === undefined
+          ? {}
+          : { providesTools: plugin.providesTools }),
         displayName: plugin.displayName,
         description: plugin.description,
         version: plugin.version,
@@ -462,7 +474,7 @@ export class JsonManifestRegistryProvider
   }
 
   private isLocalManifest(): boolean {
-    return this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.');
+    return isAbsolute(this.manifestUrl) || this.manifestUrl.startsWith('.');
   }
 
   private getRegistryKey(): string {
@@ -710,6 +722,9 @@ export class JsonManifestRegistryProvider
       }
       return {
         id: plugin.id,
+        ...(plugin.providesTools === undefined
+          ? {}
+          : { providesTools: plugin.providesTools }),
         displayName: plugin.displayName,
         description: plugin.description,
         version: installedPlugin?.version,
@@ -987,6 +1002,8 @@ export class JsonManifestRegistryProvider
    */
   integrationRegistry(): IIntegrationRegistryProvider {
     return {
+      registryKey: this.registryKey,
+      displayName: this.displayName,
       listAvailable: async (): Promise<RegistryItem[]> => {
         const manifest = await this.fetchManifest();
         return (manifest.tools ?? []).map((tool) => ({

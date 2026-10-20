@@ -479,6 +479,278 @@ describe('EventStore', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test.each(['appendEvent', 'appendEventIfAbsent'] as const)(
+    '%s appends after a peer writer releases without upgrading a stale read snapshot',
+    async (appendMethod) => {
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        expect(() =>
+          store[appendMethod]({
+            eventId: 'append-after-peer-writer',
+            provider: 'codex',
+            threadId: 'peer-overlap',
+            method: 'turn.started',
+            turnId: 'peer-overlap-turn',
+            createdAt: '2026-10-10T00:00:00.000Z',
+            prompt: 'Record this turn after the peer commits',
+          }),
+        ).not.toThrow();
+        returnedAt = Date.now();
+        expect(store.listEvents('peer-overlap')).toHaveLength(1);
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
+
+  // #3521: the live `session.exited` projection closes the session BEFORE it
+  // appends the event. markSessionClosed read lineage first inside its
+  // savepoint, so a peer commit made the upgrade throw BUSY and the exit
+  // event was never appended. Mirror that order under a held peer writer.
+  test('closes a session and keeps its exit event after a peer writer releases', async () => {
+    store.upsertSession({
+      provider: 'codex',
+      threadId: 'peer-close',
+      status: 'running',
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:01.000Z',
+    });
+    const peer = await holdPeerWriteLock(
+      join(dir, 'orchestration.sqlite'),
+      1_000,
+    );
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    try {
+      expect(() => {
+        store.markSessionClosed('peer-close', 'codex');
+        store.appendEvent({
+          eventId: 'exit-after-peer-writer',
+          provider: 'codex',
+          threadId: 'peer-close',
+          method: 'session.exited',
+          sessionId: 'peer-close',
+          exitCode: 0,
+          createdAt: '2026-10-10T00:00:02.000Z',
+        });
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(store.readSessions()).toEqual([
+        expect.objectContaining({ threadId: 'peer-close', status: 'closed' }),
+      ]);
+      expect(
+        store.listEvents('peer-close').map((event) => event.method),
+      ).toEqual(['session.exited']);
+    } finally {
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
+  // #3158 fix round 5, P2-B: the delegation-result migration runs on every
+  // boot and reads (PRAGMA table_info) before it writes. As a deferred
+  // SAVEPOINT that upgrade was refused at once under a peer writer, so a
+  // second runtime on a shared home died booting an ALREADY-migrated store.
+  test('reopens an already-migrated home while a peer writer holds the lock', async () => {
+    const path = join(dir, 'orchestration.sqlite');
+    store.delegationResultStore().arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    const peer = await holdPeerWriteLock(path, 1_000);
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    let reopened: EventStore | undefined;
+    try {
+      expect(() => {
+        reopened = new EventStore(path);
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(reopened!.delegationResultStore().owner('child')).toBeDefined();
+    } finally {
+      reopened?.close();
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
+  // The same failure on the delivery store's runtime transitions that read
+  // before they write, on the shared EventStore connection.
+  test.each(['arm', 'spendSuppressions'] as const)(
+    'delegation result %s waits through a peer writer',
+    async (transition) => {
+      const results = store.delegationResultStore();
+      results.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+      });
+      results.beginCancel('child', 'token', 'turn-a');
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        if (transition === 'arm')
+          expect(
+            results.arm({
+              childConversationId: 'child-2',
+              taskId: 'child-2',
+              parentConversationId: 'parent',
+              actor: {
+                userId: 'human:local:owner',
+                attribution: 'verified-bound',
+              },
+            }),
+          ).toBe('armed');
+        else
+          expect(
+            results.spendSuppressions('child', 'turn-a', 'aborted'),
+          ).toEqual(['token']);
+        returnedAt = Date.now();
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
+
+  // #3561 review F1: SQLite can answer SQLITE_FULL/IOERR/NOMEM by rolling
+  // back the whole transaction. A co-commit participant that swallows that
+  // error returns into autocommit mode; the append must then store nothing,
+  // not commit the event row by row and report it failed.
+  test('an append whose co-commit participant ends the transaction stores nothing and fails', () => {
+    expect(() =>
+      store.appendEvent(
+        {
+          eventId: 'participant-lost-transaction',
+          provider: 'codex',
+          threadId: 'lost-transaction',
+          method: 'turn.started',
+          turnId: 'lost-transaction-turn',
+          createdAt: '2026-10-10T00:00:00.000Z',
+          prompt: 'never stored',
+        },
+        [],
+        () => {
+          (store as any).db.exec('ROLLBACK');
+        },
+      ),
+    ).toThrow();
+    expect(store.listEvents('lost-transaction')).toEqual([]);
+    expect(store.hasEventId('participant-lost-transaction')).toBe(false);
+    // Nothing was left open: the next append commits on its own.
+    expect(
+      store.appendEvent({
+        eventId: 'after-lost-transaction',
+        provider: 'codex',
+        threadId: 'lost-transaction',
+        method: 'turn.started',
+        turnId: 'lost-transaction-turn',
+        createdAt: '2026-10-10T00:00:01.000Z',
+        prompt: 'stored',
+      }),
+    ).toBe(1);
+  });
+
+  // #3561 delta review: SQLITE_FULL/IOERR/NOMEM may roll back the whole
+  // transaction. A session write's own ROLLBACK TO then has no savepoint, and
+  // must not replace the real error with `no such savepoint`.
+  describe('a session write whose statement SQLite answers with a full rollback surfaces the original error', () => {
+    function rollBackWholeTransactionOnSessionInsert() {
+      const db = (store as any).db;
+      const prepare = db.prepare.bind(db);
+      return vi.spyOn(db, 'prepare').mockImplementation((sql: unknown) => {
+        if (!String(sql).includes('INSERT INTO provider_session_state'))
+          return prepare(sql);
+        return {
+          run: () => {
+            db.exec('ROLLBACK');
+            throw Object.assign(new Error('database or disk is full'), {
+              errcode: 13,
+              code: 'ERR_SQLITE_ERROR',
+            });
+          },
+        };
+      });
+    }
+    const session = {
+      provider: 'codex',
+      threadId: 'full-rollback',
+      status: 'ready' as const,
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:00.000Z',
+    };
+
+    test('upsertSession', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.upsertSession(session)).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')).toBeUndefined();
+    });
+
+    test('markSessionClosed', () => {
+      store.upsertSession(session);
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.markSessionClosed('full-rollback', 'codex')).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')?.status).toBe('ready');
+    });
+
+    test('upsertSession as a co-commit participant of an append', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() =>
+          store.appendEvent(
+            {
+              eventId: 'full-rollback-started',
+              provider: 'codex',
+              threadId: 'full-rollback',
+              method: 'turn.started',
+              turnId: 'full-rollback-turn',
+              createdAt: '2026-10-10T00:00:01.000Z',
+              prompt: 'never stored',
+            },
+            [],
+            () => store.upsertSession(session),
+          ),
+        ).toThrow('database or disk is full');
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.listEvents('full-rollback')).toEqual([]);
+    });
+  });
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.
@@ -1750,8 +2022,10 @@ describe('EventStore', () => {
     const database = new DatabaseSync(databasePath);
     // This is the production schema immediately before message search: every
     // durable event is present, while none of the FTS projections exists.
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database.exec(`
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database.exec(`
       DROP TABLE orchestration_message_search;
       DROP TABLE orchestration_message_search_v2;
       DROP TABLE orchestration_message_search_v3;
@@ -1760,72 +2034,78 @@ describe('EventStore', () => {
       DELETE FROM orchestration_message_search_projection_v3;
       DELETE FROM orchestration_message_search_backfill_v3;
     `);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, 'claude', 'ready', ?, ?)`,
-      )
-      .run(
-        'legacy-search-thread',
-        '2026-08-01T00:00:00.000Z',
-        '2026-08-01T00:00:02.000Z',
-      );
-    const insert = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'legacy-search-thread',
+          '2026-08-01T00:00:00.000Z',
+          '2026-08-01T00:00:02.000Z',
+        );
+      const insert = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'legacy-search-thread', ?, ?, ?, ?, ?, ?)`,
-    );
-    insert.run(
-      'legacy-session-start',
-      null,
-      'session.started',
-      JSON.stringify({
-        eventId: 'legacy-session-start',
-        method: 'session.started',
-        metadata: {
-          userId: 'legacy-owner',
-          agentSlug: 'claude',
-          projectSlug: 'legacy-project',
-        },
-      }),
-      '2026-08-01T00:00:00.000Z',
-      1,
-      1,
-    );
-    insert.run(
-      'legacy-message',
-      'legacy-turn',
-      'turn.started',
-      JSON.stringify({
-        eventId: 'legacy-message',
-        method: 'turn.started',
-        prompt: 'the phrase typed three sessions ago',
-      }),
-      '2026-08-01T00:00:01.000Z',
-      2,
-      2,
-    );
-    // The fixed startup window makes the migration's maximum read explicit.
-    for (
-      let index = 0;
-      index < MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE;
-      index += 1
-    ) {
-      insert.run(
-        `legacy-noise-${index}`,
-        null,
-        'content.text-delta',
-        JSON.stringify({
-          method: 'content.text-delta',
-          delta: 'not searchable',
-        }),
-        `2026-08-01T00:01:${String(index % 60).padStart(2, '0')}.000Z`,
-        index + 3,
-        index + 3,
       );
+      insert.run(
+        'legacy-session-start',
+        null,
+        'session.started',
+        JSON.stringify({
+          eventId: 'legacy-session-start',
+          method: 'session.started',
+          metadata: {
+            userId: 'legacy-owner',
+            agentSlug: 'claude',
+            projectSlug: 'legacy-project',
+          },
+        }),
+        '2026-08-01T00:00:00.000Z',
+        1,
+        1,
+      );
+      insert.run(
+        'legacy-message',
+        'legacy-turn',
+        'turn.started',
+        JSON.stringify({
+          eventId: 'legacy-message',
+          method: 'turn.started',
+          prompt: 'the phrase typed three sessions ago',
+        }),
+        '2026-08-01T00:00:01.000Z',
+        2,
+        2,
+      );
+      // The fixed startup window makes the migration's maximum read explicit.
+      for (
+        let index = 0;
+        index < MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE;
+        index += 1
+      ) {
+        insert.run(
+          `legacy-noise-${index}`,
+          null,
+          'content.text-delta',
+          JSON.stringify({
+            method: 'content.text-delta',
+            delta: 'not searchable',
+          }),
+          `2026-08-01T00:01:${String(index % 60).padStart(2, '0')}.000Z`,
+          index + 3,
+          index + 3,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     store = new EventStore(databasePath);
     const firstV3Window = new DatabaseSync(databasePath);
@@ -5163,57 +5443,65 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'pre-ownership-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-backfilled',
-        'claude',
-        'ready',
-        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-backfilled',
+          'claude',
+          'ready',
+          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'backfilled-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'backfilled-turn-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Accurate history title',
-      }),
-      '2026-08-08T11:01:00.000Z',
-      2,
-      2,
-    );
-    insertEvent.run(
-      'backfilled-turn-complete',
-      'turn.completed',
-      JSON.stringify({ method: 'turn.completed' }),
-      '2026-08-08T12:00:00.000Z',
-      3,
-      3,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'backfilled-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'backfilled-turn-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Accurate history title',
+        }),
+        '2026-08-08T11:01:00.000Z',
+        2,
+        2,
+      );
+      insertEvent.run(
+        'backfilled-turn-complete',
+        'turn.completed',
+        JSON.stringify({ method: 'turn.completed' }),
+        '2026-08-08T12:00:00.000Z',
+        3,
+        3,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
 
@@ -5240,79 +5528,87 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'pre-ownership-provider-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-backfilled',
-        'claude',
-        'ready',
-        JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-backfilled',
+          'claude',
+          'ready',
+          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'backfilled-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'backfilled-turn-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Accurate history title',
-      }),
-      '2026-08-08T11:01:00.000Z',
-      2,
-      2,
-    );
-    insertEvent.run(
-      'backfilled-turn-complete',
-      'turn.completed',
-      JSON.stringify({ method: 'turn.completed' }),
-      '2026-08-08T12:00:00.000Z',
-      3,
-      3,
-    );
-    insertEvent.run(
-      'backfilled-provider-start',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        metadata: { trigger: 'provider' },
-      }),
-      '2026-08-08T12:00:01.000Z',
-      4,
-      4,
-    );
-    insertEvent.run(
-      'backfilled-provider-complete',
-      'turn.completed',
-      JSON.stringify({
-        method: 'turn.completed',
-        metadata: { trigger: 'provider' },
-      }),
-      '2026-08-08T12:00:02.000Z',
-      5,
-      5,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'backfilled-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'backfilled-turn-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Accurate history title',
+        }),
+        '2026-08-08T11:01:00.000Z',
+        2,
+        2,
+      );
+      insertEvent.run(
+        'backfilled-turn-complete',
+        'turn.completed',
+        JSON.stringify({ method: 'turn.completed' }),
+        '2026-08-08T12:00:00.000Z',
+        3,
+        3,
+      );
+      insertEvent.run(
+        'backfilled-provider-start',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          metadata: { trigger: 'provider' },
+        }),
+        '2026-08-08T12:00:01.000Z',
+        4,
+        4,
+      );
+      insertEvent.run(
+        'backfilled-provider-complete',
+        'turn.completed',
+        JSON.stringify({
+          method: 'turn.completed',
+          metadata: { trigger: 'provider' },
+        }),
+        '2026-08-08T12:00:02.000Z',
+        5,
+        5,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
 
@@ -5389,59 +5685,67 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'high-volume-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-high-volume',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-high-volume',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-high-volume', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'high-volume-owner',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'high-volume-title',
-      'turn.started',
-      JSON.stringify({ method: 'turn.started', prompt: 'Bounded title' }),
-      '2026-08-08T11:00:01.000Z',
-      2,
-      2,
-    );
-    for (let index = 0; index < 500; index += 1) {
-      insertEvent.run(
-        `high-volume-noise-${index}`,
-        'content.text-delta',
-        JSON.stringify({
-          method: 'content.text-delta',
-          itemId: `item-${index}`,
-          delta: 'x'.repeat(2_000),
-        }),
-        new Date(1_754_654_402_000 + index).toISOString(),
-        index + 3,
-        index + 3,
       );
+      insertEvent.run(
+        'high-volume-owner',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'high-volume-title',
+        'turn.started',
+        JSON.stringify({ method: 'turn.started', prompt: 'Bounded title' }),
+        '2026-08-08T11:00:01.000Z',
+        2,
+        2,
+      );
+      for (let index = 0; index < 500; index += 1) {
+        insertEvent.run(
+          `high-volume-noise-${index}`,
+          'content.text-delta',
+          JSON.stringify({
+            method: 'content.text-delta',
+            itemId: `item-${index}`,
+            delta: 'x'.repeat(2_000),
+          }),
+          new Date(1_754_654_402_000 + index).toISOString(),
+          index + 3,
+          index + 3,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
@@ -5475,17 +5779,25 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'multi-batch-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    const insertSession = database.prepare(
-      `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      const insertSession = database.prepare(
+        `INSERT INTO provider_session_state
         (thread_id, provider, status, created_at, updated_at)
        VALUES (?, 'claude', 'ready', ?, ?)`,
-    );
-    for (let index = 0; index <= 500; index += 1) {
-      const createdAt = new Date(1_754_654_400_000 + index).toISOString();
-      insertSession.run(`thread-batch-${index}`, createdAt, createdAt);
+      );
+      for (let index = 0; index <= 500; index += 1) {
+        const createdAt = new Date(1_754_654_400_000 + index).toISOString();
+        insertSession.run(`thread-batch-${index}`, createdAt, createdAt);
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
@@ -5510,48 +5822,56 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'title-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-title',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-title',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-title', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'title-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-title', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    insertEvent.run(
-      'title-turn',
-      'turn.started',
-      JSON.stringify({
-        method: 'turn.started',
-        prompt: 'Run `ls -la` for **me** and keep user_id',
-      }),
-      '2026-08-08T11:00:01.000Z',
-      2,
-      2,
-    );
-    database.close();
+      );
+      insertEvent.run(
+        'title-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-title', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      insertEvent.run(
+        'title-turn',
+        'turn.started',
+        JSON.stringify({
+          method: 'turn.started',
+          prompt: 'Run `ls -la` for **me** and keep user_id',
+        }),
+        '2026-08-08T11:00:01.000Z',
+        2,
+        2,
+      );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
 
     store = new EventStore(databasePath);
     expect(
@@ -5572,47 +5892,55 @@ describe('EventStore', () => {
     store.close();
     const databasePath = join(dir, 'ownership-history.sqlite');
     const database = new DatabaseSync(databasePath);
-    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    database
-      .prepare(
-        `INSERT INTO provider_session_state
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      database
+        .prepare(
+          `INSERT INTO provider_session_state
           (thread_id, provider, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(
-        'thread-ownership',
-        'claude',
-        'ready',
-        '2026-08-08T11:00:00.000Z',
-        '2026-08-08T12:00:00.000Z',
-      );
-    const insertEvent = database.prepare(
-      `INSERT INTO orchestration_events
+        )
+        .run(
+          'thread-ownership',
+          'claude',
+          'ready',
+          '2026-08-08T11:00:00.000Z',
+          '2026-08-08T12:00:00.000Z',
+        );
+      const insertEvent = database.prepare(
+        `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-ownership', ?, ?, ?, ?, ?)`,
-    );
-    insertEvent.run(
-      'ownership-start',
-      'session.started',
-      JSON.stringify({
-        method: 'session.started',
-        metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-      }),
-      '2026-08-08T11:00:00.000Z',
-      1,
-      1,
-    );
-    for (let sequence = 2; sequence <= 4; sequence += 1) {
-      insertEvent.run(
-        `ownership-configured-${sequence}`,
-        'session.configured',
-        JSON.stringify({ method: 'session.configured' }),
-        `2026-08-08T11:00:0${sequence}.000Z`,
-        sequence,
-        sequence,
       );
+      insertEvent.run(
+        'ownership-start',
+        'session.started',
+        JSON.stringify({
+          method: 'session.started',
+          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
+        }),
+        '2026-08-08T11:00:00.000Z',
+        1,
+        1,
+      );
+      for (let sequence = 2; sequence <= 4; sequence += 1) {
+        insertEvent.run(
+          `ownership-configured-${sequence}`,
+          'session.configured',
+          JSON.stringify({ method: 'session.configured' }),
+          `2026-08-08T11:00:0${sequence}.000Z`,
+          sequence,
+          sequence,
+        );
+      }
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
     }
-    database.close();
 
     store = new EventStore(databasePath);
     expect(

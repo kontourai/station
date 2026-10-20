@@ -1,0 +1,9 @@
+{
+  "revision": "86b1ed2fe3030a9419b5ac140d1817293ba34780",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the changed walkthrough caption against the presentation-evidence finding. The original Project capture remains historical and current controls route to getting-started; browser current-entry checks and historical persisted-Task evidence remain distinct. No architectural finding changes.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the chat-picker Recent/Options update in Connections against device-pairing and remote-task direction. The new on-host task entry reuses existing enrolled environment dispatch and receiver policy; it creates no new grant, connection type or foreground chat migration. Existing relationship explanation remains accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

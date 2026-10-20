@@ -1,0 +1,37 @@
+{
+  "path": "docs/user/pull-request-guides.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the guide contract, managed-model generation, hardened temporary checkout, bounded normalization, head-keyed store, MCP authority and read-only UI against the user journey.",
+
+  "limits": "Deterministic real-Git service tests and UI/transport fixtures; live model generation and GitLab guide journey not verified. Excerpt comment/agent/finish actions, project overrides and external-engine generation are deferred.",
+
+  "sources": [
+    "packages/contracts/src/pull-request-review-guide.ts",
+
+    "src-server/services/pull-requests/pull-request-review-guide.ts",
+
+    "src-server/services/pull-requests/pull-request-review-guide-normalize.ts",
+
+    "src-server/services/pull-requests/pull-request-review-guide-store.ts",
+
+    "src-server/routes/pull-requests/pull-request-routes.ts",
+
+    "src-server/tools/station-control-review-guide-tools.ts",
+
+    "src-ui/src/components/coding-layout/PullRequestGuide.tsx",
+
+    "src-server/services/pull-requests/pull-request-review-guide-errors.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-ui/src/components/coding-layout/PullRequestGuide.css"
+  ],
+
+  "checks": [
+    "Real-Git generation/storage/cleanup and normalization tests passed before fault injection; coverage and stale-anchor mutations failed the intended assertions. UI stop navigation and stale rendering fixture tests passed."
+  ]
+}

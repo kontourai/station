@@ -22,6 +22,11 @@ import { navigationStore } from '../contexts/navigation-store';
 // NewChatModal's Enable posts to `/agents/materialize-engine` through this
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
@@ -113,6 +118,29 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
         { modelId?: string; providerOptions: Record<string, unknown> }
       >
     >({});
+    const modelsForAgent = (agent: AgentData) =>
+      agent.slug === NATIVE_OPENCODE.slug
+        ? [
+            {
+              id: 'shared-model',
+              name: 'Shared model · Provider one',
+              providerId: 'provider-one',
+              providerName: 'Provider one',
+              providerType: 'bedrock',
+              capabilities: {
+                supportsEffort: true,
+                supportedEffortLevels: ['low', 'high'],
+              },
+            },
+            {
+              id: 'shared-model',
+              name: 'Shared model · Provider two',
+              providerId: 'provider-two',
+              providerName: 'Provider two',
+              providerType: 'ollama',
+            },
+          ]
+        : (agent.modelOptions ?? []);
     return {
       viewModel: {
         isGlobal: true,
@@ -128,20 +156,17 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
           label: 'No workspace',
           glyph: 'globe',
         },
-        // Native and ACP entries with the same engine name converge into one
-        // group (§8.3, new-chat-modal-utils.test.ts covers the grouping logic
-        // itself) — this mock reflects that converged shape.
         groups: [
+          { label: 'Station', glyph: 'engine', agents: [STATION_AGENT] },
           {
-            label: 'OpenCode',
+            label: 'Coding apps',
             glyph: 'engine',
             agents: [NATIVE_OPENCODE, ACP_OPENCODE],
           },
           {
-            label: 'Global',
+            label: 'My agents',
             glyph: 'globe',
             agents: [
-              STATION_AGENT,
               MANAGED_BEDROCK,
               CUSTOM_CONFIG_AGENT,
               UNKNOWN_UNAVAILABLE_AGENT,
@@ -178,29 +203,8 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       setModelPickerAgent,
       modelChoices,
       setModelChoices,
-      modelsForAgent: (agent: AgentData) =>
-        agent.slug === NATIVE_OPENCODE.slug
-          ? [
-              {
-                id: 'shared-model',
-                name: 'Shared model · Provider one',
-                providerId: 'provider-one',
-                providerName: 'Provider one',
-                providerType: 'bedrock',
-                capabilities: {
-                  supportsEffort: true,
-                  supportedEffortLevels: ['low', 'high'],
-                },
-              },
-              {
-                id: 'shared-model',
-                name: 'Shared model · Provider two',
-                providerId: 'provider-two',
-                providerName: 'Provider two',
-                providerType: 'ollama',
-              },
-            ]
-          : (agent.modelOptions ?? []),
+      modelsForAgent,
+      executionModelsForAgent: modelsForAgent,
       modelChoiceKey: (agent: AgentData) => agent.slug,
       defaultEffectiveModelForAgent: (agent: AgentData) => ({
         id: agent.model,
@@ -235,6 +239,7 @@ describe('NewChatModal engine chips', () => {
     const onSelect = vi.fn();
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[NATIVE_OPENCODE]}
         projects={[]}
         onSelect={onSelect}
@@ -251,14 +256,23 @@ describe('NewChatModal engine chips', () => {
     ).toBeTruthy();
     expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Filter models',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('all');
+    expect(
       screen
-        .getByRole('button', { name: 'Provider two' })
-        .getAttribute('aria-pressed'),
+        .getByRole('option', { name: /Shared model · Provider two/ })
+        .getAttribute('aria-selected'),
     ).toBe('true');
     expect(
       screen.queryByRole('combobox', { name: 'Thinking effort' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-one' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -278,6 +292,7 @@ describe('NewChatModal engine chips', () => {
     expect(
       screen.queryByRole('button', { name: /session override/ }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     // An effort change keeps the picker open.
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
@@ -286,7 +301,9 @@ describe('NewChatModal engine chips', () => {
       },
     );
     expect(screen.getByRole('dialog', { name: 'Choose model' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-two' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
@@ -307,6 +324,7 @@ describe('NewChatModal engine chips', () => {
   test("a fork's reset names the source turn and closes the picker", async () => {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[NATIVE_OPENCODE]}
         projects={[]}
         onSelect={vi.fn()}
@@ -324,7 +342,9 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
     await screen.findByRole('dialog', { name: 'Choose model' });
-    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
+      target: { value: 'provider-one' },
+    });
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -345,6 +365,7 @@ describe('NewChatModal engine chips', () => {
   test('disambiguates the two identically-named OpenCode entries with engine chips', () => {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,
@@ -362,6 +383,10 @@ describe('NewChatModal engine chips', () => {
     const rows = screen
       .getAllByRole('button')
       .filter((button) => button.hasAttribute('data-agent-slug'));
+    // The engine label sits beside the model, outside the select button, so
+    // what a row SAYS is read from the whole row.
+    const wholeRow = (button: HTMLElement | undefined) =>
+      button?.closest('.new-chat-modal__agent-row');
     const nativeRow = rows.find(
       (row) => row.getAttribute('data-agent-slug') === NATIVE_OPENCODE.slug,
     );
@@ -377,27 +402,27 @@ describe('NewChatModal engine chips', () => {
 
     // Both rows say "OpenCode"; only the ACP-connected row adds the
     // disambiguating model suffix.
-    expect(nativeRow?.textContent).toContain('OpenCode');
-    expect(nativeRow?.textContent).not.toContain('GLM-4.7');
-    expect(acpRow?.textContent).toContain('OpenCode · GLM-4.7');
+    expect(wholeRow(nativeRow)?.textContent).toContain('OpenCode');
+    expect(wholeRow(nativeRow)?.textContent).not.toContain('GLM-4.7');
+    expect(wholeRow(acpRow)?.textContent).toContain('OpenCode · GLM-4.7');
 
     // Station agents and engine-managed connections now render a "Station"
     // chip — the pre-#894 quiet default case is gone.
-    expect(stationRow?.textContent).toContain('Station');
-    expect(managedRow?.textContent).toContain('Station');
+    expect(wholeRow(stationRow)?.textContent).toContain('Station');
+    expect(wholeRow(managedRow)?.textContent).toContain('Station');
     expect(managedRow?.hasAttribute('disabled')).toBe(true);
-    expect(managedRow?.textContent).toContain(
+    expect(wholeRow(managedRow)?.textContent).toContain(
       'Amazon Bedrock credentials are not configured.',
     );
-    expect(managedRow?.textContent).not.toContain(
+    expect(wholeRow(managedRow)?.textContent).not.toContain(
       'Configure the engine connection to continue.',
     );
 
     // No row anywhere says "External" or "ACP" — permanent regression
     // guard.
     for (const row of rows) {
-      expect(row.textContent).not.toContain('External');
-      expect(row.textContent).not.toContain('ACP');
+      expect(wholeRow(row)?.textContent).not.toContain('External');
+      expect(wholeRow(row)?.textContent).not.toContain('ACP');
     }
   });
 
@@ -407,6 +432,7 @@ describe('NewChatModal engine chips', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         requestAuthority={{
           apiBase: 'http://station.test/api',
           authorityKey: 'station:operator',
@@ -452,6 +478,7 @@ describe('NewChatModal engine chips', () => {
 
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         requestAuthority={{
           apiBase: 'http://station.test/api',
           authorityKey: 'station:operator',
@@ -507,6 +534,7 @@ describe('NewChatModal row hierarchy', () => {
   function renderPicker() {
     render(
       <NewChatModal
+        projectIconBySlug={new Map()}
         agents={[
           NATIVE_OPENCODE,
           ACP_OPENCODE,
@@ -530,40 +558,23 @@ describe('NewChatModal row hierarchy', () => {
     return button;
   }
 
-  test('the name and the meta line are separate elements, name first', () => {
-    renderPicker();
-    const select = row(STATION_AGENT.slug);
-
-    const name = select.querySelector(
-      '.new-chat-modal__agent-name',
-    ) as HTMLElement;
-    const meta = select.querySelector(
-      '.new-chat-modal__agent-meta',
-    ) as HTMLElement;
-    expect(name).toBeTruthy();
-    expect(meta).toBeTruthy();
-    expect(name.textContent).toBe('Code Reviewer');
-    // Distinct nodes: the name is not inside the quiet line and the quiet
-    // line is not inside the name. A single element cannot carry two rungs.
-    expect(meta.contains(name)).toBe(false);
-    expect(name.contains(meta)).toBe(false);
-    expect(
-      name.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  test('the engine chip moved off the name line into the meta line', () => {
+  test('the engine reads at the end of the name line, not on a line of its own', () => {
     renderPicker();
     const select = row(ACP_OPENCODE.slug);
-
-    const header = select.querySelector('.new-chat-modal__agent-header');
-    const meta = select.querySelector('.new-chat-modal__agent-meta');
-    // The chip is what the row IS, so it reads under the name rather than
-    // competing with it for the first line.
-    expect(header?.querySelector('.engine-chip')).toBeNull();
-    expect(meta?.querySelector('.engine-chip')?.textContent).toBe(
-      'OpenCode · GLM-4.7',
-    );
+    const header = select.querySelector(
+      '.new-chat-modal__agent-header',
+    ) as HTMLElement;
+    const name = header.querySelector('.new-chat-modal__agent-name');
+    const engine = header.querySelector(
+      '.new-chat-modal__agent-engine',
+    ) as HTMLElement;
+    expect(engine?.textContent).toBe('OpenCode · GLM-4.7');
+    // On the name (header) line, after the name: no second line, no pill.
+    expect(
+      name!.compareDocumentPosition(engine) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(select.querySelector('.new-chat-modal__agent-meta')).toBeNull();
+    expect(select.querySelector('.engine-chip')).toBeNull();
   });
 
   test('a row that cannot start dims its name; a startable row does not', () => {
@@ -610,12 +621,14 @@ describe('NewChatModal row hierarchy', () => {
       document.querySelectorAll('.new-chat-modal__group-label'),
     );
     expect(labels.map((label) => label.textContent?.trim())).toEqual([
-      'OpenCode',
-      'Global',
+      'Station',
+      'Coding apps',
+      'My agents',
     ]);
     const divided = 'new-chat-modal__group-label--divided';
     // The hairline separates groups, so the first header must not draw one.
     expect(labels[0]?.className.includes(divided)).toBe(false);
     expect(labels[1]?.className.includes(divided)).toBe(true);
+    expect(labels[2]?.className.includes(divided)).toBe(true);
   });
 });

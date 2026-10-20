@@ -270,6 +270,25 @@ describe('BrowserPane honest states', () => {
 });
 
 describe('BrowserPane address bar', () => {
+  test('Escape cancels an address draft without navigating the shared page', async () => {
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    const address = (await screen.findByLabelText(
+      'Address',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(address.value).toBe('https://example.com/'));
+    address.focus();
+    fireEvent.change(address, {
+      target: { value: 'https://example.invalid/abandoned' },
+    });
+    fireEvent.keyDown(address, { key: 'Escape' });
+    expect(address.value).toBe('https://example.com/');
+    expect(document.activeElement).not.toBe(address);
+    expect(calls.filter((call) => call.method === 'POST')).toEqual([]);
+  });
+
   test('submits the typed address to the server and shows its refusal honestly', async () => {
     const { calls } = renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,

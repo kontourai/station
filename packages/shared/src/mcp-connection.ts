@@ -5,10 +5,14 @@
  * Used by both the core server and CLI dev server.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   Client,
+  type ElicitResult,
   type FetchLike,
   type OAuthClientProvider,
+  ProtocolError,
+  ProtocolErrorCode,
   SSEClientTransport,
   StreamableHTTPClientTransport,
   type Transport,
@@ -30,6 +34,7 @@ export interface MCPToolInfo {
   originalName: string; // raw name from MCP server
   serverId: string;
   description?: string;
+  readOnly?: boolean;
   inputSchema?: any;
   _meta?: Record<string, unknown>;
   ui?: MCPToolUIMetadata;
@@ -65,6 +70,17 @@ export interface MCPToolUIResolution {
   reason?: string;
 }
 
+/**
+ * Who answers a server's form elicitation: the one Station turn whose tool
+ * call is in flight on this connection. `params` is the SDK-validated
+ * `elicitation/create` params; `signal` aborts when the server cancels.
+ */
+export type MCPElicitationRoute = (request: {
+  serverId: string;
+  params: unknown;
+  signal: AbortSignal;
+}) => Promise<ElicitResult>;
+
 export interface MCPConnection {
   client: Client;
   serverId: string;
@@ -72,6 +88,21 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  /**
+   * Run `operation` with `route` answering an elicitation the server sends
+   * while one of its requests is in flight. Present on owned connections.
+   * A connection is shared across turns and callers, and the client cannot
+   * tell which in-flight request an elicitation belongs to, so the connection
+   * counts every request in flight on it that could elicit, bridged or not
+   * (see `NON_ELICITING_METHODS_2026` for the ones that cannot): an elicitation is
+   * routed only when exactly one request is in flight and that request has a
+   * route, and is refused otherwise rather than shown to a person who may not
+   * own it.
+   */
+  withElicitationRoute?: <T>(
+    route: MCPElicitationRoute,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
   /** Present on owned connections; false after a local retirement fence. */
   isUsable?: () => boolean;
   localState?: () => ReturnType<MCPPreparedConnection['inspect']>;
@@ -122,8 +153,94 @@ export interface MCPManagerOptions {
   onNegotiated?: (serverId: string, negotiation: MCPNegotiation) => void;
 }
 
+/**
+ * Requests that cannot lead to an elicitation on the 2026-07-28 revision,
+ * where only `tools/call`, `prompts/get` and `resources/read` may answer
+ * `input_required` and a server can no longer send `elicitation/create` as
+ * a request of its own. They are not counted as in flight, so a catalog
+ * read does not make a turn's form ambiguous. The 2025 era sets no such
+ * limit (a server may send a request during any client request, and stdio
+ * does not say which), so there every request counts.
+ */
+const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
+  'tools/list',
+  'prompts/list',
+  'resources/list',
+  'resources/templates/list',
+  'ping',
+  'completion/complete',
+]);
+
+/** The JSON-RPC method each client helper sends. */
+const CLIENT_HELPER_METHODS: Readonly<Record<string, string>> = {
+  callTool: 'tools/call',
+  getPrompt: 'prompts/get',
+  readResource: 'resources/read',
+  listTools: 'tools/list',
+  listPrompts: 'prompts/list',
+  listResources: 'resources/list',
+  listResourceTemplates: 'resources/templates/list',
+  ping: 'ping',
+  complete: 'completion/complete',
+};
+
+/** The JSON-RPC method a guarded client call sends, when it can be read. */
+function clientRequestMethod(
+  property: string | symbol,
+  args: readonly unknown[],
+): string | undefined {
+  if (typeof property !== 'string') return undefined;
+  if (Object.hasOwn(CLIENT_HELPER_METHODS, property))
+    return CLIENT_HELPER_METHODS[property];
+  if (property === 'request' && isRecord(args[0]))
+    return typeof args[0].method === 'string' ? args[0].method : undefined;
+  return undefined;
+}
+
+function hasForbiddenElicitationField(request: unknown): boolean {
+  if (
+    !isRecord(request) ||
+    request.method !== 'elicitation/create' ||
+    !isRecord(request.params)
+  )
+    return false;
+  const schema = request.params.requestedSchema;
+  return (
+    isRecord(schema) &&
+    isRecord(schema.properties) &&
+    Object.hasOwn(schema.properties, '__proto__')
+  );
+}
+
+function hasForbiddenInputRequiredField(message: unknown): boolean {
+  if (
+    !isRecord(message) ||
+    !isRecord(message.result) ||
+    message.result.resultType !== 'input_required' ||
+    !isRecord(message.result.inputRequests)
+  )
+    return false;
+  return Object.values(message.result.inputRequests).some(
+    hasForbiddenElicitationField,
+  );
+}
+
 const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
+
+/**
+ * Client capabilities Station declares. Form-mode elicitation only: URL mode
+ * sends the person to a third-party page Station cannot vouch for, so it is
+ * not declared and the SDK refuses it. Sampling is not declared.
+ */
+export const STATION_MCP_CLIENT_CAPABILITIES = {
+  elicitation: { form: {} },
+  extensions: {
+    [MCP_APPS_EXTENSION_ID]: {
+      mimeTypes: [MCP_APPS_MIME_TYPE],
+    },
+  },
+};
 
 /**
  * Create an MCP client from a tool definition.
@@ -145,6 +262,29 @@ export function prepareMCPConnection(
   const pending = new Set<Promise<void>>();
   let connecting: Promise<MCPConnection> | undefined;
   let closing: Promise<void> | undefined;
+  // Every client request in flight on this connection, with the route of
+  // the `withElicitationRoute` operation that issued it, if any. A request is
+  // registered by the guarded client itself, so no caller can leave one out.
+  type ElicitationScope = { route: MCPElicitationRoute; open: boolean };
+  const inFlight = new Set<{ scope: ElicitationScope | undefined }>();
+  const elicitationScope = new AsyncLocalStorage<ElicitationScope>();
+  function inFlightRequest<T>(operation: () => T): T {
+    const scope = elicitationScope.getStore();
+    const entry = { scope: scope?.open ? scope : undefined };
+    inFlight.add(entry);
+    try {
+      const value = operation();
+      if (value && typeof (value as { then?: unknown }).then === 'function')
+        return Promise.resolve(value).finally(() =>
+          inFlight.delete(entry),
+        ) as T;
+      inFlight.delete(entry);
+      return value;
+    } catch (error) {
+      inFlight.delete(entry);
+      throw error;
+    }
+  }
   const current = () => !retired && isCurrent() === true;
   const assertCurrent = () => {
     if (!current())
@@ -256,6 +396,43 @@ export function prepareMCPConnection(
                 };
               },
               set(target, property, value) {
+                if (property === 'onmessage' && typeof value === 'function') {
+                  const onmessage: NonNullable<Transport['onmessage']> = (
+                    ...args
+                  ) => {
+                    const message = args[0];
+                    if (
+                      'id' in message &&
+                      (hasForbiddenElicitationField(message) ||
+                        hasForbiddenInputRequiredField(message))
+                    ) {
+                      const refusal = {
+                        jsonrpc: '2.0' as const,
+                        id: message.id,
+                        error: {
+                          code: ProtocolErrorCode.InvalidParams,
+                          message:
+                            'Station refuses MCP elicitation fields named __proto__.',
+                        },
+                      };
+                      // Legacy asks need a wire reply; a modern input-required
+                      // result must fail the owning client call before decoding.
+                      if ('method' in message) {
+                        if (!current()) return;
+                        void track(() => target.send(refusal)).catch((error) =>
+                          target.onerror?.(
+                            error instanceof Error
+                              ? error
+                              : new Error('MCP refusal could not be sent'),
+                          ),
+                        );
+                      } else value(refusal, args[1]);
+                      return;
+                    }
+                    value(...args);
+                  };
+                  return Reflect.set(target, property, onmessage, target);
+                }
                 if (property === 'close') {
                   currentTransportClose = value;
                   return true;
@@ -266,13 +443,7 @@ export function prepareMCPConnection(
             client = new Client(
               { name: 'station', version: '0.1.0' },
               {
-                capabilities: {
-                  extensions: {
-                    [MCP_APPS_EXTENSION_ID]: {
-                      mimeTypes: [MCP_APPS_MIME_TYPE],
-                    },
-                  },
-                },
+                capabilities: STATION_MCP_CLIENT_CAPABILITIES,
                 versionNegotiation: {
                   mode: 'auto',
                   ...(def.timeouts?.startupMs
@@ -282,6 +453,33 @@ export function prepareMCPConnection(
               },
             );
             const rawClient = client;
+            // Legacy servers send this as a request; on the 2026-07-28 era the
+            // SDK fulfils an embedded `input_required` through this same
+            // handler. Neither tells the handler which request it belongs to
+            // (the context carries no originating request id), so it is
+            // answered only when one request is in flight and it has a route.
+            rawClient.setRequestHandler(
+              'elicitation/create',
+              async (request, ctx) => {
+                const requests = [...inFlight];
+                const route =
+                  requests.length === 1 && requests[0].scope?.open
+                    ? requests[0].scope.route
+                    : undefined;
+                if (!route)
+                  throw new ProtocolError(
+                    ProtocolErrorCode.InvalidRequest,
+                    requests.length > 1
+                      ? 'Station cannot tell which of several concurrent requests on this server this elicitation belongs to.'
+                      : 'No Station turn is waiting on this server, so nobody can answer this elicitation.',
+                  );
+                return route({
+                  serverId: def.id,
+                  params: request.params,
+                  signal: ctx.mcpReq.signal,
+                });
+              },
+            );
             const originalClose = rawClient.close.bind(rawClient);
             closeClient = closeOnce(originalClose);
             rawClient.close = closeClient;
@@ -302,6 +500,7 @@ export function prepareMCPConnection(
               originalName: t.name,
               serverId: def.id,
               description: t.description,
+              readOnly: t.annotations?.readOnlyHint,
               inputSchema: t.inputSchema,
               _meta: isRecord((t as { _meta?: unknown })._meta)
                 ? (t as { _meta: Record<string, unknown> })._meta
@@ -319,7 +518,15 @@ export function prepareMCPConnection(
                   assertCurrent();
                   if (phase !== 'connected')
                     throw new Error('MCP local connection is unavailable');
-                  return track(() => Reflect.apply(value, target, args));
+                  const run = () => Reflect.apply(value, target, args);
+                  return track(() =>
+                    negotiation.era === 'modern' &&
+                    NON_ELICITING_METHODS_2026.has(
+                      clientRequestMethod(property, args) ?? '',
+                    )
+                      ? run()
+                      : inFlightRequest(run),
+                  );
                 };
               },
               set: (target, property, value) =>
@@ -335,6 +542,16 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
+              withElicitationRoute: async (route, operation) => {
+                const scope: ElicitationScope = { route, open: true };
+                try {
+                  return await elicitationScope.run(scope, operation);
+                } finally {
+                  // Work this operation started but did not await, or that
+                  // inherits its async context later, no longer has a route.
+                  scope.open = false;
+                }
+              },
             };
           } catch (error) {
             if (!retired) phase = 'failed';

@@ -260,6 +260,28 @@ describe('classifyHttpFailureResponse', () => {
    * read "answered, but not as a Station. Something else may be answering at
    * that address."
    */
+  it('reads a coded 426 as this client being too old, and nothing else as it (#2962)', () => {
+    expect(
+      classifyHttpFailureResponse(426, 'client_protocol_unsupported'),
+    ).toBe('client-protocol-unsupported');
+    expect(classifyHttpFailureResponse(426, undefined)).toBe(
+      'unexpected-response',
+    );
+    expect(classifyHttpFailureResponse(400, 'client_protocol_invalid')).toBe(
+      'unexpected-response',
+    );
+    expect(connectionFailureNeedsDecision('client-protocol-unsupported')).toBe(
+      true,
+    );
+    expect(
+      connectionFailureCopy('client-protocol-unsupported', 'Studio'),
+    ).toEqual({
+      summary: 'Studio no longer supports this version of the app.',
+      action:
+        'Install the latest Station app or CLI on this device, then connect to Studio again.',
+    });
+  });
+
   it('reads a throttled auth refusal as the access outcome it is', () => {
     expect(
       classifyHttpFailureResponse(429, 'authentication_rate_limited'),

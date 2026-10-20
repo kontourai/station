@@ -9,7 +9,7 @@ import {
 } from '../openssh-environment-adapter.js';
 
 const EFFECTIVE_CONFIG = `
-hostname brian-media.internal
+hostname home-media.internal
 user casey
 port 22
 identityagent none
@@ -36,7 +36,7 @@ describe('OpenSSH process planning', () => {
   test('builds fixed argv with loopback-only forwarding and no agent forwarding', () => {
     expect(
       buildOpenSshMasterArgs({
-        alias: 'brian-media',
+        alias: 'home-media',
         controlPath: '/private/control.sock',
       }),
     ).toEqual([
@@ -72,11 +72,11 @@ describe('OpenSSH process planning', () => {
       '-o',
       'ClearAllForwardings=yes',
       '--',
-      'brian-media',
+      'home-media',
     ]);
     expect(
       buildOpenSshForwardArgs({
-        alias: 'brian-media',
+        alias: 'home-media',
         controlPath: '/private/control.sock',
         localPort: 45123,
         remotePort: 3141,
@@ -93,7 +93,7 @@ describe('OpenSSH process planning', () => {
       '-L',
       '127.0.0.1:45123:127.0.0.1:3141',
       '--',
-      'brian-media',
+      'home-media',
     ]);
   });
 
@@ -152,7 +152,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
 
@@ -170,7 +170,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       '-O',
       'exit',
       '--',
-      'brian-media',
+      'home-media',
     ]);
     expect(removeControlDirectory).toHaveBeenCalledWith('/private/control');
     expect(tunnel.state).toEqual({ phase: 'disconnected', reason: 'stopped' });
@@ -201,7 +201,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
       connectTimeoutMs: 100,
     });
@@ -236,7 +236,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
       onStateChange: (state) => states.push(state),
     });
@@ -268,7 +268,7 @@ describe('OpenSSH tunnel lifecycle', () => {
     });
     await expect(
       missingAdapter
-        .createTunnel({ alias: 'brian-media', remotePort: 3141 })
+        .createTunnel({ alias: 'home-media', remotePort: 3141 })
         .start(),
     ).resolves.toEqual({ phase: 'unavailable', reason: 'ssh-not-found' });
   });
@@ -292,7 +292,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = connectedAdapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
       onStateChange: (state) => states.push(state),
     });
@@ -342,7 +342,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       createControlDirectory: async () => '/private/close-race',
       removeControlDirectory: async () => undefined,
       pollIntervalMs: 1,
-    }).createTunnel({ alias: 'brian-media', remotePort: 3141 });
+    }).createTunnel({ alias: 'home-media', remotePort: 3141 });
 
     const starting = tunnel.start();
     await forwardStarted;
@@ -372,7 +372,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       createControlDirectory: async () => '/private/concurrent',
       removeControlDirectory: async () => undefined,
       pollIntervalMs: 1,
-    }).createTunnel({ alias: 'brian-media', remotePort: 3141 });
+    }).createTunnel({ alias: 'home-media', remotePort: 3141 });
 
     const firstStart = tunnel.start();
     const secondStart = tunnel.start();
@@ -395,7 +395,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       spawn,
       createControlDirectory,
       removeControlDirectory: async () => undefined,
-    }).createTunnel({ alias: 'brian-media', remotePort: 3141 });
+    }).createTunnel({ alias: 'home-media', remotePort: 3141 });
 
     const starting = tunnel.start();
     const stopping = tunnel.stop();
@@ -426,7 +426,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await tunnel.start();
@@ -438,7 +438,7 @@ describe('OpenSSH tunnel lifecycle', () => {
 
     expect(result).toEqual({ remotePort: 51234, serverKind: 'managed' });
     expect(runLaunchBootstrap).toHaveBeenCalledWith({
-      alias: 'brian-media',
+      alias: 'home-media',
       controlPath: '/private/launch/control.sock',
       remoteProjectPath: '~/dev/station',
       launchKey: '11111111-1111-4111-8111-111111111111',
@@ -454,7 +454,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       removeControlDirectory: async () => undefined,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await expect(
@@ -481,7 +481,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await expect(tunnel.start()).resolves.toMatchObject({
@@ -498,7 +498,7 @@ describe('OpenSSH tunnel lifecycle', () => {
         '-L',
         '127.0.0.1:51000:127.0.0.1:51234',
         '--',
-        'brian-media',
+        'home-media',
       ]),
     );
     // The original forward is never torn down — a second `-L` binding is
@@ -531,7 +531,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       remoteHome: '/home/user',
       remoteProjectPath: '/home/user/dev/github/kontourai/station',
       environmentId: '11111111-1111-4111-8111-111111111111',
-      instanceId: 'brian-media-managed',
+      instanceId: 'home-media-managed',
       sha: 'a'.repeat(40),
       bootId: '22222222-2222-4222-8222-222222222222',
     }));
@@ -545,7 +545,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await tunnel.start();
@@ -589,7 +589,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       pollIntervalMs: 1,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await expect(tunnel.start()).resolves.toMatchObject({
@@ -611,7 +611,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       removeControlDirectory: async () => undefined,
     });
     const tunnel = adapter.createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
     });
     await expect(tunnel.retarget(51234)).rejects.toThrow(
@@ -658,7 +658,7 @@ describe('OpenSSH tunnel lifecycle', () => {
       removeControlDirectory,
       pollIntervalMs: 1,
     }).createTunnel({
-      alias: 'brian-media',
+      alias: 'home-media',
       remotePort: 3141,
       onStateChange: (state) => states.push(state),
     });

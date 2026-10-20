@@ -92,7 +92,17 @@
 
     "src-ui/src/platform/native/web.ts",
 
-    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts",
+
+    "src-server/security/relay-management-authority.ts"
   ],
 
   "checks": [

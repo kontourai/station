@@ -386,6 +386,20 @@ impl NativeAccountOperations {
         validate_read_target(&request)?;
         self.request_headers(capture, handle, continuation, request, now, keys)
     }
+    fn management_headers(
+        &self,
+        capture: NativeDeviceReceiptCapture,
+        handle: &str,
+        continuation: NativeAccountContinuation,
+        request: NativeAccountReadTarget,
+        now: u64,
+        keys: &impl AccountKeys,
+    ) -> Result<HashMap<&'static str, String>> {
+        if !crate::native_application_peer::native_management_path(&request.method, &request.path) {
+            return refused();
+        }
+        self.request_headers(capture, handle, continuation, request, now, keys)
+    }
     fn accept_invitation(
         &self,
         capture: NativeDeviceReceiptCapture,
@@ -868,6 +882,43 @@ pub(crate) async fn station_native_account_request_headers(
     .await
     .map_err(|_| REFUSED.to_owned())?
 }
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_account_management_headers(
+    window: WebviewWindow,
+    app: AppHandle,
+    account_context_handle: String,
+    continuation: NativeAccountContinuation,
+    request: NativeAccountReadTarget,
+) -> Result<HashMap<&'static str, String>> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app
+            .try_state::<NativeAccountOperations>()
+            .ok_or_else(|| REFUSED.to_owned())?;
+        let (name, revision) = state.selection(&account_context_handle)?;
+        with_current_reconciled_native_device_owner(&app, &name, revision, |capture| {
+            let started = now_ms()?;
+            let result = state.management_headers(
+                capture.clone(),
+                &account_context_handle,
+                continuation,
+                request,
+                started,
+                &NativeAccountProofKeyVault::new(),
+            )?;
+            state.finish(
+                &account_context_handle,
+                &capture,
+                started,
+                now_ms,
+                &NativeAccountProofKeyVault::new(),
+            )?;
+            Ok(result)
+        })
+    })
+    .await
+    .map_err(|_| REFUSED.to_owned())?
+}
 
 #[cfg(test)]
 mod tests {
@@ -1101,6 +1152,71 @@ mod tests {
                     path: ACCEPT_INVITATION_PATH.into()
                 },
                 now + 4,
+                &keys
+            )
+            .is_err());
+        let managed = state
+            .management_headers(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                NativeAccountReadTarget {
+                    method: "POST".into(),
+                    path: "/api/relay-management/invitations".into(),
+                },
+                now + 5,
+                &keys,
+            )
+            .unwrap();
+        let managed_claims: serde_json::Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(
+                    managed
+                        .get(PROOF_HEADER)
+                        .unwrap()
+                        .split('.')
+                        .nth(1)
+                        .unwrap(),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(managed_claims["method"], "POST");
+        assert_eq!(managed_claims["path"], "/api/relay-management/invitations");
+        assert_eq!(
+            managed_claims["credentialHash"],
+            sha256(continuation().credential.as_bytes())
+        );
+        for path in [
+            "/api/pairing/devices",
+            "/api/relay-management/unlisted",
+            "/api/projects/shared/access/enable",
+            "/api/relay-management/invitations?redirect=outside",
+        ] {
+            assert!(state
+                .management_headers(
+                    capture.clone(),
+                    &prepared.account_context_handle,
+                    continuation(),
+                    NativeAccountReadTarget {
+                        method: "POST".into(),
+                        path: path.into()
+                    },
+                    now + 5,
+                    &keys
+                )
+                .is_err());
+        }
+        assert!(state
+            .headers(
+                capture.clone(),
+                &prepared.account_context_handle,
+                continuation(),
+                NativeAccountReadTarget {
+                    method: "POST".into(),
+                    path: "/api/relay-management/invitations".into()
+                },
+                now + 5,
                 &keys
             )
             .is_err());

@@ -15,6 +15,8 @@ import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 const NOW = Date.parse('2026-07-27T18:00:00Z');
 
@@ -716,6 +718,31 @@ describe('ChatDockInboxPanel', () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
+  it('opens a paired-Station record in Activity and opens no chat on the peer conversation', async () => {
+    const onOpenConversation = vi.fn().mockResolvedValue(true);
+    const onOpenSession = vi.fn();
+    const [peerItem] = buildOrchestrationItems(
+      [peerRecordSummary({ displayTitle: 'Verify on the peer' })] as never,
+      [],
+    );
+    renderPanel({
+      items: [peerItem],
+      activeChatSessionId: null,
+      openChatSessionIds: [],
+      onOpenConversation,
+      onOpenSession,
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Verify on the peer/ }),
+    );
+
+    await waitFor(() =>
+      expect(onOpenSession).toHaveBeenCalledWith('peer-delegation:abc'),
+    );
+    expect(onOpenConversation).not.toHaveBeenCalled();
+  });
+
   it('opens session details and identifies outside work when Station cannot rehydrate', () => {
     const onOpenConversation = vi.fn();
     const onOpenSession = vi.fn();
@@ -956,5 +983,27 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     const panel = document.querySelector('.chat-dock-inbox') as HTMLElement;
     expect(panel.className).not.toContain('chat-dock-inbox--exiting');
     expect(panel.inert).toBe(false);
+  });
+
+  describe('resync', () => {
+    it('says the list is the last known one when its read failed, and Refresh re-reads it', () => {
+      const onRefresh = vi.fn();
+      renderPanel({ sync: { failed: true, refreshing: false, onRefresh } });
+      expect(screen.getByRole('status').textContent).toBe(
+        "Couldn't refresh. Showing the last known list.",
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh inbox' }));
+      expect(onRefresh).toHaveBeenCalledOnce();
+    });
+
+    it('shows a running resync and does not start a second one', () => {
+      const onRefresh = vi.fn();
+      renderPanel({ sync: { failed: false, refreshing: true, onRefresh } });
+      const refresh = screen.getByRole('button', { name: 'Refreshing inbox' });
+      expect(refresh).toHaveProperty('disabled', true);
+      fireEvent.click(refresh);
+      expect(onRefresh).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+    });
   });
 });

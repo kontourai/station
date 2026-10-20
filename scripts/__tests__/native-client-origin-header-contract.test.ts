@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLIENT_ORIGIN_HEADER } from '../../packages/contracts/src/client-origin.js';
+import { CLIENT_PROTOCOL_HEADER } from '../../packages/contracts/src/environment-security.js';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -17,6 +18,9 @@ describe('native client-origin header contract', () => {
     // code without this test: a browser-only CORS acceptance is insufficient
     // when desktop requests are brokered before network I/O.
     expect(desktop).toContain(`"${CLIENT_ORIGIN_HEADER.toLowerCase()}"`);
+    // #2962: the SDK sends the client protocol through the native broker,
+    // which refuses the whole request for a header missing from this list.
+    expect(desktop).toContain(`"${CLIENT_PROTOCOL_HEADER.toLowerCase()}"`);
     expect(desktop).toContain('native_header_allowlisted');
   });
 });

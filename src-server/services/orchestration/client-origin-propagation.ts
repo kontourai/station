@@ -34,14 +34,44 @@ function withPrincipal<T extends { principal?: PrincipalRef }>(
     : record;
 }
 
+/**
+ * Stamps the send's idempotency key on the `turn.started` that send produced.
+ * Only Station sets it: an adapter-supplied value is replaced, because the
+ * client trusts this field to say which of its messages became the turn.
+ */
+function withClientTurnId(
+  event: CanonicalRuntimeEvent,
+  clientTurnId: string | undefined,
+): CanonicalRuntimeEvent {
+  if (event.method !== 'turn.started' || clientTurnId === undefined)
+    return event;
+  return { ...event, clientTurnId };
+}
+
 /** What a turn-start reserves for its eventual `turn.started` event. */
 interface TurnAttribution {
   experience?: SkillExperienceInvocationReferenceV1;
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
+  /**
+   * The idempotency key of the send that started this turn, so the sending
+   * client can match its message to the turn exactly instead of by text.
+   */
+  clientTurnId?: string;
 }
 
 function hasAttribution(attribution: TurnAttribution): boolean {
+  return reservesTurn(attribution) || attribution.clientTurnId !== undefined;
+}
+
+/**
+ * Whether a send holds its turn's early `turn.started` back for attribution.
+ * A send key alone does not: keyed internal sends (scheduled jobs, channel
+ * relays) keep their events flowing exactly as before, and their key is
+ * stamped only when the start arrives after acceptance. User sends always
+ * carry an origin or principal, so theirs is held and stamped.
+ */
+function reservesTurn(attribution: TurnAttribution): boolean {
   return (
     attribution.clientOrigin !== undefined ||
     attribution.principal !== undefined ||
@@ -77,13 +107,15 @@ export class ClientOriginTurnPropagation {
     clientOrigin: ClientOrigin | undefined,
     principal?: PrincipalRef,
     experience?: SkillExperienceInvocationReferenceV1,
+    clientTurnId?: string,
   ): boolean {
     const attribution: TurnAttribution = {
       clientOrigin,
       principal,
       experience,
+      clientTurnId,
     };
-    if (!hasAttribution(attribution) || this.#inFlight.has(threadId)) {
+    if (!reservesTurn(attribution) || this.#inFlight.has(threadId)) {
       return false;
     }
     if (this.#inFlight.size >= ClientOriginTurnPropagation.MAX_PENDING)
@@ -98,12 +130,14 @@ export class ClientOriginTurnPropagation {
     clientOrigin: ClientOrigin | undefined,
     principal?: PrincipalRef,
     experience?: SkillExperienceInvocationReferenceV1,
+    clientTurnId?: string,
   ): CanonicalRuntimeEvent | undefined {
     const reserved = this.#inFlight.get(threadId);
     const attribution: TurnAttribution = {
       clientOrigin: clientOrigin ?? reserved?.clientOrigin,
       principal: principal ?? reserved?.principal,
       experience: experience ?? reserved?.experience,
+      clientTurnId: clientTurnId ?? reserved?.clientTurnId,
     };
     this.#inFlight.delete(threadId);
     if (!hasAttribution(attribution)) return undefined;
@@ -125,6 +159,12 @@ export class ClientOriginTurnPropagation {
     const { [SKILL_EXPERIENCE_METADATA_KEY]: ignored, ...metadata } =
       event.metadata ?? {};
     if (ignored !== undefined) event = { ...event, metadata };
+    // The send's key is Station's fact, stamped by `#attribute` only; an
+    // adapter that names one is not believed.
+    if (event.clientTurnId !== undefined) {
+      const { clientTurnId: _untrusted, ...unkeyed } = event;
+      event = unkeyed;
+    }
     // #2324: a turn the engine opened on its own is no send's turn. Holding
     // it for an in-flight reservation would attribute that send's origin to
     // it on settle — or drop it on retire, leaving its deltas with no start.
@@ -169,17 +209,33 @@ export class ClientOriginTurnPropagation {
     this.#early.delete(key);
   }
 
-  cancel(threadId: string): void {
+  /**
+   * The send failed before its acceptance. Any start it held back is still a
+   * start the engine reported, so it is handed back to be published (without
+   * attribution) instead of being kept here forever.
+   */
+  cancel(threadId: string): CanonicalRuntimeEvent[] {
     this.#inFlight.delete(threadId);
+    const released: CanonicalRuntimeEvent[] = [];
+    const prefix = `${threadId.length}:${threadId}:`;
+    for (const [key, event] of this.#early) {
+      if (!key.startsWith(prefix)) continue;
+      this.#early.delete(key);
+      released.push(event);
+    }
+    return released;
   }
 
   #attribute(
     event: CanonicalRuntimeEvent,
     attribution: TurnAttribution,
   ): CanonicalRuntimeEvent {
-    const attributed = withPrincipal(
-      withClientOrigin(event, attribution.clientOrigin),
-      attribution.principal,
+    const attributed = withClientTurnId(
+      withPrincipal(
+        withClientOrigin(event, attribution.clientOrigin),
+        attribution.principal,
+      ),
+      attribution.clientTurnId,
     );
     const result =
       attribution.experience && attributed.method === 'turn.started'

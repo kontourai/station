@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Fix round for #3391: resolver decisions (live identity check on every resolution route and start, no writes on read) unchanged; the list read's io context only swaps folder reads to async and skips the git remote read, documented in reference/shared.md.","inputs":["docs/design/portable-project-identity.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

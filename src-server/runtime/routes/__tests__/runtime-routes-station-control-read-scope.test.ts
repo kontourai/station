@@ -623,6 +623,35 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     ]);
   });
 
+  test('run locations (#3391): no station-control caller reaches them; the operator UI gets every Project’s, and boot carries none', async () => {
+    const { base } = await setup();
+    for (const caller of [
+      ...Object.values(B_CALLERS),
+      BOUND_OPERATOR,
+      DELEGATED_OPERATOR,
+      C_BEARER,
+    ]) {
+      const body = await asTool(caller, '/api/projects/run-locations');
+      expect(body).toMatchObject({
+        success: false,
+        code: 'station_control_route_unmapped',
+      });
+    }
+    const ui = await asOperatorUi(base, '/api/projects/run-locations');
+    expect(ui.success).toBe(true);
+    expect(Object.keys(ui.data).sort()).toEqual(['a-project', 'b-project']);
+    const boot = await asOperatorUi(base, '/api/boot');
+    const projects = boot.sections.projects.data.data as Record<
+      string,
+      unknown
+    >[];
+    expect(projects.map(({ slug }) => slug).sort()).toEqual([
+      'a-project',
+      'b-project',
+    ]);
+    expect(projects.filter((project) => 'runsAt' in project)).toEqual([]);
+  });
+
   test('read_logs: redacted for every caller but a bound operator', async () => {
     const { base } = await setup();
     const apiKeys = (body: any) =>

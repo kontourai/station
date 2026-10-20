@@ -855,7 +855,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await switchTo(idB);
     // B's observation is still in flight — honest loading, not A's data.
     await waitFor(() =>
-      expect(screen.queryByText(/Verifying Station authority/i)).not.toBeNull(),
+      expect(screen.queryByText(/Checking Station access/i)).not.toBeNull(),
     );
     await switchTo(idA);
     // A re-verifies with a live read on return.

@@ -1,0 +1,7 @@
+{
+  "revision": "ee3119c1df218b6f97008e26c5b4e21c1ee87b07",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"No prose change: reviewed its attention/continue mentions, none concern a model change on a bound delegated answer; the orchestration routes only map that refusal to 400; station-control-delegation only refuses a model change combined with a bound answer.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

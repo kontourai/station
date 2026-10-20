@@ -16,6 +16,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
   useEngineConnectionsQuery: () => ({ data: [] }),
 }));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
 }));

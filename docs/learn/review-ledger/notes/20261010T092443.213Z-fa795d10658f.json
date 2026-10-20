@@ -1,0 +1,7 @@
+{
+  "revision": "1d7c6f50f7ddfc15d981fc32a2f6279ddec6a07c",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Traced accumulated eff24-to-1d7 connection launch environment/route metadata, profile-over-connection precedence, selected-profile failure refusal, source-affinity adoption exclusion of profile/config-home overrides and execution-override capability refusal. Reviewed bounded version-gated CLI auth probe and unknown/refusal outcomes; dated audits retain limits. Independent source review of affected claims only; no affected prose correction identified. REASONED, not provider/native/runtime/CI qualification. Shared typed init predicate retains identical classification and claim-before-mapper ordering.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

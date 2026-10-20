@@ -1,0 +1,47 @@
+name: "Source verification policy publisher"
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact source head of the trusted calling run
+        required: true
+        type: string
+  workflow_run:
+    workflows: ["PR: CI"]
+    types: [requested, in_progress, completed]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact source head to reconcile from existing trusted evidence
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  statuses: write
+
+concurrency:
+  group: source-verification-policy-${{ github.repository }}-${{ github.event.workflow_run.head_sha || inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' && (github.event.workflow_run.display_title != 'PR metadata' || github.event.action == 'completed') && (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group'))) || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Reconcile current exact-source proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/source-verification-policy.mjs

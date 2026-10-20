@@ -32,9 +32,11 @@ describe('createRuntimeInitializationDeps', () => {
       approvalRegistry: { has: vi.fn(), resolve: vi.fn() } as any,
       environmentSecurityService: {
         verifyCredential: vi.fn(() => true),
+        identifyDevice: vi.fn(() => null),
         canSharePersonalConversation: vi.fn(() => false),
         personalConversationOwnerIds: vi.fn(() => undefined),
         deviceHoldsFullAccess: vi.fn(() => false),
+        readExistingRecord: vi.fn(),
         resolveGrantedScope: vi.fn(
           () =>
             'orchestration:read orchestration:operate terminal:operate access:manage',

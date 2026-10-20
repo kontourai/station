@@ -1,3 +1,5 @@
+import type { ExecutionModelRequest } from './execution-target.js';
+
 export const TASK_ROOM_WORK_VERSION = 'station.task-room-work/v1' as const;
 
 export const TASK_ROOM_CONTEXT_VERSION =
@@ -16,6 +18,10 @@ export interface TaskRoomContextSnapshot extends TaskRoomContextReference {
 export interface TaskRoomWorkInput {
   operationId: string;
   agentId: string;
+  /** Receiver-owned default engine Agent; profile identity remains agentId. */
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
+  model?: ExecutionModelRequest;
   prompt: string;
   context?: TaskRoomContextReference;
 }
@@ -29,6 +35,12 @@ export interface TaskRoomWorkRecord {
   // A server-issued Task-scoped display identity, not an account or grant.
   requesterId: string;
   agentId: string;
+  /** Receiver-owned default engine Agent; profile identity remains agentId. */
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
+  modelId?: string;
+  /** SHA-256 of canonical JSON options; option values are never retained. */
+  modelOptionsDigest?: string;
   prompt: string;
   sessionId: string;
   createdAt: string;

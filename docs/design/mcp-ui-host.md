@@ -86,6 +86,15 @@ state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
 to prune a pending credential operation. Cleanup runs outside the owned scope
 to avoid waiting on itself; local inspection counts these retained operations.
 
+Connected accounts (#3279) keep these custody rules and add one binding. For an
+integration with `credentialOwnership: {owner: "principal"}`, a consent flow is
+keyed by the principal who started it, and its provider writes only that
+person's credential bucket in a separate principal credential document. A
+callback from another principal finds only its own flow, so it cannot complete
+or write tokens for someone else's. Such a flow never changes the integration's
+shared `probe.authorization`. MCP Apps requests carry no turn principal, so they
+are refused for these integrations rather than borrowing a shared credential.
+
 This local custody layer originated as the first tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,
 or remote effect has drained. This owner is neither a shared-home lease nor a
@@ -143,6 +152,56 @@ Modern servers start with core discovery and automatic negotiation. Existing
 servers fall back to the legacy initialize exchange only when the transport
 identifies that protocol era. Silence or transport failure remains an outage,
 not a legacy signal.
+
+## MCP client feature support
+
+This is the compatibility record for Station as an MCP client (#3284, part of
+#3274). Station targets MCP core `2026-07-28` through
+`@modelcontextprotocol/client` 2.2.0 and falls back to the 2025-era
+`initialize` handshake for deployed legacy servers.
+
+| Feature | Supported subset | Not supported |
+| --- | --- | --- |
+| Tools | Listing, calls, structured results; MCP Apps metadata | — |
+| MCP Apps extension `2026-01-26` | Declared; see the sections below | — |
+| Prompts | `prompts/list` and `prompts/get` for servers in an agent's tool view, offered as `/<server>:<prompt>` slash commands with named string arguments ([commands guide](../guides/commands.md)). Inserted content: text, and embedded resources that carry text | Image, audio, blob and resource-link prompt content is refused, not dropped; `prompts/list_changed` is not followed (the list is re-read when the command menu refreshes) |
+| Elicitation | Capability `elicitation: { form: {} }`. Form mode only, on both eras: a 2025-era server's `elicitation/create` request and a 2026-07-28 `input_required` result reach the same handler. Rendered for the person the Station-agent turn runs for; accept with content validated against the requested schema, decline, or cancel | URL mode (not declared, so the SDK refuses it); an elicitation is answered only when exactly one request that could elicit is in flight on the connection and it is a Station-agent turn's tool call; with no such call, or with any other such request in flight on the same pooled connection (another tool call, an MCP Apps call, a prompt get or resource read), it is refused with an error rather than shown to someone who may not own it. On the 2026-07-28 era only `tools/call`, `prompts/get` and `resources/read` can elicit, so listings, `ping` and completion do not count; a 2025-era server may elicit during any request, so there every request counts; Strands-engine turns |
+| Resources | `ui://` App resource reads only | General listing, reading and subscription (#3284, later slice) |
+| Sampling | — | Not declared; a server's sampling request is refused (#3284, later slice) |
+| Roots | — | Not declared |
+
+### Elicitation path
+
+A server's form arrives on the connection's `elicitation/create` handler,
+which hands it to the one Station turn whose tool call is in flight on that
+connection. That turn's elicitation bridge maps the schema into a
+`station.input-request/v1` form (`@kontourai/station-shared/mcp-elicitation`,
+#3390), refusing any property type or bound it cannot render, and injects the
+form into the turn's `/chat` stream. The Station-agent adapter publishes it as
+the thread's `request.opened` (payload `inputRequest`), and the
+pending-requests strip renders it with the one input-request renderer.
+The answer returns through the orchestration `respondToRequest` command,
+pinned to the exact opened event; the service validates accepted content
+against that form and refuses invalid content with a reason, and the bridge
+re-checks it before the server sees it. Nothing is coerced or truncated.
+
+Live and rehydrated approval toasts suppress one-click answers for payloads
+with a string `serverId` and an array of `fields`. This small shape check
+keeps the full form reader out of the toast path; the event projection and
+pending-request cards still validate stored forms with the shared reader.
+A payload with that shape that fails the full reader follows ordinary request
+presentation without a one-click toast. Answer validation remains on the
+server and bridge paths described above.
+
+Truthfulness rules: `accept` only with content the person entered; `decline`
+only when they declined; a timeout (10 minutes, or the server's own request
+timeout), a stopped turn, a server cancellation or a stopped session all
+return `cancel`. A form that cannot be rendered, or a hosted turn with no
+bound session, is an error to the server, never a fabricated answer. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+now refuses Project member callers' Agent turns and pending-approval answers
+until the intersected-scope turn path in #3277 is implemented. See
+[Project membership](project-membership.md) for its covered routes and limits.
 
 ## App metadata
 
@@ -205,9 +264,11 @@ connection, and returns byte-capped content. The resource content may declare:
 ```
 
 Station ignores tool-level `csp` and `permissions`. Policy construction filters
-source strings by secure URL scheme: HTTPS for resource, frame and base-URI
+source strings by secure URL scheme: HTTPS for resource and base-URI
 sources, and HTTPS or WSS for connections. It emits restrictive defaults plus
-the declared sources. Scheme filtering is not a complete CSP source-expression
+the declared sources. Child-frame sources are refused even when `frameDomains`
+is declared. Direct peer/ICE constructors are disabled by the shared bootstrap;
+CSP alone does not govern WebRTC. Scheme filtering is not a complete CSP source-expression
 validator or proof of effective browser egress containment. Keep that assurance
 separate from metadata acceptance. Permissions are limited to the supported
 Apps fields.
@@ -234,8 +295,11 @@ The web host follows the Apps sandbox-proxy lifecycle:
    inner View.
 
 The MCP proxy endpoint serves `GET /mcp-ui/proxy`; the same dedicated listener
-also serves the fixed `/plugin-host/frame` bootstrap. Neither is a general
-asset server. The MCP proxy does not receive the resource URI, read resources,
+also serves the fixed `/plugin-host/frame` bootstrap and the separate
+[`/html-reply/frame` page-only bridge](../decisions/html-replies.md). None is a
+general asset server. HTML replies publish through station-control into their own transcript viewer;
+they do not use the MCP Apps tool bridge. The MCP proxy does not
+receive the resource URI, read resources,
 proxy arbitrary URLs, store credentials, or execute tools.
 The outer proxy response applies only a `frame-ancestors` CSP, bound to the
 configured Station UI origins. It deliberately applies no resource directives
@@ -263,13 +327,115 @@ All App requests cross the same server-side authorization boundary as other
 Station actions. The host bridge does not expose its configured provider
 credentials or direct MCP transport to the App.
 
+## Transcript previews
+
+Transcript app discovery is optional outside a connected workspace. In
+`main.tsx`, `PlatformSessionGate` wraps the app's `QueryClientProvider`;
+`LocalUiSessionGate` can render `UnpairedSampleWorkspace` and its real
+`MessageContent` before that query provider exists. Without a transcript-app
+workspace context, `TranscriptAppTools` issues no catalog request and keeps
+ordinary rows and batching. `TranscriptAppWorkspaceProvider` binds the current
+API base and authority-scoped query client inside `AuthorityQueryProvider`.
+Lazy chat rows consume only that small optional context: they do not read the
+Connect barrel or acquire a connection while rendering. Catalog reads use the
+SDK client entry. The same hook and element ancestry in both modes preserves
+mounted row state when calls complete. In the connected workspace, the existing
+catalog and hardened frame path remain authoritative. Local rendering is not
+app qualification.
+
+[ToolCallDisplay](../../src-ui/src/components/chat/ToolCallDisplay.tsx) mounts
+[TranscriptMCPApp](../../src-ui/src/components/chat/TranscriptMCPApp.tsx) beside a
+completed, non-error MCP result with a stable tool-call ID. The
+[reference reader](../../src-ui/src/components/chat/mcp-app-tool-ref.ts) accepts
+canonical `server/tool` or explicit `server`/`originalName` identity, without
+guessing from flattened underscores.
+It requires an untruncated successful MCP result envelope with a `content` array.
+That is only a cheap candidate filter: membership in the server's connected or
+shipped in-process UI-tool catalog is mandatory. The browser caches one `GET
+/integrations/:serverId/ui-tools` request per server for five minutes, shared by
+rows and batching. This is a stale snapshot, not a polling interval: newly declared
+Apps can wait until a stale query refetches on mount/focus. Reloading fetches the
+current membership. The endpoint reads tool-definition `_meta.ui.resourceUri`
+(or its legacy flat spelling); a result pointer alone grants nothing. Unknown,
+disconnected or unusable third-party connections return no UI tools without starting a
+process. Station Control uses its shipped in-process tool registrations and App
+resources, so inventory and Basis previews also work when the default Agent is
+bound to Codex and no Station-engine MCP connection exists. This qualifies
+frame mounting. The current runtime inventory App-read composition deliberately
+turns found projections into unavailable outcomes; this lane leaves that
+publication guard intact. Saved-result fixtures qualify the rendered inventory
+view, not successful production inventory tool execution.
+
+Candidates remain in ordinary batches until membership is confirmed. The
+query wrapper keeps the same ancestry while eligibility changes, preserving
+row state and the streaming wait clock. Membership discovery uses the same
+read-tier device permission as passive resolution and resource reads.
+
+The Codex adapter preserves `mcpToolCall.result` and emits `server/tool` names.
+This is a source path, not real-provider qualification. Claude-provider MCP calls
+cannot mount: `summarizeClaudeToolResult` stringifies output and their raw
+`mcp__` names lack canonical server identity. ACP and managed-engine result
+preservation remain unqualified. Explicit provider `server`/`originalName` is
+accepted; ambiguous underscore names are never split.
+
+At ingress, EventStore discards incoming `mcpAppResourceUri` claims and stamps
+that optional field only for successful content envelopes whose tool definition
+is in the already-open or shipped in-process catalog. The synchronous policy read
+uses the current bounded definition and applies enabled, disabled-tool and
+personal-credential restrictions just like membership. Replaying a terminal
+keeps its original stored stamp, including an absent stamp, independently of
+current catalog state; changed terminal content is still refused.
+A stamped event may retain its full envelope
+within the existing 24 KiB bound. Ordinary results, including forged result UI
+pointers, keep 84-character previews without waiting for catalog requests.
+Older readers ignore the additive field. Pre-stamp history reduced to text stays
+ordinary. Larger or provider-truncated results remain ordinary rows.
+
+The frame sends recorded input/result notifications without invoking
+`/initial-result` or the embedded-result fallback. Definition-only tools work;
+result metadata is not required. Resolution and resource requests carry
+`x-station-mcp-transcript: preview`, restricting catalog/read operations to
+already-open third-party connections or shipped Station Control resources,
+with no compatibility-catalog fallback. A disconnect
+between membership and resource fetch cannot launch a replacement server.
+Unknown or unavailable resolution adds no card. Rendering revocation deliberately
+shows an operator-policy card for a catalog-confirmed App. Unresolved native
+occurrences remain quiet; existing native refusal for pane frames is unchanged.
+Resource fetching always re-resolves the current declaration and render grant;
+no URI supplied by a result is fetched or compared as authority.
+
+Transcript previews advertise no server-tool, server-resource, or open-link
+capabilities and refuse unsolicited requests at the handler boundary. They have
+no message or model-context handler. The visible unavailable label applies even
+while an engine is running: this slice has no owning-session interaction lease.
+Transcript chrome has intrinsic height and a non-shrinking status line above
+the frame. Once resolution succeeds, resource loading reserves the initial frame
+height; Apps size notifications replace it within the existing 160–2,000 pixel
+bounds. A static App that reports no height retains the 360 pixel default. The
+demo uses the official SDK resize observer. This changes no resource-read timing.
+It retains the existing theme and sandbox posture and native-shell refusal.
+See the [decision](../decisions/mcp-app-transcript-previews.md).
+
+Remaining slices are authenticated occurrence/resource binding (including
+integration-generation changes), owning-session
+liveness, per-message approval with canonical dispatch, latest bounded
+per-app context notes delivered on the next user message, general link
+confirmation, fullscreen attention return, and navigation-away termination.
+No stored result proves that today's integration serves identical historical
+HTML. This slice retains current-catalog resource semantics.
+
+#3136 owns authored visual skill linkage and guided-session behavior, which this
+slice does not add. #3284 owns prompts/resources/elicitation/sampling, which
+rendering does not qualify. #3274 owns the standards compatibility matrix;
+this preview must not be advertised as complete MCP Apps interaction support.
+
 ## Threat controls
 
 | Threat | Control |
 | --- | --- |
 | App reaches Station DOM, cookies, or storage | Different-origin proxy plus an opaque inner frame |
 | App impersonates the trusted proxy | Inner frame has a distinct `WindowProxy`; source checks pin messages |
-| Network exfiltration | Resource-specific CSP; effective restrictions require source-expression and browser validation |
+| Network exfiltration | CSP blocks ordinary loads; shared bootstrap disables direct RTC. Nested srcdoc can obtain fresh RTC constructors and send UDP, so this is not complete network isolation. See [the review amendment](../decisions/html-replies.md#review-amendment-network-and-link-boundaries). |
 | Camera, microphone, location, or clipboard access | Allow only validated declared permissions |
 | Cross-server tool calls | Re-resolve the frame reference and pin `serverId` |
 | Model-only tool called by an App | Enforce Apps visibility on the server |

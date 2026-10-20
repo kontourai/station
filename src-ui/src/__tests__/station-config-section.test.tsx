@@ -26,7 +26,11 @@ import { SETTINGS_CATALOG } from '../views/settings/settings-catalog';
  */
 const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'approvalGuardian',
-  'telemetryEnabled',
+  'telemetryTier',
+  'productTelemetryEndpoint',
+  'productTelemetryKeyRef',
+  'otelTelemetryEndpoint',
+  'otelTelemetryKeyRef',
   'defaultMaxTurns',
   'defaultMaxOutputTokens',
   'defaultChatFontSize',
@@ -46,6 +50,11 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'mobileDeviceHubUrl',
   // #3157: whether a usage-limit stop resumes itself after the reset.
   'usageLimitAutoResume',
+  // #3386: whether Activity follows conversations outside every project.
+  'attachedSessionsOutsideProjects',
+  'reviewGuidesEnabled',
+  'reviewGuideModel',
+  'reviewGuideInstructions',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {
@@ -82,7 +91,76 @@ test('#2182: a key renders under the section its deep link names', () => {
   expect(disagreements).toEqual([]);
 });
 
-test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and round-trips', () => {
+test('per-publisher telemetry controls round-trip the saved choice and retain Off under DNT', () => {
+  const onChange = vi.fn();
+  const view = render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{ telemetryTier: { kontour: 'lite', operator: 'full' } }}
+      onChange={onChange}
+      telemetryPublishers={{
+        kontour: { tier: 'off', reason: 'DNT' },
+        operator: { tier: 'off', reason: 'DNT' },
+      }}
+    />,
+  );
+  const operator = screen.getByRole('combobox', {
+    name: 'Operator telemetry',
+  }) as HTMLSelectElement;
+  expect(operator.value).toBe('full');
+  expect(screen.getAllByText(/DO_NOT_TRACK is active/)).toHaveLength(2);
+  fireEvent.change(operator, { target: { value: 'off' } });
+  expect(onChange).toHaveBeenLastCalledWith({
+    telemetryTier: { kontour: 'lite', operator: 'off' },
+  });
+  view.rerender(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={onChange.mock.calls[0][0]}
+      onChange={onChange}
+    />,
+  );
+  expect(
+    (
+      screen.getByRole('combobox', {
+        name: 'Operator telemetry',
+      }) as HTMLSelectElement
+    ).value,
+  ).toBe('off');
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+    { target: { value: 'off' } },
+  );
+  expect(onChange).toHaveBeenLastCalledWith({
+    telemetryTier: { kontour: 'off', operator: 'off' },
+  });
+});
+
+test('DNT does not masquerade as a saved Off choice and selecting Off records a durable withdrawal', () => {
+  const onChange = vi.fn();
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+      telemetryPublishers={{
+        kontour: { tier: 'off', reason: 'DNT' },
+        operator: { tier: 'off', reason: 'DNT' },
+      }}
+    />,
+  );
+  const operator = screen.getByRole('combobox', {
+    name: 'Operator telemetry',
+  }) as HTMLSelectElement;
+  expect(operator.value).toBe('');
+  fireEvent.change(operator, { target: { value: 'off' } });
+  expect(onChange).toHaveBeenCalledWith({ telemetryTier: { operator: 'off' } });
+});
+
+test('telemetry destination controls edit separate addresses and references without turning keys into settings values', () => {
   const onChange = vi.fn();
   render(
     <StationConfigSection
@@ -92,16 +170,28 @@ test('USAGE TELEMETRY SETTINGS DEFECT: the registry-backed toggle renders and ro
       onChange={onChange}
     />,
   );
-  const toggle = screen.getByRole('switch', { name: 'Usage telemetry' });
-  expect(
-    toggle.getAttribute('aria-checked'),
-    'Usage telemetry toggle did not render as its default-on value',
-  ).toBe('true');
-  fireEvent.click(toggle);
-  expect(
-    onChange,
-    'Usage telemetry toggle did not update app config',
-  ).toHaveBeenCalledWith(expect.objectContaining({ telemetryEnabled: false }));
+  const values = [
+    [
+      'Product receiver address',
+      'https://receiver.test/v1/product/events',
+      'productTelemetryEndpoint',
+    ],
+    [
+      'Product receiver key reference',
+      'product-source',
+      'productTelemetryKeyRef',
+    ],
+    ['Collector address', 'https://collector.test', 'otelTelemetryEndpoint'],
+    ['Collector key reference', 'otel-source', 'otelTelemetryKeyRef'],
+  ] as const;
+  for (const [label, value, key] of values) {
+    const input = screen.getByRole('textbox', { name: label });
+    expect((input as HTMLInputElement).value).toBe('');
+    fireEvent.change(input, { target: { value } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ [key]: value }),
+    );
+  }
 });
 
 /**

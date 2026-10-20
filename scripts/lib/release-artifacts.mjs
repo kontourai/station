@@ -713,7 +713,9 @@ function validateContainer(inventory, assetsDir, containerDescriptor) {
     readContainerDescriptor(descriptorPath),
     { tag: inventory.tag, sourceSha: inventory.sourceSha },
   );
-  if (JSON.stringify(descriptor) !== JSON.stringify(inventory.container))
+  // assemble writes the inventory with sorted keys while the descriptor keeps
+  // its writer's field order, so compare canonically.
+  if (canonicalJson(descriptor) !== canonicalJson(inventory.container))
     fail('container descriptor does not match inventory metadata');
 }
 
