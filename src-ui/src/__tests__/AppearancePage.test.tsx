@@ -357,32 +357,38 @@ describe('Appearance page while a theme sheet loads', () => {
     ).toBeNull();
   });
 
-  // The applier's failure contract: `data-color-theme-failed` names the family
-  // whose latest sheet failed. The page must trust it even while a sheet link
-  // is still in the head, and drop the failure when the marker clears.
-  test('the root failure marker shows the failed state, and clearing it does not', async () => {
+  // The applier's failure contract (lib/color-theme-apply.ts):
+  // `data-color-theme-failed` names the family whose latest sheet failed and
+  // stays set while a retry is in flight. The card follows it: failed with
+  // nothing in flight, loading while a retry is on its way, and back to the
+  // ordinary state once the marker clears.
+  test("the failed state follows the applier's failure marker through retries and a new choice", async () => {
     renderPage();
     fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
-    // A link is still in flight; only the marker says it failed.
-    await act(async () => {
-      root.setAttribute('data-color-theme-failed', 'catppuccin');
-      await Promise.resolve();
-    });
-    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
-    expect(screen.getByRole('status').textContent).toBe(
-      "Couldn't load Catppuccin.",
-    );
-    // A marker for some other family is not this choice's failure.
-    await act(async () => {
-      root.setAttribute('data-color-theme-failed', 'nord');
-      await Promise.resolve();
-    });
-    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
-    await act(async () => {
-      root.removeAttribute('data-color-theme-failed');
-      await Promise.resolve();
-    });
+    settleSheets('error');
     await settleSheetsAndObserve();
+    expect(root.getAttribute('data-color-theme-failed')).toBe('catppuccin');
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+
+    // A retry that fails again goes back to failed, not to Loading forever.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(root.getAttribute('data-color-theme-failed')).toBe('catppuccin');
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
+    settleSheets('error');
+    await settleSheetsAndObserve();
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+
+    // Choosing another family clears the marker and its failure.
+    fireEvent.click(screen.getByRole('radio', { name: /^Nord/ }));
+    await settleSheetsAndObserve();
+    expect(root.getAttribute('data-color-theme-failed')).toBeNull();
+    expect(attributes().theme).toBe('nord');
+    expect(
+      screen.queryByRole('region', { name: 'Theme not loaded' }),
+    ).toBeNull();
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
   });
 

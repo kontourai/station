@@ -260,6 +260,10 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await alert.waitFor({ timeout: 10_000 });
     expect(await alert.textContent()).toContain("Couldn't load Catppuccin.");
     expect(await rootAttribute(page, 'data-color-theme')).toBeNull();
+    // The applier's own failure marker, not an inference of the page's.
+    expect(await rootAttribute(page, 'data-color-theme-failed')).toBe(
+      'catppuccin',
+    );
     expect(
       await page
         .locator('.appearance-theme.is-selected .appearance-theme__detail')
@@ -269,6 +273,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await page.getByRole('button', { name: 'Try again' }).click();
     await untilTheme(page, 'catppuccin');
     await alert.waitFor({ state: 'detached' });
+    expect(await rootAttribute(page, 'data-color-theme-failed')).toBeNull();
     expect(
       await page
         .locator('.appearance-theme.is-selected .appearance-theme__detail')

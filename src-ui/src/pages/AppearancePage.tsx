@@ -17,10 +17,11 @@ import {
 } from '../hooks/useKeyboardShortcut';
 import { useLocale } from '../i18n/LocaleContext';
 import {
-  applyColorTheme,
   COLOR_THEME_ACCENT_ATTRIBUTE,
   COLOR_THEME_ATTRIBUTE,
+  COLOR_THEME_FAILED_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
+  retryColorTheme,
 } from '../lib/color-theme-apply';
 import {
   type ColorThemeMode,
@@ -33,7 +34,6 @@ import {
   type ColorThemeOption,
   type ColorThemeSwatch,
 } from '../lib/color-themes';
-import { deviceSettingsStore } from '../lib/device-settings-store';
 import { AccentColorPicker } from '../views/settings/AccentColorPicker';
 import { formatSettingsMessage } from '../views/settings/settings-catalog';
 import './AppearancePage.css';
@@ -181,13 +181,6 @@ function ModeControl({
   );
 }
 
-/**
- * Set by the applier on the root to the family whose most recently requested
- * sheet failed, and cleared when a later apply succeeds or the selection
- * changes (the contract agreed with the applier's owner).
- */
-const COLOR_THEME_FAILED_ATTRIBUTE = 'data-color-theme-failed';
-
 const APPLIED_ATTRIBUTES = [
   COLOR_THEME_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
@@ -260,26 +253,21 @@ export function AppearancePage() {
     readAppliedSelection,
   );
   const [named, flight, failedFamily] = applied.split('#');
-  // Applied, failed, or on its way. Failure is the root's failed marker naming
-  // this family. Until the applier sets that marker, a choice with no sheet in
-  // flight that the root still does not name also failed: the applier drops a
-  // failed sheet and leaves the previous look in force, so it would otherwise
-  // read "Loading…" forever.
+  // Applied, on its way, or failed. A sheet in flight wins over the failure
+  // marker, because Try again requests the sheet again while the applier
+  // still names the earlier failure. With nothing in flight, the applier's
+  // marker says this family's latest sheet failed (lib/color-theme-apply.ts).
   const sheetState =
     named === selectionKey(resolved)
       ? 'applied'
-      : failedFamily === resolved.id || flight !== 'loading'
-        ? 'failed'
-        : 'loading';
+      : flight === 'loading'
+        ? 'loading'
+        : failedFamily === resolved.id
+          ? 'failed'
+          : 'loading';
   const loading = sheetState === 'loading';
   const failed = sheetState === 'failed';
-  // Asks the applier for the sheet again (it re-requests a failed one on
-  // every apply), with the same settings it is bound to.
-  const retry = () =>
-    applyColorTheme(
-      document.documentElement,
-      deviceSettingsStore.getSnapshot(),
-    );
+  const retry = () => retryColorTheme();
 
   const setMode = useCallback(
     (next: ColorThemeMode) => setDeviceSetting('theme', next),
