@@ -819,7 +819,11 @@
 
 /* ── Floating Save Pill ── */
 .settings--has-save .section-nav-rail__body {
-  padding-block-end: calc(var(--k-space-12) + var(--k-space-8) + var(--k-space-4));
+  padding-block-end: calc(
+    var(--k-space-12) +
+    var(--k-space-8) +
+    var(--k-space-4)
+  );
 }
 
 .settings__save-pill {
