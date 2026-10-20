@@ -1974,7 +1974,6 @@ describe('PUT /config/app refusal diagnostics', () => {
           undefined,
           undefined,
           undefined,
-          undefined,
           feedback,
         ),
       );

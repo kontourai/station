@@ -1235,7 +1235,6 @@ test('tier-change reason sends once before applying Off; standalone feedback req
     undefined,
     undefined,
     undefined,
-    undefined,
     (updated) => live.reconfigure(updated),
     async (publisher, reason) => {
       tiersAtSend.push(
