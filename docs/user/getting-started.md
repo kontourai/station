@@ -643,20 +643,27 @@ until Station answers instead.
 Once Station confirms a turn started, a late network error does not queue that
 message again.
 
-Until the agent has a message, its bubble is outlined rather than filled, with a
-short label:
+Until the agent has a message, its bubble is outlined rather than filled. On
+the way there it shows no text, only a small mark beside the bubble (hover it,
+or use a screen reader, for its words):
 
-- **Sending…**, also while another open window of the app is sending it
-- **Received**, which adds **safe to close** when Station keeps running without
-  the app, or **keep the app open** when the app's own Station stops with it
-- **Saved on this device · sends when connected**
-- **No answer yet · sends once Station confirms it never arrived**, after a send
-  that got no answer: when Station can be reached it is asked about the message,
-  which is sent once only if it never arrived
-- **Waiting behind an unsent message**: messages in a chat go in order, so a
+- a turning ring while it is **Sending**, also while another open window of the
+  app is sending it; the outline is dimmed
+- a check once Station has **Received** it. The mark's label adds **Safe to
+  close the app** when Station keeps running without the app, or **Keep the app
+  open** when the app's own Station stops with it. The composer's status pill
+  says **Starting** at the same time.
+- once the agent has it, the bubble fills and the check fades out
+
+When something needs your attention instead, the bubble opens one short line:
+
+- **Sends when connected**: kept on this device until Station can be reached
+- **No answer yet. Resends only if it never arrived.**, after a send that got no
+  answer: when Station can be reached it is asked about the message, which is
+  sent once only if it never arrived
+- **Waits for the unsent message above**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
-- **Saved on this device · waits for its Station**, for a message written for
-  another Station
+- **Waits for its own Station**, for a message written for another Station
 - **Not sent**, with **Retry** (the same message again, never a second copy) and
   **Edit** (the text goes back to the composer); **Discard unsent message** is in
   the message's **⋯** menu (on a phone, listed in its sheet)

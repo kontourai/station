@@ -878,21 +878,27 @@
   color: var(--text-muted);
 }
 
-/* The user's own message before the agent has it: outlined, with no fill,
-   and a short delivery line (`MessageDeliveryNote`). The outline is drawn
-   inside the bubble so the bubble keeps its size when it fills on delivery.
+/* The user's own message before the agent has it: outlined, with no fill.
+   The outline is drawn inside the bubble so the bubble keeps its size when it
+   fills on delivery. The happy path has no text (`MessageDeliveryNote`):
+   sending is a dimmed dashed outline with a turning ring beside the bubble;
+   received is the full dashed outline with a check; delivered fills the
+   bubble and the check fades out. Exceptions add one line with their action.
    The line style carries meaning beside colour: dashed while it is on its
-   way, solid once it needs the user (not sent, may have reached the agent).
-   Only a send under way keeps the accent; a send with no answer reads as a
-   caution. */
+   way, solid once it needs the user (not sent, may have reached the agent). */
 .message.user {
-  transition: background-color var(--motion-base) var(--ease-standard);
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    outline-color var(--motion-base) var(--ease-standard);
 }
 .message.user.message--undelivered {
   background: transparent;
   color: var(--text-primary);
   outline: 1px dashed var(--accent-primary);
   outline-offset: -1px;
+}
+.message.user.message--delivery-sending {
+  outline-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
 }
 .message.user.message--delivery-not-sent {
   outline: 1px solid var(--k-negative);
@@ -906,40 +912,129 @@
 }
 .message-delivery {
   display: grid;
-  gap: var(--k-space-1);
-  margin-top: var(--k-space-1);
   color: var(--text-secondary);
   font-size: var(--k-text-xs);
   line-height: 1.4;
+}
+/* The glyph sits just outside the bubble's start edge, out of the text's way
+   and out of flow, so a state change never moves the bubble or its
+   neighbours. Positioned against the bubble's own wrapper. */
+.message-delivery__glyph {
+  position: absolute;
+  inset-inline-start: calc(-1 * (var(--k-space-4) + var(--k-space-1)));
+  bottom: var(--k-space-2);
+  display: inline-grid;
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  color: var(--accent-primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.message-delivery:is(
+    [data-delivery-state="sending"],
+    [data-delivery-state="received"]
+  )
+  .message-delivery__glyph {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-delivery__glyph svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.message-delivery__glyph-ring {
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray var(--motion-base) var(--ease-standard);
+}
+.message-delivery__glyph-check {
+  stroke-dasharray: 10;
+  stroke-dashoffset: 10;
+  transition: stroke-dashoffset var(--motion-slow) var(--ease-out);
+}
+/* Sending: a dashed ring turns, slowly, while Station has not answered. */
+.message-delivery__glyph[data-glyph="sending"] {
+  opacity: 0.7;
+}
+.message-delivery__glyph[data-glyph="sending"] .message-delivery__glyph-ring {
+  stroke-dasharray: 3 2.75;
+  animation: message-delivery-turn calc(var(--motion-status-spin) * 4)
+    var(--ease-linear) infinite;
+}
+/* Received (and delivered, while it fades): the ring closes and the check
+   draws in. */
+.message-delivery__glyph[data-glyph="received"] .message-delivery__glyph-check {
+  stroke-dashoffset: 0;
+}
+@keyframes message-delivery-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+:root[data-page-hidden] .message-delivery__glyph-ring {
+  animation-play-state: paused;
+}
+/* An exception's line folds open in place (rows 0fr to 1fr) and folds away
+   the same way, so the bubble grows and shrinks smoothly. */
+.message-delivery__reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+.message-delivery__reveal[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+@starting-style {
+  .message-delivery__reveal[data-open] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+.message-delivery__reveal-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .message-delivery__line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-1) var(--k-space-2);
+  padding-top: var(--k-space-1);
 }
-/* The two states that need the user name themselves in their tone as well as
-   in words (AA on the page background in both themes). */
-.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label,
-.message-delivery[data-delivery-state="unanswered"] .message-delivery__label,
-.message-delivery[data-delivery-state="awaiting-confirmation"]
-  .message-delivery__label {
+/* The states that need the user name themselves in their tone as well as in
+   words (AA on the page background in both themes). */
+.message-delivery__label:is(
+  [data-tone="unconfirmed"],
+  [data-tone="unanswered"],
+  [data-tone="awaiting-confirmation"]
+) {
   color: var(--k-caution);
   font-weight: 500;
 }
-.message-delivery[data-delivery-state="not-sent"] .message-delivery__label {
+.message-delivery__label[data-tone="not-sent"] {
   color: var(--error-text, var(--k-negative));
   font-weight: 500;
 }
-/* The status regions stay in the accessibility tree while empty (so their
-   first text is announced), but take no space in the line or the grid. */
-.message-delivery__status:empty,
+/* The announcer speaks the received fact or the exception line; the visible
+   line is its sighted twin. Status regions stay in the accessibility tree
+   while empty (so their first text is announced) but take no space. */
+.message-delivery__status,
 .message-delivery__notice:empty {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+  white-space: nowrap;
 }
 .message-delivery__actions {
   display: inline-flex;

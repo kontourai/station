@@ -1047,11 +1047,14 @@ function MessageBubbleComponent({
             Sent by stopping the step that was running
           </div>
         )}
-        {undelivered && msg.clientId ? (
+        {/* Delivered is passed too: a note that showed an undelivered state
+            fades its glyph out rather than vanishing (it renders nothing for
+            a message that was already delivered when it mounted). */}
+        {msg.role === 'user' && msg.clientId && deliveryState ? (
           <MessageDeliveryNote
             chatKey={activeSession.id}
             clientTurnId={msg.clientId}
-            state={undelivered}
+            state={deliveryState}
             text={textContent}
             notice={deliveryNotice}
           />

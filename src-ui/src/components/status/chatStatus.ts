@@ -3,6 +3,7 @@ import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
+import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
 export type ChatStatusKind =
@@ -56,7 +57,8 @@ export interface ChatStatusInput {
   stationHasSend?: boolean;
   /**
    * The Station keeps running when this app closes (`useStationOutlivesApp`).
-   * Only `true` lets the pill say closing the app is safe.
+   * Only `true` lets the pill say closing the app is safe; `false` says keep
+   * it open, exactly as the bubble's received glyph does.
    */
   stationOutlivesApp?: boolean;
 }
@@ -160,23 +162,20 @@ export function deriveChatStatus(
   }
   // The chat's own send, before the agent has its turn: the message is on
   // its way, not being worked on. Only while no turn is open on the server.
+  // Once Station's lookup says it has the send, the pill says what the bubble
+  // says: received, and the agent is starting. One kind for both, so the pill
+  // eases its width and swaps the word instead of re-entering.
   if (input.sendAwaitingTurnStart && !activity?.openTurn) {
+    const received = input.stationHasSend === true;
     return {
       kind: 'sending',
       tone: 'neutral',
       glyph: 'working',
-      label: 'Sending',
-      details: input.stationHasSend
-        ? [
-            {
-              text:
-                input.stationOutlivesApp === true
-                  ? 'Station has your message and is starting the agent. It is safe to close the app.'
-                  : 'Station has your message and is starting the agent.',
-            },
-          ]
+      label: received ? 'Starting' : 'Sending',
+      details: received
+        ? [{ text: receivedDeliveryLabel(input.stationOutlivesApp) }]
         : [],
-      action: input.stationHasSend ? 'details' : undefined,
+      action: received ? 'details' : undefined,
     };
   }
   const details: ChatStatus['details'] = [];
