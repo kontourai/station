@@ -9,6 +9,14 @@ import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 export const SESSION_CONTEXT_CARD_WIDTH = 280;
 
 /**
+ * How long the card and its header chip stay mounted to play their exit.
+ * Matches `--motion-base` in tokens.css: the CSS owns the animation's
+ * duration and this owns when the element leaves the tree, so the two must
+ * agree or the surface is deleted mid-animation.
+ */
+export const SESSION_CONTEXT_EXIT_MS = 200;
+
+/**
  * Whether the card fits beside the transcript: the conversation surface keeps
  * the transcript's own floor (`TRANSCRIPT_MIN_WIDTH`, derived from the
  * message column's gutters, bubble width and padding) after giving the card

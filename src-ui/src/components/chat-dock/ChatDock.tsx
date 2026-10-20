@@ -76,6 +76,7 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import { useExitTransition } from '../../hooks/useExitTransition';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
@@ -166,7 +167,10 @@ import {
   shouldClearProjectChatScope,
 } from './projectChatRequest';
 import { SessionContextChip } from './SessionContextChip';
-import { useSessionContextCardFits } from './sessionContextCardModel';
+import {
+  SESSION_CONTEXT_EXIT_MS,
+  useSessionContextCardFits,
+} from './sessionContextCardModel';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
@@ -948,6 +952,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     modelsStale,
     sessionCodingLayout,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionProjectName,
     unreadCount,
   } = useChatDockViewModel({
@@ -1627,6 +1632,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     useState(false);
   const sessionContextCardShown =
     sessionContextCardVisible && sessionContextCardPresent;
+  // The header chip stands in for the card while the dock is too narrow for
+  // it. Both play an exit before they unmount (`SESSION_CONTEXT_EXIT_MS`), so
+  // trading one for the other is a crossfade, not a snap.
+  const sessionContextChipPresence = useExitTransition(
+    sessionContextAvailable &&
+      !sessionContextCardVisible &&
+      (isPaneOpen || isCollapsedDragPreview),
+    SESSION_CONTEXT_EXIT_MS,
+  );
   // The composer's context meter: for a chat the inbox lists as open (the
   // same gate the header meter had), never for an imported session.
   const contextMeterShown = Boolean(
@@ -2394,6 +2408,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       workspace: {
         projectName: projectSlug ? (sessionProjectName ?? projectSlug) : null,
         directory: sessionDisplayCwd ?? null,
+        managed: sessionCwdManaged,
         // The More menu's own gate for Open in Coding (#1536 F), else the
         // session's project page.
         action:
@@ -2453,6 +2468,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionContextProjectSlug,
     sessionProjectName,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionContextLayoutSlug,
     gitStatus,
     sessionContextStatus,
@@ -2465,6 +2481,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryProjectId,
     activeOrchestrationSessionRead,
   ]);
+  // The card stays mounted for its exit with the props it last showed: the
+  // live props go to null the moment the chat stops offering a card.
+  const sessionContextCardPresence = useExitTransition(
+    sessionContextCardVisible && sessionContextCardProps !== null,
+    SESSION_CONTEXT_EXIT_MS,
+  );
+  const lastSessionContextCardPropsRef = useRef(sessionContextCardProps);
+  if (sessionContextCardProps)
+    lastSessionContextCardPropsRef.current = sessionContextCardProps;
+  const sessionContextCardRenderedProps = sessionContextCardPresence.exiting
+    ? lastSessionContextCardPropsRef.current
+    : sessionContextCardProps;
   /**
    * The inventory's host registration, ONE per dock: the desktop header
    * mounts it, and on a phone the dock mounts it beside the mobile header
@@ -2850,14 +2878,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // it is folded away, the chip is the way to it.
               backgroundTasksBadgeHidden={sessionContextCardShown}
               sessionContextChip={
-                sessionContextAvailable &&
-                !sessionContextCardVisible &&
-                (isPaneOpen || isCollapsedDragPreview) ? (
+                sessionContextChipPresence.mounted ? (
                   <SessionContextChip
                     status={sessionContextStatus}
                     triggerRef={sessionContextChipRef}
                     expanded={isSessionContextSheetOpen}
                     onOpen={() => setIsSessionContextSheetOpen(true)}
+                    exiting={sessionContextChipPresence.exiting}
                   />
                 ) : null
               }
@@ -3165,10 +3192,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     />
                   ) : null}
                 </div>
-                {sessionContextCardVisible && sessionContextCardProps ? (
+                {sessionContextCardPresence.mounted &&
+                sessionContextCardRenderedProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}
-                    componentProps={sessionContextCardProps}
+                    componentProps={
+                      sessionContextCardPresence.exiting
+                        ? {
+                            ...sessionContextCardRenderedProps,
+                            exiting: true,
+                          }
+                        : sessionContextCardRenderedProps
+                    }
                     pending={null}
                   />
                 ) : null}

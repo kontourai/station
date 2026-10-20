@@ -54,6 +54,11 @@ const fixture = vi.hoisted(() => ({
   cardChunk: 'ready' as 'ready' | 'loading' | 'failed',
   // Renders of the real card's rows, counted through the one hook they call.
   cardRowRenders: 0,
+  // The session's directory and whether the server reports it as a folder
+  // Station created for the chat (`cwdManagedWorkspace`).
+  cwd: '/work/demo',
+  cwdManaged: false,
+  realExit: false,
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -208,9 +213,19 @@ vi.mock('../hooks/useDerivedSessions', () => ({
   useDerivedSessions: () => [],
 }));
 
-vi.mock('../hooks/useExitTransition', () => ({
-  useExitTransition: (open: boolean) => ({ mounted: open, exiting: false }),
-}));
+// Exits are instant here unless a test asks for the real hook
+// (`fixture.realExit`): most of this file is about WHICH surface shows, not
+// how it leaves.
+vi.mock('../hooks/useExitTransition', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useExitTransition')>();
+  return {
+    useExitTransition: (open: boolean, exitMs: number) => {
+      const real = actual.useExitTransition(open, exitMs);
+      return fixture.realExit ? real : { mounted: open, exiting: false };
+    },
+  };
+});
 
 vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => {},
@@ -225,7 +240,8 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
     activeOrchestrationSessionRead: 'present',
     gitStatus: fixture.git,
     sessionProjectName: 'Demo project',
-    sessionDisplayCwd: '/work/demo',
+    sessionDisplayCwd: fixture.cwd,
+    sessionCwdManaged: fixture.cwdManaged,
     sessionCodingLayout: undefined,
     dockProjectSlug: undefined,
     mobileProjectName: undefined,
@@ -448,6 +464,9 @@ beforeEach(() => {
   fixture.pullRequests = [];
   fixture.cardChunk = 'ready';
   fixture.cardRowRenders = 0;
+  fixture.cwd = '/work/demo';
+  fixture.cwdManaged = false;
+  fixture.realExit = false;
   // The one layout fact the fit reads: the conversation surface's width.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const rect = realRect.call(this);
@@ -649,6 +668,74 @@ describe('each row opens the existing surface', () => {
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toMatch(/demo/),
     );
+  });
+});
+
+describe('the card and its chip trade places without a snap', () => {
+  test('a folding card plays its exit while the chip enters, then leaves the tree', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.classList.contains('session-context-card--exiting')).toBe(
+      false,
+    );
+
+    await resizeSurface(600);
+    // Still mounted, leaving: inert and out of the accessibility tree.
+    expect(card()?.classList.contains('session-context-card--exiting')).toBe(
+      true,
+    );
+    expect(card()!.getAttribute('aria-hidden')).toBe('true');
+    expect(chip()).not.toBeNull();
+    // Gone once its exit has played.
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
+  test('a chip giving way to the card fades where it stands before it unmounts', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 600;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).not.toBeNull());
+    // The leaving chip is hidden from assistive tech, so query it directly.
+    const leaving = document.querySelector('.session-context-chip');
+    expect(leaving?.classList.contains('session-context-chip--exiting')).toBe(
+      true,
+    );
+    expect(leaving?.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() =>
+      expect(document.querySelector('.session-context-chip')).toBeNull(),
+    );
+  });
+});
+
+describe('a folder Station made for the chat is named, not printed', () => {
+  const MANAGED = `/home/me/.station/runtime/acp-workspaces/session/${'ab12'.repeat(16)}`;
+
+  test('the Workspace row says "Chat workspace" and keeps the hash path out of the text', async () => {
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = true;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).toContain('Chat workspace');
+    expect(row.textContent).not.toContain('acp-workspaces');
+    // The path is still there for whoever needs it, as the label's tooltip.
+    expect(row.querySelector(`[title="${MANAGED}"]`)).not.toBeNull();
+  });
+
+  test('a folder the server does not flag prints its path, even one shaped like a managed workspace', async () => {
+    // The UI does not match the path itself: only the server's flag names it.
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = false;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).not.toContain('Chat workspace');
+    expect(row.textContent).toContain(MANAGED);
   });
 });
 
