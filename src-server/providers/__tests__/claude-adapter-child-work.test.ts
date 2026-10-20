@@ -751,6 +751,11 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     { ordering: 'before start', identity: 'matching', expectedTool: 'Write' },
     { ordering: 'after start', identity: 'matching', expectedTool: 'Write' },
     {
+      ordering: 'no child reply',
+      identity: 'matching',
+      expectedTool: undefined,
+    },
+    {
       ordering: 'before resume',
       identity: 'matching',
       expectedTool: undefined,
@@ -780,8 +785,8 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     'resumed reply $ordering with $identity resume identity attributes only current-run tools',
     ({ ordering, identity, expectedTool }) => {
       const [, innerCall, rerunCall] = spawnCalls();
-      const [, inner, rerun] = expectedChildIds('nested-agent');
-      const { events } = replayClaudeTaskCapture('nested-agent', {
+      const [outer, inner, rerun] = expectedChildIds('nested-agent');
+      const { events, record } = replayClaudeTaskCapture('nested-agent', {
         rewrite: (lines) => {
           const resumeAt = lines.findIndex(
             (line) =>
@@ -821,6 +826,11 @@ describe('#3163 Claude subagent model and transcript identity', () => {
                     name: 'Write',
                     input: {},
                   },
+                  {
+                    type: 'text' as const,
+                    text: 'Child-only reply',
+                    citations: null,
+                  },
                 ],
               },
             },
@@ -836,25 +846,40 @@ describe('#3163 Claude subagent model and transcript identity', () => {
                 content:
                   identity === 'absent'
                     ? []
-                    : resume.message.message.content.map((block) =>
-                        block.type === 'tool_use'
-                          ? {
-                              ...block,
-                              id:
-                                identity === 'other call'
-                                  ? 'unrelated-resume'
-                                  : block.id,
-                              name:
-                                identity === 'other tool' ? 'Read' : block.name,
-                              input: {
-                                recipient:
-                                  identity === 'other recipient'
-                                    ? 'other-child'
-                                    : inner,
-                              },
-                            }
-                          : block,
-                      ),
+                    : [
+                        {
+                          type: 'text',
+                          text: 'Parent resume request',
+                          citations: null,
+                        },
+                        ...resume.message.message.content.map((block) =>
+                          block.type === 'tool_use'
+                            ? {
+                                ...block,
+                                id:
+                                  identity === 'other call'
+                                    ? 'unrelated-resume'
+                                    : block.id,
+                                name:
+                                  identity === 'other tool'
+                                    ? 'Read'
+                                    : block.name,
+                                input: {
+                                  recipient:
+                                    identity === 'other recipient'
+                                      ? outer
+                                      : inner,
+                                },
+                              }
+                            : block,
+                        ),
+                        {
+                          type: 'tool_use',
+                          id: 'parent-read',
+                          name: 'Read',
+                          input: {},
+                        },
+                      ],
               },
             },
           };
@@ -864,7 +889,8 @@ describe('#3163 Claude subagent model and transcript identity', () => {
               : ordering === 'before start'
                 ? startAt
                 : startAt + 1;
-          rewritten.splice(insertAt, 0, toolReply);
+          if (ordering !== 'no child reply')
+            rewritten.splice(insertAt, 0, toolReply);
           return rewritten;
         },
       });
@@ -874,6 +900,24 @@ describe('#3163 Claude subagent model and transcript identity', () => {
       ).toBeUndefined();
       const resumed = items.find((item) => item.childId === rerun);
       expect(resumed?.latestTool).toBe(expectedTool);
+      expect(record.lastReportedModel).toBe(SESSION_MODEL);
+      const parentEvents = events.filter(
+        (event) => event.method !== 'child-work.updated',
+      );
+      expect(JSON.stringify(parentEvents)).not.toContain(INNER_MODEL);
+      expect(JSON.stringify(parentEvents)).not.toContain('resumed-write');
+      expect(JSON.stringify(parentEvents)).not.toContain('Child-only reply');
+      expect(
+        parentEvents.some(
+          (event) =>
+            event.method === 'tool.started' &&
+            event.toolCallId === 'parent-read',
+        ),
+      ).toBe(identity !== 'absent' && identity !== 'subagent sender');
+      for (const delta of deltasOf(events)) {
+        expect(JSON.stringify(delta)).not.toContain('Parent resume request');
+        expect(JSON.stringify(delta)).not.toContain('parent-read');
+      }
       expect(resumed?.model).toEqual(
         expectedTool
           ? { id: INNER_MODEL, source: 'subagent-reply' }

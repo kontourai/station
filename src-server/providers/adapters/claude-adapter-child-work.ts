@@ -91,15 +91,15 @@ export interface ClaudeChildWorkState {
   closed: boolean;
   /**
    * A child's own reply model/tool that arrived before its `task_started`,
-   * keyed by the spawning `tool_use_id`. Consumed by `task_started`; bounded,
-   * oldest first, so a reply whose task never registers can't pin memory.
+   * keyed by the spawn or corroborated resume `tool_use_id`. Consumed by
+   * `task_started`; bounded oldest first so unregistered replies can't pin memory.
    */
   pendingReplies: Map<string, Pick<ChildWorkItem, 'model' | 'latestTool'>>;
   /** Settled task id → observed top-level SendMessage call awaiting a start. */
   pendingResumes: Map<string, string>;
 }
 
-/** Bound on `pendingReplies`. */
+/** Bound on pending reply facts and corroborated resumes. */
 const CLAUDE_PENDING_REPLIES_MAX = 64;
 
 /** The slice of the adapter's per-session record this module reads. */
@@ -391,8 +391,10 @@ export function observeClaudeSubagentReply(
   const state = stateOf(context.record);
   const toolUseId = message.parent_tool_use_id;
   if (state.closed) return;
+  const content = message.message?.content;
   if (toolUseId === null) {
-    for (const block of message.message.content) {
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
       if (block.type !== 'tool_use' || block.name !== 'SendMessage') continue;
       const input = block.input;
       if (!input || typeof input !== 'object' || !('recipient' in input))
@@ -430,7 +432,6 @@ export function observeClaudeSubagentReply(
   const model: ChildWorkModel | undefined = id
     ? { id, source: 'subagent-reply' }
     : undefined;
-  const content = message.message?.content;
   let latestTool: string | undefined;
   if (Array.isArray(content)) {
     for (const block of content) {
