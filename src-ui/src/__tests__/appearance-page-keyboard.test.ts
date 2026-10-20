@@ -546,7 +546,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     await page.close();
   });
 
-  test("a hovered Station accent swatch still paints only its 28px circle", async () => {
+  test('a hovered Station accent swatch still paints only its 28px circle', async () => {
     const page = await open();
     const swatch = page.getByRole('button', { name: 'Accent color #f43f5e' });
     await swatch.hover();
