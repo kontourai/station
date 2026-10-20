@@ -379,9 +379,10 @@ export function CoreUpdateCheck({
   // offer's snapshot.
   const stagedFlow =
     status?.installKind === 'archive-service' && status.stagedUpdates === true;
-  const { data: serverUpdateState } = useServerUpdateStateQuery(apiBase, {
-    enabled: stagedFlow,
-  });
+  const { data: serverUpdateState, refetch: refetchServerUpdateState } =
+    useServerUpdateStateQuery(apiBase, {
+      enabled: stagedFlow,
+    });
   const pushedProgress =
     stagedFlow && serverUpdateState?.supported
       ? serverUpdateState.progress
@@ -430,7 +431,11 @@ export function CoreUpdateCheck({
     // The accepted POST is history now: nothing about it may style the offer.
     resetApply();
     void check();
-  }, [trackedOutcome, check, resetApply]);
+    // The pushed state was cached before the restart, and the server that
+    // answers now may never have pushed: read it again, or the card falls
+    // back to the pre-restart `staged` line.
+    if (stagedFlow) void refetchServerUpdateState();
+  }, [trackedOutcome, check, resetApply, stagedFlow, refetchServerUpdateState]);
   const awaitingOutcomeRecheck =
     serviceOutcomeAt !== null && dataUpdatedAt <= serviceOutcomeAt;
   // A timer, not a render-time clock read: once polling stops nothing else

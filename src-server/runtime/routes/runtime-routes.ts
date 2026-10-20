@@ -2800,12 +2800,6 @@ export function configureRuntimeRoutes(
       context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
     logger: context.logger,
   });
-  // The policy is a setting: a saved change of IT re-evaluates at once (the
-  // coordinator ignores every other setting's change).
-  context.eventBus.subscribe((message) => {
-    if (message.event === SERVER_EVENTS.CONFIG_CHANGED)
-      void serverUpdate.settingsChanged();
-  });
   context.app.route(
     '/api/system',
     createSystemRoutes(

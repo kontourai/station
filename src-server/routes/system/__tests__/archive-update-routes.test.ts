@@ -2419,3 +2419,45 @@ describe('the coordinator, review round 5 (#3851)', () => {
     expect(readFileSync(intentFile(install), 'utf8')).toBe(before);
   });
 });
+
+describe('the coordinator hears settings saves on its own subscription (#3851)', () => {
+  test('a config:changed event re-runs the policy once it changed', async () => {
+    const install = makeInstall();
+    let busListener:
+      | ((message: { event: string; data?: Record<string, unknown> }) => void)
+      | undefined;
+    let policy = 'never';
+    const coordinator = new ServerUpdateCoordinator({
+      provenance: () => resolveInstallProvenance(install.moduleDir),
+      options: {
+        env: launcherEnv(install),
+        fetchFn: fetchFn as unknown as typeof fetch,
+        pinnedKeys: TEST_KEYS,
+        platform: 'linux',
+        arch: 'x64',
+      },
+      readDownloadPolicy: async () => policy,
+      listRunningTurns: async () => [],
+      subscribe: (listener) => {
+        busListener = listener;
+        return () => undefined;
+      },
+      publish: () => undefined,
+      logger: { info: vi.fn(), warn: vi.fn() },
+      setTimer: () => ({ cancel: () => undefined }),
+    });
+    coordinator.start();
+    await coordinator.check('boot', { force: true });
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+    policy = 'immediately';
+    busListener?.({ event: 'config:changed', data: { source: 'config' } });
+    await vi.waitFor(() =>
+      expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+        true,
+      ),
+    );
+    coordinator.stop();
+  });
+});

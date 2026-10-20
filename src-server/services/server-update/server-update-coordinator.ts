@@ -1070,6 +1070,13 @@ export class ServerUpdateCoordinator {
     event: string;
     data?: Record<string, unknown>;
   }): void {
+    // The policy is a setting: a saved change of IT re-evaluates at once
+    // (settingsChanged ignores every other setting's change). Handled on the
+    // subscription start() makes, so only a launcher-run server listens.
+    if (message.event === 'config:changed') {
+      void this.settingsChanged();
+      return;
+    }
     // Any runtime event may be the end of the last turn (a completion, an
     // abort, an exit, a runtime error, a stop settling): rather than name
     // them all, every one re-evaluates, at most once per interval (F5). The
