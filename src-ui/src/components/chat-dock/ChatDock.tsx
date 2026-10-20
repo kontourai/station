@@ -3046,7 +3046,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   className="chat-dock__conversation-surface"
                   ref={conversationSurfaceRef}
                 >
-                  <div ref={sessionInventoryMountRef} />
+                  <div
+                    ref={sessionInventoryMountRef}
+                    className="chat-dock__inventory-mount"
+                  />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}

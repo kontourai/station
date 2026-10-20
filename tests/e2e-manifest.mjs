@@ -1710,6 +1710,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-inventory-layout.spec.ts',
+    bucket: 'extended',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#3882: a real chat (one turn through a local model fixture) in a wide bottom dock opens Chat inventory from the session context card at 1600px and 1440px and measures the dock: the inventory aside sits flush against the transcript (no dead gutter), the transcript keeps its 640px floor, the card gives way to the inventory (its chip remains) and returns when the inventory closes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/task-answer-support.spec.ts',
     bucket: 'extended',
     surface: 'Durable Tasks / Answer support',

@@ -2597,6 +2597,25 @@ button:hover {
   min-height: 0;
 }
 
+/* #3882: the Chat inventory portals into this mount through its own wrapper
+   div. Neither may box the inventory: as block boxes they made a flex item
+   twice the aside's width, a dead gutter beside a narrowed transcript. Both
+   step aside so the inventory is a flex item of the surface and takes its
+   own clamped width (SessionInventoryCompact.css). The earlier rule for the
+   wrapper named it a child of the surface, which it never was. */
+.chat-dock__inventory-mount,
+.chat-dock__inventory-mount > div:has(> .session-inventory-compact) {
+  display: contents;
+}
+
+/* With the inventory aside open the transcript keeps its 640px floor
+   (TRANSCRIPT_MIN_WIDTH): the aside shrinks toward its own minimum first.
+   The session context card gives way to both (sessionContextCardModel.ts). */
+.chat-dock__conversation-surface:has(.session-inventory-compact--aside)
+> .chat-dock__content-area {
+  min-width: min(640px, calc(100% - 16rem));
+}
+
 .chat-dock__modal-background {
   display: contents;
 }
