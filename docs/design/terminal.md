@@ -57,8 +57,8 @@ stack has structural problems that incremental fixes would not remove:
   `-o nopromptsp`; `COLORTERM=truecolor`; scrubbed server-private variables.
 - Ghostty's official `libghostty-vt` emulator compiled to WebAssembly, with
   a Station-owned browser surface (input, IME, selection, links, rendering).
-- Splits and groups, thread-scoped layout reconciled against the server's
-  session list, keep-mounted recent drawers.
+- Splits and groups kept in a per-binding server record reconciled against
+  the live session list, keep-mounted recent drawers.
 - "Add to chat" as a composer chip with line ranges; URL and `path:line:col`
   links routed to the preview pane and the editor.
 - Script runs whose completion is detected by a per-run random end marker
@@ -111,8 +111,9 @@ resize, signal, list, and journal reads. Two implementations:
   is the fallback when no supervisor is present.
 
 The supervisor survives a core server restart or upgrade, not a machine
-reboot. After a reboot, Station restores the layout instead: the same
-terminals reopen in the same working directories with their journals shown
+reboot. After a reboot, Station restores instead: the server record reopens
+the same terminals, groups, and splits, and the pane workspace restores where
+they are shown. The terminals reopen in the same working directories with their journals shown
 above a "restored after restart" divider. Nothing is re-run automatically.
 
 #### Session kinds
@@ -134,7 +135,9 @@ only spawns, relays bytes, and writes journals.
 
 ### Sessions
 
-A session's identity is `(projectId, bindingKey, terminalId)`, where
+Every session has a server-generated `terminalId` that is unique across the
+instance; today's ids are unique only within a project and are replaced. The
+session also records `(projectId, bindingKey)`, its authorization scope, where
 `bindingKey` is a thread, a worktree, or the project itself. The server
 resolves the working directory from the binding: thread worktree, else the
 configured project working directory. A client may request a subdirectory,
@@ -215,7 +218,7 @@ route ships.
   its accessibility mirror.
 
 The Coding layout uses only this public surface and the `terminal` pane
-descriptor, the same surface a plugin gets. A boundary test fails if anything
+target described under Plugins, the same surface a plugin gets. A boundary test fails if anything
 under `src-ui/src/components/coding-layout/` imports terminal internals. A
 sample plugin opens and renders a terminal pane, which proves the parity.
 
@@ -283,18 +286,19 @@ regression. The emulator phase does not ship until this exists:
 - The Coding layout keeps a resizable lower drawer with tabs, groups, and up
   to four splits per group.
 - State has two owners, and no field is written by both:
-  - **Presentation** belongs to the pane workspace contract (#3875):
-    whether the terminal
-    pane or drawer is shown, where, its toggles, and its size or height.
+  - **Presentation** belongs to the pane workspace contract proposed in
+    #3875: whether the terminal pane or drawer is shown, where, its toggles,
+    and its size or height.
     Coding's panel writer and the region arrangement keep these.
   - **Content** belongs to the terminal server record, stored per binding and
     reconciled with the live session list: which terminals and groups exist,
-    splits inside the terminal pane, and the active terminal. This replaces
+    the split arrangement and sizes inside the terminal pane, and the active
+    terminal. This replaces
     the unscoped `coding-terminal-tabs` sessionStorage key.
-- Terminal identity is the server's terminal id. The pane occurrence
-  (`workspace-coding-terminal`, `pane:builtin:coding:terminal`) is
-  presentation identity only: a Project-bound alias that resolves to the
-  binding's terminal group. Hosts that need one terminal owner key on the
+- Terminal identity is the server's `terminalId`. The pane keys
+  `workspace-coding-terminal` and `pane:builtin:coding:terminal` become
+  presentation identity only: an alias that resolves to the binding's
+  terminal group. Hosts that need one terminal owner key on the
   terminal id; nothing infers a process from equal pane keys.
 - Default shortcuts: toggle drawer, new terminal, split, split vertical,
   close, find. Registered in the shortcut registry so they appear in the
@@ -302,19 +306,23 @@ regression. The emulator phase does not ship until this exists:
 
 ### Plugins
 
-A plugin opens a terminal through the pane workspace's occurrence-bound
-open, reveal, and close capability, as a closed built-in target rather than a
-plugin-supplied key:
+A plugin opens a terminal through the pane workspace's open, reveal, and
+close capability, which #3875 proposes and does not exist yet. The terminal
+is a closed built-in target rather than a plugin-supplied key:
 
 - The target shape is plain data declared in the pane host contract,
-  `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`. The
+  `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
+  `binding` is a session's `bindingKey`. The
   terminal contracts module re-exports it. It carries no working directory:
   the server decides the cwd from the binding.
-- Station's terminal host binding validates the target and checks the
-  caller's own `terminal:operate` or `terminal:observe` grant for that
-  project. A report or descriptor grant never implies terminal access.
-- The pane host stamps Station, context, and generation, and reports opened,
-  focused, replaced, or unavailable as it does for other targets.
+- Station's terminal host binding validates the target against the caller's
+  own grants for that project. Creating a terminal (`new`) needs
+  `terminal:operate`. Opening an existing `terminalId` needs
+  `terminal:observe` and is read-only unless the caller also holds
+  `terminal:operate`. Holding a pane or plugin grant never implies terminal
+  access.
+- The pane host reports the outcome (opened, focused, replaced, or
+  unavailable) in the same form it uses for its other targets.
 
 ### Agent integration
 
@@ -341,7 +349,7 @@ plugin-supplied key:
 | `POST /api/coding/exec` fallback | Kept for hosts without node-pty |
 | `PAIRING_SCOPE_TERMINAL_OPERATE` | Kept; `terminal:observe` added |
 | `terminalShell` setting, `TerminalCapability`, system-status `terminal` | Kept |
-| `coding-terminal-*` sessionStorage keys | Content (tabs, active terminal) migrated once into the server record; presentation (open, height) handed to Coding's panel writer; then ignored |
+| `coding-terminal-*` sessionStorage keys | Content (tabs, active terminal) migrated once into the server record; presentation (open, height) imported once by Coding's panel writer; then ignored |
 | `terminal-history/<id>.txt` | Imported as a first journal segment on first attach |
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
 | `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
@@ -364,7 +372,8 @@ verification.
 4. **Layout:** terminal pane, standalone route, Coding drawer with groups and
    splits on the pane workspace's presentation seams, server-side content
    state, shortcuts, the SDK view export with its boundary test, the terminal
-   pane target, and the sample plugin.
+   pane target, and the sample plugin. The pane target and the sample plugin
+   depend on the pane workspace capability from #3875.
 5. **Agent integration:** add to chat, script runner, agent tools.
 6. **Removal:** old listener, endpoints, client components, and the dead
    `.coding-terminal-fallback` end-to-end check; documentation and the
