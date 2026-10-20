@@ -1242,16 +1242,16 @@ deleted or replaced in j:
 
 | Site | Replacement |
 | --- | --- |
-| `src-ui/src/app-shell/project-layout-kind.ts:32, :87, :130` | Derive the kind and chat placement from `primary` and `presentation`. Keep the rule that a contributed layout cannot claim a built-in host |
-| `src-ui/src/app-shell/ProjectLayoutRenderer.tsx:521, :1719`, with `BuiltinCodingLayoutHost` (:437, about 1,200 lines) and its imports at :8-22 and :60-68 | Slice a's generic stack host |
+| `src-ui/src/app-shell/project-layout-kind.ts` (lines 32, 87, 130) | Derive the kind and chat placement from `primary` and `presentation`. Keep the rule that a contributed layout cannot claim a built-in host |
+| `src-ui/src/app-shell/ProjectLayoutRenderer.tsx` (lines 521, 1719), with `BuiltinCodingLayoutHost` (:437, about 1,200 lines) and its imports at :8-22 and :60-68 | Slice a's generic stack host |
 | `src-ui/src/components/chat-dock/useChatDockViewModel.ts:266` (read by `ChatDock.tsx` as `sessionCodingLayout`) | A contracts helper, `findPrimaryChatLayout(layouts)` |
 | `src-ui/src/views/ProjectPage.tsx:271` | The same helper |
 | `src-ui/src/views/home/useHomeViewModel.ts:251` | The same helper |
 | `src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx:271` | The layout's own icon field |
 | `src-ui/src/workspace-panes/LayoutWorkspacePane.tsx:318` | "Main only" derived from `presentation: 'stack'` |
 | `src-ui/src/workspace-panes/workspacePaneDirectRoute.ts:18` | A descriptor flag such as `directRoute` |
-| `src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts:89-91, :106, :151, :168, :480` (the `:coding` descriptor-id suffix checks and the `builtin:coding` source id) | Deleted with the built-in `coding` renderer |
-| `src-ui/src/regions/region-surface-panes.ts:305-309, :321` (the architecture ratchet's source map, not a type check) | Repointed at the plugin's panes |
+| `src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts` (lines 89-91, 106, 151, 168, 480; the `:coding` descriptor-id suffix checks and the `builtin:coding` source id) | Deleted with the built-in `coding` renderer |
+| `src-ui/src/regions/region-surface-panes.ts` (lines 305-309, 321; the architecture ratchet's source map, not a type check) | Repointed at the plugin's panes |
 | `packages/contracts/src/layout.ts:268-275` (`BUILTIN_CODING_LAYOUT`) | Replaced by the bundled plugin's contribution (i0); the docstring's promise is restated |
 | `packages/contracts/src/workspace-pane-builtin-renderers.ts:31-34` | Remove `coding` and the three Coding pane renderer names |
 | `packages/contracts/src/workspace-coding-{file,diff,evidence}-composition.ts` (`resolveBuiltinCoding*Grant`) | These grant only when `provenance.origin === 'builtin'`, so a plugin pane would be **denied**. Replaced by install-time capability grants (jG) **[security]** |
