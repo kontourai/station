@@ -477,6 +477,14 @@ describe('a plugin opens its own related panes', () => {
       'not-authorized',
     ],
     [
+      'the plugin disabled since the caller was mounted',
+      () => {
+        facts.catalog = { ...PROJECT, entries: [] };
+      },
+      { station: 'station-a' } as Authority,
+      'not-authorized',
+    ],
+    [
       'an unverified Station',
       () => {},
       'unverified' as Authority,
