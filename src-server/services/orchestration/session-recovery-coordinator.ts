@@ -1346,7 +1346,7 @@ export class SessionRecoveryCoordinator {
    */
   usageLimitResumeChoice(threadId: string): UsageLimitResumeChoice | undefined {
     const waiting = this.waitingUsageLimitIntent(threadId);
-    if (!waiting || waiting.outcome !== 'armed') return undefined;
+    if (waiting?.outcome !== 'armed') return undefined;
     try {
       return this.options.resumeChoices?.read(waiting.fingerprint);
     } catch {

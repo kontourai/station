@@ -9,6 +9,7 @@ import { useUsageLimitRecovery } from '../../hooks/useUsageLimitRecovery';
 import type { ChatSession } from '../../types';
 import { clearSnooze, writeSnooze } from '../../utils/activity-snooze-store';
 import { clockTime } from '../../utils/relativeTime';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './UsageLimitBanner.css';
 
@@ -244,6 +245,56 @@ function UsageLimitBannerFor({
       : 'Reset time unknown. Resume when your limit is back.';
   const failed = resume.isError || resumeAtReset.isError || hold.isError;
   const busy = resume.isPending || resumeAtReset.isPending || hold.isPending;
+  const resumeNowButton = (
+    <Button
+      variant={canChoose && !autoOn ? 'secondary' : 'primary'}
+      size="sm"
+      pending={resume.isPending}
+      pendingLabel="Resuming…"
+      disabled={busy}
+      title={
+        dueKnown && !resetPassed
+          ? 'Your limit may not have reset yet.'
+          : undefined
+      }
+      onClick={() => resume.mutate()}
+    >
+      Resume now
+    </Button>
+  );
+  const resumeAtButton =
+    canChoose && !autoOn ? (
+      <Button
+        variant="primary"
+        size="sm"
+        pending={resumeAtReset.isPending}
+        pendingLabel="Saving…"
+        disabled={busy}
+        onClick={() =>
+          resumeAtReset.mutate(undefined, {
+            onSuccess: () => writeSnooze(snoozeId, dueMs, Date.now()),
+          })
+        }
+      >
+        Resume at {resetLabel}
+      </Button>
+    ) : undefined;
+  const dontResumeButton =
+    canChoose && autoOn ? (
+      <Button
+        size="sm"
+        pending={hold.isPending}
+        pendingLabel="Saving…"
+        disabled={busy}
+        onClick={() =>
+          hold.mutate(undefined, {
+            onSuccess: () => clearSnooze(snoozeId, Date.now()),
+          })
+        }
+      >
+        Don't resume
+      </Button>
+    ) : undefined;
 
   return (
     <section
@@ -267,54 +318,13 @@ function UsageLimitBannerFor({
           That didn't go through. Try again.
         </p>
       ) : null}
-      <div className="usage-limit-banner__actions">
-        {canChoose && !autoOn ? (
-          <Button
-            variant="primary"
-            size="sm"
-            pending={resumeAtReset.isPending}
-            pendingLabel="Saving…"
-            disabled={busy}
-            onClick={() =>
-              resumeAtReset.mutate(undefined, {
-                onSuccess: () => writeSnooze(snoozeId, dueMs, Date.now()),
-              })
-            }
-          >
-            Resume at {resetLabel}
-          </Button>
-        ) : null}
-        <Button
-          variant={canChoose && !autoOn ? 'secondary' : 'primary'}
-          size="sm"
-          pending={resume.isPending}
-          pendingLabel="Resuming…"
-          disabled={busy}
-          title={
-            dueKnown && !resetPassed
-              ? 'Your limit may not have reset yet.'
-              : undefined
-          }
-          onClick={() => resume.mutate()}
-        >
-          Resume now
-        </Button>
-        {canChoose && autoOn ? (
-          <Button
-            size="sm"
-            pending={hold.isPending}
-            pendingLabel="Saving…"
-            disabled={busy}
-            onClick={() =>
-              hold.mutate(undefined, {
-                onSuccess: () => clearSnooze(snoozeId, Date.now()),
-              })
-            }
-          >
-            Don't resume
-          </Button>
-        ) : null}
-      </div>
+      {/* Two actions at most: the choice this stop offers, and Resume now. */}
+      <ActionRow
+        className="usage-limit-banner__actions"
+        overflowLabel="More usage limit actions"
+        primary={resumeAtButton ?? resumeNowButton}
+        secondary={resumeAtButton ? resumeNowButton : dontResumeButton}
+      />
     </section>
   );
 }

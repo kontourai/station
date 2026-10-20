@@ -512,7 +512,7 @@ export class AgentWakeUpDelivery {
   fire(id: string): void {
     if (this.stopped) return;
     const record = this.ports.store.wakeUp(id);
-    if (!record || record.state !== 'pending') return;
+    if (record?.state !== 'pending') return;
     const now = this.now();
     if (now - record.dueAtMs > AGENT_WAKE_UP_MAX_HORIZON_MS) {
       this.ports.store.settleWakeUp(id, 'failed', now, {

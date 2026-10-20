@@ -155,7 +155,7 @@ function JobProposalCard({
             <dd>{job.agent}</dd>
           </>
         ) : null}
-        <dt>Prompt</dt>
+        <dt>Instructions</dt>
         <dd className="agent-schedule-card__prompt" title={job.prompt}>
           {job.prompt}
         </dd>
