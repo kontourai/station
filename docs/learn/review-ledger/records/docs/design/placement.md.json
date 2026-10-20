@@ -180,7 +180,17 @@
 
     "src-ui/src/contexts/background-tasks-store.ts",
 
-    "src-server/providers/adapters/claude-adapter-child-work.ts"
+    "src-server/providers/adapters/claude-adapter-child-work.ts",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/session-event-reads.ts",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"
   ],
 
   "checks": [
