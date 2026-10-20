@@ -1,4 +1,4 @@
-# Browser-preview host spike (Station #1376)
+# Browser-preview host spike (archive#1376)
 
 > **Historical host-selection research:** platform observations below belong
 > to the dated desktop experiment. For the current server-hosted pane,

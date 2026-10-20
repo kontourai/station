@@ -31,10 +31,10 @@ category.
 - [agent-engine-unification.md](agent-engine-unification.md) — Design: Agent–engine unification
 - [agent-interaction-capabilities.md](agent-interaction-capabilities.md) — Agent browser and computer access
 - [ai-ui-bridge-expansion.md](ai-ui-bridge-expansion.md) — AI↔UI bridge expansion — scoping
-- [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
+- [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (archive#1423)
 - [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
 - [automations.md](automations.md) — Station Automations
-- [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
+- [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (archive#1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (archive#1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
@@ -56,7 +56,7 @@ category.
 - [knowledge-foundation.md](knowledge-foundation.md) — Knowledge foundation — K2..K5 interface contract
 - [knowledge-recall-ui.md](knowledge-recall-ui.md) — Knowledge recall UI boundary
 - [live-work-session.md](live-work-session.md) — Live-work session contract
-- [local-bootstrap-token.md](local-bootstrap-token.md) — Local-bootstrap token (station#1991)
+- [local-bootstrap-token.md](local-bootstrap-token.md) — Local-bootstrap token (archive#1991)
 - [local-model-tool-calling.md](local-model-tool-calling.md) — Local-model (Ollama) tool calling — how to do it best
 - [mcp-ui-host.md](mcp-ui-host.md) — MCP Apps in Station
 - [mobile-credential-authority.md](mobile-credential-authority.md) — Mobile credential authority boundary
@@ -90,7 +90,7 @@ category.
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards
 - [shell-plugins-distributions.md](shell-plugins-distributions.md) — Shell kernel, plugin contributions and distribution manifests
-- [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)
+- [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (archive#193 shell convergence)
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
