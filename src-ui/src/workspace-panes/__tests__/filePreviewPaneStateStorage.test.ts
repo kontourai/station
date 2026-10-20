@@ -147,8 +147,15 @@ describe('File Preview pane state storage', () => {
     const stuckKey = filePreviewPaneStateStorageKey(stuck.instance.stateKey);
     target.values.set(stuckKey, JSON.stringify(stuck.state));
     writePaneFence(target, stuck.instance.stateKey, 'station-a');
+    // Delegating, not spread: `length` must stay live for the reclaim to
+    // see every record.
     const failing = {
-      ...target,
+      getItem: target.getItem,
+      setItem: target.setItem,
+      key: target.key,
+      get length() {
+        return target.length;
+      },
       removeItem: (key: string) => {
         if (key === stuckKey) throw new Error('storage refused');
         return target.removeItem(key);
@@ -171,7 +178,17 @@ describe('File Preview pane state storage', () => {
       writePaneFence(target, entry.instance.stateKey, 'station-a');
     }
     const next = preview(30);
-    writeFilePreviewPaneState(failing, next.instance.stateKey, next.state);
+    expect(
+      writeFilePreviewPaneState(failing, next.instance.stateKey, next.state),
+    ).toBe(true);
+    // The reclaim ran: every other orphan, and its fence, is gone.
+    expect(
+      [...target.values.keys()].filter((key) =>
+        key.startsWith('station:pane-fence:v1:'),
+      ),
+    ).toEqual([
+      `station:pane-fence:v1:${encodeURIComponent(stuck.instance.stateKey)}`,
+    ]);
     expect(target.values.has(stuckKey)).toBe(true);
     expect(readPaneFence(failing, stuck.instance.stateKey).status).toBe(
       'fenced',
