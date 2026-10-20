@@ -219,7 +219,7 @@ describe('tasks help inventory', () => {
       'station tasks show-inputs <taskId> [--json]',
       'station tasks attach-result <taskId> --session=<sessionId> --event=<eventId>',
       'station tasks show-results <taskId> [--json]',
-      'station tasks basis <taskId> [--answer-reference=<referenceId>] [--format=summary|json]',
+      'station tasks basis <taskId> [--answer-reference=<referenceId>] [--format=summary|json] [--json]',
       'station tasks show-support <taskId>',
       'station tasks list-support-bundles <taskId> --reference=<referenceId>',
       'station tasks list-support-claims <taskId> --reference=<referenceId> --bundle=<bundleId>',
