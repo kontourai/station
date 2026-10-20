@@ -1065,11 +1065,20 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   // the pane's tab without moving the page.
   await page.setViewportSize({ width: 1280, height: 2400 });
   await openBasis.scrollIntoViewIfNeeded();
+  // Off the position a reveal would scroll to (the strip just below the
+  // header), so a needless reveal would move the page.
+  await page.evaluate(() => {
+    let node = document.querySelector('.task-workspace__room')?.parentElement;
+    while (node && node.scrollHeight <= node.clientHeight)
+      node = node.parentElement;
+    node?.scrollBy(0, -150);
+  });
   expect(
     await inViewBelowHeader(
       page.getByRole('tablist', { name: 'Workspace panes' }),
     ),
   ).toBe(true);
+  expect(await inViewBelowHeader(openBasis)).toBe(true);
   const offsetsBefore = await scrollOffsets(page);
   await openBasis.click();
   await expectOpenedPaneRevealed(page, nativeBasis);
