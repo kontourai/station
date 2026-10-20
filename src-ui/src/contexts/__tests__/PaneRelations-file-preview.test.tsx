@@ -54,7 +54,7 @@ import {
   type FakeLocks,
   installFakeLocks,
   removeLocks,
-  storageSnapshot,
+  settledStorageSnapshot,
 } from './paneRelationsHarness';
 
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
@@ -299,9 +299,9 @@ describe('related file previews', () => {
   test('an open for a conversation the opener no longer shows is superseded and changes nothing', async () => {
     await mount();
     act(() => probe.setSelection?.(DOCS_SELECTION));
-    const before = storageSnapshot();
+    const before = await settledStorageSnapshot();
     expect(await open('src/a.ts')).toEqual({ ok: false, reason: 'superseded' });
-    expect(storageSnapshot()).toEqual(before);
+    expect(await settledStorageSnapshot()).toEqual(before);
     expect(previewsInRight()).toEqual([]);
   });
 
@@ -348,13 +348,13 @@ describe('related file previews', () => {
     document.body.append(focus);
     focus.focus();
     const arrangement = structuredClone(probe.model?.regions);
-    const before = storageSnapshot();
+    const before = await settledStorageSnapshot();
     try {
       expect(await open('src/b.ts')).toEqual({
         ok: false,
         reason: 'guard-cancelled',
       });
-      expect(storageSnapshot()).toEqual(before);
+      expect(await settledStorageSnapshot()).toEqual(before);
       expect(probe.model?.regions).toEqual(arrangement);
       expect(document.activeElement).toBe(focus);
     } finally {
@@ -384,10 +384,10 @@ describe('refusals leave everything as it was', () => {
     await mount();
     const restore = setup?.() ?? (() => {});
     const arrangement = structuredClone(probe.model?.regions);
-    const before = storageSnapshot();
+    const before = await settledStorageSnapshot();
     try {
       expect(await open('src/a.ts')).toEqual({ ok: false, reason });
-      expect(storageSnapshot()).toEqual(before);
+      expect(await settledStorageSnapshot()).toEqual(before);
       expect(probe.model?.regions).toEqual(arrangement);
     } finally {
       restore();

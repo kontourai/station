@@ -16,7 +16,7 @@ import {
   AuthorityHarness,
   installFakeLocks,
   removeLocks,
-  storageSnapshot,
+  settledStorageSnapshot,
 } from '../../contexts/__tests__/paneRelationsHarness';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
@@ -223,14 +223,14 @@ test('a layer pane with unsaved work: Cancel changes nothing; continue keeps it 
     // Beginning the edit kept it.
     await waitFor(() => expect(relations?.relationOf(dirty)?.kept).toBe(true));
     const arrangement = structuredClone(model?.regions);
-    const before = storageSnapshot();
+    const before = await settledStorageSnapshot();
     const focused = document.activeElement;
     expect(await openFile('b.ts')).toEqual({
       ok: false,
       reason: 'guard-cancelled',
     });
     expect(model?.regions).toEqual(arrangement);
-    expect(storageSnapshot()).toEqual(before);
+    expect(await settledStorageSnapshot()).toEqual(before);
     expect(layerPane()).toBe(dirty);
     expect(document.activeElement).toBe(focused);
 
@@ -286,10 +286,10 @@ test('on a desktop, closing a related preview’s tab asks its guard, then remov
     );
     act(() => close.focus());
     const arrangement = structuredClone(model?.regions);
-    const before = storageSnapshot();
+    const before = await settledStorageSnapshot();
     act(() => close.click());
     expect(model?.regions).toEqual(arrangement);
-    expect(storageSnapshot()).toEqual(before);
+    expect(await settledStorageSnapshot()).toEqual(before);
     expect(document.activeElement).toBe(close);
     expect(relations?.relationOf(preview)).toBeDefined();
   } finally {

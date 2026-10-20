@@ -1,4 +1,5 @@
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
+import { act } from '@testing-library/react';
 import { type ReactNode, useState } from 'react';
 import { AuthorityPersistenceContext } from '../AuthorityPersistenceContext';
 
@@ -103,12 +104,27 @@ export function AuthorityHarness({
   );
 }
 
-/** Every storage key whose value differs between two snapshots. */
-export function storageSnapshot(): Record<string, string> {
+function storageSnapshot(): Record<string, string> {
   const snapshot: Record<string, string> = {};
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
     if (key !== null) snapshot[key] = localStorage.getItem(key) ?? '';
   }
   return snapshot;
+}
+
+/**
+ * Every localStorage key and value, read once the region model's coalesced
+ * arrangement write has landed. That write trails a change by 150ms
+ * (`REGION_ARRANGEMENT_PERSIST_DELAY_MS`), so a snapshot taken sooner can be
+ * raced by the write of an EARLIER change — and one taken after a refusal
+ * would miss an arrangement write the refusal wrongly scheduled.
+ */
+export async function settledStorageSnapshot(): Promise<
+  Record<string, string>
+> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+  return storageSnapshot();
 }
