@@ -212,12 +212,7 @@ const loadSourceQuoteDrafts = () =>
 // floats over the transcript. Its own chunk, loaded only for a Project chat.
 const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
 
-const loadQueuedMessages = () =>
-  import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
-    default: QueuedMessages,
-  }));
-
-// station#3706: lazy for the same reason as the queue above — most sessions
+// station#3706: lazy because most sessions
 // never hold a refused follow-up, so the chunk loads only when one exists.
 const loadUnsentMessages = () =>
   import('../chat/UnsentMessages').then(({ UnsentMessages }) => ({
@@ -1553,19 +1548,19 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {activeSession.conversationId && !activeSession.replay ? (
+      {/* One pending-message list: this browser's queue and what Station
+          holds for the conversation (#3868). It renders nothing while both
+          are empty, and stays mounted so its rows can animate in and out. */}
+      {activeSession.queuedMessages.length || !activeSession.replay ? (
         <LazyBoundary
-          key={activeSession.conversationId}
+          key={activeSession.conversationId ?? activeSession.id}
           load={loadConversationInboxMessages}
           pending={null}
-          componentProps={{ conversationId: activeSession.conversationId }}
-        />
-      ) : null}
-      {activeSession.queuedMessages.length ? (
-        <LazyBoundary
-          load={loadQueuedMessages}
-          pending={null}
           componentProps={{
+            conversationId: activeSession.replay
+              ? undefined
+              : activeSession.conversationId,
+            conversationActive: isExecutionActive,
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,

@@ -89,15 +89,15 @@ recreate an observation when its pending read settles. Other conversations and
 Stations retain their own observations. Use **Resync** on the
 conversation or **Refresh inbox** to request fresh observations.
 
-**Messages held by Station** lists follow-ups already stored in the open
-conversation's server inbox, including those submitted from another client.
-Its pending count covers waiting and sending messages. A failed read says
-unavailable; it does not mean the queue is empty. **Refresh** reads it again.
-**Remove** withdraws a waiting message when your identity is allowed to do so;
-a message already being sent cannot be removed. An unknown delivery outcome
-stays visible without being counted as pending. This list is separate from
-browser-local queued drafts; the composer's ordinary Queue action still uses
-those local drafts.
+The pending-message list above the composer also shows follow-ups Station
+holds in the open conversation's server inbox, marked **Held by Station**,
+including those submitted from another client. Its count covers waiting and
+sending messages; a message with an unknown delivery outcome stays visible
+without being counted. If the list can't be read after showing held messages,
+it says so and offers **Retry**; that does not mean nothing is held.
+**Remove** withdraws a waiting held message when your identity is allowed to do
+so; a message already being sent cannot be removed. The composer's ordinary
+Queue action still keeps its follow-ups in this browser.
 
 ## Gates, Evidence, And Receipts
 

@@ -553,20 +553,29 @@ protected wire command before invoking an engine. The pending marker must save
 successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
-The open conversation also shows **Messages held by Station**, a separate
-[server inbox view](../../src-ui/src/components/chat/ConversationInboxMessages.tsx).
+Follow-ups Station holds in the open conversation's server inbox share the
+pending-message list with this browser's queued follow-ups
+([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
 It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
 for that conversation and verified Station identity, including messages submitted
-by another client. Waiting and sending rows contribute to its pending count;
-unknown or refused delivery remains visible separately. A failed read shows
-unavailable rather than zero. Foreground polling, event-driven invalidation,
-focus/reconnect and **Refresh** request fresh observations. **Remove** or
-**Dismiss** uses the original message key and the server's authorization and placement checks;
-rows without a permitted key are read-only. They offer no local edit, reorder,
-send-now or steer action. This view does not transfer ordinary busy-composer
-submissions from browser-local storage into the server inbox.
+by another client. Held rows read **Held by Station** and sit below the local
+rows, in the server's send order. Waiting and sending rows count as pending;
+unknown or refused delivery stays visible, flagged for review, without being
+counted. A message both queued locally and held by Station (the same
+`clientTurnId`) appears once, as the held row. While neither holds anything the
+list renders nothing. Reads are silent: polling (every 2s while the
+conversation is working or holds messages, every 15s otherwise), turn-fact
+invalidation and focus/reconnect change the list only when the answer changes.
+A failed read after held rows were shown replaces them with a
+**Couldn't load held messages** line and its **Retry**, never a zero count.
+**Remove** or **Dismiss** uses the original message key and the server's
+authorization and placement checks; rows without a permitted key are
+read-only. Held rows offer no local edit, reorder, send-now or steer action.
+This view does not transfer ordinary busy-composer submissions from
+browser-local storage into the server inbox. Rows, and the list itself, grow in
+and collapse out (height and opacity) rather than popping.
 
-The browser-local pending-message section starts collapsed, showing only its
+The pending-message section starts collapsed, showing only its
 count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
