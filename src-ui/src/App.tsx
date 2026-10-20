@@ -112,6 +112,7 @@ import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
+import { useTurnNotificationReads } from './hooks/useTurnNotificationReads';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
 
@@ -170,6 +171,10 @@ function App() {
   // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
   useNotificationOsAlerts();
+  // A turn ending the person attends to (chat on screen, focused window,
+  // recent input) is read: its failure must not escalate to their other
+  // devices minutes later.
+  useTurnNotificationReads();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
   // #2585: tell Station whether this document is being looked at, so

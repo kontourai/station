@@ -3396,6 +3396,21 @@ export class DevicePairingService {
   }
 
   /**
+   * The same mint-time stamp by device id, for background work that acts for
+   * a device without holding its credential (notification delivery, the
+   * agent-activity reader): a request on the device's own credential reads
+   * as the operator when this is set (`pairedDevicePrincipal`). Relay
+   * aliases never carry it (see `credentialLocality`); a request on one
+   * reads as the device itself.
+   */
+  deviceLocality(deviceId: string): 'home-possession' | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.locality === 'home-possession'
+      ? 'home-possession'
+      : undefined;
+  }
+
+  /**
    * Mint-KIND lookup for a home-possession credential (archive#3677 PR 3).
    * Returns a kind only when the possession proof is also present — a
    * pre-#3677 record has neither field and reads `undefined`, which every

@@ -921,11 +921,10 @@ export interface ConfigureRuntimeRoutesContext {
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
   >;
-  // station#1225: shared per-user live-`/events`-subscriber presence — read
-  // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
-  // `configureRuntimeSupportServices`'s push-on-completion wiring
-  // (`wireTurnCompletionNotifications`), so both sides observe the SAME
-  // connection state instead of two independently-tracked counts.
+  // station#1225: shared per-user live-`/events`-subscriber presence —
+  // written by `createOrchestrationRoutes` (connect/disconnect bookkeeping)
+  // and read back by its `/presence/summary` roster. Notification delivery
+  // reads focus and `clientStreamPresence` instead (#2620).
   orchestrationStreamPresence: OrchestrationStreamPresence;
   /**
    * #2585: focus presence written by `POST /api/presence/focus`. The runtime
@@ -7400,6 +7399,10 @@ export function configureRuntimeRoutes(
       getVapidPublicKey: () => webPushService.getPublicKey(),
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       setPushSubscription: (deviceId, subscription) =>
         context.environmentSecurityService.devicePairing.setPushSubscription(
           deviceId,
@@ -7419,6 +7422,10 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       loadOrCreateStationKey: async () =>
         (await pushSigningKeyStore.loadOrCreate()).thumbprint,
       stationId: () =>

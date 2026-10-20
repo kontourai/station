@@ -607,8 +607,8 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and notifies "Your agent replied" when the owner
-is offline. A send while it runs is refused with the retryable code
+`provider_turn_completed`), and records a "Your agent replied" notification
+whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,

@@ -2076,9 +2076,9 @@ export function createOrchestrationRoutes(
     hostedTenantRegistry?: HostedTenantRegistry;
     /**
      * archive#1225: per-user live-subscriber presence for the `/events`
-     * stream, shared with the push-on-completion gate
-     * (`turn-completion-notifications.ts`) so it knows whether the owning
-     * user is actually watching before scheduling a push. Optional and
+     * stream, read back by `/presence/summary` below (the runtime shares
+     * one instance). Turn-completion notifications no longer consult it:
+     * the delivery router decides per surface. Optional and
      * defaulted to a private, route-local instance so every existing test
      * that constructs this route without one keeps working unchanged — a
      * route-local fallback still tracks connect/disconnect correctly within
@@ -6090,9 +6090,8 @@ export function createOrchestrationRoutes(
       let closeReason: 'client-abort' | 'authorization-expired' | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
-      // BEFORE anything else can `await` — the push-on-completion gate
-      // (`turn-completion-notifications.ts`) must never see a window where
-      // a client that is in fact connecting is reported as absent.
+      // BEFORE anything else can `await`, so the `/presence/summary` roster
+      // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
       const releasePresence = presenceSubject
@@ -6111,9 +6110,9 @@ export function createOrchestrationRoutes(
       // `stream.close()` in its own outer `finally` on an uncaught throw; it
       // has no idea this route registered presence/eventBus state that also
       // needs releasing. Without this, a setup-time throw would leak this
-      // user's presence count forever — `isConnected(userId)` would stay
-      // `true` and silently disable push-on-completion for that user for
-      // the rest of the process lifetime.
+      // user's presence count forever — `isConnected(userId)` and the
+      // `/presence/summary` roster would report them connected for the rest
+      // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
@@ -6129,7 +6128,7 @@ export function createOrchestrationRoutes(
             closeReason ??= 'client-abort';
             // Release what the connection holds NOW, not in `finally`: a store
             // read that never settles would otherwise keep this user counted
-            // as present (suppressing push-on-completion) and subscribed. All
+            // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
             stopActivityFlush?.();

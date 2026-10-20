@@ -1075,10 +1075,9 @@ export class StationRuntime {
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   public readonly eventBus = new EventBus();
-  // archive#1225: shared per-user live-`/events`-subscriber presence, read
-  // by both `createOrchestrationRoutes` and the push-on-completion wiring —
-  // see `ConfigureRuntimeRoutesContext.orchestrationStreamPresence`'s doc
-  // comment for why this must be the ONE instance both sides observe.
+  // archive#1225: shared per-user live-`/events`-subscriber presence for
+  // `createOrchestrationRoutes` — see
+  // `ConfigureRuntimeRoutesContext.orchestrationStreamPresence`'s doc.
   public readonly orchestrationStreamPresence = new OrchestrationStreamPresence(
     {
       onRosterOp: (op) => orchestrationStreamPresenceRosterOps.add(1, { op }),

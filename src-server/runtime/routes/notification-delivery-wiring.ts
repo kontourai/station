@@ -50,6 +50,8 @@ export interface NotificationDeliveryWiringDeps {
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
   devicePairing: WebPushDeliveryDevicePairing & {
     listDevices(): PairedDevice[];
+    /** Mint-time home-possession, so a device reads as its own requests do. */
+    deviceLocality(deviceId: string): 'home-possession' | undefined;
   };
   webPushService: Pick<WebPushService, 'send'>;
   canUserReadSession(
@@ -123,7 +125,15 @@ export function wireNotificationDelivery(
     ],
     resolver: createPairingAudienceResolver({
       listDevices: () => deps.devicePairing.listDevices(),
-      devicePrincipalId: (device) => pairedDevicePrincipal(device).id,
+      // The principal the device's own requests resolve to, which is also
+      // the principal its focus reports are recorded under: a home-possession
+      // credential (the desktop app, the local browser UI) reads as the
+      // operator in both, so its focus quiets the operator's other surfaces.
+      devicePrincipalId: (device) =>
+        pairedDevicePrincipal(
+          device,
+          deps.devicePairing.deviceLocality(device.id),
+        ).id,
       operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
       // Personal mode only (delivery is off in hosted mode), minted the way
       // the session-list route mints a device's authority.
