@@ -217,7 +217,7 @@ publication fails; no source job or candidate is rerun by this handling.
 `Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
 same-repository main-target PR closes merged. The merged-close path retires
 qualified optional delivery as described below. On a new CI request, it reads the
-current same-repository PR head and cancels queued or running checks for older
+current same-repository PR head and cancels queued, pending or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. It never cancels merge-group,
 main-push, manual diagnostic or publication runs. Missing PR attribution leaves
@@ -558,8 +558,13 @@ jobs and two affected-test shard jobs run across all PRs. Both families split
 work into two buckets; one-shard PRs can use both shard buckets, and larger
 plans retain every shard. Waiting jobs consume no runner. Different-head
 supersession still cancels obsolete source runs, including native FIFO
-`pending` waiters, after rechecking the live PR head and run attempt; same-head duplicates wait
-rather than cancelling another run's proof. Merge-group, push and manual
+`pending` waiters, after rechecking the live PR head and run attempt. A normal
+cancellation request is followed to its observed state. If the same obsolete
+attempt still waits after a bounded settlement check, the controller may issue
+one force-cancel after revalidating the PR and run identities and confirming
+that no unfinished job has an assigned runner. Missing terminal confirmation
+fails the controller; cancellation never becomes source PASS. Same-head
+duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
 diagnostic jobs use separate source-specific groups. These four PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.

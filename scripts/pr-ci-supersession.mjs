@@ -333,6 +333,107 @@ async function retireMergedDelivery(pr, number, repository) {
   }
 }
 
+function sameObsoleteRun(live, run, pr, number, repository) {
+  return (
+    live.id === run.id &&
+    live.run_attempt === run.run_attempt &&
+    live.head_sha === run.head_sha &&
+    live.head_sha !== pr.head.sha &&
+    live.event === 'pull_request_target' &&
+    live.path === run.path &&
+    WORKFLOWS.has(live.path) &&
+    live.head_branch === pr.head.ref &&
+    live.head_repository?.full_name === repository &&
+    live.pull_requests?.some((pull) => pull.number === number)
+  );
+}
+
+async function settleObsoleteCancellation(run, pr, number, repository) {
+  let live = await github(`actions/runs/${run.id}`);
+  if (!sameObsoleteRun(live, run, pr, number, repository)) return;
+  if (live.status !== 'completed') {
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    live = await github(`actions/runs/${run.id}`);
+    if (!sameObsoleteRun(live, run, pr, number, repository)) return;
+  }
+  if (live.status === 'completed') {
+    console.log(`Obsolete run ${run.id} is terminal: ${live.conclusion}`);
+    return;
+  }
+  if (!LIVE_RUN_STATES.has(live.status))
+    throw new Error(`Unknown cancellation state for obsolete run ${run.id}`);
+  const current = await github(`pulls/${number}`);
+  if (
+    current.state !== 'open' ||
+    current.base?.ref !== 'main' ||
+    current.head?.sha !== pr.head.sha ||
+    current.head?.ref !== pr.head.ref ||
+    current.head?.repo?.full_name !== repository
+  )
+    return;
+  const jobs = await completeListing(`actions/runs/${run.id}/jobs`, 'jobs');
+  if (
+    !jobs.every(
+      (job) =>
+        job.run_id === run.id &&
+        job.run_attempt === run.run_attempt &&
+        job.head_sha === run.head_sha,
+    )
+  )
+    throw new Error(`Obsolete run ${run.id} has mismatched job identity`);
+  if (
+    jobs.some(
+      (job) =>
+        (job.status !== 'completed' && !LIVE_RUN_STATES.has(job.status)) ||
+        !Object.hasOwn(job, 'runner_id') ||
+        (job.runner_id !== null &&
+          (!Number.isSafeInteger(job.runner_id) || job.runner_id < 0)),
+    )
+  )
+    throw new Error(`Obsolete run ${run.id} has ambiguous runner metadata`);
+  if (jobs.some((job) => job.status !== 'completed' && job.runner_id))
+    throw new Error(
+      `Obsolete run ${run.id} still has an assigned runner; force-cancel refused`,
+    );
+  live = await github(`actions/runs/${run.id}`);
+  if (
+    !sameObsoleteRun(live, run, pr, number, repository) ||
+    live.status === 'completed'
+  )
+    return;
+  const finalOwner = await github(`pulls/${number}`);
+  if (
+    finalOwner.state !== 'open' ||
+    finalOwner.base?.ref !== 'main' ||
+    finalOwner.head?.sha !== pr.head.sha ||
+    finalOwner.head?.ref !== pr.head.ref ||
+    finalOwner.head?.repo?.full_name !== repository
+  )
+    return;
+  await github(`actions/runs/${run.id}/force-cancel`, {
+    method: 'POST',
+    responseBody: 'none',
+  });
+  live = await github(`actions/runs/${run.id}`);
+  if (
+    sameObsoleteRun(live, run, pr, number, repository) &&
+    live.status !== 'completed'
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    live = await github(`actions/runs/${run.id}`);
+  }
+  if (
+    !sameObsoleteRun(live, run, pr, number, repository) ||
+    live.status !== 'completed'
+  )
+    throw new Error(
+      `Force cancellation of obsolete run ${run.id} is not terminal`,
+    );
+  console.log(
+    `Obsolete run ${run.id} is terminal after force-cancel: ${live.conclusion}`,
+  );
+}
+
 async function main() {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
@@ -400,6 +501,7 @@ async function main() {
       console.log(
         `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
       );
+      await settleObsoleteCancellation(run, pr, number, repository);
     }
   }
 }
