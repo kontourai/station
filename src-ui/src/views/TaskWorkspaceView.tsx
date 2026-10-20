@@ -534,26 +534,41 @@ function TaskRoomWorkspaceSection({
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
   const roomRef = useRef<HTMLElement>(null);
   // #3883: a pane opened from further down the page (Kept answers' Open
-  // Basis) lands in this room, which can be far above the reader. The host
-  // selects the pane and focuses its tab, the pane's name in the strip; the
-  // tab's group is then scrolled to the top so the pane itself is in view,
-  // not only its tab.
+  // Basis, the only consumer of the action published below; panes opened
+  // inside the room use the host's own action) lands in this room, which can
+  // be far above the reader. The host selects the pane and focuses its tab,
+  // the pane's name in the strip. Unless the room's tab strips were already
+  // in view when the open was asked for, the tab's group is then scrolled to
+  // the top so the pane itself is in view, not only its tab.
   const revealFocusedPane = useCallback(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    // The page's DetailHeader is sticky at the top of the same scroller, so
+    // "in view" starts below it, and a plain scroll to the start put the
+    // focused tab under it.
+    const header = room
+      .closest('.task-workspace')
+      ?.querySelector<HTMLElement>(':scope > .detail-header');
+    const inView = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.top >= (header?.getBoundingClientRect().bottom ?? 0) &&
+        rect.bottom <= window.innerHeight
+      );
+    };
+    // Measured now, before the host's focus frame scrolls the tab to the
+    // nearest edge.
+    const strips = [...room.querySelectorAll('[role="tablist"]')];
+    const roomWasInView = strips.length > 0 && strips.every(inView);
     // After the host's own focus frame, which is scheduled first.
     requestAnimationFrame(() => {
-      const room = roomRef.current;
-      if (!room) return;
       const tab = room.contains(document.activeElement)
         ? document.activeElement
         : null;
+      if (roomWasInView && tab && inView(tab)) return;
       const target =
         tab?.closest<HTMLElement>('.workspace-pane-host__group') ?? room;
-      // The page's DetailHeader is sticky at the top of the same scroller:
-      // a plain scroll to the start put the focused tab under it. The margin
-      // holds the group below the header for this one scroll.
-      const header = room
-        .closest('.task-workspace')
-        ?.querySelector<HTMLElement>(':scope > .detail-header');
+      // The margin holds the group below the header for this one scroll.
       target.style.scrollMarginTop = header
         ? `${header.getBoundingClientRect().height + REVEAL_GAP_PX}px`
         : '';

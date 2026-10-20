@@ -343,6 +343,37 @@ async function expectOpenedPaneRevealed(page: Page, pane: Locator) {
     .toBe(true);
 }
 
+/**
+ * Every scroll offset between the Task room and the window: a reveal that
+ * moved the page changes one of them.
+ */
+function scrollOffsets(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const offsets = [window.scrollY];
+    let node = document.querySelector('.task-workspace__room')?.parentElement;
+    while (node) {
+      offsets.push(node.scrollTop);
+      node = node.parentElement;
+    }
+    return offsets;
+  });
+}
+
+/** Whether every matched element sits in view below the page's sticky header. */
+function inViewBelowHeader(target: Locator): Promise<boolean> {
+  return target.evaluateAll((nodes) => {
+    const header = document.querySelector('.task-workspace > .detail-header');
+    const top = header?.getBoundingClientRect().bottom ?? 0;
+    return (
+      nodes.length > 0 &&
+      nodes.every((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= top && rect.bottom <= window.innerHeight;
+      })
+    );
+  });
+}
+
 /** Same-origin browser-access bootstrap, matching project-lifecycle's fixture. */
 async function seedStationAccess(page: Page) {
   const stationUrl = process.env.PW_BASE_URL;
@@ -1030,6 +1061,26 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   const nativeBasis = page.locator('.station-basis-pane');
   await expect(nativeBasis).toBeVisible();
   await expectOpenedPaneRevealed(page, nativeBasis);
+  // #3883: with the room's tab strips already in view, Open Basis focuses
+  // the pane's tab without moving the page.
+  await page.setViewportSize({ width: 1280, height: 2400 });
+  await openBasis.scrollIntoViewIfNeeded();
+  expect(
+    await inViewBelowHeader(
+      page.getByRole('tablist', { name: 'Workspace panes' }),
+    ),
+  ).toBe(true);
+  const offsetsBefore = await scrollOffsets(page);
+  await openBasis.click();
+  await expectOpenedPaneRevealed(page, nativeBasis);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  expect(await scrollOffsets(page)).toEqual(offsetsBefore);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await expect(nativeBasis.getByRole('status')).toContainText('Unassessed');
   await expect(nativeBasis).toContainText('<img src=x onerror=alert(1)>');
   await expect(nativeBasis.locator('img')).toHaveCount(0);
