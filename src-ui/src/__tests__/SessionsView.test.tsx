@@ -4612,8 +4612,7 @@ describe('SessionsView', () => {
         }),
         // Terminal, but a read-only attached transcript: its detail is
         // `AttachedSessionDetail`, which has no receipts/diagnostics region —
-        // never offer a control whose target may be absent (the
-        // `revealHomeRegion` rule).
+        // never offer a control whose target may be absent.
         flatSession({
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',
