@@ -37,7 +37,11 @@ import {
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { readPaneFence } from '../../regions/pane-fence';
-import type { PaneOpener } from '../../regions/pane-relations';
+import {
+  PANE_RELATIONS_STORAGE_KEY,
+  type PaneOpener,
+  parsePaneRelations,
+} from '../../regions/pane-relations';
 import { readFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 
 vi.mock('../../components/chat-dock/ChatDock', () => ({
@@ -301,4 +305,10 @@ test('on a desktop, closing a related preview’s tab asks its guard, then remov
   expect(readFilePreviewPaneState(localStorage, preview)).toBe(null);
   expect(readPaneFence(localStorage, preview)).toEqual({ status: 'none' });
   await waitFor(() => expect(relations?.relationOf(preview)).toBeUndefined());
+  // Durably too: the shared record other tabs and a reload read.
+  expect(
+    parsePaneRelations(
+      localStorage.getItem(PANE_RELATIONS_STORAGE_KEY),
+    ).record.entries.map((entry) => entry.instanceId),
+  ).not.toContain(preview);
 });
