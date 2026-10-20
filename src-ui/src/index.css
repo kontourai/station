@@ -3304,6 +3304,12 @@ button:hover {
   position: relative;
 }
 
+/* The More menu's wrapper only marks where a working-chat choice is made
+   (`data-working-chat-origin`); it takes no box of its own. */
+.chat-dock__more {
+  display: contents;
+}
+
 .chat-dock__inbox-working {
   position: absolute;
   top: -2px;

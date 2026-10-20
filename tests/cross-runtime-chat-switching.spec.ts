@@ -1068,10 +1068,34 @@ async function selectInventoryConversation(
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
     runtimeName,
   );
-  if (project)
-    await expect(page.locator('.chat-dock__project-context')).toContainText(
-      project,
-    );
+  if (project) await expectChatProject(page, project);
+}
+
+/**
+ * The chat on screen names its own project in its session context card —
+ * beside the transcript when the dock has room, else behind the header's
+ * "This chat" chip — or, on a phone, in the dock header's eyebrow. The
+ * desktop header names only where NEW chats go, so it is not read here.
+ */
+async function expectChatProject(page: Page, project: string) {
+  const card = page.locator('aside.session-context-card');
+  const mobile = page.locator('.chat-dock__mobile-header');
+  const chip = page.getByRole('button', { name: /^This chat/ });
+  // Whichever one this width presents, once it has rendered.
+  await expect(card.or(chip).or(mobile).first()).toBeVisible();
+  if (await mobile.isVisible()) {
+    await expect(mobile).toContainText(project);
+    return;
+  }
+  if (await card.isVisible()) {
+    await expect(card).toContainText(project);
+    return;
+  }
+  await chip.click();
+  const sheet = page.getByRole('dialog', { name: 'This chat' });
+  await expect(sheet).toContainText(project);
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
 }
 
 async function submitExactTurn({
@@ -1315,9 +1339,7 @@ async function assertConversationHistory(
   await history
     .locator('.session-item__content', { hasText: 'Claude Alpha Chat' })
     .click();
-  await expect(page.locator('.chat-dock__project-context')).toContainText(
-    'Alpha Project',
-  );
+  await expectChatProject(page, 'Alpha Project');
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
     'Claude Code',
   );
@@ -1631,20 +1653,20 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     const badge = page.locator('.chat-dock__project-badge');
     // Existing conversations retain their own project; selecting one does
     // not replace the explicit project chosen for new chats.
-    await expect(badge).toHaveAccessibleName('Alpha Project');
+    await expect(badge).toHaveAccessibleName('New chats: Alpha Project');
     await badge.click();
     await page
       .getByRole('dialog', { name: 'Projects' })
       .getByRole('button', { name: 'Switch to Beta Project' })
       .click();
-    await expect(badge).toHaveAccessibleName('Beta Project');
+    await expect(badge).toHaveAccessibleName('New chats: Beta Project');
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
       runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     await expect(badge).toBeVisible();
-    await expect(badge).toHaveAccessibleName('Beta Project');
+    await expect(badge).toHaveAccessibleName('New chats: Beta Project');
     await expect(badge).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(badge).toHaveAttribute('aria-expanded', 'false');
 
@@ -1656,7 +1678,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       title: 'Unbound Station Chat',
       runtimeName: 'Station',
     });
-    await expect(badge).toHaveAccessibleName('Beta Project');
+    await expect(badge).toHaveAccessibleName('New chats: Beta Project');
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
       runtimeName: 'Claude Code',
@@ -1678,7 +1700,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     const release = await pressAndHold(page, switchAlpha);
     await release();
     await expect(dialog).toBeVisible();
-    await expect(badge).toHaveAccessibleName('Beta Project');
+    await expect(badge).toHaveAccessibleName('New chats: Beta Project');
     await expect(dialog.getByRole('tooltip')).toContainText(
       'Existing chats keep their original project.',
     );
@@ -1738,9 +1760,8 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     expect(new URL(page.url()).searchParams.get('chat')).toBe(
       activeChatBeforeSwitch,
     );
-    await expect(page.locator('.chat-dock__project-context')).toContainText(
-      'Alpha Project',
-    );
+    // The destination now names Alpha; the chat on screen is unchanged.
+    await expect(badge).toHaveAccessibleName('New chats: Alpha Project');
     await expect(
       page.getByRole('log').getByText('Claude Alpha transcript loaded.', {
         exact: true,

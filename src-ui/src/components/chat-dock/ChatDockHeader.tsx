@@ -441,33 +441,37 @@ export function ChatDockHeader({
             }}
           />
         )}
-      <ChatDockHeaderMoreMenu
-        actions={dockMoreActions}
-        // With no inbox toggle on the bar (a side dock, a collapsed bar),
-        // the working and unread counts ride this trigger instead, the way
-        // the phone's Chat actions trigger carries them.
-        status={showInboxToggle ? undefined : workingLabel}
-        // The Background tasks sheet anchors to the control that opened it,
-        // and since #1536 F that control is this menu's trigger.
-        triggerRef={workspaceControls?.backgroundTasksTriggerRef}
-        // Folding Background tasks into the menu took its running-count badge
-        // off the bar with it, and a count that only exists inside a closed
-        // menu is not a signal. It rides the trigger instead.
-        badgeCount={
-          backgroundTasksBadgeHidden
-            ? 0
-            : (workspaceControls?.backgroundTasksRunningCount ?? 0)
-        }
-        badgeLabel={
-          !backgroundTasksBadgeHidden &&
-          workspaceControls &&
-          workspaceControls.backgroundTasksRunningCount > 0
-            ? `${workspaceControls.backgroundTasksRunningCount} background task${
-                workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
-              } running`
-            : undefined
-        }
-      />
+      {/* The working chats are rows of this menu, so choosing one may hand
+          focus on to that chat's composer (`useWorkingChatFocus`). */}
+      <span className="chat-dock__more" data-working-chat-origin="">
+        <ChatDockHeaderMoreMenu
+          actions={dockMoreActions}
+          // With no inbox toggle on the bar (a side dock, a collapsed bar),
+          // the working and unread counts ride this trigger instead, the way
+          // the phone's Chat actions trigger carries them.
+          status={showInboxToggle ? undefined : workingLabel}
+          // The Background tasks sheet anchors to the control that opened it,
+          // and since #1536 F that control is this menu's trigger.
+          triggerRef={workspaceControls?.backgroundTasksTriggerRef}
+          // Folding Background tasks into the menu took its running-count badge
+          // off the bar with it, and a count that only exists inside a closed
+          // menu is not a signal. It rides the trigger instead.
+          badgeCount={
+            backgroundTasksBadgeHidden
+              ? 0
+              : (workspaceControls?.backgroundTasksRunningCount ?? 0)
+          }
+          badgeLabel={
+            !backgroundTasksBadgeHidden &&
+            workspaceControls &&
+            workspaceControls.backgroundTasksRunningCount > 0
+              ? `${workspaceControls.backgroundTasksRunningCount} background task${
+                  workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
+                } running`
+              : undefined
+          }
+        />
+      </span>
     </>
   );
 

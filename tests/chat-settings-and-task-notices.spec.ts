@@ -450,11 +450,14 @@ async function openWorkingChat(page: Page, several = false) {
       prompt: 'Working chat',
     },
   });
+  // The working count rides the inbox toggle; the working chats themselves
+  // are the first rows of the dock's More menu.
+  await expect(
+    page.getByRole('button', { name: /^(Hide|Show) inbox, 1 working/ }),
+  ).toBeVisible();
   const activity = page.getByRole('button', {
-    name: '1 chat working',
-    exact: true,
+    name: /^More dock actions/,
   });
-  await expect(activity).toHaveAttribute('title', '1 chat working');
   return activity;
 }
 
@@ -477,7 +480,7 @@ test('working chat selection keeps composer focus when its turn completes', asyn
   await activity.focus();
   await page.keyboard.press('Enter');
   await expect(activity).toHaveAttribute('aria-expanded', 'true');
-  const chats = page.getByRole('menu', { name: /chats? working/ });
+  const chats = page.getByRole('menu', { name: 'More dock actions' });
   await expect(chats).toBeVisible();
   await expect(chats.getByRole('menuitem').first()).toBeFocused();
   await evidence(page, 'working-chat-keyboard.png', testInfo);
@@ -495,7 +498,7 @@ test('working chat selection keeps composer focus when its turn completes', asyn
   await activity.click();
   await expect(chats).toBeVisible();
   await page
-    .getByRole('button', { name: 'Close 1 chat working', exact: true })
+    .getByRole('button', { name: 'Close more dock actions', exact: true })
     .click();
   await expect(chats).toBeHidden();
   await activity.focus();
@@ -513,7 +516,9 @@ test('working chat selection keeps composer focus when its turn completes', asyn
       outputText: 'Working chat completed.',
     },
   });
-  await expect(activity).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /^(Hide|Show) inbox, 1 working/ }),
+  ).toHaveCount(0);
   await expect(composer).toBeFocused();
 });
 
@@ -531,15 +536,14 @@ test('working chat selection focuses the selected composer among several chats',
       prompt: 'Second working chat',
     },
   });
-  const activity = page.getByRole('button', {
-    name: '2 chats working',
-    exact: true,
-  });
-  await expect(activity).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^(Hide|Show) inbox, 2 working/ }),
+  ).toBeVisible();
+  const activity = page.getByRole('button', { name: /^More dock actions/ });
   await activity.focus();
   await page.keyboard.press('Enter');
   const selected = page
-    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menu', { name: 'More dock actions' })
     .getByRole('menuitem', { name: /Working chat 2/ });
   await selected.focus();
   await page.keyboard.press('Enter');
@@ -607,14 +611,11 @@ async function selectDelayedWorkingChat(page: Page, readOnly = false) {
     }
     await route.fallback();
   });
-  const activity = page.getByRole('button', {
-    name: '2 chats working',
-    exact: true,
-  });
+  const activity = page.getByRole('button', { name: /^More dock actions/ });
   await activity.focus();
   await page.keyboard.press('Enter');
   await page
-    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menu', { name: 'More dock actions' })
     .getByRole('menuitem', { name: /Working chat 2/ })
     .focus();
   await page.keyboard.press('Enter');
@@ -731,7 +732,7 @@ function App(){
  const[ready,setReady]=useState(false),[disabled,setDisabled]=useState(true),[input,setInput]=useState('');
  const{requestComposerFocus,onComposerEnabledChange}=useWorkingChatFocus({activeSessionId:'selected',ready,terminal:false,surfaceRef});
  return <main ref={surfaceRef} onKeyDown={e=>{if(e.key==='F7')setReady(true);if(e.key==='F8')setDisabled(false)}}>
- <div className="chat-dock__activity"><button onClick={()=>requestComposerFocus('selected')}>Select working chat</button></div>
+ <div data-working-chat-origin=""><button onClick={()=>requestComposerFocus('selected')}>Select working chat</button></div>
  <output>{ready?'Conversation ready':'Opening conversation'}</output>
  <ChatInputArea {...base} sessionId="selected" input={input} onInputChange={setInput} onSend={async()=>{}} disabled={disabled} textareaRef={ref} onEnabledChange={onComposerEnabledChange}/>
  </main>;
@@ -915,14 +916,11 @@ test('replay working chat selection focuses its transcript', async ({
   await step.click();
   await step.click();
   await step.click();
-  const activity = page.getByRole('button', {
-    name: /chats? working/,
-    exact: true,
-  });
+  const activity = page.getByRole('button', { name: /^More dock actions/ });
   await activity.focus();
   await page.keyboard.press('Enter');
   const replay = page
-    .getByRole('menu', { name: /chats? working/ })
+    .getByRole('menu', { name: 'More dock actions' })
     .getByRole('menuitem', { name: /Event replay/ });
   await expect(replay).toBeVisible();
   await replay.focus();
