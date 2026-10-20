@@ -774,7 +774,7 @@ test('notice is recorded once per inventory and desktop/web must record the show
   expect(diagnostics.getLevel()).toBe('error');
   const noticeCalls = () =>
     stderr.mock.calls.filter(([message]) =>
-      String(message).includes('Lite sends'),
+      String(message).includes('Station usage sharing:'),
     );
   const sink = await receiver();
   const { live, home } = await service(
@@ -786,10 +786,10 @@ test('notice is recorded once per inventory and desktop/web must record the show
   );
   await live.stationStarted();
   await live.stationStarted();
-  expect(noticeCalls()).toHaveLength(2);
+  expect(noticeCalls()).toHaveLength(1);
   const next = await service(sink.endpoint, {}, {}, home, diagnostics);
   await next.live.stationStarted();
-  expect(noticeCalls()).toHaveLength(2);
+  expect(noticeCalls()).toHaveLength(1);
   const ui = await service(
     sink.endpoint,
     {},

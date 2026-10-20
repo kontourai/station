@@ -35,7 +35,7 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       );
     if (publisher === 'kontour' && tier === 'full')
       throw new Error(
-        'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',
+        "Detailed sharing with Kontour is unavailable. Choose off (Don't share) or lite (Anonymous usage counts).",
       );
     if (parsed.flags.offline)
       throw new Error(
@@ -85,9 +85,9 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
   else
     for (const [name, value] of Object.entries(status.publishers))
       console.log(
-        `${name}: ${value.tier} (${value.reason})${
+        `${name === 'kontour' ? 'Kontour' : 'Additional destination'}: ${{ off: "Don't share", lite: 'Anonymous usage counts', full: 'Detailed usage to help improve Station' }[value.tier]} (${value.tier})${value.reason === 'DNT' ? '; Do Not Track is on, so nothing is shared' : value.reason === 'disclosure' ? '; Detailed sharing is waiting for your review in Privacy & sharing' : ''}${
           name === 'operator' && value.reason === 'environment'
-            ? '; environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.'
+            ? '; environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.'
             : ''
         }`,
       );

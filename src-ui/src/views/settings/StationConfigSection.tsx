@@ -30,7 +30,11 @@ import type {
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
+import type {
+  SharingCounts,
+  SharingDisclosure,
+} from '../../components/UsageSharingChoices';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
 import type { PendingOverrideChange } from './SettingInheritanceLayers';
@@ -160,10 +164,16 @@ export function StationConfigSection({
   containerScope,
   projectOverride,
   telemetryPublishers,
+  telemetryDisclosure,
   savedTelemetryChoices,
   telemetryStatusError,
   onTelemetryFeedback,
   showTelemetryOutbox,
+  telemetryAdvanced,
+  telemetryCounts,
+  telemetryNoticeRef,
+  telemetryNoticeError,
+  onTelemetryDetailedIntent,
 }: {
   /** Which section's keys to render; see `STATION_SETTING_KEYS_BY_SECTION`. */
   section: StationSettingsSectionId;
@@ -189,6 +199,7 @@ export function StationConfigSection({
   projectOverride?: StationConfigProjectOverride;
   savedTelemetryChoices?: AppConfig['telemetryTier'];
   telemetryStatusError?: boolean;
+  telemetryDisclosure?: SharingDisclosure;
   telemetryPublishers?: Partial<
     Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
@@ -197,23 +208,16 @@ export function StationConfigSection({
     reason: TelemetryFeedbackReason,
   ) => void;
   showTelemetryOutbox?: boolean;
+  telemetryAdvanced?: ReactNode;
+  telemetryCounts?: SharingCounts;
+  telemetryNoticeRef?: Ref<HTMLElement>;
+  telemetryNoticeError?: boolean;
+  onTelemetryDetailedIntent?: () => void;
 }) {
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
   ).map((key) => {
-    if (key === 'telemetryTier')
-      return (
-        <TelemetryTierSettings
-          key={key}
-          config={config}
-          onChange={onChange}
-          publishers={telemetryPublishers}
-          savedChoices={savedTelemetryChoices}
-          statusError={telemetryStatusError}
-          onFeedback={onTelemetryFeedback}
-          showOutbox={showTelemetryOutbox}
-        />
-      );
+    if (key === 'telemetryTier') return null;
     const definition = REGISTRY_BY_KEY.get(key);
     if (!definition) return null;
     // A project may override only the keys the contract lists, and only
@@ -270,14 +274,39 @@ export function StationConfigSection({
     });
   });
 
-  if (embedded) return <>{rows}</>;
+  const content =
+    section === 'telemetry' ? (
+      <TelemetryTierSettings
+        config={config}
+        onChange={onChange}
+        publishers={telemetryPublishers}
+        disclosure={telemetryDisclosure}
+        counts={telemetryCounts}
+        noticeRef={telemetryNoticeRef}
+        noticeError={telemetryNoticeError}
+        onDetailedIntent={onTelemetryDetailedIntent}
+        savedChoices={savedTelemetryChoices}
+        statusError={telemetryStatusError}
+        onFeedback={onTelemetryFeedback}
+        showOutbox={showTelemetryOutbox}
+        advancedContent={
+          <>
+            {rows}
+            {telemetryAdvanced}
+          </>
+        }
+      />
+    ) : (
+      rows
+    );
+  if (embedded) return <>{content}</>;
   // The empty `title` is not a missing title: `SettingsSection` resolves the
   // heading from `SETTINGS_SECTIONS` by matching `section-<id>`, and the prop
   // is only its fallback for a card with no catalog section. Repeating the
   // title here would be a second place for it to drift.
   return (
     <SettingsSection icon={icon} title="" id={`section-${section}`}>
-      {rows}
+      {content}
     </SettingsSection>
   );
 }

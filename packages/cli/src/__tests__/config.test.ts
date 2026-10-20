@@ -109,10 +109,12 @@ describe('telemetry commands', () => {
     );
     const { runTelemetryCommand } = await import('../commands/telemetry.js');
     await runTelemetryCommand(['status', '--api-base=http://127.0.0.1:43129']);
-    expect(consoleLog).toHaveBeenCalledWith('kontour: lite (environment)');
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Kontour: Anonymous usage counts (lite)',
+    );
     expect(consoleLog).toHaveBeenCalledTimes(2);
     expect(consoleLog).toHaveBeenCalledWith(
-      'operator: lite (environment); environment defaults cannot enable Full. Choose Full in config (station telemetry set operator full) and acknowledge the disclosure in Settings to send Full events.',
+      'Additional destination: Anonymous usage counts (lite); environment defaults cannot enable detailed sharing. Choose Detailed usage to help improve Station in Privacy & sharing to review and save your choice.',
     );
   });
 
@@ -133,8 +135,12 @@ describe('telemetry commands', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       'http://127.0.0.1:43129/api/usage-telemetry/status',
     );
-    expect(consoleLog).toHaveBeenCalledWith('kontour: off (DNT)');
-    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+    expect(consoleLog).toHaveBeenCalledWith(
+      "Kontour: Don't share (off); Do Not Track is on, so nothing is shared",
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+    );
   });
   test('set sends one publisher through the live configuration API then reports effective state', async () => {
     fetchMock.mockResolvedValueOnce(
@@ -168,7 +174,9 @@ describe('telemetry commands', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       telemetryTier: { operator: 'full' },
     });
-    expect(consoleLog).toHaveBeenCalledWith('operator: lite (disclosure)');
+    expect(consoleLog).toHaveBeenCalledWith(
+      'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+    );
   });
   test.each([['--publisher=operator'], ['--publisher', 'operator']])(
     'outbox prints the server ledger with publisher filter %j',
@@ -208,7 +216,7 @@ describe('telemetry commands', () => {
     ).rejects.toThrow('Usage:');
     await expect(
       runTelemetryCommand(['set', 'kontour', 'full']),
-    ).rejects.toThrow('Kontour Full is unavailable');
+    ).rejects.toThrow('Detailed sharing with Kontour is unavailable');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

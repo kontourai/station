@@ -7,6 +7,7 @@ import { DEFAULT_CLIENT_REQUEST_TIMEOUT_MS } from '@kontourai/station-sdk/client
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import { SHARING_LABELS } from '../../components/UsageSharingChoices';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { telemetryPublisherLabel } from '../../hooks/useTelemetryStatus';
@@ -56,9 +57,10 @@ export function TelemetryOutbox({
       aria-label={`What was sent to ${telemetryPublisherLabel(publisher)}`}
     >
       <p>
-        Latest {LIMIT} records per publisher. Local history retains at most 30
-        days and 5 MiB across publishers; oldest records are evicted. Suppressed
-        and dropped records show reasons and counts, without a payload viewer.
+        Latest {LIMIT} records per destination. Local history retains at most 30
+        days and 5 MiB across destinations; oldest records are evicted.
+        Suppressed and dropped records show reasons and counts, without a
+        payload viewer.
       </p>
       <Button
         size="sm"
@@ -79,7 +81,10 @@ export function TelemetryOutbox({
         />
       )}
       {entries?.length === 0 && (
-        <Empty variant="compact" label="This publisher's outbox is empty." />
+        <Empty
+          variant="compact"
+          label="Nothing has been sent to this destination."
+        />
       )}
       <ol className="telemetry-outbox__list">
         {entries?.map((entry, index) => (
@@ -92,7 +97,7 @@ export function TelemetryOutbox({
                     ? 'Suppressed'
                     : 'Dropped'}
               </strong>{' '}
-              · {entry.tier} · {entry.reason} ·{' '}
+              · {SHARING_LABELS[entry.tier]} · {entry.reason} ·{' '}
               <time dateTime={entry.recordedAt}>{entry.recordedAt}</time>
             </p>
             {entry.outcome === 'sent' ? (

@@ -119,7 +119,7 @@ export const SETTINGS_SECTIONS = [
   // the two were the same words, so the nav offered a destination whose only
   // apparent content was itself, and the card's heading restated its first
   // row. The id stays `telemetry`.
-  { id: 'telemetry', title: 'Telemetry', group: 'this-station' },
+  { id: 'telemetry', title: 'Privacy & sharing', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
   // #2182: what agents may do without asking. Two rows, and that is the
   // whole of it today — the epic's other permissions ideas have no consumer
@@ -336,7 +336,7 @@ const SETTINGS_CATALOG_SOURCE = [
   // Whether anything is sent, and whether there is anywhere to send it.
   {
     id: 'usage-telemetry',
-    title: 'Usage telemetry',
+    title: 'Usage sharing',
     section: 'telemetry',
     configKeys: ['telemetryTier'],
   },

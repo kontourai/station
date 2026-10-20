@@ -125,7 +125,7 @@ export function firstRunStepCounterLabel(
 }
 
 const STEP_TITLES: Record<ChapterStep, string> = {
-  disclosure: 'What Station sends',
+  disclosure: 'Usage sharing',
   engines: 'Which agents do you use?',
   'engine-role': 'Choose what powers Station',
   'about-you': 'Two questions, and the next answer is tuned to you',

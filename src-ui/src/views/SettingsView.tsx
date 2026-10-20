@@ -3,7 +3,9 @@ import type {
   TelemetryPublisherId,
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { SectionNavigation } from '../components/SectionNavigation';
+import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
 import './SettingsView.css';
@@ -27,6 +29,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { PageCallout } from '../components/PageCallout';
 import type { SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
@@ -37,11 +40,7 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import {
-  UsageTelemetryDisclosure,
-  usageTelemetryDestinationSummary,
-  useUsageTelemetryDisclosureState,
-} from '../components/UsageTelemetryDisclosure';
+import { useUsageTelemetryDisclosureState } from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -179,6 +178,8 @@ export interface SettingsViewProps {
   onNavigate?: (view: NavigationView) => void;
 }
 
+class SharingDetailsChangedError extends Error {}
+
 export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { apiBase: currentApiBase } = useApiBase();
   const {
@@ -249,6 +250,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
   const telemetryStatus = useTelemetryStatus();
+  const telemetryNotice = useTelemetryNotice(
+    !!telemetryStatus.data?.liteInventoryRevision,
+  );
+  const [telemetryConsentRevision, setTelemetryConsentRevision] = useState<
+    string | null
+  >(null);
   const [telemetryFeedback, setTelemetryFeedback] = useState<
     Partial<Record<TelemetryPublisherId, TelemetryFeedbackReason>>
   >({});
@@ -289,7 +296,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     });
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
-  const hasChanges = configJson !== baselineJson;
+  const hasChanges =
+    configJson !== baselineJson || telemetryConsentRevision !== null;
   const overrideDelta = projectOverrideDelta(overrideDraft, savedOverrides);
   const overrideDirty = Object.keys(overrideDelta).length > 0;
   // ONE guard over both drafts. Two guards would ask twice for a single
@@ -300,6 +308,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     guard(() => {
       setConfig(savedConfig);
       setTelemetryFeedback({});
+      setTelemetryConsentRevision(null);
       setOverrideDraft({});
       setSelectedProjectSlug(slug);
     });
@@ -595,7 +604,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
     const snapshot = unadoptedSnapshotRef.current;
     if (!snapshot) return;
-    if (configJson !== baselineJson) return;
+    if (configJson !== baselineJson || telemetryConsentRevision) return;
 
     const localWrites: Record<string, unknown> = {};
     for (const [key, writtenAt] of Object.entries(savedAtRef.current)) {
@@ -611,7 +620,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     unadoptedSnapshotRef.current = null;
     setConfig(merged);
     setSavedConfig(merged);
-  }, [baselineJson, configData, configJson, configUpdatedAt, savedConfig]);
+  }, [
+    baselineJson,
+    configData,
+    configJson,
+    configUpdatedAt,
+    savedConfig,
+    telemetryConsentRevision,
+  ]);
 
   useCloseShortcut(onBack);
 
@@ -645,6 +661,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const { serverConfig, droppedDeviceKeys } =
         await parseImportedSettingsFile(file);
       setTelemetryFeedback({});
+      setTelemetryConsentRevision(null);
       setConfig({ ...config, ...serverConfig });
       // archive#settings-revamp: an invalid device
       // value is dropped (not silently merged, not a hard failure) — surface
@@ -692,6 +709,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (Object.keys(changed.telemetryTier).length === 0)
         delete changed.telemetryTier;
     }
+    if (telemetryConsentRevision && config.telemetryTier?.operator === 'full') {
+      changed.telemetryTier = { ...changed.telemetryTier, operator: 'full' };
+    }
     const { logLevel, ...plainChanges } = changed;
     const feedbackAtSave = telemetryFeedback;
     const dntAtSave = telemetryStatus.data?.publishers;
@@ -702,6 +722,39 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         ? (async () => {
             const { telemetryTier, ...other } = plainChanges;
             try {
+              if (
+                telemetryConsentRevision !== null &&
+                Object.entries(telemetryTier ?? {}).some(
+                  ([id, tier]) =>
+                    tier === 'full' &&
+                    dntAtSave?.[id as TelemetryPublisherId]?.reason !== 'DNT',
+                )
+              ) {
+                const data = telemetryDisclosure.data;
+                if (
+                  !data ||
+                  data.inventoryRevision !== telemetryConsentRevision
+                )
+                  throw new SharingDetailsChangedError();
+                const response = await authenticatedFetch(
+                  `${currentApiBase}/api/usage-telemetry/disclosure/acknowledgements`,
+                  {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      acknowledgementProtocol:
+                        PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+                      inventoryRevision: telemetryConsentRevision,
+                    }),
+                  },
+                );
+                if (!response.ok) {
+                  void invalidate(['usage-telemetry-disclosure']);
+                  throw new Error(
+                    'Your sharing choice could not be saved. Review the current details and try again.',
+                  );
+                }
+              }
               for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
                 const publisher = id as TelemetryPublisherId;
                 const reason =
@@ -723,6 +776,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 )
                   throw new Error('The telemetry tier was refused.');
                 savedTiers[publisher] = tier;
+                if (publisher === 'operator' && tier === 'full')
+                  setTelemetryConsentRevision(null);
                 savedPlain.telemetryTier = {
                   ...savedTelemetryChoices,
                   ...savedTiers,
@@ -875,16 +930,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
               : 'Log Level could not be saved. Your change is kept here until you retry.'
             : plainFailed
-              ? plainOutcome.reason instanceof StationReadOnlyError
-                ? hasSaved
-                  ? 'Some settings were saved before Station became unreachable. Unsaved changes are kept here until you retry.'
-                  : 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-                : fullAccessRefusal(plainOutcome.reason)
-                  ? // #2436: a retry would be refused again; say why instead.
-                    `${fullAccessRefusal(plainOutcome.reason)} ${hasSaved ? 'Some settings were saved. Unsaved changes are kept here.' : 'Nothing in this save was stored.'} Choose a stricter default approval mode to save your other changes.`
-                  : hasSaved
-                    ? 'Some settings were saved. Unsaved changes are kept here until you retry.'
-                    : 'Some settings could not be saved. Your changes are kept here until you retry.'
+              ? plainOutcome.reason instanceof SharingDetailsChangedError
+                ? 'Sharing details changed. Choose Detailed again to review and save. Your unsaved changes are kept here.'
+                : plainOutcome.reason instanceof StationReadOnlyError
+                  ? hasSaved
+                    ? 'Some settings were saved before Station became unreachable. Unsaved changes are kept here until you retry.'
+                    : 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                  : fullAccessRefusal(plainOutcome.reason)
+                    ? // #2436: a retry would be refused again; say why instead.
+                      `${fullAccessRefusal(plainOutcome.reason)} ${hasSaved ? 'Some settings were saved. Unsaved changes are kept here.' : 'Nothing in this save was stored.'} Choose a stricter default approval mode to save your other changes.`
+                    : hasSaved
+                      ? 'Some settings were saved. Unsaved changes are kept here until you retry.'
+                      : 'Some settings could not be saved. Your changes are kept here until you retry.'
               : null;
       const messages = [
         stationMessage,
@@ -1009,16 +1066,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             locations. Each scope group's caption states the persistence
             fact where it applies instead. */}
         {error && (
-          <div className="settings__error-banner">
-            <span className="settings__error-banner-msg">{error}</span>
-            <button
-              type="button"
-              className="settings__error-banner-retry"
-              onClick={saveConfig}
-            >
-              Retry
-            </button>
-          </div>
+          <PageCallout
+            calloutId="settings-save-error"
+            tone="error"
+            role="alert"
+            ariaLabel="Settings save error"
+            action={
+              <Button variant="secondary" onClick={saveConfig}>
+                Retry
+              </Button>
+            }
+          >
+            {error}
+          </PageCallout>
         )}
 
         <div className="section-nav-rail">
@@ -1181,12 +1241,49 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               decoration. ⚙ is the dissolved card's own glyph, kept for
               Sources; ◉ and ◆ were already carried. */}
                 {sectionVisible('telemetry') && (
-                  <Section icon="◉" title="Telemetry" id="section-telemetry">
+                  <Section
+                    icon="◉"
+                    title="Privacy & sharing"
+                    id="section-telemetry"
+                  >
                     <StationConfigSection
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
+                      telemetryDisclosure={telemetryDisclosure.data}
+                      telemetryCounts={telemetryStatus.data?.liteInventory}
+                      telemetryNoticeRef={telemetryNotice.element}
+                      telemetryNoticeError={telemetryNotice.isError}
+                      onTelemetryDetailedIntent={() =>
+                        setTelemetryConsentRevision(
+                          telemetryDisclosure.data?.inventoryRevision ?? null,
+                        )
+                      }
                       savedTelemetryChoices={savedConfig.telemetryTier}
                       telemetryStatusError={telemetryStatus.isError}
+                      telemetryAdvanced={
+                        <>
+                          <PageRow
+                            {...settingsRow('telemetry-destination')}
+                            description="Sharing uses configured destinations only."
+                            control={
+                              <span className="settings__field-hint">
+                                {telemetryDisclosure.settled
+                                  ? telemetryDisclosure.isError
+                                    ? 'Could not read whether a destination is configured.'
+                                    : telemetryDisclosure.data
+                                          ?.endpointConfigured === false
+                                      ? 'No additional destination configured.'
+                                      : telemetryDisclosure.data
+                                            ?.endpointConfigured === true
+                                        ? 'Additional destination configured.'
+                                        : 'This Station has not reported whether a destination is configured.'
+                                  : null}
+                              </span>
+                            }
+                          />
+                          <TelemetryDelivery />
+                        </>
+                      }
                       showTelemetryOutbox
                       onTelemetryFeedback={(publisher, reason) =>
                         setTelemetryFeedback((current) => ({
@@ -1197,38 +1294,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       embedded
                       config={config}
                       provenance={provenance}
-                      onChange={setConfig}
+                      onChange={(next) => {
+                        if (next.telemetryTier?.operator !== 'full')
+                          setTelemetryConsentRevision(null);
+                        setConfig(next);
+                      }}
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
-                    {/* #2144 slice 6 item D: whether anything CAN be sent, beside
-                  the toggle that decides whether it is. Derived from the
-                  boolean the disclosure query already holds — React Query
-                  dedupes on the key, so this is the same request the
-                  disclosure below makes, not a second one. The host is not
-                  exposed (see `usageTelemetryDestinationSummary`). */}
-                    <PageRow
-                      {...settingsRow('telemetry-destination')}
-                      description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
-                      control={(() => {
-                        // `null` is the in-flight read: the row keeps its place
-                        // (and its catalog identity) while saying nothing, rather
-                        // than asserting the host reported nothing.
-                        const summary = usageTelemetryDestinationSummary({
-                          endpointConfigured:
-                            telemetryDisclosure.data?.endpointConfigured,
-                          settled: telemetryDisclosure.settled,
-                          isError: telemetryDisclosure.isError,
-                        });
-                        return summary === null ? null : (
-                          <span className="settings__field-hint">
-                            {summary}
-                          </span>
-                        );
-                      })()}
-                    />
-                    <UsageTelemetryDisclosure />
-                    <TelemetryDelivery />
                   </Section>
                 )}
 
@@ -1692,6 +1765,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             onClick={() => {
               setConfig(savedConfig);
               setTelemetryFeedback({});
+              setTelemetryConsentRevision(null);
               setOverrideDraft({});
             }}
           >

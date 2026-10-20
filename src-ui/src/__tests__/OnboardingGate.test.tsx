@@ -96,10 +96,6 @@ vi.mock('../hooks/useInvalidateCachesOnConnectionSwitch', () => ({
   useInvalidateCachesOnConnectionSwitch: () => {},
 }));
 
-vi.mock('../components/TelemetryLiteNotice', () => ({
-  TelemetryLiteNotice: () => null,
-}));
-
 let realTelemetryDisclosure = false;
 vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   const actual =

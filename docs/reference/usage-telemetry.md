@@ -2,24 +2,40 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
-Settings → Privacy & sharing → Telemetry lists publishers from the status API,
-with a separate Off/Lite/Full control for each. Kontour and Operator are the
-current built-in publishers; registry publishers appear when the host registers them. Off is always available. Effective state and its reason are shown
-separately from the saved choice: DO_NOT_TRACK forces Off, and a saved Full
-choice waits at Lite until the current disclosure is acknowledged. **Turn
-off usage telemetry** saves operator Off before acknowledging. Resetting
-Station settings preserves these choices. The current Settings control keeps
-Kontour Full unavailable until the UI lane connects its separate author disclosure;
-the server exposes that destination-bound disclosure API. This UI change keeps
-that existing Full restriction; it does not grant author consent.
+First run asks one usage-sharing question, with three equally presented choices.
+Anonymous usage counts is preselected. Settings → Privacy & sharing uses the
+same labels:
 
-DO_NOT_TRACK itself leaves saved choices unchanged. Under DNT the disclosure
-offers visible Off, Lite, and Full radio choices and a **Save operator choice
-as** action for the selected tier. Saving replaces the operator tier without
-acknowledging; DNT keeps telemetry Off. Save closes the dialog and remembers the
-current revision for this host across reloads while DNT remains active. Removing
-DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
-no acknowledgement.
+| Display label | Config/API/CLI value | Meaning |
+| --- | --- | --- |
+| Don't share | `off` | No automatic usage sharing. |
+| Anonymous usage counts | `lite` | One daily aggregate, without an installation ID, account identity or content. A current shown-notice record is required. |
+| Detailed usage to help improve Station | `full` | Classified usage events with a monthly rotating installation code. Selecting this choice shows What's included; saving acknowledges that displayed revision before enabling detailed sharing. |
+
+The primary choice applies to Kontour and the configured additional destination.
+**Current capability limit:** Kontour detailed sharing remains unavailable in
+this UI. Choosing Detailed saves `lite` for Kontour and `full` for the additional
+destination; the surface states this split. No Kontour acknowledgement is
+created. An additional configured endpoint is introduced as **Also shared with:
+&lt;host&gt;**, without its path, credentials or query. Third-party destinations
+are excluded from first run. Their separate controls, existing built-in choices,
+connection details and local history live in the collapsed **Advanced** section.
+Advanced retains independent choices and the same three option labels. Importing a `full` setting does not acknowledge unseen details. Settings requires an explicit Detailed choice bound to the displayed revision before it creates that acknowledgement; a changed revision requires choosing Detailed again.
+
+**Not now**, close, Escape and backdrop dismissal preserve the existing setting
+(the new-install default is `lite`). The single choice surface records a notice
+only while actually visible. Recording the notice does not close it before the
+person can choose. A status fetch alone never records presentation. A current
+notice prevents another prompt on remount; a changed notice revision prompts
+again. Off remains available in Settings. Resetting Station settings preserves
+sharing choices.
+
+When Do Not Track is on, the shared callout says nothing is shared. Saving still
+records the chosen setting for both built-in destinations, with the capability
+limit above, but never acknowledges detailed sharing. Removing Do Not Track
+requires confirmation of a saved detailed choice. It does not silently authorize
+that choice. Save failures use the existing page-callout tone system and leave
+the choice available to retry or dismiss.
 
 A standard paired device may lower tiers; only the operator or a device with
 `access:manage` may raise them. Agents cannot change telemetry choices or
@@ -56,31 +72,30 @@ build destination. The current UI leaves Kontour Full unavailable; its
 destination-bound acknowledgement remains an API capability.
 
 Every non-desktop server, including `station start`, `service run`, Docker and
-web servers with a UI port, prints a one-time Lite notice per publisher and
-inventory revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts)
-and records it before sending. The launching CLI prints the notice in the
-terminal after readiness when its pre-launch state lacks a current receipt. The server records its own log notice
-asynchronously; HTTP readiness does not imply that receipt is already written.
-Unattended services retain the notice in their logs. A UI port does not imply
-that a person saw a notice; a logged notice and a rendered UI notice are
-different presentation paths.
-Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the UI. Until it records
-the shown revision with `POST /api/usage-telemetry/lite-notices`, daily payloads
-are suppressed with reason `notice`. A current receipt survives restart and the
-daily timer starts even without a new UI call. An inventory change requires a new
-notice. The body is `{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
-The status API exposes persisted `liteNotices` per publisher. The kernel UI shows
-an outstanding Lite notice as a non-modal panel, with an inline Off action and
-the server's exact field inventory. It records the receipt after the panel is
-in the visible viewport, while the document is visible and no modal covers it.
-It waits while first-run or connection setup owns the screen, adding no new
-blocking onboarding step. DNT hides the notice and the API refuses a receipt
-under DNT or when that publisher’s effective tier is not Lite. The panel has a named region and a polite announcement. A failed receipt leaves Lite suppressed; dismissing never counts as
-a receipt. Successful receipt writes update the authority-scoped status cache; the current
-panel stays available until dismissed or turned off, while a remount does not
-replay an old cached notice. Server-side receipts survive reload and restart;
-each Lite revision requires its own presentation. Distributions do not supply the notice copy or
-its controls.
+web servers with a UI port, prints one combined anonymous-usage notice for the
+current revision through the [unfiltered stderr notice path](../../src-server/utils/logger.ts).
+It retains a separate shown-notice record for each built-in destination before
+sending. The launching CLI prints the combined notice after readiness when its
+pre-launch state lacks a current record. The server records its log notice
+asynchronously; HTTP readiness does not imply it is already written. Unattended
+services retain the notice in their logs. Logged and visibly rendered notices
+are distinct presentation paths. `station telemetry status` uses the same display
+labels, with `off|lite|full` shown in parentheses; accepted command values remain
+unchanged.
+
+Desktop sidecars (`STATION_STDOUT_HANDSHAKE=1`) defer to the single UI choice.
+Until it records the shown revision with `POST /api/usage-telemetry/lite-notices`,
+daily payloads stay suppressed with reason `notice`. A current record survives
+restart and the daily timer starts without another UI call. An updated field
+revision requires another notice. The body remains
+`{ "publisher": "operator", "inventoryRevision": "<shown revision>" }`.
+The status API exposes persisted `liteNotices` per destination. The UI records
+only while its choice surface is in the viewport, the document is visible and
+no other modal covers it; its own dialog is the presentation. DNT and non-Lite
+states still refuse notice records. A failed write leaves counts suppressed.
+No separate floating notice or JSON field dump is rendered. Detailed choices
+in first run and Settings share the readable What's included component.
+Distributions do not supply this copy or its controls.
 
 A saved legacy false migrates to Off for both built-in publishers. Saved true
 with a current receipt migrates to operator Full; without it, operator Lite.
@@ -390,7 +405,7 @@ mount the real components against config and telemetry routes with real local
 persistence, and observe feedback transport before Off is persisted. They also
 exercise hidden notices, stale revisions, and dropped-payload presentation.
 The [gallery](../../tests/screenshots.spec.ts) defines desktop and 390px mobile
-Lite notice, outbox and feedback scenes. These are controlled local evidence;
+usage-sharing choices (including Do Not Track, additional-endpoint and light-theme variants), outbox and feedback scenes. These are controlled local evidence;
 they do not establish a packaged native-shell or live-receiver deployment. They use
 controlled endpoints; a live ingestion deployment needs its own delivery evidence.
 

@@ -4807,8 +4807,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { childAlive: childAliveProbe(uiProc.pid), signal },
         ),
     ]);
-    for (const publisher of telemetryNoticesToShow)
-      console.error(liteTelemetryNoticeText(publisher));
+    if (telemetryNoticesToShow.length) console.error(liteTelemetryNoticeText());
     const activeApiBase = activeLocalApiBase(host, serverPort);
     if (activeApiBase) {
       publishActiveLocalStation(

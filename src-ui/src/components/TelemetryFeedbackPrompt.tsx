@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/product-telemetry';
 import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
+import { SHARING_LABELS } from './UsageSharingChoices';
 import './TelemetryPrivacy.css';
 
 const LABELS: Record<TelemetryFeedbackReason, string> = {
@@ -49,14 +50,14 @@ export function TelemetryFeedbackPrompt({
     >
       <h3 id={id} tabIndex={-1} ref={heading}>
         {targetTier
-          ? `Lowering ${publisher} telemetry to ${targetTier[0].toUpperCase()}${targetTier.slice(1)} — why? (optional)`
-          : `Why lower ${publisher} telemetry? (optional)`}
+          ? `Changing sharing with ${publisher} to “${SHARING_LABELS[targetTier]}” — why? (optional)`
+          : `Why share less with ${publisher}? (optional)`}
       </h3>
       <p>
-        Share one identifier-free reason with this publisher only.
+        Share one anonymous reason with this destination only.
         {deferred
           ? ' It is included when you save Settings.'
-          : ' Choosing a reason saves your lower tier.'}{' '}
+          : ' Choosing a reason saves your sharing choice.'}{' '}
         Skip saves without sending feedback.
       </p>
       <div className="telemetry-feedback__reasons">

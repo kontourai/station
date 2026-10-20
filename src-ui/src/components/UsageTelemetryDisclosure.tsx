@@ -32,11 +32,13 @@ import {
   recoveryConfigKey,
   useRecoveryConfig,
 } from '../hooks/useRecoveryConfig';
+import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
+import { UsageSharingPrompt } from './UsageSharingPrompt';
 import './UsageTelemetryDisclosure.css';
 
 type Disclosure = {
@@ -153,6 +155,7 @@ function isSnoozedFor(inventoryRevision: string | undefined): boolean {
  * `useSyncExternalStore` subscription below actually observes.
  */
 let dismissedForPageLifetime = false;
+let dismissedRevisionForPage: string | undefined;
 const dismissalListeners = new Set<() => void>();
 
 function subscribeToDismissal(listener: () => void): () => void {
@@ -173,8 +176,13 @@ function readDismissal(): boolean {
 export function dismissUsageTelemetryDisclosure(
   inventoryRevision: string | undefined,
 ): void {
-  if (dismissedForPageLifetime) return;
+  if (
+    dismissedForPageLifetime &&
+    dismissedRevisionForPage === inventoryRevision
+  )
+    return;
   dismissedForPageLifetime = true;
+  dismissedRevisionForPage = inventoryRevision;
   try {
     const record: SnoozeRecord = {
       until: Date.now() + USAGE_TELEMETRY_SNOOZE_DURATION_MS,
@@ -236,6 +244,7 @@ function recordDntDecision(apiBase: string, inventoryRevision: string): void {
 /** Module state and the snooze outlive a test; each case needs its own page. */
 export function resetUsageTelemetryDisclosureDismissal(): void {
   dismissedForPageLifetime = false;
+  dismissedRevisionForPage = undefined;
   dntDecisionsForPage.clear();
   try {
     window.localStorage.removeItem(DNT_DECISIONS_STORAGE_KEY);
@@ -295,6 +304,7 @@ export interface UsageTelemetryDisclosureState {
   settled: boolean;
   /** There is an unacknowledged inventory this page has not dismissed. */
   outstanding: boolean;
+  dismissalRevision?: string;
 }
 
 /**
@@ -354,6 +364,37 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         ? NOT_READY_RETRY_DELAY_MS
         : Math.min(1000 * 2 ** failureCount, 30_000),
   });
+  const status = useTelemetryStatus(query.data?.publishers !== undefined);
+  // Pin eligibility for this mounted choice: recording its visible notice must
+  // not make it disappear before the person can save or dismiss it.
+  const eligibility = useRef<{ target: string; outstanding: boolean } | null>(
+    null,
+  );
+  const target = JSON.stringify([
+    decisionApiBase,
+    scope?.identityKey,
+    query.data?.inventoryRevision,
+    status.data?.liteInventoryRevision,
+  ]);
+  if (
+    query.data?.publishers &&
+    status.data &&
+    eligibility.current?.target !== target
+  ) {
+    eligibility.current = {
+      target,
+      outstanding: Object.entries(status.data.publishers).some(
+        ([id, state]) =>
+          (id === 'kontour' || id === 'operator') &&
+          state &&
+          (state.reason === 'DNT' ||
+            (state.userChoice === 'full' && !query.data?.acknowledged) ||
+            (state.tier === 'lite' &&
+              status.data.liteNotices?.[id]?.inventoryRevision !==
+                status.data.liteInventoryRevision)),
+      ),
+    };
+  }
   // The persisted snooze is checked against the CURRENT inventory revision:
   // a snooze recorded for an older inventory does not cover a new one. Read
   // in render rather than through the store subscription because it needs the
@@ -365,21 +406,28 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     (operator?.reason === 'DNT' ||
       operator?.userChoice === 'off' ||
       operator?.userChoice === 'lite');
+  const dismissalRevision = query.data?.publishers
+    ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}`
+    : query.data?.inventoryRevision;
   const dismissed =
-    pageDismissed ||
-    isSnoozedFor(query.data?.inventoryRevision) ||
+    (pageDismissed && dismissedRevisionForPage === dismissalRevision) ||
+    isSnoozedFor(dismissalRevision) ||
     decidedUnderDnt;
   return {
     data: query.data,
+    dismissalRevision,
     isError: query.isError,
-    settled: !query.isLoading,
+    settled: !query.isLoading && (!query.data?.publishers || !status.isLoading),
     // `events` is read with Object.entries below: a host that answers with an
     // unexpected shape (older build, error envelope) must degrade to showing
     // nothing, not throw through the app shell and blank the window.
     outstanding:
       !query.isLoading &&
       !!query.data?.events &&
-      !query.data.acknowledged &&
+      (query.data.publishers
+        ? eligibility.current?.target === target &&
+          eligibility.current.outstanding
+        : !query.data.acknowledged) &&
       !dismissed,
   };
 }
@@ -1139,7 +1187,8 @@ export function UsageTelemetryDisclosureStep({
   /** The decision landed — the run moves to its next step. */
   onAdvance: () => void;
 }) {
-  const { data, settled } = useUsageTelemetryDisclosureState();
+  const { data, settled, dismissalRevision } =
+    useUsageTelemetryDisclosureState();
   const decision = useUsageTelemetryDecision(data, onAdvance);
 
   if (!settled || !data?.events) {
@@ -1149,6 +1198,22 @@ export function UsageTelemetryDisclosureStep({
       </div>
     );
   }
+
+  if (data.publishers)
+    return (
+      <UsageSharingPrompt
+        data={data}
+        onClose={() => {
+          dismissUsageTelemetryDisclosure(dismissalRevision);
+          onAdvance();
+        }}
+        onDecided={(apiBase, dnt) => {
+          if (dnt) recordDntDecision(apiBase, data.inventoryRevision);
+          else dismissUsageTelemetryDisclosure(dismissalRevision);
+          onAdvance();
+        }}
+      />
+    );
 
   return (
     <div className="first-run-disclosure" data-testid="first-run-disclosure">
@@ -1195,11 +1260,24 @@ export function UsageTelemetryDisclosure({
   firstRun?: boolean;
 }) {
   const keepRef = useRef<HTMLButtonElement>(null);
-  const { data, isError, settled, outstanding } =
+  const { data, isError, settled, outstanding, dismissalRevision } =
     useUsageTelemetryDisclosureState();
   const decision = useUsageTelemetryDecision(data);
   if (!settled || !data?.events || (!firstRun && isError)) return null;
   if (firstRun && !outstanding) return null;
+
+  if (data.publishers)
+    return firstRun ? (
+      <UsageSharingPrompt
+        dialog
+        data={data}
+        onClose={() => dismissUsageTelemetryDisclosure(dismissalRevision)}
+        onDecided={(apiBase, dnt) => {
+          if (dnt) recordDntDecision(apiBase, data.inventoryRevision);
+          else dismissUsageTelemetryDisclosure(dismissalRevision);
+        }}
+      />
+    ) : null;
 
   // First run is a dialog, not a floating panel. The inventory is generated
   // server-side and grows with the event list, so the surface has to cap at

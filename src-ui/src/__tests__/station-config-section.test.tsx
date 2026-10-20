@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render as renderTree,
+  screen,
+} from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
 vi.mock('../views/settings/composite-editors', () => ({
@@ -13,6 +17,17 @@ import {
   StationConfigSection,
 } from '../views/settings/StationConfigSection';
 import { SETTINGS_CATALOG } from '../views/settings/settings-catalog';
+
+// These catalog/Advanced tests explicitly expand the controls they exercise.
+function render(tree: Parameters<typeof renderTree>[0]) {
+  const view = renderTree(tree);
+  const summary = view.container.querySelector('details > summary');
+  if (summary?.textContent === 'Advanced' && summary.parentElement) {
+    summary.parentElement.setAttribute('open', '');
+    fireEvent(summary.parentElement, new Event('toggle'));
+  }
+  return view;
+}
 
 /**
  * Every key the single "Station configuration" card rendered before #2182
@@ -365,15 +380,15 @@ test('publisher controls render registry publishers without borrowing Kontour id
     />,
   );
   expect(
-    screen.queryByRole('combobox', { name: 'Kontour telemetry' }),
-  ).toBeNull();
+    screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+  ).toHaveProperty('value', '');
   fireEvent.change(
     screen.getByRole('combobox', { name: 'example.tools telemetry' }),
     { target: { value: 'off' } },
   );
   expect(
     screen.getByRole('heading', {
-      name: 'Why lower example.tools telemetry? (optional)',
+      name: /Changing sharing with example.tools/,
     }),
   ).toBe(document.activeElement);
   fireEvent.click(screen.getByRole('button', { name: 'Skip' }));

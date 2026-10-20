@@ -1,6 +1,5 @@
 .usage-telemetry-disclosure__choices {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: var(--k-space-4);
   margin: var(--k-space-4) 0;
   padding: 0;
@@ -13,4 +12,20 @@
   gap: var(--k-space-2);
   min-height: 44px;
   cursor: pointer;
+}
+
+.usage-telemetry-disclosure__choices small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.usage-telemetry-disclosure__included > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.usage-telemetry-disclosure__included > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
 }

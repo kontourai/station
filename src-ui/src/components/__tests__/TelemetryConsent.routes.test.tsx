@@ -5,7 +5,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Hono } from 'hono';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const bridge = vi.hoisted(() => ({
   request: vi.fn(),
@@ -74,182 +74,33 @@ const { createLogger } = await import(serverModule('utils/logger.js'));
 
 import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
-import { UsageTelemetryDisclosureStep } from '../UsageTelemetryDisclosure';
+import { SHARING_LABELS } from '../UsageSharingChoices';
+import {
+  resetUsageTelemetryDisclosureDismissal,
+  UsageTelemetryDisclosure,
+  UsageTelemetryDisclosureStep,
+} from '../UsageTelemetryDisclosure';
 
 const makeTempDir = trackTempDirs();
-
-test.each(['full', 'lite'] as const)(
-  'declining %s through the real dialog and routes persists Off before acknowledgement and never sends',
-  async (tier) => {
-    const home = makeTempDir('station-consent-ui-');
-    const loader = new ConfigLoader({
-      projectHomeDir: home,
-      watchFiles: false,
-    });
-    await loader.loadAppConfig();
-    bridge.config = await loader.updateAppConfig({
-      telemetryTier: { operator: tier, kontour: 'off' },
-      productTelemetryEndpoint: 'https://receiver.test/v1/product/events',
-    });
-    const fetch = vi.fn();
-    const logger = createLogger({
-      name: 'telemetry-consent-test',
-      level: 'error',
-    });
-    const service = new UsageTelemetryService({
-      homeDir: home,
-      appConfig: bridge.config,
-      version: '1.2.3',
-      logger,
-      env: {},
-      fetch,
-    });
-    const app = new Hono();
-    app.route(
-      '/config',
-      withOperatorPrincipal(
-        createConfigRoutes(
-          loader,
-          logger,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          (config: AppConfig) => service.reconfigure(config),
-        ),
-      ),
-    );
-    app.route(
-      '/api/usage-telemetry',
-      createUsageTelemetryDisclosureRoutes(service),
-    );
-    bridge.request.mockImplementation((url: string, init?: RequestInit) =>
-      app.request(new URL(url).pathname, init),
-    );
-    bridge.save.mockImplementation(async (config: AppConfig) => {
-      const response = await app.request('/config/app', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-      expect(response.status).toBe(200);
-      const result = await response.json();
-      bridge.config = result.data;
-      return result;
-    });
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    });
-    const advance = vi.fn();
-    const view = render(
-      <QueryClientProvider client={client}>
-        <UsageTelemetryDisclosureStep onAdvance={advance} />
-      </QueryClientProvider>,
-    );
-    try {
-      if (tier === 'full')
-        expect(
-          await screen.findByText(
-            /Your saved operator choice is Full, awaiting acknowledgement/,
-          ),
-        ).toBeTruthy();
-      else
-        expect(
-          await screen.findByRole('button', {
-            name: 'Allow Full usage telemetry',
-          }),
-        ).toBeTruthy();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off usage telemetry' }),
-      );
-      fireEvent.click(await screen.findByRole('button', { name: 'Skip' }));
-      await waitFor(() => expect(advance).toHaveBeenCalledOnce());
-      const persisted = JSON.parse(
-        await readFile(join(home, 'config', 'app.json'), 'utf8'),
-      );
-      expect(persisted.telemetryTier.operator).toBe('off');
-      expect(persisted).not.toHaveProperty('telemetryEnabled');
-      expect((await service.disclosure()).acknowledged).toBe(true);
-      await service.track('station_started', {
-        version: '1.2.3',
-        platform: process.platform,
-        arch: process.arch,
-      });
-      await service.flush();
-      expect(fetch).not.toHaveBeenCalled();
-      // Settings uses the same writer; both publishers survive a fresh loader read.
-      view.unmount();
-      const settings = render(
-        <StationConfigSection
-          containerScope="station"
-          section="telemetry"
-          config={bridge.config}
-          onChange={(config) => {
-            void bridge.save({ telemetryTier: config.telemetryTier });
-          }}
-        />,
-      );
-      expect(
-        (
-          screen.getByRole('combobox', {
-            name: 'Operator telemetry',
-          }) as HTMLSelectElement
-        ).value,
-      ).toBe('off');
-      fireEvent.change(
-        screen.getByRole('combobox', { name: 'Kontour telemetry' }),
-        { target: { value: 'lite' } },
-      );
-      await waitFor(() =>
-        expect(bridge.config.telemetryTier?.kontour).toBe('lite'),
-      );
-      const restarted = new ConfigLoader({
-        projectHomeDir: home,
-        watchFiles: false,
-      });
-      try {
-        expect((await restarted.loadAppConfig()).telemetryTier).toEqual({
-          kontour: 'lite',
-          operator: 'off',
-        });
-      } finally {
-        restarted.dispose();
-        settings.unmount();
-      }
-    } finally {
-      view.unmount();
-      client.clear();
-      loader.dispose();
-    }
-  },
-);
-
-afterEach(() => vi.restoreAllMocks());
 
 async function publisherFixture(doNotTrack?: string) {
   const home = makeTempDir('station-telemetry-ui-');
   const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
   await loader.loadAppConfig();
   bridge.config = await loader.updateAppConfig({
-    telemetryTier: { operator: 'lite', kontour: 'off' },
+    telemetryTier: { operator: 'lite', kontour: 'lite' },
     productTelemetryEndpoint: 'https://receiver.test/events',
   });
   const sent: unknown[] = [];
   const tiersAtSend: string[] = [];
   const logger = createLogger({ name: 'telemetry-ui-routes', level: 'error' });
+  const env: NodeJS.ProcessEnv = doNotTrack ? { DO_NOT_TRACK: doNotTrack } : {};
   const service = new UsageTelemetryService({
     homeDir: home,
     appConfig: bridge.config,
     version: '1.2.3',
     logger,
-    env: doNotTrack ? { DO_NOT_TRACK: doNotTrack } : {},
+    env,
     fetch: async (_url: string, init: RequestInit) => {
       tiersAtSend.push((await loader.loadAppConfig()).telemetryTier?.operator);
       sent.push(JSON.parse(String(init.body)));
@@ -298,77 +149,85 @@ async function publisherFixture(doNotTrack?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return { home, loader, service, client, sent, tiersAtSend };
+  return { home, loader, service, client, sent, tiersAtSend, env };
 }
 
-import { useTelemetryStatus } from '../../hooks/useTelemetryStatus';
 import { TelemetryOutbox } from '../../views/settings/TelemetryOutbox';
-import { TelemetryLiteNotice } from '../TelemetryLiteNotice';
 
-function EffectiveTierProbe() {
-  const query = useTelemetryStatus();
-  return (
-    <output aria-label="Effective operator tier">
-      {query.data?.publishers.operator?.tier ?? 'pending'}
-    </output>
+beforeEach(() => {
+  resetUsageTelemetryDisclosureDismissal();
+  bridge.scope = null;
+});
+afterEach(() => vi.restoreAllMocks());
+
+function mountChoice(client: QueryClient, advance = vi.fn(), dialog = false) {
+  return render(
+    <QueryClientProvider client={client}>
+      {dialog ? (
+        <UsageTelemetryDisclosure firstRun />
+      ) : (
+        <UsageTelemetryDisclosureStep onAdvance={advance} />
+      )}
+    </QueryClientProvider>,
   );
 }
 
-test.each([undefined, '1'])(
-  'the real lowering dialog sends an optional reason in the config write before Off; DNT=%s',
-  async (dnt) => {
-    const fixture = await publisherFixture(dnt);
-    const { client, loader, service, sent, tiersAtSend } = fixture;
+const calls = (suffix: string) =>
+  bridge.request.mock.calls.filter(([url]) => String(url).endsWith(suffix));
+
+test.each(['off', 'lite', 'full'] as const)(
+  'the shared choice saves %s through real routes; detailed consent precedes activation',
+  async (tier) => {
+    const { client, loader, service, sent, tiersAtSend } =
+      await publisherFixture();
     const advance = vi.fn();
-    const view = render(
-      <QueryClientProvider client={client}>
-        <UsageTelemetryDisclosureStep onAdvance={advance} />
-        <EffectiveTierProbe />
-      </QueryClientProvider>,
-    );
+    const view = mountChoice(client, advance);
     try {
+      const anonymous = await screen.findByRole('radio', {
+        name: /^Anonymous usage counts/,
+      });
+      expect(anonymous).toHaveProperty('checked', true);
+      fireEvent.click(
+        screen.getByRole('radio', { name: SHARING_LABELS[tier] }),
+      );
+      if (tier === 'full')
+        expect(
+          screen.getByRole('region', { name: "What's included" }),
+        ).toBeTruthy();
+      bridge.request.mockClear();
       await waitFor(() =>
         expect(
-          screen.getByLabelText('Effective operator tier').textContent,
-        ).toBe(dnt ? 'off' : 'lite'),
+          screen.getByRole('button', { name: 'Save choice' }),
+        ).toHaveProperty('disabled', false),
       );
-      if (dnt) {
-        fireEvent.click(await screen.findByRole('radio', { name: 'Off' }));
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Save operator choice as Off' }),
-        );
-        expect(screen.queryByText(/Why lower Operator/)).toBeNull();
-      } else {
-        fireEvent.click(
-          await screen.findByRole('button', {
-            name: 'Turn off usage telemetry',
-          }),
-        );
-        expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(
-          'lite',
-        );
-        fireEvent.click(await screen.findByRole('button', { name: 'Privacy' }));
-      }
+      fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
       await waitFor(() => expect(advance).toHaveBeenCalledOnce());
-      await waitFor(() =>
+      const saved = await loader.loadAppConfig();
+      expect(saved.telemetryTier).toEqual({
+        kontour: tier === 'full' ? 'lite' : tier,
+        operator: tier,
+      });
+      expect((await service.disclosure()).acknowledged).toBe(tier === 'full');
+      const ordered = bridge.request.mock.calls.map(([url]) => String(url));
+      if (tier === 'full') {
         expect(
-          screen.getByLabelText('Effective operator tier').textContent,
-        ).toBe('off'),
+          ordered.findIndex((url) => url.endsWith('/acknowledgements')),
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          ordered.findIndex((url) => url.endsWith('/acknowledgements')),
+        ).toBeLessThan(ordered.findIndex((url) => url.endsWith('/config/app')));
+      } else expect(calls('/acknowledgements')).toHaveLength(0);
+      expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+        tier,
       );
-      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('off');
-      expect(sent).toEqual(
-        dnt
-          ? []
-          : [
-              {
-                publisher: 'operator',
-                action: 'tier-lowered',
-                reason: 'privacy',
-              },
-            ],
-      );
-      expect(tiersAtSend).toEqual(dnt ? [] : ['lite']);
-      expect((await service.disclosure()).acknowledged).toBe(!dnt);
+      await service.track('station_started', {
+        version: '1.2.3',
+        platform: process.platform,
+        arch: process.arch,
+      });
+      await service.flush();
+      expect(sent).toHaveLength(tier === 'full' ? 1 : 0);
+      expect(tiersAtSend).toEqual(tier === 'full' ? ['full'] : []);
     } finally {
       view.unmount();
       client.clear();
@@ -377,9 +236,43 @@ test.each([undefined, '1'])(
   },
 );
 
-test('notice receipts follow visible presentation, survive remount, and require a new inventory; hidden notices never attest', async () => {
-  const { client, loader, service, home } = await publisherFixture();
-  bridge.request.mockClear();
+test.each(['off', 'lite', 'full'] as const)(
+  'DNT displays the shared callout and saves %s without acknowledging',
+  async (tier) => {
+    const { client, loader, service } = await publisherFixture('1');
+    const advance = vi.fn();
+    const view = mountChoice(client, advance);
+    try {
+      await screen.findByRole('region', { name: 'Do Not Track' });
+      fireEvent.click(
+        await screen.findByRole('radio', {
+          name: new RegExp(`^${SHARING_LABELS[tier]}`),
+        }),
+      );
+      bridge.request.mockClear();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save choice' }),
+        ).toHaveProperty('disabled', false),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+      await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(tier);
+      expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+        'off',
+      );
+      expect(calls('/acknowledgements')).toHaveLength(0);
+      expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('Not now preserves anonymous counts and records only a visibly shown notice for both destinations', async () => {
+  const { client, loader, service } = await publisherFixture();
   const rect = vi
     .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
     .mockReturnValue({
@@ -393,95 +286,241 @@ test('notice receipts follow visible presentation, survive remount, and require 
       y: 100,
       toJSON: () => ({}),
     });
-  const modal = document.createElement('div');
-  modal.setAttribute('aria-modal', 'true');
-  document.body.append(modal);
-  const renderNotice = (enabled = true) =>
-    render(
-      <QueryClientProvider client={client}>
-        <TelemetryLiteNotice enabled={enabled} />
-      </QueryClientProvider>,
-    );
-  let view = renderNotice(false);
+  const visibility = vi
+    .spyOn(document, 'visibilityState', 'get')
+    .mockReturnValue('hidden');
+  const cover = document.createElement('div');
+  cover.setAttribute('aria-modal', 'true');
+  document.body.append(cover);
+  const view = mountChoice(client, vi.fn(), true);
   try {
-    expect((await service.telemetryStatus()).liteNotices).toEqual({});
-    view.unmount();
-    view = renderNotice();
-    await screen.findByRole('region', {
-      name: 'Lite telemetry notice for Operator',
-    });
+    await screen.findByRole('dialog', { name: 'Usage sharing' });
     await new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(resolve)),
     );
-    expect(
-      bridge.request.mock.calls.filter(([url]) =>
-        String(url).endsWith('/lite-notices'),
-      ),
-    ).toHaveLength(0);
     expect((await service.telemetryStatus()).liteNotices).toEqual({});
-    const visibility = vi
-      .spyOn(document, 'visibilityState', 'get')
-      .mockReturnValue('hidden');
-    modal.remove();
+    cover.remove();
     document.dispatchEvent(new Event('visibilitychange'));
     await new Promise((resolve) =>
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      ),
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
     );
-    expect(
-      bridge.request.mock.calls.filter(([url]) =>
-        String(url).endsWith('/lite-notices'),
-      ),
-      'hidden tab must not dispatch a receipt',
-    ).toHaveLength(0);
-    expect(
-      (await service.telemetryStatus()).liteNotices,
-      'hidden tab must not attest a notice',
-    ).toEqual({});
+    expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    document.body.append(cover);
     visibility.mockReturnValue('visible');
     document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    cover.remove();
+    await waitFor(async () =>
+      expect(
+        Object.keys((await service.telemetryStatus()).liteNotices).sort(),
+      ).toEqual(['kontour', 'operator']),
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+      kontour: 'lite',
+      operator: 'lite',
+    });
+    expect((await service.disclosure()).acknowledged).toBe(false);
+    view.unmount();
+    resetUsageTelemetryDisclosureDismissal();
+    const remount = mountChoice(client, vi.fn(), true);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    remount.unmount();
+  } finally {
+    cover.remove();
+    view.unmount();
+    client.clear();
+    loader.dispose();
+    rect.mockRestore();
+  }
+});
+
+test('a stale persisted notice requires visible presentation of the current revision', async () => {
+  const { client, loader, service, home } = await publisherFixture();
+  await service.recordLiteNotice(
+    'operator',
+    (await service.telemetryStatus()).liteInventoryRevision,
+  );
+  const path = join(home, 'config', 'telemetry-daily.json');
+  const daily = JSON.parse(await readFile(path, 'utf8'));
+  daily.notices.operator.inventoryRevision = 'old-revision';
+  await writeFile(path, JSON.stringify(daily));
+  const rect = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockReturnValue({
+      top: 100,
+      bottom: 300,
+      height: 200,
+      left: 0,
+      right: 390,
+      width: 390,
+      x: 0,
+      y: 100,
+      toJSON: () => ({}),
+    });
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    await screen.findByRole('dialog', { name: 'Usage sharing' });
     await waitFor(async () =>
       expect(
         (await service.telemetryStatus()).liteNotices.operator
           ?.inventoryRevision,
       ).toBe((await service.telemetryStatus()).liteInventoryRevision),
     );
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(screen.getByRole('button', { name: 'Dismiss notice' })).toBeTruthy();
-    view.unmount();
-    view = renderNotice();
-    expect(screen.queryByRole('region')).toBeNull();
-    await waitFor(() => expect(screen.queryByRole('region')).toBeNull());
-    // A stale receipt is not a notice for today's catalog.
-    const dailyPath = join(home, 'config', 'telemetry-daily.json');
-    const daily = JSON.parse(await readFile(dailyPath, 'utf8'));
-    daily.notices.operator.inventoryRevision = 'old-revision';
-    await writeFile(dailyPath, JSON.stringify(daily));
-    view.unmount();
-    client.clear();
-    view = renderNotice();
-    await screen.findByRole('region', {
-      name: 'Lite telemetry notice for Operator',
-    });
-    await waitFor(async () =>
-      expect(
-        (await service.telemetryStatus()).liteNotices.operator
-          ?.inventoryRevision,
-      ).not.toBe('old-revision'),
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Turn off Operator telemetry' }),
-    );
-    await waitFor(async () =>
-      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe('off'),
-    );
   } finally {
-    modal.remove();
     view.unmount();
     client.clear();
     loader.dispose();
     rect.mockRestore();
+  }
+});
+
+test('a Detailed choice saved under DNT requires a fresh explicit confirmation after DNT is removed', async () => {
+  const { client, loader, service, env } = await publisherFixture('1');
+  const advance = vi.fn();
+  const view = mountChoice(client, advance);
+  try {
+    await screen.findByRole('region', { name: 'Do Not Track' });
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save choice' }),
+      ).toHaveProperty('disabled', false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+    view.unmount();
+    delete env.DO_NOT_TRACK;
+    await service.reconfigure(await loader.loadAppConfig());
+    client.clear();
+    bridge.request.mockClear();
+    const next = mountChoice(client, vi.fn(), true);
+    await screen.findByRole('dialog', { name: 'Usage sharing' });
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('checked', true);
+    expect((await service.disclosure()).acknowledged).toBe(false);
+    expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+      'lite',
+    );
+    expect(calls('/acknowledgements')).toHaveLength(0);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('radio', { name: SHARING_LABELS.full }),
+      ).toHaveProperty('disabled', false),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await waitFor(async () =>
+      expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+        'full',
+      ),
+    );
+    next.unmount();
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
+test.each(['acknowledgements', 'config/app'])(
+  'a refused %s write leaves the choice open and never activates detailed sharing',
+  async (suffix) => {
+    const { client, loader, service } = await publisherFixture();
+    const dispatch = bridge.request.getMockImplementation();
+    if (!dispatch) throw new Error('Missing route fixture');
+    bridge.request.mockImplementation((url: string, init?: RequestInit) =>
+      String(url).endsWith(`/${suffix}`) && init?.method !== undefined
+        ? new Response(JSON.stringify({ success: false }), { status: 403 })
+        : dispatch(url, init),
+    );
+    const advance = vi.fn();
+    const view = mountChoice(client, advance);
+    try {
+      await waitFor(() =>
+        expect(
+          screen.getByRole('radio', { name: SHARING_LABELS.full }),
+        ).toHaveProperty('disabled', false),
+      );
+      fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Save choice' }),
+        ).toHaveProperty('disabled', false),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+      await screen.findByRole('alert');
+      expect(advance).not.toHaveBeenCalled();
+      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(
+        'lite',
+      );
+      expect((await service.telemetryStatus()).publishers.operator.tier).toBe(
+        'lite',
+      );
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('first-run and main Settings use plain language; Advanced controls keep independent saved choices', async () => {
+  const { client, loader, service } = await publisherFixture();
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+    expect(screen.getByRole('dialog').textContent).not.toMatch(
+      /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
+    );
+    expect(screen.getByText('Also shared with: receiver.test')).toBeTruthy();
+    view.unmount();
+    const status = await service.telemetryStatus();
+    const settings = render(
+      <QueryClientProvider client={client}>
+        <StationConfigSection
+          section="telemetry"
+          containerScope="station"
+          config={bridge.config}
+          telemetryPublishers={status.publishers}
+          onChange={(config) => {
+            void bridge.save({ telemetryTier: config.telemetryTier });
+          }}
+        />
+      </QueryClientProvider>,
+    );
+    const main = screen.getByLabelText('Usage sharing choices');
+    expect(main.textContent).not.toMatch(
+      /\b(Lite|Full|publisher|operator|inventory|receipt)\b/i,
+    );
+    fireEvent.click(screen.getByText('Advanced', { exact: true }));
+    // jsdom does not implement the details activation behavior.
+    const details = screen.getByText('Advanced', { exact: true })
+      .parentElement!;
+    details.setAttribute('open', '');
+    fireEvent(details, new Event('toggle'));
+    fireEvent.change(
+      await screen.findByRole('combobox', { name: 'Kontour telemetry' }),
+      { target: { value: 'off' } },
+    );
+    await waitFor(async () =>
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+        kontour: 'off',
+        operator: 'lite',
+      }),
+    );
+    settings.unmount();
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
   }
 });
 
@@ -548,34 +587,8 @@ test('outbox displays sent JSON but never exposes dropped payload bytes, and is 
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh Kontour outbox' }),
     );
-    await screen.findByText("This publisher's outbox is empty.");
+    await screen.findByText('Nothing has been sent to this destination.');
     empty.unmount();
-  } finally {
-    view.unmount();
-    client.clear();
-    loader.dispose();
-  }
-});
-
-test('DNT never renders a Lite notice or records a UI receipt', async () => {
-  const { client, loader, service } = await publisherFixture('1');
-  const view = render(
-    <QueryClientProvider client={client}>
-      <TelemetryLiteNotice />
-    </QueryClientProvider>,
-  );
-  try {
-    await waitFor(() =>
-      expect(
-        client.getQueryState([
-          'telemetry-status',
-          'http://station.test',
-          undefined,
-        ])?.status,
-      ).toBe('success'),
-    );
-    expect(screen.queryByRole('region')).toBeNull();
-    expect((await service.telemetryStatus()).liteNotices).toEqual({});
   } finally {
     view.unmount();
     client.clear();
@@ -638,49 +651,3 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
     bridge.scope = null;
   }
 });
-
-test.each(['tier', 'acknowledgement'])(
-  'a failed dialog %s write focuses its error after the reason prompt closes',
-  async (failure) => {
-    const { client, loader } = await publisherFixture();
-    if (failure === 'tier')
-      bridge.save.mockRejectedValueOnce(new Error('refused'));
-    else {
-      const dispatch = bridge.request.getMockImplementation();
-      if (!dispatch) throw new Error('Missing route fixture');
-      bridge.request.mockImplementation((url: string, init?: RequestInit) =>
-        String(url).endsWith('/acknowledgements')
-          ? new Response(JSON.stringify({ success: false, error: 'refused' }), {
-              status: 409,
-            })
-          : dispatch(url, init),
-      );
-    }
-    const advance = vi.fn();
-    const view = render(
-      <QueryClientProvider client={client}>
-        <UsageTelemetryDisclosureStep onAdvance={advance} />
-      </QueryClientProvider>,
-    );
-    try {
-      fireEvent.click(
-        await screen.findByRole('button', { name: 'Turn off usage telemetry' }),
-      );
-      fireEvent.click(await screen.findByRole('button', { name: 'Skip' }));
-      const error = await screen.findByText(
-        failure === 'tier'
-          ? 'The usage telemetry setting could not be saved.'
-          : 'The disclosure acknowledgement could not be saved.',
-      );
-      await waitFor(() => expect(document.activeElement).toBe(error));
-      expect(advance).not.toHaveBeenCalled();
-      expect((await loader.loadAppConfig()).telemetryTier.operator).toBe(
-        failure === 'tier' ? 'lite' : 'off',
-      );
-    } finally {
-      view.unmount();
-      client.clear();
-      loader.dispose();
-    }
-  },
-);
