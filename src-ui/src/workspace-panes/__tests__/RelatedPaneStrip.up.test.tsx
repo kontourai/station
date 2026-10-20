@@ -47,6 +47,7 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../contexts/RegionModelContext';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { writePaneFence } from '../../regions/pane-fence';
 import {
@@ -55,6 +56,7 @@ import {
   type PaneRelation,
   serializePaneRelations,
 } from '../../regions/pane-relations';
+import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 import { RelatedPaneStrip } from '../RelatedPaneStrip';
 
 const ID = 'file-preview:0123456789abcdef0123456789abcdef';
@@ -261,4 +263,212 @@ test('a relation recorded on another Station offers no Up', () => {
   );
   mount();
   expect(screen.queryByRole('button', { name: /^Up to/ })).toBeNull();
+});
+
+/**
+ * Up selects things no route navigation guards — Chat's conversation, a
+ * revealed surface. When that reveal takes the related pane itself off
+ * screen, the pane's own unsaved-changes guard is asked once, before
+ * anything changes, and Cancel leaves the source, the pane and the focus as
+ * they were. When the pane stays on screen nothing is asked.
+ */
+describe('Up and the related pane’s unsaved work', () => {
+  const RELEASE: PaneOpener = {
+    occurrenceId: 'chat',
+    label: 'Release review',
+    source: {
+      kind: 'conversation',
+      conversationId: 'conversation-release',
+      threadId: null,
+      projectSlug: 'alpha',
+    },
+  };
+
+  function dirtyChild(answer: () => 'cancel' | 'continue') {
+    let asked = 0;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty related pane'),
+      (continueNavigation, cancel) => {
+        asked += 1;
+        if (answer() === 'cancel') cancel?.();
+        else continueNavigation();
+      },
+      ID,
+    );
+    return { asked: () => asked, unregister };
+  }
+
+  async function placeChild(region: 'right' | 'bottom') {
+    writeFilePreviewPaneState(localStorage, ID, {
+      version: '1.0',
+      projectSlug: 'alpha',
+      path: 'src/a.ts',
+      wrap: true,
+    });
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion('chat', { region: 'bottom' });
+    });
+    act(() => {
+      model?.openSurfaceInRegion(ID, { region });
+    });
+    await waitFor(() => expect(model?.regions[region].occupant).toBe(ID));
+  }
+
+  test('desktop, the pane shares Chat’s region: asked once; Cancel changes nothing, continue shows the conversation', async () => {
+    seedRelation(RELEASE);
+    mount();
+    await placeChild('bottom');
+    act(() => navigationStore.setActiveChat('conversation-other'));
+    let reply: 'cancel' | 'continue' = 'cancel';
+    const guard = dirtyChild(() => reply);
+    try {
+      const up = screen.getByRole('button', { name: 'Up to Release review' });
+      act(() => up.focus());
+      const arrangement = structuredClone(model?.regions);
+      act(() => up.click());
+      expect(guard.asked()).toBe(1);
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'conversation-other',
+      );
+      expect(model?.regions).toEqual(arrangement);
+      expect(document.activeElement).toBe(up);
+
+      reply = 'continue';
+      act(() => up.click());
+      expect(guard.asked()).toBe(2);
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().activeChat).toBe(
+          'conversation-release',
+        ),
+      );
+      expect(model?.regions.bottom.occupant).toBe('chat');
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  test('desktop, the pane is in Related while Chat is in Tools: nothing is asked and the pane stays', async () => {
+    seedRelation(RELEASE);
+    mount();
+    await placeChild('right');
+    const guard = dirtyChild(() => 'cancel');
+    try {
+      act(() =>
+        screen.getByRole('button', { name: 'Up to Release review' }).click(),
+      );
+      await waitFor(() =>
+        expect(navigationStore.getSnapshot().activeChat).toBe(
+          'conversation-release',
+        ),
+      );
+      expect(guard.asked()).toBe(0);
+      expect(model?.regions.right.occupant).toBe(ID);
+    } finally {
+      guard.unregister();
+    }
+  });
+
+  test('Files in the pane’s own region: asked before Files is revealed; Cancel leaves the pane selected', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+    seedRelation({
+      occurrenceId: 'coding:file-browser',
+      label: 'Files · Alpha',
+      source: { kind: 'files', projectId: 'alpha-id', projectSlug: 'alpha' },
+    });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => {
+      model?.openSurfaceInRegion('coding:file-browser', { region: 'right' });
+    });
+    await placeChild('right');
+    let reply: 'cancel' | 'continue' = 'cancel';
+    const guard = dirtyChild(() => reply);
+    try {
+      const up = screen.getByRole('button', { name: 'Up to Files · Alpha' });
+      act(() => up.click());
+      expect(guard.asked()).toBe(1);
+      expect(model?.regions.right.occupant).toBe(ID);
+      reply = 'continue';
+      act(() => up.click());
+      await waitFor(() =>
+        expect(model?.regions.right.occupant).toBe('coding:file-browser'),
+      );
+    } finally {
+      guard.unregister();
+    }
+  });
+});
+
+describe('Up from a pane shown over Chat on a phone', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY || query === '(pointer: coarse)',
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    window.history.replaceState({}, '', '/?dock=open');
+    navigationStore.navigate('/', { dock: 'open', maximize: null });
+  });
+
+  test('the layer’s own guard is asked once; Cancel keeps the layer and the conversation, continue returns to the opener', async () => {
+    seedRelation({
+      occurrenceId: 'chat',
+      label: 'Release review',
+      source: {
+        kind: 'conversation',
+        conversationId: 'conversation-release',
+        threadId: null,
+        projectSlug: 'alpha',
+      },
+    });
+    writeFilePreviewPaneState(localStorage, ID, {
+      version: '1.0',
+      projectSlug: 'alpha',
+      path: 'src/a.ts',
+      wrap: true,
+    });
+    mount();
+    await waitFor(() => expect(model).not.toBeNull());
+    act(() => navigationStore.setActiveChat('conversation-other'));
+    act(() => {
+      model?.openSurfaceInRegion(ID);
+    });
+    await waitFor(() => expect(model?.phoneLayer?.surfaceId).toBe(ID));
+    let asked = 0;
+    let reply: 'cancel' | 'continue' = 'cancel';
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty layer pane'),
+      (continueNavigation, cancel) => {
+        asked += 1;
+        if (reply === 'cancel') cancel?.();
+        else continueNavigation();
+      },
+      ID,
+    );
+    try {
+      const up = screen.getByRole('button', { name: 'Up to Release review' });
+      act(() => up.click());
+      expect(asked).toBe(1);
+      expect(model?.phoneLayer?.surfaceId).toBe(ID);
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'conversation-other',
+      );
+
+      reply = 'continue';
+      act(() => up.click());
+      expect(asked).toBe(2);
+      await waitFor(() => expect(model?.phoneLayer).toBeNull());
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'conversation-release',
+      );
+    } finally {
+      unregister();
+    }
+  });
 });

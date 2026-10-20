@@ -216,9 +216,11 @@ export interface RegionModelValue {
   /**
    * Close a pane's tab (#2046 2b, `removeRegionPane`): the surface leaves the
    * region and is placed nowhere; the region keeps its other panes. A
-   * surface the region does not hold is ignored.
+   * surface the region does not hold is ignored. True only when the region
+   * held it NOW and it left, so a caller that asked first (an unsaved-changes
+   * guard) can tell a close from a pane that moved meanwhile.
    */
-  removePane(regionId: RegionId, surfaceId: string): void;
+  removePane(regionId: RegionId, surfaceId: string): boolean;
   /**
    * Move a dock region's whole pane set — tab order and selection — into
    * another dock region (#2046 2b, `moveRegionPanes`): the region bar's
@@ -284,8 +286,13 @@ export interface RegionModelValue {
    * is then consumed by its registration's cleanup, which travels back over
    * it because the `?maximize` mirror has already returned the URL to the
    * one the entry was pushed at (see the registration effect).
+   *
+   * `then` runs after the layer has closed — never on Cancel — so a caller
+   * that leaves the layer to go somewhere (a related pane's Up) asks its
+   * guard once, through this, rather than changing anything first. With no
+   * layer nothing is asked and `then` runs at once.
    */
-  closePhoneLayer(): void;
+  closePhoneLayer(then?: () => void): void;
 }
 
 /**
@@ -840,12 +847,16 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setRegions(next);
   }, []);
 
-  const removePane = useCallback((regionId: RegionId, surfaceId: string) => {
-    const next = removeRegionPane(regionsRef.current, regionId, surfaceId);
-    if (next === regionsRef.current) return;
-    regionsRef.current = next;
-    setRegions(next);
-  }, []);
+  const removePane = useCallback(
+    (regionId: RegionId, surfaceId: string): boolean => {
+      const next = removeRegionPane(regionsRef.current, regionId, surfaceId);
+      if (next === regionsRef.current) return false;
+      regionsRef.current = next;
+      setRegions(next);
+      return true;
+    },
+    [],
+  );
 
   const moveRegionPanes = useCallback(
     (from: DockRegionId, to: DockRegionId) => {
@@ -1279,16 +1290,27 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (current() && !reinstated) reinstate();
   }, [registerLayerEntry, restorePhoneLayer]);
   leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
-  const closePhoneLayer = useCallback(() => {
-    // No layer, nothing to leave — and no guard to ask. Chat-focus intents
-    // call this on every device (`useDismissPhoneLayer`), so asking with no
-    // layer would put a "Discard?" in front of an unrelated dirty form
-    // whose answer changes nothing.
-    if (!phoneLayerRef.current) return;
-    navigationStore.runNavigationGuards(restorePhoneLayer, undefined, {
-      owner: phoneLayerRef.current.surfaceId,
-    });
-  }, [restorePhoneLayer]);
+  const closePhoneLayer = useCallback(
+    (then?: () => void) => {
+      // No layer, nothing to leave — and no guard to ask. Chat-focus intents
+      // call this on every device (`useDismissPhoneLayer`), so asking with no
+      // layer would put a "Discard?" in front of an unrelated dirty form
+      // whose answer changes nothing.
+      if (!phoneLayerRef.current) {
+        then?.();
+        return;
+      }
+      navigationStore.runNavigationGuards(
+        () => {
+          restorePhoneLayer();
+          then?.();
+        },
+        undefined,
+        { owner: phoneLayerRef.current.surfaceId },
+      );
+    },
+    [restorePhoneLayer],
+  );
   closePhoneLayerRef.current = closePhoneLayer;
   useEffect(() => {
     if (!phoneLayerOpen) return;

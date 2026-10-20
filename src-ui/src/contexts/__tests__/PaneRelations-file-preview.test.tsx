@@ -363,19 +363,47 @@ describe('related file previews', () => {
     }
   });
 
-  test('without a verified Station the opener keeps its pre-relationship behaviour', async () => {
+  test('without a verified Station a related open is refused before anything is written', async () => {
     await mount('unverified');
     expect(probe.relations?.stationId).toBe(null);
-    const first = await open('src/a.ts');
-    expect(first).toMatchObject({ ok: true });
-    expect(first).not.toHaveProperty('disposition');
-    await open('src/b.ts');
-    expect(previewsInRight()).toHaveLength(2);
+    const arrangement = structuredClone(probe.model?.regions);
+    const before = await settledStorageSnapshot();
+    expect(await open('src/a.ts')).toEqual({
+      ok: false,
+      reason: 'station-unverified',
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(probe.model?.regions).toEqual(arrangement);
+    expect(previewsInRight()).toEqual([]);
+  });
+
+  test('A → unverified → click → B: the click mints and reveals nothing, and nothing is ever unfenced', async () => {
+    await mount({ station: 'station-a' });
     await open('src/a.ts');
-    expect(previewsInRight()).toHaveLength(2);
-    for (const id of previewsInRight())
-      expect(readPaneFence(localStorage, id)).toEqual({ status: 'none' });
-    expect(localStorage.getItem(PANE_RELATIONS_STORAGE_KEY)).toBe(null);
+    const [onA] = previewsInRight();
+    act(() => authoritySwitch.set?.('unverified'));
+    await waitFor(() => expect(probe.relations?.stationId).toBe(null));
+    const arrangement = structuredClone(probe.model?.regions);
+    const before = await settledStorageSnapshot();
+    // A new target, and the one already open: neither is minted nor revealed.
+    expect(await open('src/b.ts')).toEqual({
+      ok: false,
+      reason: 'station-unverified',
+    });
+    expect(await open('src/a.ts')).toEqual({
+      ok: false,
+      reason: 'station-unverified',
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(probe.model?.regions).toEqual(arrangement);
+
+    act(() => authoritySwitch.set?.({ station: 'station-b' }));
+    await waitFor(() => expect(probe.relations?.stationId).toBe('station-b'));
+    expect(previewsInRight()).toEqual([onA]);
+    expect(readPaneFence(localStorage, onA as string)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
   });
 });
 
@@ -622,6 +650,139 @@ describe('what changed while a guard was answering', () => {
       authoritySwitch.set?.({ station: 'station-b' }),
     );
     expect(outcome).toEqual({ ok: false, reason: 'station-changed' });
+    expect(unchanged).toBe(true);
+  });
+});
+
+/**
+ * Re-opening a KEPT target focuses it and writes the new line range onto its
+ * state — writes as real as a new preview's. When the pane it would take off
+ * screen has a guard that answers later, the focus commits under the lock
+ * only for the Station, source and target it was clicked for: a change in
+ * any of them, or another window holding the lock, refuses it, and the
+ * arrangement, every stored record and the focus stay as they were.
+ */
+describe('focusing a kept target while a guard is answering', () => {
+  const RANGE = { start: 4, end: 9 };
+
+  /** `change` may return its own undo (a lock held from outside). */
+  async function focusWhileGuardAnswers(change: () => unknown) {
+    await mount();
+    act(() => probe.setSelection?.(openerSelectionKey(SECURITY)));
+    await open('src/a.ts');
+    const [kept] = previewsInRight();
+    await act(async () => {
+      await probe.relations?.keep(kept as string);
+    });
+    await open('src/b.ts');
+    const covering = right().occupant as string;
+    expect(covering).not.toBe(kept);
+    let answer: (() => void) | null = null;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('the covering preview, answering later'),
+      (continueNavigation) => {
+        answer = continueNavigation;
+      },
+      covering,
+    );
+    const focus = document.createElement('button');
+    document.body.append(focus);
+    focus.focus();
+    let restore: unknown;
+    try {
+      await waitFor(() =>
+        expect(probe.relations?.relationOf(covering)?.kept).toBe(true),
+      );
+      const arrangement = structuredClone(probe.model?.regions);
+      const before = await settledStorageSnapshot();
+      let outcome: RelatedOpenOutcome | undefined;
+      let pending: Promise<void> = Promise.resolve();
+      act(() => {
+        const openPreview = probe.open;
+        if (!openPreview) throw new Error('no opener');
+        pending = openPreview({
+          ...PROJECT,
+          path: 'src/a.ts',
+          lineRange: RANGE,
+        }).then((result) => {
+          outcome = result;
+        });
+      });
+      await waitFor(() => expect(answer).not.toBeNull());
+      act(() => {
+        restore = change();
+      });
+      await act(async () => {
+        answer?.();
+        await pending;
+      });
+      return {
+        outcome,
+        kept: kept as string,
+        unchanged:
+          JSON.stringify(await settledStorageSnapshot()) ===
+            JSON.stringify(before) &&
+          JSON.stringify(probe.model?.regions) ===
+            JSON.stringify(arrangement) &&
+          document.activeElement === focus,
+      };
+    } finally {
+      if (typeof restore === 'function') restore();
+      unregister();
+      focus.remove();
+    }
+  }
+
+  test('control: with nothing changed it focuses the kept preview at the new range', async () => {
+    const { outcome, kept } = await focusWhileGuardAnswers(() => {});
+    expect(outcome).toMatchObject({
+      ok: true,
+      disposition: 'focused',
+      surfaceId: kept,
+    });
+    expect(right().occupant).toBe(kept);
+    expect(readFilePreviewPaneState(localStorage, kept)?.lineRange).toEqual(
+      RANGE,
+    );
+  });
+
+  test('the verified Station changed: refused, nothing written or moved', async () => {
+    const { outcome, unchanged } = await focusWhileGuardAnswers(() =>
+      authoritySwitch.set?.({ station: 'station-b' }),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'station-changed' });
+    expect(unchanged).toBe(true);
+  });
+
+  test('the opener moved to another conversation: superseded, nothing written or moved', async () => {
+    const { outcome, unchanged } = await focusWhileGuardAnswers(() =>
+      probe.setSelection?.(DOCS_SELECTION),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'superseded' });
+    expect(unchanged).toBe(true);
+  });
+
+  test('the pane on screen changed meanwhile: superseded, since its guard was not the one asked', async () => {
+    const { outcome, kept } = await focusWhileGuardAnswers(() => {
+      const other = right().panes.find(
+        (id) => id !== right().occupant && id.startsWith('file-preview:'),
+      ) as string;
+      probe.model?.selectPane('right', other);
+      return undefined;
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'superseded' });
+    // The reader's own selection stands, and the open wrote no line range.
+    expect(right().occupant).toBe(kept);
+    expect(
+      readFilePreviewPaneState(localStorage, kept)?.lineRange,
+    ).toBeUndefined();
+  });
+
+  test('another window holds the lock: contended, nothing written or moved', async () => {
+    const { outcome, unchanged } = await focusWhileGuardAnswers(() =>
+      locks.holdExternally(),
+    );
+    expect(outcome).toEqual({ ok: false, reason: 'contended' });
     expect(unchanged).toBe(true);
   });
 });

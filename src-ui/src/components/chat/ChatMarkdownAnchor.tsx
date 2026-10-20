@@ -226,10 +226,11 @@ function activate(
     const fallBack = () => {
       if (!thread) link.openPathInMain?.(target.path, target.lineRange);
     };
-    if (opener && relations.stationId !== null) {
+    if (opener) {
       // Related to the conversation: one reusable preview per session, which
       // hides while another session is on screen, fenced to this Station
-      // (docs/design/pane-relationships.md).
+      // (docs/design/pane-relationships.md). With no verified Station it is
+      // refused and says so; it never falls back to an unfenced preview.
       void openRelatedFilePreview(
         () => latestModel() ?? model,
         relations,

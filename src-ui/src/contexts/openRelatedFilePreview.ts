@@ -10,6 +10,7 @@ import {
   keptPaneForTarget,
   openerSelectionKey,
   type PaneOpener,
+  type PaneRelation,
   type PaneRelationTarget,
   prunePaneRelations,
   sameRelationTarget,
@@ -56,15 +57,18 @@ import {
  * 2. Ask the unsaved-changes guard of every pane the open would take off
  *    screen — the preview it replaces, the pane it covers. Cancel ends here.
  * 3. Take the record's exclusive lock and re-read it. The verified Station,
- *    the opener's selection and the plan must all still hold; otherwise the
- *    open is `superseded` / `station-changed`. At the bound it is refused.
- * 4. Fence and store the new occurrence, write the record, then commit the
- *    arrangement. A refusal at any step removes what the earlier steps wrote.
+ *    the opener's selection, the plan (the occurrence to focus or replace)
+ *    and the pane the open takes off screen must all still be the ones step
+ *    2 asked about; otherwise the open is `superseded` / `station-changed`.
+ *    At the bound it is refused.
+ * 4. Focus the occurrence the plan named, or fence and store a new one, write
+ *    the record, then commit the arrangement. A refusal at any step removes
+ *    what the earlier steps wrote.
  *
  * Without a verified Station there is nothing to fence a new occurrence to,
- * and the open keeps the pre-relationship behaviour: an unfenced preview,
- * matched by path. That is a stated migration limit: an occurrence that was
- * ever fenced is never matched or read that way.
+ * so a related open is refused (`station-unverified`) before anything is
+ * written. Previews made before relationships keep their unfenced reads; no
+ * new unfenced one is minted.
  */
 
 export type RelatedOpenRefusal =
@@ -90,7 +94,7 @@ const RELATION_REFUSAL_SENTENCES: Record<
   string
 > = {
   'station-unverified':
-    'Station has not confirmed which Station this is yet. Try again in a moment.',
+    'Station cannot confirm which Station it is connected to, so the preview was not opened. It opens once Station confirms it.',
   'station-changed':
     'The Station changed while the preview was opening, so it was not opened.',
   'lock-unavailable':
@@ -129,6 +133,27 @@ function relatedOccurrenceExists(instanceId: string): boolean {
   return instanceId.startsWith('file-preview:')
     ? readFilePreviewPaneState(storage, instanceId) !== null
     : true;
+}
+
+/**
+ * The occurrence an open of `target` focuses rather than mints: the kept
+ * preview of that exact target, else the opener's transient preview when it
+ * already shows that exact target — either only while it still exists.
+ */
+function occurrenceToFocus(
+  kept: PaneRelation | undefined,
+  transient: PaneRelation | undefined,
+  station: string,
+  target: PaneRelationTarget,
+): PaneRelation | undefined {
+  if (kept && relatedOccurrenceExists(kept.instanceId)) return kept;
+  if (
+    transient &&
+    sameRelationTarget(station, transient.target, target) &&
+    relatedOccurrenceExists(transient.instanceId)
+  )
+    return transient;
+  return undefined;
 }
 
 /**
@@ -179,8 +204,7 @@ export async function openRelatedFilePreview(
   if (projectId === null || projectSlug === null)
     return { ok: false, reason: 'unsupplied' };
   const station = relations.stationId;
-  if (station === null)
-    return openFilePreviewInRegion(getModel(), request, options);
+  if (station === null) return { ok: false, reason: 'station-unverified' };
 
   const target: PaneRelationTarget = {
     kind: 'file',
@@ -189,35 +213,64 @@ export async function openRelatedFilePreview(
     path,
     thread: thread ?? null,
   };
+  const selection = openerSelectionKey(opener);
   const before = getModel();
-  const kept = relations.keptFor(target);
-  const transient = relations.transientFor(opener);
-  const focus =
-    kept && relatedOccurrenceExists(kept.instanceId)
-      ? kept
-      : transient &&
-          sameRelationTarget(station, transient.target, target) &&
-          relatedOccurrenceExists(transient.instanceId)
-        ? transient
-        : undefined;
+  const focus = occurrenceToFocus(
+    relations.keptFor(target),
+    relations.transientFor(opener),
+    station,
+    target,
+  );
   if (focus) {
-    const hidden = paneHiddenBy(before, focus.instanceId);
-    if (!(await guardsAllow([hidden === focus.instanceId ? null : hidden])))
+    const focusId = focus.instanceId;
+    const asked = paneHiddenBy(before, focusId);
+    const hidden = asked === focusId ? null : asked;
+    if (!(await guardsAllow([hidden])))
       return { ok: false, reason: 'guard-cancelled' };
-    const outcome = revealFilePreview(
-      getModel(),
-      focus.instanceId,
-      lineRange,
-      options,
+    let arrangementRefusal: OpenPaneRefusal | undefined;
+    // Focusing writes too — the arrangement, and a new line range onto the
+    // preview's state — so it commits under the same lock, after the same
+    // checks, as a new preview: the guard above was answered for THIS
+    // Station, source, target and covered pane.
+    const result = await relations.transact<RelatedOpenOutcome>(
+      (tx) => {
+        const current = relations.currentSelection(opener.occurrenceId);
+        if (current !== undefined && current !== selection)
+          return { ok: false, reason: 'superseded' };
+        const fresh = prunePaneRelations(tx.record, relatedOccurrenceExists);
+        const model = getModel();
+        const coveredNow = paneHiddenBy(model, focusId);
+        if (
+          occurrenceToFocus(
+            keptPaneForTarget(fresh, station, target),
+            transientPaneForOpener(fresh, station, opener),
+            station,
+            target,
+          )?.instanceId !== focusId ||
+          (coveredNow === focusId ? null : coveredNow) !== hidden
+        )
+          return { ok: false, reason: 'superseded' };
+        const outcome = revealFilePreview(model, focusId, lineRange, options);
+        if (!outcome.ok) {
+          arrangementRefusal = outcome.reason;
+          return { ok: false, reason: 'refused' };
+        }
+        return { ok: true, value: { ...outcome, disposition: 'focused' } };
+      },
+      { station },
     );
-    return outcome.ok ? { ...outcome, disposition: 'focused' } : outcome;
+    if (!result.ok)
+      return { ok: false, reason: arrangementRefusal ?? result.reason };
+    return result.value;
   }
 
+  const transient = relations.transientFor(opener);
   const replacing =
     transient && relatedOccurrenceExists(transient.instanceId)
       ? transient.instanceId
       : undefined;
-  if (!(await guardsAllow([replacing, paneHiddenBy(before, replacing)])))
+  const covered = paneHiddenBy(before, replacing);
+  if (!(await guardsAllow([replacing, covered])))
     return { ok: false, reason: 'guard-cancelled' };
 
   const state: WorkspaceFilePreviewPaneState = {
@@ -232,7 +285,6 @@ export async function openRelatedFilePreview(
   if (!instance) return { ok: false, reason: 'no-surface' };
   const nextId = String(instance.instanceId);
   const storage = window.localStorage;
-  const selection = openerSelectionKey(opener);
   let arrangementRefusal: OpenPaneRefusal | undefined;
 
   const result = await relations.transact<RelatedOpenOutcome>(
@@ -245,7 +297,8 @@ export async function openRelatedFilePreview(
       if (
         transientPaneForOpener(fresh, station, opener)?.instanceId !==
           replacing ||
-        keptPaneForTarget(fresh, station, target) !== undefined
+        keptPaneForTarget(fresh, station, target) !== undefined ||
+        paneHiddenBy(getModel(), replacing) !== covered
       )
         return { ok: false, reason: 'superseded' };
       const written = withPaneRelation(

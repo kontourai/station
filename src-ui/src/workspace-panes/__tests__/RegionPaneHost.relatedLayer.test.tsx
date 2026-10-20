@@ -312,3 +312,60 @@ test('on a desktop, closing a related preview’s tab asks its guard, then remov
     ).record.entries.map((entry) => entry.instanceId),
   ).not.toContain(preview);
 });
+
+/**
+ * A close waits for the pane's own guard. If the pane moved to another region
+ * while that question was open — a phone fold ending its layer puts a pane
+ * back in its own region — the answer closes nothing: the close was for this
+ * region's tab, and the moved pane keeps its state, fence and relation.
+ */
+test('on a desktop, a close answered after its pane moved closes nothing and forgets nothing', async () => {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: 1280,
+  });
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+  await mount();
+  act(() => model?.placeSurface('activity', 'right'));
+  await openFile('a.ts');
+  const preview = model?.regions.right.panes.find((id) =>
+    id.startsWith('file-preview:'),
+  ) as string;
+  let answer: (() => void) | null = null;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('dirty preview, answering later'),
+    (continueNavigation) => {
+      answer = continueNavigation;
+    },
+    preview,
+  );
+  try {
+    act(() => screen.getByLabelText(/^Close a\.ts/).click());
+    expect(answer).not.toBeNull();
+    // Meanwhile the pane moves to Tools.
+    act(() => {
+      model?.openSurfaceInRegion(preview, { region: 'bottom' });
+    });
+    expect(model?.regions.bottom.panes).toContain(preview);
+    act(() => answer?.());
+    expect(model?.regions.bottom.panes).toContain(preview);
+    expect(readFilePreviewPaneState(localStorage, preview)?.path).toBe('a.ts');
+    expect(readPaneFence(localStorage, preview).status).toBe('fenced');
+    expect(relations?.relationOf(preview)).toBeDefined();
+  } finally {
+    unregister();
+  }
+});

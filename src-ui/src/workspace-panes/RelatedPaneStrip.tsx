@@ -1,15 +1,23 @@
 import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
-import { type ReactNode, useMemo } from 'react';
-import { showChatPageOrDock } from '../app-shell/chat-placement';
+import { type ReactNode, useCallback, useMemo, useRef } from 'react';
+import { useLayoutChatPlacement } from '../app-shell/chat-placement';
 import { Button } from '../components/Button';
 import { Empty } from '../components/state';
 import { useNavigationActions } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
 import { describeRelatedOpenRefusal } from '../contexts/openRelatedFilePreview';
 import { usePaneRelations } from '../contexts/PaneRelationsContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { paneFenceAdmission, readPaneFence } from '../regions/pane-fence';
 import type { PaneOpener, PaneRelation } from '../regions/pane-relations';
+import {
+  occupiedRegion,
+  type RegionArrangement,
+  resolveRegionSurface,
+  revealSurface,
+} from '../regions/region-model';
 import { useDockProject } from './useDockProject';
 import './RelatedPaneStrip.css';
 
@@ -77,23 +85,99 @@ export function FencedRelatedPane({
   }
 }
 
+function onScreen(arrangement: RegionArrangement, surfaceId: string) {
+  const region = occupiedRegion(arrangement, surfaceId);
+  return (
+    region !== undefined &&
+    arrangement[region].visible &&
+    arrangement[region].occupant === surfaceId
+  );
+}
+
+/** Whether revealing `surfaceId` (Up's own reveal) takes `paneId` off screen. */
+function revealHides(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  paneId: string,
+): boolean {
+  if (!onScreen(arrangement, paneId)) return false;
+  const surface = resolveRegionSurface(surfaceId);
+  if (!surface) return false;
+  const after = revealSurface(
+    arrangement,
+    surfaceId,
+    occupiedRegion(arrangement, surfaceId) ?? surface.defaultRegion,
+  ).arrangement;
+  return !onScreen(after, paneId);
+}
+
+/**
+ * Up changes local selection (Chat's conversation, a revealed surface) that
+ * no route navigation guards. When that reveal takes THIS pane off screen —
+ * the phone layer it is shown in, or the region tab it holds — this pane's own
+ * unsaved-changes guard is asked once, before anything changes, and Cancel
+ * changes nothing. Otherwise nothing is asked: the pane stays where it is. A
+ * route navigation is not wrapped here; navigation already asks its guards.
+ */
+function useLeaveFor(instanceId: string) {
+  const model = useRegionModelOptional();
+  const modelRef = useRef(model);
+  modelRef.current = model;
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
+  return useCallback(
+    (reveals: string, leave: () => void) => {
+      const current = modelRef.current;
+      if (!current) {
+        leave();
+        return;
+      }
+      if (current.phoneLayer?.surfaceId === instanceId) {
+        // Chat is under the layer: leave it the way "‹ Chat" does, whose
+        // guarded close is the one question asked.
+        if (reveals === 'chat') current.closePhoneLayer(leave);
+        // Anything else replaces the layer's pane.
+        else
+          navigationStore.runNavigationGuards(leave, undefined, {
+            owner: instanceId,
+          });
+        return;
+      }
+      const hides =
+        !(reveals === 'chat' && centerOwnsChat) &&
+        revealHides(current.regions, reveals, instanceId);
+      if (!hides) {
+        leave();
+        return;
+      }
+      navigationStore.runNavigationGuards(leave, undefined, {
+        owner: instanceId,
+      });
+    },
+    [centerOwnsChat, instanceId],
+  );
+}
+
 /** Up for a conversation opener: the canonical chat selection. */
 function useConversationUp(
+  instanceId: string,
   source: Extract<PaneOpener['source'], { kind: 'conversation' }>,
 ) {
-  const { setActiveChat, setDockState } = useNavigationActions();
+  const { setActiveChat } = useNavigationActions();
   const showSurface = useShowSurface();
-  return () => {
-    if (source.conversationId !== null) {
-      // The navigation `chat` selection is Chat's own route to a
-      // conversation: it selects an open one and cold-opens a closed one.
-      setActiveChat(source.conversationId);
-      showChatPageOrDock(() => setDockState(true));
-      return;
-    }
-    if (source.threadId !== null)
-      showSurface('chat', { session: source.threadId });
-  };
+  const leaveFor = useLeaveFor(instanceId);
+  return () =>
+    leaveFor('chat', () => {
+      if (source.conversationId !== null) {
+        // The navigation `chat` selection is Chat's own route to a
+        // conversation: it selects an open one and cold-opens a closed one.
+        // Then Chat is shown — its dock tab, or the Coding centre's Chat page.
+        setActiveChat(source.conversationId);
+        showSurface('chat');
+        return;
+      }
+      if (source.threadId !== null)
+        showSurface('chat', { session: source.threadId });
+    });
 }
 
 /**
@@ -101,9 +185,13 @@ function useConversationUp(
  * one. The dock's Files pane when the dock is bound to that Project, else
  * that Project's Coding layout (where its Files live), else the Project.
  */
-function useFilesUp(source: Extract<PaneOpener['source'], { kind: 'files' }>) {
+function useFilesUp(
+  instanceId: string,
+  source: Extract<PaneOpener['source'], { kind: 'files' }>,
+) {
   const dock = useDockProject();
   const showSurface = useShowSurface();
+  const leaveFor = useLeaveFor(instanceId);
   const { setLayout, setProject } = useNavigationActions();
   const sameProject = dock.projectSlug === source.projectSlug;
   const { data: layouts } = useProjectLayoutsQuery(source.projectSlug, {
@@ -111,7 +199,7 @@ function useFilesUp(source: Extract<PaneOpener['source'], { kind: 'files' }>) {
   });
   return () => {
     if (sameProject) {
-      showSurface('coding:file-browser');
+      leaveFor('coding:file-browser', () => showSurface('coding:file-browser'));
       return;
     }
     const coding = (
@@ -143,15 +231,29 @@ function UpButton({ label, onUp }: { label: string; onUp: () => void }) {
   );
 }
 
-function ConversationUp({ opener }: { opener: PaneOpener }) {
+function ConversationUp({
+  instanceId,
+  opener,
+}: {
+  instanceId: string;
+  opener: PaneOpener;
+}) {
   const up = useConversationUp(
+    instanceId,
     opener.source as Extract<PaneOpener['source'], { kind: 'conversation' }>,
   );
   return <UpButton label={opener.label} onUp={up} />;
 }
 
-function FilesUp({ opener }: { opener: PaneOpener }) {
+function FilesUp({
+  instanceId,
+  opener,
+}: {
+  instanceId: string;
+  opener: PaneOpener;
+}) {
   const up = useFilesUp(
+    instanceId,
     opener.source as Extract<PaneOpener['source'], { kind: 'files' }>,
   );
   return <UpButton label={opener.label} onUp={up} />;
@@ -164,12 +266,18 @@ function RouteUp({ opener }: { opener: PaneOpener }) {
   return <UpButton label={opener.label} onUp={up} />;
 }
 
-function OpenerUp({ opener }: { opener: PaneOpener }) {
+function OpenerUp({
+  instanceId,
+  opener,
+}: {
+  instanceId: string;
+  opener: PaneOpener;
+}) {
   switch (opener.source.kind) {
     case 'conversation':
-      return <ConversationUp opener={opener} />;
+      return <ConversationUp instanceId={instanceId} opener={opener} />;
     case 'files':
-      return <FilesUp opener={opener} />;
+      return <FilesUp instanceId={instanceId} opener={opener} />;
     case 'route':
       return <RouteUp opener={opener} />;
   }
@@ -199,7 +307,7 @@ export function RelatedPaneStrip({ instanceId }: { instanceId: string }) {
       role="group"
       aria-label={relation.kept ? 'Opened from' : 'Preview'}
     >
-      <OpenerUp opener={relation.opener} />
+      <OpenerUp instanceId={instanceId} opener={relation.opener} />
       {!relation.kept && (
         <>
           <span className="related-pane-strip__state">Preview</span>

@@ -695,13 +695,16 @@ export function RegionPaneHost({
   // asked first (scoped by `UnsavedGuardOwnerContext`, `ownedByPane`): Cancel
   // leaves the arrangement, the selection, the relation and the pane's state
   // exactly as they were. A related pane's state, fence and relation go with
-  // it; nothing else can read them once it is gone.
+  // it; nothing else can read them once it is gone. The answer can arrive
+  // after the pane moved (a phone fold ending its layer puts it back in its
+  // own region): only a pane this region still held is closed, and only a
+  // closed pane's state is forgotten — a moved pane keeps everything.
   const closePane = useCallback(
     (surfaceId: string, forgetState: boolean) => {
       if (!regionId || !model) return;
       navigationStore.runNavigationGuards(
         () => {
-          model.removePane(regionId, surfaceId);
+          if (!model.removePane(regionId, surfaceId)) return;
           const related = relations.relationOf(surfaceId) !== undefined;
           if (forgetState || related) forgetRegionPaneState(surfaceId);
           if (related) void relations.forget(surfaceId);
@@ -808,7 +811,9 @@ export function RegionPaneHost({
             trailingSlotRef={setTrailingSlot}
             onBackToChat={
               model?.phoneLayer && model.phoneLayer.region === regionId
-                ? model.closePhoneLayer
+                ? // Called, not passed: the click event must not become
+                  // the layer close's continuation.
+                  () => model.closePhoneLayer()
                 : undefined
             }
             backLabel={layerBackLabel}

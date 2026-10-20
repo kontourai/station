@@ -488,7 +488,7 @@ describe('a forge file link (github.com/.../blob/...)', () => {
 });
 
 describe('an explicit path link follows the session’s file scope', () => {
-  test('in a worktree session with a thread it opens the session’s copy', () => {
+  test('in a worktree session with a thread it opens the session’s copy, as a preview related to the session', async () => {
     const anchor = mount('src/app.ts', {
       ...CONVERSATION,
       projectRoots: ['/work/repo'],
@@ -496,12 +496,39 @@ describe('an explicit path link follows the session’s file scope', () => {
       threadId: 'thread-7',
     });
     expect(click(anchor)).toBe(false);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(model, {
+    // A conversation with a session is the opener of what it opens, verified
+    // Station or not: whether the open may happen is the related open's
+    // decision, never a fall back to an unfenced preview here.
+    await waitFor(() =>
+      expect(openRelatedFilePreview).toHaveBeenCalledTimes(1),
+    );
+    expect(openRelatedFilePreview.mock.calls[0]?.[3]).toEqual({
       projectId: 'alpha-id',
       projectSlug: 'alpha',
       path: 'src/app.ts',
       thread: 'thread-7',
     });
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+  });
+
+  test('an unconfirmed Station refuses the related open visibly and takes no other route', async () => {
+    toastStore.clear();
+    openRelatedFilePreview.mockResolvedValueOnce({
+      ok: false,
+      reason: 'station-unverified',
+    });
+    const anchor = mount('src/app.ts', {
+      ...CONVERSATION,
+      conversationId: 'conversation-1',
+    });
+    expect(click(anchor)).toBe(false);
+    await waitFor(() =>
+      expect(toastStore.getSnapshot().map((notice) => notice.message)).toEqual([
+        'Station cannot confirm which Station it is connected to, so the preview was not opened. It opens once Station confirms it.',
+      ]),
+    );
+    expect(openFilePreviewInRegion).not.toHaveBeenCalled();
+    expect(openPathInMain).not.toHaveBeenCalled();
   });
 
   test('when the session directory cannot be read it refuses visibly, never opening the checkout copy', () => {
