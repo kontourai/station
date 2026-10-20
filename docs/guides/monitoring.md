@@ -698,7 +698,7 @@ runtime wiring supplies these map sizes:
 `station.tokens.context` is declared, but this audit found no current
 production recording call for it in the repository.
 `station.layout.operations` and `station.voice.duration` have no current
-declaration; the dashboard has no Layout panel until
+declaration; the dashboard has no layout operations query until
 [#2751](https://github.com/kontourai/station/issues/2751) adds the instrument.
 Historical retained series or a dashboard query do not establish a current
 producer.
