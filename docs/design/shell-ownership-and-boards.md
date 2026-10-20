@@ -139,7 +139,9 @@ PERSONAL BOARDS                                      +
 ```
 
 [Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
-record the exact reviewed revisions and limits.
+record the exact reviewed revisions and limits. The
+[Personal Board authoring review](../reviews/personal-boards-20261016/README.md)
+does the same for the Board templates and editor.
 
 **Quiet tree refinement, accepted 2026-10-15.** The expanded desktop map is
 216px; its collapsed rail is 52px. Only the selected project's configured

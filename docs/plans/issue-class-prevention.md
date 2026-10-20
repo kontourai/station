@@ -1,6 +1,8 @@
 # Issue class prevention
 
-**Status:** active execution plan, 2026-09-23. The scoped governance routes
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-20.
+
+Written on 2026-09-23 as an active execution plan. The scoped governance routes
 are implemented; the broader runtime, browser, platform, and resource exit
 checks below remain open. GitHub issues own live priority and delivery state.
 This plan does not claim that an existing test proves a desktop, mobile, or

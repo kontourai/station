@@ -3,7 +3,7 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
@@ -60,12 +60,18 @@ type ProtectedConfig<T> = QueryConfig<T> & { requestScope?: ApiRequestScope };
 function sameScope(left: SessionInventoryScope, right: SessionInventoryScope) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
+/**
+ * Tombstones (sets to `null`) every cached projection and page for `scope`
+ * under `requestScope`'s authority. It never removes an entry: removing a
+ * query a mounted observer still holds makes that observer re-create and
+ * refetch it, and a read that keeps being refused then loops forever.
+ */
 export function clearSessionInventoryCache(
   client: ReturnType<typeof useQueryClient>,
   scope: SessionInventoryScope,
   requestScope?: ApiRequestScope,
 ) {
-  client.removeQueries({
+  const matching = client.getQueryCache().findAll({
     predicate: (query) => {
       const key = query.queryKey;
       if (!Array.isArray(key)) return false;
@@ -80,6 +86,28 @@ export function clearSessionInventoryCache(
       );
     },
   });
+  for (const query of matching) query.setState({ data: null });
+}
+/**
+ * Only a refusal that means this principal may not (or may no longer) read the
+ * Session revokes what it already holds. The route answers a denied, missing
+ * or stale-principal read alike (404, non-disclosing); 401 and 403 come from
+ * the authentication layer. A 503, a network failure (status 0) or a
+ * projection the contract refuses (the response's own status, usually 200) is
+ * an ordinary failed read: what was already
+ * authorized stays, and the surface reports the failure.
+ *
+ * This deliberately differs from `useAnswerBasisQuery`, which revokes on any
+ * `AnswerBasisRequestError`. The inventory route keeps 503 for a read it could
+ * not perform, so treating 503 as revocation would erase authorized content
+ * over an outage, and (before tombstoning) made the read loop. Aligning
+ * answer-basis with this rule is a separate change.
+ */
+function lostAuthority(error: unknown): boolean {
+  return (
+    error instanceof SessionInventoryRequestError &&
+    (error.status === 401 || error.status === 403 || error.status === 404)
+  );
 }
 function useProtected<T>(
   queryKey: (string | number | object)[],
@@ -100,8 +128,7 @@ function useProtected<T>(
       try {
         return await fetcher(signal);
       } catch (error) {
-        if (!signal?.aborted && error instanceof SessionInventoryRequestError)
-          (onRevoke ?? revoke)();
+        if (!signal?.aborted && lostAuthority(error)) (onRevoke ?? revoke)();
         throw error;
       }
     },
@@ -109,21 +136,60 @@ function useProtected<T>(
       staleTime: config?.staleTime ?? 10_000,
       gcTime: config?.gcTime,
       enabled: config?.enabled ?? true,
-      refetchOnMount: config?.refetchOnMount ?? 'always',
+      // Not the caller's choice: data is released only after a read made
+      // during this mount succeeds (below), so a mount that skipped its read
+      // because the cache was fresh would load forever.
+      refetchOnMount: 'always',
       retry: false,
       cancelWhenInactive: config?.cancelWhenInactive ?? true,
     },
   );
+  // Nothing cached before this mount is shown until a read made during this
+  // mount SUCCEEDS. `isFetchedAfterMount` alone is not enough: it is also true
+  // after a failed read, which would release data an earlier mount was
+  // authorized to see. So the first render that observes a success after
+  // mount (for this key) latches it, and only a latched key releases data.
+  // The latch is by observation, not by time: a success that lands at the same
+  // `dataUpdatedAt` as the entry cached before the mount (a frozen or coarse
+  // clock) still counts. After it, a background refetch keeps what is on
+  // screen: lost authority tombstones it (`null`, above), and a merely failed
+  // refresh leaves it beside `error`, for the surface to mark as not refreshed.
+  const queryHash = JSON.stringify(queryKey);
+  // A key switch, and becoming enabled, are each a new mount for this rule,
+  // but TanStack fetches on either only when the cached entry is stale. So the
+  // hook remembers which key it has read while enabled, and reads whenever it
+  // is enabled on a key it has not (unless that already started a fetch). The
+  // first enabled render's read is TanStack's own `refetchOnMount`.
+  const enabled = config?.enabled ?? true;
+  const readKey = useRef<string | null>(enabled ? queryHash : null);
+  useEffect(() => {
+    if (!enabled) {
+      readKey.current = null;
+      return;
+    }
+    if (readKey.current === queryHash) return;
+    readKey.current = queryHash;
+    const cached = client.getQueryCache().find({ queryKey, exact: true });
+    if (cached?.state.fetchStatus !== 'fetching') void query.refetch();
+  }, [client, enabled, query, queryHash, queryKey]);
+  const succeededFor = useRef<string | null>(null);
+  if (
+    succeededFor.current !== queryHash &&
+    query.isFetchedAfterMount &&
+    query.status === 'success' &&
+    query.data != null
+  )
+    succeededFor.current = queryHash;
+  const data =
+    succeededFor.current === queryHash && query.data != null
+      ? query.data
+      : undefined;
   return {
     ...query,
-    data:
-      query.isFetchedAfterMount &&
-      query.status === 'success' &&
-      !query.isFetching
-        ? (query.data ?? undefined)
-        : undefined,
+    data,
     isLoading:
-      !query.isFetchedAfterMount || query.isLoading || query.isFetching,
+      !query.isFetchedAfterMount ||
+      ((query.isLoading || query.isFetching) && data === undefined),
   };
 }
 export function useSessionInventoryQuery(

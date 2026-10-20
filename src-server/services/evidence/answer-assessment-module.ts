@@ -18,7 +18,7 @@ import {
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   StationAnswerAssessmentPublishInput,
   StationAnswerAssessmentReadTarget,
@@ -46,7 +46,10 @@ import {
   qualifiesStationAnswerContent,
   stationAnswerAssessmentProfileTarget,
 } from './station-answer-assessment-profile.js';
-import { readBoundedRegularFile } from './task-answer-support-module.js';
+import {
+  canonicalOwnedAnchor,
+  readBoundedRegularFile,
+} from './task-answer-support-module.js';
 
 export {
   qualifiesStationAnswerContent,
@@ -149,7 +152,7 @@ export class AnswerAssessmentModule {
     },
     private readonly onUpdated?: (update: AnswerAssessmentUpdate) => void,
   ) {
-    this.root = join(resolve(homeDir), 'answer-assessments');
+    this.root = join(canonicalOwnedAnchor(homeDir), 'answer-assessments');
     this.artifacts = join(this.root, 'artifacts');
     this.indexPath = join(this.root, 'index.json');
   }

@@ -26,6 +26,8 @@ complexity, and duplication analyses. It also records a byte-hashed inventory
 of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
+`npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
+for a quick local look; it reads no baseline and gates nothing.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -779,6 +781,9 @@ latest compatible completed Tool: CI extended artifact. Never paste the director
 image bytes or broad logs into agent context. For a change that alters rendered
 UI, inspected before/after screenshots belong in the pull request body itself;
 CI artifacts, logs, or local files alone do not establish a visual claim.
+Upload them with the pull request editor's attachment control. Do not commit
+screenshots to the repository, for example under `.github/`: committed images
+stay in every clone's history after the pull request merges.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
@@ -1661,8 +1666,15 @@ then chooses a path:
   and shard receipts, including explicit selections above 32 files. Paths
   explicitly deferred by supplemental edges remain deferred; unknown/global
   paths are not expanded into an assumed-complete selection. Passing the mapped
-  tests does not discharge the broader obligation. Local unsharded feedback
-  keeps its bounded selection limits. A
+  tests does not discharge the broader obligation. Before related discovery,
+  hosted planning checks Vitest's resolved `forceRerunTriggers` with Vitest's
+  own matcher. Matching seeds (including nested package manifests by default)
+  become named `test-full` obligations instead of causing Vitest to select the
+  entire corpus as fast feedback. The plan retains those paths in
+  `globalTriggeredPaths`; malformed or foreign discovery metadata fails the
+  plan. Other mapped tests still run, and global-only changes remain deferred
+  rather than gaining a completed empty-test claim. Local unsharded feedback
+  keeps its existing discovery behavior and bounded selection limits. A
   `mergeQueueRegression` path, such as the SDK transport or the orchestration
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
@@ -1931,20 +1943,6 @@ changed route outputs, not just the bucket you are actively touching.
 ## Durable Verification Lanes
 
 For roadmap work that changes product behavior, prefer adding or extending a named verification lane rather than relying on ad hoc manual checks.
-
-Phase 1 no-AWS startup proof:
-
-```bash
-npm run proof:phase1-no-aws-startup
-```
-
-This lane launches `./station start --temp-home --clean --force` with a
-unique instance and port block, removes AWS environment variables from the
-child process, checks `/api/system/status` for a provider-neutral
-recommendation, stops the instance, and writes the proof JSON plus server log
-under `.omx/artifacts/phase1-no-aws-startup/`. It also snapshots the default
-`~/.station` directory before and after the run and fails if the default
-home changes.
 
 Recommended lane types:
 

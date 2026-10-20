@@ -1323,8 +1323,8 @@ if [ -n "$public_manifest_url" ]; then
   # manifest, key, and archive to live on distinct origins nor downloads its
   # verification key.
   #
-  # TODO(#2675, default-flip PR): decide on freshness before this path becomes
-  # the default: enforce a maximum age on the signed publishedAt (which means
+  # TODO(#2960): decide on freshness before this path becomes the default for
+  # every channel: enforce a maximum age on the signed publishedAt (which means
   # periodically re-signing stable) or record why not.
   #
   # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL is a TEST-ONLY override for

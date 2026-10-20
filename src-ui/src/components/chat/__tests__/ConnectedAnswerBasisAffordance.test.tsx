@@ -1,12 +1,14 @@
 /** @vitest-environment jsdom */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
-  render,
   renderHook,
+  render as renderInDom,
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   closeSessionInventoryOccurrence,
@@ -33,17 +35,12 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../workspace-panes/BasisPaneLauncher', () => ({
   useBasisPaneLauncher: () => ({ openBasis: mocks.openBasis, fallback: null }),
 }));
-vi.mock('@kontourai/station-basis-pane/answer-basis-affordance', () => ({
-  AnswerBasisAffordance: ({
-    onOpen,
-  }: {
-    onOpen(trigger: HTMLButtonElement): void;
-  }) => (
-    <button type="button" onClick={(event) => onOpen(event.currentTarget)}>
-      Basis
-    </button>
-  ),
-}));
+function render(ui: ReactNode) {
+  return renderInDom(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+  );
+}
+
 const { ConnectedAnswerBasisAffordance } = await import(
   '../ConnectedAnswerBasisAffordance'
 );
@@ -58,8 +55,8 @@ describe('ConnectedAnswerBasisAffordance', () => {
     unregisterHost?.();
     unregisterHost = registerSessionInventoryHost('chat-host', {
       authorityKey: mocks.authority.authorityKey,
-      chatStoreId: 'session-a',
-      executionId: 'session-a',
+      chatStoreId: 'agent:1792425046978',
+      executionId: 'agent:1792425046978',
     });
   });
 
@@ -70,7 +67,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
     render(
       <ConnectedAnswerBasisAffordance
         projectSlug="project-route-slug"
-        sessionId="session-a"
+        sessionId="agent:1792425046978"
         turnId="turn-a"
       />,
     );
@@ -78,7 +75,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       'project-route-slug',
       expect.objectContaining({ enabled: false }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Basis/ }));
     await waitFor(() =>
       expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
         'project-route-slug',
@@ -92,7 +89,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       projectId: 'project-canonical-id',
       requestedScope: {
         kind: 'current-answer',
-        sessionId: 'session-a',
+        sessionId: 'agent:1792425046978',
         turnId: 'turn-a',
       },
     });
@@ -113,7 +110,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
     render(
       <ConnectedAnswerBasisAffordance
         projectSlug="project-route-slug"
-        sessionId="session-a"
+        sessionId="agent:1792425046978"
         turnId="turn-a"
       />,
     );
@@ -121,7 +118,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
       'project-route-slug',
       expect.objectContaining({ enabled: false }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Basis' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Basis/ }));
     await waitFor(() =>
       expect(mocks.useProjectQuery).toHaveBeenLastCalledWith(
         'project-route-slug',

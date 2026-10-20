@@ -250,9 +250,10 @@ describe('Codex native attached-session adoption', () => {
       codexThreadId: CHILD_ID,
       sourceAffinity: AFFINITY,
     });
+    // No confinement given: confined, so its writable roots are pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
       { CODEX_HOME: '/source-home' },
-      undefined,
+      ['-c', 'sandbox_workspace_write.writable_roots=[]'],
     );
     const lifecycle = [await nextEvent(events), await nextEvent(events)];
     expect(lifecycle).toContainEqual(
@@ -641,9 +642,10 @@ describe('Codex native attached-session adoption', () => {
       resumeCursor: { codexThreadId: CHILD_ID, sourceAffinity: AFFINITY },
     });
     expect(getAppHomeEnv).not.toHaveBeenCalled();
+    // No confinement given: confined, so its writable roots are pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
       { CODEX_HOME: '/source-home' },
-      undefined,
+      ['-c', 'sandbox_workspace_write.writable_roots=[]'],
     );
     process.stdout.write(
       `${JSON.stringify({

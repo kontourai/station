@@ -317,6 +317,7 @@ interface AgentSpec {
   delegation?: AgentDelegationPolicy;
   maxSteps?: number;
   guardrails?: AgentGuardrails;
+  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
   streaming?: {
     useNewPipeline?: boolean;
     enableThinking?: boolean;

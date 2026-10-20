@@ -6151,6 +6151,26 @@ export class EventStore {
   }
 
   /**
+   * #3290: whether an engine on any of `threadIds` (a conversation's
+   * sessions) ever reported running an approval mode Station applied
+   * (`approvalMode` on a `session.configured` or `turn.started`). For an ACP
+   * engine Station governs, that is the durable record that Station took
+   * over from the engine's own settings; it survives a respawn, which
+   * `ApprovalPosture`'s in-memory record does not.
+   */
+  engineReportedApprovalMode(threadIds: readonly string[]): boolean {
+    const statement = this.db.prepare(
+      `SELECT 1 FROM orchestration_events
+       WHERE thread_id = ? AND method IN ('session.configured', 'turn.started')
+         AND json_extract(payload, '$.metadata.approvalMode') IS NOT NULL
+       LIMIT 1`,
+    );
+    return [...new Set(threadIds)].some(
+      (threadId) => statement.get(threadId) !== undefined,
+    );
+  }
+
+  /**
    * #1796: the threads on which paired device `deviceId` recorded an
    * approval-mode decision (its server-derived `clientOrigin.actor`).
    */
