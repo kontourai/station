@@ -4,6 +4,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../contexts/background-tasks-store';
+import type { SessionIconAgent } from '../utils/sessionDisplay';
+
+const agents: SessionIconAgent[] = [];
+vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => agents }));
 
 const useChatBackgroundTasks = vi.fn();
 const interruptTask = vi.fn();
@@ -81,6 +85,7 @@ function renderSheet(view: {
 
 describe('BackgroundTasksSheet', () => {
   beforeEach(() => {
+    agents.length = 0;
     localStorage.clear();
     window.history.replaceState({}, '', '/background-tasks-test');
     vi.useFakeTimers();
@@ -236,6 +241,50 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
     expect(onOpenTranscript).toHaveBeenCalledWith('task:delegate-1');
   });
+
+  test.each(['running', 'completed'] as const)(
+    '%s delegate retains its own configured artwork and recorded engine',
+    (state) => {
+      agents.push(
+        { name: 'Owl', slug: 'owl', icon: '/owl.png' },
+        { name: 'Parent', slug: 'parent', icon: '/parent.png' },
+      );
+      useOrchestrationSessionQuery.mockReturnValue({
+        data: {
+          session: {
+            threadId: 'task:owl',
+            provider: 'codex',
+            assignedAgentSlug: 'parent',
+            delegation: { targetId: 'owl' },
+          },
+          events: [],
+        },
+      });
+      const entry = runningEntry({
+        id: 'task:owl',
+        kind: 'agent',
+        source: 'delegate-session',
+        delegateThreadId: 'task:owl',
+        state,
+      });
+      renderSheet({
+        running: state === 'running' ? [entry] : [],
+        finished: state === 'completed' ? [entry] : [],
+      });
+      if (state === 'completed')
+        fireEvent.click(screen.getByText('Finished (1)'));
+      expect(
+        screen
+          .getByRole('img', { name: 'Owl · Codex' })
+          .querySelector('img')
+          ?.getAttribute('src'),
+      ).toBe('/owl.png');
+      expect(document.querySelector('img[src="/parent.png"]')).toBeNull();
+      expect(
+        document.querySelector('.child-work-identity__engine'),
+      ).not.toBeNull();
+    },
+  );
 
   test('delegate usage is derived from the canonical persisted event stream', () => {
     useOrchestrationSessionQuery.mockReturnValue({

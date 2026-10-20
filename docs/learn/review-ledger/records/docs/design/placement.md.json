@@ -166,7 +166,21 @@
 
     "src-ui/src/components/chat-dock/BackgroundTasksSheet.css",
 
-    "src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx"
+    "src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx",
+
+    "src-ui/src/components/chat/ChildWorkIdentity.tsx",
+
+    "src-ui/src/components/chat/ChildWorkIdentity.css",
+
+    "src-ui/src/components/chat/ChildWorkActivity.tsx",
+
+    "src-ui/src/components/chat/ChildWorkActivity.css",
+
+    "src-ui/src/utils/child-work-display.ts",
+
+    "src-ui/src/contexts/background-tasks-store.ts",
+
+    "src-server/providers/adapters/claude-adapter-child-work.ts"
   ],
 
   "checks": [

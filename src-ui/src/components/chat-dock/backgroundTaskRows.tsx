@@ -19,7 +19,10 @@ import type {
   BackgroundTaskState,
 } from '../../contexts/background-tasks-store';
 import { latestChildTool } from '../../utils/child-work-display';
-import type { SessionIconAgent } from '../../utils/sessionDisplay';
+import {
+  type SessionIconAgent,
+  sessionIconAgent,
+} from '../../utils/sessionDisplay';
 import { ChildWorkActivity } from '../chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../chat/ChildWorkIdentity';
 import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
@@ -77,10 +80,12 @@ export function TaskRow({
   outcomeChip,
   onOpenTranscript,
   agent,
+  agents,
   provider,
 }: {
   entry: BackgroundTaskEntry;
   agent?: SessionIconAgent;
+  agents?: readonly SessionIconAgent[];
   provider?: string;
   /** Absent when no start was reported: the meta line then shows no time. */
   elapsedMs: number | undefined;
@@ -169,7 +174,12 @@ export function TaskRow({
           {entry.kind === 'agent' ? (
             <ChildWorkIdentity
               provider={provider ?? detail.data?.session?.provider}
-              agent={agent}
+              agent={
+                agent ??
+                (delegateThreadId && detail.data?.session && agents
+                  ? sessionIconAgent(detail.data.session, agents)
+                  : undefined)
+              }
             />
           ) : (
             <TaskGlyph kind={entry.kind} />
