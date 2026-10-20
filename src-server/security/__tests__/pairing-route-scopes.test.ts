@@ -328,6 +328,47 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
         '/api/orchestration',
         true,
       ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/resume-at-reset',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/usage-limit/hold',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      // An agent's wake-up and proposal leaves, and the person's own.
+      [
+        'POST',
+        '/api/orchestration/station-control/wake-ups',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'GET',
+        '/api/orchestration/agent-schedule/:conversationId',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
     ] as const) {
       expect(requiredPairingScope(method, path)).toBe(scope);
       expect(matchPairingScopeRule(method, path)).toMatchObject({

@@ -1,0 +1,491 @@
+/**
+ * The REST side of `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and
+ * `propose_job`, and the person's own reads and actions on them in the chat.
+ * Mounted under `/api/orchestration`.
+ *
+ * Agent leaves (`/station-control/...`): only Station's own station-control
+ * tool code calls them, so a request the runtime boundary did not accept as
+ * Station's internal principal gets a 404. The conversation is the VERIFIED
+ * caller's own, as the central authority guard bound it to the request; a
+ * body never chooses it. The guard also refuses, before this route runs, a
+ * body or a wake-up id that names another conversation
+ * (`wake-up-stays-in-own-conversation`); this route checks the same again.
+ *
+ * Person leaves (`/agent-schedule/:conversationId/...`): no station-control
+ * tool maps them, so the guard refuses an agent's internal token outright,
+ * and each one refuses a request that may be an agent's besides. Approving a
+ * job proposal is not here: the scheduler's own create route does it
+ * (`routes/operations/scheduler.ts`), under the person's credential.
+ */
+import {
+  AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION,
+  AGENT_WAKE_UP_MAX_HORIZON_MS,
+  AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
+  AGENT_WAKE_UP_MIN_DELAY_MS,
+  AGENT_WAKE_UP_NOTE_MAX_CHARS,
+  type AgentJobProposalJob,
+  type AgentWakeUpRefusalCode,
+  CONVERSATION_SCHEDULED_JOBS_LIMIT,
+  type ConversationAgentSchedule,
+  type ConversationUsageLimitResume,
+  jobMatchesProposal,
+} from '@kontourai/station-contracts/agent-schedule';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { type Context, Hono } from 'hono';
+import { z } from 'zod/v3';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  type AgentScheduleStore,
+  type AgentWakeUpDelivery,
+  publicJobProposal,
+  publicWakeUp,
+} from '../../services/orchestration/agent-schedule.js';
+import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
+import {
+  stationControlOutOfScopeRefusal,
+  stationControlRefusal,
+  stationControlRefusalBody,
+} from '../../tools/station-control-policy.js';
+import type { JobProposalApproval } from '../operations/scheduler.js';
+import { addJobSchema } from '../schemas/schema-definitions/scheduler.js';
+import { refuseOutOfScopeDispatch } from './dispatch-scope.js';
+
+const MAX_BODY_BYTES = 16 * 1024;
+const NO_STORE = { 'Cache-Control': 'no-store' };
+
+/** Fixed copy an agent relays; each says what to do instead. */
+export const WAKE_UP_REFUSAL_COPY: Record<AgentWakeUpRefusalCode, string> = {
+  wake_up_too_soon: `Pick a time at least ${AGENT_WAKE_UP_MIN_DELAY_MS / 60_000} minute from now.`,
+  wake_up_too_far: `Pick a time within ${AGENT_WAKE_UP_MAX_HORIZON_MS / 3_600_000} hours. For later or repeating work, use propose_job.`,
+  wake_up_limit_reached: `This chat already has ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} check-backs waiting. Cancel one first.`,
+  wake_up_note_too_long: `Keep the note to ${AGENT_WAKE_UP_NOTE_MAX_CHARS} characters or fewer.`,
+  wake_up_unavailable: "Check-backs aren't available on this Station.",
+};
+
+const JOB_PROPOSAL_LIMIT_COPY = `This chat already has ${AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION} job proposals waiting. Wait for the person to answer one.`;
+
+const wakeUpBodySchema = z
+  .object({
+    delayMs: z.number(),
+    note: z.string().min(1),
+    /** Optional, and only checked: a wake-up always goes to the caller's own conversation. */
+    conversationId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * The job a proposal names: the scheduler's create body for an ordinary job.
+ * What a person must choose themselves (trusting every tool, a provider, a
+ * monitor) is not proposable; a body that carries it is refused.
+ */
+const jobProposalBodySchema = z
+  .object({
+    name: z.string(),
+    schedule: z.unknown(),
+    prompt: z.string(),
+    agent: z.string().min(1).optional(),
+    rationale: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+
+export interface AgentScheduleActor {
+  readonly userId: string;
+  readonly principal?: PrincipalRef;
+  readonly ownerAttribution?: StartOwnerAttribution;
+}
+
+export interface AgentSchedulePerson {
+  readonly userId: string;
+  /** Whether this person may read the conversation. */
+  mayRead(conversationId: string): boolean;
+  /** Whether this person may send to (and so act on) the conversation. */
+  mayMutate(conversationId: string): boolean;
+}
+
+export interface AgentScheduleRoutesDeps {
+  /** True only for Station's own internal principal. */
+  isInternalRequest(request: Request): boolean;
+  /** The scope rule's records; absent refuses every caller it constrains. */
+  scope: StationControlDispatchScope | undefined;
+  /** Absent: wake-ups and proposals are unavailable on this Station. */
+  store: AgentScheduleStore | undefined;
+  delivery: AgentWakeUpDelivery | undefined;
+  /** Who a dispatch from this request would act as (`resolveDispatchActor`). */
+  dispatchActor(c: Context): AgentScheduleActor;
+  /** The person making a UI request, or undefined when it is not current. */
+  person(c: Context): AgentSchedulePerson | undefined;
+  /** A usage-limit stop in the conversation waiting for its reset, if any. */
+  usageLimitResume?(
+    conversationId: string,
+  ): Promise<ConversationUsageLimitResume | undefined>;
+  now?: () => number;
+}
+
+async function readJson(request: Request): Promise<unknown> {
+  const read = await readBoundedRequestBody(request, MAX_BODY_BYTES);
+  if (read.status !== 'ok') return undefined;
+  try {
+    return JSON.parse(read.body);
+  } catch {
+    return undefined;
+  }
+}
+
+export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
+  const app = new Hono();
+  const now = () => deps.now?.() ?? Date.now();
+
+  /** The verified caller's own conversation, or the response refusing it. */
+  const callerOf = (
+    c: Context,
+  ): { conversationId: string; sessionId: string } | { refused: Response } => {
+    if (!deps.isInternalRequest(c.req.raw))
+      return {
+        refused: c.json({ error: { code: 'not_found' } }, 404, NO_STORE),
+      };
+    const authority = stationControlRequestAuthority(c.req.raw);
+    if (authority?.kind !== 'caller')
+      return {
+        refused: c.json(
+          stationControlRefusalBody(
+            stationControlRefusal('station_control_caller_required'),
+          ),
+          403,
+          NO_STORE,
+        ),
+      };
+    const { caller } = authority;
+    return {
+      conversationId: caller.conversationId ?? caller.sessionId,
+      sessionId: caller.sessionId,
+    };
+  };
+  const otherConversation = (c: Context) =>
+    c.json(
+      stationControlRefusalBody(
+        stationControlOutOfScopeRefusal('other-conversation'),
+      ),
+      403,
+      NO_STORE,
+    );
+  const unavailable = (c: Context) =>
+    c.json(
+      {
+        success: false,
+        code: 'wake_up_unavailable',
+        error: WAKE_UP_REFUSAL_COPY.wake_up_unavailable,
+      },
+      503,
+      NO_STORE,
+    );
+
+  app.post('/station-control/wake-ups', async (c) => {
+    const caller = callerOf(c);
+    if ('refused' in caller) return caller.refused;
+    // A wake-up sends a turn into the caller's own Session later, so it
+    // answers the one scope rule a send answers: a caller that is not bound
+    // never schedules into a Session that runs `host`, nor one whose Project
+    // Station cannot confirm.
+    const refused = refuseOutOfScopeDispatch(c, deps.scope, () => ({
+      kind: 'thread',
+      threadId: caller.sessionId,
+      remote: false,
+    }));
+    if (refused) return refused;
+    const parsed = wakeUpBodySchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success)
+      return c.json(
+        {
+          success: false,
+          error: 'schedule_wake_up needs minutes (a number) and a note.',
+        },
+        400,
+        NO_STORE,
+      );
+    if (
+      parsed.data.conversationId !== undefined &&
+      parsed.data.conversationId !== caller.conversationId
+    )
+      return otherConversation(c);
+    if (!deps.delivery) return unavailable(c);
+    const actor = deps.dispatchActor(c);
+    const result = deps.delivery.schedule({
+      conversationId: caller.conversationId,
+      sessionId: caller.sessionId,
+      actor: {
+        userId: actor.userId,
+        // A dispatch from an agent always carries an attribution; one that
+        // somehow does not replays as the weaker one.
+        attribution: actor.ownerAttribution ?? 'unattributed-agent',
+        ...(actor.principal ? { principal: actor.principal } : {}),
+      },
+      note: parsed.data.note,
+      delayMs: parsed.data.delayMs,
+    });
+    if (result.outcome === 'refused')
+      return c.json(
+        {
+          success: false,
+          code: result.code,
+          error: WAKE_UP_REFUSAL_COPY[result.code],
+        },
+        result.code === 'wake_up_unavailable' ? 503 : 409,
+        NO_STORE,
+      );
+    return c.json({ success: true, data: result.wakeUp }, 200, NO_STORE);
+  });
+
+  app.get('/station-control/wake-ups', (c) => {
+    const caller = callerOf(c);
+    if ('refused' in caller) return caller.refused;
+    if (!deps.store) return unavailable(c);
+    return c.json(
+      {
+        success: true,
+        data: deps.store
+          .pendingWakeUps(caller.conversationId)
+          .map(publicWakeUp),
+      },
+      200,
+      NO_STORE,
+    );
+  });
+
+  app.delete('/station-control/wake-ups/:wakeUpId', (c) => {
+    const caller = callerOf(c);
+    if ('refused' in caller) return caller.refused;
+    if (!deps.store || !deps.delivery) return unavailable(c);
+    const record = deps.store.wakeUp(c.req.param('wakeUpId'));
+    // Another conversation's wake-up reads exactly like one that does not
+    // exist.
+    if (!record || record.conversationId !== caller.conversationId)
+      return otherConversation(c);
+    const canceled = deps.delivery.cancel(record.id, 'agent');
+    return c.json({ success: true, data: { canceled } }, 200, NO_STORE);
+  });
+
+  app.post('/station-control/job-proposals', async (c) => {
+    const caller = callerOf(c);
+    if ('refused' in caller) return caller.refused;
+    if (!deps.store) return unavailable(c);
+    const raw = await readJson(c.req.raw);
+    const parsed = jobProposalBodySchema.safeParse(raw);
+    // The scheduler's own validation decides whether the job itself is one
+    // it would create (name, schedule, prompt bounds).
+    const job = parsed.success
+      ? addJobSchema.safeParse({
+          name: parsed.data.name,
+          schedule: parsed.data.schedule,
+          prompt: parsed.data.prompt,
+          ...(parsed.data.agent ? { agent: parsed.data.agent } : {}),
+        })
+      : undefined;
+    if (!parsed.success || !job?.success || !job.data.schedule)
+      return c.json(
+        {
+          success: false,
+          code: 'job_proposal_invalid',
+          error:
+            'propose_job needs a name (lowercase letters, digits, hyphens), a schedule (cron, every or at) and a prompt.',
+        },
+        400,
+        NO_STORE,
+      );
+    const proposedJob: AgentJobProposalJob = {
+      name: job.data.name,
+      schedule: job.data.schedule as AgentJobProposalJob['schedule'],
+      prompt: job.data.prompt,
+      ...(job.data.agent ? { agent: job.data.agent } : {}),
+    };
+    const result = deps.store.insertJobProposal({
+      conversationId: caller.conversationId,
+      sessionId: caller.sessionId,
+      job: proposedJob,
+      ...(parsed.data.rationale ? { rationale: parsed.data.rationale } : {}),
+      now: now(),
+    });
+    if (result.outcome === 'limit-reached')
+      return c.json(
+        {
+          success: false,
+          code: 'job_proposal_limit_reached',
+          error: JOB_PROPOSAL_LIMIT_COPY,
+        },
+        409,
+        NO_STORE,
+      );
+    // The agent learns only what it proposed and that a person decides.
+    return c.json(
+      {
+        success: true,
+        data: { id: result.proposal.id, state: result.proposal.state },
+      },
+      200,
+      NO_STORE,
+    );
+  });
+
+  // ── the person's own view and actions ───────────────────────────────────
+
+  /** The person behind a UI request, or the response refusing it. */
+  const personFor = (
+    c: Context,
+    conversationId: string,
+    need: 'read' | 'mutate',
+  ): AgentSchedulePerson | Response => {
+    if (requestMayBeAnAgent(c.req.raw))
+      return c.json(
+        { success: false, code: 'person-approval-required' },
+        403,
+        NO_STORE,
+      );
+    const person = deps.person(c);
+    if (
+      !person ||
+      !(need === 'read'
+        ? person.mayRead(conversationId)
+        : person.mayMutate(conversationId))
+    )
+      return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    return person;
+  };
+
+  app.get('/agent-schedule/:conversationId', async (c) => {
+    const conversationId = c.req.param('conversationId');
+    const person = personFor(c, conversationId, 'read');
+    if (person instanceof Response) return person;
+    let usageLimitResume: ConversationUsageLimitResume | undefined;
+    try {
+      usageLimitResume = await deps.usageLimitResume?.(conversationId);
+    } catch {
+      // The banner reads the stop itself; this list just leaves it out.
+      usageLimitResume = undefined;
+    }
+    const data: ConversationAgentSchedule = {
+      wakeUps:
+        deps.store?.pendingWakeUps(conversationId).map(publicWakeUp) ?? [],
+      jobProposals:
+        deps.store?.openJobProposals(conversationId).map(publicJobProposal) ??
+        [],
+      jobs:
+        deps.store?.approvedJobs(
+          conversationId,
+          CONVERSATION_SCHEDULED_JOBS_LIMIT,
+        ) ?? [],
+      ...(usageLimitResume ? { usageLimitResume } : {}),
+    };
+    return c.json({ success: true, data }, 200, NO_STORE);
+  });
+
+  app.post('/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel', (c) => {
+    const conversationId = c.req.param('conversationId');
+    const person = personFor(c, conversationId, 'mutate');
+    if (person instanceof Response) return person;
+    const record = deps.store?.wakeUp(c.req.param('wakeUpId'));
+    if (!record || record.conversationId !== conversationId || !deps.delivery)
+      return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    return c.json(
+      {
+        success: true,
+        data: { canceled: deps.delivery.cancel(record.id, 'person') },
+      },
+      200,
+      NO_STORE,
+    );
+  });
+
+  app.post(
+    '/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+    (c) => {
+      const conversationId = c.req.param('conversationId');
+      const person = personFor(c, conversationId, 'mutate');
+      if (person instanceof Response) return person;
+      const record = deps.store?.jobProposal(c.req.param('proposalId'));
+      if (!record || record.conversationId !== conversationId)
+        return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+      const declined = deps.store!.settleJobProposal(
+        record.id,
+        'declined',
+        person.userId,
+        now(),
+      );
+      return c.json({ success: true, data: { declined } }, 200, NO_STORE);
+    },
+  );
+
+  return app;
+}
+
+/** The fields an approval body may carry: exactly the proposed job's. */
+const APPROVABLE_FIELDS: ReadonlySet<string> = new Set([
+  'name',
+  'schedule',
+  'prompt',
+  'agent',
+]);
+
+/**
+ * The scheduler create route's approval of a job proposal. A person's own
+ * request (never one that may be an agent's) that may act on the proposal's
+ * conversation, naming a proposal still open, with a body that is exactly
+ * the proposed job and nothing more: then the route creates the job and
+ * `settle` records the proposal approved by that person.
+ */
+export function createJobProposalApproval(deps: {
+  store: AgentScheduleStore | undefined;
+  person(c: Context): AgentSchedulePerson | undefined;
+  now?: () => number;
+}): JobProposalApproval {
+  return {
+    admit(c, proposalId, body) {
+      if (requestMayBeAnAgent(c.req.raw))
+        return {
+          ok: false,
+          status: 403,
+          code: 'person-approval-required',
+          error: 'Only a person can approve a job proposal.',
+        };
+      const notFound = {
+        ok: false,
+        status: 404,
+        code: 'job_proposal_not_found',
+        error: 'Job proposal not found',
+      } as const;
+      const proposal = deps.store?.jobProposal(proposalId);
+      if (!proposal) return notFound;
+      const person = deps.person(c);
+      if (!person?.mayMutate(proposal.conversationId)) return notFound;
+      if (proposal.state !== 'open')
+        return {
+          ok: false,
+          status: 409,
+          code: 'job_proposal_settled',
+          error: `This proposal was already ${proposal.state}.`,
+        };
+      const extra = Object.keys(body).some(
+        (key) => body[key] !== undefined && !APPROVABLE_FIELDS.has(key),
+      );
+      if (extra || !jobMatchesProposal(proposal.job, body))
+        return {
+          ok: false,
+          status: 409,
+          code: 'job_proposal_mismatch',
+          error: 'That is not the job the agent proposed.',
+        };
+      return {
+        ok: true,
+        settle: () => {
+          deps.store?.settleJobProposal(
+            proposal.id,
+            'approved',
+            person.userId,
+            deps.now?.() ?? Date.now(),
+          );
+        },
+      };
+    },
+  };
+}

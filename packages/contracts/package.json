@@ -58,6 +58,7 @@
     "./answer-share": "./src/answer-share.ts",
     "./answer-share-channel": "./src/answer-share-channel.ts",
     "./attachment-staging": "./src/attachment-staging.ts",
+    "./agent-schedule": "./src/agent-schedule.ts",
     "./attention": "./src/attention.ts",
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",

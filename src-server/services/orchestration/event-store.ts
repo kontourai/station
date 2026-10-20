@@ -175,6 +175,10 @@ import {
   createAdoptionLedger,
 } from './adoption-ledger.js';
 import {
+  type AgentScheduleStore,
+  createSqliteAgentScheduleStore,
+} from './agent-schedule.js';
+import {
   AttachmentBlobStore,
   attachmentBlobRefFor,
   isAttachmentBlobRef,
@@ -317,6 +321,10 @@ import {
   createTurnDeduplicator,
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
+import {
+  createSqliteUsageLimitResumeChoices,
+  type UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
 import {
   createVoiceTurnRuns,
   releaseVoiceTurnOwner,
@@ -2044,6 +2052,8 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private agentSchedule?: AgentScheduleStore;
+  private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
   /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
@@ -12087,6 +12097,18 @@ export class EventStore {
   threadInboxStore(): ThreadInboxStore {
     this.threadInbox ??= createSqliteThreadInboxStore(this.db);
     return this.threadInbox;
+  }
+
+  /** #3157: a person's resume choice per usage-limit stop. */
+  usageLimitResumeChoices(): UsageLimitResumeChoices {
+    this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
+    return this.resumeChoices;
+  }
+
+  /** Agent wake-ups and job proposals (`agent-schedule.ts`). */
+  agentScheduleStore(): AgentScheduleStore {
+    this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
+    return this.agentSchedule;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */

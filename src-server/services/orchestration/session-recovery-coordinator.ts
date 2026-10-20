@@ -33,6 +33,10 @@ import {
   type RecoveryLedger,
   type RecoveryTransition,
 } from './recovery-ledger.js';
+import type {
+  UsageLimitResumeChoice,
+  UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
 
 /**
  * A recorded turn start everything of which can be sent again: it has the
@@ -52,6 +56,8 @@ export type UsageLimitRecoveryActionResult =
   | { kind: 'failed' }
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
+  /** A person chose, for this stop, what happens at its reset. */
+  | { kind: 'chosen'; choice: UsageLimitResumeChoice }
   | { kind: 'not-waiting' };
 
 /**
@@ -140,6 +146,12 @@ export class SessionRecoveryCoordinator {
        * it.
        */
       autoResume?: () => boolean | Promise<boolean>;
+      /**
+       * A person's choice on one stop ("Resume at <reset>" / "Don't
+       * resume"), which decides it instead of `autoResume`. Absent: the
+       * setting decides every stop, as before.
+       */
+      resumeChoices?: UsageLimitResumeChoices;
     },
   ) {
     this.credentialRecovery = options.credentialRecovery;
@@ -909,9 +921,10 @@ export class SessionRecoveryCoordinator {
       return;
     }
     // #3157: the setting is read before the claim's serialized turn, so the
-    // claim itself keeps its synchronous path to dispatch.
+    // claim itself keeps its synchronous path to dispatch. A person's choice
+    // on this stop decides it instead.
     this.trackOperation(
-      this.autoResumeAllowed().then((allowed) => {
+      this.autoResumeAllowedFor(fingerprint).then((allowed) => {
         if (this.disposed) return;
         void this.enqueueLifecycle(fingerprint, () =>
           this.claimAndResume(fingerprint, allowed),
@@ -1310,6 +1323,67 @@ export class SessionRecoveryCoordinator {
       intent.decision === 'wait-until-reset' &&
       !this.dispatchControllers.has(intent.fingerprint)
     );
+  }
+
+  /** The person's choice on this stop, else the setting. */
+  private async autoResumeAllowedFor(fingerprint: string): Promise<boolean> {
+    let choice: UsageLimitResumeChoice | undefined;
+    try {
+      choice = this.options.resumeChoices?.read(fingerprint);
+    } catch {
+      // An unreadable choice falls back to the setting, which itself fails
+      // closed.
+      choice = undefined;
+    }
+    if (choice === 'resume') return true;
+    if (choice === 'hold') return false;
+    return this.autoResumeAllowed();
+  }
+
+  /**
+   * The person's choice on the stop still waiting for its reset in this
+   * Session, if they made one.
+   */
+  usageLimitResumeChoice(threadId: string): UsageLimitResumeChoice | undefined {
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting || waiting.outcome !== 'armed') return undefined;
+    try {
+      return this.options.resumeChoices?.read(waiting.fingerprint);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The banner's "Resume at <reset>" (`resume`) and "Don't resume"
+   * (`hold`) on a stop still waiting for its reset. Nothing is sent now:
+   * the choice decides what happens at the reset, in place of the setting.
+   */
+  async chooseUsageLimitResume(
+    threadId: string,
+    choice: UsageLimitResumeChoice,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed || !this.options.resumeChoices)
+      return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting) return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (
+        !current?.usageLimit ||
+        current.outcome !== 'armed' ||
+        current.decision !== 'wait-until-reset'
+      )
+        return;
+      this.options.resumeChoices!.write(
+        current.fingerprint,
+        choice,
+        this.now().getTime(),
+      );
+      result = { kind: 'chosen', choice };
+    });
+    return result;
   }
 
   private async autoResumeAllowed(): Promise<boolean> {

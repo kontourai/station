@@ -7,7 +7,7 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -60,12 +60,34 @@ function observeManualRunRequest() {
   }
 }
 
+/** See `createJobProposalApproval` (`routes/orchestration/agent-schedule.ts`). */
+export interface JobProposalApproval {
+  admit(
+    c: Context,
+    proposalId: string,
+    body: Record<string, unknown>,
+  ):
+    | { readonly ok: true; settle(): void }
+    | {
+        readonly ok: false;
+        readonly status: 403 | 404 | 409;
+        readonly code: string;
+        readonly error: string;
+      };
+}
+
 export function createSchedulerRoutes(
   schedulerService: SchedulerService,
   logger: Logger,
   options: {
     /** Runtime composition derives this only from trusted request ingress. */
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
+    /**
+     * Approving an agent's job proposal: decides whether this request may
+     * create the job a proposal names. Absent: a body naming a proposal is
+     * refused.
+     */
+    jobProposals?: JobProposalApproval;
   } = {},
 ) {
   const app = new Hono();
@@ -211,9 +233,28 @@ export function createSchedulerRoutes(
 
   app.post('/jobs', validate(addJobSchema), async (c) => {
     try {
-      const body = getBody(c);
+      const { proposalId, ...body } = getBody(c) as {
+        proposalId?: string;
+      } & Parameters<SchedulerService['addJob']>[0];
+      const approval =
+        proposalId === undefined
+          ? undefined
+          : options.jobProposals
+            ? options.jobProposals.admit(c, proposalId, body)
+            : ({
+                ok: false,
+                status: 404,
+                code: 'job_proposal_not_found',
+                error: 'Job proposal not found',
+              } as const);
+      if (approval && !approval.ok)
+        return c.json(
+          { success: false, code: approval.code, error: approval.error },
+          approval.status,
+        );
       schedulerJobRuns.add(1, { op: 'create_job' });
       const output = await schedulerService.addJob(body);
+      approval?.settle();
       return c.json({ success: true, data: { output } });
     } catch (error: unknown) {
       logger.error('Failed to add job', { error });
