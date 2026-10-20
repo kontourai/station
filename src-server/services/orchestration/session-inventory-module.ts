@@ -225,6 +225,11 @@ export function createSessionInventoryModule(input: {
           decisions: gap('decisions'),
           outputs: gap('outputs'),
           'verification-delivery': gap('verification-delivery'),
+          // Nothing yet publishes a resource summary or attention fact bound
+          // to this answer. An exact-zero `empty` group would claim that none
+          // was observed, so both stay owner-qualified gaps.
+          resources: gap('resources'),
+          attention: gap('attention'),
         },
         highWater: 0,
       };

@@ -346,6 +346,82 @@ describe('SessionInventoryModule', () => {
       }),
     );
   });
+  test('reports current-answer resources and attention as owner gaps, never an exact empty', async () => {
+    const sessionId = 'station:1792425046978';
+    const base = currentAnswer('turn-a');
+    const answer = {
+      ...base,
+      sessionId,
+      binding: {
+        ...base.binding,
+        sessionId,
+        answer: { ...base.binding.answer, threadId: sessionId },
+      },
+    };
+    const module = createSessionInventoryModule({
+      sessionOutputs: {
+        list: vi.fn().mockResolvedValue({
+          status: 'found',
+          page: { version: 'session-outputs/v1', items: [], partial: false },
+        }),
+      } as never,
+      canReadSession: () => true,
+      readExactAnswerBasis: (async () => exactFound(answer)) as never,
+      readWholeSessionEvents: () => ({ events: [], highWater: 0 }),
+      readWholeSessionHighWater: () => 0,
+    });
+    const scope = {
+      kind: 'current-answer' as const,
+      sessionId,
+      turnId: 'turn-a',
+    };
+    const found = await module.read({ scope, authority, current: () => true });
+    if (found.status !== 'found') throw new Error('expected projection');
+    const notCaptured = (id: string) => ({
+      id,
+      owner: { owner: 'station.inventory', id: 'v1' },
+      state: 'not-captured',
+      items: [],
+      gaps: [{ kind: 'not-captured' }],
+    });
+    for (const id of ['resources', 'attention'] as const) {
+      expect(found.projection.groups.find((group) => group.id === id)).toEqual(
+        notCaptured(id),
+      );
+      const page = await module.page({
+        scope,
+        groupId: id,
+        authority,
+        current: () => true,
+      });
+      if (page.status !== 'found') throw new Error('expected page');
+      expect(page.page.group).toMatchObject({
+        id,
+        state: 'not-captured',
+        gaps: [{ kind: 'not-captured' }],
+      });
+    }
+    expect(parseSessionInventoryProjection(found.projection)).toEqual(
+      found.projection,
+    );
+    // Whole Session keeps its own owners: resources is the canonical-event
+    // fold and attention stays the inventory's exact empty group.
+    const whole = await module.read({
+      scope: { kind: 'whole-session', sessionId },
+      authority,
+      current: () => true,
+    });
+    if (whole.status !== 'found') throw new Error('expected projection');
+    expect(
+      whole.projection.groups.find((group) => group.id === 'resources'),
+    ).toMatchObject({
+      owner: { owner: 'thread.canonical-events', id: 'v1' },
+      state: 'empty',
+    });
+    expect(
+      whole.projection.groups.find((group) => group.id === 'attention'),
+    ).toMatchObject({ state: 'empty', count: { kind: 'exact', value: 0 } });
+  });
   test('returns owner-qualified bounded output metadata and rechecks authority', async () => {
     const module = createSessionInventoryModule({
       sessionOutputs: {
