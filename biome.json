@@ -14,6 +14,7 @@
       "!!**/archive",
       "!!src-ui/src/*.generated.css",
       "!!src-ui/public/color-themes",
+      "!!src-ui/src/lib/*.generated.json",
       "!!docs/strategy/dogfood/**/evidence",
       "!!.veritas/**",
       "!!veritas.claims.json"
