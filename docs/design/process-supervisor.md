@@ -602,9 +602,13 @@ verification, and fault injection.
   serving core. None covers a drain held open by a live voice call or an
   event stream on the real core server (its streams need credentials;
   ending them is tested against a plain server). On a Windows host the
-  supervisor package's tests passed and one journey run saw a single reset
-  in a handoff, from the cause described under Windows above; the journey's
-  zero-reset and SIGTERM checks run on POSIX only. A failed trial drains for
+  supervisor package's tests passed, and the journey's zero-reset check
+  passed in 8 runs with connection catching (see Windows above); with
+  catching turned off, 3 of 3 runs reset one or two connections. The
+  journey's SIGTERM check runs on POSIX only. The package's real-process
+  tests also run catching on any host, through a handoff and two rollbacks,
+  and pair a catching supervisor with a 1.0 fixture core (in both
+  directions) and a supervisor that does not catch with a 1.1 one. A failed trial drains for
   at most the kill grace, then gets SIGTERM and, 250 ms later, SIGKILL, so
   a frozen trial delays the rollback by about one kill grace and its process
   group still gets a chance to clean up. SIGKILL goes to the group only if
