@@ -316,7 +316,10 @@ remain a second signer kind.
 
 - a revocation feed between releases, and what signs it;
 - whether online Stations refresh Sigstore's root through TUF or use only
-  the embedded root (proposed: embedded only, refreshed per release);
+  the embedded root (proposed: embedded only, refreshed per release). The
+  cost of "embedded only": a Station older than a Sigstore key rotation
+  cannot verify plugins signed after it, and must update before installing
+  them;
 - whether online installs also query Rekor for consistency (proposed: no);
 - the operator UX for reading and pinning a third-party identity;
 - support for issuers other than GitHub Actions, and for a private Sigstore
@@ -366,7 +369,7 @@ family.
 | `workspace-panes/builtinWorkspacePaneRegistry.tsx:75-83, 756` | Registers the Coding panes, the evidence-pane content, `selectWorkflowPlanSession`, and the lazy PR review panel | Drop the Coding registrations: those panes come from the plugin under the adopted ids. Move the evidence-pane content and `planSession` to core | Plan, readiness and trust panes keep working. Coding panes in saved layouts render `unavailable` with a reason |
 | Region `pr:` family and the dock's PR chips (`region-surface-panes.ts:321`, `region-model.ts`) | Open PR review from chat | **By descriptor** (SDK-4) | PR chips open the pull request externally (`host.openExternal`) instead of the review pane |
 | Region `coding:terminal`, `coding:diff`, `coding:file-browser` families (`region-surface-panes.ts:305-309`) | Dock placements of Coding panes | By descriptor; the architecture ratchet's source map points at the plugin | Those dock placements render `unavailable` with a reason |
-| `components/modals/NewChatModal.tsx:82` | Helpers from `coding-layout/chatContextDraft.ts` that compose a start message (not a pane) | Move the helpers into core chat start. The plugin supplies its context draft through SDK-3 | New chat works. The "start with coding context" entry exists only when the plugin supplies it |
+| `components/modals/NewChatModal.tsx:82` | Helpers from `coding-layout/chatContextDraft.ts` that compose a start message (not a pane) | Move the helpers into core chat start. The plugin supplies its context draft through SDK-3 | New chat works. A Coding context draft is offered only when the plugin supplies one |
 | `app-shell/ProjectLayoutRenderer.tsx:60-68` | `CodingWorkbench`, `codingPanels`, `codingStackPage` | Slice a's generic host and a2's generic panel record | No Coding layout in the catalog; a stored Coding layout renders `unavailable` with a reason and offers reinstall from the bundled set |
 
 **Consequence, stated plainly.** Because i0 installs Coding by default, the
@@ -1107,7 +1110,9 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
   and the embedded Sigstore root. **Still open:**
   - a revocation feed between releases, and what signs it;
   - whether online Stations refresh Sigstore's root through TUF
-    (*proposed:* no; embedded root only, refreshed per release);
+    (*proposed:* no; embedded root only, refreshed per release, at the cost
+    that a Station older than a Sigstore key rotation must update before
+    installing plugins signed after it);
   - whether online installs also query Rekor for log consistency
     (*proposed:* no);
   - the operator UX for reading and pinning a third-party identity;
@@ -1398,14 +1403,16 @@ Proof: host tests for isolation, parse failure and uninstall cleanup.
 
 Acceptance:
 
-- With the Coding plugin uninstalled, a task workspace still renders its
-  diff and file views.
+- A task workspace renders its diff and file views through `DiffView` and
+  `FileView`, and keeps rendering them after j with Coding uninstalled.
 - A fixture plugin renders `DiffView`, and a diff comment it adds reaches
   the same store the app uses.
 
-Proof: a real-browser spec of a task workspace with Coding uninstalled, and
-a fixture-plugin component test. Re-importing `DiffPanel` from
-`coding-layout/` in `TaskWorkspaceView` must fail the R ratchet's companion
+Proof: a fixture-plugin component test, and a structural scan that
+`src-ui/src/views/` imports nothing from `coding-layout/`, paired with a
+real-browser spec of a task workspace. Until j removes `coding-layout/`
+from `src-ui`, the spec alone cannot tell the SDK view from the compiled-in
+panel, so re-importing `DiffPanel` in `TaskWorkspaceView` must fail the
 scan.
 
 ### KIT. UI kit upstream to `@kontourai/ui`
