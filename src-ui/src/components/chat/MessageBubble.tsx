@@ -499,6 +499,24 @@ function MessageBubbleComponent({
         <CopyGlyph />
       </button>
     ) : null;
+  // Only a rehydrated, durable authored input has the exact identity needed
+  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
+  // carry no surrogate action. On desktop it is a row of the bubble's ⋯ menu,
+  // like an answer's "Add to Task"; the phone sheet lists it itself.
+  const userTaskTarget =
+    !replaying &&
+    msg.role === 'user' &&
+    msg.sourceEventId &&
+    msg.sessionId &&
+    msg.turnId
+      ? {
+          sessionId: msg.sessionId,
+          eventId: msg.sourceEventId,
+          excerpt: textContent,
+          projectId: activeSession.projectSlug,
+        }
+      : undefined;
+  const menuTaskTarget = isMobile ? undefined : userTaskTarget;
   // Gated on exactly what the menu can list (TurnActionsMenu's
   // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
   // would draw a ⋯ that opens an empty menu.
@@ -507,7 +525,8 @@ function MessageBubbleComponent({
     textContent &&
     ((userForkSource && onForkFromTurn) ||
       onNewChatFromMessage ||
-      discardUnsent) ? (
+      discardUnsent ||
+      menuTaskTarget) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -517,6 +536,7 @@ function MessageBubbleComponent({
             ? () => onNewChatFromMessage(textContent)
             : undefined,
           onDiscardUnsent: discardUnsent,
+          taskTarget: menuTaskTarget,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
           inline: isMobile,
@@ -548,24 +568,13 @@ function MessageBubbleComponent({
         {msg.traceId.slice(-8)}
       </a>
     ) : null;
-  // Only a rehydrated, durable authored input has the exact identity needed
-  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
-  // carry no surrogate action.
+  // The phone sheet's Task row (desktop lists it in the ⋯ menu instead).
   const userTaskAction =
-    !replaying &&
-    msg.role === 'user' &&
-    msg.sourceEventId &&
-    msg.sessionId &&
-    msg.turnId ? (
+    isMobile && userTaskTarget ? (
       <div className="message__task-input-action">
         <LazyBoundary
           load={loadConnectedAttachUserInputToTaskButton}
-          componentProps={{
-            sessionId: msg.sessionId,
-            eventId: msg.sourceEventId,
-            excerpt: textContent,
-            projectId: activeSession.projectSlug,
-          }}
+          componentProps={userTaskTarget}
           pending={
             <span
               className="task-picker__status"
@@ -795,8 +804,6 @@ function MessageBubbleComponent({
   );
   const metadataAfter = (
     <>
-      {!isMobile && userTaskAction}
-
       {msg.role === 'assistant' && msg.changedFiles && (
         <details className="message__changed-files">
           <summary>

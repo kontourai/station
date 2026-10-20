@@ -109,6 +109,11 @@ function statusText(bubble: HTMLElement): string | null | undefined {
   return region?.textContent;
 }
 
+/** The glyph's tooltip: its SVG title, which also names it. */
+function glyphTitle(bubble: HTMLElement): string | null | undefined {
+  return glyph(bubble).querySelector('title')?.textContent;
+}
+
 /** The happy-path glyph beside the bubble (its name is the state's fact). */
 function glyph(bubble: HTMLElement): HTMLElement {
   const element = bubble.querySelector<HTMLElement>('.message-delivery__glyph');
@@ -180,9 +185,7 @@ describe('MessageBubble delivery state', () => {
     // No text line: the check glyph names the fact, and it is announced.
     expect(lineText(first.bubble)).toBeNull();
     expect(glyph(first.bubble).getAttribute('data-glyph')).toBe('received');
-    expect(glyph(first.bubble).getAttribute('title')).toBe(
-      'Received. Safe to close the app.',
-    );
+    expect(glyphTitle(first.bubble)).toBe('Received. Safe to close the app.');
     expect(statusText(first.bubble)).toBe('Received. Safe to close the app.');
     cleanup();
 
@@ -402,14 +405,14 @@ describe('MessageBubble delivery state', () => {
       durableClientTurnId: KEY,
     });
     const saved = renderBubble();
-    expect(glyph(saved.bubble).getAttribute('title')).toBe(
+    expect(glyphTitle(saved.bubble)).toBe(
       'Sending. Kept on this device if the app closes.',
     );
     cleanup();
     // Attachments, a visual skill, or storage that failed: no row was written.
     activeChatsStore.updateChat(CHAT, { durableClientTurnId: undefined });
     const unsaved = renderBubble();
-    expect(glyph(unsaved.bubble).getAttribute('title')).toBe('Sending');
+    expect(glyphTitle(unsaved.bubble)).toBe('Sending');
   });
 
   it('one status region stays mounted, and only its text changes when Sending becomes Received', () => {
@@ -593,6 +596,7 @@ describe('MessageBubble delivery state', () => {
     expect(mark.getAttribute('aria-hidden')).toBe('true');
     expect(statusText(bubble)).toBe('');
     expect(lineText(bubble)).toBeNull();
+    expect(glyphTitle(bubble)).toBe('Delivered');
   });
 
   it('an exception line folds away in place when the message is delivered', () => {

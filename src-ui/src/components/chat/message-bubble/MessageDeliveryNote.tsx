@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { useRecheckMessageDelivery } from '../../../hooks/useMessageDeliveryState';
 import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
@@ -109,7 +115,7 @@ export function MessageDeliveryNote({
   const notice = ownNotice ?? outsideNotice ?? null;
   const discardDisclosure = useUnconfirmedDiscardDisclosure();
   const recheck = useRecheckMessageDelivery(chatKey);
-  const outlives = useStationOutlivesApp();
+  const titleId = useId();
   const savedOnDevice = useSyncExternalStore(activeChatsStore.subscribe, () => {
     const chat = activeChatsStore.getSnapshot()[chatKey];
     return (
@@ -150,23 +156,29 @@ export function MessageDeliveryNote({
     }
   };
 
+  // The received wording depends on whether Station outlives the app, read
+  // only while received (`ReceivedText`), as it always was.
   const glyphLabel =
-    state === 'sending'
-      ? savedOnDevice
-        ? 'Sending. Kept on this device if the app closes.'
-        : 'Sending'
-      : state === 'received'
-        ? receivedDeliveryLabel(outlives)
-        : 'Delivered';
+    state === 'sending' ? (
+      savedOnDevice ? (
+        'Sending. Kept on this device if the app closes.'
+      ) : (
+        'Sending'
+      )
+    ) : state === 'received' ? (
+      <ReceivedText />
+    ) : (
+      'Delivered'
+    );
   const lineOpen = isException(state);
   const line = lastException.current;
   // What a screen reader is told: the received fact or the exception line.
   const announcement =
-    state === 'received'
-      ? receivedDeliveryLabel(outlives)
-      : isException(state)
-        ? LABELS[state].text
-        : '';
+    state === 'received' ? (
+      <ReceivedText />
+    ) : isException(state) ? (
+      LABELS[state].text
+    ) : null;
 
   return (
     <div className="message-delivery" data-delivery-state={state}>
@@ -180,13 +192,14 @@ export function MessageDeliveryNote({
               : 'none'
         }
         role="img"
-        aria-label={glyphLabel}
+        aria-labelledby={titleId}
         aria-hidden={
           state === 'sending' || state === 'received' ? undefined : true
         }
-        title={glyphLabel}
       >
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <svg viewBox="0 0 16 16" focusable="false">
+          {/* The glyph's tooltip and its accessible name. */}
+          <title id={titleId}>{glyphLabel}</title>
           <circle
             className="message-delivery__glyph-ring"
             cx="8"
@@ -375,4 +388,13 @@ function useUnconfirmedDiscardable(
     };
   }, [clientTurnId, unconfirmed]);
   return discardable;
+}
+
+/**
+ * Station has the message; the agent does not yet. Says closing the app is
+ * safe only when that Station keeps running without it
+ * (`useStationOutlivesApp`), so the platform is read only in this state.
+ */
+function ReceivedText() {
+  return <>{receivedDeliveryLabel(useStationOutlivesApp())}</>;
 }

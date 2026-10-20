@@ -562,7 +562,7 @@ describe('MessageBubble phone copy and details actions', () => {
     });
   });
 
-  it('keeps the Task pin on a desktop user message', () => {
+  it("lists a desktop user message's Task pin in its ⋯ menu, not as a standing button", async () => {
     mobile.current = false;
     try {
       renderRow({
@@ -572,9 +572,24 @@ describe('MessageBubble phone copy and details actions', () => {
         sessionId: 'thread-1',
         turnId: 'turn-1',
       });
-      const pin = document.querySelector('.message__task-input-action');
-      expect(pin).not.toBeNull();
-      expect(pin!.closest('.message.user')).not.toBeNull();
+      expect(document.querySelector('.message__task-input-action')).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Add input to Task' }),
+      ).toBeNull();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More message actions' }),
+      );
+      const menu = await screen.findByRole('menu', { name: 'Message actions' });
+      fireEvent.click(
+        await within(menu).findByRole('menuitem', {
+          name: 'Add input to Task',
+        }),
+      );
+      // The picker opens from the menu and stays open after the menu hides.
+      expect(
+        await screen.findByRole('dialog', { name: /Add input to Task/ }),
+      ).toBeTruthy();
+      expect(menu.hidden).toBe(true);
     } finally {
       mobile.current = true;
     }
