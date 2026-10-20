@@ -1908,7 +1908,9 @@ server read beyond the pull request links Chat details already reads.
   facts they show, so the dock's resize frames and stream renders do not
   re-render it. While it is folded,
   a chip after the project context names the ladder word and opens the same
-  rows as a popover anchored under it. On a phone the bar's edge reserve
+  rows as a popover anchored to it, on whichever side of the chip has more
+  room and capped to that room, so a bottom dock's chip opens upward
+  (#3888). On a phone the bar's edge reserve
   (96px) holds exactly its two 44px controls, and a third wrapped the bar
   onto a second line, so the sheet opens from a **This chat** row of the
   Chat actions sheet instead, and closing it returns focus to ⋯. The actions
