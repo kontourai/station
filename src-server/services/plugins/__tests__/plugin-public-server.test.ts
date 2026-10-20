@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   acquirePluginPublicServerModule,
   buildPluginRequestContext,
@@ -24,6 +25,7 @@ import {
 } from '../plugin-public-server.js';
 
 const cleanupDirs: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   await Promise.all(
@@ -97,9 +99,8 @@ describe('plugin-public-server helpers', () => {
 
   test('refuses a server module whose symlink chain resolves outside the plugin root (#1502)', async () => {
     const root = realpathSync.native(
-      mkdtempSync(join(tmpdir(), 'station-plugin-server-chain-')),
+      makeTempDir('station-plugin-server-chain-'),
     );
-    cleanupDirs.push(root);
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'demo-plugin');
     mkdirSync(join(pluginDir, 'dir'), { recursive: true });

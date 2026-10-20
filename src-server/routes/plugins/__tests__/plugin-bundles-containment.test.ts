@@ -1,29 +1,21 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { assertPluginBundleAssetsContained } from '../plugin-bundles.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function pluginFixture() {
   const base = realpathSync.native(
-    mkdtempSync(join(tmpdir(), 'station-plugin-bundle-containment-')),
+    makeTempDir('station-plugin-bundle-containment-'),
   );
-  roots.push(base);
   const pluginDir = join(base, 'plugin');
   mkdirSync(join(pluginDir, 'x', 'evil-dist'), { recursive: true });
   mkdirSync(join(base, 'evil-dist'));

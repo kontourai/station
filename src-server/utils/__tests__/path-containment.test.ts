@@ -1,33 +1,23 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { assertExistingPathInside } from '../path-containment.js';
 
 // Real temp-dir fixtures: every shape below is resolved by the filesystem,
 // not a mocked `fs`, because the defect (#1502) is a disagreement between
 // the JS realpath and what the OS actually opens.
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0)) {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function fixture() {
-  const base = realpathSync.native(
-    mkdtempSync(join(tmpdir(), 'station-path-containment-')),
-  );
-  roots.push(base);
+  const base = realpathSync.native(makeTempDir('station-path-containment-'));
   const root = join(base, 'package');
   mkdirSync(join(root, 'dir'), { recursive: true });
   mkdirSync(join(base, 'outside-dir'));
