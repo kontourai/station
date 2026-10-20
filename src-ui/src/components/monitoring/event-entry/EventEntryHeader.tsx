@@ -125,7 +125,7 @@ export function EventEntryHeader({
         )}
 
         {!!event[K.TOOL_NAME] && (
-          <span className="log-inline">
+          <span className="log-inline log-inline--shrink">
             <span className="meta-label">Tool:</span>
             <span className="pill-badge tool-badge">
               {event[K.TOOL_NAME] as string}

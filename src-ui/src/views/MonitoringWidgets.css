@@ -584,6 +584,13 @@
   margin-top: 0.5rem;
 }
 
+/* The sidebar header already draws the line above the list; a group header
+   that opens the list (no configured agents) must not draw a second one. */
+.agent-list > .agent-historical-header:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
 .running-conversations {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -1375,9 +1382,10 @@
   font-weight: 500;
 }
 
-/* A value that must stay on one line (the producer name): ellipsis, with the
-   full value in the element's title. Its inline group may shrink to the
-   row's width, so the pill truncates instead of running past the edge. */
+/* An inline group that may shrink to the row's width and wrap its label
+   above its pill, so a long value gets the whole column (the tool and
+   producer groups). The producer pill stays on one line with an ellipsis and
+   its full value in the title; a tool pill breaks inside itself instead. */
 .log-inline--shrink {
   flex-wrap: wrap;
   min-width: 0;
