@@ -121,6 +121,9 @@ describe('AnswerSharesSection', () => {
     sharesQuery.data = [];
     const { container } = render(<AnswerSharesSection />);
     expect(container.textContent).toContain('Nothing shared yet');
+    // "Share answer" lives in the Turn provenance dialog (TurnActionsMenu's
+    // "Turn provenance" item), not beneath the answer.
+    expect(container.textContent).toContain('choose Turn provenance');
   });
 
   it('reports a failed listing as a failure, not as an empty list', () => {

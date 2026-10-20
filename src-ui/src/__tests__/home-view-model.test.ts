@@ -9,7 +9,6 @@ import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
   buildActiveChatTaskItems,
-  buildHomeTaskItems,
   buildHomeWorkItems,
   buildOrchestrationItems,
   chatTaskSessionId,
@@ -2287,7 +2286,7 @@ describe('a continuation child whose start failed', () => {
   };
 
   test('folds into its conversation and keeps the identity the conversation already reported', () => {
-    const items = buildHomeTaskItems({
+    const items = buildHomeWorkItems({
       chats: {},
       sessions: [root, failedChild],
       agents: [],

@@ -26,6 +26,8 @@ complexity, and duplication analyses. It also records a byte-hashed inventory
 of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
+`npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
+for a quick local look; it reads no baseline and gates nothing.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -1941,20 +1943,6 @@ changed route outputs, not just the bucket you are actively touching.
 ## Durable Verification Lanes
 
 For roadmap work that changes product behavior, prefer adding or extending a named verification lane rather than relying on ad hoc manual checks.
-
-Phase 1 no-AWS startup proof:
-
-```bash
-npm run proof:phase1-no-aws-startup
-```
-
-This lane launches `./station start --temp-home --clean --force` with a
-unique instance and port block, removes AWS environment variables from the
-child process, checks `/api/system/status` for a provider-neutral
-recommendation, stops the instance, and writes the proof JSON plus server log
-under `.omx/artifacts/phase1-no-aws-startup/`. It also snapshots the default
-`~/.station` directory before and after the run and fails if the default
-home changes.
 
 Recommended lane types:
 
