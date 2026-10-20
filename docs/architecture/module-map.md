@@ -3552,7 +3552,12 @@ Sources explains the reviewed-source contribution to one exact answer. It is not
 point-read Interface for one authorized Session answer. It sequences Thread,
 assessment, retained narrative, and reviewed-source owners once, fences
 authority after every await, then returns the existing Surface Basis projection
-and the exact reviewed-source contribution. `SessionInventoryModule` consumes
+and the exact reviewed-source contribution. Station builds the answer's input
+and Thread result contributions itself, so when Surface's parser rejects them
+the read is `unavailable` (503) and the runtime logs a Station Basis composition
+invariant; it never publishes Surface's fallback projection, whose gap would
+blame an owner. Whole Task Basis records that answer as an `unavailable` gap.
+Session ids are opaque and may contain `:`. `SessionInventoryModule` consumes
 that result through the pure `ReviewedSourceSessionInventoryAdapter`; it never
 opens a plugin, scans answers, or reads a whole Session to populate Sources.
 

@@ -171,7 +171,10 @@ import {
   ReceiverExecutionRefusal,
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
-import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  composeAuthorizedSessionAnswerBasis,
+  StationBasisCompositionInvariantError,
+} from '../../services/projects/task-basis-module.js';
 import {
   type TaskRoomInvocationAdmission,
   TaskRoomWorkAuthorityChangedError,
@@ -5687,15 +5690,23 @@ export function createOrchestrationRoutes(
         : undefined;
       if (!current())
         return c.json({ success: false, error: 'Basis not found' }, 404);
-      return c.json({
-        success: true,
-        data: composeAuthorizedSessionAnswerBasis(
-          answer,
-          assessed?.assessment,
-          narrative,
-          reviewedSource,
-        ),
-      });
+      try {
+        return c.json({
+          success: true,
+          data: composeAuthorizedSessionAnswerBasis(
+            answer,
+            assessed?.assessment,
+            narrative,
+            reviewedSource,
+          ),
+        });
+      } catch (error) {
+        // Station's own projection failed Surface's contract: unavailable,
+        // never an owner gap published as if it were Basis data.
+        if (error instanceof StationBasisCompositionInvariantError)
+          return c.json({ success: false, error: 'Basis unavailable' }, 503);
+        throw error;
+      }
     }
     if (
       deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||

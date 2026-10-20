@@ -1704,6 +1704,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'operational event root export',
   },
   {
+    // A manifest must never reach Vitest related discovery: Vitest's default
+    // forceRerunTriggers match every `package.json`, so a hosted checkout
+    // selects the whole corpus while a checkout under a dot-directory selects
+    // nothing (#3860's queue runs exceeded the shard budget that way).
+    pattern: 'packages/basis-pane/package.json',
+    tests: [
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ],
+    reason: 'published Basis pane exports and dependency floor',
+  },
+  {
     pattern: 'packages/sdk/package.json',
     tests: [
       'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
