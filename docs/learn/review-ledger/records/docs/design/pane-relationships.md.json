@@ -26,7 +26,21 @@
 
     "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
 
-    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx"
+    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
+
+    "src-ui/src/views/SessionsView.tsx",
+
+    "src-ui/src/views/activity/openActivityReview.ts",
+
+    "src-ui/src/contexts/ActivityReviewContext.tsx",
+
+    "src-ui/src/workspace-panes/activityReviewPane.ts",
+
+    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
+
+    "src-ui/src/views/activity/__tests__/ActivityReview.test.tsx",
+
+    "tests/activity-related-review.spec.ts"
   ],
 
   "checks": []
