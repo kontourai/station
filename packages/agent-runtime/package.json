@@ -1,0 +1,71 @@
+{
+  "name": "@kontourai/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental model request journal, completed-stream replay and framework consumer bindings",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./ai-sdk": "./src/ai-sdk.ts",
+    "./voltagent": "./src/voltagent.ts",
+    "./strands": "./src/strands.ts"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json"
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.test.*",
+    "README.md",
+    "CONTEXT.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "durability",
+    "idempotency",
+    "crash-consistency",
+    "kontour"
+  ],
+  "author": "Kontour",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/agent-runtime"
+  },
+  "dependencies": {
+    "@kontourai/monument": "0.1.0",
+    "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "@ai-sdk/provider": "3.0.18",
+    "@voltagent/core": "2.10.0",
+    "@strands-agents/sdk": "1.19.0",
+    "ai": "6.0.300",
+    "@ai-sdk/provider-utils": "4.0.57"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/provider": {
+      "optional": true
+    },
+    "@voltagent/core": {
+      "optional": true
+    },
+    "@strands-agents/sdk": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "@ai-sdk/provider-utils": {
+      "optional": true
+    }
+  }
+}

@@ -36,7 +36,15 @@
 
     "packages/monument/src/__tests__/session-message-delivery.test.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts",
+
+    "packages/agent-runtime/README.md",
+
+    "packages/monument/src/testing/crash-point-store.ts",
+
+    "packages/monument/src/testing/index.ts",
+
+    "packages/monument/src/__tests__/crash-point-compatibility.test.ts"
   ],
 
   "checks": []

@@ -494,6 +494,13 @@ export interface ParticipantRefusal {
   readonly reason: string;
 }
 
+/** Command/result map shared with the public atomic testing port. */
+export type KernelAtomicProtocol = {
+  readonly [K in KernelCommand['type']]: {
+    readonly command: Extract<KernelCommand, { readonly type: K }>;
+    readonly result: KernelResults[K] | ParticipantRefusal;
+  };
+};
+
 export type KernelResult<C extends KernelCommand> =
-  | KernelResults[C['type']]
-  | ParticipantRefusal;
+  KernelAtomicProtocol[C['type']]['result'];

@@ -20,6 +20,7 @@
     "packages/connect",
     "packages/telemetry-broker",
     "packages/monument",
+    "packages/agent-runtime",
     "packages/supervisor",
     "examples/builder-delivery-viewer",
     "examples/fieldwork-review"
@@ -292,7 +293,7 @@
     "content:excluded-names": "node scripts/excluded-names-gate.mjs",
     "gate:naming": "npm run noun-consistency:gate && npm run station-vocabulary:gate && npm run coding-composition:gate",
     "gate:ui-contracts": "npm run unsaved-guard:gate && npm run state-primitives:ratchet && node scripts/mobile-css-ratchet.mjs && npm run motion-contract:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run accent-foreground:ratchet && npm run shell-conformance:ratchet && npm run a11y:ratchet && npm run claim-fixture:ratchet && npm run font-origin:ratchet && npm run ui-glyph-coverage:ratchet && npm run lazy-boundary:ratchet && npm run button-cap:ratchet && npm run sdk-error-message:ratchet && npm run random-uuid:guard && npm run dialog-surface-class:guard && npm run stored-path-expansion:guard",
-    "gate:platform": "npm run knowledge-kit-import:gate && npm run builder-delivery-viewer-import:gate && npm run monument-import-boundary:gate && npm run native-platform:ratchet && npm run release:static && npm run examples:conformance && npm run docs:reference:gate",
+    "gate:platform": "npm run knowledge-kit-import:gate && npm run builder-delivery-viewer-import:gate && npm run monument-import-boundary:gate && npm run agent-runtime-import-boundary:gate && npm run native-platform:ratchet && npm run release:static && npm run examples:conformance && npm run docs:reference:gate",
     "a11y:ratchet": "node scripts/a11y-ratchet.mjs",
     "examples:conformance": "node scripts/examples-conformance.mjs",
     "docs:reference:gate": "node scripts/docs-reference-gate.mjs",
@@ -311,7 +312,10 @@
     "test:fixtures:check": "node scripts/test-fixture-policy.mjs",
     "test:journeys:profile": "node scripts/run-journey-profiles.mjs",
     "test:mutation:smoke": "node scripts/run-test-mutations.mjs",
-    "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
+    "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts",
+    "typecheck:agent-runtime": "node scripts/tsc-slot.mjs -p packages/agent-runtime/tsconfig.json --noEmit",
+    "build:agent-runtime": "npm run --workspace=packages/agent-runtime build",
+    "agent-runtime-import-boundary:gate": "node scripts/agent-runtime-import-boundary-gate.mjs"
   },
   "dependencies": {
     "@hpke/core": "1.9.0",
