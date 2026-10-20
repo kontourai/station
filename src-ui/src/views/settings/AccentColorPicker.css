@@ -42,14 +42,3 @@
   color: var(--text-primary);
   border-color: var(--text-secondary);
 }
-
-@media (max-width: 768px), (pointer: coarse) {
-  .settings__accent-swatch,
-  .settings__accent-custom {
-    width: 44px;
-    height: 44px;
-  }
-  .settings__accent-reset {
-    min-height: 44px;
-  }
-}

@@ -57,7 +57,7 @@
 .appearance-mode {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   gap: var(--k-space-1);
 }
 
@@ -71,6 +71,7 @@
 
 .appearance-mode__option {
   position: relative;
+  flex: 1;
   min-width: 4.5rem;
   padding: var(--k-space-1) var(--k-space-3);
   border-radius: var(--k-radius-sm);
@@ -78,6 +79,16 @@
   font-size: var(--k-text-sm);
   text-align: center;
   cursor: pointer;
+}
+
+/* 44px touch targets on every pointer without growing the drawn control:
+   the hit area extends past the visible edge (the shared Toggle does the
+   same). */
+.appearance-mode__option::before,
+.appearance-choice::before {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
 }
 
 .appearance-mode__option:hover {
@@ -93,7 +104,12 @@
 /* ── Theme gallery ── */
 .appearance-theme__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* Three columns where they fit, two on a phone, without a media query: a
+     column is at least a third of the row, and never under 140px. */
+  grid-template-columns: repeat(
+      auto-fill,
+      minmax(max(140px, calc((100% - 2 * var(--k-space-3)) / 3)), 1fr)
+    );
   gap: var(--k-space-3);
 }
 
@@ -224,8 +240,14 @@
 .appearance-accent__row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-space-2);
+  gap: var(--k-space-3) var(--k-space-2);
   margin-top: var(--k-space-3);
+}
+
+.appearance-accent__row {
+  gap: 0;
+  /* The labels' own 44px boxes space the swatches. */
+  margin-left: -8px;
 }
 
 .appearance-choice {
@@ -264,15 +286,15 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   cursor: pointer;
 }
 
 .appearance-accent__swatch {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-text) 18%, transparent);
 }
@@ -285,43 +307,4 @@
   box-shadow:
     0 0 0 2px var(--k-panel),
     0 0 0 4px var(--k-text);
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  /* A keyboard shortcut is not something a touch screen can press. */
-  .appearance__hint {
-    display: none;
-  }
-
-  .appearance-mode__option,
-  .appearance-choice {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-  }
-
-  .appearance-accent {
-    width: 44px;
-    height: 44px;
-  }
-
-  .appearance-accent__swatch {
-    width: 30px;
-    height: 30px;
-  }
-}
-
-@media (max-width: 640px) {
-  .appearance-mode {
-    align-items: stretch;
-  }
-
-  .appearance-mode__option {
-    flex: 1;
-  }
-
-  .appearance-theme__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
