@@ -187,6 +187,11 @@ settings store's boot snapshot:
      status.
    - A relay authority storage read error publishes a settled scope with no
      account, which reads as a definite no-account and releases.
+   - The release mark is not keyed to an account. A relay sign-out or
+     retirement acts on the device-wide relay account and marks whatever
+     account binding is live, so if a different person is bound at that
+     moment, their next reconnect briefly shows the device's appearance
+     until their account answers (cosmetic).
 
    The same hold applies inside a session: when the account boundary unmounts
    (an authority re-check after a dropped connection, a switch, a sign-out)
@@ -197,7 +202,8 @@ settings store's boot snapshot:
    that account sees the device's own appearance until its preferences
    arrive. A definite no-person answer while the boundary is still mounted
    (an in-app sign-out) also means its unmount holds nothing, including
-   across the boundary re-binding in the same task. The mode half of that blip is inherited from main, where ending
+   across the boundary re-binding in the same microtask (one synchronous React
+   commit). The mode half of that blip is inherited from main, where ending
    the binding resolved the device's own light/dark until the preferences
    returned.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A

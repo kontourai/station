@@ -116,7 +116,7 @@ describe('the last-applied appearance cache', () => {
     },
   );
 
-  test('a release survives the boundary re-binding in the same task, but not a later sign-in', async () => {
+  test('a release survives the boundary re-binding in the same microtask, but not a later sign-in', async () => {
     seed(undefined);
     const person = { theme: 'light' as const, colorTheme: 'nord' as const };
     let unbind = deviceSettingsStore.bindAccountPreferences(

@@ -716,9 +716,10 @@ class DeviceSettingsStore {
       }
     | undefined;
   /**
-   * The account whose binding ended released, for a rebind in the same task
-   * (the boundary re-binds on every preference projection): it inherits the
-   * release. Cleared after the current task, so a later sign-in holds again.
+   * The account whose binding ended released, for a re-bind in the same
+   * microtask (the boundary's effect cleanup and re-run happen in one
+   * synchronous React commit): it inherits the release. Cleared in a
+   * microtask, so a later sign-in holds again.
    */
   private releasedRebind: { owner: string | undefined } | undefined;
   private envelope: DeviceSettingsEnvelope;
