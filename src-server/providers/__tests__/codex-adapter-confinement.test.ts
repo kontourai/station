@@ -608,7 +608,12 @@ describe('#2494: Codex confinement posture is read back from its response', () =
 });
 
 describe('#3800: workspace configuration cannot widen a confined Codex sandbox', () => {
-  const PIN = ['-c', 'sandbox_workspace_write.writable_roots=[]'];
+  const PIN = [
+    '-c',
+    'sandbox_workspace_write.writable_roots=[]',
+    '-c',
+    'approvals_reviewer="user"',
+  ];
 
   test('a workspace session pins its writable roots on the app-server spawn, after the connection arguments', async () => {
     const run = await start({
@@ -620,7 +625,7 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
     });
     expect(run.outcome).toEqual({ ok: true });
     // Codex applies the last `-c` for a key, so the pin must come last.
-    expect(run.spawnArgs?.slice(-2)).toEqual(PIN);
+    expect(run.spawnArgs?.slice(-PIN.length)).toEqual(PIN);
     expect(run.spawnArgs?.slice(0, 2)).toEqual([
       '-c',
       'sandbox_workspace_write.writable_roots=["/"]',

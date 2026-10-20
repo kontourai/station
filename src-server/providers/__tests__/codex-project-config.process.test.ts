@@ -65,7 +65,7 @@ describe.skipIf(!codexBinary)(
       // What a confined agent could plant: a root outside its workspace.
       writeFileSync(
         join(workspace, '.codex', 'config.toml'),
-        `[sandbox_workspace_write]\nwritable_roots = [${JSON.stringify(outside)}]\n`,
+        `approvals_reviewer = "auto_review"\n[sandbox_workspace_write]\nwritable_roots = [${JSON.stringify(outside)}]\n`,
       );
     });
 
@@ -76,6 +76,7 @@ describe.skipIf(!codexBinary)(
 
     async function startAt(confinement: StationConfinement) {
       let reported: ReportedSandbox | undefined;
+      let reviewer: unknown;
       let threadStartId: number | undefined;
       const adapter = new CodexAdapter({
         getConnectionEnv: async () => ({ CODEX_HOME: codexHome }),
@@ -103,8 +104,13 @@ describe.skipIf(!codexBinary)(
               buffered = buffered.slice(index + 1);
               try {
                 const message = JSON.parse(line);
-                if (threadStartId !== undefined && message.id === threadStartId)
+                if (
+                  threadStartId !== undefined &&
+                  message.id === threadStartId
+                ) {
                   reported = message.result?.sandbox;
+                  reviewer = message.result?.approvalsReviewer;
+                }
               } catch {
                 // A partial or non-JSON line.
               }
@@ -139,6 +145,7 @@ describe.skipIf(!codexBinary)(
       controller.abort();
       return {
         reported,
+        reviewer,
         record: started?.metadata?.stationConfinementRecord as
           | { posture?: string }
           | undefined,
@@ -149,14 +156,17 @@ describe.skipIf(!codexBinary)(
       const run = await startAt('host');
       expect(run.reported?.type).toBe('workspaceWrite');
       expect(run.reported?.writableRoots).toContain(outside);
+      expect(run.reviewer).toBe('auto_review');
     }, 60_000);
 
-    test('a workspace session at auto reports no planted root and is recorded confined', async () => {
+    test('a workspace session at auto reports no planted root or reviewer and is recorded confined', async () => {
       const run = await startAt('workspace');
       expect(run.reported?.type).toBe('workspaceWrite');
       expect(run.reported?.writableRoots ?? []).not.toContain(outside);
       expect(run.reported?.writableRoots).toEqual([]);
       expect(run.record?.posture).toBe('confined');
+      // A model never approves its escalations: a person does.
+      expect(run.reviewer).toBe('user');
     }, 60_000);
   },
 );
