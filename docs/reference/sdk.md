@@ -3141,7 +3141,20 @@ are also exported from `@kontourai/station-sdk/client`.
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
-  current-answer inventory cache before active observers refetch.
+  current-answer inventory cache before active observers refetch. Every
+  mount, every key a mounted hook switches to, and every time a disabled
+  hook becomes enabled, makes its own read
+  (`refetchOnMount` is always `'always'` here, whatever the caller passes),
+  and no cached projection is shown until a read made during that mount
+  succeeds; after that, a
+  background refetch keeps the loaded projection in `data`. Only lost
+  authority (401, 403 or the route's non-disclosing 404) tombstones the
+  scope's cached projection and pages. A 503, a network failure or a
+  projection the contract refuses is a query `error` beside whatever was
+  already loaded, and is not retried automatically. This narrower rule
+  differs on purpose from `useAnswerBasisQuery`, which still revokes on any
+  refusal: the inventory route reserves 503 for a read it could not
+  perform, so a 503 is not evidence of lost authority.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -3598,6 +3611,12 @@ integration pinning, resource policy and frame isolation. Resource URL-scheme
 filtering is not complete CSP source-expression validation or a guarantee of
 effective browser network containment. An ordinary SDK tool call does not
 establish that rendering qualification.
+
+`getJson` is available from `@kontourai/station-sdk/client` as well as the root
+entry. The client entry preserves the same credential, request-authority,
+timeout and response-bound behavior without importing SDK React components.
+Transcript app catalogs use this entry; rendering a local chat row does not
+create a connection or start catalog discovery.
 
 ## Utilities
 
@@ -4629,6 +4648,17 @@ updates that exact cache and invalidates the personal Layout inventory.
 scope and read the existing authorized projections. They do not persist rows in
 the Board. The dashboard uses the scoped Task and Project queries alongside
 them. See [Personal Boards](../user/personal-boards.md) for the user journey.
+
+### Engine failure classification
+
+`StationHttpError` and `ChatHttpError` retain an engine failure's `kind` and
+`failurePhase` (`refused`, `failed` or `indeterminate`). `retryable` is computed from the closed kind rather than a
+server-supplied boolean. For older servers, known diagnostic codes use the
+shared mapping; an unknown code without a recognized kind stays unclassified.
+A retryable failed turn may already have spent resources. Inspect its outcome
+and request another attempt explicitly; this field does not authorize replay.
+See [engine-neutral failures](contracts.md#engine-neutral-failures) for kinds,
+code mappings, phase semantics and legacy `retriable` compatibility.
 
 ### Pull request guide client
 

@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added This chat to the phone chat-actions paragraph and the desktop card/chip; verified against ChatDockMobileOverflowSheet row label, SessionContextCard rows and the ChatDock fit gate. Other claims unaffected.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}

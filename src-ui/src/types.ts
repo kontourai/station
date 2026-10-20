@@ -202,6 +202,7 @@ export interface ChatMessage {
     input?: any;
     result?: any;
     output?: any;
+    htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
     error?: string;
     errorText?: string;
     state?: string;

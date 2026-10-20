@@ -25,8 +25,8 @@ describe('Session inventory protected cache', () => {
     client.setQueryData(page.queryKey, { protected: 'page' });
     client.setQueryData(other.queryKey, { protected: 'other' });
     clearSessionInventoryCache(client, scope, authority);
-    expect(client.getQueryData(projection.queryKey)).toBeUndefined();
-    expect(client.getQueryData(page.queryKey)).toBeUndefined();
+    expect(client.getQueryData(projection.queryKey)).toBeNull();
+    expect(client.getQueryData(page.queryKey)).toBeNull();
     expect(client.getQueryData(other.queryKey)).toEqual({ protected: 'other' });
   });
 });

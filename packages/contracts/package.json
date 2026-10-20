@@ -165,6 +165,7 @@
     "./workspace-pane-host": "./src/workspace-pane-host.ts",
     "./workspace-pane-host-contract": "./src/workspace-pane-host-contract.ts",
     "./workspace-pane-host-contribution": "./src/workspace-pane-host-contribution.ts",
+    "./provider-failure": "./src/provider-failure.ts",
     "./provider": "./src/provider.ts",
     "./orchestration": "./src/orchestration.ts",
     "./scheduler": "./src/scheduler.ts",
@@ -220,7 +221,8 @@
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-prompts": "./src/mcp-prompts.ts",
-    "./account-preferences": "./src/account-preferences.ts"
+    "./account-preferences": "./src/account-preferences.ts",
+    "./html-reply": "./src/html-reply.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

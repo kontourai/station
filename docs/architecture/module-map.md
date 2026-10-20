@@ -4323,6 +4323,12 @@ associations for completed publisher/days, even if another publisher's dimension
 fails. Retention commits independently. Operator `sto_` routes read exact daily
 marginals and weekly sums; weekly contributor counts are contributor-days because
 daily salts prevent cross-day deduplication.
+The same Lite URL strictly dispatches fixed-enum `TelemetryFeedback`, binding
+its publisher to the source. Migration 7 stores feedback separately with a UTC
+arrival day and daily hash used only for publisher/action/day dedupe. Closed-day
+erasure clears those hashes; retention deletes feedback at the 90-day cutoff.
+Only operator daily/weekly responses include exact feedback counts, over retained
+days including the current partial period. Public and publisher APIs exclude it.
 
 Public and publisher views release only four closed ISO UTC weeks over ten
 profile/adoption fields, excluding counters/friction. The fixed public domain

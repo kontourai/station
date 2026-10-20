@@ -1,0 +1,7 @@
+{
+  "revision": "be8ae278ef86be7723ca4a9d1eb24bd8f9b9e103",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"A/B at main 01936457702c: five lazy dock/ACP owner files pass 49/49; merged PR fails 22/49 because row rendering calls a Connect barrel export omitted by ordinary hosts. Source repair binds API base and query client in TranscriptAppWorkspaceProvider beneath AuthorityQueryProvider, uses SDK client getJson, and removes the optional Connect export. No five-fixture changes. All 46 requested UI suites pass (529 tests, one existing TODO); app and local modes and stable subtree verified; three independent fault injections red, restored green.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/TranscriptAppTools.tsx"]}
+  ]
+}

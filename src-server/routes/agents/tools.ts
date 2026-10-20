@@ -14,7 +14,10 @@ import {
   wasIntegrationEnabledExplicit,
 } from '../../domain/config-loader-storage.js';
 import { isRuntimeManagedIntegrationId } from '../../runtime/bootstrap/station-control-runtime-env.js';
-import { MCPAppsToolAccessError } from '../../runtime/mcp/mcp-apps-metadata.js';
+import {
+  extractMCPAppsToolMetadata,
+  MCPAppsToolAccessError,
+} from '../../runtime/mcp/mcp-apps-metadata.js';
 import { resolveMCPToolUIRef } from '../../runtime/mcp/mcp-ui-resolver.js';
 import { normalizePersistedToolServerReason } from '../../security/tool-server-reason.js';
 import {
@@ -466,6 +469,28 @@ export function createToolRoutes(
     }
   });
 
+  app.get('/:serverId/ui-tools', async (c) => {
+    const catalog = await mcpService.getOpenMCPUIToolCatalog(
+      param(c, 'serverId'),
+    );
+    const tools = catalog.available
+      ? catalog.tools.flatMap((tool) => {
+          if (
+            !tool ||
+            typeof tool !== 'object' ||
+            !('originalName' in tool) ||
+            typeof tool.originalName !== 'string'
+          )
+            return [];
+          const uri = extractMCPAppsToolMetadata(tool).resourceUri;
+          return uri && uri.length <= 2048 && /^ui:\/\/[^\s]+$/.test(uri)
+            ? [tool.originalName]
+            : [];
+        })
+      : [];
+    return c.json({ success: true, data: tools });
+  });
+
   // Resolve a canonical MCP UI layout ref (GET /integrations/:serverId/ui/:toolName)
   // Degraded resolutions (missing server/tool/resource) are successful answers
   // to the resolve question, so they return 200 with the state in data.status.
@@ -474,6 +499,7 @@ export function createToolRoutes(
       const ref = `${param(c, 'serverId')}/${param(c, 'toolName')}`;
       const data = await resolveMCPToolUIRef(mcpService, ref, 'default', {
         isRenderRevoked: mcpUiCallDeps.isRenderRevoked,
+        openOnly: c.req.header('x-station-mcp-transcript') === 'preview',
       });
       return c.json({ success: true, data });
     } catch (error: unknown) {
@@ -491,6 +517,7 @@ export function createToolRoutes(
       const ref = `${serverId}/${param(c, 'toolName')}`;
       const resolution = await resolveMCPToolUIRef(mcpService, ref, 'default', {
         isRenderRevoked: mcpUiCallDeps.isRenderRevoked,
+        openOnly: c.req.header('x-station-mcp-transcript') === 'preview',
       });
       if (resolution.status !== 'success' || !resolution.resourceUri) {
         mcpUiResourceReadTotal.add(1, {
@@ -509,6 +536,7 @@ export function createToolRoutes(
       const data = await mcpService.readMCPUIResource(
         serverId,
         resolution.resourceUri,
+        c.req.header('x-station-mcp-transcript') === 'preview',
       );
       mcpUiResourceReadTotal.add(1, { server: serverId, result: 'success' });
       return c.json({ success: true, data });

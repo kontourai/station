@@ -1,3 +1,9 @@
+import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../../providers/provider-failure.js';
+
+export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -1546,7 +1552,6 @@ function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
  * A conversation Station could not reopen IS retryable: the usual cause is a
  * connection setting the user can change back.
  */
-export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
 
 /**
  * Deterministic event id for a recovery failure, so the same failure recorded
@@ -1812,6 +1817,14 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
+          ...providerFailure(
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'unavailable',
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'failed',
+          ),
           severity: 'error',
           code:
             error instanceof SessionStartIndeterminateError
@@ -1819,7 +1832,7 @@ export async function startRecoveredOrchestrationSession(options: {
               : SESSION_RECOVERY_FAILED_CODE,
           retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
-        },
+        } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
       ),
     );

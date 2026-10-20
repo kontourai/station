@@ -26,6 +26,10 @@
       "section": "Use Station"
     },
     {
+      "source": "user/html-replies.md",
+      "section": "Use Station"
+    },
+    {
       "source": "user/contributing.md",
       "section": "Contribute"
     },

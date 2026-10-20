@@ -10,7 +10,7 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
  * #2452 (slice 4 of epic #2455): Muse workflow subagents, mapped onto the

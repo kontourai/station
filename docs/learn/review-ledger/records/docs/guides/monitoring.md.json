@@ -160,7 +160,9 @@
 
     "src-server/domain/migrations/016-session-parent-mentions.ts",
 
-    "src-server/monitoring/otlp-receiver.ts"
+    "src-server/monitoring/otlp-receiver.ts",
+
+    "packages/telemetry-broker/src/client-address.ts"
   ],
 
   "checks": [
