@@ -1771,7 +1771,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       await page.setViewportSize({ width, height: 844 });
 
       const trigger = page.getByRole('button', {
-        name: 'Switch project — Alpha Project',
+        name: 'Switch project — New chats, Alpha Project',
       });
       await expect(trigger).toBeVisible({ timeout: 15_000 });
       // Match desktop's named project badge: the mobile trigger must expose the
@@ -1786,7 +1786,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       );
       // Distinct from the task switcher — never the buried eyebrow.
       await expect(
-        page.getByRole('button', { name: 'Chats and tasks' }),
+        page.getByRole('button', { name: /^Chats and tasks/ }),
       ).toBeVisible();
 
       await expect(
