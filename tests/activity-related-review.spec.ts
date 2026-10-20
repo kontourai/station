@@ -74,7 +74,15 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
         new URL(route.request().url()).pathname.split('/').at(-1) ?? '',
       );
       const session = sessions.find((item) => item.threadId === id);
-      if (!session || route.request().method() !== 'GET')
+      if (!session && route.request().method() === 'GET')
+        return route.fulfill({
+          status: 404,
+          json: {
+            success: false,
+            error: 'Session was removed from this fixture',
+          },
+        });
+      if (route.request().method() !== 'GET')
         return rejectUnexpectedFixtureRequest(route);
       return route.fulfill({
         json: { success: true, data: { session, events: [] } },
@@ -99,6 +107,9 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await main
     .getByRole('combobox', { name: 'Kind', exact: true })
     .selectOption('conversations');
+  await main
+    .getByRole('combobox', { name: 'Project', exact: true })
+    .selectOption('dev');
   const list = main.locator('.split-pane__list');
   await expect(
     main.getByRole('button', { name: 'Other activity 02', exact: true }),
@@ -143,6 +154,9 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
     main.getByRole('button', { name: 'Review activity 01', exact: true }),
   ).toHaveAttribute('aria-current', 'true');
   await expect(search).toHaveValue('Review activity');
+  await expect(
+    main.getByRole('combobox', { name: 'Project', exact: true }),
+  ).toHaveValue('dev');
   expect(await list.evaluate((element) => element.scrollTop)).toBe(
     scrollBefore,
   );
@@ -222,9 +236,9 @@ test('Activity reviews filtered siblings in Related with Main preserved, and use
   await expect(review).toHaveCount(0);
   await expect(search).toBeVisible();
   await expect(search).toHaveValue('Review activity');
-  await reviewItem(page, 'Review activity 04');
+  await reviewItem(page, 'Review activity 05');
   await expect(
-    review.getByRole('heading', { name: 'Review activity 04', exact: true }),
+    review.getByRole('heading', { name: 'Review activity 05', exact: true }),
   ).toBeVisible();
   for (const control of ['Previous', 'Next']) {
     const bounds = await review

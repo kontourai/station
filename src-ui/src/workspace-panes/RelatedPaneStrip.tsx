@@ -333,8 +333,8 @@ function ActivityUp({
       if (!current()) return;
       const unchanged =
         relations.currentSelection('activity') === `activity:${selected ?? ''}`;
-      if (!unchanged && selected)
-        showSurface('activity', { session: selected });
+      if (!unchanged)
+        showSurface('activity', selected ? { session: selected } : {});
       else showSurface('activity');
     };
     if (model?.phoneLayer?.surfaceId === instanceId)

@@ -100,8 +100,10 @@ export function MutableSessionDetail({
   visualViewport,
   evidenceReveal,
   historyNotices,
+  draftScope,
 }: {
   apiBase: string;
+  draftScope?: string;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
   events: OrchestrationEvent[];
@@ -148,6 +150,7 @@ export function MutableSessionDetail({
     workflowMoreCount,
   } = useMutableSessionDetailState({
     apiBase,
+    draftScope,
     session,
     onTaskChanged,
     events,

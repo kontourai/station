@@ -1,3 +1,4 @@
+import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   authenticatedFetch,
@@ -57,11 +58,16 @@ function ActivityReviewPane({ id }: { id: string }) {
     [id],
   );
   const { apiBase } = useApiBase();
+  const relations = usePaneRelations();
+  const draftScope = JSON.stringify([
+    'activity-review',
+    relations.stationId,
+    apiBase,
+  ]);
   const draft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
-    state ? chatDraftsStore.getActivityDraft(apiBase, state.threadId) : '',
+    state ? chatDraftsStore.getActivityDraft(draftScope, state.threadId) : '',
   );
   const { DiscardModal } = useUnsavedGuard(draft.trim().length > 0);
-  const relations = usePaneRelations();
   const review = useActivityReview();
   const showSurface = useShowSurface();
   const [pending, setPending] = useState(false);
@@ -76,6 +82,7 @@ function ActivityReviewPane({ id }: { id: string }) {
     ],
     enabled: state !== null,
     retry: false,
+    refetchInterval: 5000,
     queryFn: async () => {
       if (!state) throw new Error('The saved review is missing.');
       const response = await authenticatedFetch(
@@ -91,7 +98,10 @@ function ActivityReviewPane({ id }: { id: string }) {
           response.status,
           result.error ?? 'Station could not read this activity.',
         );
-      return result.data;
+      return {
+        ...result.data,
+        session: withNormalizedAnswerability(result.data.session),
+      };
     },
   });
   useEffect(() => {
@@ -269,7 +279,7 @@ function ActivityReviewPane({ id }: { id: string }) {
           <SessionDetail
             key={`${apiBase}\0${session.threadId}`}
             apiBase={apiBase}
-            persistDraft
+            draftScope={draftScope}
             session={session}
             onTaskChanged={() => void query.refetch()}
             getSelectionIntent={() => intent.current}

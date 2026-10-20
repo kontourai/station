@@ -96,7 +96,7 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
 }
 
 export function AttachedSessionDetail({
-  persistDraft = false,
+  draftScope,
   apiBase,
   chatFontSize = 14,
   showHeader = false,
@@ -119,7 +119,7 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
-  persistDraft?: boolean;
+  draftScope?: string;
   /**
    * #3552: the same chat everywhere. Activity's pane has no surrounding
    * chrome, so it shows the conversation's name and origin above it; the dock
@@ -231,18 +231,18 @@ export function AttachedSessionDetail({
   const unavailableReasonId = useId();
   const [localDraft, setLocalDraft] = useState('');
   const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
-    persistDraft
-      ? chatDraftsStore.getActivityDraft(apiBase, session.threadId)
+    draftScope !== undefined
+      ? chatDraftsStore.getActivityDraft(draftScope, session.threadId)
       : '',
   );
-  const draft = persistDraft ? savedDraft : localDraft;
+  const draft = draftScope !== undefined ? savedDraft : localDraft;
   const setDraft = useCallback(
     (value: string) => {
-      if (persistDraft)
-        chatDraftsStore.setActivityDraft(apiBase, session.threadId, value);
+      if (draftScope !== undefined)
+        chatDraftsStore.setActivityDraft(draftScope, session.threadId, value);
       else setLocalDraft(value);
     },
-    [persistDraft, apiBase, session.threadId],
+    [draftScope, session.threadId],
   );
   const confirmedDraft = useRef('');
   const composerRef = useRef<HTMLTextAreaElement>(null);

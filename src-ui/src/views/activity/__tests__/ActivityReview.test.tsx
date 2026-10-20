@@ -369,7 +369,7 @@ test('a real draft guard keeps the preview and Cancel preserves source, child, f
   await within(review()).findByText('Transcript: Review alpha');
   await act(async () => {
     chatDraftsStore.setActivityDraft(
-      'http://station.test',
+      JSON.stringify(['activity-review', 'station-a', 'http://station.test']),
       'a',
       'Unsent review reply',
     );
@@ -384,12 +384,18 @@ test('a real draft guard keeps the preview and Cancel preserves source, child, f
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(await settledStorageSnapshot()).toEqual(before);
   expect(within(review()).getByText('Transcript: Review alpha')).toBeTruthy();
-  expect(chatDraftsStore.getActivityDraft('http://station.test', 'a')).toBe(
-    'Unsent review reply',
-  );
+  expect(
+    chatDraftsStore.getActivityDraft(
+      JSON.stringify(['activity-review', 'station-a', 'http://station.test']),
+      'a',
+    ),
+  ).toBe('Unsent review reply');
   await waitFor(() => expect(document.activeElement).toBe(next));
   await act(async () => {
-    chatDraftsStore.clearActivityDraft('http://station.test', 'a');
+    chatDraftsStore.clearActivityDraft(
+      JSON.stringify(['activity-review', 'station-a', 'http://station.test']),
+      'a',
+    );
   });
 });
 
