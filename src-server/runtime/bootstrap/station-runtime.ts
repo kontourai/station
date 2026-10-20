@@ -484,7 +484,6 @@ import {
   stationDocsRuntimeIdentity,
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
 
 interface PersistedAgentActivationTransaction {
@@ -1482,6 +1481,9 @@ export class StationRuntime {
       this.agentService = services.agentService;
       this.skillService = services.skillService;
       this.mcpService = services.mcpService;
+      this.orchestrationEventStore.setMcpAppResourceResolver((ref) =>
+        this.mcpService.getOpenMCPAppResourceUri(ref),
+      );
       this.secretBindingAdministration = services.secretBindingAdministration;
       this.secretBindingIntegrationAdministration =
         services.secretBindingIntegrationAdministration;
@@ -4425,10 +4427,6 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      // archive#980 fix (HIGH): read the live env var, never
-      // `this.appConfig` — see `station-features.ts`'s docblock for why.
-      getManagedChatOrchestrationEnabled: () =>
-        isManagedChatOrchestrationFeatureEnabled(),
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;

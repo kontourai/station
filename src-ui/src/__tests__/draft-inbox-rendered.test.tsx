@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * #2310 — the Draft lane through the RENDERED dock inbox, built exactly as
- * production builds it (ChatDock.tsx: `buildHomeTaskItems({ chats: {},
- * sessions, chatItems: useOpenChats(agents, sessions) })`, where
- * `useOpenChats` is `buildActiveChatTaskItems`). Ported from the independent
- * verifier's production-path probe; the sending-device case (AC2) failed on
- * 088a2b359 and passes after the review H1 fix.
+ * #2310 — the Draft lane through the RENDERED dock inbox, built the way
+ * production builds it (ChatDock.tsx -> `useInboxWorkItems`:
+ * `buildHomeWorkItems({ chats: {}, sessions, chatItems })`, where the chat
+ * items come from `useOpenChatInbox`, i.e. `buildActiveChatTaskItems`).
+ * Ported from the independent verifier's production-path probe; the
+ * sending-device case (AC2) failed on 088a2b359 and passes since its fix.
  */
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -18,7 +18,7 @@ import type { ChatUIState } from '../contexts/active-chats-state';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   buildActiveChatTaskItems,
-  buildHomeTaskItems,
+  buildHomeWorkItems,
 } from '../views/home/home-view-model';
 
 const THREAD = 'grok-build:1790099828990';
@@ -73,15 +73,15 @@ function panelItems(
   sessions: OrchestrationSessionSummary[],
   chats: Record<string, Partial<ChatUIState>> = {},
 ) {
-  // Production (ChatDock.tsx): buildHomeTaskItems({chats:{}, sessions,
-  // chatItems: useOpenChats(agents, sessions)}) where useOpenChats =
-  // buildActiveChatTaskItems({chats, agents, sessions}).
+  // Production (ChatDock.tsx -> useInboxWorkItems): buildHomeWorkItems({
+  // chats: {}, sessions, chatItems }) where chatItems come from
+  // useOpenChatInbox = buildActiveChatTaskItems({ chats, agents, sessions }).
   const chatItems = buildActiveChatTaskItems({
     chats: chats as Record<string, ChatUIState>,
     agents: [],
     sessions,
   });
-  return buildHomeTaskItems({ chats: {}, sessions, agents: [], chatItems });
+  return buildHomeWorkItems({ chats: {}, sessions, agents: [], chatItems });
 }
 
 // #2312: Draft rows carry "Discard draft", a server mutation, so the panel

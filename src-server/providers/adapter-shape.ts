@@ -22,6 +22,7 @@ import type {
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
@@ -29,11 +30,21 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailureCode,
+  type ProviderFailureKind,
+} from '@kontourai/station-contracts/provider-failure';
+import { ProviderRefusalError } from './provider-failure.js';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
-export class ProviderTurnEndedError extends Error {
+export class ProviderTurnEndedError extends ProviderRefusalError {
   constructor() {
-    super('The provider turn ended before the input could be enqueued.');
+    super(
+      'The provider turn ended before the input could be enqueued.',
+      'conflict',
+    );
     this.name = 'ProviderTurnEndedError';
   }
 }
@@ -62,12 +73,34 @@ export class ProviderTurnEndedError extends Error {
  * in-flight turn that blocks later continuations of the thread.
  *
  * A send while the engine runs a turn it opened on its own is the third
- * source (#2324): {@link ProviderTurnInProgressError}, retryable by its code.
+ * source (#2324): {@link ProviderTurnInProgressError}, retryable by its kind.
  */
 export class SendTurnRefusedError extends Error {
-  constructor(message: string) {
+  readonly failurePhase = 'refused';
+  get retryable(): boolean {
+    return PROVIDER_FAILURE_RETRYABLE[this.kind];
+  }
+  constructor(
+    message: string,
+    readonly kind: ProviderFailureKind,
+  ) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * #3290: Station cannot apply its approval mode to this ACP engine (see
+ * `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`). Thrown before the start or turn
+ * has any effect, so it is a `SendTurnRefusedError`, carrying a structured
+ * code so clients withhold a blind retry.
+ */
+export class ApprovalGovernanceRefusedError extends SendTurnRefusedError {
+  readonly code = ACP_APPROVAL_GOVERNANCE_REFUSED_CODE;
+
+  constructor(message: string) {
+    super(message, 'permission_denied');
+    this.name = 'ApprovalGovernanceRefusedError';
   }
 }
 
@@ -81,7 +114,7 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
   readonly code = ATTACHMENT_INPUT_UNSUPPORTED_CODE;
 
   constructor(message: string) {
-    super(message);
+    super(message, 'input_unsupported');
     this.name = 'AttachmentInputUnsupportedError';
   }
 }
@@ -103,9 +136,16 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
  * is settled; the dispatch receipt is then `rejected` and `code` is forwarded.
  */
 export class SessionStartRefusedError extends Error {
+  readonly failurePhase = 'refused';
+  get kind(): ProviderFailureKind {
+    return PROVIDER_FAILURE_KINDS[this.code];
+  }
+  get retryable(): boolean {
+    return PROVIDER_FAILURE_RETRYABLE[this.kind];
+  }
   constructor(
     message: string,
-    readonly code: string,
+    readonly code: ProviderFailureCode,
   ) {
     super(message);
     this.name = 'SessionStartRefusedError';
@@ -125,6 +165,7 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
   constructor() {
     super(
       'The agent is replying on its own; your message will be sent when it finishes.',
+      'busy',
     );
     this.name = 'ProviderTurnInProgressError';
   }
@@ -141,6 +182,7 @@ export class ProviderSessionStartingError extends SendTurnRefusedError {
   constructor() {
     super(
       'The session is still starting. Nothing was sent; try again in a moment.',
+      'busy',
     );
     this.name = 'ProviderSessionStartingError';
   }
@@ -155,16 +197,18 @@ export class ProviderSessionStartFailedError extends SendTurnRefusedError {
   readonly code = PROVIDER_SESSION_START_FAILED_CODE;
 
   constructor(reason: string) {
-    super(`The agent's session couldn't start: ${reason}`);
+    super(`The agent's session couldn't start: ${reason}`, 'unavailable');
     this.name = 'ProviderSessionStartFailedError';
   }
 }
 
 export class ClientTurnInputConflictError extends SendTurnRefusedError {
   readonly code = CLIENT_TURN_INPUT_CONFLICT_CODE;
-  readonly retryable = false;
   constructor() {
-    super('This client turn key already names a different submitted input.');
+    super(
+      'This client turn key already names a different submitted input.',
+      'conflict',
+    );
     this.name = 'ClientTurnInputConflictError';
   }
 }
@@ -179,6 +223,7 @@ export class ClientTurnInFlightError extends SendTurnRefusedError {
   constructor() {
     super(
       'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+      'busy',
     );
     this.name = 'ClientTurnInFlightError';
   }
@@ -201,7 +246,10 @@ export type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
-export type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+export type {
+  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent,
+} from '@kontourai/station-contracts/runtime-events';
 
 export interface ProviderAdapterMetadata {
   displayName: string;
@@ -282,6 +330,8 @@ export interface ProviderAdapterModelCatalog {
     id: string;
     name: string;
     originalId: string;
+    /** Concrete catalog identity for an alias; not per-turn served-model proof. */
+    resolvedModel?: string;
   }>;
   /** True when a bounded entry limit omitted additional adapter results. */
   truncated?: boolean;
@@ -474,6 +524,13 @@ export interface ProviderAdapterShape {
      */
     connectionId?: string;
   }): Promise<Prerequisite[]>;
+  /**
+   * #3290: a pre-effect check the orchestrator runs before it claims the
+   * start boundary. A refusal thrown here is definitive (nothing was
+   * started), unlike a failure of `startSession` itself, which the boundary
+   * must treat as possibly started.
+   */
+  preflightStart?(input: ProviderSessionStartInput): Promise<void>;
   /** Reads provider-reported connection quota data when the engine supports it. */
   readQuotaSnapshot?(options: {
     connectionId: string;

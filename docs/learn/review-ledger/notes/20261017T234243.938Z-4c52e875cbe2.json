@@ -1,0 +1,7 @@
+{
+  "revision": "eaa8d825950dd0482dc651f4dc539539a9f73c29",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the guide-only runtime delta: schema-backed generation now reads immutable blobs without a checkout, and the existing pull request routes gain bounded status/admission behavior. Documentation-map audience routing and its guide link remain accurate; no other documented subsystem or publication claim changes.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

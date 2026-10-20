@@ -10,6 +10,7 @@ import {
   writeCodingSessionPanels,
 } from '../../lib/coding-panels-record';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 
 /**
  * The Coding layout's panels (#3040, #3051): on a wide screen a tool opens
@@ -40,17 +41,10 @@ export const CODING_SIDE_MIN_WIDTH = 320;
 export const CODING_SIDE_DEFAULT_WIDTH = 440;
 /**
  * The transcript column — where the reader works — keeps this much beside
- * an open tool, or the inbox folds for the tool's stay (#3046 round).
- * Derived from the transcript's own rules, not from the fold: a message
- * bubble is 80% of its row (`.message`, `max-width: 80%`) with 48px of
- * its own padding, and the row sits inside the column's two 20px gutters
- * (`--chat-message-gutter`). A 640px column is a 600px row, a 480px
- * bubble, 432px of text past the padding: sixty-odd characters of the
- * body, the measure under which a reply's lines break too often to scan.
- * (The design audit's 500px column, beside an unfolded inbox at 1440,
- * showed exactly that: a two-line composer and wrapped cards.)
+ * an open tool, or the inbox folds for the tool's stay (#3046 round). The
+ * transcript's own floor (`transcriptMeasure.ts`, where its derivation is).
  */
-export const CODING_TRANSCRIPT_MIN_WIDTH = 640;
+export const CODING_TRANSCRIPT_MIN_WIDTH = TRANSCRIPT_MIN_WIDTH;
 /** The inbox's own width rule (`ChatDockInboxPanel.css`), for an unmeasured one. */
 const CODING_INBOX_WIDTH = { min: 240, fraction: 0.24, max: 360 };
 /** Below Chat's transcript and composer, the lower panel stops here. */

@@ -72,7 +72,7 @@ function render() {
   if (!root) return;
   root.replaceChildren();
   if (current?.kind !== 'projection')
-    return root.append('Session inventory is unavailable.');
+    return root.append('Chat inventory is unavailable.');
   const model = buildSessionInventoryViewModel(
     current.projection,
     {

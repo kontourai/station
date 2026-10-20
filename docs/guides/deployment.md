@@ -10,6 +10,20 @@ and [monitoring guide](monitoring.md) own their detailed contracts. The source
 review here covers the named deployment paths; historical platform observations
 and unrun installer/rollback scenarios retain their separate evidence limits.
 
+## Deployment directories
+
+Two top-level directories hold deployment material. The names are historical,
+not a current-versus-legacy split: everything in both is current. Paths are
+cited by workflows, tests and secret-scan rules, so they stay where they are.
+
+| Path | Holds | Run by |
+| --- | --- | --- |
+| `Dockerfile`, `docker-compose.yml` (root) | The Station container image and its Compose template | [Docker Production](#docker-production) |
+| `deploy/public-ingress/` | Caddy overlay that puts one container Station behind one public HTTPS hostname | Its [README](../../deploy/public-ingress/README.md); `container-smoke.yml` runs its protocol smoke |
+| `deploy/push-gateway/` | Cloudflare Worker that relays Station-signed pushes to FCM and APNs | Its [README](../../deploy/push-gateway/README.md); no workflow deploys it |
+| `deployment/self-hosted-broker/` | Caddy and Compose files for a self-hosted connection broker | [Self-hosted broker guide](self-hosted-broker.md) |
+| `deployment/telemetry/` | Private telemetry receiver profile; its developer profile is the local monitoring stack | Its [README](../../deployment/telemetry/README.md) and the [monitoring guide](monitoring.md) |
+
 ## Local Development
 
 Deployment describes how a Station instance is run and reached; it does not
@@ -184,6 +198,17 @@ store and distinct source/operator keys. They are not accepted by the Collector
 and do not become canonical personal usage receipts. The
 [configuration reference](../reference/config.md#telemetry-destinations)
 describes saved addresses, exact instance key grants and restart activation.
+The receiver's owner analytics (`/v1/operator/lite/daily` and `/weekly`) require
+its private operator `sto_` key and return exact marginals. Keep these routes
+private at the proxy too. The public dashboard and publisher `stq_` keys expose
+only frozen weekly noisy estimates over a fixed public domain, with cursor
+pagination. Configure public release versions/registry IDs independently of
+observed traffic. Schema 6 must be migrated before serving; older binaries
+refuse it. Back up the entire database including `lite_noise_key`,
+`lite_publications`, and `lite_published`. Never clear publication markers,
+regenerate already released weeks, or restore their cells independently. Review
+the [privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates)
+and qualify proxy access-log erasure separately.
 No product or collector destination is enabled by default. The optional stack
 still needs its own pinned-release, outage/restart, retention and backup/restore
 qualification; a successful connection probe is not that acceptance.
@@ -448,9 +473,13 @@ subscription, and unsubscription routes and delivery are unavailable for the
 same reason: paired-device subscriptions have no durable tenant binding. These
 surfaces return only when their backing storage carries and enforces that
 binding; personal mode retains the existing terminal and Web Push behavior.
-Answer shares are different: their list, mint, view, and revoke operations use
-the existing session authority and remain available only for authorized
-sessions. Personal mode retains its existing scheduler, task, and merged
+Answer shares are partly available. Listing and revoking use the caller's
+session authority within its tenant; without a tenant context, the list is
+empty and a revoke answers as not found. Minting a new share returns 409
+("Answer sharing is not available on a hosted Station yet") because the public
+share view does not yet read as the recorded sharer within that tenant; see
+[the share routes](../../src-server/routes/share/answer-share-routes.ts).
+Personal mode retains its existing scheduler, task, and merged
 file/session conversation behavior.
 
 ## Environment Configuration

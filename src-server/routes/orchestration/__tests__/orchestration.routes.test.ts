@@ -28,6 +28,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
+import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -1017,6 +1018,9 @@ describe('Orchestration Routes', () => {
     await expect(readJson(response)).resolves.toEqual({
       success: false,
       error: 'Session started, but receipt persistence is unavailable.',
+      kind: 'indeterminate',
+      retryable: false,
+      failurePhase: 'indeterminate',
       receipt,
       outcome: 'indeterminate',
       receiptStatus: 'unavailable',
@@ -1403,6 +1407,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent message may have started. Do not retry automatically.',
@@ -1969,6 +1976,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toMatchObject({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',
@@ -1997,6 +2007,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -2035,6 +2048,9 @@ describe('Orchestration Routes', () => {
 
       expect(res.status).toBe(409);
       await expect(res.json()).resolves.toEqual({
+        kind: 'indeterminate',
+        failurePhase: 'indeterminate',
+        retryable: false,
         success: false,
         error: expect.stringContaining('may have started'),
         code: 'foreground_message_indeterminate',
@@ -2083,6 +2099,9 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(409);
     await expect(res.json()).resolves.toEqual({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
       success: false,
       error:
         'Foreground Agent continuation may have started. Do not retry automatically.',
@@ -3247,6 +3266,47 @@ describe('Orchestration Routes', () => {
     );
   });
 
+  test('GET /providers/:provider/models preserves resolvedModel through real catalog discovery', async () => {
+    class CatalogAdapter extends GateTestAdapter {
+      async listModelCatalog(): Promise<ProviderAdapterModelCatalog> {
+        return {
+          models: [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              originalId: 'sonnet',
+              resolvedModel: 'claude-sonnet-4-5',
+            },
+          ],
+        };
+      }
+    }
+    const eventBus = new EventBus();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new CatalogAdapter()),
+      eventBus,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const app = createOrchestrationRoutes(service, {
+      eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+    });
+    const response = await app.request('/providers/claude/models');
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'sonnet',
+          name: 'Sonnet',
+          originalId: 'sonnet',
+          resolvedModel: 'claude-sonnet-4-5',
+        },
+      ],
+    });
+  });
+
   test('GET /providers/:provider/models forwards cancellation to bounded discovery', async () => {
     const getProviderModels = vi
       .fn()
@@ -3544,6 +3604,8 @@ describe('Orchestration Routes', () => {
 
     expect(response.status).toBe(409);
     expect(await readJson(response)).toEqual({
+      kind: 'busy',
+      failurePhase: 'refused',
       success: false,
       error: 'Continuation is being created — retry shortly.',
       code: 'adoption_continuation_in_progress',

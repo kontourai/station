@@ -17,20 +17,40 @@ evidence:
 
 ## Decision
 
-Station runs as a per-user background service, and the tray controls it. The
-service runs the Station process supervisor, which owns the instance's
-listening sockets and its core server generations. Desktop, the tray, and the
-CLI are clients of the supervisor's control channel.
+Station's process ownership moves to a supervisor. Station will run as a
+per-user background service that the tray controls. The service runs the
+Station process supervisor, which owns the instance's listening sockets and
+its core server generations. Desktop, the tray, and the CLI become clients of
+the supervisor's control channel.
 
-Desktop runs the supervisor as its own child only when the user declines the
-background service, or the machine cannot install a per-user service (for
+Desktop will run the supervisor as its own child only when the user declines
+the background service, or the machine cannot install a per-user service (for
 example, some managed Windows machines). In that mode Station stops when
 Desktop quits, and Desktop says so.
 
-This supersedes the Desktop-owned sidecar ownership decided in
-[ADR 0015](../adr/0015-restore-desktop-owned-command-station-sidecar.md):
-Desktop no longer owns a server process in its normal launch. ADR 0015 stays
-frozen as history.
+Once a launch mode adopts the supervisor, this supersedes the Desktop-owned
+sidecar ownership decided in
+[ADR 0015](../adr/0015-restore-desktop-owned-command-station-sidecar.md) for
+that mode. ADR 0015 stays frozen as history.
+
+## What ships today
+
+The decision is made; its implementation is not finished.
+
+- Shipped: the supervisor package
+  ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts),
+  #3811). It implements the control channel, listener custody, sequential
+  generation handoff with rollback, and crash restart, verified against a
+  fixture core server.
+- Not shipped: the core server's supervised mode, and adoption by
+  `station start`, `station service run`, the container, and Desktop. No
+  launch mode runs the supervisor. Desktop still ships the Desktop-owned
+  sidecar lifecycle from ADR 0015, and the other launch modes keep their
+  existing lifecycles (`station service run`, for example, supervises its own
+  child process).
+- The remaining work follows the delivery phases in the
+  [design](../design/process-supervisor.md). No open issue tracks phases 2 to
+  4 yet.
 
 ## Rationale
 
@@ -77,5 +97,3 @@ reasoning, phases, and verification plan.
   on the token file, so the token's protection there is only the Station
   home directory's own ACL. The 0600 token and private-directory checks
   apply on Unix only; nothing here claims an equivalent on Windows.
-- Until the core server has a supervised mode and the launch modes adopt the
-  supervisor, the lifecycle described in ADR 0015 remains what ships.

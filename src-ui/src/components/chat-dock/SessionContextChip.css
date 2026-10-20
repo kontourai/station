@@ -1,0 +1,62 @@
+/* The header chip that opens the session context card's rows while the dock
+   is too narrow to show the card beside the transcript. Eager (it sits in the
+   header), so it is kept to the chip itself. */
+.session-context-chip {
+  display: inline-flex;
+  /* The chat title keeps the bar: in a crowded header the chip gives up its
+     word (down to its dot) before the title does. */
+  flex: 0 4 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 28px;
+  min-height: 28px;
+  margin-left: var(--k-space-2);
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin, 1px) solid var(--border-primary);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.session-context-chip:hover,
+.session-context-chip[aria-expanded="true"] {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.session-context-chip:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.session-context-chip__word {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-context-chip__dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+/* The ladder's colour discipline (InboxRow.css), on the dot only. */
+.session-context-chip[data-tone="attention"] .session-context-chip__dot {
+  background: var(--accent-primary);
+}
+.session-context-chip[data-tone="caution"] .session-context-chip__dot {
+  background: var(--warning-text);
+}
+.session-context-chip[data-tone="active"] .session-context-chip__dot {
+  background: var(--success-text);
+}
+.session-context-chip[data-tone="broken"] .session-context-chip__dot {
+  background: var(--status-error);
+}

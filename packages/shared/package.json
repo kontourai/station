@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -36,6 +36,7 @@
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
+    "./delegation-files": "./src/delegation-files.ts",
     "./display-reveal": "./src/display-reveal.ts",
     "./display-text": "./src/display-text.ts",
     "./git": "./src/git.ts",
@@ -44,6 +45,7 @@
     "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
     "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
+    "./mcp-app-result": "./src/mcp-app-result.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
     "./owned-dependency-installer": "./src/owned-dependency-installer.ts",
@@ -53,6 +55,7 @@
     "./ports": "./src/ports.ts",
     "./redaction": "./src/redaction.ts",
     "./regular-file": "./src/regular-file.ts",
+    "./release-version-order": "./src/release-version-order.ts",
     "./tool-request-preview": "./src/tool-request-preview.ts",
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
@@ -114,13 +117,14 @@
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-elicitation-form": "./src/mcp-elicitation-form.ts",
-    "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
+    "./skill-experience-workflow": "./src/skill-experience-workflow.ts",
+    "./html-reply-document": "./src/html-reply-document.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.9.0",
+    "@kontourai/station-contracts": "^0.10.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",

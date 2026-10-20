@@ -234,21 +234,22 @@ function settledAt(entry: BackgroundTaskEntry): number {
 
 /** Bounds a chat's finished list, dropping the oldest-ended entries first. */
 function pruneFinished(
+  state: BackgroundTasksState,
   entries: Record<string, BackgroundTaskEntry>,
   chatThreadId: string,
-): Record<string, BackgroundTaskEntry> {
+): BackgroundTasksState {
   const finishedIds = Object.values(entries)
     .filter((entry) => entry.chatThreadId === chatThreadId)
     .filter((entry) => entry.state !== 'running')
     .sort((a, b) => settledAt(a) - settledAt(b))
     .map((entry) => entry.id);
   const excess = finishedIds.length - FINISHED_LIMIT_PER_CHAT;
-  if (excess <= 0) return entries;
+  if (excess <= 0) return { ...state, entries };
   const next = { ...entries };
   for (let i = 0; i < excess; i++) {
     delete next[finishedIds[i]];
   }
-  return next;
+  return { ...state, entries: next };
 }
 
 function foldToolStarted(
@@ -314,7 +315,7 @@ function foldToolCompleted(
     ...state.entries,
     [existing.id]: { ...existing, state: nextState, endedAt },
   };
-  return { ...state, entries: pruneFinished(entries, existing.chatThreadId) };
+  return pruneFinished(state, entries, existing.chatThreadId);
 }
 
 /** Turn-terminal safety net: closes any still-open TOOL cards on `threadId` as Stopped. */
@@ -335,7 +336,7 @@ function closeOrphanedToolCards(
   for (const orphan of orphans) {
     entries[orphan.id] = { ...orphan, state: 'stopped', endedAt };
   }
-  return { ...state, entries: pruneFinished(entries, threadId) };
+  return pruneFinished(state, entries, threadId);
 }
 
 /**
@@ -461,7 +462,7 @@ function closeDelegate(
     ...state.entries,
     [threadId]: { ...existing, state: outcome, endedAt },
   };
-  return { ...state, entries: pruneFinished(entries, existing.chatThreadId) };
+  return pruneFinished(state, entries, existing.chatThreadId);
 }
 
 /**
@@ -580,6 +581,9 @@ export function reconcileBackgroundTasksSnapshot(
     if (!child || !parentTaskId) continue;
     const taskId = snapshotSessionDelegateThreadId(session);
 
+    const existing = next.entries[session.threadId];
+    const isActive = child.status === 'running';
+
     if (next.delegateParents[taskId] !== parentTaskId) {
       next = {
         ...next,
@@ -587,12 +591,10 @@ export function reconcileBackgroundTasksSnapshot(
       };
     }
 
-    const existing = next.entries[session.threadId];
-    const isActive = child.status === 'running';
-
     if (!existing) {
       // A current server's asChild carries the terminal fact and exact end.
-      // An older delegation-only row cannot backfill a finished card.
+      // An older delegation-only row cannot backfill a finished card, but
+      // its live binding is needed if a later turn arrives without a new bind.
       if (!isActive && !session.childWork?.asChild) continue;
       const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
@@ -612,7 +614,11 @@ export function reconcileBackgroundTasksSnapshot(
         !isActive && child.endedAt
           ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }
           : entry;
-      next = { ...next, entries: { ...next.entries, [entry.id]: settled } };
+      next = pruneFinished(
+        next,
+        { ...next.entries, [entry.id]: settled },
+        parentTaskId,
+      );
       continue;
     }
 
@@ -639,10 +645,7 @@ export function reconcileBackgroundTasksSnapshot(
           endedAt,
         },
       };
-      next = {
-        ...next,
-        entries: pruneFinished(entries, existing.chatThreadId),
-      };
+      next = pruneFinished(next, entries, existing.chatThreadId);
     }
   }
   // A snapshot is authoritative for liveness.  Do not leave raw tools or
@@ -662,6 +665,10 @@ export function reconcileBackgroundTasksSnapshot(
     for (const entry of stale)
       entries[entry.id] = { ...entry, state: 'stopped', endedAt: Date.now() };
     next = { ...next, entries };
+    for (const chatThreadId of new Set(
+      stale.map((entry) => entry.chatThreadId),
+    ))
+      next = pruneFinished(next, next.entries, chatThreadId);
   }
   return next;
 }

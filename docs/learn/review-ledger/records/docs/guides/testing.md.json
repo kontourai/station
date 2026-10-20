@@ -210,7 +210,11 @@
 
     "scripts/__tests__/pr-ci-supersession.test.ts",
 
-    "scripts/lib/live-service-verification.mjs"
+    "scripts/lib/live-service-verification.mjs",
+
+    "scripts/pr-title-check.mjs",
+
+    "scripts/__tests__/pr-title-check.test.ts"
   ],
 
   "checks": [

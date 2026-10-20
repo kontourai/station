@@ -17,6 +17,9 @@ export interface ApprovalGuardianConfig {
 }
 
 export interface AppConfig {
+  reviewGuidesEnabled?: boolean;
+  reviewGuideModel?: string;
+  reviewGuideInstructions?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
@@ -155,19 +158,6 @@ export interface AppConfig {
    * hosted mode skips this projection. Other Knowledge routes are independent.
    */
   knowledgeStores?: boolean;
-  /**
-   * archive#980: whether the interactive managed-chat callers (CLI `station
-   * chat`, the UI managed branch) start a `station-agent` orchestration
-   * session (mirroring `delegateTask`) instead of calling
-   * `POST /api/agents/:slug/chat` directly — so managed chats land in
-   * orchestration.sqlite and appear in `station runs`. **Runtime-derived from
-   * `STATION_FEATURES=managed-chat-orchestration`, never persisted** (same
-   * pattern as `mcpUiFrameOrigin`): `GET /config/app` injects this field when
-   * the flag is on and omits it when off — it is never accepted by
-   * `PUT /config/app`. **Default off** — off is today's exact managed-chat
-   * behavior, byte-identical.
-   */
-  managedChatOrchestration?: boolean;
   /**
    * archive#2802: capture workspace checkpoints at turn boundaries — a
    * git snapshot (hidden `STATION_CHECKPOINTS/…` pseudo-ref + reflog) of

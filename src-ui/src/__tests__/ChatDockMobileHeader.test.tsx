@@ -91,7 +91,6 @@ function renderHeader(
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
     agentIdentity?: { name: string; slug: string; icon?: string } | null;
-    branchLabel?: string | null;
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
     showConnection?: boolean;
@@ -140,7 +139,6 @@ function renderHeader(
           ? overrides.agentIdentity
           : { name: 'Codex', slug: 'codex' }
       }
-      branchLabel={overrides.branchLabel ?? null}
       activeCount={overrides.activeCount ?? 0}
       unreadCount={overrides.unreadCount ?? 0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
@@ -293,10 +291,12 @@ describe('mobile conversation focus', () => {
     ).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Activity' })).toBeNull();
   });
-  test('keeps project scope and branch context in the sheet', async () => {
-    const onClear = renderHeader({ branchLabel: 'feature/chat' });
+  // The branch moved to the session context sheet's labelled Branch row
+  // (SessionContextCard.test.tsx); the actions sheet printed it as a bare,
+  // unlabelled line inside its menu.
+  test('keeps project scope in the sheet', async () => {
+    const onClear = renderHeader();
     await openActions();
-    expect(screen.getByText('feature/chat')).toBeTruthy();
     fireEvent.click(
       screen.getByRole('menuitem', { name: 'Clear project chat scope' }),
     );

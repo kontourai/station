@@ -1,5 +1,6 @@
 import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test, vi } from 'vitest';
+import { ConcurrentEngineStartCapacityError } from '../../infra/resource-posture.js';
 import { createSessionCommandModule } from '../session-command-module.js';
 
 function moduleUnderTest(
@@ -81,6 +82,27 @@ function moduleUnderTest(
 }
 
 describe('SessionCommandModule', () => {
+  test('preserves pre-effect engine-admission metadata without changing command-outcome policy', async () => {
+    const { command, start } = moduleUnderTest({
+      assertStartAllowed: () => {
+        throw new ConcurrentEngineStartCapacityError();
+      },
+    });
+    const outcome = await command.execute(
+      {
+        type: 'start-session',
+        input: { threadId: 'thread-1', provider: 'claude' },
+      },
+      {},
+    );
+    expect(start).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      code: 'resource_engine_start_capacity',
+      failure: { kind: 'busy', retryable: true, failurePhase: 'refused' },
+    });
+  });
+
   test.each(['accepted', 'failed', 'rejected'] as const)(
     'waits for asynchronous admission and rechecks access (%s)',
     async (status) => {

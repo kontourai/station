@@ -1,3 +1,4 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 /**
  * `station delegate` — hand Station a Task (create) and headlessly supervise
  * it (status, events, continue, respond, interrupt), or discover ready
@@ -96,6 +97,11 @@ import {
   type ResolvedApiBase,
   requirePositional,
 } from './core-api.js';
+import {
+  cancelDelegateAttachmentStages,
+  loadDelegateAttachments,
+  stageDelegateAttachments,
+} from './delegate-attachments.js';
 import {
   type DelegateWaitResult,
   formatDurationMs,
@@ -808,11 +814,24 @@ async function runDelegateCreate(
   // station#979: usage error before any request, same as every other flag
   // check above.
   const onRequest = resolveOnRequestMode(parsed);
+  const attach = optionalValueFlag(parsed, 'attach');
+  if (attach && (environment.kind !== 'current' || prepared))
+    throw new Error(
+      '--attach requires a new current-host delegation without prepared execution.',
+    );
+  const attachments = attach
+    ? await loadDelegateAttachments(parsed.repeatedFlags.attach ?? [attach])
+    : undefined;
 
   let data: DelegatedTaskHandle;
+  let attachmentRefs: StagedAttachmentReference[] | undefined;
   try {
+    attachmentRefs = attachments
+      ? await stageDelegateAttachments(apiBase, attachments)
+      : undefined;
     data = await delegateTask(apiBase, {
       prompt,
+      ...(attachmentRefs ? { attachmentRefs } : {}),
       target: {
         environment,
         agent: agentId(agent),
@@ -838,6 +857,11 @@ async function runDelegateCreate(
       ...(prepared ? { attemptId: prepared.attemptId } : {}),
     });
   } catch (error) {
+    if (attachmentRefs?.length)
+      await cancelDelegateAttachmentStages(
+        apiBase,
+        attachmentRefs.map(({ stageId }) => stageId),
+      );
     // `return` here (not just a bare call) guards the on-request-fail
     // probe below from ever running with an unassigned `data` — relying on
     // `process.exit`'s real-world termination alone is fragile whenever a
@@ -1262,6 +1286,8 @@ export async function runDelegateCommand(
   const hasCreateTarget = Boolean(optionalValueFlag(parsed, 'agent'));
   const conversationId = optionalValueFlag(parsed, 'session');
   if (conversationId) {
+    if (parsed.flags.attach !== undefined)
+      throw new Error('--attach is create-only.');
     if (
       PREPARED_DELEGATION_FLAGS.some((name) => parsed.flags[name] !== undefined)
     ) {
@@ -1294,6 +1320,9 @@ export async function runDelegateCommand(
   ) {
     throw new Error('Prepared delegation flags are create-only.');
   }
+
+  if (action && parsed.flags.attach !== undefined)
+    throw new Error('--attach is create-only.');
 
   switch (action) {
     case 'attempt':

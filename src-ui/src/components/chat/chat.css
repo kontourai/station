@@ -1586,7 +1586,18 @@
   line-height: 1.1;
 }
 
+/* A column flex item is sized to its content, not to the stack, so without
+   this a name wider than its shrunken chip ran on under the caret instead of
+   truncating (seen at 320px on three chips, and at 375px once ACP engines
+   gained a fourth, #3290). Bounding each line lets its ellipsis apply. */
+.chat-input__chip-stack > * {
+  max-width: 100%;
+}
+
 .chat-input__chip-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 500;
@@ -1730,7 +1741,7 @@
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
-  .turn-footer .turn-footer__actions {
+  .turn-footer .turn-footer__bar {
     align-self: flex-start;
   }
 }
@@ -2159,6 +2170,50 @@
   min-height: 44px;
 }
 
+/* The settled answer's footer bar: the Basis chip, always visible (#926
+   amendment, owner 2026-10), then the hover-revealed action row. */
+.turn-footer__bar {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+/* The answer's Basis chip: the one labelled control in the answer's action
+   row, sized with the copy and ⋯ chip family (28px on a pointer) but quieter
+   at rest: no fill, a hairline outline, secondary text. Touch gets the 44px
+   floor here and in the phone's meta row. Styled from the entry sheet so the
+   chip's own unavailable state is styled when its chunk is not. */
+.answer-basis-chip {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--k-text-xs);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.answer-basis-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.answer-basis-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.turn-footer__bar .answer-basis-chip,
+.message-meta .answer-basis-chip {
+  min-height: 44px;
+}
+
 @media (hover: hover) {
   .turn-footer__actions {
     opacity: 0;
@@ -2168,6 +2223,10 @@
 
   .turn-footer__actions .message__rating {
     min-height: 0;
+  }
+
+  .turn-footer__bar .answer-basis-chip {
+    min-height: 28px;
   }
 
   .message:is(:hover, :focus-within) .turn-footer__actions {
@@ -3038,13 +3097,12 @@
      hand the 44px touch floor back to a 24px desktop value on a phone. */
   .chat-input__meta .chat-input__model-btn {
     flex: 0 1 auto;
-    /* 44px for the same reason as the approval chip below: this scoped rule
+    /* Pinned for the same reason as the approval chip below: this scoped rule
        (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
-       `min-width: 0` silently removes it. Not reachable today — the button
-       bottoms out at 120px in every measured state — but with a third chip in
-       the row it collapses to 14px, and the asymmetry of pinning one control
-       and not its neighbour is exactly how the floor was lost the first time. */
-    min-width: 44px;
+       `min-width: 0` silently removes it. #3290 raised it from 44px to keep a
+       readable model name when four chips share the rail (it shrank to 72px
+       and read "Open…"); the rail scrolls past the edge instead. */
+    min-width: 112px;
     max-width: 100%;
   }
   .chat-input__meta .chat-input__agent-btn {
@@ -3056,7 +3114,10 @@
     max-width: 40%;
   }
   .chat-input__meta .chat-input__agent-btn {
-    min-width: 44px;
+    /* #3290: 88px, not the 44px touch floor alone, keeps a readable name
+       ("OpenCo…", not "O…") once four chips share a phone rail; the rail
+       scrolls past its faded edge instead. */
+    min-width: 88px;
     min-height: 44px;
   }
   .chat-input__meta .chat-input__approval-chip {
@@ -3134,6 +3195,17 @@
   scrollbar-width: none;
 }
 
+/* #3290: the same scroll cue as an answer's wide table (index.css
+   `chat-markdown-table-edge`): while the chip rail can still scroll right,
+   its trailing edge fades; the fade is gone at the end of the scroll, and a
+   rail that fits has no active timeline, so it never fades. */
+@supports (animation-timeline: scroll()) {
+  .chat-input__settings {
+    animation: chat-markdown-table-edge var(--ease-linear) both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
 .chat-input__activity {
   display: flex;
   align-items: center;
@@ -3188,6 +3260,7 @@
   }
 
   .chat-input__activity .chat-scroll-to-bottom,
+  .chat-input__activity .transcript-turn-actions__step,
   .chat-input__activity .chat-status-pill-host .chat-status-pill {
     min-width: 44px;
     min-height: 44px;

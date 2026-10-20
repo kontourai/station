@@ -1,8 +1,15 @@
 import type { ProductTelemetryCommitReceipt as ProductCommit } from '@kontourai/station-contracts/product-telemetry';
-import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
+import {
+  FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+} from '@kontourai/station-shared/product-telemetry';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
-import { BrokerError, type ProductRepository } from '../store.js';
+import { BrokerError } from '../broker-error.js';
+import { clientAddressPolicy } from '../client-address.js';
+import { LiteRepository } from '../lite-store.js';
+import type { ProductRepository } from '../store.js';
+import { socketBindings } from './lite-fixture.js';
 
 const operatorKey = `sto_${'a'.repeat(43)}`;
 const sourceKey = `stp_${'b'.repeat(43)}`;
@@ -31,6 +38,8 @@ const commit: ProductCommit = {
   storedAt: '2026-10-10T12:00:02.000Z',
 };
 const store = {
+  hasCredential: vi.fn<ProductRepository['hasCredential']>(),
+  authenticate: vi.fn<ProductRepository['authenticate']>(),
   ingest: vi.fn<ProductRepository['ingest']>(),
   probe: vi.fn<ProductRepository['probe']>(),
   createSource: vi.fn<ProductRepository['createSource']>(),
@@ -41,6 +50,9 @@ const store = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  store.hasCredential.mockImplementation(
+    (key) => key === sourceKey || key === `stp_${'c'.repeat(43)}`,
+  );
   store.ingest.mockResolvedValue(commit);
   store.ready.mockResolvedValue();
   store.probe.mockResolvedValue({
@@ -269,9 +281,276 @@ describe('bounded receiver admission', () => {
           .status,
       ).toBe(401);
     const limited = await app.request('/v1/product/events', post(batch()));
-    expect(limited.status).toBe(429);
-    expect(limited.headers.get('retry-after')).toBe('1');
-    expect(store.ingest).not.toHaveBeenCalled();
+    expect(limited.status).toBe(202);
+    expect(store.ingest).toHaveBeenCalledOnce();
     expect((await app.request('/health/live')).status).toBe(200);
   });
+});
+
+test('anonymous lite and public traffic cannot spend authenticated ingest admission; cached reads perform no storage work', async () => {
+  const lite = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const reads = vi.spyOn(lite, 'publicAggregates').mockResolvedValue({
+    databaseDay: new Date().toISOString().slice(0, 10),
+    scope: 'weekly-fixed-domain-marginals',
+    publisher: 'kontour',
+    epsilonPerCount: 1 / 280,
+    epsilonPerAddedPing: 1 / 7,
+    maximumPublicCoordinatesPerWeek: 0,
+    maximumNetworkWeekEpsilon: 0,
+    nextCursor: null,
+    privacyUnit: 'distinct-daily-network-key-per-value',
+    countUnit: 'network-days',
+    weekBasis: 'ISO-8601-UTC-receiver-arrival',
+    deliveryCoverage: 'unknown',
+    cells: [],
+  });
+  const app = createProductBroker({ ...store, lite }, operatorKey);
+  for (let i = 0; i < 60; i++)
+    expect((await app.request('/v1/lite/unknown', post({}))).status).toBe(401);
+  expect((await app.request('/v1/lite/unknown', post({}))).status).toBe(429);
+  for (let i = 0; i < 80; i++) {
+    const response = await app.request('/v1/public/aggregates');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  }
+  expect(reads).toHaveBeenCalledTimes(1);
+  expect((await app.request('/v1/product/events', post(batch()))).status).toBe(
+    202,
+  );
+  expect(store.ingest).toHaveBeenCalledExactlyOnceWith(
+    sourceKey,
+    expect.any(Object),
+  );
+});
+
+test('public cache shares pending reads, retries failures, and refreshes at UTC midnight', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-17T23:59:00Z'));
+  const lite = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  let refuse!: (reason: Error) => void;
+  const pending = new Promise<
+    Awaited<ReturnType<LiteRepository['publicAggregates']>>
+  >((_, reject) => {
+    refuse = reject;
+  });
+  const reads = vi
+    .spyOn(lite, 'publicAggregates')
+    .mockReturnValueOnce(pending)
+    .mockResolvedValue({
+      databaseDay: new Date().toISOString().slice(0, 10),
+      scope: 'weekly-fixed-domain-marginals',
+      publisher: 'kontour',
+      epsilonPerCount: 1 / 280,
+      epsilonPerAddedPing: 1 / 7,
+      maximumPublicCoordinatesPerWeek: 0,
+      maximumNetworkWeekEpsilon: 0,
+      nextCursor: null,
+      privacyUnit: 'distinct-daily-network-key-per-value',
+      countUnit: 'network-days',
+      weekBasis: 'ISO-8601-UTC-receiver-arrival',
+      deliveryCoverage: 'unknown',
+      cells: [],
+    });
+  const app = createProductBroker({ ...store, lite }, operatorKey);
+  try {
+    const first = app.request('/v1/public/aggregates'),
+      second = app.request('/v1/public/aggregates');
+    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+    refuse(new Error('fixture database unavailable'));
+    for (const response of await Promise.all([first, second])) {
+      expect(response.status).toBe(503);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+    }
+    expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+    expect(reads).toHaveBeenCalledTimes(2);
+    vi.setSystemTime(new Date('2026-10-18T00:00:00Z'));
+    expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+    expect(reads).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each(['404', 'bad-key', 'publisher'])(
+  'anonymous %s traffic cannot exhaust authenticated per-credential admission',
+  async (traffic) => {
+    const transaction = vi.fn(async () => {
+      throw new BrokerError('source_unauthorized');
+    });
+    const lite = new LiteRepository(transaction, 100, 100);
+    store.authenticate.mockImplementation(async (key) => {
+      if (key !== sourceKey && key !== `stp_${'c'.repeat(43)}`)
+        throw new BrokerError('source_unauthorized');
+    });
+    const app = createProductBroker({ ...store, lite }, operatorKey);
+    for (let i = 0; i < 61; i++) {
+      const response = await (traffic === '404'
+        ? app.request('/unknown')
+        : traffic === 'bad-key'
+          ? app.request(
+              '/v1/product/events',
+              post(batch(), `stp_${'z'.repeat(43)}`),
+            )
+          : app.request('/v1/publishers/kontour/aggregates'));
+      expect(response.status).toBe(
+        i < 60 ? (traffic === '404' ? 404 : 401) : 429,
+      );
+    }
+    expect(transaction).not.toHaveBeenCalled();
+    for (let i = 0; i < 60; i++)
+      expect(
+        (await app.request('/v1/product/events', post(batch()))).status,
+      ).toBe(202);
+    expect(
+      (await app.request('/v1/product/events', post(batch()))).status,
+    ).toBe(429);
+    expect(
+      (
+        await app.request(
+          '/v1/product/events',
+          post(batch(), `stp_${'c'.repeat(43)}`),
+        )
+      ).status,
+    ).toBe(202);
+  },
+);
+
+test('public reads do not cache a database cutoff behind the receiver day', async () => {
+  const lite = new LiteRepository(
+    async () => {
+      throw new BrokerError('source_unauthorized');
+    },
+    100,
+    100,
+  );
+  const result = {
+    scope: 'weekly-fixed-domain-marginals',
+    publisher: 'kontour',
+    epsilonPerCount: 1 / 280,
+    epsilonPerAddedPing: 1 / 7,
+    maximumPublicCoordinatesPerWeek: 0,
+    maximumNetworkWeekEpsilon: 0,
+    nextCursor: null,
+    privacyUnit: 'distinct-daily-network-key-per-value',
+    countUnit: 'network-days',
+    weekBasis: 'ISO-8601-UTC-receiver-arrival',
+    deliveryCoverage: 'unknown',
+    cells: [],
+  };
+  const reads = vi
+    .spyOn(lite, 'publicAggregates')
+    .mockResolvedValueOnce({ ...result, databaseDay: '2000-01-01' })
+    .mockResolvedValue({
+      ...result,
+      databaseDay: new Date().toISOString().slice(0, 10),
+    });
+  const app = createProductBroker({ ...store, lite }, operatorKey);
+  expect(
+    (await app.request('/v1/public/aggregates')).headers.get('cache-control'),
+  ).toBe('no-store');
+  expect(
+    (await app.request('/v1/public/aggregates')).headers.get('cache-control'),
+  ).toMatch(/^public/);
+  expect((await app.request('/v1/public/aggregates')).status).toBe(200);
+  expect(reads).toHaveBeenCalledTimes(2);
+});
+
+test('wording-only acknowledgement revision does not alter broker wire admission', async () => {
+  const app = createProductBroker(store, operatorKey);
+  const accepted = await app.request('/v1/product/events', post(batch()));
+  expect(accepted.status).toBe(202);
+  expect(
+    (await (await app.request('/health/live')).json()).inventoryRevision,
+  ).toBe(PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION);
+  expect(FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION).not.toBe(
+    PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+  );
+  expect(
+    (
+      await app.request(
+        '/v1/product/events',
+        post({
+          ...batch(),
+          inventory_revision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+        }),
+      )
+    ).status,
+  ).toBe(400);
+  expect(store.ingest).toHaveBeenCalledTimes(1);
+});
+
+test('trusted tunnel peers receive 404 for private routes even with valid credentials; direct peers retain access', async () => {
+  store.receipt.mockResolvedValue(commit);
+  const app = createProductBroker(
+    store,
+    operatorKey,
+    clientAddressPolicy('192.0.2.2/32'),
+  );
+  const routes: [string, RequestInit, number][] = [
+    [
+      '/v1/operator/storage',
+      { headers: { authorization: `Bearer ${operatorKey}` } },
+      200,
+    ],
+    [
+      '/v1/operator/diagnostics',
+      { headers: { authorization: `Bearer ${operatorKey}` } },
+      200,
+    ],
+    ['/v1/product/events', post(batch()), 202],
+    [
+      '/v1/product/probes',
+      post({
+        protocol: 'station-product-probe/v1',
+        inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+      }),
+      200,
+    ],
+    [
+      '/v1/product/receipts/11111111-2222-4333-8444-555555555555',
+      { headers: { 'x-api-key': sourceKey } },
+      200,
+    ],
+  ];
+  for (const [path, init, directStatus] of routes) {
+    expect(
+      (await app.request(path, init, socketBindings('192.0.2.2'))).status,
+      path,
+    ).toBe(404);
+    expect(
+      (await app.request(path, init, socketBindings('100.64.0.1'))).status,
+      path,
+    ).toBe(directStatus);
+  }
+  for (const path of ['/health/live', '/v1/public/aggregates', '/public/'])
+    expect(
+      (await app.request(path, { method: 'POST' }, socketBindings('192.0.2.2')))
+        .status,
+    ).toBe(404);
+  expect(
+    (await app.request('/health/live', undefined, socketBindings('192.0.2.2')))
+      .status,
+  ).toBe(200);
+  // Hono normally routes HEAD through GET. The tunnel boundary permits GET only.
+  expect(
+    (
+      await app.request(
+        '/health/live',
+        { method: 'HEAD' },
+        socketBindings('192.0.2.2'),
+      )
+    ).status,
+  ).toBe(404);
 });

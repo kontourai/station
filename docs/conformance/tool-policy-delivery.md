@@ -93,7 +93,10 @@ what Station ships instead, is the Accepted-gap section below.
 ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
-policy check, and the external engine reports that identity. Codex
+policy check, and the external engine reports that identity. Which calls
+invoke the callback is the engine's own configuration; for OpenCode, Station
+sets that configuration from the chat's approval mode
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
@@ -210,6 +213,30 @@ own tools or configurations. An explicit conversation engine override instead
 refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
+
+## Opt-in delivery evidence (#3824)
+
+The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
+register with the live matrix runner. They use a temporary API-created Agent,
+skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
+verified HMAC execution receipt in inspected artifact contents and answer tests skill delivery. A Read-only path fails;
+an absent invocation shape stays unverified. The Claude shape comes from real
+CLI tool execution with loopback fixture inference, not a billable/live model
+capture. A follow-up tool start plus a call-ID-matched successful completion tests MCP use; observable output must contain the ping marker. A known
+fixture action is disabled through Station's integration policy and checked
+against the same run's discovered tool inventory. Non-use alone is unverified:
+positive selection evidence requires an engine tool list naming this server's
+ping but excluding blocked. Rejected attempts are not breaches; successful
+blocked completions or the action's output are breaches.
+
+This is an MCP tool-selection probe for Station, Claude and Codex. The separate
+`nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot
+verify native-tool disabling or the pre-tool blocking/grant chain. ACP cannot carry restricted MCP
+selection and reports that probe unsupported. Unsupported skills and missing
+passing evidence are not promoted to delivered. Cleanup failure remains a failed
+result, and an unreachable third-party dependency is skipped with a reason.
+These deterministic fixtures do not refresh the historical live Claude results
+below; live delivery and UI rendering remain NOT_VERIFIED until explicitly run.
 
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 

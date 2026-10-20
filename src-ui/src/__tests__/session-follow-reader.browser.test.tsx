@@ -5,16 +5,19 @@ import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
-const sessionFixture = (sibling: 'above' | 'below' | null = null) =>
+const sessionFixture = (
+  sibling: 'above' | 'below' | null = null,
+  { initialHeight = 2000, preserveReading = false } = {},
+) =>
   scrollBrowserFixture(`
     import React, {useRef, useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {useSessionTranscriptScroll} from './src-ui/src/components/session-detail/useSessionTranscriptScroll';
     function App(){
       const scrollRef = useRef(null), contentRef = useRef(null);
-      const [height, setHeight] = useState(2000);
+      const [height, setHeight] = useState(${initialHeight});
       const [identity, setIdentity] = useState('session'), [ready, setReady] = useState(true);
-      const {atLatest, jumpToLatest} = useSessionTranscriptScroll({identity,scrollRef,contentRef,ready,contentVersion:height});
+      const {atLatest, jumpToLatest} = useSessionTranscriptScroll({identity,scrollRef,contentRef,ready,contentVersion:height,preserveReading:${preserveReading}});
       return <>{!atLatest && <button onClick={jumpToLatest}>Jump to latest</button>}<button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button><div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}><div id="above" style={{height:${sibling === 'above' ? 200 : 0}}}/><div id="content" ref={contentRef} style={{height}}>Transcript</div><div id="below" style={{height:${sibling === 'below' ? 200 : 0}}}/></div></>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
@@ -119,30 +122,33 @@ test('transcript follow survives sustained asynchronous growth between pin echoe
   }
 });
 
-test('ArrowUp during streaming pauses follow and exposes Jump to latest', async () => {
-  const { browser, page, errors } = await sessionFixture();
-  try {
-    await page.waitForFunction(
-      () => document.querySelector('#scroll')?.scrollTop === 1700,
-    );
-    await page.locator('#scroll').focus();
-    await startGrowth(page, 100, 10);
-    for (let count = 0; count < 3; count++) {
-      await page.keyboard.press('ArrowUp');
-      await page.waitForTimeout(150);
+test.each(['ArrowUp', 'PageUp', 'Home'])(
+  '%s during streaming pauses follow and exposes Jump to latest',
+  async (key) => {
+    const { browser, page, errors } = await sessionFixture();
+    try {
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1700,
+      );
+      await page.locator('#scroll').focus();
+      await startGrowth(page, 100, 10);
+      for (let count = 0; count < 3; count++) {
+        await page.keyboard.press(key);
+        await page.waitForTimeout(150);
+      }
+      await finishGrowth(page);
+      expect(
+        await page.locator('#scroll').evaluate((element) => element.scrollTop),
+      ).toBeLessThanOrEqual(1640);
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(true);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
     }
-    await finishGrowth(page);
-    expect(
-      await page.locator('#scroll').evaluate((element) => element.scrollTop),
-    ).toBeLessThanOrEqual(1640);
-    expect(
-      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
-    ).toBe(true);
-    expect(errors).toEqual([]);
-  } finally {
-    await browser.close();
-  }
-});
+  },
+);
 
 for (const interval of [100, 250]) {
   test.each(['wheel', 'click', 'touchstart'])(
@@ -542,6 +548,53 @@ test.each(['above', 'below'] as const)(
   },
 );
 
+test('a one-pixel ArrowDown reaching the old tail resumes follow across interleaved growth', async () => {
+  const { browser, page, errors } = await sessionFixture(null, {
+    initialHeight: 301,
+    preserveReading: true,
+  });
+  try {
+    expect(await tailGap(page)).toBe(1);
+    expect(
+      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+    ).toBe(true);
+    await page.locator('#scroll').focus();
+    await page.locator('#scroll').evaluate((scroll) => {
+      window.addEventListener(
+        'scroll',
+        (event) => {
+          if (
+            event.target !== scroll ||
+            scroll.scrollTop !== 1 ||
+            scroll.dataset.interleaved
+          )
+            return;
+          scroll.dataset.interleaved = 'true';
+          const content = document.querySelector<HTMLElement>('#content')!;
+          content.style.height = `${content.offsetHeight + 20}px`;
+        },
+        { capture: true },
+      );
+    });
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#scroll')?.getAttribute('data-interleaved') ===
+        'true',
+    );
+    expect(await tailGap(page)).toBe(0);
+    expect(
+      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+    ).toBe(false);
+    await startGrowth(page, 100, 3);
+    await finishGrowth(page);
+    expect(await tailGap(page)).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
 test.each([
   { key: 'End', interval: 100, ticks: 15, up: 300 },
   { key: 'End', interval: 'frame' as const, ticks: 90, up: 300 },
@@ -575,9 +628,124 @@ test.each([
       ).toBe(false);
       await finishGrowth(page);
       expect(await tailGap(page)).toBe(0);
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(false);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
     }
   },
 );
+
+test('DOM growth keeps follow pinned at the next microtask before ResizeObserver delivery', async () => {
+  const { browser, page, errors } = await sessionFixture();
+  try {
+    await page.waitForFunction(
+      () => document.querySelector('#scroll')?.scrollTop === 1700,
+    );
+    const gap = await page
+      .locator('#content')
+      .evaluate(async (content: HTMLElement) => {
+        content.style.height = `${content.offsetHeight + 20}px`;
+        await Promise.resolve();
+        const scroll = document.querySelector('#scroll')!;
+        return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+      });
+    expect(gap).toBe(0);
+    expect(
+      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+    ).toBe(false);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test.each(['above', 'below'] as const)(
+  'collapsing a sibling %s while paused does not resume follow',
+  async (position) => {
+    const { browser, page, errors } = await sessionFixture(position);
+    try {
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1900,
+      );
+      await page.locator('#scroll').hover();
+      await page.mouse.wheel(0, -300);
+      await page.waitForFunction(
+        () => document.querySelector('#scroll')?.scrollTop === 1600,
+      );
+      await page.locator(`#${position}`).evaluate((element) => {
+        element.style.height = '0px';
+      });
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      const pausedTop = await page
+        .locator('#scroll')
+        .evaluate((element) => element.scrollTop);
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(true);
+      await page.getByRole('button', { name: 'Grow' }).click();
+      expect(
+        await page.locator('#scroll').evaluate((element) => element.scrollTop),
+      ).toBe(pausedTop);
+      expect(
+        await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+      ).toBe(true);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);
+
+test('an upward wheel pauses follow when DOM growth interleaves before its scroll handler', async () => {
+  const { browser, page, errors } = await sessionFixture();
+  try {
+    await page.waitForFunction(
+      () => document.querySelector('#scroll')?.scrollTop === 1700,
+    );
+    await page.locator('#scroll').evaluate((scroll) => {
+      window.addEventListener(
+        'scroll',
+        (event) => {
+          if (
+            event.target !== scroll ||
+            scroll.scrollTop >= 1700 ||
+            scroll.dataset.interleaved
+          )
+            return;
+          scroll.dataset.interleaved = 'true';
+          const content = document.querySelector<HTMLElement>('#content')!;
+          content.style.height = `${content.offsetHeight + 20}px`;
+        },
+        { capture: true },
+      );
+    });
+    await page.locator('#scroll').hover();
+    await page.mouse.wheel(0, -12);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#scroll')?.getAttribute('data-interleaved') ===
+        'true',
+    );
+    expect(
+      await page.locator('#scroll').evaluate((scroll) => scroll.scrollTop),
+    ).toBe(1688);
+    expect(
+      await page.getByRole('button', { name: 'Jump to latest' }).isVisible(),
+    ).toBe(true);
+    await page.getByRole('button', { name: 'Grow' }).click();
+    expect(
+      await page.locator('#scroll').evaluate((scroll) => scroll.scrollTop),
+    ).toBe(1688);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

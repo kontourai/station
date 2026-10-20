@@ -261,6 +261,7 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
   /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
@@ -758,6 +759,15 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineDeviceSetting({
+    key: 'inboxScope',
+    scope: 'device',
+    descriptor: { kind: 'string' },
+    label: 'Inbox scope',
+    help: 'Limit the inbox to one project or Station on this device.',
+    description: 'Selected project or Station filter for the inbox.',
+    defaultValue: 'all',
+  }),
+  defineDeviceSetting({
     key: 'inboxOpen',
     scope: 'device',
     descriptor: { kind: 'boolean' },
@@ -1076,6 +1086,7 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'codingPanels',
   'dockSlotPlacement',
   'chatDockProjectSlug',
+  'inboxScope',
   'inboxOpen',
   'inboxSections',
   'projectSidebarCollapsed',

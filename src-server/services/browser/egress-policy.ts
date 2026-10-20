@@ -42,6 +42,7 @@ export interface RegisteredLocalTarget {
 }
 
 export type EgressReach =
+  | { kind: 'none' }
   | { kind: 'operator' }
   | {
       kind: 'project';
@@ -112,6 +113,7 @@ export function decideEgress(
     !isLocalSpellingHost(requestedHost)
   )
     return 'hostname-to-non-public';
+  if (policy.reach.kind === 'none') return 'non-public-address';
   if (policy.reach.kind === 'operator') return undefined;
   if (!nonPublic) return undefined;
   return policy.reach

@@ -1,0 +1,7 @@
+{
+  "revision": "31cae8d36bdb3044985cef3a9ed2b6887d9c5ebd",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"CI delta review at 31cae8d36bd: the matrix CLI now uses invokedDirectly(import.meta.url), the shared realpath-aware entry guard; pathToFileURL remains only for extension module imports. Reviewed the CLI entry, shared helper and matrix command documentation: auth, billable admission, API routes and extension channels are unchanged. Real-route matrix, smoke and adapter-conformance suites pass; live providers remain NOT_VERIFIED. No prose change is needed.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/station-engine-matrix.mjs"]}
+  ]
+}

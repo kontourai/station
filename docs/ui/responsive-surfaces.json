@@ -45,7 +45,13 @@
       "path": "src-ui/src/components/badges/AcpSessionModeSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer in place of the approval-mode chip"
+      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer beside the approval control"
+    },
+    {
+      "path": "src-ui/src/components/badges/EngineApprovalDisclosureSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ChatInputArea.test.tsx opens the read-only approval explanation from the composer chip of an ACP engine that decides for itself (#3290)"
     },
     {
       "path": "src-ui/src/components/badges/ComposerModeSheet.tsx",
@@ -81,6 +87,12 @@
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
       "evidence": "src-ui/src/__tests__/MobileTaskSwitcherAnswerability.test.tsx and tests/mobile-chat-composer.spec.ts cover the lazy phone-sheet loading acknowledgement, close action, and shared responsive surface containment"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/SessionContextSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/SessionContextCard.dock.test.tsx drives SessionContextSheet through the real ChatWorkspacePane: the desktop chip opens it anchored, Escape closes it and returns focus to the chip, a row closes it before opening its surface, and on a phone the Chat actions row opens it with data-sheet and closing returns focus to the ⋯ trigger"
     },
     {
       "path": "src-ui/src/components/chat/ApprovalSheetProvider.tsx",

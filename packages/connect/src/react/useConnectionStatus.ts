@@ -217,8 +217,7 @@ export function useConnectionStatus({
     const scheduleResumeProbe = () => {
       const now = performance.now();
       if (now - lastResumeProbeAt < resumeSuppressionMs) return;
-      lastResumeProbeAt = now;
-      entry.coordinator.trigger();
+      if (entry.coordinator.trigger() !== 'skipped') lastResumeProbeAt = now;
     };
     const onVisible = () => {
       if (document.visibilityState === 'visible') scheduleResumeProbe();

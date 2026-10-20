@@ -168,9 +168,6 @@ export interface HomeWorkItem {
   environmentLabel?: string;
 }
 
-/** @deprecated Use HomeWorkItem for new Home surfaces. */
-export type HomeTaskItem = HomeWorkItem;
-
 export function chatTaskSessionId(task: HomeWorkItem): string {
   return task.chatSessionId ?? task.id;
 }
@@ -260,7 +257,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-interface RemoteHomeEnvironmentSessions {
+export interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];
@@ -282,6 +279,7 @@ export function buildHomeWorkItems({
   chats,
   sessions,
   tasks = [],
+  retainTaskChildren = false,
   agents,
   remoteEnvironments = [],
   chatItems: suppliedChatItems,
@@ -291,6 +289,7 @@ export function buildHomeWorkItems({
   chats: Record<string, ChatUIState>;
   sessions: OrchestrationSessionSummary[];
   tasks?: TaskRecord[];
+  retainTaskChildren?: boolean;
   agents: AgentSummary[];
   /**
    * archive#1097: optional remote-session read augmentation, never a
@@ -323,6 +322,7 @@ export function buildHomeWorkItems({
     orchestrationItems,
     tasks,
     currentSessionIdByConversation,
+    retainTaskChildren,
   );
   if (remoteEnvironments.length === 0) return localItems;
   // Remote items never participate in `mergeHomeWorkItems`'s chat/task/
@@ -537,6 +537,7 @@ function mergeHomeWorkItems(
   orchestrationItems: HomeWorkItem[],
   tasks: TaskRecord[],
   currentSessionIdByConversation: ReadonlyMap<string, string>,
+  retainTaskChildren: boolean,
 ): HomeWorkItem[] {
   const taskIdBySessionId = new Map(
     tasks
@@ -552,7 +553,10 @@ function mergeHomeWorkItems(
   // stamps local activity newer than every persisted Session; merging that
   // timestamp into a predecessor first would make it defeat its own child.
   for (const item of [...orchestrationItems, ...chatItems]) {
-    if (isPersistedTaskCorrelation(item, taskIdBySessionId)) {
+    if (
+      !retainTaskChildren &&
+      isPersistedTaskCorrelation(item, taskIdBySessionId)
+    ) {
       continue;
     }
     const key = localConversationIdentity(item);
@@ -830,9 +834,6 @@ function mergeSingleExecutionAgentSlug(
     : undefined;
 }
 
-/** @deprecated Use buildHomeWorkItems for new Home surfaces. */
-export const buildHomeTaskItems = buildHomeWorkItems;
-
 function isPersistedTaskCorrelation(
   item: HomeWorkItem,
   taskIdBySessionId: Map<string, string>,
@@ -868,6 +869,7 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
     kindLabel: `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
+    projectSlug: task.projectId || undefined,
     agentLabel: task.agentId || 'No agent assigned',
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
@@ -984,7 +986,7 @@ function chatLifecycleLabel(
   if (correlated?.failed) return 'Failed';
   // #2310: the server says nothing was ever sent, and this chat holds no
   // transcript message to contradict it. A chat WITH one has sent a turn the
-  // cached summary predates (review H1), so it falls through to its own
+  // cached summary predates (#2338), so it falls through to its own
   // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
   if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
   if (serverLive === false) return 'Recent';

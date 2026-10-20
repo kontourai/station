@@ -1,0 +1,7 @@
+{
+  "revision": "1df6c4d11a4d464a0acd73d07051ca0862da0cc4",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed against MessageBubble.tsx (the chip now receives the answer description instead of a full name): no checkpoint or changed-files claim is affected.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

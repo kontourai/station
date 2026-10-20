@@ -125,6 +125,7 @@ export type ChatContentPart = {
   input?: any;
   result?: any;
   output?: any;
+  htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
   error?: string;
   errorText?: string;
   state?: string;
@@ -557,6 +558,13 @@ export type ChatUIState = {
    * like the report above.
    */
   approvalEscalationRejected?: boolean;
+  /**
+   * #3290: Station could not move the engine onto the rules its latest turn
+   * asked for (`turn.started` metadata `approvalTakeoverFailed`); the
+   * engine kept the posture `lastAppliedApprovalMode` names, or its own
+   * settings. Not persisted, like the reports above.
+   */
+  approvalTakeoverFailed?: boolean;
   /**
    * #2436: a pick the server has not received yet (see
    * `ApprovalPostureState`, utils/approvalMode.ts). Persisted: an offline

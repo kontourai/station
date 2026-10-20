@@ -97,7 +97,11 @@ afterEach(async () => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-function harness(respond?: (call: SentCall) => unknown, hooks?: FakeHooks) {
+function harness(
+  respond?: (call: SentCall) => unknown,
+  hooks?: FakeHooks,
+  previewOptions: { requireRestrictedWebRtc?: boolean } = {},
+) {
   const fake = fakeTransport(respond, hooks);
   let exit!: (reason: string) => void;
   const exited = new Promise<string>((r) => {
@@ -113,6 +117,7 @@ function harness(respond?: (call: SentCall) => unknown, hooks?: FakeHooks) {
   const events: ChromiumHostEvent[] = [];
   const host = new ChromiumServerHost({
     executablePath: '/fake/chrome',
+    ...previewOptions,
     egressPolicy: {
       listeners: () => LISTENERS,
       interfaceAddresses: () => [],
@@ -230,6 +235,10 @@ describe('ChromiumServerHost with a fake browser', () => {
     const { host, calls, profileDir, launcher } = harness();
     const target = await host.openTarget({ profileDir, viewport: VIEWPORT });
     expect(target).toEqual({ targetId: 'T1', cdpSessionId: 'S-T1' });
+    expect(
+      calls.some((call) => call.method === 'Runtime.evaluate'),
+      'ordinary Browser hosts must not evaluate preview policy diagnostics',
+    ).toBe(false);
     expect(launcher).toHaveBeenCalledTimes(1);
     const methods = calls.map((c) => c.method);
     const firstTarget = methods.indexOf('Target.createTarget');
@@ -936,4 +945,68 @@ describe('ChromiumServerHost with a fake browser', () => {
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(reasons).toEqual(['shutdown']);
   });
+});
+
+describe('effective preview WebRTC policy at browser startup', () => {
+  test.each([
+    [
+      'restrictive',
+      { policy: 'disable_non_proxied_udp', urlOverrides: false },
+      true,
+    ],
+    [
+      'managed unrestricted override',
+      { policy: 'default', urlOverrides: false },
+      false,
+    ],
+    [
+      'URL-specific overrides',
+      { policy: 'disable_non_proxied_udp', urlOverrides: true },
+      false,
+    ],
+    ['unreadable diagnostic', undefined, false],
+  ] as const)(
+    '%s permits authored targets only when the effective policy is verified',
+    async (_label, value, allowed) => {
+      let h: ReturnType<typeof harness>;
+      h = harness(
+        (call) => {
+          if (call.method === 'Page.navigate')
+            h.emit('Page.loadEventFired', {}, call.sessionId);
+          if (call.method === 'Runtime.evaluate') return { result: { value } };
+          return {};
+        },
+        undefined,
+        { requireRestrictedWebRtc: true },
+      );
+      const opening = h.host.openTarget({
+        profileDir: h.profileDir,
+        viewport: VIEWPORT,
+      });
+      if (allowed) {
+        await expect(opening).resolves.toEqual({
+          targetId: 'T2',
+          cdpSessionId: 'S-T2',
+        });
+        const close = h.calls.findIndex(
+          (call) =>
+            call.method === 'Target.closeTarget' &&
+            (call.params as { targetId?: string }).targetId === 'T1',
+        );
+        const creates = h.calls.flatMap((call, index) =>
+          call.method === 'Target.createTarget' ? [index] : [],
+        );
+        expect(close).toBeGreaterThan(creates[0]);
+        expect(close).toBeLessThan(creates[1]);
+      } else {
+        await expect(opening).rejects.toMatchObject({
+          code: 'webrtc-policy-unverified',
+        });
+        expect(
+          h.calls.filter((call) => call.method === 'Target.createTarget'),
+        ).toHaveLength(1);
+        expect(h.terminate).toHaveBeenCalledOnce();
+      }
+    },
+  );
 });

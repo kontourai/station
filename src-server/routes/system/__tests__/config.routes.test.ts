@@ -378,44 +378,10 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       () => 'http://127.0.0.1:4555',
     );
     const body = await json(await app.request('/app'));
     expect(body.data.pluginFrameOrigin).toBe('http://127.0.0.1:4555');
-  });
-
-  test('station#980: GET /app injects managedChatOrchestration when the flag is enabled', async () => {
-    const loader = createMockConfigLoader();
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => true,
-    );
-    const body = await json(await app.request('/app'));
-    expect(body.data.managedChatOrchestration).toBe(true);
-  });
-
-  test('station#980: GET /app omits managedChatOrchestration when the flag is disabled or unset (default OFF, byte-identical response)', async () => {
-    const loaderOff = createMockConfigLoader();
-    const appOff = createConfigRoutes(
-      loaderOff as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => false,
-    );
-    const bodyOff = await json(await appOff.request('/app'));
-    expect('managedChatOrchestration' in bodyOff.data).toBe(false);
-
-    const loaderUnset = createMockConfigLoader();
-    const appUnset = createConfigRoutes(loaderUnset as any, mockLogger);
-    const bodyUnset = await json(await appUnset.request('/app'));
-    expect('managedChatOrchestration' in bodyUnset.data).toBe(false);
   });
 
   test('PUT /app updates config', async () => {
@@ -501,17 +467,12 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       () => 'http://127.0.0.1:4555',
-      () => true,
     );
     const body = await json(await app.request('/app'));
     expect(body.provenance.defaultModel).toEqual({ source: 'file' });
     expect(body.provenance.mcpUiFrameOrigin).toEqual({
       source: 'env',
       envVar: 'MCP_UI_FRAME_PORT',
-    });
-    expect(body.provenance.managedChatOrchestration).toEqual({
-      source: 'env',
-      envVar: 'STATION_FEATURES',
     });
   });
 
@@ -542,7 +503,6 @@ describe('Config Routes', () => {
     const app = createConfigRoutes(
       loader as any,
       mockLogger,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -612,7 +572,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         () =>
           ({
             id: 'p',
@@ -659,7 +618,6 @@ describe('Config Routes', () => {
       createConfigRoutes(
         createMockConfigLoader() as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -729,7 +687,6 @@ describe('Config Routes', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       () => undefined,
     );
     const res = await app.request('/app?project=missing');
@@ -737,7 +694,7 @@ describe('Config Routes', () => {
     expect((await json(res)).success).toBe(false);
   });
 
-  test('PUT /app strips runtime-derived keys (managedChatOrchestration) and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {
+  test('PUT /app strips runtime-derived keys (mcpUiFrameOrigin) and retired keys, and reports them as ignoredKeys, so a GET-then-PUT round trip cannot persist them', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);
     const res = await app.request('/app', {
@@ -745,6 +702,7 @@ describe('Config Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         defaultModel: 'gpt-4',
+        mcpUiFrameOrigin: 'http://127.0.0.1:4555',
         managedChatOrchestration: true,
       }),
     });
@@ -753,9 +711,11 @@ describe('Config Routes', () => {
     expect(loader.updateAppConfig).toHaveBeenCalledWith({
       defaultModel: 'gpt-4',
     });
+    expect('mcpUiFrameOrigin' in body.data).toBe(false);
     expect('managedChatOrchestration' in body.data).toBe(false);
     expect(body.ignoredKeys).toEqual([
-      { key: 'managedChatOrchestration', reason: 'runtime-derived' },
+      { key: 'mcpUiFrameOrigin', reason: 'runtime-derived' },
+      { key: 'managedChatOrchestration', reason: 'unknown' },
     ]);
   });
 
@@ -800,7 +760,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         rebindBuiltinAgents,
       );
       const res = await app.request('/app', {
@@ -823,7 +782,6 @@ describe('Config Routes', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
         rebindBuiltinAgents,
       );
       await app.request('/app', {
@@ -840,7 +798,6 @@ describe('Config Routes', () => {
       const app = createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -861,7 +818,6 @@ describe('Config Routes', () => {
       const app = createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -1063,6 +1019,9 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       app.route('/', createConfigRoutes(loader, mockLogger));
       try {
         for (const payload of [
+          ...(principal === 'agent'
+            ? [{ telemetryTier: { operator: 'off' } }]
+            : []),
           { telemetryTier: { operator: 'full' } },
           { telemetryEnabled: true },
         ]) {
@@ -1412,7 +1371,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     tempDir = makeTempDir('station-config-routes-');
   });
 
-  test('finding 1: GET /app never leaks a persisted runtime-derived field back when the live flag is off, even from a home polluted by the pre-fix round trip', async () => {
+  test('GET /app never leaks a persisted runtime-derived or retired field back, even from a home polluted by the pre-sanitizer round trip', async () => {
     const configDir = join(tempDir, 'config');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
@@ -1427,14 +1386,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
       'utf8',
     );
     const loader = new ConfigLoader({ projectHomeDir: tempDir });
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => false,
-    );
+    const app = createConfigRoutes(loader as any, mockLogger);
 
     const body = await json(await app.request('/app'));
     expect('managedChatOrchestration' in body.data).toBe(false);
@@ -1445,33 +1397,6 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     );
     expect('managedChatOrchestration' in persisted).toBe(false);
     expect('mcpUiFrameOrigin' in persisted).toBe(false);
-  });
-
-  test('finding 1: GET /app with the live flag ON still injects managedChatOrchestration: true, independent of what got purged from the file', async () => {
-    const configDir = join(tempDir, 'config');
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      join(configDir, 'app.json'),
-      JSON.stringify({
-        defaultModel: 'x',
-        invokeModel: 'y',
-        structureModel: 'z',
-        managedChatOrchestration: true,
-      }),
-      'utf8',
-    );
-    const loader = new ConfigLoader({ projectHomeDir: tempDir });
-    const app = createConfigRoutes(
-      loader as any,
-      mockLogger,
-      undefined,
-      undefined,
-      undefined,
-      () => true,
-    );
-
-    const body = await json(await app.request('/app'));
-    expect(body.data.managedChatOrchestration).toBe(true);
   });
 
   test('finding 2: PUT { region: null } through the real route+loader clears the field from both the response and the persisted file (200, not a 400 from AJV)', async () => {
@@ -1534,7 +1459,6 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
     const app = createConfigRoutes(
       loader as any,
       mockLogger,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -1760,7 +1684,6 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       undefined,
       undefined,
       undefined,
-      undefined,
       authorizeContributionMutation,
     );
   }
@@ -1857,7 +1780,6 @@ describe('PUT /config/app: fleet-contribution beneficiary guard (station#1398 §
       createConfigRoutes(
         loader as any,
         mockLogger,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -2010,5 +1932,114 @@ describe('first-run decisions', () => {
 
     expect(response.status).toBe(400);
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /config/app refusal diagnostics', () => {
+  test.each([
+    {
+      reason: 'telemetry_choice_not_granted',
+      body: { telemetryTier: { operator: 'full' } },
+      initial: { telemetryTier: { kontour: 'off', operator: 'off' } },
+      telemetryChanges: {
+        kontour: { before: 'off', after: 'off' },
+        operator: { before: 'off', after: 'full' },
+      },
+    },
+    {
+      reason: 'telemetry_choice_not_granted',
+      body: { telemetryTier: { operator: 'off' } },
+      initial: { telemetryTier: { operator: 'full' } },
+      agentMarker: true,
+      telemetryChanges: { operator: { before: 'full', after: 'off' } },
+    },
+    {
+      reason: 'full_access_default_not_granted',
+      body: { defaultApprovalMode: 'never' },
+    },
+    {
+      reason: 'project_contribution_operator_required',
+      body: { contribution: { 'project:prj_1': { enabled: true } } },
+    },
+    {
+      reason: 'scope_command_not_granted',
+      body: { terminalShell: '/private/command' },
+    },
+    {
+      reason: 'scope_agent_command_not_granted',
+      body: { terminalShell: '/private/command' },
+      internal: true,
+    },
+    {
+      reason: 'scope_telemetry_destination_not_granted',
+      body: { productTelemetryKeyRef: 'private-key-reference' },
+    },
+    {
+      reason: 'scope_agent_telemetry_destination_not_granted',
+      body: { productTelemetryEndpoint: 'https://private.example.test' },
+      internal: true,
+    },
+    {
+      reason: 'scope_inference_contribution_not_granted',
+      body: { fleetContribution: { enabled: true } },
+      invoke: true,
+    },
+    {
+      reason: 'scope_inference_contribution_not_granted',
+      body: { contribution: { 'project:prj_1': { enabled: true } } },
+      invoke: true,
+    },
+  ])('logs one value-free $reason refusal ($body)', async (scenario) => {
+    mockLogger.warn.mockClear();
+    const loader = createMockConfigLoader({
+      defaultModel: 'private-model',
+      defaultApprovalMode: 'safer',
+      ...scenario.initial,
+    });
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: scenario.internal ? 'internal' : 'credential',
+        credential: 'private-credential',
+        authority: scenario.internal
+          ? 'operator-credential'
+          : 'device-credential',
+        ...(scenario.internal
+          ? {}
+          : { deviceKind: 'device', deviceId: 'private-device-id' }),
+        source: 'bearer',
+      });
+      setGrantedPairingScope(
+        c as never,
+        `orchestration:read orchestration:operate${scenario.invoke ? ' inference:invoke' : ''}`,
+      );
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as never, mockLogger));
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        ...(scenario.agentMarker
+          ? { 'x-station-control-origin': 'agent-tool' }
+          : {}),
+      },
+      body: JSON.stringify(scenario.body),
+    });
+    expect(response.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    expect(mockLogger.warn.mock.calls).toEqual([
+      [
+        'App config update refused',
+        {
+          reason: scenario.reason,
+          principalKind: scenario.internal ? 'internal' : 'credential',
+          deviceKind: scenario.internal ? 'none' : 'device',
+          ...(scenario.telemetryChanges
+            ? { telemetryChanges: scenario.telemetryChanges }
+            : {}),
+        },
+      ],
+    ]);
   });
 });

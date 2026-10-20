@@ -345,6 +345,27 @@ children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
 access.
 
+### Coding tree and text preview bounds
+
+`GET /api/coding/files` accepts integer `depth` from 0 to 10 and
+`maxEntries` from 1 to 5000; defaults are 3 and 500. Invalid values receive
+400 rather than being clamped. Listings exclude symlinks and preserve workspace
+containment while traversing asynchronously.
+
+`fetchCodingFileContent` and `useCodingFileContentQuery` use
+`GET /api/coding/files/content`. Text previews are limited to 2 MiB; larger
+files receive 413 with code `file-too-large` and an instruction to open the file
+in an editor. Binary detection samples the first 8 KiB before reading the rest.
+The SDK throws the server's error message for a refused preview. Missing files
+retain status 500 with code `not-found` and a workspace-relative message.
+Non-regular files are refused before opening and checked again on the opened
+handle. Platforms that provide nonblocking and no-follow open flags also refuse
+FIFO or symlink replacements at that boundary. Buffers grow with observed file
+contents; a file that grows beyond the limit is rejected rather than truncated.
+These legacy coding endpoints are separate from the built-in Workspace File Preview API.
+See the [reader](../../src-server/services/projects/file-tree-service.ts) and
+[route](../../src-server/routes/projects/coding.ts).
+
 ### Conversation input-origin support
 
 `OrchestrationSessionSummary.inputOrigin` is a closed, optional server-issued
@@ -1106,6 +1127,29 @@ in this slice, so a non-portable Project workspace resolved onto a paired
 Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
 offers — paired-Station selections.
+
+### `delegateTask(apiBase, input, options?)` with files
+
+The canonical client accepts optional `attachmentRefs` from
+`prepareAttachmentStage` and `uploadAttachmentStage`. It checks that the
+selected host advertises `delegationFiles: true` on its attachment-staging
+capability before posting references, so an older host cannot silently strip
+them. References carry metadata and digest, never upload grants or local paths.
+The authenticated route binds them to server-owned task/turn identities and
+writes validated bytes into a fresh directory inside the resolved workspace.
+A definite pre-effect refusal releases the staged references and removes its
+workspace directory, so an API caller can resend the same references. A possibly
+invoked start or turn retains the binding and files; inspect the existing work
+before retrying. The CLI additionally cancels its upload objects after a failed
+request. `DelegationApiError.code` preserves the server's `stage_*` refusals and
+`delegation_files_*` codes; see the [CLI refusal reference](cli.md#delegate).
+The SDK's unsupported-capability refusal is also coded
+`delegation_files_unsupported`.
+
+This supports new current-host tasks with a shared workspace only; no
+saved-Environment forwarding,
+portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
+the [CLI delegate reference](cli.md#delegate).
 
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
@@ -3100,7 +3144,20 @@ are also exported from `@kontourai/station-sdk/client`.
   projection when that scope is selected. Consumers render its standing from
   that projection and must not issue a second `useAnswerBasisQuery`. An
   `answer.assessment.updated` event tombstones only the matching scoped
-  current-answer inventory cache before active observers refetch.
+  current-answer inventory cache before active observers refetch. Every
+  mount, every key a mounted hook switches to, and every time a disabled
+  hook becomes enabled, makes its own read
+  (`refetchOnMount` is always `'always'` here, whatever the caller passes),
+  and no cached projection is shown until a read made during that mount
+  succeeds; after that, a
+  background refetch keeps the loaded projection in `data`. Only lost
+  authority (401, 403 or the route's non-disclosing 404) tombstones the
+  scope's cached projection and pages. A 503, a network failure or a
+  projection the contract refuses is a query `error` beside whatever was
+  already loaded, and is not retried automatically. This narrower rule
+  differs on purpose from `useAnswerBasisQuery`, which still revokes on any
+  refusal: the inventory route reserves 503 for a read it could not
+  perform, so a 503 is not evidence of lost authority.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -3553,6 +3610,12 @@ integration pinning, resource policy and frame isolation. Resource URL-scheme
 filtering is not complete CSP source-expression validation or a guarantee of
 effective browser network containment. An ordinary SDK tool call does not
 establish that rendering qualification.
+
+`getJson` is available from `@kontourai/station-sdk/client` as well as the root
+entry. The client entry preserves the same credential, request-authority,
+timeout and response-bound behavior without importing SDK React components.
+Transcript app catalogs use this entry; rendering a local chat row does not
+create a connection or start catalog discovery.
 
 ## Utilities
 
@@ -4324,8 +4387,8 @@ continue to govern resolution.
 `respondToRequest` from `@kontourai/station-sdk/client` accepts form
 `content` (`InputRequestContent`, #3390) alongside `decision: 'accept'` and
 `expectedRequestEventId`, for a harness question or a tool server's form.
-The pre-#3390 `answers` batch is deprecated since 0.9.0 and removed in
-0.10.0.
+The pre-#3390 `answers` batch is deprecated since 0.9.0 and remains
+accepted in 0.10.0 for compatibility. New callers should send `content`.
 Capture the request's thread, request and opened-event IDs, and pass the
 current explicit `requestScope`; the server validates the exact pending
 question before forwarding it. See the [Session API](session-api.md#respondtorequest)
@@ -4589,3 +4652,30 @@ updates that exact cache and invalidates the personal Layout inventory.
 scope and read the existing authorized projections. They do not persist rows in
 the Board. The dashboard uses the scoped Task and Project queries alongside
 them. See [Personal Boards](../user/personal-boards.md) for the user journey.
+
+### Engine failure classification
+
+`StationHttpError` and `ChatHttpError` retain an engine failure's `kind` and
+`failurePhase` (`refused`, `failed` or `indeterminate`). `retryable` is computed from the closed kind rather than a
+server-supplied boolean. For older servers, known diagnostic codes use the
+shared mapping; an unknown code without a recognized kind stays unclassified.
+A retryable failed turn may already have spent resources. Inspect its outcome
+and request another attempt explicitly; this field does not authorize replay.
+See [engine-neutral failures](contracts.md#engine-neutral-failures) for kinds,
+code mappings, phase semantics and legacy `retriable` compatibility.
+
+### Pull request guide client
+
+`@kontourai/station-sdk/pull-request-review` exports `getPullRequestGuide` and
+`writePullRequestGuide`. Both accept `(apiBase, target, options?)` using the
+same `PullRequestReviewTarget` and request authority as the review client.
+They return `{ enabled: false }` or `{ enabled: true, guide, run,
+currentHeadSha, excerptContents }`. Writing starts asynchronous generation;
+read again to observe completion. Obsolete guides retain their original SHA
+and prose, with excerpts and line notes removed. See the
+[pull request guide](../user/pull-request-guides.md) for settings and limits.
+
+`getPullRequestGuideStatus(apiBase, target, options?)` returns only the enabled
+state and process-local run status without a forge snapshot.
+`writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
+or false reuses a completed guide for the current head.

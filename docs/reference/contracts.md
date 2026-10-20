@@ -18,6 +18,22 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
   `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
+`ToolCompletedEvent.mcpAppResourceUri` is an optional Station-owned completion
+stamp from an already-open or shipped in-process MCP tool-definition catalog. EventStore replaces
+incoming claims, and uses it only to retain bounded App envelopes in history
+windows. It grants no resource or execution authority. Older readers ignore the
+field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
+### Delegation file refusals
+
+`@kontourai/station-contracts/attachment-staging` owns
+`DelegationFileRefusalCode`, the closed `delegation_files_*` vocabulary.
+`@kontourai/station-shared/delegation-files` supplies the runtime refusal class
+and batch name/size/data validation used by CLI preflight and the server
+materializer. Existing staging owner/tenant identity, grants and `stage_*` codes
+remain unchanged. The [CLI](cli.md#delegate) and [SDK](sdk.md#delegatetaskapibase-input-options-with-files)
+references describe cleanup and uncertain delivery outcomes.
+
 ## Modules
 
 The authored `@kontourai/station-contracts/usage-export` module defines the
@@ -27,10 +43,16 @@ It neither describes an analytics authorization credential nor proves a
 durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
 
+The `@kontourai/station-contracts/html-reply` subpath defines prepared page
+bytes, publication references, byte/height limits and theme variable names for
+[visual replies](../user/html-replies.md). It grants no publication or
+conversation access. Filesystem preparation stays in the server.
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
@@ -62,7 +84,7 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
-| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0, removed in 0.10.0: the pre-#3390 harness questionnaire and answer shapes, kept for stored events and `answers` callers |
+| `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -169,6 +191,189 @@ updates liveness without advancing the event replay cursor.
 `ChildWorkSessionView` may include bounded `settled` items with a reported
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
+
+## Engine-neutral failures
+
+`@kontourai/station-contracts/provider-failure` owns the closed
+`ProviderFailureKind`, `PROVIDER_FAILURE_RETRYABLE` and diagnostic-code mapping.
+Server `runtime.error` constructors explicitly satisfy `ProviderRuntimeErrorEvent`
+or its emitter-body type. Both require `kind`, computed `retryable` and `failurePhase`. Stored events and
+third-party plugins can predate these additive fields; missing means unknown.
+`SendTurnRefusedError` and pre-effect server refusals require an explicit kind, and `SessionStartRefusedError`
+requires a mapped code. Their inherited getters compute eligibility from the
+same constants; subclasses cannot omit the required constructor input.
+
+`failurePhase: refused` promises no provider-visible effect. `failed` means
+work may already have run and spent resources. `indeterminate` means invocation
+may have happened and its outcome is unknown. A new send blocked by custody of a
+previous process is instead a refused `conflict`: that new send did not run.
+`retryable` describes whether
+the same input is eligible for a later caller-requested attempt; it never
+instructs clients to replay a failed or indeterminate action automatically.
+`retryAfter`, when known, is an ISO timestamp. Account quota failures carry
+`quota_exhausted` and a reported reset time when available; eligibility remains
+false until that condition changes. Generic failures stay `provider_error`
+unless structured engine evidence supports a narrower kind.
+
+The fixed retryable kinds are `busy` (wait for the competing operation),
+`rate_limited` (respect the reported delay), `timeout`, `engine_crashed` and
+`unavailable` (session startup failed; a manual attempt may start it again).
+All other kinds are non-retryable: `auth`, `quota_exhausted`,
+`model_unavailable`, `provider_error`, `cancelled`, `input_unsupported`,
+`session_gone`, `permission_denied`, `conflict`, `indeterminate` and `warning`.
+
+The existing `retriable` event field retains its separate meaning. In
+particular, Codex can report that it will continue the same turn; changing it
+would change terminal-event folding. Warning-only diagnostics use `warning`, with `retryable: false`. Approval
+expiry, lingering-child reaping and serve fallback describe observations or
+partial/background work; they do not fail or replay the completed turn. Generic engine codes
+can carry a more specific kind when structured quota details establish it.
+No existing diagnostic code is renamed or removed.
+
+| Diagnostic code | Kind | Retryable |
+| --- | --- | --- |
+| `delegation_files_unsupported` | `input_unsupported` | `false` |
+| `delegation_files_duplicate_name` | `input_unsupported` | `false` |
+| `delegation_files_count` | `input_unsupported` | `false` |
+| `delegation_files_size` | `input_unsupported` | `false` |
+| `delegation_files_invalid_name` | `input_unsupported` | `false` |
+| `delegation_files_invalid_data` | `input_unsupported` | `false` |
+| `delegation_files_ref_invalid` | `input_unsupported` | `false` |
+| `delegation_files_unavailable` | `unavailable` | `true` |
+| `delegation_files_start_refused` | `provider_error` | `false` |
+| `delegation_files_turn_refused` | `provider_error` | `false` |
+| `delegation_files_outcome_unknown` | `indeterminate` | `false` |
+| `delegation_files_cleanup_failed` | `provider_error` | `false` |
+| `stage_not_found` | `input_unsupported` | `false` |
+| `stage_expired` | `input_unsupported` | `false` |
+| `stage_forbidden` | `permission_denied` | `false` |
+| `stage_grant_invalid` | `permission_denied` | `false` |
+| `stage_cancelled` | `cancelled` | `false` |
+| `stage_incomplete` | `input_unsupported` | `false` |
+| `stage_invalid_upload` | `input_unsupported` | `false` |
+| `stage_capacity` | `busy` | `true` |
+| `foreground_invocation_unavailable` | `conflict` | `false` |
+| `delegation_attempt_capacity` | `busy` | `true` |
+| `continuation_place_refused` | `input_unsupported` | `false` |
+| `acp-approval-takeover-failed` | `warning` | `false` |
+| `acp_approval_governance_refused` | `permission_denied` | `false` |
+| `adoption_continuation_in_progress` | `busy` | `true` |
+| `approval-escalation-requires-restart` | `warning` | `false` |
+| `approval-full-access-not-granted` | `permission_denied` | `false` |
+| `attachment_input_unsupported` | `input_unsupported` | `false` |
+| `authentication_rate_limited` | `rate_limited` | `true` |
+| `client_protocol_invalid` | `input_unsupported` | `false` |
+| `client_protocol_unsupported` | `input_unsupported` | `false` |
+| `client_turn_in_flight` | `busy` | `true` |
+| `client_turn_input_conflict` | `conflict` | `false` |
+| `client_turn_input_unsupported` | `input_unsupported` | `false` |
+| `confined_full_access_unavailable` | `permission_denied` | `false` |
+| `confinement_mechanism_unavailable` | `permission_denied` | `false` |
+| `confinement_not_observed` | `permission_denied` | `false` |
+| `confinement_workspace_incompatible` | `permission_denied` | `false` |
+| `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
+| `continuation_workspace_different_project` | `input_unsupported` | `false` |
+| `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
+| `continuation_workspace_project_context_missing` | `input_unsupported` | `false` |
+| `continuation_workspace_unbound` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
+| `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `engine-decision-not-sent` | `warning` | `false` |
+| `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-turn-failed` | `provider_error` | `false` |
+| `execution_engine_changed` | `conflict` | `false` |
+| `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `model_not_advertised` | `model_unavailable` | `false` |
+| `model-override-unsupported` | `input_unsupported` | `false` |
+| `muse_turn_slot_releasing` | `busy` | `true` |
+| `muse-approval-decide-failed` | `warning` | `false` |
+| `muse-approval-expired` | `warning` | `false` |
+| `muse-approval-mode-not-applied` | `warning` | `false` |
+| `muse-exit-without-terminal` | `engine_crashed` | `true` |
+| `muse-held-turn-unfinished` | `warning` | `false` |
+| `muse-lingering-child-reaped` | `warning` | `false` |
+| `muse-serve-host-exited` | `engine_crashed` | `true` |
+| `muse-serve-stop-unconfirmed` | `warning` | `false` |
+| `muse-serve-unavailable` | `warning` | `false` |
+| `muse-spawn-failed` | `unavailable` | `true` |
+| `muse-terminal-not-completed` | `provider_error` | `false` |
+| `muse-turn-idle-timeout` | `timeout` | `true` |
+| `muse-turn-timeout` | `timeout` | `true` |
+| `principal_unresolved` | `auth` | `false` |
+| `project_identity_not_prepared` | `input_unsupported` | `false` |
+| `provider_session_start_failed` | `unavailable` | `true` |
+| `provider_session_starting` | `busy` | `true` |
+| `provider_turn_in_progress` | `busy` | `true` |
+| `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
+| `resource_engine_start_capacity` | `busy` | `true` |
+| `session_ended` | `session_gone` | `false` |
+| `session_recovery_failed` | `unavailable` | `true` |
+| `session_start_in_flight` | `busy` | `true` |
+| `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
+| `session-reattach-conflict` | `conflict` | `false` |
+| `transcript-line-skipped` | `warning` | `false` |
+
+The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
+recursively discovers string `*_CODE` declarations and string-literal `code` class
+fields in contracts and server code,
+including private constants and newly added files. Known out-of-scope constants
+are explicitly allowed by file, name and value: directory/command grants and
+Station Control containment are caller authority, Flow unreachable-gate claims
+are evidence governance, and person/native-title control codes do not represent
+turn execution or session startup. Class-field exclusions separately name application
+configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
+a new unclassified constant or class-field code. Object-literal API/validation codes
+are outside this inventory; strict `runtime.error` construction is checked separately.
+Existing server import paths forward the relocated contract constants.
+
+The inventory also reads the delegation-file refusal union in `attachment-staging.ts`
+and the staging service's constructor code union independently of the mapping.
+Their codes surface through delegation HTTP refusals. Invalid, missing, expired,
+incomplete or already consumed file references require valid prepared inputs;
+`stage_capacity` is staging-store contention, while forbidden references or grants
+are permission failures. Workspace file-write unavailability can permit a manual
+retry after the host recovers. The delegation start/turn refusal wrappers no longer
+carry the underlying engine reason, so they conservatively use `provider_error`.
+Cleanup failures also require inspection before another attempt. Unknown delegation
+outcomes remain `indeterminate`; none of these kinds authorizes automatic replay.
+
+
+The same guard requires every literal server `runtime.error` constructor to
+satisfy a strict writer type. Its two named reader exceptions reconstruct old
+observations (`monitoredRuntimeEventFrom`) or pass a small input to a terminal
+predicate (`isDelegationTerminalEvent`); neither publishes a new event. The
+recovery coordinator's error matches are parameter types for observed events,
+not emitters. A compiler-backed test proves that the real writer type rejects
+missing metadata while the legacy reader accepts it.
+
+The [pinned wire test](../../packages/contracts/src/__tests__/provider-failure.test.ts)
+states every code's expected kind and retryable value as independent literals;
+changing an existing mapping to another valid kind fails. The
+[projection route tests](../../src-server/routes/orchestration/__tests__/provider-failure-projection.routes.test.ts)
+reach handoff, continuation and receipted-command failures, including invocation
+uncertainty. The [delivery test](../../src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts)
+reaches ordinary foreground refusal and same-key resend. These use fakes, not
+live model calls.
+
+Station's model-provider SSE writer recognizes `insufficient_quota` only in a
+bounded structured body from a qualified upstream HTTP 429. It forwards a fixed
+kind, never that body or its text. The Station-agent relay distinguishes
+`quota_exhausted` from ordinary `rate_limited` and preserves the same safe text
+in live events and saved failure markers. The
+[relay tests](../../src-server/providers/__tests__/station-agent-adapter.test.ts)
+exercise both cases through the production SSE writer.
+
+Queue retention reads computed eligibility for its existing five provider
+refusal codes, with an explicit fallback when older or hand-built errors have no
+kind. The code membership bounds this migration to the behavior proved equivalent;
+a coarse kind does not expand queue policy. A `muse-spawn-failed` response keeps
+its old drop policy even if it carries an `unavailable` kind. The
+[queue tests](../../src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts)
+pin both behaviors. Code-specific automatic redrain, composer transitions,
+corrective copy, workspace/adoption authority and reset/opt-in recovery policy
+remain separate decisions. Broader retention for newly classified codes is deferred.
 
 ## Product telemetry observations
 
@@ -949,3 +1154,12 @@ This profile does not replace existing continuity capabilities or migrate existi
 provider-specific execution paths. Durable inbox placement, accepted-through
 context delivery and crash-durable model/tool steps have separate implementation
 owners. Profile claims must change with their adapter behavior and proof.
+
+### Pull request review guides
+
+`@kontourai/station-contracts/pull-request-review-guide` owns the guide,
+stop, excerpt, run, and result shapes. Completed guides name `headSha`,
+`generatedAt`, `modelSelection`, and ordered `stops`. Runs are `Running` or
+`Failed`. Results carry `currentHeadSha` independently of the guide head and
+validated `excerptContents` for rendering. Stale results omit line anchors.
+The [user guide](../user/pull-request-guides.md) describes generation and limits.

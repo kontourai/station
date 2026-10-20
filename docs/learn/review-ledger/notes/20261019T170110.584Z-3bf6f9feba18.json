@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed against the responsive-action-surfaces inventory edit: the touch-target and inventory requirement it cites still hold for the Basis chip (44px floor, inventory entry under MessageBubble.tsx); no prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

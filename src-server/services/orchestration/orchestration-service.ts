@@ -30,6 +30,7 @@ import type {
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
+  type AcpApprovalControl,
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -96,6 +97,13 @@ import {
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  type ProviderFailureKind,
+  SESSION_START_IN_FLIGHT_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -152,6 +160,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import {
+  ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
   ClientTurnInFlightError,
   ClientTurnInputConflictError,
@@ -161,6 +170,7 @@ import {
 } from '../../providers/adapter-shape.js';
 import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
   nativeSessionIdentityMatchesSource,
@@ -601,6 +611,8 @@ export class OrchestrationCommandDispatchError extends Error {
   readonly code?: string;
   readonly outcome?: 'indeterminate';
   readonly retryable?: boolean;
+  readonly kind?: ProviderFailureKind;
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   constructor(
     message: string,
@@ -610,68 +622,75 @@ export class OrchestrationCommandDispatchError extends Error {
     readonly receiptStatus: 'persisted' | 'unavailable' = 'persisted',
     indeterminateTurnStart = false,
     code?: string,
+    refusal?: ProviderFailure,
   ) {
     super(message);
     this.name = 'OrchestrationCommandDispatchError';
     if (indeterminateTurnStart) {
       this.code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
       this.outcome = 'indeterminate';
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
     } else if (code) {
       this.code = code;
-      // A refusal-to-act (not a failed action) is retryable. Any code whose
-      // error message tells the user to retry belongs in this set —
-      // archive#3493 delta review caught 'session_start_in_flight' saying
-      // "retry" while this line still classified it non-retryable.
+      this.kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, code)
+        ? (
+            PROVIDER_FAILURE_KINDS as Readonly<
+              Record<string, ProviderFailureKind>
+            >
+          )[code]
+        : undefined;
       this.retryable =
-        code === 'session_start_in_flight' ||
-        code === 'resource_engine_start_capacity' ||
-        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
+        this.kind === undefined ? false : PROVIDER_FAILURE_RETRYABLE[this.kind];
+      if (this.kind === 'indeterminate') this.failurePhase = 'indeterminate';
+    }
+    if (refusal && !indeterminateTurnStart) {
+      this.kind = refusal.kind;
+      this.retryable = refusal.retryable;
+      this.failurePhase = refusal.failurePhase;
+    }
+    if (
+      indeterminateTurnStart ||
+      indeterminateSession ||
+      this.kind === 'indeterminate'
+    ) {
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
+      this.outcome = 'indeterminate';
     }
   }
 }
 
-/**
- * Adapter refusals a caller should retry rather than drop: the same send
- * succeeds once the condition passes.
- * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
- *   still exiting.
- * - #2324: a send that arrived while the engine was running a turn it opened
- *   on its own; it succeeds once that turn closes.
- * - A send that outwaited its session's engine start (an ACP reattach); it
- *   succeeds once the session is ready.
- * - A send whose session's start failed while it waited: nothing was sent,
- *   and a later send can restart the session, so the message is kept.
- * - A send whose idempotency key another attempt still held or released
- *   unsent: the same key may be sent again.
- */
-const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
-  MUSE_TURN_SLOT_RELEASING_CODE,
-  PROVIDER_TURN_IN_PROGRESS_CODE,
-  PROVIDER_SESSION_STARTING_CODE,
-  PROVIDER_SESSION_START_FAILED_CODE,
+const LEGACY_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 ]);
 
-/**
- * The code of a retryable adapter refusal (see
- * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
- * contract code (not the adapter's class) so this service does not import an
- * adapter module.
- */
+/** Only the legacy pre-effect codes can establish refusal without typed metadata. */
 function retryableAdapterRefusalCode(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
-    ? code
-    : undefined;
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    typeof error.code !== 'string'
+  )
+    return undefined;
+  return LEGACY_ADAPTER_REFUSAL_CODES.has(error.code) ? error.code : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
-export class SessionReattachConflictError extends Error {
+export class SessionReattachConflictError extends ProviderRefusalError {
   readonly code = SESSION_REATTACH_CONFLICT_CODE;
 
   constructor(readonly reason: SessionReattachConflictReason) {
-    super(`${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`);
+    super(
+      `${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`,
+      PROVIDER_FAILURE_KINDS[SESSION_REATTACH_CONFLICT_CODE],
+    );
   }
 }
 
@@ -683,12 +702,13 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-class SessionStopWhileStartingError extends Error {
-  readonly code = 'session_start_in_flight';
+class SessionStopWhileStartingError extends ProviderRefusalError {
+  readonly code = SESSION_START_IN_FLIGHT_CODE;
 
   constructor(threadId: string, timeoutMs: number) {
     super(
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
+      PROVIDER_FAILURE_KINDS[SESSION_START_IN_FLIGHT_CODE],
     );
     this.name = 'SessionStopWhileStartingError';
   }
@@ -896,6 +916,12 @@ interface OrchestrationServiceOptions {
     provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
+  /**
+   * #3290: who decides which of an ACP connection's actions ask
+   * (`acpApprovalControl` of its command). `undefined` for a connection this
+   * Station does not know, which then has no approval knob.
+   */
+  acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
   /**
    * #2540: an `idle` session whose engine has been unused this long is
    * parked — its engine process stops, the session stays dormant and
@@ -3912,6 +3938,7 @@ export class OrchestrationService {
       id: string;
       name: string;
       originalId: string;
+      resolvedModel?: string;
     }>
   > {
     const adapter = this.options.adapterRegistry.get(provider);
@@ -6251,10 +6278,20 @@ export class OrchestrationService {
             postureInput.threadId,
             context.fullAccessGrant,
           );
+          const priorApplied = this.approvalPosture.appliedOf(
+            postureInput.threadId,
+          );
           const startModelOptions = await this.approvalPosture.resolve({
             threadId: postureInput.threadId,
             provider: adapter.provider,
             phase: 'start',
+            acpControl: this.acpApprovalControlOfThread(
+              postureInput.threadId,
+              adapter.provider,
+              typeof postureInput.metadata?.connectionId === 'string'
+                ? postureInput.metadata.connectionId
+                : undefined,
+            ),
             ...(typeof postureInput.metadata?.agentSlug === 'string'
               ? { agentSlug: postureInput.metadata.agentSlug }
               : {}),
@@ -6296,9 +6333,13 @@ export class OrchestrationService {
               throw portableRefusalForUnadmittedThread(predecessorConsent);
           }
           if (!internal?.skipModelOptionSupportCheck) {
-            const unsupported = unsupportedModelOptionKeys(
+            const unsupported = this.unsupportedOptionKeysForThread(
+              input.threadId,
               adapter.provider,
               input.modelOptions,
+              typeof input.metadata?.connectionId === 'string'
+                ? input.metadata.connectionId
+                : undefined,
             );
             if (unsupported.length > 0)
               throw new Error(
@@ -6523,6 +6564,29 @@ export class OrchestrationService {
             startInput,
             internal?.foregroundInvocationAdmission,
           );
+          // #3290: before the start boundary, so a definitive refusal (an
+          // approval mode the engine's own rules would override) is not
+          // recorded as a start that may have happened.
+          try {
+            await adapter.preflightStart?.(startInput);
+          } catch (error) {
+            if (!(error instanceof ApprovalGovernanceRefusedError)) throw error;
+            throw await this.completeGovernanceRefusal(error, {
+              threadId: startInput.threadId,
+              agentSlug:
+                typeof startInput.metadata?.agentSlug === 'string'
+                  ? startInput.metadata.agentSlug
+                  : undefined,
+              capturedAgent: internal?.foregroundInvocationAdmission
+                ? {
+                    approvalMode:
+                      internal.foregroundInvocationAdmission.agentSpec.execution
+                        ?.approvalMode,
+                  }
+                : undefined,
+              prior: priorApplied,
+            });
+          }
           throwIfAborted(startInput.signal);
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
@@ -6987,6 +7051,7 @@ export class OrchestrationService {
         outcome.receiptStatus,
         false,
         code,
+        'failure' in outcome ? outcome.failure : undefined,
       );
     }
     this.initialize();
@@ -7199,6 +7264,14 @@ export class OrchestrationService {
                   : pendingPrompt,
               }
             : publicTurnInput;
+          // #3290: what a governance refusal of this turn needs to say
+          // what Default would do, and to put back what the engine still runs.
+          let turnGovernance:
+            | {
+                agentSlug: string | undefined;
+                prior: ReturnType<ApprovalPosture['appliedOf']>;
+              }
+            | undefined;
           let turnInput = stripReservedCapabilityMetadata(
             composeAmbientSendTurnInput(turnInputWithFirstTurnPrompt),
           );
@@ -7266,10 +7339,18 @@ export class OrchestrationService {
               turnInput.threadId,
               this.readStartConfinementStamp(turnInput.threadId),
             );
+            turnGovernance = {
+              agentSlug: typeof agentSlug === 'string' ? agentSlug : undefined,
+              prior: this.approvalPosture.appliedOf(turnInput.threadId),
+            };
             const modelOptions = await this.approvalPosture.resolve({
               threadId: turnInput.threadId,
               provider: adapter.provider,
               phase: 'turn',
+              acpControl: this.acpApprovalControlOfThread(
+                turnInput.threadId,
+                adapter.provider,
+              ),
               confinement,
               ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
               ...(internal?.foregroundInvocationAdmission
@@ -7288,7 +7369,8 @@ export class OrchestrationService {
               ? { ...withoutOptions, modelOptions, confinement }
               : { ...withoutOptions, confinement };
           }
-          const unsupportedTurnOptions = unsupportedModelOptionKeys(
+          const unsupportedTurnOptions = this.unsupportedOptionKeysForThread(
+            turnInput.threadId,
             adapter.provider,
             turnInput.modelOptions,
           );
@@ -8109,6 +8191,19 @@ export class OrchestrationService {
                   attachmentReservationBytes,
                 );
               }
+              if (error instanceof ApprovalGovernanceRefusedError)
+                throw await this.completeGovernanceRefusal(error, {
+                  threadId: turnInput.threadId,
+                  agentSlug: turnGovernance?.agentSlug,
+                  capturedAgent: internal?.foregroundInvocationAdmission
+                    ? {
+                        approvalMode:
+                          internal.foregroundInvocationAdmission.agentSpec
+                            .execution?.approvalMode,
+                      }
+                    : undefined,
+                  prior: turnGovernance?.prior,
+                });
               throw error;
             }
             obtainedResult = result;
@@ -8863,9 +8958,10 @@ export class OrchestrationService {
           if (!provider) {
             throw new Error(`Session not found: ${command.threadId}`);
           }
-          if (!approvalKnobSupported(provider)) {
+          if (!this.approvalKnobForThread(command.threadId, provider)) {
             throw new SendTurnRefusedError(
               'This engine has no approval control.',
+              'input_unsupported',
             );
           }
           const result = this.recordApprovalModeDecision({
@@ -8917,9 +9013,6 @@ export class OrchestrationService {
           error instanceof DraftDiscardNotAuthorizedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
-          // #2300/#2324: a send refused until a condition passes (a Muse
-          // process still exiting, an engine's own turn still running) — a
-          // refusal to act, retryable.
           retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
@@ -8964,7 +9057,8 @@ export class OrchestrationService {
         // as a definitive rejection.
         // An attachment refusal's code is forwarded (NOT retryable) so the
         // client can say the same send will be refused again instead of
-        // offering a blind retry.
+        // offering a blind retry. #3290: so is an approval-governance
+        // refusal, whose next step is a configuration or mode change.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
@@ -8973,13 +9067,22 @@ export class OrchestrationService {
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
           error instanceof AttachmentInputUnsupportedError ||
+          error instanceof ApprovalGovernanceRefusedError ||
           error instanceof ClientTurnInputConflictError ||
           error instanceof TurnSubmissionUnsupportedError ||
           // #2494: the closed confinement refusal codes are a public
           // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
           error instanceof ConfinementRefusedError
           ? error.code
-          : retryableAdapterRefusalCode(error),
+          : error instanceof SendTurnRefusedError &&
+              'code' in error &&
+              typeof error.code === 'string'
+            ? error.code
+            : retryableAdapterRefusalCode(error),
+        error instanceof SendTurnRefusedError ||
+          error instanceof ProviderRefusalError
+          ? error
+          : undefined,
       );
     } finally {
       if (dispatchedTurnThread !== undefined) {
@@ -10571,6 +10674,89 @@ export class OrchestrationService {
   }
 
   /** The engine a session runs on, live or dormant; undefined if unknown. */
+  /**
+   * #3290: whether the thread's engine applies an approval posture. Every
+   * engine but ACP answers per provider; an ACP thread answers for the
+   * connection it runs on (`connectionId` when the caller has it, else the
+   * one its session started with).
+   */
+  approvalKnobForThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): boolean {
+    return approvalKnobSupported(
+      provider,
+      this.acpApprovalControlOfThread(threadId, provider, connectionId),
+    );
+  }
+
+  /**
+   * `unsupportedModelOptionKeys`, except that an ACP thread on a connection
+   * whose approval rules Station sets also takes `approvalMode` (#3290). The
+   * support table cannot say so: ACP is one provider for many engines, and
+   * only some of them apply a posture.
+   */
+  private unsupportedOptionKeysForThread(
+    threadId: string,
+    provider: EngineId,
+    modelOptions: Record<string, unknown> | undefined,
+    connectionId?: string,
+  ): string[] {
+    const unsupported = unsupportedModelOptionKeys(provider, modelOptions);
+    return provider === 'acp' &&
+      this.approvalKnobForThread(threadId, provider, connectionId)
+      ? unsupported.filter((key) => key !== 'approvalMode')
+      : unsupported;
+  }
+
+  /**
+   * #3290: a governance refusal completed with what Default would do in this
+   * chat. Station's record of the applied mode goes back to what the engine
+   * still runs first: the refused mode never applied, and a Default pick
+   * must not resolve against it.
+   */
+  private async completeGovernanceRefusal(
+    error: ApprovalGovernanceRefusedError,
+    input: {
+      threadId: string;
+      agentSlug: string | undefined;
+      capturedAgent: { approvalMode?: ApprovalMode } | undefined;
+      prior: ReturnType<ApprovalPosture['appliedOf']>;
+    },
+  ): Promise<ApprovalGovernanceRefusedError> {
+    this.approvalPosture.restoreApplied(input.threadId, input.prior);
+    const request = await this.approvalPosture.defaultPickRequest({
+      threadId: input.threadId,
+      ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+      ...(input.capturedAgent ? { capturedAgent: input.capturedAgent } : {}),
+    });
+    return new ApprovalGovernanceRefusedError(
+      `${error.message} ${
+        request === 'configured'
+          ? "Picking Default won't avoid this: it applies the approval mode set as this Agent's or this Station's default."
+          : request === 'takeover'
+            ? "Picking Default won't avoid this: Station already applied its approval rules in this chat, so Default keeps them at Ask."
+            : "Pick Default to keep using OpenCode's own settings."
+      }`,
+    );
+  }
+
+  private acpApprovalControlOfThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): AcpApprovalControl | undefined {
+    if (provider !== 'acp') return undefined;
+    const started =
+      connectionId ??
+      this.sessionConnectionIds.get(threadId) ??
+      this.readLatestSessionStartMetadata(threadId)?.connectionId;
+    return typeof started === 'string' && started
+      ? this.options.acpApprovalControl?.(started)
+      : undefined;
+  }
+
   private threadProviderForPosture(threadId: string): EngineId | undefined {
     return (
       this.threadProviders.get(threadId) ??
@@ -10595,7 +10781,7 @@ export class OrchestrationService {
     provider: EngineId,
   ): boolean {
     if (command.decision !== 'acceptForSession') return false;
-    if (!approvalKnobSupported(provider)) return false;
+    if (!this.approvalKnobForThread(command.threadId, provider)) return false;
     let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
     try {
       current = this.options.eventStore?.readCurrentRequestEvent(
@@ -10805,7 +10991,7 @@ export class OrchestrationService {
       was: FullAccessRevocationReport['reset'][number]['was'],
     ) => {
       const provider = this.threadProviderForPosture(threadId);
-      if (!provider || !approvalKnobSupported(provider)) return;
+      if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
       this.recordApprovalModeDecision({
         threadId,
         provider,
@@ -11226,6 +11412,13 @@ export class OrchestrationService {
       threadId: input.threadId,
       provider,
       phase: 'start',
+      acpControl: this.acpApprovalControlOfThread(
+        input.threadId,
+        provider,
+        typeof input.metadata?.connectionId === 'string'
+          ? input.metadata.connectionId
+          : undefined,
+      ),
       ...(typeof input.metadata?.agentSlug === 'string'
         ? { agentSlug: input.metadata.agentSlug }
         : {}),
@@ -11372,6 +11565,7 @@ export class OrchestrationService {
       threadId,
       provider,
       phase: 'turn',
+      acpControl: this.acpApprovalControlOfThread(threadId, provider),
       ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
       modelOptions,
       // #2493: the replay's carried mode is the source turn's; confinement

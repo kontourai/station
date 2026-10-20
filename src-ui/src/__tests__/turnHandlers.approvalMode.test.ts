@@ -302,3 +302,70 @@ describe('lastAppliedApprovalMode tracking from session.configured / turn.starte
     });
   });
 });
+
+describe('#3290: a pick OpenCode could not be switched to', () => {
+  const OC_THREAD = 'opencode-takeover-thread';
+
+  beforeEach(() => {
+    activeChatsStore.removeChat(OC_THREAD);
+    activeChatsStore.initChat(OC_THREAD, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'OpenCode Chat',
+    });
+    activeChatsStore.updateChat(OC_THREAD, { approvalPosture: 'ask' });
+  });
+
+  const chat = () => activeChatsStore.getSnapshot()[OC_THREAD];
+
+  test('the takeover warning marks the recorded pick not applied and keeps what still runs', () => {
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:00.000Z',
+      method: 'runtime.warning',
+      severity: 'warning',
+      message:
+        "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings: x.",
+      code: 'acp-approval-takeover-failed',
+      details: { requestedApprovalMode: 'ask' },
+    });
+    expect(chat().approvalTakeoverFailed).toBe(true);
+    expect(chat().lastAppliedApprovalMode).toBeUndefined();
+    expect(sessionApprovalOverride(chat())).toEqual({
+      mode: 'ask',
+      state: 'not-applied',
+    });
+  });
+
+  test('a turn that kept a stricter mode says so; the next turn that took the pick clears it', () => {
+    activeChatsStore.updateChat(OC_THREAD, { approvalPosture: 'never' });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:01.000Z',
+      method: 'turn.started',
+      turnId: 'turn-kept',
+      metadata: { approvalMode: 'ask', approvalTakeoverFailed: true },
+    });
+    expect(chat()).toMatchObject({
+      approvalTakeoverFailed: true,
+      lastAppliedApprovalMode: 'ask',
+    });
+    expect(sessionApprovalOverride(chat())?.state).toBe('not-applied');
+
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:02.000Z',
+      method: 'turn.started',
+      turnId: 'turn-took',
+      metadata: { approvalMode: 'never' },
+    });
+    expect(chat().approvalTakeoverFailed).toBe(false);
+    expect(sessionApprovalOverride(chat())).toEqual({
+      mode: 'never',
+      state: 'confirmed',
+    });
+  });
+});

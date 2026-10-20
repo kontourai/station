@@ -11,8 +11,6 @@ import {
   type TaskPickerTask,
 } from './TaskPicker';
 
-export { ConnectedAnswerBasisAffordance } from './ConnectedAnswerBasisAffordance';
-
 /** The exact, non-content identity carried by an answer attachment. */
 export interface AttachAnswerToTaskInput {
   taskId: string;

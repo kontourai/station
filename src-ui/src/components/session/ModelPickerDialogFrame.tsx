@@ -3,6 +3,7 @@ import {
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import { type KeyboardEvent, type ReactNode, useEffect, useRef } from 'react';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 
 /**
@@ -72,7 +73,7 @@ export function ModelPickerDialogFrame({
     };
     document.addEventListener('pointerdown', handlePointerDown);
     const focusable = panelRef.current?.querySelector<HTMLElement>(
-      window.matchMedia('(max-width: 768px)').matches
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches
         ? 'button:not(:disabled), input:not(:disabled), select:not(:disabled)'
         : 'input:not(:disabled), button:not(:disabled)',
     );

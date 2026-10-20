@@ -111,13 +111,16 @@ export function handleTextDeltaEvent(
     // Real content is flowing — the transient "Thinking…" hint is stale.
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
-      event.createdAt,
-    ),
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: event.delta.includes('\n')
+      ? derivePlanArtifactFromStreamingState(
+          {
+            streamingMessage: nextStreamingMessage,
+            planArtifact: chat.planArtifact,
+          },
+          event.createdAt,
+        )
+      : chat.planArtifact,
   });
 }
 
@@ -144,13 +147,16 @@ export function handleReasoningDeltaEvent(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
-      event.createdAt,
-    ),
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: event.delta.includes('\n')
+      ? derivePlanArtifactFromStreamingState(
+          {
+            streamingMessage: nextStreamingMessage,
+            planArtifact: chat.planArtifact,
+          },
+          event.createdAt,
+        )
+      : chat.planArtifact,
   });
 }
 
@@ -222,7 +228,10 @@ function committedMessageIndexForTurn(
  * (same reasoning the terminal's historical branch already carries).
  */
 function upsertToolPartOnEventTurn(
-  event: { threadId: string; toolCallId: string; turnId?: string },
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'tool.started' | 'tool.progress' }
+  >,
   updates: Parameters<typeof upsertToolPart>[2],
 ): void {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -248,6 +257,14 @@ function upsertToolPartOnEventTurn(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     isProcessingStep: true,
+    ...(event.method === 'tool.started'
+      ? {
+          planArtifact: derivePlanArtifactFromStreamingState(
+            chat,
+            event.createdAt,
+          ),
+        }
+      : {}),
     streamingMessage: {
       ...streamingMessage,
       contentParts: upsertToolPart(
@@ -346,6 +363,7 @@ export function handleToolCompletedEvent(
             ? 'unresolved'
             : 'error',
     result: event.output,
+    ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated
       ? { outputTruncated: true as const }

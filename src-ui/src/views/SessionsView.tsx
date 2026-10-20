@@ -611,6 +611,17 @@ export function SessionsView({
       ),
     [sessions, filters.kind, filters.project, matchesSearch, selectedId],
   );
+  const selectedRunRoot = useMemo(() => {
+    if (!selectedId) return null;
+    const group = groupDelegatedSessionRuns(sessions).find(
+      (entry) =>
+        entry.kind === 'run' &&
+        entry.run.members.some((member) => member.threadId === selectedId),
+    );
+    return group?.kind === 'run' && group.run.parent.threadId !== selectedId
+      ? group.run.parent
+      : null;
+  }, [sessions, selectedId]);
   const clearSearchAndFilters = useCallback(() => {
     setSearch('');
     setFilters(NO_ACTIVITY_FILTERS);
@@ -679,14 +690,17 @@ export function SessionsView({
       const rows = rowsByLane
         .get(laneId)!
         .sort((left, right) => left.order - right.order);
-      const count = rows.reduce(
-        (total, row) =>
-          total +
-          row.members.filter(
-            (member) => lanesByThreadId.get(member.threadId) === laneId,
-          ).length,
-        0,
-      );
+      const count =
+        laneId === 'needsYou'
+          ? rows.reduce(
+              (total, row) =>
+                total +
+                row.members.filter(
+                  (member) => lanesByThreadId.get(member.threadId) === laneId,
+                ).length,
+              0,
+            )
+          : rows.length;
       return { laneId, rows, count };
     });
     return { lanesByThreadId, turnCounts, presentationLanes };
@@ -1225,36 +1239,51 @@ export function SessionsView({
         firstRunAnchor="activity"
       >
         {selected && (
-          <SessionDetail
-            key={`${apiBase}\0${selected.threadId}`}
-            apiBase={apiBase}
-            session={selected}
-            evidenceReveal={evidenceReveal}
-            onTaskChanged={() => void refetch()}
-            onContinueInChat={
-              onContinueInChat
-                ? (draft) => onContinueInChat(selected.threadId, draft)
-                : undefined
-            }
-            onAdopted={(child, intent, message) => {
-              if (message.trim())
-                chatDraftsStore.setActivityDraft(
-                  apiBase,
-                  child.threadId,
-                  message,
-                );
-              adoptedSelectionRef.current = {
-                threadId: child.threadId,
-                intent,
-              };
-              void refetch().finally(() => {
-                if (intent === selectionIntentRef.current) {
-                  setSelection(child.threadId);
-                }
-              });
-            }}
-            getSelectionIntent={() => selectionIntentRef.current}
-          />
+          <>
+            {selectedRunRoot && (
+              <nav
+                aria-label="Session parents"
+                className="session-parent-navigation"
+              >
+                <button
+                  type="button"
+                  onClick={() => selectWithIntent(selectedRunRoot.threadId)}
+                >
+                  Parent run: {sessionTitle(selectedRunRoot)}
+                </button>
+              </nav>
+            )}
+            <SessionDetail
+              key={`${apiBase}\0${selected.threadId}`}
+              apiBase={apiBase}
+              session={selected}
+              evidenceReveal={evidenceReveal}
+              onTaskChanged={() => void refetch()}
+              onContinueInChat={
+                onContinueInChat
+                  ? (draft) => onContinueInChat(selected.threadId, draft)
+                  : undefined
+              }
+              onAdopted={(child, intent, message) => {
+                if (message.trim())
+                  chatDraftsStore.setActivityDraft(
+                    apiBase,
+                    child.threadId,
+                    message,
+                  );
+                adoptedSelectionRef.current = {
+                  threadId: child.threadId,
+                  intent,
+                };
+                void refetch().finally(() => {
+                  if (intent === selectionIntentRef.current) {
+                    setSelection(child.threadId);
+                  }
+                });
+              }}
+              getSelectionIntent={() => selectionIntentRef.current}
+            />
+          </>
         )}
       </SplitPaneLayout>
 

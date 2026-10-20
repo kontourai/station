@@ -48,6 +48,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
+import { authorTelemetryWorkflowFindings } from './check-author-telemetry-workflows.mjs';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
@@ -61,6 +62,7 @@ import {
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -438,9 +440,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d';
+  'github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d';
+  'github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -1679,7 +1681,7 @@ function isExactDeliveryPlanner(job) {
   return (
     Boolean(job) &&
     createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(job)))
+      .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
       'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
   );
@@ -2535,7 +2537,7 @@ function isExactSourcePolicyCall(job) {
   if (!job) return false;
   return (
     createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(job)))
+      .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
     'bb2c01de5e28347090a7b638e4b1a46f379c07e93ab053b8d82aca79c1234378'
   );
@@ -2650,7 +2652,7 @@ function primaryCiRouterFindings(file, document) {
   );
   if (
     createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(deliveryJobs)))
+      .update(JSON.stringify(canonicalValue(deliveryJobs)))
       .digest('hex') !==
     'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
   )
@@ -2974,20 +2976,10 @@ function primaryCiRouterFindings(file, document) {
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
   '2d70117b7341f80d25b273127dd156a76cdfbb998509832b36f516a34f9fb9f2';
-function orderedPolicy(value) {
-  if (Array.isArray(value)) return value.map(orderedPolicy);
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, orderedPolicy(value[key])]),
-    );
-  return value;
-}
 function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === '.github/workflows/pr-ci-supersession.yml') {
     const digest = createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(document)))
+      .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
       '6bcfb0af788025369a0f9d1a90fc61dae2826dd06cb1d56bf2bc933d9bec044b'
@@ -3003,7 +2995,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   }
   if (file === '.github/workflows/source-verification-policy.yml') {
     const digest = createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(document)))
+      .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
       'e6f5b25c8215c2d8f03aceb3060818f5b93de0b8f610d09b2bd2e96272b6129e'
@@ -3019,7 +3011,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   }
   if (file === '.github/workflows/landing-automation.yml') {
     const digest = createHash('sha256')
-      .update(JSON.stringify(orderedPolicy(document)))
+      .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest === LANDING_POLICY_SHA256
       ? []
@@ -3567,6 +3559,15 @@ function main() {
         `    ${finding.file} job '${finding.jobId}': ${finding.message}`,
       );
     }
+    return 1;
+  }
+
+  const telemetryFindings = authorTelemetryWorkflowFindings(
+    readWorkflowDocuments(),
+  );
+  if (telemetryFindings.length > 0) {
+    for (const finding of telemetryFindings)
+      console.error(`[actionlint] ${finding}`);
     return 1;
   }
 

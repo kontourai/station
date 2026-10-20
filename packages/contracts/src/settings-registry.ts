@@ -362,6 +362,33 @@ export const APP_SETTINGS_REGISTRY = [
       'Skip Station’s built-in skill catalogs after the next Station restart so only registries you add yourself appear.',
   }),
   defineSetting({
+    key: 'reviewGuidesEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Review guides',
+    help: 'Allow AI-written tours of pull requests on this server.',
+    description:
+      'Enable shared, head-bound pull request guides. Generation sends the change to the configured model.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'reviewGuideModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Review guide model',
+    help: 'Choose the model that writes pull request guides.',
+    description: 'Uses the structure model when empty.',
+  }),
+  defineSetting({
+    key: 'reviewGuideInstructions',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4000 },
+    label: 'Review guide instructions',
+    help: 'Change the emphasis and reading order of generated guides.',
+    description:
+      'Preferences cannot change file coverage, excerpt validation, or the guide format.',
+  }),
+  defineSetting({
     key: 'approvalGuardian',
     scope: 'station',
     descriptor: { kind: 'composite' },
@@ -541,7 +568,7 @@ export const APP_SETTINGS_REGISTRY = [
     // a settings row is not the place to teach it (round 4 N2: this
     // description had grown to 833 characters against a median of 110).
     description:
-      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations): Full access here runs those with no sandbox and no approval prompts. Never applied to a session already running. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
+      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations), never to a session already running. Full access turns off approval prompts where the engine allows it; a start without a full-access grant, such as a webhook, still runs inside Station’s workspace confinement. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the
@@ -729,12 +756,23 @@ export const NULLABLE_APP_CONFIG_KEYS: ReadonlySet<keyof AppConfig> = new Set(
 export const INTERNAL_APP_CONFIG_FIELDS = [
   'mcpUiFrameOrigin',
   'pluginFrameOrigin',
-  'managedChatOrchestration',
   // #1582 D9: runtime-derived on GET only — the shell this host would try
   // first when `terminalShell` is unset. It is the DEFAULT for a registered
   // setting, never a setting of its own, so it must not be writable.
   'defaultTerminalShell',
 ] as const satisfies readonly (keyof AppConfig)[];
+
+/**
+ * Keys an earlier release could leave in `config/app.json` that are no
+ * longer `AppConfig` fields. The loader deletes them on read, so a stale file
+ * still loads but neither echoes them from `GET /config/app` nor keeps them
+ * on disk. `PUT /config/app` ignores them as unknown keys.
+ *
+ * `managedChatOrchestration` was the runtime-derived
+ * `STATION_FEATURES=managed-chat-orchestration` flag (ADR 0010). ADR 0014
+ * recorded it as inert, and it was retired.
+ */
+export const RETIRED_APP_CONFIG_KEYS = ['managedChatOrchestration'] as const;
 
 type RegisteredKey = (typeof APP_SETTINGS_REGISTRY)[number]['key'];
 type InternalKey = (typeof INTERNAL_APP_CONFIG_FIELDS)[number];
@@ -796,7 +834,7 @@ export interface SanitizeAppConfigUpdateResult {
  * - Keys in `INTERNAL_APP_CONFIG_FIELDS` are runtime-derived and are always
  *   ignored (reason `'runtime-derived'`) — this is what stops a client that
  *   round-trips a `GET /config/app` response (which injects
- *   `mcpUiFrameOrigin`/`pluginFrameOrigin`/`managedChatOrchestration`) from persisting them.
+ *   `mcpUiFrameOrigin`/`pluginFrameOrigin`) from persisting them.
  * - Unknown keys are ignored (reason `'unknown'`), not rejected: earlier
  *   `app.json` files can carry stray keys that prior clients still
  *   round-trip, and rejecting the whole request over them would be a

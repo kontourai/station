@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed against the inventory text edits and the chip's transparent fill with --border-primary and --text-secondary: no theming claim changes.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

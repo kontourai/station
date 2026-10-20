@@ -242,6 +242,19 @@ A skill can also declare itself runnable as a slash command, which is how a reus
 
 Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
 
+The built-in Station Agent receives visual replies through its default
+station-control attachment. For an authored Claude/Codex Agent, attach
+station-control and select `html_preview` and `html_render`; ACP must attach the
+whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
+height and console output, then publish the same HTML. Pages appear at the tool
+result and survive reload. Use the host theme CSS variables. App/session access
+and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
+srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not
+ask viewers for secrets. Preview and publishing are bounded writes and respect
+engine tool approval. Chromium is needed only for
+preview. See the [visual replies guide](../user/html-replies.md) for byte,
+image, viewport, time and retention limits.
+
 Two built-in servers serve different purposes here. `station-control` exposes
 Station operations as tools; `station-docs` serves static shipped prose without
 credentials or live state. This is not an exhaustive server inventory: the

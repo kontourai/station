@@ -3814,8 +3814,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual(['Running · 3']);
-      expect(sectionHeadings(container)).toEqual(['Running · 3']);
+      expect(headings).toEqual(['Running · 2']);
+      expect(sectionHeadings(container)).toEqual(['Running · 2']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -4612,8 +4612,7 @@ describe('SessionsView', () => {
         }),
         // Terminal, but a read-only attached transcript: its detail is
         // `AttachedSessionDetail`, which has no receipts/diagnostics region —
-        // never offer a control whose target may be absent (the
-        // `revealHomeRegion` rule).
+        // never offer a control whose target may be absent.
         flatSession({
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',

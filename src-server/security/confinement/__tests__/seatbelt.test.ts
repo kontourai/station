@@ -121,6 +121,9 @@ describe('Seatbelt grants and profile', () => {
         `${COMMON}/logs/refs/heads/feat/x`,
       ],
       writeDenied: [
+        // The engines' project configuration (#3800).
+        `${WORKSPACE}/.codex`,
+        `${WORKSPACE}/.claude`,
         `${COMMON}/hooks`,
         `${COMMON}/config`,
         `${COMMON}/info`,
@@ -153,6 +156,8 @@ describe('Seatbelt grants and profile', () => {
     expect(grants.writable).toEqual([WORKSPACE, TEMP, CONFIG]);
     expect(grants.writableFiles).toEqual([]);
     expect(grants.writeDenied).toEqual([
+      `${WORKSPACE}/.codex`,
+      `${WORKSPACE}/.claude`,
       `${dotGit}/hooks`,
       `${dotGit}/config`,
       `${dotGit}/info`,
@@ -285,6 +290,18 @@ describe('Seatbelt breadth', () => {
           }),
         ] as const,
     ),
+    ...(['.codex', '.claude'] as const).map(
+      (dir) =>
+        [
+          `a missing ${dir} deny`,
+          (g: ReturnType<typeof linkedGrants>) => ({
+            ...g,
+            writeDenied: (g.writeDenied ?? []).filter(
+              (path) => path !== `${WORKSPACE}/${dir}`,
+            ),
+          }),
+        ] as const,
+    ),
     [
       'a missing .git pointer deny',
       (g: ReturnType<typeof linkedGrants>) => ({
@@ -348,6 +365,40 @@ describe('Seatbelt breadth', () => {
       expect(seatbeltWriteGrantKinds(drop(grants, dotGit), bounds)).toBe(
         undefined,
       );
+    },
+  );
+
+  test.each(['.codex', '.claude'])(
+    'a workspace without git is out of bounds without its %s deny (#3800)',
+    (dir) => {
+      const grants = seatbeltGrants({
+        workspace: WORKSPACE,
+        stationTempDir: TEMP,
+        stationConfigDir: CONFIG,
+        hidden: [],
+        readable: [],
+      });
+      const { git: _git, ...bounds } = BOUNDS;
+      expect(grants.writeDenied).toEqual([
+        `${WORKSPACE}/.codex`,
+        `${WORKSPACE}/.claude`,
+      ]);
+      expect(seatbeltWriteGrantKinds(grants, bounds)).toEqual([
+        'station-config',
+        'station-temp',
+        'workspace',
+      ]);
+      expect(
+        seatbeltWriteGrantKinds(
+          {
+            ...grants,
+            writeDenied: (grants.writeDenied ?? []).filter(
+              (path) => path !== `${WORKSPACE}/${dir}`,
+            ),
+          },
+          bounds,
+        ),
+      ).toBe(undefined);
     },
   );
 

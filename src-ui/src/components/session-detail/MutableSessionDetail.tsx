@@ -222,9 +222,8 @@ export function MutableSessionDetail({
     // Uncontrolled on purpose: React never writes `open`, so opening it here
     // is synchronous and the reader's own later toggles are left alone.
     if (detailsRef.current) detailsRef.current.open = true;
-    // Same shape as `revealHomeRegion` (views/home/home-reveal.ts): a plain
-    // positioned scroll — jsdom implements none of it, hence the guard —
-    // then focus, so a keyboard or screen-reader user lands IN the region
+    // A plain positioned scroll — jsdom implements none of it, hence the
+    // guard — then focus, so a keyboard or screen-reader user lands IN the region
     // rather than having it painted behind a still-parked focus ring.
     if (typeof region.scrollIntoView === 'function') {
       region.scrollIntoView({ block: 'start' });
