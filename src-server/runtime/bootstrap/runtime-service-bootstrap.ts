@@ -4,7 +4,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
-import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import {
@@ -399,37 +399,10 @@ export function createRuntimeServiceBundle(
 
   const acpBridge =
     factories.createACPManager?.(
-      context.approvalRegistry,
       context.logger,
       acpManagedWorkspaceHome,
-      context.memoryAdapters,
-      (_slug: string) =>
-        new FileMemoryAdapter({
-          projectHomeDir: context.configLoader.getProjectHomeDir(),
-          usageAggregator: context.usageAggregatorRef.get(),
-        }),
-      context.usageAggregatorRef,
       context.eventBus,
-      context.monitoringEvents,
-      context.persistEvent,
-      monitoringEmitter,
-    ) ??
-    new ACPManager(
-      context.approvalRegistry,
-      context.logger,
-      acpManagedWorkspaceHome,
-      context.memoryAdapters,
-      (_slug: string) =>
-        new FileMemoryAdapter({
-          projectHomeDir: context.configLoader.getProjectHomeDir(),
-          usageAggregator: context.usageAggregatorRef.get(),
-        }),
-      context.usageAggregatorRef,
-      context.eventBus,
-      context.monitoringEvents,
-      context.persistEvent,
-      monitoringEmitter,
-    );
+    ) ?? new ACPManager(context.logger, acpManagedWorkspaceHome, context.eventBus);
 
   connectionService = factories.createConnectionService
     ? factories.createConnectionService(
