@@ -121,7 +121,6 @@ import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
-import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -148,7 +147,6 @@ import {
   effectiveChatModelId,
   inboxPanelMounts,
   resolveDockBadgeProjectName,
-  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -1053,17 +1051,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // straight off `gitStatus`/`sessionCodingLayout`, exactly as
   // pre-station#4525, unconditionally).
   //
-  // #1536 G6 NARROWED that for the DIRECTORY alone: it now goes through
-  // `resolveDockProjectContextDirectory`, which still prefers the session's own
-  // `sessionDisplayCwd` unconditionally and still refuses to caption a FOREIGN
-  // session with the badge's path — the ruling's actual subject. What it adds is
-  // a fallback for the case the ruling never faced: no session at all (a
-  // collapsed dock with nothing open), where the row printed "Home folder"
-  // beside a project whose directory is set.
-  // `sessionSourceProjectSlug`/`sessionSourceProjectName` are threaded
-  // through to both derivations rather than reading `activeSession` inline
-  // twice, so the badge name and the mismatch label can never read two
-  // different "the session's project" facts.
+  // The desktop badge is New's destination now and carries no session fact;
+  // the mobile header still pairs the bound name with the session's own
+  // project (`sessionProjectMismatchLabel`), so both derivations read the one
+  // `sessionSourceProjectSlug`.
   const sessionSourceProjectSlug = activeSession?.projectSlug;
   const dockBadgeProjectName = resolveDockBadgeProjectName({
     scopedProjectSlug,
@@ -1083,16 +1074,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
   });
-  const dockProjectContextDirectory = resolveDockProjectContextDirectory({
-    scopedProjectSlug,
-    sessionDisplayCwd,
-    sessionProjectSlug: sessionSourceProjectSlug,
-    dockProjectSlug,
-    dockProjectWorkingDirectory: dockProjectSlug
+  // Where New starts a chat, for the destination's tooltip: the bound
+  // project's own folder. Not the session's `cwd` — the destination names
+  // where the NEXT chat runs, and the chat on screen has its own Workspace
+  // row in the session context card. A chat-scope filter names a project
+  // without claiming its folder (station#1146/#4525).
+  const dockDestinationDirectory =
+    !scopedProjectSlug && dockProjectSlug
       ? (projects.find((project) => project.slug === dockProjectSlug)
           ?.workingDirectory ?? null)
-      : null,
-  });
+      : null;
   const attachmentCapabilities = useMemo(
     () => ({
       images: modelSupportsAttachments,
@@ -1636,6 +1627,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     useState(false);
   const sessionContextCardShown =
     sessionContextCardVisible && sessionContextCardPresent;
+  // The composer's context meter: for a chat the inbox lists as open (the
+  // same gate the header meter had), never for an imported session.
+  const contextMeterShown = Boolean(
+    !importedSessionId &&
+      activeSession?.conversationId &&
+      openChatRows.some((item) => chatTaskSessionId(item) === activeSession.id),
+  );
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
@@ -2817,47 +2815,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   <ChatDockProjectContext
                     projectSlug={dockProjectSlug}
                     projectName={dockBadgeProjectName}
-                    // station#4525 review HIGH-2 (blocking): these three
-                    // facts are truth about the SESSION actually on screen
-                    // and never gate on the badge — station#1146 fixed this
-                    // exact defect once already (a badge-driven fact row
-                    // showing "~ (defaults to home)" for a session that
-                    // genuinely has a directory). Unconditional, exactly as
-                    // pre-station#4525, other than the pre-existing
-                    // `scopedProjectSlug` guard (a project chat-scope filter
-                    // has never shown session-specific facts).
-                    // #1536 G6: one derivation for the directory, so the
-                    // badge and the path can never name different projects.
-                    // With the dock collapsed and nothing open there is no
-                    // session to report on, and this row used to print "Home
-                    // folder" beside a project whose directory IS set. The
-                    // toolbar branch deleted the visible path SEGMENT, but the
-                    // prop survives as `directoryTitle`'s subject — so the
-                    // derivation still has a reader, and a wrong one would now
-                    // be a wrong tooltip rather than a wrong line of text.
-                    workingDirectory={
-                      importedSessionId
-                        ? (importedSession?.cwd ?? null)
-                        : dockProjectContextDirectory
-                    }
-                    // The branch badge gives way to the session context
-                    // card's Branch row while the card is beside the
-                    // transcript, so the branch is not shown twice.
-                    gitStatus={
-                      importedSessionId ||
-                      scopedProjectSlug ||
-                      sessionContextCardShown
-                        ? undefined
-                        : gitStatus
-                    }
-                    // Kept while the session context card shows: the lead-in
-                    // is the owner-ruled contrast beside the badge (#4525
-                    // MED-1), so the header never implies the transcript is
-                    // the bound project's. The card's Workspace row is the
-                    // chat's project, not that contrast.
-                    sessionProjectMismatchLabel={
-                      visibleSessionProjectMismatchLabel
-                    }
+                    // New's destination (the split button's second half):
+                    // the bound project and its own folder, never the chat
+                    // on screen — that chat's project, directory and branch
+                    // are the session context card's (#4525 HIGH-2 still
+                    // holds there: they never gate on this binding).
+                    workingDirectory={dockDestinationDirectory}
                     projects={projects}
                     onSelectProject={handleSelectProject}
                     onSwitchProject={handleSwitchProject}
@@ -2930,23 +2893,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onNewChat: openNewChatDirect,
                     }
                   : undefined
-              }
-              contextMeter={
-                !importedSessionId &&
-                (isPaneOpen || isCollapsedDragPreview) &&
-                activeSession?.conversationId &&
-                openChatRows.some(
-                  (item) => chatTaskSessionId(item) === activeSession.id,
-                ) ? (
-                  <ContextPercentage
-                    agentSlug={activeSession.agentSlug}
-                    conversationId={activeSession.conversationId}
-                    apiBase={apiBase}
-                    messageCount={activeSession.messages.length}
-                    liveUsage={activeSession.liveUsage}
-                    onClick={() => setShowStatsPanel(true)}
-                  />
-                ) : null
               }
             />
           )}
@@ -3121,6 +3067,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       chatFontSize={chatFontSize}
                       dockHeight={dockHeight}
                       showStatsPanel={showStatsPanel}
+                      showContextMeter={contextMeterShown}
                       showReasoning={showReasoning}
                       showToolDetails={showToolDetails}
                       modelSupportsAttachments={modelSupportsAttachments}

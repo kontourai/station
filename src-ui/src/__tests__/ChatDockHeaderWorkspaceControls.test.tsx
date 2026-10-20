@@ -35,6 +35,7 @@ import {
   ChatDockHeader,
   type ChatDockWorkspaceControls as WorkspaceControls,
 } from '../components/chat-dock/ChatDockHeader';
+import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
 
 function workspaceControls(
   overrides: Partial<WorkspaceControls> = {},
@@ -458,11 +459,157 @@ describe('one-bar rule (#3309)', () => {
     expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
   });
 
-  test('renders the context meter beside identity when supplied', () => {
+  test('the context meter is not a header control: it lives in the composer', () => {
+    renderHeader({ workspaceControls: workspaceControls() });
+    expect(document.querySelector('.context-meter')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Context / })).toBeNull();
+  });
+});
+
+describe('New and its destination are one split control', () => {
+  test('the project destination sits beside New in the actions cluster, not beside the title', async () => {
     renderHeader({
-      contextMeter: <span data-testid="meter">42%</span>,
+      chatIdentity: <span data-testid="chat-identity">Identity</span>,
+      projectContext: (
+        <button type="button" data-testid="destination">
+          demo-project
+        </button>
+      ),
+      workspaceControls: workspaceControls(),
     });
-    expect(screen.getByTestId('meter')).toBeTruthy();
-    expect(document.querySelector('.chat-dock__header-meter')).not.toBeNull();
+    const newChat = await screen.findByTitle('New chat');
+    const split = newChat.closest('.chat-dock__new-split');
+    expect(split).not.toBeNull();
+    expect(split!.contains(screen.getByTestId('destination'))).toBe(true);
+    const left = document.querySelector('.chat-dock__title')!;
+    expect(left.contains(screen.getByTestId('destination'))).toBe(false);
+  });
+});
+
+describe('working chats ride the inbox toggle and the one More menu', () => {
+  const working = (id: string, title: string) => ({
+    id,
+    title,
+    status: 'sending',
+  });
+
+  function renderWorking(
+    controls: Partial<WorkspaceControls> = {},
+    unreadCount = 0,
+  ) {
+    const focusSession = vi.fn();
+    renderHeader({
+      chatControls: {
+        sessions: [
+          working('a', 'First chat'),
+          { id: 'idle', title: 'Idle chat', status: 'idle' },
+          working('b', 'Second chat'),
+        ],
+        unreadCount,
+        focusSession,
+        onNewChat: vi.fn(),
+        setShowChatSettings: vi.fn(),
+      },
+      workspaceControls: workspaceControls(controls),
+    });
+    return { focusSession };
+  }
+
+  test('the inbox toggle shows the working count and names it', async () => {
+    renderWorking({ isInboxOpen: false, inboxNeedsYouCount: 1 }, 2);
+    const toggle = await screen.findByRole('button', {
+      name: 'Show inbox, 2 working, 1 needs you, 2 unread',
+    });
+    expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(
+      '2',
+    );
+    expect(toggle.hasAttribute('data-unread')).toBe(true);
+    // The bar's old "N chats working" dropdown and unread pill are gone.
+    expect(
+      screen.queryByRole('button', { name: /chats? working$/ }),
+    ).toBeNull();
+    expect(document.querySelector('.chat-dock__badge')).toBeNull();
+  });
+
+  test('the working chats are the More menu’s first rows, and choosing one focuses it', async () => {
+    const { focusSession } = renderWorking();
+    await screen.findByTitle('New chat');
+    const menu = openMoreMenu();
+    const rows = within(menu)
+      .getAllByRole('menuitem')
+      .map((row) => row.textContent);
+    expect(rows.slice(0, 2)).toEqual(['First chat', 'Second chat']);
+    expect(rows).not.toContain('Idle chat');
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Second chat' }),
+    );
+    expect(focusSession).toHaveBeenCalledWith('b');
+  });
+
+  test('without an inbox toggle the More trigger carries the counts', async () => {
+    renderWorking({ showInboxToggle: false }, 1);
+    await screen.findByTitle('New chat');
+    const trigger = screen.getByRole('button', {
+      name: 'More dock actions — 2 chats working, 1 unread',
+    });
+    expect(
+      trigger.querySelector('.action-overflow__status-dot'),
+    ).not.toBeNull();
+  });
+});
+
+describe('the region’s commands fold into the More menu', () => {
+  test('rows the region host offers are appended, and the bar is told to drop its buttons', async () => {
+    const release = vi.fn();
+    const absorb = vi.fn(() => release);
+    const maximize = vi.fn();
+    const leading = document.createElement('div');
+    const trailing = document.createElement('div');
+    document.body.append(leading, trailing);
+    const { unmount } = render(
+      <RegionChromeSlotsContext.Provider
+        value={{
+          leading,
+          trailing,
+          regionMenu: {
+            actions: [
+              {
+                key: 'region-maximize',
+                label: 'Maximize',
+                separatorBefore: true,
+                onSelect: maximize,
+              },
+            ],
+            absorb,
+          },
+        }}
+      >
+        <ChatDockHeader
+          chatControls={{
+            sessions: [],
+            unreadCount: 0,
+            focusSession: vi.fn(),
+            onNewChat: vi.fn(),
+            setShowChatSettings: vi.fn(),
+          }}
+          workspaceControls={workspaceControls()}
+          regionVisible
+        />
+      </RegionChromeSlotsContext.Provider>,
+    );
+    expect(absorb).toHaveBeenCalledTimes(1);
+    await within(trailing).findByTitle('New chat');
+    fireEvent.click(
+      within(trailing).getByRole('button', { name: /^More dock actions/ }),
+    );
+    const menu = screen.getByRole('menu', { name: 'More dock actions' });
+    const rows = within(menu).getAllByRole('menuitem');
+    expect(rows.at(-1)?.textContent).toBe('Maximize');
+    fireEvent.click(rows.at(-1)!);
+    expect(maximize).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(release).toHaveBeenCalledTimes(1);
+    leading.remove();
+    trailing.remove();
   });
 });

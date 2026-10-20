@@ -499,8 +499,9 @@ const card = () =>
   document.querySelector<HTMLElement>('aside.session-context-card');
 const branchBadge = () => document.querySelector('.git-badge');
 const moreBadge = () => document.querySelector('.chat-dock__more-badge');
-// The header's "This chat: <project>" lead-in, shown when the chat's own
-// project differs from the dock's bound one (the fixture binds none).
+// The header no longer repeats the chat's branch or project at all: the card
+// (or, folded, the chip's sheet) is where they live. Kept as a probe so the
+// tests below fail if either comes back to the bar.
 const mismatchLabel = () =>
   document.querySelector('.chat-dock__project-session-name');
 const chip = () => screen.queryByRole('button', { name: /^This chat/ });
@@ -512,9 +513,7 @@ describe('session context card visibility follows the dock body width', () => {
     await waitFor(() => expect(card()).not.toBeNull());
     expect(branchBadge()).toBeNull();
     expect(moreBadge()).toBeNull();
-    // Not a repeat: the lead-in is the header's contrast with the bound
-    // project (#4525 MED-1), so it stays beside the badge.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
+    expect(mismatchLabel()).toBeNull();
     expect(chip()).toBeNull();
     const aside = card()!;
     expect(aside.textContent).toContain('feature/parser');
@@ -524,22 +523,23 @@ describe('session context card visibility follows the dock body width', () => {
     expect(aside.textContent).toContain('Demo project');
   });
 
-  test('a narrow dock folds the card behind a chip and keeps the header items', async () => {
+  test('a narrow dock folds the card behind a chip; the bar keeps only the running count', async () => {
     // 919px: one short of the 640px transcript floor plus the 280px card.
     fixture.surfaceWidth = 919;
     renderDock();
     await waitFor(() => expect(chip()).not.toBeNull());
     expect(card()).toBeNull();
-    expect(branchBadge()?.textContent).toContain('feature/parser');
+    // The branch is the chip's sheet's, not a header badge.
+    expect(branchBadge()).toBeNull();
+    expect(mismatchLabel()).toBeNull();
     expect(moreBadge()?.textContent).toBe('2');
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test.each([
     ['still loading', 'loading'],
     ['failed to load', 'failed'],
   ] as const)(
-    'while the card chunk is %s the header keeps its facts',
+    'while the card chunk is %s the More trigger keeps the running count',
     async (_, state) => {
       fixture.cardChunk = state;
       fixture.surfaceWidth = 1200;
@@ -551,21 +551,20 @@ describe('session context card visibility follows the dock body width', () => {
           await new Promise((resolve) => setTimeout(resolve, 50));
         });
       expect(card()).toBeNull();
-      expect(branchBadge()?.textContent).toContain('feature/parser');
       expect(moreBadge()?.textContent).toBe('2');
-      expect(mismatchLabel()).not.toBeNull();
+      expect(branchBadge()).toBeNull();
     },
   );
 
-  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the header facts', async () => {
+  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the running count', async () => {
     fixture.surfaceWidth = 1200;
     renderDock();
     await waitFor(() => expect(card()).not.toBeNull());
-    expect(branchBadge()).toBeNull();
+    expect(moreBadge()).toBeNull();
     // Shrink: the card folds away (and unmounts).
     await resizeSurface(600);
     await waitFor(() => expect(card()).toBeNull());
-    expect(branchBadge()?.textContent).toContain('feature/parser');
+    expect(moreBadge()?.textContent).toBe('2');
     // Grow again while the card's chunk is held back: the card is wanted but
     // not on screen, so the header must still carry the facts.
     fixture.cardChunk = 'loading';
@@ -575,8 +574,7 @@ describe('session context card visibility follows the dock body width', () => {
     });
     expect(chip()).toBeNull();
     expect(card()).toBeNull();
-    expect(branchBadge()?.textContent).toContain('feature/parser');
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
+    expect(moreBadge()?.textContent).toBe('2');
   });
 
   test('the threshold is the transcript floor plus the card column', async () => {
@@ -669,8 +667,6 @@ describe('the chip opens the rows as a sheet', () => {
     );
     expect(chip()!.getAttribute('aria-expanded')).toBe('false');
     await waitFor(() => expect(document.activeElement).toBe(chip()));
-    // Folded, so the header keeps the chat's project lead-in.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
   });
 
   test('a row action closes the sheet before opening its surface', async () => {
@@ -825,8 +821,6 @@ describe('linked pull requests', () => {
     const row = await screen.findByRole('button', {
       name: '1 linked pull request — open chat details',
     });
-    // The card is shown and the header's lead-in still stands.
-    expect(mismatchLabel()?.textContent).toBe('This chat: Demo project');
     expect(row.textContent).toContain('#42');
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();

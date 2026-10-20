@@ -94,7 +94,10 @@ import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
-import { ConversationStats } from '../conversation-stats/ConversationStats';
+import {
+  ContextPercentage,
+  ConversationStats,
+} from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
@@ -260,6 +263,8 @@ interface ChatDockBodyProps {
   chatFontSize: number;
   dockHeight: number;
   showStatsPanel: boolean;
+  /** Whether the composer shows this chat's context meter. */
+  showContextMeter?: boolean;
   showReasoning: boolean;
   showToolDetails: boolean;
   modelSupportsAttachments: boolean;
@@ -449,6 +454,7 @@ export function ChatDockBody({
   chatFontSize,
   dockHeight,
   showStatsPanel,
+  showContextMeter = false,
   showReasoning,
   showToolDetails,
   modelSupportsAttachments,
@@ -2194,6 +2200,18 @@ export function ChatDockBody({
           )}
           <DeferredChatInputArea
             activity={statusPill}
+            contextMeter={
+              showContextMeter && activeSession.conversationId ? (
+                <ContextPercentage
+                  agentSlug={activeSession.agentSlug}
+                  conversationId={activeSession.conversationId}
+                  apiBase={apiBase}
+                  messageCount={activeSession.messages.length}
+                  liveUsage={activeSession.liveUsage}
+                  onClick={() => setShowStatsPanel(true)}
+                />
+              ) : undefined
+            }
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}

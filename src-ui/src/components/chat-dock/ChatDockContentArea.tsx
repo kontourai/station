@@ -44,6 +44,8 @@ interface ChatDockContentAreaProps {
   chatFontSize: number;
   dockHeight: number;
   showStatsPanel: boolean;
+  /** Whether the composer shows the context meter for this chat. */
+  showContextMeter?: boolean;
   showReasoning: boolean;
   showToolDetails: boolean;
   modelSupportsAttachments: boolean;
@@ -111,6 +113,7 @@ function ChatDockContentAreaImpl({
   chatFontSize,
   dockHeight,
   showStatsPanel,
+  showContextMeter = false,
   showReasoning,
   showToolDetails,
   modelSupportsAttachments,
@@ -246,6 +249,7 @@ function ChatDockContentAreaImpl({
               chatFontSize={chatFontSize}
               dockHeight={dockHeight}
               showStatsPanel={showStatsPanel}
+              showContextMeter={showContextMeter}
               showReasoning={showReasoning}
               showToolDetails={showToolDetails}
               modelSupportsAttachments={modelSupportsAttachments}

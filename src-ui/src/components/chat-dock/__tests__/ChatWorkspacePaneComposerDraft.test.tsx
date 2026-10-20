@@ -475,16 +475,16 @@ function openForeignChatInPulseBoundDock() {
   renderDockedPane();
 }
 
-test('the docked badge names the bound Project and reports a foreign chat’s own Project and directory', async () => {
+test('the docked destination names the bound Project, never the foreign chat on screen', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
-  const badge = screen.getByRole('button', { name: 'Pulse' });
-  // The directory is the chat's, not the bound Project's.
-  expect(badge.getAttribute('title')).toBe('This chat (Other) — /work/other');
-  expect(
-    document.querySelector('.chat-dock__project-session-name')?.textContent,
-  ).toBe('This chat: Other');
+  // New's destination: the bound Project. Its tooltip is where a NEW chat
+  // runs, not the foreign chat's directory, and the bar prints no "This
+  // chat" contrast beside it (the chat's own project is its context card).
+  const badge = screen.getByRole('button', { name: 'New chats: Pulse' });
+  expect(badge.getAttribute('title')).not.toContain('/work/other');
+  expect(document.querySelector('.chat-dock__project-session-name')).toBeNull();
 
   // The switcher marks the bound Project as current.
   fireEvent.click(badge);
@@ -503,14 +503,15 @@ test('the docked badge names the bound Project and reports a foreign chat’s ow
   ).toBeNull();
 });
 
-test('a foreign chat’s git state and code layout are its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
+test('a foreign chat’s code layout is its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
+  // The bar carries no branch badge any more (the context card's Branch row
+  // does); the More menu's Open in Coding still follows the chat's Project.
   expect(
-    document.querySelector('.chat-dock__project-context .git-badge__branch')
-      ?.textContent,
-  ).toContain('other-branch');
+    document.querySelector('.chat-dock__project-context .git-badge'),
+  ).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
   fireEvent.click(
@@ -533,14 +534,14 @@ test('switching Project rebinds the dock and opens no New Chat picker (archive#4
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
-  fireEvent.click(screen.getByRole('button', { name: 'Pulse' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New chats: Pulse' }));
   fireEvent.click(
     await screen.findByRole('button', { name: 'Switch to Other' }),
   );
   await act(async () => {});
 
   expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
-  expect(screen.getByRole('button', { name: 'Other' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'New chats: Other' })).toBeTruthy();
   expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
   expect(createChatSession).not.toHaveBeenCalled();
