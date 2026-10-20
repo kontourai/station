@@ -57,12 +57,26 @@ function reportUnopenedExternalLink(
 ): void {
   pruneRefusalNotices();
   if (liveRefusalNotices.has(url)) return;
+  if (reason === 'credentials') {
+    // Never echo or offer to copy the link: it carries a user name or
+    // password, and the notice must not put either on screen or clipboard.
+    const id = toastStore.show(
+      'Station refused to open a link because it contains a user name or password.',
+      undefined,
+      0,
+      undefined,
+      undefined,
+      'warning',
+    );
+    liveRefusalNotices.set(url, id);
+    if (!stopWatchingNotices)
+      stopWatchingNotices = toastStore.subscribe(pruneRefusalNotices);
+    return;
+  }
   const why =
     reason === 'host-refused'
       ? 'The Station app cannot open this link.'
-      : reason === 'credentials'
-        ? 'Station does not open links that carry a user name or password.'
-        : 'Station only opens web (http or https) links.';
+      : 'Station only opens web (http or https) links.';
   const id = toastStore.show(
     `${why} Copy it to open it yourself: ${displayedExternalLink(url)}`,
     undefined,

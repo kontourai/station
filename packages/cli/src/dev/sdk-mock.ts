@@ -32,7 +32,7 @@ var __scopes={};
 function __modalOpen(){return !!document.querySelector('[aria-modal="true"]')}
 function __chord(keys){var m={};(keys.modifiers||[]).forEach(function(x){m[!__isMac&&x==='cmd'?'ctrl':x]=1});return Object.keys(m).sort().join('+')+'|'+String(keys.key).toLowerCase()}
 var __reservedChords={};
-[['command-palette','k',['cmd']],['app.settings',',',['cmd']],['app.shortcuts','/',['cmd']],['editing.copy','c',['cmd']],['editing.paste','v',['cmd']],['editing.cut','x',['cmd']],['editing.undo','z',['cmd']],['editing.redo','z',['cmd','shift']],['editing.selectAll','a',['cmd']]].forEach(function(r){__reservedChords[__chord({key:r[1],modifiers:r[2]})]=r[0]});
+[['command-palette','k',['cmd']],['app.settings',',',['cmd']],['app.shortcuts','/',['cmd']],['editing.copy','c',['cmd']],['editing.paste','v',['cmd']],['editing.cut','x',['cmd']],['editing.undo','z',['cmd']],['editing.redo','z',['cmd','shift']],['editing.redoAlt','y',['ctrl']],['editing.selectAll','a',['cmd']]].forEach(function(r){__reservedChords[__chord({key:r[1],modifiers:r[2]})]=r[0]});
 function __whenValid(w,d){if(d>8)return false;if(typeof w==='string')return !!__hostKeys[w]||__shortcutName.test(w);if(!w||typeof w!=='object')return false;if('not' in w)return __whenValid(w.not,d+1);var l=w.and||w.or;return Array.isArray(l)&&l.every(function(x){return __whenValid(x,d+1)})}
 function __whenTrue(w,d){if(d>8)return false;if(typeof w==='string'){if(w==='dialogOpen')return __modalOpen();if(__hostKeys[w])return false;return (__scopes[w]||0)>0}if('not' in w)return !__whenTrue(w.not,d+1);if(w.and)return w.and.every(function(x){return __whenTrue(x,d+1)});return w.or.some(function(x){return __whenTrue(x,d+1)})}
 function __checkShortcut(s){

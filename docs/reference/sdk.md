@@ -814,7 +814,7 @@ result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
   `plugin` field does not count.
 - `'reserved'`: the command palette (⌘K), Settings (⌘,) and the shortcut list
   (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
-  Mac). Station never lets a plugin shortcut fire on them.
+  Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
 
 Plugin shortcuts rank below Station's own: a Station shortcut on the same
 chord wins whichever registered first. See

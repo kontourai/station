@@ -74,7 +74,7 @@ plugin. Only an installed plugin's pane can register shortcuts.
 The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/) are
 reserved, so a user can always get back in control of a misbehaving plugin.
 So are the text-editing chords: ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A, which are Ctrl
-off a Mac.
+off a Mac, and Ctrl+Y.
 Station refuses a plugin chord that equals one of their defaults or their
 current bindings. If you later move a reserved shortcut onto a plugin's chord,
 or move a plugin shortcut onto a reserved one, the plugin's shortcut stops

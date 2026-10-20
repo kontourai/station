@@ -21,7 +21,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const inputs = vi.hoisted(() => ({ isMobile: false }));
@@ -57,6 +57,10 @@ import {
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { ToastProvider, toastStore } from '../../contexts/ToastContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import {
+  usePaneConfirmChrome,
+  usePanePromptChrome,
+} from '../../workspace-panes/paneHostShellChrome';
 import { SDKAdapter } from '../SDKAdapter';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -233,7 +237,8 @@ describe('useShortcut through the real adapter and registry', () => {
     // false), so dispatch would walk on to the plugin. The rebinding
     // re-validates the plugin against the palette's LIVE chord, refuses it
     // and unregisters it, so it never fires. (The dispatch guard itself is
-    // reached by the next test, where the plugin's own binding moves.)
+    // reached by "a plugin shortcut the user rebinds onto a reserved chord
+    // never fires on it", where the plugin's own binding moves.)
     const paletteRun = vi.fn(() => false);
     const run = vi.fn();
     function KernelPalette() {
@@ -373,12 +378,22 @@ describe('useShortcut through the real adapter and registry', () => {
       ['a', ['cmd']],
       ['z', ['cmd', 'shift']],
     ];
+    const ctrlChords: Array<[string, Array<'ctrl'>]> = [['y', ['ctrl']]];
     render(
       <Shell>
         {chords.map(([key, modifiers]) => (
           <PluginShortcut
             key={`${modifiers.join('+')}+${key}`}
             id={`edit-${modifiers.join('-')}-${key}`}
+            keys={{ key, modifiers }}
+            description="Editing"
+            run={() => {}}
+          />
+        ))}
+        {ctrlChords.map(([key, modifiers]) => (
+          <PluginShortcut
+            key={`ctrl-${key}`}
+            id={`edit-ctrl-${key}`}
             keys={{ key, modifiers }}
             description="Editing"
             run={() => {}}
@@ -397,6 +412,10 @@ describe('useShortcut through the real adapter and registry', () => {
         ok: false,
         reason: 'reserved',
       });
+    expect(results['edit-ctrl-y']).toMatchObject({
+      ok: false,
+      reason: 'reserved',
+    });
     expect(results.control?.ok).toBe(true);
   });
 
@@ -626,11 +645,14 @@ describe('useHost through the real adapter', () => {
       host!.openExternal('https://user:secret@example.com/'),
     ).resolves.toBe(false);
     expect(open).not.toHaveBeenCalled();
-    expect(
-      toastStore
-        .getSnapshot()
-        .some((toast) => toast.message.includes('user name or password')),
-    ).toBe(true);
+    const refusal = toastStore
+      .getSnapshot()
+      .find((toast) => toast.message.includes('user name or password'));
+    expect(refusal?.message).toBe(
+      'Station refused to open a link because it contains a user name or password.',
+    );
+    expect(refusal?.message).not.toContain('secret');
+    expect(refusal?.actions ?? []).toEqual([]);
 
     await expect(
       host!.openExternal('HTTPS://Example.COM/a b?q=1'),
@@ -726,6 +748,63 @@ describe('useHost through the real adapter', () => {
     });
     await screen.findByRole('dialog', { name: 'Name it' });
     expect(screen.getByText('From an unverified layout')).toBeTruthy();
+  });
+
+  test('a pane that opens dialogs in its mount effect as its placement activates is not cancelled', async () => {
+    const answers: {
+      prompt?: Promise<string | null>;
+      confirm?: Promise<string>;
+    } = {};
+    function Child({
+      prompt,
+      confirm,
+    }: {
+      prompt: ReturnType<typeof usePanePromptChrome>['prompt'];
+      confirm: ReturnType<typeof usePaneConfirmChrome>['confirm'];
+    }) {
+      useEffect(() => {
+        answers.confirm = confirm({ title: 'Activated confirm', message: 'm' });
+        answers.prompt = prompt({ title: 'Activated prompt' });
+      }, [prompt, confirm]);
+      return null;
+    }
+    function Placement({ active }: { active: boolean }) {
+      const { prompt, promptChrome } = usePanePromptChrome(active, 'p');
+      const { confirm, confirmChrome } = usePaneConfirmChrome(
+        active,
+        undefined,
+        'p',
+      );
+      return (
+        <>
+          {active ? <Child prompt={prompt} confirm={confirm} /> : null}
+          {confirmChrome}
+          {promptChrome}
+        </>
+      );
+    }
+    const view = render(
+      <Shell>
+        <Placement active={false} />
+      </Shell>,
+    );
+    view.rerender(
+      <Shell>
+        <Placement active />
+      </Shell>,
+    );
+    // Still open, not settled `null`/`cancelled` by a stale liveness read.
+    await screen.findByRole('dialog', { name: 'Activated prompt' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close Activated prompt' }),
+    );
+    await expect(answers.prompt).resolves.toBeNull();
+    let settled = false;
+    void answers.confirm?.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
   });
 
   test('a host captured before unmount settles prompt and confirm at once', async () => {

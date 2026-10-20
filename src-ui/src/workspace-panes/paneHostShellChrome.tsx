@@ -179,14 +179,23 @@ export function usePaneConfirmChrome(
  * settles at once instead of opening a dialog nothing will render.
  */
 function usePlacementLiveness(active: boolean) {
-  const live = useRef(active);
+  // `active` is read from render, not from an effect: a child that opens a
+  // dialog in its own mount effect, in the commit that activates the
+  // placement, runs before this hook's effects and must already see `true`.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const unmounted = useRef(false);
   useEffect(() => {
-    live.current = active;
+    unmounted.current = false;
     return () => {
-      live.current = false;
+      unmounted.current = true;
     };
-  }, [active]);
-  return live;
+  }, []);
+  return useRef({
+    get current() {
+      return !unmounted.current && activeRef.current;
+    },
+  }).current;
 }
 
 /** A prompt request: plain data, so the shell renders all of the dialog. */

@@ -36,6 +36,9 @@ export const EDITING_RESERVED_CHORDS = [
   { id: 'editing.cut', binding: { key: 'x', modifiers: ['cmd'] } },
   { id: 'editing.undo', binding: { key: 'z', modifiers: ['cmd'] } },
   { id: 'editing.redo', binding: { key: 'z', modifiers: ['cmd', 'shift'] } },
+  // Redo off a Mac. Spelled `ctrl` so on a Mac it is ⌃Y (the text-field
+  // yank), not ⌘Y; off a Mac `cmd+y` is the same chord and is covered too.
+  { id: 'editing.redoAlt', binding: { key: 'y', modifiers: ['ctrl'] } },
   { id: 'editing.selectAll', binding: { key: 'a', modifiers: ['cmd'] } },
 ] as const satisfies readonly {
   id: string;

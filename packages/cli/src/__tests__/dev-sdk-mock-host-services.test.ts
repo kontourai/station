@@ -129,6 +129,9 @@ describe('station dev SDK mock host services', () => {
       register({ id: 'redo', keys: { key: 'z', modifiers: ['cmd', 'shift'] } }),
     ).toMatchObject({ ok: false, reason: 'reserved' });
     expect(
+      register({ id: 'redoalt', keys: { key: 'y', modifiers: ['ctrl'] } }),
+    ).toMatchObject({ ok: false, reason: 'reserved' });
+    expect(
       register({ id: 'odd', keys: { key: 'j', modifiers: ['meta'] } }),
     ).toMatchObject({ ok: false, reason: 'invalid-keys' });
     expect(
