@@ -644,11 +644,19 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       }
       expect(lostAck).toBe(acknowledgement === 'lost-ack');
       expect(refused.status).toBeGreaterThanOrEqual(400);
-      expect(await refused.json()).toMatchObject({
-        kind: 'busy',
-        retryable: true,
-        failurePhase: 'refused',
-      });
+      expect(await refused.json()).toMatchObject(
+        acknowledgement === 'lost-ack'
+          ? {
+              kind: 'indeterminate',
+              retryable: false,
+              failurePhase: 'indeterminate',
+            }
+          : {
+              kind: 'busy',
+              retryable: true,
+              failurePhase: 'refused',
+            },
+      );
       const inspection = await app.request(
         '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
       );
