@@ -1,0 +1,150 @@
+{
+  "families": {
+    "catppuccin": {
+      "stylesheet": "/color-themes/catppuccin.css?v=e4a47673",
+      "light": {
+        "id": "latte",
+        "background": "#e6e9ef"
+      },
+      "dark": [
+        {
+          "id": "frappe",
+          "background": "#292c3c"
+        },
+        {
+          "id": "macchiato",
+          "background": "#1e2030"
+        },
+        {
+          "id": "mocha",
+          "background": "#181825"
+        }
+      ],
+      "defaultDarkFlavor": "mocha",
+      "accents": [
+        "rosewater",
+        "flamingo",
+        "pink",
+        "mauve",
+        "red",
+        "maroon",
+        "peach",
+        "yellow",
+        "green",
+        "teal",
+        "sky",
+        "sapphire",
+        "blue",
+        "lavender"
+      ],
+      "defaultAccent": "mauve"
+    },
+    "rose-pine": {
+      "stylesheet": "/color-themes/rose-pine.css?v=14c139cf",
+      "light": {
+        "id": "dawn",
+        "background": "#faf4ed"
+      },
+      "dark": [
+        {
+          "id": "main",
+          "background": "#191724"
+        },
+        {
+          "id": "moon",
+          "background": "#232136"
+        }
+      ],
+      "defaultDarkFlavor": "main",
+      "accents": [
+        "love",
+        "gold",
+        "rose",
+        "pine",
+        "foam",
+        "iris"
+      ],
+      "defaultAccent": "iris"
+    },
+    "gruvbox": {
+      "stylesheet": "/color-themes/gruvbox.css?v=c5736a71",
+      "light": {
+        "id": "light",
+        "background": "#f2e5bc"
+      },
+      "dark": [
+        {
+          "id": "dark",
+          "background": "#1d2021"
+        }
+      ],
+      "defaultDarkFlavor": "dark",
+      "accents": [
+        "red",
+        "green",
+        "yellow",
+        "blue",
+        "purple",
+        "aqua",
+        "orange"
+      ],
+      "defaultAccent": "orange"
+    },
+    "nord": {
+      "stylesheet": "/color-themes/nord.css?v=af91296a",
+      "light": {
+        "id": "snow-storm",
+        "background": "#e5e9f0"
+      },
+      "dark": [
+        {
+          "id": "polar-night",
+          "background": "#2e3440"
+        }
+      ],
+      "defaultDarkFlavor": "polar-night",
+      "accents": [
+        "frost",
+        "teal",
+        "blue",
+        "deep-blue",
+        "red",
+        "orange",
+        "yellow",
+        "green",
+        "purple"
+      ],
+      "defaultAccent": "frost"
+    },
+    "tokyo-night": {
+      "stylesheet": "/color-themes/tokyo-night.css?v=cceca5b5",
+      "light": {
+        "id": "day",
+        "background": "#d0d5e3"
+      },
+      "dark": [
+        {
+          "id": "night",
+          "background": "#16161e"
+        },
+        {
+          "id": "storm",
+          "background": "#1f2335"
+        }
+      ],
+      "defaultDarkFlavor": "night",
+      "accents": [
+        "blue",
+        "cyan",
+        "teal",
+        "green",
+        "yellow",
+        "orange",
+        "red",
+        "magenta",
+        "purple"
+      ],
+      "defaultAccent": "blue"
+    }
+  }
+}

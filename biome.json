@@ -13,6 +13,7 @@
       "!!**/dist-ui",
       "!!**/archive",
       "!!src-ui/src/*.generated.css",
+      "!!src-ui/public/color-themes",
       "!!docs/strategy/dogfood/**/evidence",
       "!!.veritas/**",
       "!!veritas.claims.json"

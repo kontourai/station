@@ -3,22 +3,41 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { applyColorTheme } from '../color-theme-apply';
-import { COLOR_THEME_FAMILIES } from '../color-theme-catalog';
 import {
-  COLOR_THEME_OPTIONS,
-  resolveColorThemeSelection,
-} from '../color-themes';
+  applyColorTheme,
+  COLOR_THEME_STYLESHEET_ID,
+  whenColorThemeStylesheetSettled,
+} from '../color-theme-apply';
+import { COLOR_THEME_FAMILIES } from '../color-theme-catalog';
+import { resolveColorThemeSelection } from '../color-theme-selection';
+import { COLOR_THEME_OPTIONS } from '../color-themes';
 import { deviceSettingsStore } from '../device-settings-store';
 
 const ENVELOPE_KEY = 'station-device-settings-v1';
+
+/** jsdom fetches no stylesheets, so a test plays the browser's load event. */
+function settleSheets(event: 'load' | 'error' = 'load'): void {
+  for (const link of document.head.querySelectorAll<HTMLLinkElement>(
+    'link[rel="stylesheet"]:not([data-state])',
+  ))
+    link.dispatchEvent(new Event(event));
+}
+
+function applySettled(
+  root: HTMLElement,
+  settings: Parameters<typeof applyColorTheme>[1],
+) {
+  applyColorTheme(root, settings);
+  settleSheets();
+  return resolveColorThemeSelection(settings);
+}
 const catppuccin = COLOR_THEME_FAMILIES.find((f) => f.id === 'catppuccin')!;
 
 const summary = (input: Parameters<typeof resolveColorThemeSelection>[0]) => {
   const resolved = resolveColorThemeSelection(input);
   return resolved.id === 'station'
     ? 'station'
-    : `${resolved.id}/${resolved.darkFlavor.id}/${resolved.accent}`;
+    : `${resolved.id}/${resolved.darkFlavor}/${resolved.accent}`;
 };
 
 describe('resolveColorThemeSelection', () => {
@@ -91,7 +110,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     // The store hands the raw value through (it does not know the catalog)...
     expect(deviceSettingsStore.getSnapshot().colorTheme).toBe('solarized');
     // ...and the applier resolves it to Station without throwing.
-    expect(applyColorTheme(root, deviceSettingsStore.getSnapshot())).toEqual({
+    expect(applySettled(root, deviceSettingsStore.getSnapshot())).toEqual({
       id: 'station',
     });
     expect(root.hasAttribute('data-color-theme')).toBe(false);
@@ -100,7 +119,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
   });
 
   test('returning to Station removes only the theme-color a theme added', () => {
-    applyColorTheme(root, {
+    applySettled(root, {
       theme: 'dark',
       colorTheme: 'nord',
       colorThemeFlavor: null,
@@ -109,7 +128,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     expect(
       document.head.querySelectorAll('meta[name="theme-color"]'),
     ).toHaveLength(1);
-    applyColorTheme(root, {
+    applySettled(root, {
       theme: 'dark',
       colorTheme: 'station',
       colorThemeFlavor: null,
@@ -121,7 +140,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     foreign.name = 'theme-color';
     foreign.content = '#123456';
     document.head.append(foreign);
-    applyColorTheme(root, {
+    applySettled(root, {
       theme: 'dark',
       colorTheme: 'station',
       colorThemeFlavor: null,
@@ -140,7 +159,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
       () => {},
     );
     try {
-      applyColorTheme(root, deviceSettingsStore.getSnapshot());
+      applySettled(root, deviceSettingsStore.getSnapshot());
       expect(root.getAttribute('data-color-theme')).toBe('catppuccin');
       expect(root.getAttribute('data-color-theme-flavor')).toBe('mocha');
       expect(root.getAttribute('data-color-theme-accent')).toBe('mauve');
@@ -192,7 +211,7 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     deviceSettingsStore.set('colorTheme', 'catppuccin');
     deviceSettingsStore.set('colorThemeFlavor', 'macchiato');
     deviceSettingsStore.set('theme', 'light');
-    applyColorTheme(root, deviceSettingsStore.getSnapshot());
+    applySettled(root, deviceSettingsStore.getSnapshot());
     expect(root.getAttribute('data-color-theme-flavor')).toBe('macchiato');
     expect(
       document.head
@@ -201,12 +220,96 @@ describe('invalid stored or synced values fall back instead of throwing', () => 
     ).toBe(catppuccin.light.roles['--k-bg']);
     // One meta, updated in place.
     deviceSettingsStore.set('theme', 'dark');
-    applyColorTheme(root, deviceSettingsStore.getSnapshot());
+    applySettled(root, deviceSettingsStore.getSnapshot());
     const metas = document.head.querySelectorAll('meta[name="theme-color"]');
     expect(metas).toHaveLength(1);
     expect(metas[0]?.getAttribute('content')).toBe(
       catppuccin.dark.find((f) => f.id === 'macchiato')!.roles['--k-bg'],
     );
+  });
+});
+
+describe('family stylesheets load on demand', () => {
+  const root = document.documentElement;
+  const base = {
+    theme: 'dark' as const,
+    colorThemeFlavor: null,
+    colorThemeAccent: null,
+  };
+  beforeEach(() => {
+    for (const name of [...root.getAttributeNames()])
+      root.removeAttribute(name);
+    document.head.innerHTML = '';
+  });
+  const sheets = () =>
+    [
+      ...document.head.querySelectorAll<HTMLLinkElement>(
+        'link[rel="stylesheet"]',
+      ),
+    ].map((link) => ({
+      id: link.id,
+      href: link.getAttribute('href'),
+    }));
+
+  test('Station loads no sheet; a family loads only its own, before its attributes apply', () => {
+    applyColorTheme(root, { ...base, colorTheme: 'station' });
+    expect(sheets()).toEqual([]);
+    applyColorTheme(root, { ...base, colorTheme: 'nord' });
+    // Requested, not yet in force: no attributes over missing rules.
+    expect(sheets()).toEqual([
+      { id: '', href: expect.stringMatching(/^\/color-themes\/nord\.css\?v=/) },
+    ]);
+    expect(root.hasAttribute('data-color-theme')).toBe(false);
+    settleSheets();
+    expect(sheets()).toEqual([
+      {
+        id: COLOR_THEME_STYLESHEET_ID,
+        href: expect.stringMatching(/^\/color-themes\/nord\.css\?v=/),
+      },
+    ]);
+    expect(root.getAttribute('data-color-theme')).toBe('nord');
+    // Back to Station drops the sheet.
+    applyColorTheme(root, { ...base, colorTheme: 'station' });
+    expect(sheets()).toEqual([]);
+    expect(root.hasAttribute('data-color-theme')).toBe(false);
+  });
+
+  test('a superseded request never takes over, and a failed sheet still hands over', () => {
+    applySettled(root, { ...base, colorTheme: 'gruvbox' });
+    applyColorTheme(root, { ...base, colorTheme: 'tokyo-night' });
+    // Back to gruvbox before tokyo-night loaded: its request is dropped.
+    applyColorTheme(root, { ...base, colorTheme: 'gruvbox' });
+    expect(sheets().map((s) => s.href)).toEqual([
+      expect.stringContaining('/gruvbox.css'),
+    ]);
+    expect(root.getAttribute('data-color-theme')).toBe('gruvbox');
+    applyColorTheme(root, { ...base, colorTheme: 'rose-pine' });
+    settleSheets('error');
+    expect(root.getAttribute('data-color-theme')).toBe('rose-pine');
+    expect(sheets().map((s) => s.href)).toEqual([
+      expect.stringContaining('/rose-pine.css'),
+    ]);
+  });
+
+  test('the first render waits only for a sheet that is still loading', async () => {
+    expect(whenColorThemeStylesheetSettled(document)).toBeNull();
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.id = COLOR_THEME_STYLESHEET_ID;
+    document.head.append(link);
+    const waiting = whenColorThemeStylesheetSettled(document);
+    expect(waiting).not.toBeNull();
+    let settled = false;
+    void waiting!.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    link.dispatchEvent(new Event('load'));
+    await waiting;
+    expect(settled).toBe(true);
+    link.dataset.state = 'loaded';
+    expect(whenColorThemeStylesheetSettled(document)).toBeNull();
   });
 });
 

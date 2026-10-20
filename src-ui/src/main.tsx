@@ -68,7 +68,10 @@ import {
   BRANDING_THEME_STORAGE_KEY,
   resolveCachedBrandingTheme,
 } from './lib/branding-theme';
-import { bindColorThemeToSettings } from './lib/color-theme-apply';
+import {
+  bindColorThemeToSettings,
+  whenColorThemeStylesheetSettled,
+} from './lib/color-theme-apply';
 import {
   deviceSettingsStore,
   resolveBootAccentColor,
@@ -369,4 +372,10 @@ function renderApp(): void {
   );
 }
 
-renderApp();
+// A themed person's family sheet was requested by startup-theme.js; the first
+// render waits for it (at most a few seconds) so the app never appears in
+// Station's colours after a themed splash. Without a theme this renders
+// synchronously, as before.
+const colorThemeSheet = whenColorThemeStylesheetSettled(document);
+if (colorThemeSheet) void colorThemeSheet.then(renderApp);
+else renderApp();
