@@ -3,6 +3,7 @@ import {
   _setApiBase,
   _setProviderFunctions,
   type SDKContextValue,
+  type SDKHost,
   SDKProvider,
   type SDKToast,
   type ToastAction,
@@ -29,6 +30,13 @@ import {
   useOpenConversation,
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
+import { copyToClipboard } from '../lib/clipboard';
+import { openExternalLink } from '../platform/openExternalLink';
+import {
+  usePaneConfirmChrome,
+  usePaneHostFacts,
+  usePanePromptChrome,
+} from '../workspace-panes/paneHostShellChrome';
 import {
   configureProvider,
   getActiveProviderId,
@@ -36,6 +44,7 @@ import {
   hasProvider,
   registerProvider,
 } from './layoutProviders';
+import { useSDKShortcutsHost } from './sdkShortcutsHost';
 
 const EMPTY_LAYOUTS: never[] = [];
 
@@ -169,6 +178,27 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
+  // Host services. The dialogs are the shell's own chrome, rendered here
+  // beside the plugin: this adapter is mounted exactly while it renders its
+  // children, so `active` is constant and unmount settles an open request.
+  const { confirm, confirmChrome } = usePaneConfirmChrome(true);
+  const { prompt, promptChrome } = usePanePromptChrome(true);
+  const facts = usePaneHostFacts();
+  const sdkHost = useMemo<SDKHost>(
+    () => ({
+      clipboard: { writeText: copyToClipboard },
+      openExternal: openExternalLink,
+      prompt,
+      confirm,
+    }),
+    [prompt, confirm],
+  );
+  // Shortcut ids are namespaced by owner only to keep plugins from colliding
+  // with each other and the kernel; this is not request identity.
+  const shortcutOwner =
+    boundPluginName ?? layout?.plugin ?? `layout-${layout?.slug ?? 'unknown'}`;
+  const shortcuts = useSDKShortcutsHost(shortcutOwner);
+
   // Create SDK context value with injected contexts. The agents, navigation,
   // toast and auth slots are the SDK's published contracts (#2399), so this
   // object is where the host is checked against them.
@@ -188,6 +218,8 @@ export function SDKAdapter({
           toast: { useToast: () => sdkToast },
           config: { useApiBase: () => ({ apiBase }) },
           auth: { useAuth: () => auth },
+          host: { useHost: () => sdkHost, facts },
+          ...(shortcuts ? { shortcuts } : {}),
           activeChats: {
             useSendMessage: () => sendMessage,
             useCreateChatSession: () => createChatSession,
@@ -214,8 +246,17 @@ export function SDKAdapter({
       openConversation,
       launchChat,
       auth,
+      sdkHost,
+      facts,
+      shortcuts,
     ],
   );
 
-  return <SDKProvider value={sdkValue}>{children}</SDKProvider>;
+  return (
+    <SDKProvider value={sdkValue}>
+      {children}
+      {confirmChrome}
+      {promptChrome}
+    </SDKProvider>
+  );
 }

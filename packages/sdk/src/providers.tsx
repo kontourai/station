@@ -11,7 +11,9 @@ import type { PluginApiIdentity } from './api-core';
 import type {
   SDKAgentsContext,
   SDKAuthContext,
+  SDKHostContext,
   SDKNavigationContext,
+  SDKShortcutsContext,
   SDKToastContext,
 } from './host-contexts';
 
@@ -39,6 +41,9 @@ export interface SDKContextValue {
     toast?: SDKToastContext;
     stats?: any;
     auth?: SDKAuthContext;
+    host?: SDKHostContext;
+    shortcuts?: SDKShortcutsContext;
+    /** @deprecated Read by `useKeyboardShortcuts`; use the `shortcuts` slot. */
     keyboardShortcuts?: any;
     workflows?: any;
   };
@@ -48,6 +53,7 @@ export interface SDKContextValue {
     slashCommandHandler?: () => any;
     slashCommands?: () => any;
     toolApproval?: () => any;
+    /** @deprecated Read by `useKeyboardShortcut`; use `contexts.shortcuts`. */
     keyboardShortcut?: (
       key: string,
       callback: () => void,

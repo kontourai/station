@@ -1,9 +1,20 @@
-import { useContext } from 'react';
+import type { PaneHostFacts } from '@kontourai/station-contracts/workspace-pane-host-contract';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import { getPluginHeaders } from '../api-core';
 import type {
   SDKAuthContext,
   SDKAuthState,
+  SDKHost,
   SDKNavigation,
+  SDKShortcut,
+  SDKShortcutRegistration,
   SDKToast,
 } from '../host-contexts';
 import { SDKContext } from '../providers';
@@ -215,6 +226,95 @@ export function useConversationStats(conversationId?: string) {
   return sdk.contexts.stats.useConversationStats(conversationId);
 }
 
+/**
+ * The host's own requests: clipboard, external links, and its prompt and
+ * confirm dialogs. Throws when the host supplies no `host` slot.
+ */
+export function useHost(): SDKHost {
+  const sdk = useContext(SDKContext);
+  if (!sdk?.contexts?.host) throw new Error('Host services not available');
+  return sdk.contexts.host.useHost();
+}
+
+/** The pane host's environment facts, re-rendering when they change. */
+export function useHostFacts(): PaneHostFacts {
+  const sdk = useContext(SDKContext);
+  if (!sdk?.contexts?.host) throw new Error('Host facts not available');
+  const { facts } = sdk.contexts.host;
+  return useSyncExternalStore(facts.subscribe, facts.read, facts.read);
+}
+
+/**
+ * Registers a shortcut in the host's registry for the component's lifetime.
+ * It appears in the host's shortcut list and Settings, and is suppressed
+ * under modals like the host's own shortcuts. The host namespaces the id to
+ * this plugin and refuses a chord reserved for the kernel (the command
+ * palette, Settings, the shortcut list); the result says which.
+ */
+export function useShortcut(shortcut: SDKShortcut): SDKShortcutRegistration {
+  const sdk = useContext(SDKContext);
+  const host = sdk?.contexts?.shortcuts;
+  if (!host) throw new Error('Shortcut registration not available');
+  const runRef = useRef(shortcut.run);
+  runRef.current = shortcut.run;
+  const { id, description, when, enabled = true } = shortcut;
+  const { key } = shortcut.keys;
+  const modifiersKey = shortcut.keys.modifiers.join('|');
+  const whenKey = JSON.stringify(when ?? null);
+  // Keyed on content, so an inline `keys`/`when` literal does not re-register
+  // on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: content keys above
+  const input = useMemo(
+    () => ({
+      id,
+      description,
+      keys: {
+        key,
+        modifiers: modifiersKey
+          ? (modifiersKey.split('|') as SDKShortcut['keys']['modifiers'])
+          : [],
+      },
+      ...(when === undefined ? {} : { when }),
+    }),
+    [id, description, key, modifiersKey, whenKey],
+  );
+  const registration = useMemo(() => host.validate(input), [host, input]);
+
+  useEffect(() => {
+    if (!registration.ok)
+      console.warn(`Station refused shortcut "${id}": ${registration.message}`);
+  }, [id, registration]);
+
+  // Before paint, like the host's own shortcuts: a key pressed as the view
+  // appears must not land before its shortcut exists.
+  useLayoutEffect(() => {
+    if (!enabled || !registration.ok) return;
+    return host.register({ ...input, run: () => runRef.current() });
+  }, [host, input, enabled, registration]);
+
+  return registration;
+}
+
+/**
+ * Turns one of this plugin's shortcut scopes on while mounted and `active`.
+ * A shortcut whose `when` names the scope fires only then.
+ */
+export function useShortcutScope(name: string, active = true): void {
+  const sdk = useContext(SDKContext);
+  const host = sdk?.contexts?.shortcuts;
+  if (!host) throw new Error('Shortcut registration not available');
+  useLayoutEffect(() => {
+    if (!active) return;
+    return host.activateScope(name);
+  }, [host, name, active]);
+}
+
+/**
+ * @deprecated Use `useShortcut`. This signature has no id or description, so
+ * a shortcut registered through it could not appear in the host's shortcut
+ * list or be checked against reserved kernel chords; Station's adapter does
+ * not supply it.
+ */
 export function useKeyboardShortcut(
   key: string,
   callback: () => void,
@@ -226,6 +326,10 @@ export function useKeyboardShortcut(
   return sdk.hooks.keyboardShortcut(key, callback, deps);
 }
 
+/**
+ * @deprecated Use `useShortcut`. Handing a plugin the raw registry would let
+ * it replace or rebind kernel shortcuts; Station's adapter does not supply it.
+ */
 export function useKeyboardShortcuts() {
   const sdk = useContext(SDKContext);
   if (!sdk?.contexts?.keyboardShortcuts)

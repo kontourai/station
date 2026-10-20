@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { PromptModal } from '../components/modals/PromptModal';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 /**
@@ -150,6 +151,80 @@ export function usePaneConfirmChrome(
   );
 
   return { confirm, confirmChrome };
+}
+
+/** A prompt request: plain data, so the shell renders all of the dialog. */
+export interface PanePromptRequest {
+  title: string;
+  label?: string;
+  initial?: string;
+}
+
+interface PanePromptChrome {
+  /** Resolves the trimmed text, or `null`; never rejects. */
+  prompt: (request: PanePromptRequest) => Promise<string | null>;
+  /** The shell's prompt dialog; the placement renders it beside the pane. */
+  promptChrome: ReactNode;
+}
+
+/**
+ * The shell's one prompt dialog, the text-input sibling of
+ * `usePaneConfirmChrome` with the same lifetime rules: one dialog at a time
+ * (a newer request settles the older `null`), and a request settles `null`
+ * when the placement deactivates or unmounts. Only the plugin SDK's
+ * `useHost().prompt` uses it today; it is not yet a pane-host contract member,
+ * so the frame transport has no prompt message.
+ */
+export function usePanePromptChrome(active: boolean): PanePromptChrome {
+  const [promptRequest, setPromptRequest] = useState<PanePromptRequest | null>(
+    null,
+  );
+  const resolveRef = useRef<((value: string | null) => void) | null>(null);
+
+  const prompt = useCallback(
+    (request: PanePromptRequest) =>
+      new Promise<string | null>((resolve) => {
+        resolveRef.current?.(null);
+        resolveRef.current = resolve;
+        setPromptRequest(request);
+      }),
+    [],
+  );
+
+  const settle = useCallback((value: string | null) => {
+    resolveRef.current?.(value);
+    resolveRef.current = null;
+    setPromptRequest(null);
+  }, []);
+
+  useEffect(() => {
+    if (active) return;
+    resolveRef.current?.(null);
+    resolveRef.current = null;
+    setPromptRequest(null);
+  }, [active]);
+  // Unmount only: a cleanup on every re-run would cancel an open prompt.
+  useEffect(
+    () => () => {
+      resolveRef.current?.(null);
+      resolveRef.current = null;
+    },
+    [],
+  );
+
+  const promptChrome = (
+    <PromptModal
+      isOpen={promptRequest !== null}
+      title={promptRequest?.title ?? ''}
+      label={promptRequest?.label}
+      initialValue={promptRequest?.initial ?? ''}
+      confirmLabel="OK"
+      onConfirm={(value) => settle(value)}
+      onCancel={() => settle(null)}
+    />
+  );
+
+  return { prompt, promptChrome };
 }
 
 /**

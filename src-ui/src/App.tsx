@@ -39,6 +39,7 @@ import { Empty, ErrorState } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
+import { KERNEL_RESERVED_SHORTCUTS } from './contexts/kernelReservedShortcuts';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import {
@@ -517,9 +518,9 @@ function App() {
   );
 
   useKeyboardShortcut(
-    'app.settings',
-    ',',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.settings.id,
+    KERNEL_RESERVED_SHORTCUTS.settings.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.settings.binding.modifiers],
     'Toggle settings',
     useCallback(() => {
       if (displayCurrentView.type === 'settings') {
@@ -542,9 +543,9 @@ function App() {
   );
 
   useKeyboardShortcut(
-    'app.shortcuts',
-    '/',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.shortcuts.id,
+    KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.modifiers],
     'Show keyboard shortcuts',
     useCallback(() => {
       setShowShortcutsCheatsheet(true);

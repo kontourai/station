@@ -59,3 +59,26 @@ The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/do
 connects these rules to the editor, registry, device store, import/export owner
 and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut,
 or native shell.
+
+## Plugin shortcuts
+
+Plugins register shortcuts with the SDK's `useShortcut`. They join the same
+registry under `plugin.<plugin>.<id>`, so they appear in the shortcut list
+(under **Plugins**) and in Settings, and an active modal suppresses them like
+any other. A plugin cannot replace a Station shortcut through the SDK,
+because no Station id starts with `plugin.`. Plugin shortcuts run at priority 0: Station's
+view-level shortcuts (Close, view Escape) keep their keys, and route-level
+fallbacks yield.
+
+The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/) are
+reserved, so a user can always get back in control of a misbehaving plugin.
+Station refuses a plugin chord that equals one of their defaults or their
+current bindings. If you later move a reserved shortcut onto a plugin's chord,
+or move a plugin shortcut onto a reserved one, the plugin's shortcut stops
+firing. Off a Mac, `cmd` and `ctrl` are the same chord for this check. A
+plugin chord with no Cmd, Ctrl or Alt never fires while focus is in a text
+field.
+
+These rules apply to shortcuts registered through the SDK. A plugin that
+runs inside Station's own page can still listen for keys directly, so they
+are not a sandbox.

@@ -129,6 +129,16 @@ export type {
   AgentId,
   QualifiedPluginAgentId,
 } from '@kontourai/station-contracts/agent-identity';
+// Plain-data shapes the host-service hooks above take and return.
+export type {
+  ShortcutBinding,
+  ShortcutModifier,
+} from '@kontourai/station-contracts/device-settings';
+export type {
+  PaneConfirmDecision,
+  PaneConfirmRequest,
+  PaneHostFacts,
+} from '@kontourai/station-contracts/workspace-pane-host-contract';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -298,6 +308,9 @@ export {
   // Chat operations
   useCreateChatSession,
   useDockState,
+  // Host services and facts
+  useHost,
+  useHostFacts,
   // Keyboard shortcuts
   useKeyboardShortcut,
   useKeyboardShortcuts,
@@ -325,6 +338,8 @@ export {
   useSendToChat,
   // Server-side fetch proxy
   useServerFetch,
+  useShortcut,
+  useShortcutScope,
   // Slash commands
   useSlashCommandHandler,
   useSlashCommands,
@@ -346,8 +361,17 @@ export type {
   SDKAuthContext,
   SDKAuthState,
   SDKAuthUser,
+  SDKHost,
+  SDKHostContext,
   SDKNavigation,
   SDKNavigationContext,
+  SDKPromptRequest,
+  SDKShortcut,
+  SDKShortcutHostContextKey,
+  SDKShortcutRefusalReason,
+  SDKShortcutRegistration,
+  SDKShortcutsContext,
+  SDKShortcutWhen,
   SDKToast,
   SDKToastContext,
   ToastAction,
