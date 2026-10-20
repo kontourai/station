@@ -1,13 +1,14 @@
 # ACP Chat Architecture — Design Document
 
-> **Historical proposal.** The problem statement and phase table below describe
-> the original design, not current implementation status. Current ACP execution
-> uses a process lifecycle per thread in
-> [the ACP adapter](../src-server/providers/adapters/acp-adapter.ts).
-> For today's chat entry point and event ownership, read
-> [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
-> and the [module map](architecture/module-map.md). Preserve this record for
-> rationale; do not use its phases as a backlog or implementation checklist.
+> **Status: historical proposal, superseded.** This record keeps the original
+> problem statement, the reference-client survey and the culling strategy as
+> rationale. Its phases were never a delivery plan and are not a backlog.
+> **Successor:** [ADR 0014](../adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
+> records the chat entry point that shipped. Current ACP execution uses one
+> process lifecycle per thread in [the ACP adapter](../../src-server/providers/adapters/acp-adapter.ts);
+> the [ACP guide](../guides/acp.md) and the
+> [module map](../architecture/module-map.md) describe today's ownership.
+> The `ACPSessionPool` and `AcpSessionManager` names below were never built.
 
 ## Problem
 
@@ -16,16 +17,6 @@ Station has a single global ACP connection used for agent discovery and chat rou
 1. **No concurrency** — only one active session at a time. If ChatDock is streaming and you send a message in a terminal tab, they collide.
 2. **No per-project context** — the ACP process runs in the server's cwd, not the project's working directory. Agents don't see the right files.
 3. **Duplicated UI** — ChatDock and the terminal ACP tab need the same chat rendering (messages, streaming, tool calls, approvals) but can't share components today.
-
-## Implementation Status
-
-| Phase | Status | Notes |
-|---|---|---|
-| Phase 1: Extract Shared Chat Components | **Partial** | ChatMessageList, MessageBubble, StreamingMessage, ToolCallDisplay extracted to `src-ui/src/components/chat/`. ChatInput and useChat not yet extracted. |
-| Phase 2: ACPSessionPool Backend | **Not started** | |
-| Phase 3: Chat Route Integration | **Not started** | |
-| Phase 4: ACPChatPanel for Terminal Tabs | **Partial** | ACPChatPanel exists and is wired into CodingLayout. |
-| Phase 5: Hardening | **Not started** | |
 
 ## Reference: the surveyed client's approach
 

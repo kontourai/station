@@ -1860,6 +1860,12 @@ outside the selected manifest bucket, keeps manifest order, uses the same
 temporary-instance startup and cleanup, and pins every child command to the
 Node executable that validated the parent runner.
 
+The [E2E coverage matrix](e2e-coverage-matrix.md) maps the primary app
+surfaces to the specs that cover them, and the
+[PR browser smoke contract](../testing/browser-smoke.md) explains which specs
+`npm run test:e2e:pr-smoke` runs for source pull requests and merge-queue
+candidates.
+
 Playwright spec ownership is tracked in `tests/e2e-manifest.mjs`. Add every new
 `tests/**/*.spec.ts` file to exactly one bucket when it is introduced. The
 `npm run verify:static` lane validates manifest ownership without starting

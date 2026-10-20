@@ -1,10 +1,14 @@
 # Strands Agents SDK Migration
 
-> **Historical migration assessment.** The parity table and SDK limitations
-> below record the migration assessment; they are not a current compatibility
-> guarantee. For runtime selection, use the [configuration reference](reference/config.md).
-> Verify behavior against the [Strands adapter](../src-server/runtime/frameworks/strands-adapter.ts)
-> and its tests before relying on a capability or gap described here.
+> **Status: historical migration assessment.** The parity table and SDK gaps
+> below record the assessment made when the Strands runtime was added; they are
+> not a current compatibility guarantee. **Successors:** the
+> [configuration reference](../reference/config.md) owns the `runtime` setting
+> and the `--features=strands-runtime` opt-in, and the
+> [environment variable reference](../reference/env-vars.md) owns
+> `STATION_FEATURES`. Verify behavior against the
+> [Strands adapter](../../src-server/runtime/frameworks/strands-adapter.ts) and
+> its tests before relying on a capability or gap described here.
 
 ## How to Test
 
@@ -78,9 +82,9 @@ Message Sync Flow:
   → calls memoryAdapter.addMessage() for each
 ```
 
-## Files Changed
+## Files changed by the migration (paths as of this review)
 
-- `src-server/runtime/strands-adapter.ts` — All adapter fixes
+- `src-server/runtime/frameworks/strands-adapter.ts` — All adapter fixes
 - `packages/cli/src/cli.ts` — `--features` flag parsing
 - `packages/cli/src/commands/lifecycle.ts` — Pass `STATION_FEATURES` env var
-- `src-server/runtime/station-runtime.ts` — Apply feature flags in initialize()
+- `src-server/runtime/bootstrap/runtime-initialize.ts` — Apply feature flags in initialize()
