@@ -583,6 +583,34 @@ export function showSurfaceAlone(
 }
 
 /**
+ * The dock panes on screen now that the model's own reveal of `surfaceId`
+ * would take off screen (`revealSurface`, or `showSurfaceAlone` on a folded
+ * device, `alone`: where the surface is, else `preferred`). The panes whose
+ * unsaved-changes guards a caller outside the model asks before it reveals
+ * the surface. A page change in `main` is a navigation, which asks its own
+ * guards; what the reveal does to a maximize hides no pane.
+ */
+export function panesHiddenByReveal(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  preferred: RegionId,
+  alone: boolean,
+): string[] {
+  const onScreen = (value: RegionArrangement) =>
+    DOCK_REGION_IDS.flatMap((id) => {
+      const region = value[id];
+      return region.visible && region.occupant ? [region.occupant] : [];
+    });
+  const reveal = alone ? showSurfaceAlone : revealSurface;
+  const after = new Set(
+    onScreen(reveal(arrangement, surfaceId, preferred).arrangement),
+  );
+  return onScreen(arrangement).filter(
+    (id) => id !== surfaceId && !after.has(id),
+  );
+}
+
+/**
  * What the region showing Chat looked like before a phone layer opened over
  * it — the state one Back returns to.
  */
