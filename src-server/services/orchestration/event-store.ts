@@ -4454,12 +4454,16 @@ export class EventStore {
   }
 
   /** Only for replayable background sources; exhaustion rejects to their poll. */
-  appendEventIfAbsentInBackground(
+  async appendEventIfAbsentInBackground(
     event: CanonicalRuntimeEvent,
   ): Promise<number | undefined> {
-    return this.writeInBackground(event.threadId, () =>
-      this.appendEventIfAbsent(event),
+    // One store self-delegation for every background append (station#1399
+    // writer inventory); an always-true guard never refuses.
+    const appended = await this.appendEventIfAbsentInBackgroundIf(
+      event,
+      () => true,
     );
+    return appended === false ? undefined : appended;
   }
 
   upsertSessionInBackground(session: ProviderSession): Promise<void> {
