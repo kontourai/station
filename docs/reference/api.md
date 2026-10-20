@@ -1864,7 +1864,12 @@ Every identity a producer reports (session, conversation, trace, tool-call and
 event ids, the agent slug and the engine) is stored as
 `producer:<token name>:<reported value>`; a row with no agent gets
 `producer:<token name>:(unnamed)`. This prevents joins and de-duplication
-collisions with Station's own rows.
+collisions with Station's own rows. The `producer:` prefix is reserved: a request
+without a producer token (a paired credential) whose session, conversation,
+trace, tool-call or event id, agent or engine starts with it is refused with
+`400 reserved_identity`, and nothing in that request is stored. The Monitoring
+view shows a producer's own value only for rows its producer delivered.
+Required text fields are trimmed, so a whitespace-only value is refused.
 
 Separately, readers apply one rule to every row carrying
 `station.telemetry.producer`, whatever agent, model, engine, tool or
