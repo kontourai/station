@@ -50,16 +50,22 @@ describe('the frame client for related panes', () => {
         key: 'weekly',
       });
       expect(post.mock.calls[0]?.[1]).toBe('https://station.test');
-      const result = {
+      const result = (handle: string) => ({
         method: 'pane-host/related-result',
         params: {
           id: sent().params.id,
-          data: { status: 'opened', handle: HANDLE, presentation: 'beside' },
+          data: { status: 'opened', handle, presentation: 'beside' },
         },
-      };
-      reply(result, window);
-      reply(result, undefined, 'https://other.test');
-      reply(result);
+      });
+      // Forgeries first, each with its own answer: a sibling window, then the
+      // right window at the wrong origin. Only the pinned pair settles it.
+      reply(result(`plugin-pane:${'b'.repeat(32)}`), window);
+      reply(
+        result(`plugin-pane:${'c'.repeat(32)}`),
+        undefined,
+        'https://other.test',
+      );
+      reply(result(HANDLE));
       await expect(opening).resolves.toEqual({
         status: 'opened',
         handle: HANDLE,
