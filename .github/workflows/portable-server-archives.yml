@@ -101,7 +101,7 @@ jobs:
       - name: Setup pinned pnpm
         # #2675: pnpm v11 ships no working native binary for Intel macOS.
         if: runner.os != 'macOS' || runner.arch != 'X64'
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
       - name: Setup pinned pnpm from its JS package (Intel macOS)
         if: runner.os == 'macOS' && runner.arch == 'X64'
@@ -122,7 +122,7 @@ jobs:
           ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
           echo "$prefix/bin" >> "$GITHUB_PATH"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -140,7 +140,11 @@ jobs:
           [[ "$CALLER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a 40-hex commit SHA, got: $CALLER_REF" >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$CALLER_REF" || { echo "checked out $(git rev-parse HEAD), but the caller asked for $CALLER_REF" >&2; exit 1; }
 
-      - run: npm run build
+      - name: Build server and UI
+        env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ ((github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != '' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
+          STATION_CHANNEL: ${{ inputs.ring == 'preview' && 'beta' || inputs.ring }}
+        run: npm run build
 
       - name: Build the archive
         # The provenance SHA is the commit actually checked out: under
@@ -148,6 +152,7 @@ jobs:
         # A caller's version and ring come only from workflow_call inputs;
         # every other trigger builds the v0.0.0 placeholder.
         env:
+          STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ ((github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != '' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           RELEASE_REF: ${{ inputs.version != '' && format('v{0}', inputs.version) || 'v0.0.0' }}
           RELEASE_RING: ${{ inputs.ring }}
         run: npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
@@ -163,7 +168,7 @@ jobs:
       # this step exactly.
       - name: Upload the archive and its descriptor
         if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-server-${{ matrix.target }}
           path: |

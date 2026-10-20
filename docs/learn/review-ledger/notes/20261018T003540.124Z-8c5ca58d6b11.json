@@ -1,0 +1,7 @@
+{
+  "revision": "9d705f306db34d37065e8f6710aa56dc631b0cd8",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the API-reference delta cited by this integration guide: HTML preview now explicitly requires operate scope because it launches Chromium; render remains caller-bound publication. The guide describes deployment and integration entry points rather than a preview-read grant, so its cited claims remain accurate. This is a narrow source review, not cloud or native qualification.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

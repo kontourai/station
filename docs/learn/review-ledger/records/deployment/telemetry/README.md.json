@@ -38,7 +38,15 @@
 
     "src-server/telemetry.ts",
 
-    "packages/telemetry-broker/artifact-manifest.mjs"
+    "packages/telemetry-broker/artifact-manifest.mjs",
+
+    "deploy/push-gateway/src/channel-ledger.ts",
+
+    "deployment/telemetry/compose.tunnel.yaml",
+
+    "deployment/telemetry/cloudflared.example.yaml",
+
+    "packages/telemetry-broker/src/client-address.ts"
   ],
 
   "checks": [

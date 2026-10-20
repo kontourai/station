@@ -876,6 +876,30 @@ export class ConfigLoader {
     };
   }
 
+  /** Inert App presentation lookup; no credential hydration or connection launch. */
+  readIntegrationAppDefinition(id: string): ToolDef | undefined {
+    if (!isSafeToolServerId(id)) return undefined;
+    try {
+      if (!integrationConfigExists(this.projectHomeDir, id)) {
+        for (const owner of this.integrationSources) {
+          const definition = owner.loadIntegration(id);
+          if (definition) return definition;
+        }
+        return undefined;
+      }
+      const source = readRegularFileNoFollow(
+        this.projectHomeDir,
+        join(this.projectHomeDir, 'integrations', id, 'integration.json'),
+        { maxBytes: INTEGRATION_POLICY_MAX_BYTES },
+      );
+      const value: unknown = JSON.parse(source);
+      validator.validateToolDef(value);
+      return this.withBuiltinIntegrationRuntimeIdentity(id, value as ToolDef);
+    } catch {
+      return undefined;
+    }
+  }
+
   async captureIntegrationPolicySnapshot(
     id: string,
   ): Promise<IntegrationPolicySnapshot | null> {

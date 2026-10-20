@@ -35,6 +35,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -79,6 +80,7 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -94,6 +96,13 @@ import {
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  type ProviderFailureKind,
+  SESSION_START_IN_FLIGHT_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -157,7 +166,9 @@ import {
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
+import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
   nativeSessionIdentityMatchesSource,
@@ -194,6 +205,14 @@ import {
   isFullAccessGrant,
   UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
+import {
+  type ConfinementProvider,
+  ConfinementRefusedError,
+  noMechanismConfinementRecord,
+  readConfinementRecord,
+  resolveConfinement,
+} from '../../security/confinement/confinement-provider.js';
+import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -590,6 +609,8 @@ export class OrchestrationCommandDispatchError extends Error {
   readonly code?: string;
   readonly outcome?: 'indeterminate';
   readonly retryable?: boolean;
+  readonly kind?: ProviderFailureKind;
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   constructor(
     message: string,
@@ -599,68 +620,75 @@ export class OrchestrationCommandDispatchError extends Error {
     readonly receiptStatus: 'persisted' | 'unavailable' = 'persisted',
     indeterminateTurnStart = false,
     code?: string,
+    refusal?: ProviderFailure,
   ) {
     super(message);
     this.name = 'OrchestrationCommandDispatchError';
     if (indeterminateTurnStart) {
       this.code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
       this.outcome = 'indeterminate';
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
     } else if (code) {
       this.code = code;
-      // A refusal-to-act (not a failed action) is retryable. Any code whose
-      // error message tells the user to retry belongs in this set —
-      // archive#3493 delta review caught 'session_start_in_flight' saying
-      // "retry" while this line still classified it non-retryable.
+      this.kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, code)
+        ? (
+            PROVIDER_FAILURE_KINDS as Readonly<
+              Record<string, ProviderFailureKind>
+            >
+          )[code]
+        : undefined;
       this.retryable =
-        code === 'session_start_in_flight' ||
-        code === 'resource_engine_start_capacity' ||
-        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
+        this.kind === undefined ? false : PROVIDER_FAILURE_RETRYABLE[this.kind];
+      if (this.kind === 'indeterminate') this.failurePhase = 'indeterminate';
+    }
+    if (refusal && !indeterminateTurnStart) {
+      this.kind = refusal.kind;
+      this.retryable = refusal.retryable;
+      this.failurePhase = refusal.failurePhase;
+    }
+    if (
+      indeterminateTurnStart ||
+      indeterminateSession ||
+      this.kind === 'indeterminate'
+    ) {
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
+      this.outcome = 'indeterminate';
     }
   }
 }
 
-/**
- * Adapter refusals a caller should retry rather than drop: the same send
- * succeeds once the condition passes.
- * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
- *   still exiting.
- * - #2324: a send that arrived while the engine was running a turn it opened
- *   on its own; it succeeds once that turn closes.
- * - A send that outwaited its session's engine start (an ACP reattach); it
- *   succeeds once the session is ready.
- * - A send whose session's start failed while it waited: nothing was sent,
- *   and a later send can restart the session, so the message is kept.
- * - A send whose idempotency key another attempt still held or released
- *   unsent: the same key may be sent again.
- */
-const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
-  MUSE_TURN_SLOT_RELEASING_CODE,
-  PROVIDER_TURN_IN_PROGRESS_CODE,
-  PROVIDER_SESSION_STARTING_CODE,
-  PROVIDER_SESSION_START_FAILED_CODE,
+const LEGACY_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 ]);
 
-/**
- * The code of a retryable adapter refusal (see
- * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
- * contract code (not the adapter's class) so this service does not import an
- * adapter module.
- */
+/** Only the legacy pre-effect codes can establish refusal without typed metadata. */
 function retryableAdapterRefusalCode(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
-    ? code
-    : undefined;
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    typeof error.code !== 'string'
+  )
+    return undefined;
+  return LEGACY_ADAPTER_REFUSAL_CODES.has(error.code) ? error.code : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
-export class SessionReattachConflictError extends Error {
+export class SessionReattachConflictError extends ProviderRefusalError {
   readonly code = SESSION_REATTACH_CONFLICT_CODE;
 
   constructor(readonly reason: SessionReattachConflictReason) {
-    super(`${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`);
+    super(
+      `${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`,
+      PROVIDER_FAILURE_KINDS[SESSION_REATTACH_CONFLICT_CODE],
+    );
   }
 }
 
@@ -672,12 +700,13 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-class SessionStopWhileStartingError extends Error {
-  readonly code = 'session_start_in_flight';
+class SessionStopWhileStartingError extends ProviderRefusalError {
+  readonly code = SESSION_START_IN_FLIGHT_CODE;
 
   constructor(threadId: string, timeoutMs: number) {
     super(
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
+      PROVIDER_FAILURE_KINDS[SESSION_START_IN_FLIGHT_CODE],
     );
     this.name = 'SessionStopWhileStartingError';
   }
@@ -961,6 +990,11 @@ interface OrchestrationServiceOptions {
    * its next turn. Absent: stamps apply as written.
    */
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
+  /**
+   * #2494: the confinement mechanisms a start can resolve to. Absent:
+   * Codex's own sandbox and Station's Seatbelt profile for Claude.
+   */
+  confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -2163,6 +2197,15 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      // #2494: read from the stored start event directly, because
+      // `readLatestSessionStartMetadata` strips the reserved record key.
+      observedConfinement: (threadId) =>
+        readConfinementRecord(
+          (
+            options.eventStore?.latestEventByMethod(threadId, 'session.started')
+              ?.payload as { metadata?: Record<string, unknown> } | undefined
+          )?.metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY],
+        ),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2384,6 +2427,14 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       assertAdapterCurrent: (adapter) => this.assertAdapterCurrent(adapter),
       assertAdapterReady: (adapter) => this.assertAdapterReady(adapter),
+      applyConfinement: (input) =>
+        this.withConfinement(
+          input.provider,
+          input,
+          input.confinement === 'host' ? 'host' : 'workspace',
+          // The child runs in its own folder, never a worktree Station made.
+          'shared',
+        ),
       withAcceptedModelLaunchPlan: (
         adapter,
         input,
@@ -3850,6 +3901,7 @@ export class OrchestrationService {
       id: string;
       name: string;
       originalId: string;
+      resolvedModel?: string;
     }>
   > {
     const adapter = this.options.adapterRegistry.get(provider);
@@ -6254,6 +6306,7 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
+            confinementPlan: _untrustedConfinementPlan,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
           const admittedStartWorkspace =
@@ -6353,6 +6406,22 @@ export class OrchestrationService {
                 : {}),
             },
           };
+          // #2494: the confinement this start resolves to, from the
+          // confinement above and the mode the engine is actually given. A
+          // required level with no usable mechanism refuses here, before the
+          // engine is touched.
+          // The isolation comes from the server-resolved workspace binding
+          // (a canonically provisioned or verified owned worktree), never the
+          // caller-controlled `metadata.workspaceIsolation`.
+          startInput = this.withConfinement(
+            adapter.provider,
+            startInput,
+            confinement,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ||
+              readExecutionWorkspaceBinding(internal?.executionWorkspace)
+              ? 'worktree'
+              : 'shared',
+          );
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -6908,6 +6977,7 @@ export class OrchestrationService {
         outcome.receiptStatus,
         false,
         code,
+        'failure' in outcome ? outcome.failure : undefined,
       );
     }
     this.initialize();
@@ -8787,6 +8857,7 @@ export class OrchestrationService {
           if (!approvalKnobSupported(provider)) {
             throw new SendTurnRefusedError(
               'This engine has no approval control.',
+              'input_unsupported',
             );
           }
           const result = this.recordApprovalModeDecision({
@@ -8838,16 +8909,15 @@ export class OrchestrationService {
           error instanceof DraftDiscardNotAuthorizedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
-          // #2300/#2324: a send refused until a condition passes (a Muse
-          // process still exiting, an engine's own turn still running) — a
-          // refusal to act, retryable.
           retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
           // a failed action — and its closed code must survive the wrapper
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          // #2494: a respawn refused for its confinement started nothing.
+          error instanceof ConfinementRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -8893,9 +8963,20 @@ export class OrchestrationService {
           error instanceof ReceiverExecutionRefusal ||
           error instanceof AttachmentInputUnsupportedError ||
           error instanceof ClientTurnInputConflictError ||
-          error instanceof TurnSubmissionUnsupportedError
+          error instanceof TurnSubmissionUnsupportedError ||
+          // #2494: the closed confinement refusal codes are a public
+          // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
+          error instanceof ConfinementRefusedError
           ? error.code
-          : retryableAdapterRefusalCode(error),
+          : error instanceof SendTurnRefusedError &&
+              'code' in error &&
+              typeof error.code === 'string'
+            ? error.code
+            : retryableAdapterRefusalCode(error),
+        error instanceof SendTurnRefusedError ||
+          error instanceof ProviderRefusalError
+          ? error
+          : undefined,
       );
     } finally {
       if (dispatchedTurnThread !== undefined) {
@@ -11151,6 +11232,7 @@ export class OrchestrationService {
     const {
       modelOptions: _previous,
       confinement: _previousConfinement,
+      confinementPlan: _previousConfinementPlan,
       ...withoutOptions
     } = input;
     // Carry the stamp forward (the stored-metadata read strips reserved
@@ -11173,7 +11255,57 @@ export class OrchestrationService {
           : {}),
       },
     };
-    return modelOptions ? { ...restamped, modelOptions } : restamped;
+    // #2494: re-resolved for the new process, whose engine re-derives the
+    // posture; the previous start's record is never copied forward (the
+    // stored-metadata read strips it as a reserved key).
+    // A respawn carries no server workspace binding, so it resolves as
+    // `shared`: a provider that needs a proven worktree is refused, never
+    // granted one on the persisted metadata's say-so.
+    return this.withConfinement(
+      provider,
+      modelOptions ? { ...restamped, modelOptions } : restamped,
+      confinement,
+      'shared',
+    );
+  }
+
+  /**
+   * #2494: `input` with its resolved confinement: a plan for the adapter
+   * when a mechanism is engaged (the adapter observes the started process
+   * and records the posture), else the `no-mechanism` record stamped now.
+   * Called after the reserved-key strip, with the input's final model
+   * options. Throws `ConfinementRefusedError` when a required level has no
+   * usable mechanism.
+   */
+  private withConfinement<
+    T extends Omit<ProviderSessionStartInput, 'resumeCursor'>,
+  >(
+    engine: EngineId,
+    input: T,
+    confinement: StationConfinement,
+    isolationMode: WorkspaceIsolationMode,
+  ): T {
+    const resolution = resolveConfinement({
+      confinement,
+      engine,
+      appliedMode: approvalKnobSupported(engine)
+        ? readApprovalMode(input.modelOptions)
+        : undefined,
+      isolationMode,
+      providers: this.options.confinementProviders ?? [
+        codexSandboxConfinementProvider,
+        seatbeltConfinementProvider,
+      ],
+    });
+    if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
+    return {
+      ...input,
+      metadata: {
+        ...input.metadata,
+        [STATION_CONFINEMENT_RECORD_METADATA_KEY]:
+          noMechanismConfinementRecord(resolution),
+      },
+    };
   }
 
   /**

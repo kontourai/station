@@ -80,6 +80,14 @@ station agents list
 station chat my-agent 'what changed today?'
 ```
 
+Chat assigns a fresh turn key before sending. Use `--json` to retain
+`clientTurnId` and `conversationId` in success, pending, or failure output, or
+choose a key before sending with `--client-turn-id=<key>`. Reuse that key only
+for a deliberate retry of the same operation; keep the original conversation
+flag for a continuation. Inspect uncertain outcomes first. The CLI never
+resends automatically. See [chat identity and retry](../../docs/reference/cli.md#chat)
+for the error format and new-chat conversation binding.
+
 From a Station checkout, local setup installs its durable per-user service and
 then selects the conventional `kontour` Station:
 

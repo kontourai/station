@@ -7,6 +7,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { type Context, Hono, type Next } from 'hono';
+import { z } from 'zod';
 import {
   isOperatorInPersonNotAgent,
   mayRunCommandsOnHost,
@@ -28,7 +29,10 @@ import {
   commitRepository,
   pushRepository,
 } from '../../services/projects/coding-git-actions.js';
-import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import {
+  FilePreviewError,
+  type FileTreeService,
+} from '../../services/projects/file-tree-service.js';
 import {
   type LiveRepository,
   openLiveRepository,
@@ -57,6 +61,21 @@ import {
   gitPushSchema,
   validate,
 } from '../schemas/schemas.js';
+
+const fileTreeQuerySchema = z.object({
+  depth: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(0).max(10))
+    .optional(),
+  maxEntries: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(5000))
+    .optional(),
+});
 
 /**
  * #2412, owner decision: `POST /exec` stays at the operate tier, and a
@@ -611,13 +630,17 @@ export function createCodingRoutes(
       );
       if (location instanceof Response) return location;
       const dir = location.target;
-      const depth = c.req.query('depth')
-        ? Number(c.req.query('depth'))
-        : undefined;
-      const maxEntries = c.req.query('maxEntries')
-        ? Number(c.req.query('maxEntries'))
-        : undefined;
-      const data = fileTreeService.listDirectory(dir, { depth, maxEntries });
+      const options = fileTreeQuerySchema.safeParse(c.req.query());
+      if (!options.success)
+        return c.json(
+          {
+            success: false,
+            error:
+              'depth must be an integer from 0 to 10; maxEntries must be an integer from 1 to 5000.',
+          },
+          400,
+        );
+      const data = await fileTreeService.listDirectory(dir, options.data);
       return c.json({ success: true, data });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -667,9 +690,21 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const content = fileTreeService.readFileWithin(location.target, file);
+      const content = await fileTreeService.readFilePreviewWithin(
+        location.target,
+        file,
+      );
       return c.json({ success: true, data: { path: file, content } });
     } catch (e: unknown) {
+      if (e instanceof FilePreviewError)
+        return c.json(
+          { success: false, code: e.code, error: errorMessage(e) },
+          e.code === 'file-too-large'
+            ? 413
+            : e.code === 'not-found'
+              ? 500
+              : 400,
+        );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
   });

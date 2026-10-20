@@ -1,0 +1,7 @@
+{
+  "revision": "290e573445efa781c6a4c3911702d779e937f43b",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Merged exact main b7d8c2179dcfd1512c6ac907de50da2f5b0c8d5a into reviewed CLI head f1beefec3171ff62fd58b7047bdda54615ef24f7. The only conflict was this path-only record source array: preserved every citation from both parents (103-source union), with kind/state/summary/limits/checks byte-value identical. Reviewed combined help.ts: main adds the telemetry status/set verb and help entry while the deliberate client-turn-key chat help remains unchanged; telemetry parser preserves authenticated target selection and its existing consent/Full limits. CLI reference retains both corresponding sections. Actual merged core/core-HTTP owner run passed95/95; this is synthetic CLI/HTTP/subprocess evidence, not live provider, telemetry delivery, installed release or whole-epic qualification. No CLI algorithm or test assertion was manually changed by this resolution. Existing historical checks and all prior failed merge-group/readiness evidence stay attributed to their original heads.","inputs":["docs/reference/cli.md","packages/cli/src/help.ts"]}
+  ]
+}

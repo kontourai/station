@@ -1,0 +1,29 @@
+{
+  "revision": "50d027d226611f368fa128fc0afcb6343f0f8523",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed glossary Run expansion against the linked Agent Runtime and Workspace Surfaces responsibilities. Recorded parents now fold in built-in Home and the inbox as well as Activity; context boundaries and links remain accurate.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed work-surface vocabulary against the inbox family presentation, existing navigation store and surface selection. Recorded work lineage is not region or pane-host ancestry; no placement, identity, or authority contract changed.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed changed inbox derivation, Task and remote inventory reads, family rows, scope persistence, and existing conversation open/continuation owners. Controls retain the normal dock sender and read-only policy. Browser 390px parent navigation and mounted host regressions were checked; historical captures and native lifecycle claims remain historical.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/home-view-model.ts","src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed changed ChatDock inputs and device inboxScope registry alongside canonical Task navigation and Activity selection. Region placement, main-page history, unsaved guards and pane serialization are unchanged. Work families are row presentation, not new placements.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Updated Run to name Home and inbox folding. Traced buildWorkFacts through the existing exact delegated-parent resolver to shared lane promotion and WorkItemFamily. Ordinary lane counts name roots; Needs-you counts retain actionable members. State lanes and explicit-link-only joins remain unchanged.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed shared inbox family and scope controls in desktop and portaled mobile hosts. New controls use tokens and 44px targets; existing focus return, dialog history and viewport owners are retained. Mounted host tests and 390px browser parent navigation passed; packaged runtime qualification is separate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the added device-only inboxScope default and existing Starter work callers. No readiness, dispatch, continuation, first-run correlation or inspection behavior changed; this filter stores list selection only.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed changed ChatDock and inbox calls: existing Tasks, remote-session, and session-summary queries feed presentation. No endpoint, wire envelope, sender, permission, or published SDK shape changed; existing API claims remain accurate for this delta.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed new inboxScope in the device settings registry and unchanged host config/sender paths. The filter is device-local, not app.json or account policy, and no telemetry, approval, runtime, credential, or host configuration behavior changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed state vocabulary and last-known observation callers through the changed Home/inbox projection and WorkFacts sidecar. Families preserve each member status, controls and local/remote identity. No session ownership or last-known observation authority changed.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/useHomeViewModel.ts","src-ui/src/views/home/useInboxWorkItems.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated inbox instructions for recorded-parent folding, expanded attention children, persisted project/Station filtering and hidden-attention Show all. Traced both real inbox hosts and Task-owned chat activation. Mounted regressions and 390px browser round trips passed; this note does not claim physical-device execution.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the changed ChatDock inventory and Task navigation calls against Board builder handoff and Board proposal ownership. Board section data, account persistence, proposal review and approval authority are untouched; no Board prose change needed.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

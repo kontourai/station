@@ -19,9 +19,17 @@ current revision for this host across reloads while DNT remains active. Removing
 DNT re-prompts only a saved Full choice awaiting confirmation; Off and Lite need
 no acknowledgement.
 
-A standard paired device may lower tiers; only the operator or a device with
-`access:manage` may raise them. Agents cannot change telemetry choices or
-acknowledge the disclosure, even with `access:manage`.
+The app-wide disclosure stays closed when both effective publishers are Off
+and no product endpoint is configured. After a successful Off/Lite save, a
+device refused acknowledgement remembers a local decision for this host and
+disclosure revision across reloads. It does not create a server receipt or
+authorize Full; a changed revision or a saved Full choice prompts again.
+Setting-save failures show the server's refusal message.
+
+A standard paired device may lower or keep tiers. Only the operator or
+a device with `access:manage` may raise tiers. Agent-originated requests cannot
+change telemetry choices or acknowledge the
+disclosure, even with `access:manage`.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
 relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
@@ -47,7 +55,9 @@ The server sends independently to the `kontour` build-time author address and
 `operator` configured address, each under its own resolved tier. Neither address
 replaces the other. An empty author build constant is inert, including when a
 runtime environment variable of the same name is supplied. Source builds have
-no author address. No real receiver or release endpoint is enabled by this change.
+no author address. Official release producers can bake the public endpoint only through the
+[owner-gated build variable](../guides/release-rings.md#author-telemetry-in-official-builds);
+leaving it unset preserves the empty constant. No real receiver is enabled by this change.
 The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
 build destination; the UI lane presents that disclosure.
@@ -145,7 +155,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 
 | Field | Server observation or conservative value |
 | --- | --- |
-| version | The running package version when it is valid SemVer within the 64-character bound; otherwise `custom`. Receivers admit `custom` or versions on their configured release list. Version alone cannot establish an official build: source/fork builds can reuse a release version. |
+| version | The running package version when it is valid SemVer within the 64-character bound; otherwise `custom`. Receivers default to a configured release list; an explicit SemVer policy can admit valid versions plus `custom` without expanding the public version domain. Version alone cannot establish an official build: source/fork builds can reuse a release version. |
 | channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated `/events` connection. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |

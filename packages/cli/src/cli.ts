@@ -101,6 +101,7 @@ import {
   runServiceCommand,
 } from './commands/service.js';
 import { runServiceMenu } from './commands/service-menu.js';
+import { getChatOperationFailure } from './commands/session-client.js';
 import { runSetupCommand } from './commands/setup-command.js';
 import { runSetupImportCommand } from './commands/setup-import.js';
 import {
@@ -1571,6 +1572,22 @@ export function describeCliError(error: unknown): string {
   const refusal = explainFullAccessRefusal(error, getResolvedApiBase());
   if (refusal) return refusal;
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
+}
+
+export function reportCliError(error: unknown): void {
+  const operation = getChatOperationFailure(error);
+  if (operation?.jsonMode) {
+    console.error(
+      JSON.stringify({
+        success: false,
+        error: describeCliError(error),
+        clientTurnId: operation.clientTurnId,
+        conversationId: operation.conversationId,
+      }),
+    );
+    return;
+  }
+  console.error('Error:', describeCliError(error));
 }
 
 // `scripts/station-cli.ts` is the only supported source entry: it establishes

@@ -144,13 +144,26 @@ describe.skipIf(!chromiumAvailable)(
       ]);
       expect(reserved).toBeGreaterThan(0);
       // What `BannerHost` writes onto its container once it has measured.
-      await page.evaluate(
-        ([property, value]) =>
+      const immediateTop = await page.evaluate(
+        async ([property, value]) => {
           document
             .querySelector<HTMLElement>('.app__main')
-            ?.style.setProperty(property, value),
+            ?.style.setProperty(property, value);
+          // The global reduced-motion reset creates a 0.01 ms transition even
+          // for an otherwise unanimated property; allow that reset to settle.
+          document.querySelector('#probe')!.getBoundingClientRect();
+          if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+          }
+          return document.querySelector('#probe')!.getBoundingClientRect().top;
+        },
         [BANNER_RESERVED_HEIGHT_PROPERTY, `${reserved}px`],
       );
+      expect(
+        Math.abs(immediateTop - cardBottom),
+        'reservation must apply in the publishing frame',
+      ).toBeLessThan(1);
       return cardBottom;
     }
 
@@ -186,7 +199,7 @@ describe.skipIf(!chromiumAvailable)(
       },
     );
 
-    test('the inset and a collapse tween, and reduced motion refuses both tweens', async () => {
+    test('the inset applies instantly while only collapse tweens without reduced motion', async () => {
       for (const reducedMotion of ['no-preference', 'reduce'] as const) {
         const page = await openFixture(reducedMotion);
         try {
@@ -211,11 +224,23 @@ describe.skipIf(!chromiumAvailable)(
           }, naturalHeight);
           const collapse = await transitions(page, '.banner-host__item');
 
+          expect(
+            inset['padding-top'] ?? 0,
+            'content inset must not tween',
+          ).toBeLessThan(1);
+          for (const [property, duration] of Object.entries(inset)) {
+            if (
+              /^(padding|margin|inset|width|height|top|bottom|left|right|gap)/.test(
+                property,
+              )
+            ) {
+              expect(
+                duration,
+                `${property} must not animate route layout`,
+              ).toBeLessThan(1);
+            }
+          }
           if (reducedMotion === 'no-preference') {
-            expect(
-              inset['padding-top'] ?? 0,
-              'no padding-top transition on the content inset',
-            ).toBeGreaterThan(1);
             expect(
               collapse.height ?? 0,
               'no height transition on collapse',

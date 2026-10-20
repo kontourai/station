@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"The development.md delta only adds turn-jump to the transcript trace phase list. This file's pointer to the development guide for lifecycle and security conventions remains accurate; no change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

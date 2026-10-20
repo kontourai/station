@@ -1,0 +1,7 @@
+{
+  "revision": "a6a598b70a19aff627481308f776b944555e4e24",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 1 changed ChatDock.tsx only in the session context card wiring: the header's sessionProjectMismatchLabel and branch/count badges now stand down on sessionContextCardShown (width answer AND the card's own mounted report), the card's Chat inventory footer is offered only once useSessionInventoryHostRegistered is true, and the card props are useMemo'd behind a handler ref. Re-read the Project header branch-badge claim (Project page, not the dock header) and the mobile overflow/actions-sheet claims: unchanged by this round. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -710,7 +710,11 @@ test('#1600: an already-off host is offered the decision it can make, and keepin
   // labels follow the EFFECTIVE setting, and keeping a state only the
   // environment holds writes it down, because a decision resting on
   // `STATION_TELEMETRY_ENABLED` disappears the day that variable does.
-  const view = renderModal({ telemetryEnabled: false, enabledSource: 'env' });
+  const view = renderModal({
+    telemetryEnabled: false,
+    enabledSource: 'env',
+    endpointConfigured: true,
+  });
 
   expect(
     await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
@@ -891,6 +895,7 @@ test.each([
   'under DNT, saving %s as %s writes the choice without acknowledging',
   async (savedChoice, next, label) => {
     const view = renderModal({
+      endpointConfigured: true,
       telemetryEnabled: false,
       publishers: {
         kontour: { tier: 'off', reason: 'DNT', userChoice: 'lite' },

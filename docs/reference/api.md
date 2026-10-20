@@ -38,6 +38,18 @@ credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
 
+## Visual replies
+
+`html_preview` and `html_render` on station-control act only for the verified
+calling Session. The internal POST leaves `/api/html-replies/preview` and
+`/api/html-replies/render` accept bounded self-contained HTML, not a caller-chosen
+Session or workspace. Preview returns PNG data, contentHeight and console output;
+render returns a page reference. Both POST leaves require operate scope; preview launches Chromium rather than performing a read-only query. `GET /api/html-replies/:sessionId/:pageId` reads
+JSON only after canonical Session-read authorization. The read is no-store and
+does not execute HTML on the app origin. Deleting the publishing Session removes
+its page bytes. See [visual replies](../user/html-replies.md) for limits,
+engine approval behavior and physical-deletion semantics.
+
 ## Personal preferences
 
 `GET /api/me/preferences` reads the verified person's preferences on this
@@ -672,6 +684,25 @@ includes up to 200 `probe.tools` entries with raw `name`, optional `description`
 can return this metadata without persisting it to a local integration definition.
 Discovery metadata is a browsing snapshot, not execution authority.
 
+### Discover transcript App tools
+
+`GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`
+with raw tool names whose definitions declare valid `ui://` resources. It reads
+already-open, usable third-party connections and shipped in-process Station
+Control definitions, excluding disabled tools. The endpoint requires
+`orchestration:read`, like passive resolution and resource reads. Unknown
+or disconnected servers return an empty list; this endpoint never starts one.
+The browser shares this inert membership snapshot per server for five minutes.
+Metadata changes can wait until a stale query refetches on mount/focus; reloading
+refreshes it. This cache is never execution authority.
+
+Transcript resolver/resource requests use `x-station-mcp-transcript: preview` to
+require already-open third-party connections or shipped Station Control
+resources throughout discovery and resource loading.
+They do not use compatibility catalogs or open transient connections. Resource
+reads still re-resolve the current tool declaration and render policy; membership
+is never execution or resource-read authority.
+
 ### Create Integration
 
 `POST /integrations` accepts the integration definition schema and returns
@@ -1182,11 +1213,16 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
 preserved. Raising a tier requires the operator or `access:manage`; a standard
-paired device may lower it. Agents are refused. `telemetryTier` must be an object
+paired device may lower or keep it. Agent-originated requests cannot change
+telemetry choices. `telemetryTier` must be an object
 with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. Full without a current
 publisher disclosure remains effectively Lite. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
+Handler refusals from `PUT /config/app` log `App config update refused` with a
+stable `reason`, `principalKind`, and `deviceKind`. Telemetry choice refusals
+also include `telemetryChanges` with per-publisher `before`/`after` tier names;
+no credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
 The two Lite sinks send independently after notice; the default Full receipt

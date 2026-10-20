@@ -52,7 +52,15 @@
 
     "packages/cli/package.json#/engines",
 
-    "packages/cli/package.json#/publishConfig"
+    "packages/cli/package.json#/publishConfig",
+
+    "packages/cli/src/bin.ts",
+
+    "packages/cli/src/help.ts",
+
+    "packages/cli/src/__tests__/core-http.test.ts",
+
+    "scripts/station-cli-implementation.ts"
   ],
 
   "checks": [

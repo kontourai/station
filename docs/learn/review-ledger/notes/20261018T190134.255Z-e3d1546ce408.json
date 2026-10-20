@@ -1,0 +1,7 @@
+{
+  "revision": "a568dc0f8498402db800d4084133e1aadc41fea3",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Fix round 1 reviewed at a568dc0f849: MCP use now requires matched success and observable ping output; rejected blocked attempts do not count as breaches, positive selection requires engine-reported ping-present/blocked-absent inventory, missing receipts stay unverified. Skill/script claims require matching invocation and HMAC contents/answer; native policy stays unverified. CLI fixtures remain real loopback tool-execution captures, with deliberate SDK-derived negative fixtures in tests. Live models and current full delivery/fault-injection qualification remain NOT_VERIFIED pending the base setupApi channel; did not count budget-red tests as meaningful injected failures.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts","src-server/providers/adapters/claude-adapter-events.ts"]}
+  ]
+}

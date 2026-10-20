@@ -1,0 +1,7 @@
+{
+  "revision": "6ff65c7dfb51c4b589a4a8723493737826dc123b",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Re-checked after this branch added a separate supervisor bundle build to esbuild.config.mjs. The doc's esbuild claim (STATION_AUTHOR_TELEMETRY_ENDPOINT as a server-banner build input) is unaffected: the supervisor bundle does not use the server banner. No prose change.","inputs":["docs/reference/env-vars.md","esbuild.config.mjs"]}
+  ]
+}

@@ -890,6 +890,23 @@ test('feedback route rejects free text, targets one publisher, skips silently, a
   );
 });
 
+test('the feedback sender refuses extra fields from a direct service caller', async () => {
+  const sink = await receiver();
+  const { live } = await service(sink.endpoint);
+  await live.recordTierLowering('operator');
+  const feedback = {
+    publisher: 'operator' as const,
+    action: 'tier-lowered' as const,
+    reason: 'privacy' as const,
+    detail: 'private text must never leave the sender',
+  };
+  expect(await live.submitFeedback(feedback)).toBe(true);
+  expect(sink.payloads).toEqual([]);
+  expect(await live.outbox('operator')).toMatchObject([
+    { outcome: 'dropped', reason: 'transport' },
+  ]);
+});
+
 test('outbox evicts oldest entries at both the 30-day and actual serialized 5 MiB bounds', async () => {
   const sink = await receiver();
   const { live, home } = await service(sink.endpoint);

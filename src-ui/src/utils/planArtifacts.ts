@@ -48,7 +48,7 @@ const LINE_STATUS_PATTERNS: Array<{
 /**
  * Every character any `LINE_STATUS_PATTERNS` entry can begin a step with.
  *
- * A streamed answer is re-derived on every token with the whole accumulated
+ * A streamed answer is re-derived at line boundaries with the accumulated
  * text, and the parse below splits it into lines and runs six regexes over
  * each one. Prose that contains none of these characters cannot produce a
  * single step, so the scan is skipped rather than performed and discarded.
@@ -183,17 +183,22 @@ export function derivePlanArtifactFromStreamingState(
     'reasoning',
     updatedAt,
   );
-  if (fromReasoning) {
-    return fromReasoning;
-  }
-
-  const text = chat.streamingMessage?.contentParts
-    ?.filter((part) => part.type === 'text' && part.content)
-    .map((part) => part.content)
-    .join('\n');
-  return (
-    derivePlanArtifactFromText(text, 'assistant', updatedAt) ??
-    chat.planArtifact ??
-    null
-  );
+  const text = fromReasoning
+    ? undefined
+    : chat.streamingMessage?.contentParts
+        ?.filter((part) => part.type === 'text' && part.content)
+        .map((part) => part.content)
+        .join('\n');
+  const next =
+    fromReasoning ?? derivePlanArtifactFromText(text, 'assistant', updatedAt);
+  const previous = chat.planArtifact;
+  // rawText is rendered and downloadable; equal steps alone cannot make two
+  // artifacts interchangeable (headings and explanatory prose may differ).
+  if (
+    next &&
+    previous?.source === next.source &&
+    previous.rawText === next.rawText
+  )
+    return previous;
+  return next ?? previous ?? null;
 }

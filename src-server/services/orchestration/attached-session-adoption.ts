@@ -17,12 +17,18 @@ import {
   STATION_CONFINEMENT_METADATA_KEY,
   type StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import {
+  ADOPTION_CONTINUATION_IN_PROGRESS_CODE,
+  ADOPTION_ENGINE_NOT_READY_CODE,
+  PROVIDER_FAILURE_KINDS,
+} from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type {
   ProviderAdapterShape,
   ProviderSessionAdoptInput,
 } from '../../providers/adapter-shape.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import {
   isSessionSourceAffinity,
   snapshotSessionSourceAffinity,
@@ -76,12 +82,14 @@ import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from './session-project-identit
 // (plan condition 3). `dispatch()` initializes before `adopt()` can reserve,
 // so no reservation carries the id of an owner that never initialized.
 
-export class AdoptionContinuationInProgressError extends Error {
-  readonly code = 'adoption_continuation_in_progress';
-  readonly retryable = true;
+export class AdoptionContinuationInProgressError extends ProviderRefusalError {
+  readonly code = ADOPTION_CONTINUATION_IN_PROGRESS_CODE;
 
   constructor() {
-    super('Continuation is being created — retry shortly.');
+    super(
+      'Continuation is being created — retry shortly.',
+      PROVIDER_FAILURE_KINDS[ADOPTION_CONTINUATION_IN_PROGRESS_CODE],
+    );
     this.name = 'AdoptionContinuationInProgressError';
   }
 }
@@ -92,13 +100,13 @@ export class AdoptionContinuationInProgressError extends Error {
  * engine's own readiness report, and the same request can succeed once the
  * engine is set up.
  */
-export class AdoptionEngineNotReadyError extends Error {
-  readonly code = 'continuation_engine_not_ready';
-  readonly retryable = true;
+export class AdoptionEngineNotReadyError extends ProviderRefusalError {
+  readonly code = ADOPTION_ENGINE_NOT_READY_CODE;
 
   constructor(engine: string, detail: string) {
     super(
       `${engine} isn't ready, so no continuation was created (${detail}). Set up ${engine}, then try again.`,
+      PROVIDER_FAILURE_KINDS[ADOPTION_ENGINE_NOT_READY_CODE],
     );
     this.name = 'AdoptionEngineNotReadyError';
   }
@@ -211,6 +219,14 @@ export interface AttachedSessionAdoptionDeps {
   modelLaunchRequestedOverrideFromInput: (
     input: ProviderSessionStartInput,
   ) => boolean;
+  /**
+   * #2494: the adopted child's resolved confinement (a plan for its adapter,
+   * or the `no-mechanism` record), as every other start gets it. Absent, the
+   * child records none.
+   */
+  applyConfinement?: (
+    input: ProviderSessionAdoptInput,
+  ) => ProviderSessionAdoptInput;
   forgetAbandonedAdoptionMemory: (reservation: AdoptionReservation) => void;
   logCleanupFailure: (
     resource: string,
@@ -730,7 +746,7 @@ export class AttachedSessionAdoption {
     // adapters receive it only when their declared omission semantics retain
     // an accepted session model; external engines deliberately choose their
     // own continuation default.
-    const baseAdoptionInput: ProviderSessionAdoptInput = {
+    const unconfinedAdoptionInput: ProviderSessionAdoptInput = {
       provider: source.provider,
       threadId: reservation.targetThreadId,
       sourceSessionId: context.sourceSessionId,
@@ -790,6 +806,9 @@ export class AttachedSessionAdoption {
         ? { tenantExecutionContext: context.tenantExecutionContext }
         : {}),
     };
+    const baseAdoptionInput =
+      this.deps.applyConfinement?.(unconfinedAdoptionInput) ??
+      unconfinedAdoptionInput;
     const launchInput = this.deps.withAcceptedModelLaunchPlan(
       adapter,
       baseAdoptionInput,

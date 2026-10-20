@@ -9,6 +9,8 @@
  */
 import { randomBytes } from 'node:crypto';
 import { serve } from '@hono/node-server';
+import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-reply-document';
+import { MCP_UI_NETWORK_BOOTSTRAP_TAG } from '@kontourai/station-shared/mcp-ui-csp';
 import { Hono } from 'hono';
 import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
@@ -55,6 +57,7 @@ export function resolveMcpUiFrameAncestors(options: {
       }
       // URL.origin is "null" for Tauri's custom scheme, while CSP accepts
       // the concrete tauri://localhost source expression.
+      if (url.hostname.startsWith('[')) return;
       origins.add(url.protocol === 'tauri:' ? 'tauri://localhost' : url.origin);
     } catch {
       // Invalid deployment configuration must narrow access, never broaden it.
@@ -64,7 +67,8 @@ export function resolveMcpUiFrameAncestors(options: {
   for (const origin of options.additionalOrigins ?? []) add(origin);
   add(`http://localhost:${options.port}`);
   add(`http://127.0.0.1:${options.port}`);
-  add(`http://[::1]:${options.port}`);
+  // CSP host-source grammar does not accept IPv6 literals in these browsers.
+  // localhost and IPv4 are the supported loopback embedding origins.
   add('tauri://localhost');
   add('https://tauri.localhost');
   add('http://tauri.localhost');
@@ -107,6 +111,16 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
       },
     );
   });
+
+  app.get('/html-reply/frame', (c) =>
+    c.html(buildHtmlReplyProxyDocument(options.frameAncestors ?? []), 200, {
+      ...SECURITY_HEADERS,
+      ...frameHeaders,
+      // Restrict child navigations as well as its initial srcdoc. This policy
+      // is inherited by the opaque child; its own policy denies nested frames.
+      'Content-Security-Policy': `frame-ancestors ${frameAncestors}; frame-src 'none'`,
+    }),
+  );
 
   // Plugins use the same dedicated, asset-free origin as MCP Apps.  In
   // particular, do not add a static-file fallback here: extension bytes cross
@@ -255,7 +269,7 @@ export function buildMcpAppsSandboxProxyDocument(
           withResources('img-src data:'),
           'font-src data:',
           'connect-src ' + sources(csp.connectDomains, ['https:', 'wss:']),
-          'frame-src ' + sources(csp.frameDomains),
+          "frame-src 'none'",
           'base-uri ' + sources(csp.baseUriDomains),
           "object-src 'none'",
           "form-action 'none'"
@@ -263,13 +277,14 @@ export function buildMcpAppsSandboxProxyDocument(
       };
       const escapeAttribute = (value) =>
         value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+      const networkBootstrap = ${JSON.stringify(MCP_UI_NETWORK_BOOTSTRAP_TAG).replaceAll('<', '\\u003c')};
       const wrapHtml = (html, csp) => {
         const meta = '<meta http-equiv="Content-Security-Policy" content="' +
           escapeAttribute(csp) + '">';
         // The policy must precede every byte of untrusted markup. Wrapping the
         // raw resource after a host-owned head prevents a script placed before
         // the resource's own <head> from running before CSP takes effect.
-        return '<!doctype html><html><head>' + meta +
+        return '<!doctype html><html><head>' + meta + networkBootstrap +
           '</head><body>' + html + '</body></html>';
       };
       const isPlainObject = (value) =>

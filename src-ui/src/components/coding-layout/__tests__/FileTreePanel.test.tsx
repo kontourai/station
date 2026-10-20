@@ -68,6 +68,7 @@ vi.mock('../../../providers/context/CodingFilesContextProvider', () => ({
 import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { activeTerminalWriter } from '../activeTerminal';
 import { FileTreePanel } from '../FileTreePanel';
+import * as treeFilter from '../fileTreeFilter';
 
 const tree = [
   {
@@ -106,6 +107,40 @@ function renderPanel(onFileSelect = vi.fn()) {
 }
 
 describe('FileTreePanel', () => {
+  test('reuses filtering for menu changes and refreshes results when search or tree changes', () => {
+    const filter = vi.spyOn(treeFilter, 'filterTree');
+    const onFileSelect = vi.fn();
+    try {
+      const mounted = renderPanel(onFileSelect);
+      expect(screen.getByText('README.md')).toBeTruthy();
+      const initialCalls = filter.mock.calls.length;
+      fireEvent.contextMenu(screen.getByText('app.ts'));
+      expect(screen.getByRole('menu')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls);
+      fireEvent.change(screen.getByPlaceholderText('Filter files…'), {
+        target: { value: 'README' },
+      });
+      expect(screen.queryByText('app.ts')).toBeNull();
+      expect(screen.getByText('README.md')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls + 1);
+      filesState.data = [
+        ...tree,
+        { name: 'README-notes.md', path: 'README-notes.md', type: 'file' },
+      ];
+      mounted.rerender(
+        <FileTreePanel
+          projectSlug="project"
+          workingDir="/repo"
+          onFileSelect={onFileSelect}
+        />,
+      );
+      expect(screen.getByText('README-notes.md')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls + 2);
+    } finally {
+      filter.mockRestore();
+    }
+  });
+
   test('renders directories and (expanded) files', () => {
     renderPanel();
     expect(screen.getByText('src')).toBeTruthy();

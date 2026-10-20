@@ -5,7 +5,7 @@
 
 .shortcut-editor__intro {
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .shortcut-editor__intro p {
@@ -51,7 +51,7 @@
 .shortcut-editor__command > span,
 .shortcut-editor__command details {
   color: var(--text-muted);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .shortcut-editor__command summary {
@@ -101,7 +101,7 @@
   color: var(--text-muted);
   background: transparent;
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   cursor: pointer;
 }
 

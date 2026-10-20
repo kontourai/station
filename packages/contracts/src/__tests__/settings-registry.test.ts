@@ -298,6 +298,8 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'defaultWorkspaceIsolation',
         'knowledgeStores',
         'mcpUiHost',
+        // Guide runtime wiring reads enabled === true: absent is off.
+        'reviewGuidesEnabled',
         'runtime',
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',

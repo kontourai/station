@@ -43,7 +43,7 @@ dunce = "1"
 # dependency table, not the desktop-only one below: web push cannot reach the
 # native shell (Android WebView has no PushManager), so mobile is the whole
 # reason this is here (#910).
-tauri-plugin-notification = "=2.5.1"
+tauri-plugin-notification = "=2.7.0"
 # Mobile haptic feedback (station#1954). Official Tauri plugin — listed in the
 # shared table so capability ACL generation can resolve `haptics:*` permissions
 # on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
@@ -88,7 +88,7 @@ tauri-plugin-opener = "=2.5.5"
 # functionally inert plugin, which is honest-inertness policy, not a second
 # crash guard.
 notify-rust = "=4.18.0"
-tauri-plugin-updater = "=2.13.1"
+tauri-plugin-updater = "=2.14.0"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
 tauri-plugin-process = "=2.4.0"

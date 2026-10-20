@@ -7,6 +7,7 @@ import {
   PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
   parseStationDailyPing,
+  parseTelemetryFeedback,
 } from '../product-telemetry.js';
 
 const batch = () => ({
@@ -410,4 +411,25 @@ test('a wording-only bump changes consent without changing batch or probe compat
     vi.doUnmock('@kontourai/station-contracts/product-telemetry');
     vi.resetModules();
   }
+});
+
+test('feedback skip is a local dismissal and cannot be submitted', () => {
+  expect(() =>
+    parseTelemetryFeedback({
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'skip',
+    }),
+  ).toThrow('Invalid telemetry feedback');
+  expect(
+    parseTelemetryFeedback({
+      publisher: 'kontour',
+      action: 'tier-lowered',
+      reason: 'privacy',
+    }),
+  ).toEqual({
+    publisher: 'kontour',
+    action: 'tier-lowered',
+    reason: 'privacy',
+  });
 });

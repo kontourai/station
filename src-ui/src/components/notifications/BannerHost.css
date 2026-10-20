@@ -38,13 +38,6 @@
   padding-top: var(--banner-stack-height, 0px);
 }
 
-/* Declared unconditionally: `tokens.css`'s reduced-motion reset zeroes the
-   duration with `!important`, so a `no-preference` wrapper here only stated
-   the same preference a second time. */
-.app__main > .main-content {
-  transition: padding-top var(--motion-base) var(--ease-standard);
-}
-
 /* archive#3432: the bound and the scroll both live on `.banner-host__stack`
  * (below), never on `.banner-host` itself. A flex child shrinks to fit an
  * ancestor's max-height instead of overflowing it — `.banner-host` is

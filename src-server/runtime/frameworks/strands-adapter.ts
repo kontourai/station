@@ -1,4 +1,5 @@
-import type { UIMessage } from 'ai';
+import { asSchema, type UIMessage } from 'ai';
+import { z } from 'zod';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
@@ -448,7 +449,13 @@ class StrandsAgentWrapper implements IAgent {
         model: this.strandsAgent.model,
         systemPrompt: (this.strandsAgent as any).systemPrompt,
         tools: [],
-        structuredOutputSchema: schema,
+        structuredOutputSchema: schema._zod
+          ? schema
+          : z.fromJSONSchema(
+              (await asSchema(schema).jsonSchema) as Parameters<
+                typeof z.fromJSONSchema
+              >[0],
+            ),
       });
       const result = await tempAgent.invoke(prompt);
       const text = result.toString();

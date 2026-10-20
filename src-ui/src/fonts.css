@@ -26,6 +26,37 @@
  * JetBrains Mono © JetBrains).
  */
 
+/* Width-matched fallback, computed with FontTools from the vendored DM Sans
+ * latin woff2 (wght 400/700 instances) and Arial regular/bold hmtx advances.
+ * Sample: The quick brown fox jumps over the lazy dog. Station workspace panes,
+ * sessions and tool calls 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ
+ * size-adjust = sum(DM advances / 1000) / sum(Arial advances / 2048).
+ * Sample widths in em: 66.474 / 65.8076171875 (regular),
+ * 69.913 / 69.46142578125 (bold). DM hhea ascent/descent/gap = 992/310/0;
+ * divide those em ratios by each size-adjust for the vertical overrides.
+ * Systems without Arial continue to system-ui; individual text widths vary. */
+@font-face {
+  font-family: "DM Sans Fallback";
+  src: local("Arial");
+  font-style: normal;
+  font-weight: 400 500;
+  size-adjust: 101.01262%;
+  ascent-override: 98.20555%;
+  descent-override: 30.68923%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "DM Sans Fallback";
+  src: local("Arial Bold");
+  font-style: normal;
+  font-weight: 600 700;
+  size-adjust: 100.65011%;
+  ascent-override: 98.55926%;
+  descent-override: 30.79977%;
+  line-gap-override: 0%;
+}
+
 /* DM Sans · latin */
 @font-face {
   font-family: "DM Sans";

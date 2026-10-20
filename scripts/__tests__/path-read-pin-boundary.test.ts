@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Delivery suites read captured CLI data under fixtures/ (excluded from
+  // source pins); the scenario suite also reads files it creates in its isolated
+  // workspace. Direct scenario/mapper imports provide behavior-selection edges.
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'src-server/providers/__tests__/claude-adapter-events.test.ts',
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
@@ -528,6 +533,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
+  'packages/supervisor/src/__tests__/control-server.test.ts':
+    'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
@@ -577,6 +584,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts':
+    'lists only the temporary CLI report directory created by makeTempDir to inspect generated matrix results',
   'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
@@ -623,6 +632,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
+  'tests/message-delivery-recovery.spec.ts':
+    'a Playwright spec; reads the instance registry to pair a second browser with its exact runner-owned Station home, not to scan repository source',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
   'src-ui/src/__tests__/session-state-word-consistency.test.ts':

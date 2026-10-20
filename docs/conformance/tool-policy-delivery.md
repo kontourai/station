@@ -2,13 +2,13 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.289; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.300; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.289.
+inspected or executed. They are not new provider results for SDK 0.3.300.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -105,6 +105,9 @@ rules below. Selecting it does not make Codex enforce those rules.
 
 Station's Codex Ask mode selects `approvalPolicy: untrusted` and
 `sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
+A `workspace` session with no Station mode sends only `sandbox:
+workspace-write` and no `approvalPolicy`, so Codex's own approval
+configuration governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 These policies determine when Codex requests approval. They do not select who
 reviews a sandbox escalation. Station leaves Codex's `approvalsReviewer`
 unchanged on thread start, resume, native adoption by fork, and subsequent
@@ -208,6 +211,30 @@ refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
+## Opt-in delivery evidence (#3824)
+
+The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
+register with the live matrix runner. They use a temporary API-created Agent,
+skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
+verified HMAC execution receipt in inspected artifact contents and answer tests skill delivery. A Read-only path fails;
+an absent invocation shape stays unverified. The Claude shape comes from real
+CLI tool execution with loopback fixture inference, not a billable/live model
+capture. A follow-up tool start plus a call-ID-matched successful completion tests MCP use; observable output must contain the ping marker. A known
+fixture action is disabled through Station's integration policy and checked
+against the same run's discovered tool inventory. Non-use alone is unverified:
+positive selection evidence requires an engine tool list naming this server's
+ping but excluding blocked. Rejected attempts are not breaches; successful
+blocked completions or the action's output are breaches.
+
+This is an MCP tool-selection probe for Station, Claude and Codex. The separate
+`nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot
+verify native-tool disabling or the pre-tool blocking/grant chain. ACP cannot carry restricted MCP
+selection and reports that probe unsupported. Unsupported skills and missing
+passing evidence are not promoted to delivered. Cleanup failure remains a failed
+result, and an unreachable third-party dependency is skipped with a reason.
+These deterministic fixtures do not refresh the historical live Claude results
+below; live delivery and UI rendering remain NOT_VERIFIED until explicitly run.
+
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
@@ -230,6 +257,10 @@ with a real turn in `permissionMode: 'default'`:
   `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
   user tier carries no such precondition: `~/.claude/settings.json` applies to
   every session regardless, because the operator wrote it for themselves.
+  A full-access session Station runs inside its Seatbelt profile (#2494) reads
+  both the user tier and that trust from a Station-owned configuration
+  directory instead, never the operator's
+  ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 
 So this reaches a workspace the operator has already trusted in Claude Code —
 their own repositories, normally. That makes it a same-user threat model:
@@ -373,8 +404,10 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
-SDK 0.3.289 forwards reason type, reason code and interaction fields, but not
-`classifier_approvable`. A test runs the real installed SDK against a stand-in
+SDK 0.3.289 was observed forwarding reason type, reason code and interaction
+fields, but not `classifier_approvable`. The current 0.3.300 type contract exposes
+`requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
+reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
 retained by the tap
 (`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request

@@ -1,0 +1,7 @@
+{
+  "revision": "a6a598b70a19aff627481308f776b944555e4e24",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round 1 changed ChatDock.tsx only in the session context card wiring: the header's sessionProjectMismatchLabel and branch/count badges now stand down on sessionContextCardShown (width answer AND the card's own mounted report), the card's Chat inventory footer is offered only once useSessionInventoryHostRegistered is true, and the card props are useMemo'd behind a handler ref. Updated the session context card section to say all three header items stand down only once the card has mounted, the footer appears only after host registration, and the props are memoised; re-read the rest of the section against ChatDock.tsx and sessionContextCardModel.ts. Executed: SessionContextCard.dock.test.tsx 27/27 and a live isolated instance (1440px card, 1000px folded chip and popover, 390px sheet and Chat inventory).","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

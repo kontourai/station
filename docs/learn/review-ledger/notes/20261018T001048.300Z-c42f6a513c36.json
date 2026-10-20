@@ -1,0 +1,7 @@
+{
+  "revision": "d9708573e5eeef5c268393263d771de8bf3368da",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the ProductTelemetryReceiver delta against Lite finalization and HTTP admission: /48 contributors separate from /64 rate limits, uncovered-ping secondary suppression including overlapping sets, migration 4 erasure and cache finalization. Other module sections unchanged; focused broker SQL/HTTP tests executed, deployment remains unqualified.","inputs":["docs/architecture/module-map.md","packages/telemetry-broker/qualify-lite.mjs","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/lite-routes.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/store.ts"]}
+  ]
+}

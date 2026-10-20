@@ -1,0 +1,9 @@
+{
+  "revision": "2e374816d7c5c5af03b0ce47a8fc1976890b05b3",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed ordinaryVitestExcludes and its production corpus/discovery callers after the merge exceeded Windows argv limits. Exact filenames in each directory are grouped with brace alternatives; no wildcard or resource-group membership change. Vitest discovery still compares the effective ordinary file set against the canonical partition, preserving process-heavy/exclusive ownership and worker limits. Resource-manifest/corpus/partition/connected-runner tests passed (119 tests); reverting compaction reproduced the 32827-byte Windows limit assertion. Current argv is 19100 bytes. Existing testing and Scripts guidance remains accurate; no prose or policy change is needed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed ordinaryVitestExcludes and its production corpus/discovery callers after the merge exceeded Windows argv limits. Exact filenames in each directory are grouped with brace alternatives; no wildcard or resource-group membership change. Vitest discovery still compares the effective ordinary file set against the canonical partition, preserving process-heavy/exclusive ownership and worker limits. Resource-manifest/corpus/partition/connected-runner tests passed (119 tests); reverting compaction reproduced the 32827-byte Windows limit assertion. Current argv is 19100 bytes. Existing testing and Scripts guidance remains accurate; no prose or policy change is needed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

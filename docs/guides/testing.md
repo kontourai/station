@@ -133,7 +133,7 @@ It is a syntax check, not a general assertion-strength proof. Seed legacy values
 and inspect the current store's persisted envelope when testing migrations.
 
 
-Changed-test diagnostics retain up to 32 explicit test targets even when broader
+Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
 provisional and do not satisfy the deferred obligations. Broad import expansion
 and larger selections stay deferred within the existing feedback budget.
@@ -203,6 +203,14 @@ source checks. On metadata-only events the skipped source aggregate has a
 different name, so it cannot replace a failing required `fast-checks` result.
 The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
+That merge-group acknowledgment POST retries explicit HTTP 500, 502, 503 and 504
+responses at most twice, after 100ms and 200ms, within one 30-second operation
+budget. Every attempt publishes the same context and verdict on the same
+candidate SHA. Other HTTP errors, malformed responses, network failures and
+budget exhaustion remain failures. PR metadata reads and publications do not
+use this retry, so a delay cannot extend a previously validated mutable title
+verdict. The workflow's existing failure fallback remains authoritative when
+publication fails; no source job or candidate is rerun by this handling.
 
 `Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
 same-repository main-target PR closes merged. The merged-close path retires
@@ -457,8 +465,12 @@ file imported by the scripts of more than 16 spawning tests, such as the
 instead of running them inline, so one shared-helper edit cannot exceed the
 `ci:fast` budget. When that deferral is the only reason a lane is deferred,
 the other changed files keep their related discovery and only the deferring
-file leaves the inline run. Any other deferral, such as an escalation or an
-unavailable related path, still defers the whole related selection.
+file leaves the inline run. In local unsharded feedback, any other deferral,
+such as an escalation or an unavailable related path, still defers the whole
+related selection. Hosted shard planning instead retains the other mapped
+related paths and concrete explicit targets, including selections over 32,
+while preserving every unresolved lane obligation. This produces earlier
+failures without declaring global coverage complete.
 A third kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the
@@ -1150,18 +1162,20 @@ Two consequences worth stating plainly:
   own commit that changes nothing else. A regeneration on a developer machine
   bakes in that machine's fonts along with whatever upstream drift has
   accumulated, under whoever happens to be holding the branch.
-- **Bump the container in lockstep with `@playwright/test`**, and expect a
-  re-baseline to be part of that change. A rebuilt base image published under
-  the same tag is a different renderer wearing the same name, which is why the
-  pin is a digest rather than `v1.63.0-noble`.
+- **Bump the container in lockstep with `@playwright/test`** and review renderer
+  differences separately. Baseline changes need a reviewed commit of their own.
+  A rebuilt base image published under the same tag is a different renderer
+  wearing the same name, which is why the pin is a digest rather than
+  `v1.64.1-noble`.
 
   What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
   **version** in the image reference equals the `@playwright/test` version
   resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
-  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
-  not checked and cannot be — nothing in this repository derives it. A digest
-  that no longer matches its tag's contents therefore surfaces as a Playwright
-  launch error in the nightly, not as a silent renderer change.
+  `package.json`, so a resolved minor bump cannot slip past). The local test
+  checks the **digest** syntax, not its registry contents. Before updating the
+  pin, verify the published tag's OCI index and selected platform manifest and
+  config against their content digests. That registry check is separate from
+  an actual container/browser run and Gallery pixel review.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -1364,6 +1378,34 @@ Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Choosing the compiler
+
+`scripts/tsc-slot.mjs` runs one of three compilers through the same slots:
+
+| Name | Compiler | Notes |
+| --- | --- | --- |
+| `tsc` | TypeScript 7.0.2 | The reference compiler. |
+| `tsc-ts` | [tsc-ts](https://github.com/vercel-labs/tsc-ts), an experimental TypeScript 7.0.2 port | Same flags and incremental mode as `tsc`, with faster cold and edit-after-change checks. Diagnostics matched `tsc` on Station's projects but are not guaranteed to (for example, `--target es5` reports differently). |
+| `bun` | Bun's checker | Cold project checks only; see below. |
+
+The `DEFAULT_COMPILERS` constant in that file sets the default: currently
+`tsc-ts` locally and `tsc` when `CI` is set, so hosted checks stay on the
+reference compiler. Change it there to move the default. Override it for a
+shell or a single run:
+
+```sh
+STATION_TYPECHECK_COMPILER=tsc npm run typecheck:ui
+node scripts/tsc-slot.mjs --compiler=tsc-ts -p src-ui/tsconfig.json --noEmit
+```
+
+An explicit choice that cannot run fails. A default that cannot run here
+(tsc-ts has no build for the platform or is not installed, or Bun does not
+accept the arguments) quietly uses `tsc`. Each non-`tsc` compiler keeps its
+own build info file. If `tsc-ts` and `tsc` disagree, treat `tsc` as
+authoritative and report the difference upstream. A test fails when the
+installed `tsc-ts` and `typescript` report different versions, so update them
+together.
 
 #### Optional Bun diagnostics
 
@@ -1613,8 +1655,14 @@ then chooses a path:
 - **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
   or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
   packaging leg, take the fast path: the owner limited the scope to keep queue
-  candidates under the shared runner cap. A deferred plan drops related discovery and
-  runs no explicit test above 32, so `fast-checks` cannot cover it. A
+  candidates under the shared runner cap. Hosted plans retain concrete mapped
+  tests and related discovery from the other changed paths, even when a global
+  obligation remains deferred. They run through the existing resource groups
+  and shard receipts, including explicit selections above 32 files. Paths
+  explicitly deferred by supplemental edges remain deferred; unknown/global
+  paths are not expanded into an assumed-complete selection. Passing the mapped
+  tests does not discharge the broader obligation. Local unsharded feedback
+  keeps its bounded selection limits. A
   `mergeQueueRegression` path, such as the SDK transport or the orchestration
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
@@ -2163,8 +2211,12 @@ UI bundle budget, enforced by the fresh browser startup build rather than a
 second standalone UI build. `fast-checks` requires successful plan/statics jobs.
 The `aggregate` command independently validates empty-plan omission or proves
 that each allocated shard ran its exact slice. An unexpected skip, cancellation,
-missing receipt, or receipt for another plan or head fails the check. A deferred selection (the
-selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
+missing receipt, or receipt for another plan or head fails the check. A deferred
+selection (the selector's exit 3) is reported and passes only when its executed
+mapped tests pass; a real assertion or infrastructure failure is not converted
+into deferral. The unresolved obligation still controls merge-queue full
+regression. This catches mapped caller failures before queue admission without
+claiming that the PR completed global verification.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no
 `scripts/fast-checks-shard.mjs`) runs its whole unsharded `ci:fast` in
