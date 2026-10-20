@@ -66,3 +66,22 @@ test('the stub leaves the update sub-routes to their own fixtures', async () => 
   ])
     expect(matches(new URL(`http://gallery.test${path}`)), path).toBe(false);
 });
+
+test('no browser fixture routes the check with a whole-URL glob', async () => {
+  // Structural: the predicate above only protects fixtures that use it. A
+  // string route ending at the bare path cannot match `?staged=1`.
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = join(import.meta.dirname, '../../tests');
+  const offenders: string[] = [];
+  const stringRoute = /\.route\(\s*(['"`])[^'"`]*\/api\/system\/core-update\1/;
+  for (const entry of readdirSync(root, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile() || !/\.(ts|mts|mjs|js)$/.test(entry.name)) continue;
+    const path = join(entry.parentPath, entry.name);
+    if (stringRoute.test(readFileSync(path, 'utf8'))) offenders.push(path);
+  }
+  expect(offenders).toEqual([]);
+});
