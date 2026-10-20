@@ -17,6 +17,7 @@ import { FilePartPreview } from './FilePartPreview';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
+import { blockHasVisibleContent } from './message-bubble/visibleContent';
 import { PublishedHtmlReply } from './PublishedHtmlReply';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import {
@@ -197,6 +198,20 @@ function StreamingMessageWithApps({
     void contentRevision;
     onContentChange?.();
   }, [contentRevision, onContentChange]);
+
+  // Same rule as the settled row (`visibleContent.ts`). When the host shows
+  // the turn's status elsewhere (the composer pill), a row with no content
+  // yet would be a header over an empty card: draw nothing until the first
+  // text, reasoning or tool row arrives, then the bubble eases in.
+  const hasVisibleContent = blocks.some((block) =>
+    block.type === 'tool-call-run' ||
+    (block.type === 'content-part' && isToolCallPart(block.part))
+      ? Boolean(renderToolCall)
+      : blockHasVisibleContent(block, {
+          showReasoning: showReasoning && Boolean(renderReasoning),
+        }),
+  );
+  if (suppressActivity && !hasVisibleContent) return null;
 
   return (
     <div

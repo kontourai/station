@@ -34,6 +34,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import { useHasVisibleTranscriptContent } from './message-bubble/visibleContent';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -276,6 +277,15 @@ function MessageBubbleComponent({
     [onToolApproval, activeSession.id, activeSession.agentSlug],
   );
 
+  // One rule with the streaming row (`visibleContent.ts`): an assistant row
+  // with nothing to draw renders no bubble at all, rather than a header over
+  // an empty card. Hoisted with the hooks above; read after the special rows.
+  const hasVisibleContent = useHasVisibleTranscriptContent(
+    msg.contentParts,
+    textContent,
+    { showReasoning },
+  );
+
   const flowPart = msg.contentParts?.find(
     (part) =>
       part.type === 'flow-gate-verdict' || part.type === 'flow-run-attached',
@@ -314,6 +324,10 @@ function MessageBubbleComponent({
   if (transcriptMarker) {
     return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
   }
+
+  // A user row always draws (its bubble carries delivery state even when
+  // empty of text); an assistant row only once it has content.
+  if (msg.role === 'assistant' && !hasVisibleContent) return null;
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
