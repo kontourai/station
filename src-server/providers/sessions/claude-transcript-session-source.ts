@@ -1,3 +1,7 @@
+import { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provider-failure';
+
+export { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -59,7 +63,7 @@ const PROMPT_SOURCE = 'claude-transcript';
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
-export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
+
 const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'claude-config-home';
 const logger = createLogger({ name: 'claude-transcript-session-source' });

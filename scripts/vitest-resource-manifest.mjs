@@ -127,6 +127,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Disposable Chromium previews, including renderer limits and process cleanup.
+  'src-server/services/__tests__/html-reply-preview.process.test.ts',
+  'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
   'src-server/routes/pull-requests/__tests__/pull-request-routes.test.ts',
@@ -1646,13 +1649,7 @@ function explicitFiles(manifest) {
  */
 export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   return Object.freeze([
-    ...compactExactPaths([
-      ...manifest.processHeavy.files,
-      ...manifest.processExclusive.files,
-      ...manifest.coordinatorExclusive.files,
-      ...manifest.credentialLedgerExclusive.files,
-      ...manifest.sharedOutput.files,
-    ]),
+    ...compactExactPaths(explicitFiles(manifest)),
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
   ]);

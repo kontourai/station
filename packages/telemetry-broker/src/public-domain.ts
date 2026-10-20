@@ -21,15 +21,27 @@ export const PUBLIC_SENSITIVITY = PUBLIC_FIELDS.reduce((sum, field) => {
 export const PUBLIC_COUNT_EPSILON = 1 / (7 * PUBLIC_SENSITIVITY);
 
 export function publicDomain(
-  config: { registry_ids: string[]; release_versions: string[] }[],
+  config: {
+    registry_ids: string[];
+    release_versions: string[];
+    version_policy?: string;
+  }[],
 ): [string, string][] {
   const registry = [...new Set(config.flatMap((c) => c.registry_ids))];
-  const versions = [...new Set(config.flatMap((c) => c.release_versions))];
+  const versions = [
+    ...new Set(
+      config.flatMap((c) =>
+        c.version_policy === 'semver'
+          ? c.release_versions
+          : [...c.release_versions, 'custom'],
+      ),
+    ),
+  ];
   return PUBLIC_FIELDS.flatMap((dimension): [string, string][] => {
     let values: readonly string[];
-    if (dimension === 'version') values = [...versions, 'custom'];
+    if (dimension === 'version') values = versions;
     else if (dimension === 'distribution')
-      values = [...registry, 'none', 'custom'];
+      values = [...registry, 'none', 'custom', 'unknown'];
     else if (dimension === 'public_plugins_enabled')
       values = [...registry, 'none'];
     else {

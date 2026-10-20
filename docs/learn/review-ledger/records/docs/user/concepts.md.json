@@ -52,7 +52,11 @@
 
     "src-ui/src/components/chat-dock/ChatDock.tsx",
 
-    "src-ui/src/views/home/useObservedWorkStatus.ts"
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
+
+    "src-ui/src/hooks/useConversationInbox.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.tsx"
   ],
 
   "checks": [

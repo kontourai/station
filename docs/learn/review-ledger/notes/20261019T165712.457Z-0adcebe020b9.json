@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the Project header branch-badge claim and the mobile overflow claims against ChatDockMobileHeader/ChatDockMobileOverflowSheet: the sheet still holds chat actions (now including This chat) and fullscreen Station management; the removed bare branch line was not documented here. useObservedWorkStatus keeps its signature and the ladder words. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/views/home/useObservedWorkStatus.ts"]}
+  ]
+}

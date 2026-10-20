@@ -132,6 +132,8 @@
 
     "pnpm-lock.yaml#/snapshots",
 
+    "packages/shared/src/mcp-app-result.ts",
+
     "packages/shared/src/delegation-files.ts"
   ],
 

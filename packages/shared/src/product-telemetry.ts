@@ -21,6 +21,9 @@ import {
   TELEMETRY_CHANNELS,
   TELEMETRY_COUNT_BUCKETS,
   TELEMETRY_ENGINES,
+  TELEMETRY_FEEDBACK_ACTIONS,
+  TELEMETRY_FEEDBACK_REASONS,
+  type TelemetryFeedback,
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -389,11 +392,45 @@ export function monthlyTelemetryId(installSecret: string, date: Date): string {
     .digest('hex');
 }
 
+/** Feedback has no content, identity or sender-controlled time fields. */
+export function parseTelemetryFeedback(value: unknown): TelemetryFeedback {
+  if (
+    !record(value) ||
+    Object.keys(value).length !== 3 ||
+    !onlyKeys(value, ['publisher', 'action', 'reason']) ||
+    typeof value.publisher !== 'string' ||
+    value.publisher.length > 128 ||
+    !(
+      value.publisher === 'kontour' ||
+      value.publisher === 'operator' ||
+      /^publisher:\S{1,118}$/u.test(value.publisher)
+    ) ||
+    !TELEMETRY_FEEDBACK_ACTIONS.some((action) => action === value.action) ||
+    value.reason === 'skip' ||
+    !TELEMETRY_FEEDBACK_REASONS.some((reason) => reason === value.reason)
+  )
+    throw new Error('Invalid telemetry feedback');
+  return {
+    publisher: value.publisher as TelemetryFeedback['publisher'],
+    action: value.action as TelemetryFeedback['action'],
+    reason: value.reason as TelemetryFeedback['reason'],
+  };
+}
+
+export function mapRuntimeVersionToTelemetryVersion(version: string): string {
+  return version.length <= 64 &&
+    /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+      version,
+    )
+    ? version
+    : 'custom';
+}
+
 /** Registry membership comes from the public catalog, never from a syntactic ID match. */
 export function parseStationDailyPing(
   value: unknown,
   publicRegistryIds: readonly string[] = [],
-  publicReleaseVersions: readonly string[] = [],
+  publicReleaseVersions: readonly string[] | 'semver' = [],
 ): StationDailyPing {
   if (
     !record(value) ||
@@ -409,6 +446,8 @@ export function parseStationDailyPing(
     if (Array.isArray(domain))
       return typeof item === 'string' && domain.includes(item);
     if (domain === 'boolean') return typeof item === 'boolean';
+    if (domain === 'boolean-or-unknown')
+      return typeof item === 'boolean' || item === 'unknown';
     if (domain === 'count')
       return (
         typeof item === 'number' &&
@@ -429,10 +468,12 @@ export function parseStationDailyPing(
       );
     if (typeof item !== 'string' || item.length > (max ?? 128)) return false;
     if (domain === 'public-release-version-or-custom')
-      return item === 'custom' || publicReleaseVersions.includes(item);
+      return publicReleaseVersions === 'semver'
+        ? mapRuntimeVersionToTelemetryVersion(item) === item
+        : item === 'custom' || publicReleaseVersions.includes(item);
     return (
-      (domain === 'public-registry-id-or-none-or-custom' &&
-        ['none', 'custom'].includes(item)) ||
+      (domain === 'public-registry-id-or-none-or-custom-or-unknown' &&
+        ['none', 'custom', 'unknown'].includes(item)) ||
       publicRegistryIds.includes(item)
     );
   };

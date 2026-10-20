@@ -1737,7 +1737,8 @@ export async function runRepresentativeNarrowDiffFixture({
  * The selection half of the lane, before any child process: the diff, the
  * manifest routing and its escalations, product-law routing, and the subset
  * that is actually executed. Shared by the unsharded lane and the fast-checks
- * plan (#2709), so both select exactly the same suites.
+ * plan (#2709). Hosted planning preserves mapped targets beside deferrals;
+ * local diagnostics retain their bounded execution budget.
  *
  * @param {string} base
  * @param {{
@@ -1745,6 +1746,7 @@ export async function runRepresentativeNarrowDiffFixture({
  *   changedPathsFn?: typeof changedPaths;
  *   pathExists?: typeof existsSync;
  *   readBaseFile?: (path: string) => string | null;
+ *   preserveMappedTargets?: boolean;
  * }} [options] `readBaseFile` reads a changed file at the merge base (null
  *   when absent there); it defaults to `git show`.
  */
@@ -1755,6 +1757,7 @@ export function prepareChangedSelection(
     changedPathsFn = changedPaths,
     pathExists = existsSync,
     readBaseFile,
+    preserveMappedTargets = false,
   } = {},
 ) {
   const changed = changedPathsFn({ root, base });
@@ -1788,27 +1791,34 @@ export function prepareChangedSelection(
     changed.paths,
   );
   const selection = productLawRouting.selection;
-  // Broad import expansion remains deferred. Explicit, existing test targets
-  // still provide bounded diagnostic failures; passing them cannot complete
-  // the deferred obligations. Never truncate a selection into a green claim.
-  // A lane deferred only by supplemental edges (#2922) keeps the other
-  // paths' related discovery; the deferring paths themselves go to the lane.
-  const deferredOnly = supplementalOnlyDeferredPaths(selection);
+  // Hosted shards retain mapped targets beside broad obligations without
+  // expanding the paths whose supplemental edges explicitly defer discovery.
+  // Local diagnostics keep their bounded explicit-only fallback. Neither
+  // profile discharges a deferred obligation by passing its known targets.
+  const deferredOnly = preserveMappedTargets
+    ? new Set((selection.supplementalDeferrals ?? []).map(({ path }) => path))
+    : supplementalOnlyDeferredPaths(selection);
   const executionSelection =
     selection.lanes.length === 0
       ? selection
       : {
           ...selection,
           relatedPaths: deferredOnly
-            ? selection.relatedPaths.filter((path) => !deferredOnly.has(path))
+            ? selection.relatedPaths.filter(
+                (path) =>
+                  !deferredOnly.has(path) &&
+                  (!preserveMappedTargets || pathExists(resolve(root, path))),
+              )
             : [],
           ownedRelatedPaths: deferredOnly
             ? (selection.ownedRelatedPaths ?? []).filter(
-                (path) => !deferredOnly.has(path),
+                (path) =>
+                  !deferredOnly.has(path) &&
+                  (!preserveMappedTargets || pathExists(resolve(root, path))),
               )
             : selection.ownedRelatedPaths,
           tests:
-            selection.tests.length <= 32
+            preserveMappedTargets || selection.tests.length <= 32
               ? selection.tests.filter((entry) =>
                   pathExists(resolve(root, entry.path)),
                 )
@@ -2102,6 +2112,7 @@ export async function planChangedVerificationShards(
     root,
     changedPathsFn,
     pathExists,
+    preserveMappedTargets: true,
   });
   const { changed, productLawRouting, executionSelection } = prepared;
   let { selection } = prepared;
