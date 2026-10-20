@@ -65,9 +65,14 @@ observed package and readiness state. Overrides live separately in
 `config/distribution-lifecycle.json`. A cached catalog is an observation;
 applying a layout resolves it again through the live owner.
 
-Each change of an override also advances that item's revision in its own file,
-`config/distribution-lifecycle-revisions.json`, so the override file keeps the
-shape older servers read. A plugin's catalog contribution carries a
+Each change of a plugin item's override also advances that item's revision,
+written in the same document and the same atomic write, as a top-level
+`revisions` member (`{ epoch, items }`) that older servers ignore. A failed
+write therefore changes neither, and a retried change is counted again.
+Revisions that cannot be read refuse every change rather than starting over;
+a document an older server rewrote without them reads its items as
+`untracked`, and the next change starts a new random epoch, so no earlier
+generation comes back. A plugin's catalog contribution carries a
 `lifecycleGeneration`: its installation (the admission journal's incarnation,
 which every install mints anew, or the package's content digest) and that
 revision. It tells an occurrence opened before a disable, a re-enable or a

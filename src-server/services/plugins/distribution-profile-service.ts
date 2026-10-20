@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -47,14 +47,20 @@ const logger = createLogger({ name: 'distribution-profile-service' });
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
 /**
- * How many times each catalog item's lifecycle override changed. Its own file
- * so the override file keeps the exact shape an older server parses (that
- * parser refuses unknown keys).
+ * How many times each catalog item's lifecycle override changed, kept in the
+ * override document itself as a top-level `revisions` member — `{ epoch,
+ * items }` — so one atomic write carries an override and its revision. An
+ * older server's parser checks only `version` and `items` and ignores it; an
+ * older server's write drops it, and the next change then starts a new epoch.
  */
-const LIFECYCLE_REVISIONS_FILE = [
-  'config',
-  'distribution-lifecycle-revisions.json',
-] as const;
+type LifecycleRevisions =
+  | {
+      readonly state: 'ok';
+      readonly epoch: string;
+      readonly items: Record<string, number>;
+    }
+  | { readonly state: 'absent' }
+  | { readonly state: 'invalid' };
 const BUILTIN_LAYOUT_CONTRIBUTION_VERSION = '1.0.0';
 
 interface PluginLayoutEntry {
@@ -388,8 +394,8 @@ export class DistributionProfileService {
     string,
     ReturnType<typeof readPluginManifestFile> | Error
   >;
-  /** A snapshot's one read of the revisions file (null: unreadable). */
-  private catalogRevisions?: Record<string, number> | null;
+  /** A snapshot's one read of the lifecycle revisions. */
+  private catalogRevisions?: LifecycleRevisions;
 
   /** Inert request snapshot. Each package is observed once, with no cross-request cache. */
   async captureCatalog(): Promise<DistributionCatalogReadView> {
@@ -783,53 +789,59 @@ export class DistributionProfileService {
   }
 
   /**
-   * A plugin contribution's `lifecycleGeneration`: its installation and how
-   * many times its lifecycle override changed. A revisions file that cannot
-   * be read yields a generation no earlier read issued, so an occurrence
-   * opened before it is never taken for the current installation.
+   * A plugin contribution's `lifecycleGeneration`: its installation and its
+   * lifecycle revision. It never repeats a generation an earlier read issued
+   * for a different lifecycle: a revision is counted within a random epoch
+   * the first change mints, an item whose override has no revision (an older
+   * server rewrote the document) reads `untracked` until its next change
+   * starts a new epoch, and a revisions member that cannot be read reads
+   * `unreadable` and refuses every change until it is repaired.
    */
   private lifecycleGeneration(id: string, installation: string): string {
-    const revisions =
-      this.catalogRevisions === undefined
-        ? this.readRevisions()
-        : this.catalogRevisions;
-    const revision = revisions === null ? 'unreadable' : (revisions[id] ?? 0);
-    return `${installation}:r${revision}`.slice(0, 256);
+    const revisions = this.catalogRevisions ?? this.readRevisions();
+    const revision =
+      revisions.state === 'invalid'
+        ? 'unreadable'
+        : revisions.state === 'ok' && revisions.items[id] !== undefined
+          ? `${revisions.epoch}.r${revisions.items[id]}`
+          : this.readOverrides().items[id] !== undefined
+            ? 'untracked'
+            : 'r0';
+    return `${installation}:${revision}`.slice(0, 256);
   }
 
-  private readRevisions(): Record<string, number> | null {
-    const path = join(this.projectHomeDir, ...LIFECYCLE_REVISIONS_FILE);
-    if (!existsSync(path)) return {};
+  private readRevisions(): LifecycleRevisions {
+    const path = this.lifecyclePath();
+    if (!existsSync(path)) return { state: 'absent' };
+    let data: unknown;
     try {
-      const data = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
-      if (
-        !isPlainObject(data) ||
-        data.version !== 1 ||
-        !isPlainObject(data.items)
-      )
-        return null;
-      const items: Record<string, number> = {};
-      for (const [id, value] of Object.entries(data.items)) {
-        assertSafeCatalogId(id);
-        if (!Number.isSafeInteger(value) || (value as number) < 0) return null;
-        items[id] = value as number;
-      }
-      return items;
+      data = JSON.parse(readFileSync(path, 'utf-8'));
     } catch {
-      return null;
+      // The document itself is unreadable: `readOverrides` refuses it.
+      return { state: 'invalid' };
     }
-  }
-
-  private bumpRevision(id: string): void {
-    const items = this.readRevisions() ?? {};
-    const current = items[id] ?? 0;
-    if (current >= Number.MAX_SAFE_INTEGER)
-      throw new Error('Distribution lifecycle revision is exhausted');
-    writeJsonDurably(
-      join(this.projectHomeDir, ...LIFECYCLE_REVISIONS_FILE),
-      { version: 1, items: { ...items, [id]: current + 1 } },
-      { trailingNewline: false },
-    );
+    if (!isPlainObject(data) || data.revisions === undefined)
+      return { state: 'absent' };
+    const revisions = data.revisions;
+    if (
+      !isPlainObject(revisions) ||
+      typeof revisions.epoch !== 'string' ||
+      !/^[a-f0-9]{32}$/.test(revisions.epoch) ||
+      !isPlainObject(revisions.items)
+    )
+      return { state: 'invalid' };
+    const items: Record<string, number> = {};
+    for (const [id, value] of Object.entries(revisions.items)) {
+      try {
+        assertSafeCatalogId(id);
+      } catch {
+        return { state: 'invalid' };
+      }
+      if (!Number.isSafeInteger(value) || (value as number) < 1)
+        return { state: 'invalid' };
+      items[id] = value as number;
+    }
+    return { state: 'ok', epoch: revisions.epoch, items };
   }
 
   private readOverrides(): DistributionLifecycleOverrides {
@@ -869,21 +881,51 @@ export class DistributionProfileService {
     assertSafeCatalogId(id);
     const state = this.readOverrides();
     const before = state.items[id] ?? {};
-    const next: DistributionLifecycleOverrides = {
-      version: 1,
+    // Writing the same value again is no change of lifecycle: nothing to
+    // write, and no new generation.
+    const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
+      (key) => before[key] !== patch[key],
+    );
+    if (!changed) return;
+    const next = {
+      version: 1 as const,
       items: { ...state.items, [id]: { ...before, ...patch } },
+      ...this.revisionsAfterChange(id),
     };
     const path = this.lifecyclePath();
     mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
     // Same two-space document; the shared durable writer adds the exclusive
     // temporary, the data fsync and the directory fsync.
     writeJsonDurably(path, next, { trailingNewline: false });
-    // A change of lifecycle is a new generation; writing the same value
-    // again is not.
-    const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
-      (key) => before[key] !== patch[key],
-    );
-    if (changed) this.bumpRevision(id);
+  }
+
+  /**
+   * The `revisions` member to write with a change to `id`. A plugin item's
+   * change is a new generation, written in the same document as the
+   * override, so a failed write changes neither and a retry is a change
+   * again; history is never reset, and unreadable revisions refuse the
+   * change. Other items carry no lifecycle generation: the member is kept
+   * exactly as it is stored, or left absent.
+   */
+  private revisionsAfterChange(id: string): { revisions?: unknown } {
+    const revisions = this.readRevisions();
+    if (!id.startsWith('plugin:')) {
+      if (revisions.state === 'absent') return {};
+      const stored = JSON.parse(readFileSync(this.lifecyclePath(), 'utf-8'));
+      return { revisions: stored.revisions };
+    }
+    if (revisions.state === 'invalid')
+      throw new Error('Distribution lifecycle revisions are invalid');
+    const current = revisions.state === 'ok' ? revisions : null;
+    const revision = (current?.items[id] ?? 0) + 1;
+    if (!Number.isSafeInteger(revision))
+      throw new Error('Distribution lifecycle revision is exhausted');
+    return {
+      revisions: {
+        epoch: current?.epoch ?? randomBytes(16).toString('hex'),
+        items: { ...(current?.items ?? {}), [id]: revision },
+      },
+    };
   }
 }
 

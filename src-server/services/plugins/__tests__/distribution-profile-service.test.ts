@@ -24,6 +24,29 @@ vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
 });
+
+/**
+ * Fails the n-th durable write from now (1 = the next), as a full disk or a
+ * lost rename would.
+ */
+const durableWrite = vi.hoisted(() => ({ failAt: 0 }));
+vi.mock('@kontourai/station-shared/durable-json-file', async (original) => {
+  const actual =
+    await original<
+      typeof import('@kontourai/station-shared/durable-json-file')
+    >();
+  return {
+    ...actual,
+    writeJsonDurably: (...args: Parameters<typeof actual.writeJsonDurably>) => {
+      if (durableWrite.failAt > 0) {
+        durableWrite.failAt -= 1;
+        if (durableWrite.failAt === 0)
+          throw new Error('injected durable write failure');
+      }
+      return actual.writeJsonDurably(...args);
+    },
+  };
+});
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
 // debug level — into every test after it.
@@ -86,6 +109,7 @@ describe('DistributionProfileService', () => {
   }
 
   afterEach(() => {
+    durableWrite.failAt = 0;
     vi.restoreAllMocks();
     homes
       .splice(0)
@@ -793,35 +817,112 @@ describe('DistributionProfileService', () => {
       expect(after).not.toBe(before);
     });
 
-    test('an unreadable revisions file never repeats an earlier generation', () => {
-      const projectHome = home();
+    const lifecyclePath = (projectHome: string) =>
+      join(projectHome, 'config', 'distribution-lifecycle.json');
+    const readDocument = (projectHome: string) =>
+      JSON.parse(readFileSync(lifecyclePath(projectHome), 'utf-8'));
+    const writeDocument = (projectHome: string, value: unknown) =>
+      writeFileSync(lifecyclePath(projectHome), JSON.stringify(value));
+    /** A lifecycle: installed, disabled, enabled again; every generation seen. */
+    const cycled = (projectHome: string) => {
       writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
       const service = new DistributionProfileService(projectHome);
-      const earlier = generationOf(service);
-      mkdirSync(join(projectHome, 'config'), { recursive: true });
-      writeFileSync(
-        join(projectHome, 'config', 'distribution-lifecycle-revisions.json'),
-        '{ not json',
+      const seen = [generationOf(service)];
+      service.setEnabled(LAYOUT, false);
+      seen.push(generationOf(service));
+      service.setEnabled(LAYOUT, true);
+      seen.push(generationOf(service));
+      expect(new Set(seen).size).toBe(3);
+      return { service, seen };
+    };
+
+    test('revisions that cannot be read refuse every change and never reset history', () => {
+      const projectHome = home();
+      const { service, seen } = cycled(projectHome);
+      writeDocument(projectHome, {
+        ...readDocument(projectHome),
+        revisions: { epoch: 'corrupt', items: {} },
+      });
+      const unreadable = generationOf(service);
+      expect(unreadable).toMatch(/:unreadable$/);
+      expect(seen).not.toContain(unreadable);
+      const document = readFileSync(lifecyclePath(projectHome), 'utf-8');
+      expect(() => service.setEnabled(LAYOUT, false)).toThrow(
+        'Distribution lifecycle revisions are invalid',
       );
-      expect(generationOf(service)).toMatch(/:runreadable$/);
-      expect(generationOf(service)).not.toBe(earlier);
+      // Nothing changed: not the enablement, not the generation.
+      expect(readFileSync(lifecyclePath(projectHome), 'utf-8')).toBe(document);
+      expect(service.resolveForCatalog(LAYOUT).item.enabled).toBe(true);
+      expect(generationOf(service)).toBe(unreadable);
     });
 
-    test('keeps the override file in the shape an older server reads', () => {
+    // Whichever durable write of the change fails, the enablement and the
+    // generation agree afterwards, and the change, retried, is a new
+    // generation: none is left stale by a change that half happened.
+    test.each([1, 2])(
+      'when durable write %i of a change fails, the enablement and the generation still agree, and a retry advances both',
+      (failing) => {
+        const projectHome = home();
+        const { service, seen } = cycled(projectHome);
+        const enabled = generationOf(service);
+        durableWrite.failAt = failing;
+        try {
+          service.setEnabled(LAYOUT, false);
+        } catch (error) {
+          expect(String(error)).toContain('injected durable write failure');
+        }
+        durableWrite.failAt = 0;
+        const disabledNow = !service.resolveForCatalog(LAYOUT).item.enabled;
+        const generation = generationOf(service);
+        if (disabledNow) expect(seen).not.toContain(generation);
+        else expect(generation).toBe(enabled);
+        service.setEnabled(LAYOUT, false);
+        const retried = generationOf(service);
+        expect(service.resolveForCatalog(LAYOUT).item.enabled).toBe(false);
+        expect(seen).not.toContain(retried);
+        // After a restart, the same.
+        expect(generationOf(new DistributionProfileService(projectHome))).toBe(
+          retried,
+        );
+      },
+    );
+
+    test('an older server’s rewrite, which drops the revisions, never brings an earlier generation back', () => {
+      const projectHome = home();
+      const { service, seen } = cycled(projectHome);
+      // What an older server writes: the document without the member.
+      const { version, items } = readDocument(projectHome);
+      writeDocument(projectHome, { version, items });
+      const untracked = generationOf(service);
+      expect(untracked).toMatch(/:untracked$/);
+      service.setEnabled(LAYOUT, false);
+      const disabled = generationOf(service);
+      service.setEnabled(LAYOUT, true);
+      const enabledAgain = generationOf(service);
+      for (const generation of [untracked, disabled, enabledAgain])
+        expect(seen).not.toContain(generation);
+      expect(new Set([untracked, disabled, enabledAgain]).size).toBe(3);
+    });
+
+    test('keeps the override items in the shape an older server reads', () => {
       const projectHome = home();
       writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
       const service = new DistributionProfileService(projectHome);
       service.setEnabled(LAYOUT, false);
       service.setEnabled(LAYOUT, true);
-      const overrides = JSON.parse(
-        readFileSync(
-          join(projectHome, 'config', 'distribution-lifecycle.json'),
-          'utf-8',
-        ),
-      );
-      expect(overrides).toEqual({
-        version: 1,
-        items: { [LAYOUT]: { enabled: true } },
+      const document = readDocument(projectHome);
+      // An older server checks `version` and every `items` entry (only
+      // `installed` and `enabled`, booleans) and ignores other members.
+      expect(Object.keys(document).sort()).toEqual([
+        'items',
+        'revisions',
+        'version',
+      ]);
+      expect(document.version).toBe(1);
+      expect(document.items).toEqual({ [LAYOUT]: { enabled: true } });
+      expect(document.revisions).toEqual({
+        epoch: expect.stringMatching(/^[a-f0-9]{32}$/),
+        items: { [LAYOUT]: 2 },
       });
     });
 
