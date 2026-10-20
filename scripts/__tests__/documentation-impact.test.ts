@@ -10,6 +10,7 @@ import {
   documentationCatchUp,
   documentationImpact,
   formatDocumentationImpact,
+  historicalLedgers,
   readDocumentationImpact,
 } from '../documentation-impact.mjs';
 import {
@@ -132,6 +133,34 @@ function fixture() {
   ]);
   return { root, write, base, records };
 }
+
+// Catch-up compiles one ledger per ledger-touching commit since the coverage
+// baseline. Retaining each compiled record's notes, checks and digests kept
+// ~170 ledgers of ~25 MiB alive at once and exhausted a 4 GiB heap (#2722).
+describe('historical ledgers', () => {
+  it('keep only the record fields impact and catch-up read', () => {
+    const f = fixture();
+    const full = readReviewStateAt(f.root, 'HEAD', {
+      purpose: 'advisory-dependency-history',
+    }).ledger;
+    expect(Object.keys(full.records[0])).toEqual(
+      expect.arrayContaining(['limits', 'checks', 'documentDigest']),
+    );
+    expect(historicalLedgers(f.root, ['HEAD', f.base, 'HEAD'])).toEqual([
+      {
+        version: 2,
+        records: [
+          {
+            path: 'guide.md',
+            state: 'source-reviewed',
+            summary: 'Checked caller.',
+            sources: [{ path: 'code.ts' }],
+          },
+        ],
+      },
+    ]);
+  });
+});
 
 function generatedFixture() {
   const f = fixture();

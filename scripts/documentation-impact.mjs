@@ -178,8 +178,11 @@ function ledgerRevisionsSince(root, base) {
   ];
 }
 
-/** Compiled ledgers at each ref, in either storage layout. */
-function historicalLedgers(root, refs) {
+/**
+ * Compiled ledgers at each ref, in either storage layout, reduced to the
+ * fields their callers read: record path, state, summary and source paths.
+ */
+export function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
     // Historical records supply dependency leads, not current review approval.
     // Their semantic bindings remain strict even if an intermediate commit was
@@ -189,7 +192,20 @@ function historicalLedgers(root, refs) {
     });
     if (!ledger) return [];
     validateLedger(ledger);
-    return [ledger];
+    // A compiled record carries every review note that ever covered it; one
+    // ledger per ledger-touching commit since the baseline kept them all alive
+    // at once and exhausted a 4 GiB heap (~170 refs x ~25 MiB of notes).
+    return [
+      {
+        version: ledger.version,
+        records: ledger.records.map(({ path, state, summary, sources }) => ({
+          path,
+          state,
+          summary,
+          sources: sources.map((source) => ({ path: source.path })),
+        })),
+      },
+    ];
   });
 }
 
