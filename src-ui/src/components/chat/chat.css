@@ -3188,6 +3188,7 @@
   }
 
   .chat-input__activity .chat-scroll-to-bottom,
+  .chat-input__activity .transcript-turn-actions__step,
   .chat-input__activity .chat-status-pill-host .chat-status-pill {
     min-width: 44px;
     min-height: 44px;

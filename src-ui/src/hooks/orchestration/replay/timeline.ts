@@ -9,10 +9,40 @@ export interface ConversationTimelineLandmark {
   forkable: boolean;
 }
 
+/**
+ * One line of a turn's text, whitespace collapsed and cut to `max`
+ * characters. Shared by History replay's landmarks and the live
+ * transcript's turn rail, so both name a turn the same way.
+ */
+export function compactTurnText(
+  text: string | undefined,
+  max = 72,
+): string | undefined {
+  if (!text) return undefined;
+  // One scan that stops as soon as the result is known to need cutting, so a
+  // long paste costs work bounded by `max` (plus any one whitespace run), not
+  // by its length. Same output as collapsing every whitespace run to one
+  // space, trimming, then cutting.
+  let compact = '';
+  let pendingSpace = false;
+  for (let index = 0; index < text.length && compact.length <= max; ) {
+    const point = text.codePointAt(index)!;
+    const character = String.fromCodePoint(point);
+    index += character.length;
+    if (/\s/.test(character)) {
+      pendingSpace = compact.length > 0;
+      continue;
+    }
+    if (pendingSpace) compact += ' ';
+    pendingSpace = false;
+    compact += character;
+  }
+  if (!compact) return undefined;
+  return compact.length > max ? `${compact.slice(0, max - 3)}…` : compact;
+}
+
 function turnLabel(prompt: string | undefined, index: number): string {
-  const compact = prompt?.replace(/\s+/g, ' ').trim();
-  if (!compact) return `Turn ${index + 1}`;
-  return compact.length > 72 ? `${compact.slice(0, 69)}…` : compact;
+  return compactTurnText(prompt) ?? `Turn ${index + 1}`;
 }
 
 /** Full user-turn index over the already bounded, validated replay tape. */
