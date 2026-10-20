@@ -1,25 +1,43 @@
-/* The accent picker renders on the Appearance page now, which does not load
+/* The accent picker renders on the Appearance page, which does not load
    Settings' stylesheet, so its rules travel with the component. */
 .settings__accent-row {
   display: flex;
-  gap: 0.4rem;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--k-space-2);
+  /* Each control's own 44px box spaces it; this lines the first circle up
+     with the copy above. */
+  margin-left: -8px;
+}
+/* 44px touch targets at every width without a page-local media query: each
+   control IS a 44px box, and only its middle 28px is painted. (A pseudo-
+   element hit area does not work here: a button does not hit-test outside
+   its own box.) */
+.settings__accent-swatch,
+.settings__accent-custom-hit {
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
 }
 .settings__accent-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: border-color var(--motion-fast);
+  background-clip: content-box;
 }
 .settings__accent-swatch:hover {
-  border-color: var(--text-secondary);
+  outline: 2px solid var(--text-secondary);
+  outline-offset: -7px;
 }
-.settings__accent-swatch--active {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px var(--bg-primary);
+.settings__accent-swatch--active,
+.settings__accent-swatch--active:hover {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -7px;
+}
+.settings__accent-custom-hit {
+  display: inline-grid;
+  place-items: center;
 }
 .settings__accent-custom {
   width: 28px;
@@ -30,8 +48,10 @@
   padding: 0;
 }
 .settings__accent-reset {
+  min-height: 44px;
+  margin-left: var(--k-space-2);
   font-size: var(--k-text-sm);
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.75rem;
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border-primary);

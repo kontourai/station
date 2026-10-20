@@ -607,14 +607,18 @@ const SETTINGS_CATALOG_SOURCE = [
   // The theme and accent controls moved to the Appearance page. These two rows
   // stay, as links there, so Settings search, the palette's Settings targets
   // and recorded `highlight=theme` / `highlight=accent-color` links still land
-  // on a row that answers them. `theme` stays first: it is the key this row
-  // still writes (the mode toggle) and the one its scope is read from.
+  // on a row that answers them. Each row's `configKeys` is only the key that
+  // row itself writes (Theme's mode toggle, and the custom accent its
+  // "Use default" clears), so "Use default" resets exactly what the row shows;
+  // the color-theme keys are found through `searchKeywords` instead, and are
+  // reset on the Appearance page by choosing Station.
   {
     id: 'theme',
     title: 'Theme',
     section: 'appearance',
-    configKeys: ['theme', 'colorTheme', 'colorThemeFlavor'],
+    configKeys: ['theme'],
     keywords: ['mode', 'dark', 'light', 'color theme', 'catppuccin'],
+    searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
   },
   {
     id: 'haptic-feedback',
@@ -627,7 +631,8 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'accent-color',
     title: 'Accent color',
     section: 'appearance',
-    configKeys: ['accentColor', 'colorThemeAccent'],
+    configKeys: ['accentColor'],
+    searchKeywords: ['named accent', 'theme accent', 'appearance'],
   },
   {
     id: 'keyboard-shortcuts',

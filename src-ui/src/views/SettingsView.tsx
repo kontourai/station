@@ -1283,7 +1283,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       control={
                         <span className="settings__appearance-controls">
                           <ThemeToggle />
-                          <OpenAppearanceButton />
+                          <OpenAppearanceButton forRow="Theme" />
                         </span>
                       }
                     />
@@ -1305,7 +1305,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <PageRow
                       {...settingsRow('accent-color')}
                       description="Choose an accent on the Appearance page."
-                      control={<OpenAppearanceButton />}
+                      control={<OpenAppearanceButton forRow="Accent color" />}
                     />
                   </Section>
                 )}

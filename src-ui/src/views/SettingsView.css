@@ -341,7 +341,7 @@
   border-color: var(--accent-primary);
 }
 
-/* ── Accent Color Picker ── */
+/* ── Appearance: the Theme row's toggle and link ── */
 .settings__appearance-controls {
   display: flex;
   align-items: center;

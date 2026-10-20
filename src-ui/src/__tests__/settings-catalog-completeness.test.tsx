@@ -1571,7 +1571,9 @@ describe('settings catalog completeness', () => {
         `[data-catalog-id="${highlight}"]`,
       )!;
       fireEvent.click(
-        within(row).getByRole('button', { name: 'Open Appearance' }),
+        within(row).getByRole('button', {
+          name: `Open Appearance for ${title}`,
+        }),
       );
       expect(navigateMock).toHaveBeenCalledWith('/appearance');
     },
