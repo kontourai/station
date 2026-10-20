@@ -34,6 +34,7 @@ import {
   probeSeatbelt,
   SANDBOX_EXEC,
 } from '../../security/confinement/seatbelt.js';
+import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   confinedClaudeSpawn,
   prepareConfinedClaudeLaunch,
@@ -427,10 +428,12 @@ describe.skipIf(!codexBinary || !darwin)(
       return { workspace, pkg, marker, codexHome };
     }
 
+    /** `root` is what the orchestration service stamps: the Project folder. */
     async function startIn(
       cwd: string,
       codexHome: string,
       confinement: StationConfinement,
+      root: string,
     ) {
       const adapter = new CodexAdapter({
         getConnectionEnv: async () => ({ CODEX_HOME: codexHome }),
@@ -448,6 +451,7 @@ describe.skipIf(!codexBinary || !darwin)(
           provider: 'codex',
           threadId: `temp-plant-${confinement}`,
           cwd,
+          metadata: { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
           modelOptions: { approvalMode: 'auto' },
           confinement,
           confinementPlan: confinement === 'host' ? HOST_PLAN : WORKSPACE_PLAN,
@@ -468,8 +472,8 @@ describe.skipIf(!codexBinary || !darwin)(
     }
 
     test('control: a host session started in the moved directory runs the planted command', async () => {
-      const { pkg, marker, codexHome } = stage();
-      const run = await startIn(pkg, codexHome, 'host');
+      const { workspace, pkg, marker, codexHome } = stage();
+      const run = await startIn(pkg, codexHome, 'host', workspace);
       expect(run.ok).toBe(true);
       expect(await ranWithin(marker, 15_000)).toBe(true);
       if (run.ok) {
@@ -479,8 +483,8 @@ describe.skipIf(!codexBinary || !darwin)(
     }, 90_000);
 
     test('a workspace session started there is refused before Codex runs, naming the directory', async () => {
-      const { pkg, marker, codexHome } = stage();
-      const run = await startIn(pkg, codexHome, 'workspace');
+      const { workspace, pkg, marker, codexHome } = stage();
+      const run = await startIn(pkg, codexHome, 'workspace', workspace);
       expect(run.ok).toBe(false);
       const error = (run as { error: ConfinementRefusedError }).error;
       expect(error).toBeInstanceOf(ConfinementRefusedError);
@@ -505,12 +509,68 @@ describe.skipIf(!codexBinary || !darwin)(
         { cwd: workspace, encoding: 'utf8' },
       );
       expect(added.status, added.stderr).toBe(0);
-      const run = await startIn(lane, codexHome, 'workspace');
+      const run = await startIn(lane, codexHome, 'workspace', workspace);
       expect(run.ok).toBe(true);
       if (run.ok) {
         await run.adapter.stopAll();
         run.controller.abort();
       }
+    }, 90_000);
+
+    test('a whole repository an agent built in temp and moved into a Project with none is refused', async () => {
+      const root = realpathSync(makeTempDir('codex-self-anchor-'));
+      const project = join(root, 'project');
+      const codexHome = join(root, 'codex-home');
+      const marker = join(root, 'mcp-ran');
+      mkdirSync(project, { recursive: true });
+      mkdirSync(codexHome);
+      const config = `[mcp_servers.planted]\ncommand = "/bin/sh"\nargs = ["-c", ${JSON.stringify(`touch ${marker}; sleep 5`)}]\n`;
+      // The agent's own commands under Station's profile: a repository with
+      // its own commit and remote-tracking ref, so it would anchor itself.
+      const script = [
+        'staged="$(mktemp -d)/proj"',
+        'mkdir -p "$staged/.codex"',
+        'printf %s "$PLANTED_CONFIG" > "$staged/.codex/config.toml"',
+        'cd "$staged"',
+        'git init -q',
+        'git add -A',
+        'git -c user.name=a -c user.email=a@example.invalid -c commit.gpgsign=false commit -q -m planted',
+        'git update-ref refs/remotes/origin/main HEAD',
+        `mv "$staged" "${project}/proj"`,
+      ].join(' && ');
+      const result = spawnSync(
+        codexBinary!,
+        [
+          'sandbox',
+          '-P',
+          STATION_CODEX_PERMISSION_PROFILE,
+          ...codexConfinementConfigArgs('workspace'),
+          '-C',
+          project,
+          '--',
+          'sh',
+          '-c',
+          script,
+        ],
+        {
+          cwd: project,
+          env: {
+            ...process.env,
+            CODEX_HOME: codexHome,
+            PLANTED_CONFIG: config,
+          },
+          encoding: 'utf8',
+          timeout: 30_000,
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const proj = join(project, 'proj');
+      const run = await startIn(proj, codexHome, 'workspace', project);
+      expect(run.ok).toBe(false);
+      expect((run as { error: ConfinementRefusedError }).error.code).toBe(
+        'confinement_workspace_incompatible',
+      );
+      expect(await ranWithin(marker, 3_000)).toBe(false);
     }, 90_000);
 
     test("a committed nested .codex is the repository's own and still starts", async () => {
@@ -521,7 +581,12 @@ describe.skipIf(!codexBinary || !darwin)(
       mkdirSync(codexHome);
       writeFileSync(join(workspace, 'pkg', '.codex', 'config.toml'), '# ok\n');
       commitAll(workspace);
-      const run = await startIn(join(workspace, 'pkg'), codexHome, 'workspace');
+      const run = await startIn(
+        join(workspace, 'pkg'),
+        codexHome,
+        'workspace',
+        workspace,
+      );
       expect(run.ok).toBe(true);
       if (run.ok) {
         await run.adapter.stopAll();
@@ -712,6 +777,7 @@ describe.skipIf(!codexBinary || !seatbeltProbe.ok)(
             provider: 'codex',
             threadId: `claude-chain-${layout}`,
             cwd: pkg,
+            metadata: { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: workspace },
             modelOptions: { approvalMode: 'auto' },
             confinement: 'workspace',
             confinementPlan: WORKSPACE_PLAN,

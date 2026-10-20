@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /**
  * #3800: the `.codex` directories a session not started as `host` would load
@@ -17,35 +17,37 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
  * Nothing in the sandbox can see that coming, so the start checks what is on
  * disk before Codex is spawned.
  *
- * Every directory from the outermost Git work tree containing the cwd (or
- * the cwd alone when there is none) down to the cwd is checked, the lexical
- * path and the resolved one both: a superset of the layers Codex reads. A
- * `.codex` there is accepted only when it is a real directory whose every
- * file is a regular file whose bytes are the blob at the same path in one
- * remote-tracking ref (`refs/remotes/*`) of that outermost repository:
- * content that came from upstream. Local commits confer nothing: a confined
- * Claude session holds Seatbelt grants for its objects and its branch ref,
- * so it can commit a `.codex` and stage the matching bytes (EXECUTED in
- * review). Neither engine can write `refs/remotes` or `packed-refs`: Codex
- * keeps `.git` read-only and Seatbelt denies both. The objects the refs name
- * are writable, so every commit and tree on the path is re-hashed and must
- * match its id: a forged loose object is refused.
+ * The anchor is the directory the server authorized the session for
+ * (`SESSION_CONFINEMENT_ROOT_METADATA_KEY`: the Project's directory, or the
+ * admitted cwd), never anything found from the cwd: an agent can build a
+ * whole repository, remote-tracking refs included, in temp and move it in
+ * (EXECUTED in review). The trusted repository is the innermost one
+ * containing that root, so a project inside a home-directory repository
+ * anchors to its own. Every directory from that repository's root down to
+ * the cwd is checked, the lexical path and the resolved one both: a superset
+ * of the layers Codex reads. Below the root, a repository is trusted only as
+ * a linked worktree the trusted repository registered; anything else below
+ * it, and everything when the root is in no repository or the start carries
+ * no root, trusts no `.codex`.
  *
- * Anything else is reported: uncommitted, local-only, changed, a symlink or
- * other non-file inside, a `.codex` known only to a nested or planted
- * repository, a repository with no remote-tracking refs or with the reftable
- * backend, or no repository at all. Below the outermost repository, a
- * linked worktree it registered is judged with its own path (it shares the
- * same refs); a repository moved in from elsewhere is not one.
+ * A `.codex` is accepted only when it is a real directory whose every file
+ * is a regular file whose bytes are the blob at the same path in one
+ * remote-tracking ref (`refs/remotes/*`): content that came from upstream.
+ * Local commits confer nothing: a confined Claude session holds Seatbelt
+ * grants for its objects and its branch ref, so it can commit a `.codex`
+ * and stage the matching bytes (EXECUTED in review). Neither engine can
+ * write `refs/remotes` or `packed-refs` of a repository containing its
+ * root: Codex keeps `.git` read-only and Seatbelt denies both. The objects
+ * the refs name are writable, so every commit and tree on the path is
+ * re-hashed and must match its id: a forged loose object is refused. A
+ * repository with the reftable backend or no remote-tracking refs trusts
+ * nothing.
  *
- * Known limits, both needing the Project root, which the start input does
- * not carry: a project inside another repository (a home-directory dotfiles
- * repository, say) is judged against that outer one, so its own upstream
- * `.codex` is refused; and in a workspace outside any repository, an agent
- * can build a whole repository (remote-tracking refs included) in temp and
- * move it in, which is then the outermost one. Content an agent manages to push
- * upstream, and that the operator then fetches, is trusted like any other
- * upstream content.
+ * Known limit: a session with no Project is authorized for its cwd, so a
+ * repository an earlier session moved into a parent folder and a caller
+ * then starts in directly is that session's own root. Content an agent
+ * manages to push upstream, and that the operator then fetches, is trusted
+ * like any other upstream content.
  *
  * The user's own `~/.codex` (and `CODEX_HOME`) is user configuration, not a
  * project layer, and is skipped. Git is asked only for plumbing that runs no
@@ -53,23 +55,32 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
  */
 export function findUnaccountedCodexConfig(
   cwd: string,
-  options: { codexHome?: string; gitTimeoutMs?: number } = {},
+  options: {
+    /** The directory the server authorized the session for. */
+    root?: string;
+    codexHome?: string;
+    gitTimeoutMs?: number;
+  } = {},
 ): string | undefined {
   const skipped = new Set(
     [join(homedir(), '.codex'), options.codexHome]
       .filter((path): path is string => Boolean(path))
       .map((path) => resolve(path)),
   );
-  const lexical = resolve(cwd);
-  const paths = [lexical];
+  const pairs: [string, string | undefined][] = [
+    [resolve(cwd), options.root ? resolve(options.root) : undefined],
+  ];
   try {
-    const real = realpathSync(lexical);
-    if (real !== lexical) paths.push(real);
+    const real: [string, string | undefined] = [
+      realpathSync(cwd),
+      options.root ? realpathSync(options.root) : undefined,
+    ];
+    if (real[0] !== pairs[0]![0] || real[1] !== pairs[0]![1]) pairs.push(real);
   } catch {
     // A missing cwd fails the start on its own.
   }
-  for (const path of paths) {
-    const found = findOnPath(path, skipped, options.gitTimeoutMs);
+  for (const [path, root] of pairs) {
+    const found = findOnPath(path, root, skipped, options.gitTimeoutMs);
     if (found) return found;
   }
   return undefined;
@@ -93,30 +104,49 @@ function ancestors(path: string): string[] {
   return chain;
 }
 
+function within(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
 function findOnPath(
   cwd: string,
+  root: string | undefined,
   skipped: ReadonlySet<string>,
   gitTimeoutMs: number | undefined,
 ): string | undefined {
   const chain = ancestors(cwd);
-  let outer: string | undefined;
-  for (const dir of chain) if (exists(join(dir, '.git'))) outer = dir;
-  const walk = outer
-    ? chain.slice(0, chain.indexOf(outer) + 1).reverse()
-    : [cwd];
-  // The work tree a `.codex` path is judged from: the outermost, or below it
-  // a linked worktree that repository itself registered.
-  let trusted = outer;
+  const bounded = root !== undefined && within(root, cwd);
+  // The trusted repository: the innermost one containing the authorized
+  // root. Without a server root, none: every `.codex` is refused.
+  const repository = bounded
+    ? ancestors(root).find((dir) => exists(join(dir, '.git')))
+    : undefined;
+  // Every layer Codex could read: from the trusted repository's root (or the
+  // authorized root, or for an unbounded start the outermost repository
+  // above the cwd) down to the cwd.
+  let top = repository ?? (bounded ? root : undefined);
+  if (top === undefined)
+    for (const dir of chain) if (exists(join(dir, '.git'))) top = dir;
+  const walk = chain.slice(0, chain.indexOf(top ?? cwd) + 1).reverse();
+  let workTree = repository;
   for (const dir of walk) {
+    // Below the authorized root, a repository is trusted only as a linked
+    // worktree the trusted one registered; anything else (a repository an
+    // agent built in temp and moved in, with refs of its own) ends trust.
     if (
-      trusted &&
-      dir !== trusted &&
-      registeredWorktreeOf(trusted, dir, gitTimeoutMs)
+      bounded &&
+      dir !== root &&
+      within(root, dir) &&
+      exists(join(dir, '.git'))
     )
-      trusted = dir;
+      workTree =
+        repository && registeredWorktreeOf(repository, dir, gitTimeoutMs)
+          ? dir
+          : undefined;
     const config = join(dir, '.codex');
     if (skipped.has(config) || !exists(config)) continue;
-    if (!trusted || !matchesUpstream(trusted, config, gitTimeoutMs))
+    if (!workTree || !matchesUpstream(workTree, config, gitTimeoutMs))
       return config;
   }
   return undefined;

@@ -441,6 +441,7 @@ import {
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
 import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
 } from './session-project-identity.js';
@@ -1646,6 +1647,48 @@ function withSessionLocalProjectId(
       },
     };
   return _untrusted === undefined ? input : { ...input, metadata: rest };
+}
+
+/**
+ * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY` from this Station's
+ * own project list and the resolved start cwd, replacing whatever the caller
+ * sent. The Project's directory when the cwd lies inside it (lexically, as
+ * `withSessionLocalProjectId` checks), else the cwd itself: a provisioned
+ * worktree or an unbound session is authorized for exactly its folder.
+ */
+function withSessionConfinementRoot(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+): ProviderSessionStartInput {
+  const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
+    input.metadata ?? {};
+  const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  const slug =
+    typeof input.metadata?.projectSlug === 'string'
+      ? input.metadata.projectSlug
+      : undefined;
+  const project = slug
+    ? listProjects?.().find((entry) => entry.slug === slug)
+    : undefined;
+  const projectRoot = project?.workingDirectory
+    ? resolve(expandTilde(project.workingDirectory))
+    : undefined;
+  const root =
+    cwd === undefined
+      ? undefined
+      : projectRoot !== undefined && isWithinDirectory(projectRoot, cwd)
+        ? projectRoot
+        : cwd;
+  if (root === undefined && _untrusted === undefined) return input;
+  return {
+    ...input,
+    metadata: {
+      ...rest,
+      ...(root !== undefined
+        ? { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root }
+        : {}),
+    },
+  };
 }
 
 // Runtime composition resolves the current local resource before containment and
@@ -6363,6 +6406,10 @@ export class OrchestrationService {
             startInput,
             this.options.listProjects,
             admittedStartWorkspace,
+          );
+          startInput = withSessionConfinementRoot(
+            startInput,
+            this.options.listProjects,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start

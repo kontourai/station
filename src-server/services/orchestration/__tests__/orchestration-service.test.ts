@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -1027,6 +1027,31 @@ describe('OrchestrationService', () => {
       expect(callerRecord('dirless-session')).toMatchObject({
         projectSlug: 'dirless',
       });
+    });
+
+    test('#3800: the confinement root is the Project directory containing the cwd, else the cwd, never the caller value', async () => {
+      publishStarts();
+      const projectRoot = resolve(tmp, '..');
+      configuredProjects.push({
+        slug: 'rooted',
+        workingDirectory: projectRoot,
+        id: 'project-rooted-id',
+      });
+      await started('rooted-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'rooted',
+        confinementRoot: '/forged',
+      });
+      expect(
+        service.firstStartedMetadataOfThread('rooted-session'),
+      ).toMatchObject({ confinementRoot: projectRoot });
+      await started('unbound-session', {
+        userId: 'human:test:alice',
+        confinementRoot: '/forged',
+      });
+      expect(
+        service.firstStartedMetadataOfThread('unbound-session'),
+      ).toMatchObject({ confinementRoot: resolve(tmp) });
     });
 
     test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {

@@ -47,6 +47,7 @@ import {
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -1784,16 +1785,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     // Without a cwd Codex runs in the server's own directory, so that is the
     // one checked.
     if (input.confinement !== 'host') {
-      const unaccounted = findUnaccountedCodexConfig(
-        input.cwd ?? process.cwd(),
-        {
-          codexHome: process.env.CODEX_HOME,
-        },
-      );
+      const cwd = input.cwd ?? process.cwd();
+      const stamped = input.metadata?.[SESSION_CONFINEMENT_ROOT_METADATA_KEY];
+      // A start the orchestration service did not stamp (a session recorded
+      // before the stamp, or a direct adapter call) is authorized for its
+      // cwd, as a session with no Project is.
+      const unaccounted = findUnaccountedCodexConfig(cwd, {
+        root: typeof stamped === 'string' ? stamped : cwd,
+        codexHome: process.env.CODEX_HOME,
+      });
       if (unaccounted)
         throw new ConfinementRefusedError(
           'confinement_workspace_incompatible',
-          `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch with these exact bytes, or the folder has no repository or remote), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session). Station judges it against the outermost Git repository containing the folder, so a project inside another repository (a home-directory one, for example) is judged against that one.`,
+          `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch of the repository containing the session's Project folder with these exact bytes, it is inside another repository below that folder, or there is no such repository, remote or recorded folder), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session).`,
         );
     }
     const startedAt = Date.now();

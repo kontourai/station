@@ -20,3 +20,14 @@ export const SESSION_LOCAL_PROJECT_ID_METADATA_KEY = 'localProjectId';
  */
 export const SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY =
   'localProjectIdRefused';
+
+/**
+ * #3800: the start-metadata key carrying the directory a session was
+ * authorized to work in: the Project's `workingDirectory` when the start's
+ * cwd lies inside it, else the cwd the start was admitted with. Stamped by
+ * `OrchestrationService` at start, replacing any caller value, and carried
+ * with the session's stored metadata to its respawns. The Codex adapter
+ * trusts engine configuration only from a repository that contains this
+ * directory, never from one inside it.
+ */
+export const SESSION_CONFINEMENT_ROOT_METADATA_KEY = 'confinementRoot';
