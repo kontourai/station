@@ -196,10 +196,7 @@ export function seatbeltHiddenPaths(
  * session's temp directory cannot carry one either, because that grant is
  * covered too.
  */
-export const SEATBELT_ENGINE_CONFIG_NAMES: readonly string[] = [
-  '.codex',
-  '.claude',
-];
+const SEATBELT_ENGINE_CONFIG_NAMES: readonly string[] = ['.codex', '.claude'];
 
 export interface SeatbeltGrantInput {
   /** Every path symlink-resolved. */
