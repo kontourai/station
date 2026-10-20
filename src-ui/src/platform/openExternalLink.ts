@@ -49,7 +49,8 @@ export function displayedExternalLink(url: string): string {
  * owner chose any https link the user clicks; until that lands, a narrower
  * allowlist) and can fail outright, and `openExternalLink` refuses any scheme
  * but http(s) before asking a host. The notice names the URL and offers
- * a Copy action, so the reader can still get where they were going.
+ * a Copy action, so the reader can still get where they were going, except
+ * for a plugin URL refused for carrying credentials, which shows neither.
  */
 function reportUnopenedExternalLink(
   url: string,
@@ -185,10 +186,12 @@ export async function openPluginExternalLink(url: string): Promise<boolean> {
   } catch {
     return openExternalLink(url);
   }
-  if (!isWebUrl(parsed.href)) return openExternalLink(url);
+  // Credentials before scheme: the scheme refusal names the URL and offers to
+  // copy it, which would put the user name and password on screen.
   if (parsed.username || parsed.password) {
     reportUnopenedExternalLink(url, 'credentials');
     return false;
   }
+  if (!isWebUrl(parsed.href)) return openExternalLink(url);
   return openExternalLink(parsed.href);
 }

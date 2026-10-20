@@ -654,6 +654,16 @@ describe('useHost through the real adapter', () => {
     expect(refusal?.message).not.toContain('secret');
     expect(refusal?.actions ?? []).toEqual([]);
 
+    // A non-web scheme with credentials is refused for its credentials, so
+    // the scheme refusal's URL and Copy action never show them.
+    await expect(
+      host!.openExternal('ftp://user:hunter2@example.com/'),
+    ).resolves.toBe(false);
+    for (const toast of toastStore.getSnapshot()) {
+      expect(toast.message).not.toContain('hunter2');
+      expect(JSON.stringify(toast.actions ?? [])).not.toContain('hunter2');
+    }
+
     await expect(
       host!.openExternal('HTTPS://Example.COM/a b?q=1'),
     ).resolves.toBe(true);
