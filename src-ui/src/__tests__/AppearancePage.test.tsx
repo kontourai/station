@@ -91,6 +91,7 @@ afterEach(() => {
     COLOR_THEME_ATTRIBUTE,
     COLOR_THEME_FLAVOR_ATTRIBUTE,
     COLOR_THEME_ACCENT_ATTRIBUTE,
+    'data-color-theme-failed',
   ])
     root.removeAttribute(name);
   for (const link of document.head.querySelectorAll('link[rel="stylesheet"]'))
@@ -330,9 +331,12 @@ describe('Appearance page while a theme sheet loads', () => {
     expect(
       card(/^Catppuccin/).querySelector('.appearance-theme__check'),
     ).toBeNull();
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent).toContain("Couldn't load Catppuccin.");
-    expect(alert.textContent).toContain(
+    expect(screen.getByRole('status').textContent).toBe(
+      "Couldn't load Catppuccin.",
+    );
+    const notice = screen.getByRole('region', { name: 'Theme not loaded' });
+    expect(notice.textContent).toContain("Couldn't load Catppuccin.");
+    expect(notice.textContent).toContain(
       'The colors you had stay until it loads.',
     );
 
@@ -341,12 +345,45 @@ describe('Appearance page while a theme sheet loads', () => {
       await Promise.resolve();
     });
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Theme not loaded' }),
+    ).toBeNull();
 
     await settleSheetsAndObserve();
     expect(attributes().theme).toBe('catppuccin');
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Theme not loaded' }),
+    ).toBeNull();
+  });
+
+  // The applier's failure contract: `data-color-theme-failed` names the family
+  // whose latest sheet failed. The page must trust it even while a sheet link
+  // is still in the head, and drop the failure when the marker clears.
+  test('the root failure marker shows the failed state, and clearing it does not', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+    // A link is still in flight; only the marker says it failed.
+    await act(async () => {
+      root.setAttribute('data-color-theme-failed', 'catppuccin');
+      await Promise.resolve();
+    });
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
+    expect(screen.getByRole('status').textContent).toBe(
+      "Couldn't load Catppuccin.",
+    );
+    // A marker for some other family is not this choice's failure.
+    await act(async () => {
+      root.setAttribute('data-color-theme-failed', 'nord');
+      await Promise.resolve();
+    });
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
+    await act(async () => {
+      root.removeAttribute('data-color-theme-failed');
+      await Promise.resolve();
+    });
+    await settleSheetsAndObserve();
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
   });
 
   test('rapid choices end on the last one, whichever sheet settles first', async () => {

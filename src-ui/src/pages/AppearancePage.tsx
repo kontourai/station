@@ -181,6 +181,13 @@ function ModeControl({
   );
 }
 
+/**
+ * Set by the applier on the root to the family whose most recently requested
+ * sheet failed, and cleared when a later apply succeeds or the selection
+ * changes (the contract agreed with the applier's owner).
+ */
+const COLOR_THEME_FAILED_ATTRIBUTE = 'data-color-theme-failed';
+
 const APPLIED_ATTRIBUTES = [
   COLOR_THEME_ATTRIBUTE,
   COLOR_THEME_FLAVOR_ATTRIBUTE,
@@ -207,14 +214,15 @@ function readAppliedSelection(): string {
   const named = APPLIED_ATTRIBUTES.map(
     (name) => root.getAttribute(name) ?? '',
   ).join('|');
-  return `${named}#${sheetInFlight() ? 'loading' : 'settled'}`;
+  const failed = root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE) ?? '';
+  return `${named}#${sheetInFlight() ? 'loading' : 'settled'}#${failed}`;
 }
 
 function subscribeAppliedSelection(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: APPLIED_ATTRIBUTES,
+    attributeFilter: [...APPLIED_ATTRIBUTES, COLOR_THEME_FAILED_ATTRIBUTE],
   });
   observer.observe(document.head, {
     childList: true,
@@ -251,16 +259,18 @@ export function AppearancePage() {
     readAppliedSelection,
     readAppliedSelection,
   );
-  const [named, flight] = applied.split('#');
-  // Applied, on its way, or failed: the applier drops a sheet that failed and
-  // leaves the previous look in force, so with nothing in flight and the root
-  // still not naming the choice, the choice did not take.
+  const [named, flight, failedFamily] = applied.split('#');
+  // Applied, failed, or on its way. Failure is the root's failed marker naming
+  // this family. Until the applier sets that marker, a choice with no sheet in
+  // flight that the root still does not name also failed: the applier drops a
+  // failed sheet and leaves the previous look in force, so it would otherwise
+  // read "Loading…" forever.
   const sheetState =
     named === selectionKey(resolved)
       ? 'applied'
-      : flight === 'loading'
-        ? 'loading'
-        : 'failed';
+      : failedFamily === resolved.id || flight !== 'loading'
+        ? 'failed'
+        : 'loading';
   const loading = sheetState === 'loading';
   const failed = sheetState === 'failed';
   // Asks the applier for the sheet again (it re-requests a failed one on
@@ -368,14 +378,17 @@ export function AppearancePage() {
           })}
         </div>
         <p className="sr-only" role="status">
-          {loading ? `Loading ${selectedOption.label}.` : ''}
+          {loading
+            ? `Loading ${selectedOption.label}.`
+            : failed
+              ? `Couldn't load ${selectedOption.label}.`
+              : ''}
         </p>
         {failed && (
           <PageCallout
             calloutId="appearance-theme-failed"
             className="appearance__failed"
             tone="warning"
-            role="alert"
             ariaLabel="Theme not loaded"
             title={`Couldn't load ${selectedOption.label}.`}
             action={

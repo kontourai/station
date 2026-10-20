@@ -256,7 +256,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       .getByRole('radio', { name: /^Catppuccin/ })
       .locator('xpath=ancestor::label[1]')
       .click();
-    const alert = page.getByRole('alert');
+    const alert = page.getByRole('region', { name: 'Theme not loaded' });
     await alert.waitFor({ timeout: 10_000 });
     expect(await alert.textContent()).toContain("Couldn't load Catppuccin.");
     expect(await rootAttribute(page, 'data-color-theme')).toBeNull();
