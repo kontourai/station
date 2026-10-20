@@ -1,5 +1,5 @@
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
-import { useCallback } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import { CheckGlyph } from '../components/icons/Glyph';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
@@ -7,18 +7,28 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   useKeyboardShortcut,
   useShortcutDisplay,
 } from '../hooks/useKeyboardShortcut';
 import { useLocale } from '../i18n/LocaleContext';
-import type { ColorThemeMode } from '../lib/color-theme-catalog';
+import {
+  COLOR_THEME_ACCENT_ATTRIBUTE,
+  COLOR_THEME_ATTRIBUTE,
+  COLOR_THEME_FLAVOR_ATTRIBUTE,
+} from '../lib/color-theme-apply';
+import {
+  type ColorThemeMode,
+  type ResolvedColorTheme,
+  resolveColorThemeSelection,
+} from '../lib/color-theme-selection';
+// The full catalog: fine here, because this page is its own lazy chunk.
 import {
   COLOR_THEME_OPTIONS,
   type ColorThemeOption,
   type ColorThemeSwatch,
-  type ResolvedColorTheme,
-  resolveColorThemeSelection,
 } from '../lib/color-themes';
 import { AccentColorPicker } from '../views/settings/AccentColorPicker';
 import { formatSettingsMessage } from '../views/settings/settings-catalog';
@@ -42,7 +52,7 @@ function flavorOptionFor(
   resolved: FamilyResolution | null,
 ) {
   if (mode === 'light') return option.flavors.find((f) => f.mode === 'light');
-  const darkId = resolved?.darkFlavor.id ?? option.defaultDarkFlavor;
+  const darkId = resolved?.darkFlavor ?? option.defaultDarkFlavor;
   return option.flavors.find((f) => f.id === darkId);
 }
 
@@ -133,6 +143,9 @@ function ModeControl({
   onChange: (mode: ColorThemeMode) => void;
 }) {
   const shortcut = useShortcutDisplay('theme.toggle');
+  // A phone or a touch screen has no ⌘H to press; the hint would be noise.
+  const touch = useCoarsePointer();
+  const mobile = useIsMobile();
   return (
     <div className="appearance-mode">
       <div
@@ -157,11 +170,40 @@ function ModeControl({
           </label>
         ))}
       </div>
-      {shortcut && shortcut !== 'Not set' && (
+      {!touch && !mobile && shortcut && shortcut !== 'Not set' && (
         <span className="appearance__hint">{shortcut} switches modes.</span>
       )}
     </div>
   );
+}
+
+const APPLIED_ATTRIBUTES = [
+  COLOR_THEME_ATTRIBUTE,
+  COLOR_THEME_FLAVOR_ATTRIBUTE,
+  COLOR_THEME_ACCENT_ATTRIBUTE,
+];
+
+/** What the document root names now, as one comparable key. */
+function readAppliedSelection(): string {
+  const root = document.documentElement;
+  return APPLIED_ATTRIBUTES.map((name) => root.getAttribute(name) ?? '').join(
+    '|',
+  );
+}
+
+function subscribeAppliedSelection(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: APPLIED_ATTRIBUTES,
+  });
+  return () => observer.disconnect();
+}
+
+function selectionKey(resolved: ResolvedColorTheme): string {
+  return resolved.id === 'station'
+    ? '||'
+    : `${resolved.id}|${resolved.darkFlavor}|${resolved.accent}`;
 }
 
 export function AppearancePage() {
@@ -175,6 +217,16 @@ export function AppearancePage() {
     COLOR_THEME_OPTIONS[0];
   const family = resolved.id === 'station' ? null : resolved;
   const custom = customAccent(settings);
+  // A different family's stylesheet loads on demand, and the applier names
+  // it on the root only once it has (lib/color-theme-apply.ts). Until then
+  // the choice is made but not on screen, and the card says so rather than
+  // showing a tick over colours that have not changed yet.
+  const applied = useSyncExternalStore(
+    subscribeAppliedSelection,
+    readAppliedSelection,
+    readAppliedSelection,
+  );
+  const loading = applied !== selectionKey(resolved);
 
   const setMode = useCallback(
     (next: ColorThemeMode) => setDeviceSetting('theme', next),
@@ -238,10 +290,12 @@ export function AppearancePage() {
           {COLOR_THEME_OPTIONS.map((option) => {
             const preview = themePreview(option, mode, settings);
             const selected = option.id === resolved.id;
+            const settling = selected && loading;
             return (
               <label
                 key={option.id}
-                className={`appearance-theme${selected ? ' is-selected' : ''}`}
+                className={`appearance-theme${selected ? ' is-selected' : ''}${settling ? ' is-loading' : ''}`}
+                aria-busy={settling || undefined}
               >
                 <input
                   type="radio"
@@ -252,19 +306,22 @@ export function AppearancePage() {
                   onChange={() => chooseTheme(option.id)}
                 />
                 <ThemeThumbnail swatch={preview.swatch} />
-                {selected && (
+                {selected && !settling && (
                   <span className="appearance-theme__check" aria-hidden="true">
                     <CheckGlyph />
                   </span>
                 )}
                 <span className="appearance-theme__name">{option.label}</span>
                 <span className="appearance-theme__detail">
-                  {preview.flavorLabel ?? 'Default'}
+                  {settling ? 'Loading…' : (preview.flavorLabel ?? 'Default')}
                 </span>
               </label>
             );
           })}
         </div>
+        <p className="sr-only" role="status">
+          {loading ? `Loading ${selectedOption.label}.` : ''}
+        </p>
       </PageSection>
 
       {family && darkFlavors.length > 1 && (
@@ -279,7 +336,7 @@ export function AppearancePage() {
               aria-label="Dark flavor"
             >
               {darkFlavors.map((flavor) => {
-                const selected = flavor.id === family.darkFlavor.id;
+                const selected = flavor.id === family.darkFlavor;
                 return (
                   <label
                     key={flavor.id}
@@ -331,7 +388,7 @@ export function AppearancePage() {
               {selectedOption.accents.map((accent) => {
                 const selected = !custom && accent.id === family.accent;
                 const color =
-                  accent.swatches[shownFlavor?.id ?? family.darkFlavor.id];
+                  accent.swatches[shownFlavor?.id ?? family.darkFlavor];
                 return (
                   <label
                     key={accent.id}

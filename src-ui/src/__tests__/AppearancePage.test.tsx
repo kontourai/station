@@ -31,10 +31,33 @@ import { AppearancePage, themePreview } from '../pages/AppearancePage';
 const root = document.documentElement;
 let unbind: () => void = () => {};
 
+/**
+ * jsdom fetches no stylesheets, so a test plays the browser's load event for
+ * the family sheets the applier is waiting on (lib/color-theme-apply.ts names
+ * a new family on the root only once its sheet has settled).
+ */
+function settleSheets(event: 'load' | 'error' = 'load') {
+  act(() => {
+    for (const link of document.head.querySelectorAll<HTMLLinkElement>(
+      'link[rel="stylesheet"]:not([data-state])',
+    ))
+      link.dispatchEvent(new Event(event));
+  });
+}
+
+/** Settle, then let the page's attribute observer (a microtask) re-render. */
+async function settleSheetsAndObserve() {
+  settleSheets();
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 function seed(values: Partial<DeviceSettings>) {
   act(() => {
     deviceSettingsStore.importEnvelope({ version: 1, values });
   });
+  settleSheets();
 }
 
 function renderPage() {
@@ -70,6 +93,8 @@ afterEach(() => {
     COLOR_THEME_ACCENT_ATTRIBUTE,
   ])
     root.removeAttribute(name);
+  for (const link of document.head.querySelectorAll('link[rel="stylesheet"]'))
+    link.remove();
 });
 
 describe('Appearance page', () => {
@@ -103,6 +128,7 @@ describe('Appearance page', () => {
     seed({ colorThemeFlavor: 'frappe', colorThemeAccent: 'pink' });
     renderPage();
     fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+    settleSheets();
 
     const settings = deviceSettingsStore.getSnapshot();
     expect(settings.colorTheme).toBe('catppuccin');
@@ -219,6 +245,66 @@ describe('Appearance page', () => {
     ).toBe('CatppuccinLatte');
     // The dark flavor stays what it was; light mode does not touch it.
     expect(attributes().flavor).toBe('mocha');
+  });
+});
+
+describe('Appearance page while a theme sheet loads', () => {
+  const card = (name: RegExp) =>
+    screen.getByRole('radio', { name }).closest('label')!;
+
+  // The choice is recorded at once, but the colours change only when the
+  // family's sheet arrives. The card must not claim, with its tick, a look
+  // that is not on screen yet.
+  test('a chosen family reads as loading, not applied, until its sheet settles', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+
+    expect(attributes().theme).toBeNull();
+    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBe('true');
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinLoading…');
+    expect(
+      card(/^Catppuccin/).querySelector('.appearance-theme__check'),
+    ).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Loading Catppuccin.');
+
+    await settleSheetsAndObserve();
+    expect(attributes().theme).toBe('catppuccin');
+    expect(card(/^Catppuccin/).getAttribute('aria-busy')).toBeNull();
+    expect(card(/^Catppuccin/).textContent).toBe('CatppuccinMocha');
+    expect(
+      card(/^Catppuccin/).querySelector('.appearance-theme__check'),
+    ).not.toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  test('rapid choices end on the last one, whichever sheet settles first', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('radio', { name: /^Catppuccin/ }));
+    const first = document.head.querySelector<HTMLLinkElement>(
+      'link[rel="stylesheet"]:not([data-state])',
+    )!;
+    fireEvent.click(screen.getByRole('radio', { name: /^Nord/ }));
+    // The superseded sheet arriving late must not win.
+    act(() => {
+      first.dispatchEvent(new Event('load'));
+    });
+    expect(attributes().theme).not.toBe('catppuccin');
+    await settleSheetsAndObserve();
+    expect(attributes()).toEqual({
+      theme: 'nord',
+      flavor: 'polar-night',
+      accent: expect.any(String),
+    });
+    expect(card(/^Nord/).getAttribute('aria-busy')).toBeNull();
+
+    // And back to Station before a family's sheet arrives leaves no theme.
+    fireEvent.click(screen.getByRole('radio', { name: /^Tokyo Night/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /^Station/ }));
+    settleSheets();
+    expect(attributes()).toEqual({ theme: null, flavor: null, accent: null });
+    expect(
+      document.head.querySelectorAll('link[rel="stylesheet"]'),
+    ).toHaveLength(0);
   });
 });
 

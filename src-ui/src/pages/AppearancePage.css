@@ -143,6 +143,11 @@
   box-shadow: 0 0 0 1px var(--accent-primary);
 }
 
+.appearance-theme.is-loading {
+  border-style: dashed;
+  box-shadow: none;
+}
+
 .appearance-theme__check {
   position: absolute;
   top: var(--k-space-1);
