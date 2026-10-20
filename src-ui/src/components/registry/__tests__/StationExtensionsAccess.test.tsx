@@ -83,8 +83,14 @@ describe('Station extension access at the user decision', () => {
       screen.getByRole('dialog', { name: 'Allow extensions from Studio?' }),
     ).toBeTruthy();
     expect(
-      screen.getByText(/Protection from the native app has not been verified/),
+      screen.getByText(
+        /Station hasn't verified that the frames keep extension code away from the rest of the app/,
+      ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/native features and saved Station credentials/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/run inside this app/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(remotePluginBundlesAllowed(a.id, a.url)).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
@@ -113,7 +119,7 @@ describe('Station extension access at the user decision', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
     expect(screen.getByText(/run inside this app/)).toBeTruthy();
     expect(
-      screen.getByText(/native bridge and your paired Station credentials/),
+      screen.getByText(/native features and your paired Station credentials/),
     ).toBeTruthy();
     expect(screen.queryByText(/They run in separate frames/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));

@@ -71,8 +71,8 @@ export function useStationExtensionsAccess() {
       message={
         review.enable
           ? review.framed
-            ? `Extensions from ${review.origin} add custom views and controls. They run in separate frames. Protection from the native app has not been verified, so only allow a Station you control. Treat its code as having access to this app's data, native bridge and saved Station credentials.`
-            : `Extensions from ${review.origin} run inside this app. Their code can access other Stations' data, credentials available in this window, and these permission settings.${isTauri ? ' This includes the native bridge and your paired Station credentials.' : ''} Only allow a Station you control or trust.`
+            ? `Extensions from ${review.origin} add custom views and controls. They run in separate frames, but Station hasn't verified that the frames keep extension code away from the rest of the app. Treat its code as able to use this app's data, native features and saved Station credentials. Only allow a Station you control or trust.`
+            : `Extensions from ${review.origin} run inside this app. Their code can access other Stations' data, credentials available in this window, and these permission settings.${isTauri ? ' This includes native features and your paired Station credentials.' : ''} Only allow a Station you control or trust.`
           : `This stops loading extensions from ${review.name} on this device. Station will reload to stop code that is already running. Installed plugins stay on the Station.`
       }
       confirmLabel={review.enable ? 'Allow extensions' : 'Turn off and reload'}

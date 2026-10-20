@@ -1796,7 +1796,7 @@ preview reports bundle presence separately from its manifest. The review names
 the Station and its origin. Code loaded into the app has app-wide authority.
 Paired native Stations use separate plugin frames, but their native security
 boundary is not qualified; the review says to treat that code as having access
-to app data, the native bridge and saved credentials. This remains an explicit
+to app data, native features and saved credentials. This remains an explicit
 opt-in, not a claim that frame isolation is verified. Dependency-only client code
 may first offer review when its blocked view opens; preview bundle metadata
 currently describes the staged root plugin.

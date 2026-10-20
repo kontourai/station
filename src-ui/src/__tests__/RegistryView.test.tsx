@@ -575,8 +575,14 @@ describe('RegistryView', () => {
     );
 
     expect(
-      screen.getByText(/Protection from the native app has not been verified/),
+      screen.getByText(
+        /Station hasn't verified that the frames keep extension code away from the rest of the app/,
+      ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/native features and saved Station credentials/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/run inside this app/)).toBeNull();
   });
 
   test('puts the remote-isolation consent section before the catalog', () => {
