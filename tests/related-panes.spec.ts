@@ -4,9 +4,9 @@
  * consent, opens its own report panes beside its list through the SDK's
  * related-pane capability on a real Station. One journey, because what it
  * proves is per device: open, replace, focus, Keep, close, the kept
- * occurrence surviving a reload, a tool landing with the Tools, and the
+ * occurrence surviving a reload, a tool landing with the Tools, the
  * plugin's removal leaving its panes unavailable rather than running stale
- * code.
+ * code, and a reinstall of the same version not bringing them back.
  *
  * The frame tier's transport is covered where its boundary is
  * (`framePaneHost.test.tsx`, the SDK client test and the bootstrap relay
@@ -207,6 +207,25 @@ test.describe('related panes from an installed plugin', () => {
       ).toHaveCount(0);
       await expect(
         page.getByRole('region', { name: 'Report log' }),
+      ).toHaveCount(0);
+    });
+
+    await test.step('the same version reinstalled does not bring them back', async () => {
+      const reinstalled = await installPluginWithConsent(api, pluginDir);
+      expect(reinstalled.success).toBe(true);
+      await page.reload();
+      // The list is the new installation's own pane, so it renders again;
+      // the panes opened under the earlier installation do not.
+      await expect(
+        reports(page).getByRole('heading', { name: 'Reports' }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page
+          .getByText('This plugin pane is unavailable', { exact: true })
+          .first(),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('article', { name: 'Monthly report' }),
       ).toHaveCount(0);
     });
   });
