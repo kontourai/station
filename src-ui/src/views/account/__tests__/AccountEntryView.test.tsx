@@ -723,14 +723,45 @@ describe('invitation entry through real account SDK requests', () => {
 
 describe('account sign-out and appearance', () => {
   test('signing out releases the cached account appearance', async () => {
-    const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
-    signedIn = true;
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
-    await waitFor(() =>
-      expect(calls.some((call) => call.path.endsWith('/sign-out'))).toBe(true),
+    // The account path has no account boundary; the startup path painted the
+    // previous account's appearance from the cache.
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({ version: 1, values: { theme: 'dark' } }),
     );
-    await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
-    release.mockRestore();
+    localStorage.setItem(
+      'station-appearance-v1',
+      JSON.stringify({
+        version: 1,
+        source: 'account',
+        theme: 'light',
+        colorTheme: 'nord',
+        colorThemeFlavor: null,
+        colorThemeAccent: null,
+      }),
+    );
+    deviceSettingsStore.reloadFromStorage();
+    try {
+      expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
+      signedIn = true;
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+      await waitFor(() =>
+        expect(calls.some((call) => call.path.endsWith('/sign-out'))).toBe(
+          true,
+        ),
+      );
+      await waitFor(() =>
+        expect(deviceSettingsStore.getAppearanceSource()).toBe('device'),
+      );
+      const { theme, colorTheme } = deviceSettingsStore.getSnapshot();
+      expect({ theme, colorTheme }).toEqual({
+        theme: 'dark',
+        colorTheme: 'station',
+      });
+    } finally {
+      localStorage.clear();
+      deviceSettingsStore.reloadFromStorage();
+    }
   });
 });

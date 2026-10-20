@@ -90,6 +90,65 @@ describe('the last-applied appearance cache', () => {
     expect(deviceSettingsStore.getAppearanceSource()).toBe('device');
   });
 
+  test.each([
+    ['sign-out, then the boundary unmounts', 'release-first'],
+    ['the boundary unmounts, then sign-out', 'unmount-first'],
+  ] as const)(
+    "%s: the signed-out person's appearance is not held",
+    (_label, order) => {
+      seed(undefined);
+      const person = { theme: 'light' as const, colorTheme: 'nord' as const };
+      const unbind = deviceSettingsStore.bindAccountPreferences(
+        person,
+        () => {},
+        true,
+        'person-a',
+      );
+      if (order === 'release-first') {
+        deviceSettingsStore.releaseBootAppearance();
+        unbind();
+      } else {
+        unbind();
+        deviceSettingsStore.releaseBootAppearance();
+      }
+      expect(deviceSettingsStore.getAppearanceSource()).not.toBe('cache');
+      expect(appearance()).toEqual(DEVICE_VALUES);
+    },
+  );
+
+  test('a release survives the boundary re-binding in the same task, but not a later sign-in', async () => {
+    seed(undefined);
+    const person = { theme: 'light' as const, colorTheme: 'nord' as const };
+    let unbind = deviceSettingsStore.bindAccountPreferences(
+      person,
+      () => {},
+      true,
+      'person-a',
+    );
+    deviceSettingsStore.releaseBootAppearance();
+    // The boundary re-binds on every projection change: cleanup, then bind.
+    unbind();
+    unbind = deviceSettingsStore.bindAccountPreferences(
+      person,
+      () => {},
+      true,
+      'person-a',
+    );
+    unbind();
+    expect(appearance()).toEqual(DEVICE_VALUES);
+    // Later, the same person signs in again: a reconnect holds as usual.
+    await Promise.resolve();
+    unbind = deviceSettingsStore.bindAccountPreferences(
+      person,
+      () => {},
+      true,
+      'person-a',
+    );
+    unbind();
+    expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
+    expect(appearance()).toMatchObject({ theme: 'light', colorTheme: 'nord' });
+  });
+
   test('with no person, the device appearance replaces the cache', () => {
     seed(ACCOUNT_CACHE);
     deviceSettingsStore.releaseBootAppearance();
