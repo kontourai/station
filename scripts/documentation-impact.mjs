@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -6,6 +5,7 @@ import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
 } from './generate-station-docs.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import {
   createLearningSourceReader,
@@ -24,10 +24,9 @@ import {
 const sorted = (values) => [...new Set(values)].sort();
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 16 * 1024 * 1024,
   });
