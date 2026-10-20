@@ -1,3 +1,4 @@
+import { isRecord } from '../utils/isRecord';
 import type { NewChatModelChoice } from '../utils/modelCapabilities';
 
 export const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
@@ -95,10 +96,6 @@ export function dockAcceptsNewChatIntent(
     intent.selection ||
     intent.selectionInvalid
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** `undefined` when absent; `null` when present but not a non-empty string. */
