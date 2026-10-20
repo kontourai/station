@@ -145,6 +145,7 @@ export function TaskRow({
         ? latestChildTool(
             activity.data.events.map(({ event }) => event),
             delegateThreadId,
+            activity.data.latestTool,
           )
         : undefined,
     [activity.data, delegateThreadId, entry.state],

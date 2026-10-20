@@ -107,6 +107,7 @@ function DelegateActivity({
         ? latestChildTool(
             activity.data.events.map(({ event }) => event),
             threadId,
+            activity.data.latestTool,
           )
         : undefined,
     [activity.data, threadId],

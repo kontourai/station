@@ -3,6 +3,7 @@ import type {
   ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
+import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -67,7 +68,9 @@ export const CHILD_WORK_MODEL_SOURCE_TEXT: Record<
 export function latestChildTool(
   events: readonly CanonicalRuntimeEvent[],
   threadId: string,
+  latestTool?: OrchestrationSessionEventWindow['latestTool'],
 ): string | undefined {
+  if (latestTool !== undefined) return latestTool?.name;
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index];
     if (event.threadId !== threadId) continue;

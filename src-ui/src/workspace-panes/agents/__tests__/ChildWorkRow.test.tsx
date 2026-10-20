@@ -250,11 +250,13 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
       }),
     ),
   ];
+  let latestTool: OrchestrationSessionEventWindow['latestTool'];
   const fetcher = vi.fn(async (_url: string, _init?: RequestInit) =>
     Response.json({
       success: true,
       data: {
         protocolVersion: 1,
+        latestTool,
         session: {
           threadId: 'delegate-live',
           provider: 'codex',
@@ -316,12 +318,38 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_050);
   });
+  expect(screen.queryByText('Read')).toBeNull();
+
+  latestTool = { turnId: 'turn-next', name: 'Write' };
+  events.length = 0;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
   expect(
-    screen.queryByText('Read', { selector: '.child-work-activity__name' }),
+    screen.getByText('Write', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Read')).toBeNull();
+
+  latestTool = null;
+  events.push({
+    ...base,
+    eventId: 'capped-older-tool',
+    method: 'tool.started',
+    toolName: 'OlderTool',
+    itemId: 'older-tool',
+    toolCallId: 'older-tool',
+    arguments: {},
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.queryByText('Write', { selector: '.child-work-activity__name' }),
   ).toBeNull();
+  expect(screen.queryByText('OlderTool')).toBeNull();
   expect(screen.getByText('Working')).toBeTruthy();
   expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
-  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(4);
   for (const [url] of fetcher.mock.calls) {
     expect(url).toBe(
       'http://station.test/api/orchestration/sessions/delegate-live/event-window?direction=newest&turnLimit=1',
@@ -331,7 +359,7 @@ test('a collapsed delegate polls one bounded turn, shows its own tool, and clear
   await act(async () => {
     await vi.advanceTimersByTimeAsync(4_000);
   });
-  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher).toHaveBeenCalledTimes(4);
   client.clear();
 });
 
