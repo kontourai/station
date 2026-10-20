@@ -11,7 +11,13 @@ import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.jso
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const useStreamingContent = vi.fn();
@@ -300,13 +306,17 @@ describe('subagent card streaming parity', () => {
         within(card).getByText('Survey the decision records'),
       ).toBeTruthy();
       expect(within(card).getByText('Failed')).toBeTruthy();
-      expect(within(card).getByText('claude-haiku-5')).toBeTruthy();
+      expect(within(card).queryByText('claude-haiku-5')).toBeNull();
       expect(within(card).getByText('0:30')).toBeTruthy();
       expect(
         within(card).getByText(
           'Could not read docs/decisions: permission denied',
         ),
       ).toBeTruthy();
+    }
+    for (const card of [live, settled]) {
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(within(card).getByText('claude-haiku-5')).toBeTruthy();
     }
     expect(live.textContent).toBe(settled.textContent);
   });

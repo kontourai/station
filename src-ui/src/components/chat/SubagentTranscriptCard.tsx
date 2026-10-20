@@ -20,7 +20,7 @@ import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
   type TranscriptChild,
-  useTranscriptChildrenForCall,
+  useTranscriptChildrenForCalls,
 } from './transcript-child-work';
 import './SubagentTranscriptCard.css';
 
@@ -141,31 +141,33 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               {statusLabel}
             </span>
           </span>
-          <span className="subagent-card__meta">
-            {[
-              item.kindLabel && item.kindLabel !== title
-                ? item.kindLabel
-                : null,
-              engine,
-            ]
-              .filter(Boolean)
-              .map((part) => `${part} · `)
-              .join('')}
-            <span
-              className="subagent-card__model"
-              data-reported={item.model ? 'true' : 'false'}
-              title={
-                item.model
-                  ? CHILD_WORK_MODEL_SOURCE_TEXT[item.model.source]
-                  : undefined
-              }
-            >
-              {item.model ? item.model.id : 'model not reported'}
+          {expanded && (
+            <span className="subagent-card__meta">
+              {[
+                item.kindLabel && item.kindLabel !== title
+                  ? item.kindLabel
+                  : null,
+                engine,
+              ]
+                .filter(Boolean)
+                .map((part) => `${part} · `)
+                .join('')}
+              <span
+                className="subagent-card__model"
+                data-reported={item.model ? 'true' : 'false'}
+                title={
+                  item.model
+                    ? CHILD_WORK_MODEL_SOURCE_TEXT[item.model.source]
+                    : undefined
+                }
+              >
+                {item.model ? item.model.id : 'model not reported'}
+              </span>
             </span>
-          </span>
-          {preview ? (
+          )}
+          {!expanded && preview ? (
             <span className="subagent-card__preview">{preview}</span>
-          ) : !running && item.status === 'completed' ? (
+          ) : !expanded && !running && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
               No summary reported
             </span>
@@ -190,9 +192,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
             </div>
           ) : (
             <p className="subagent-card__note">
-              {running
-                ? 'Still running. Its result appears here when it finishes.'
-                : 'The engine reported no summary for this subagent.'}
+              {running ? 'Result pending' : 'No summary reported'}
             </p>
           )}
           {summary && item.result?.summaryTruncated && (
@@ -201,19 +201,22 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               characters.
             </p>
           )}
-          {usage.length > 0 && (
-            <p className="subagent-card__note">{usage.join(' · ')}</p>
-          )}
-          {item.transcript && (
+          {(usage.length > 0 || item.transcript) && (
             <div className="subagent-card__actions">
-              <Button
-                size="sm"
-                aria-expanded={transcriptOpen}
-                aria-controls={transcriptId}
-                onClick={() => setTranscriptOpen((current) => !current)}
-              >
-                {transcriptOpen ? 'Hide transcript' : 'View transcript'}
-              </Button>
+              {usage.length > 0 && (
+                <p className="subagent-card__note">{usage.join(' · ')}</p>
+              )}
+              {item.transcript && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-expanded={transcriptOpen}
+                  aria-controls={transcriptOpen ? transcriptId : undefined}
+                  onClick={() => setTranscriptOpen((current) => !current)}
+                >
+                  {transcriptOpen ? 'Hide transcript' : 'View transcript'}
+                </Button>
+              )}
             </div>
           )}
           {item.transcript && transcriptOpen && (
@@ -247,33 +250,44 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   );
 }
 
-/** The cards for the subagents a run of tool calls spawned, in call order. */
+/** Group only children anchored to this tool run; never move them across prose. */
 export function SubagentCardsForCalls({
   calls,
 }: {
   calls: readonly { part: ToolCallLike }[];
 }) {
-  return (
-    <>
-      {calls.map(({ part }) =>
-        part.toolCallId ? (
-          <SubagentCardForCall
-            key={part.toolCallId}
-            toolCallId={part.toolCallId}
-          />
-        ) : null,
-      )}
-    </>
+  const children = useTranscriptChildrenForCalls(
+    calls.flatMap(({ part }) => (part.toolCallId ? [part.toolCallId] : [])),
   );
-}
+  const groupId = useId();
+  if (children.length < 2)
+    return children.map((child) => (
+      <SubagentTranscriptCard key={child.item.childId} child={child} />
+    ));
 
-function SubagentCardForCall({ toolCallId }: { toolCallId: string }) {
-  const children = useTranscriptChildrenForCall(toolCallId);
+  const counts = new Map<TranscriptChild['item']['status'], number>();
+  for (const child of children)
+    counts.set(child.item.status, (counts.get(child.item.status) ?? 0) + 1);
+
   return (
-    <>
-      {children.map((child) => (
-        <SubagentTranscriptCard key={child.item.childId} child={child} />
-      ))}
-    </>
+    <details className="subagent-group">
+      <summary className="subagent-group__heading" aria-controls={groupId}>
+        <AgentGlyph />
+        <strong>{children.length} subagents</strong>
+        <span className="subagent-group__counts" aria-live="polite">
+          {[...counts]
+            .map(
+              ([status, count]) =>
+                `${count} ${CHILD_WORK_STATUS_LABEL[status].toLowerCase()}`,
+            )
+            .join(' · ')}
+        </span>
+      </summary>
+      <div className="subagent-group__children" id={groupId}>
+        {children.map((child) => (
+          <SubagentTranscriptCard key={child.item.childId} child={child} />
+        ))}
+      </div>
+    </details>
   );
 }

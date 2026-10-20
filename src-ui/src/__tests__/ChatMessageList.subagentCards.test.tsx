@@ -1123,6 +1123,11 @@ describe('subagent transcript cards', () => {
       }),
     ];
     renderTranscript();
+    const group = await screen.findByText('2 subagents');
+    const disclosure = group.closest('details')!;
+    expect(disclosure.open).toBe(false);
+    expect(within(disclosure).getByText('2 running')).toBeTruthy();
+    fireEvent.click(group.closest('summary')!);
     await screen.findByText('second');
     const cards = screen.getAllByTestId('subagent-card');
     expect(cards).toHaveLength(2);
@@ -1186,10 +1191,6 @@ describe('subagent transcript cards', () => {
       expect(
         within(card).getByText('Reading the decision records'),
       ).toBeTruthy();
-      // Engine and subagent type are the record's; the model was not reported,
-      // and says so rather than borrowing the parent's.
-      expect(card.textContent).toContain('general-purpose · Claude Code · ');
-      expect(within(card).getByText('model not reported')).toBeTruthy();
       // Spawn point: after the intent, before the reply that followed the
       // call, in the same assistant row.
       const text = document.body.textContent ?? '';
@@ -1203,6 +1204,10 @@ describe('subagent transcript cards', () => {
       expect(replyAt).toBeGreaterThan(
         cardAt + (card.textContent ?? '').length - 1,
       );
+      expect(within(card).queryByText('model not reported')).toBeNull();
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(card.textContent).toContain('general-purpose · Claude Code · ');
+      expect(within(card).getByText('model not reported')).toBeTruthy();
       expect(unexpectedRequests).toEqual([]);
     },
   );

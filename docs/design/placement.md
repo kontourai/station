@@ -835,6 +835,13 @@ after a queued follow-up. The transcript's loaded `child-work.updated`
 events retain every child whose spawn is loaded, independently of the live
 registry's settled-item retention limit. Completion notices carry child
 identity and remain visible only when no inline card represents that child.
+Children anchored to the same tool-call run share a collapsed roster with counts
+for each reported status. Expanding the roster reveals the children in call order;
+children at separate prose or standalone spawn anchors keep their original positions.
+A collapsed card shows title, status, elapsed time and a progress or result preview.
+Its expansion reveals model provenance and the full result without repeating that
+preview; usage and transcript access share a wrapping footer. The Agents pane keeps
+open/stop actions beside each row and reveals usage on expansion.
 The Agents pane remains the complete list and stop surface, including
 children with no loaded spawn anchor. The card and pane share status words
 and time formatting (`utils/child-work-display.ts`).

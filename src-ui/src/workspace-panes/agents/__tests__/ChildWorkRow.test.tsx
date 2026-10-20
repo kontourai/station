@@ -123,8 +123,11 @@ test('reported values print — including a reported zero', () => {
     100_000,
   );
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
-    'Explore · 1:00 · 0 tokens · 1 tool use · ran 1:01',
+    'Explore · 1:00',
   );
+  expect(screen.queryByText('0 tokens · 1 tool use · ran 1:01')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Survey the repo/ }));
+  expect(screen.getByText('0 tokens · 1 tool use · ran 1:01')).toBeTruthy();
 });
 
 test('a settled child with no reported end shows no elapsed', () => {

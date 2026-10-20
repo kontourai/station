@@ -179,6 +179,111 @@ test.describe('subagent transcript cards', () => {
     );
   });
 
+  test('a child roster stays compact and exposes failures before expansion', async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 1100 });
+    await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    await emit(page, {
+      method: 'turn.started',
+      turnId: 'turn-1',
+      prompt: 'Run six reviews',
+    });
+    await emit(page, {
+      method: 'tool.started',
+      turnId: 'turn-1',
+      itemId: TOOL_CALL,
+      toolCallId: TOOL_CALL,
+      toolName: 'workflow',
+      arguments: {},
+    });
+    const children = Array.from({ length: 6 }, (_, index) => ({
+      ...runningChild,
+      childId: `review-${index}`,
+      title: `Review ${index + 1}`,
+      progress: 'Reading the decision records',
+    }));
+    await emit(page, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: SESSION_ID,
+        running: children,
+      },
+    });
+    await emit(page, {
+      method: 'tool.completed',
+      turnId: 'turn-1',
+      itemId: TOOL_CALL,
+      toolCallId: TOOL_CALL,
+      toolName: 'workflow',
+      status: 'success',
+      output: 'Reviews started',
+    });
+    const group = page.locator('.subagent-group');
+    const heading = group.locator('summary');
+    await expect(heading).toContainText('6 subagents');
+    await expect(heading).toContainText('6 running');
+    await expect(
+      group.getByText('Review 1', { exact: true }),
+    ).not.toBeVisible();
+    await heading.focus();
+    await page.keyboard.press('Enter');
+    await expect(group.getByText('Review 1', { exact: true })).toBeVisible();
+    await expect(group.getByTestId('subagent-card')).toHaveCount(6);
+    await group.screenshot({
+      path: testInfo.outputPath('subagent-roster-expanded-desktop.png'),
+    });
+    await heading.click();
+    await emit(page, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          ...children[0],
+          status: 'failed',
+          endedAt: ENDED_AT,
+          result: { summary: 'Could not read the project' },
+        },
+      },
+    });
+    await expect(heading).toContainText('5 running');
+    await expect(heading).toContainText('1 failed');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await group.screenshot({
+        path: testInfo.outputPath(`subagent-roster-collapsed-${theme}.png`),
+      });
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
+    await page
+      .getByRole('menu', { name: 'Chat actions' })
+      .getByRole('menuitem', { name: 'Full screen', exact: true })
+      .click();
+    await heading.click();
+    const card = group.getByTestId('subagent-card').first();
+    await card.getByRole('button', { expanded: false }).click();
+    await expect(card.getByText('Could not read the project')).toHaveCount(1);
+    await expect(card.getByText('claude-opus-5-5')).toBeVisible();
+    const box = await group.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    expect((await heading.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await group.screenshot({
+      path: testInfo.outputPath('subagent-roster-expanded-mobile-light.png'),
+    });
+  });
+
   for (const standalone of [false, true])
     test(`a captured Codex ${standalone ? 'standalone' : 'inline'} card fits desktop and full-screen mobile`, async ({
       page,
@@ -356,7 +461,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText(runningChild.title)).toBeVisible();
     await expect(card.getByText('Running')).toBeVisible();
     await expect(card.getByText('Reading the decision records')).toBeVisible();
-    await expect(card.getByText('claude-opus-5-5')).toBeVisible();
+    await expect(card.getByText('claude-opus-5-5')).toHaveCount(0);
     await expect(card.getByText('6:12')).toBeVisible();
     await expectDockFits(page);
     await card.screenshot({

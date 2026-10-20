@@ -130,7 +130,6 @@ export function ChildWorkRow({
   const meta = [
     kind,
     ...(elapsedMs !== undefined ? [formatChildWorkElapsed(elapsedMs)] : []),
-    ...childWorkUsageClauses(item.usage),
   ].join(' · ');
   // #3163: an engine subagent's OWN model, or the plain fact that its engine
   // did not report one. Never the parent's. A delegate is a session of its
@@ -140,7 +139,8 @@ export function ChildWorkRow({
   const summary = item.result?.summary;
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
-  const expandable = Boolean(summary) || isDelegate;
+  const usage = childWorkUsageClauses(item.usage);
+  const expandable = Boolean(summary) || isDelegate || usage.length > 0;
 
   const stop = () => {
     if (row.stop === 'delegate-interrupt')
@@ -215,6 +215,9 @@ export function ChildWorkRow({
               characters.
               {sessionHandle ? ' Open the session for the full output.' : ''}
             </p>
+          )}
+          {usage.length > 0 && (
+            <p className="child-work-row__usage">{usage.join(' · ')}</p>
           )}
           {isDelegate && (
             <DelegateUsage threadId={item.childId} running={running} />
