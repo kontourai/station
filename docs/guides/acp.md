@@ -399,6 +399,8 @@ A permission request belongs to the prompt that raised it. When `session/prompt`
 
 The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers unchanged, so the runtime can read/write files and spawn subprocesses on the Station host exactly as before this cutover.
 
+The client file-system methods (`fs/read_text_file`, `fs/write_text_file`) act in Station's own process (#3957). A path that is not absolute and normalized is refused for every engine, because a relative path would resolve against Station's working directory. On a session Station governs below full access in a `host` session, a read or write is refused unless an edit of the same path would be allowed without a person. That means it must be inside the project, not reached through a symbolic link in the project, and not OpenCode configuration. A refusal is a JSON-RPC invalid-params error that names the path. OpenCode writes the content of each allowed edit through `fs/write_text_file`, sending `apply_patch`'s worktree-relative paths as they are. Its own tool then writes the file, so a refused client write does not undo an edit a person allowed. An engine that decides for itself keeps absolute reads and writes anywhere, as before.
+
 ### Station-control over HTTP MCP
 
 Station's built-in `station-control` MCP server is what lets the built-in
