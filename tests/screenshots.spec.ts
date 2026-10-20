@@ -1660,6 +1660,27 @@ function overlayDockProjectMismatchHooks(
             ),
         )
         .toBe(0);
+      const statusBody = page.locator(
+        '[data-chat-status-pill="blocked"] .chat-status-pill__body',
+      );
+      await expect(statusBody).toHaveCount(1);
+      const restingStyle = await statusBody.evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.effect?.getTiming().iterations !== Infinity,
+            )
+            .map((animation) => animation.finished),
+        );
+        const style = getComputedStyle(element);
+        return { transform: style.transform, opacity: style.opacity };
+      });
+      expect(
+        restingStyle,
+        'The settled status body releases its transform effect',
+      ).toEqual({ transform: 'none', opacity: '1' });
       expect(
         await page.evaluate(() => document.documentElement.scrollHeight),
         'settled conversation status must not extend the document',

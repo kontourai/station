@@ -498,6 +498,10 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  // Typed, optional: an older client omits it and keeps the per-tool grant.
+  // Only an `acceptForSession` answer reads it, and only an authentic
+  // Station browser request honours it (the adapter's grant computation).
+  sessionGrantScope: z.literal('server').optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
   // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z

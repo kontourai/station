@@ -4,6 +4,8 @@ import {
 } from '@kontourai/station-shared/display-reveal';
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
@@ -98,6 +100,7 @@ export interface ToolCallData {
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  approvalServerGrant?: ToolRequestServerGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -115,7 +118,7 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'deny',
+  action: 'once' | 'trust' | 'trust-server' | 'deny',
 ) => void | Promise<ToolApprovalOutcome | void>;
 
 interface ToolCallDisplayProps {
@@ -407,6 +410,7 @@ function ToolCallDisplayComponent({
             }}
             onApprove={onApprove}
             grantToolName={grantToolName}
+            serverGrant={toolCall.approvalServerGrant ?? 'none'}
             sessionGrant={
               // A part without the projected grant (a registry-route
               // request) is judged by its tool name alone.
@@ -495,12 +499,16 @@ function useApprovalDecision(
     summary: string;
     detail?: string;
   } | null>(null);
-  const [localChosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
+  const [localChosen, setChosen] = useState<
+    'once' | 'trust' | 'trust-server' | 'deny'
+  >();
   const chosen = shared
     ? shared.decision === 'decline'
       ? 'deny'
       : shared.decision === 'acceptForSession'
-        ? 'trust'
+        ? shared.sessionGrantScope === 'server'
+          ? 'trust-server'
+          : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -515,7 +523,7 @@ function useApprovalDecision(
               : undefined,
         }
       : null);
-  const decide = (action: 'once' | 'trust' | 'deny') => {
+  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
     if (phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
@@ -666,6 +674,7 @@ function ApprovalDecisionStatus({
 
 interface ToolApprovalControlProps {
   onApprove: ToolApprovalHandler;
+  serverGrant: ToolRequestServerGrant;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -731,6 +740,7 @@ function ToolApprovalControls({
 }
 
 function ToolApprovalSheet({
+  serverGrant,
   reference,
   onApprove,
   onCheck,
@@ -763,7 +773,12 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={approvalDecisionBody(grantLabel)}
+      body={approvalDecisionBody(
+        grantLabel,
+        serverGrant === 'server'
+          ? STATION_BROWSER_SERVER_GRANT_LABEL
+          : undefined,
+      )}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -805,9 +820,10 @@ function ToolApprovalSheet({
 
 function ToolApprovalButtons({
   reference,
-  onApprove,
   onCheck,
+  onApprove,
   grantToolName,
+  serverGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
   const { phase, failure, decide, check, checking } = useApprovalDecision(
@@ -825,7 +841,12 @@ function ToolApprovalButtons({
   return (
     <>
       <DecisionButtons
-        body={approvalDecisionBody(grantLabel)}
+        body={approvalDecisionBody(
+          grantLabel,
+          serverGrant === 'server'
+            ? STATION_BROWSER_SERVER_GRANT_LABEL
+            : undefined,
+        )}
         busy={busy}
         onChoose={decide}
       />

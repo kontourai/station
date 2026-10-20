@@ -1097,6 +1097,8 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
@@ -1114,6 +1116,9 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.sessionGrantScope
+        ? { sessionGrantScope: input.sessionGrantScope }
+        : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
     },
