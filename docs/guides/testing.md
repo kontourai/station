@@ -779,6 +779,9 @@ latest compatible completed Tool: CI extended artifact. Never paste the director
 image bytes or broad logs into agent context. For a change that alters rendered
 UI, inspected before/after screenshots belong in the pull request body itself;
 CI artifacts, logs, or local files alone do not establish a visual claim.
+Upload them with the pull request editor's attachment control. Do not commit
+screenshots to the repository, for example under `.github/`: committed images
+stay in every clone's history after the pull request merges.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
