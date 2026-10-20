@@ -1290,8 +1290,22 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}
                       onTelemetryDetailedIntent={(publisher) => {
-                        setTelemetryConsentPublishers(
-                          publisher ? [publisher] : ['kontour', 'operator'],
+                        setTelemetryConsentPublishers((current) =>
+                          publisher
+                            ? [
+                                ...new Set([
+                                  ...(telemetryConsentRevision ===
+                                    telemetryDisclosure.data
+                                      ?.inventoryRevision &&
+                                  telemetryConsentAuthor ===
+                                    telemetryDisclosure.data?.authorDisclosure
+                                      ?.destination
+                                    ? current
+                                    : []),
+                                  publisher,
+                                ]),
+                              ]
+                            : ['kontour', 'operator'],
                         );
                         setTelemetryConsentRevision(
                           telemetryDisclosure.data?.inventoryRevision ?? null,

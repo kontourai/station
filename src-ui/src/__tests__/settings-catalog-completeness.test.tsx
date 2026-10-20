@@ -2478,6 +2478,8 @@ describe('settings catalog completeness', () => {
     ['combined', 403],
     ['kontour-only', 200],
     ['kontour-stale-sibling', 200],
+    ['advanced-kontour-first', 200],
+    ['advanced-operator-first', 200],
   ] as const)(
     'Settings %s Detailed binds author acknowledgement; response %s',
     async (mode, status) => {
@@ -2519,7 +2521,16 @@ describe('settings catalog completeness', () => {
             name: 'Detailed usage to help improve Station',
           }),
         );
-      else
+      else if (mode.startsWith('advanced-')) {
+        const names =
+          mode === 'advanced-kontour-first'
+            ? ['Kontour telemetry', 'Operator telemetry']
+            : ['Operator telemetry', 'Kontour telemetry'];
+        for (const name of names)
+          fireEvent.change(screen.getByRole('combobox', { name }), {
+            target: { value: 'full' },
+          });
+      } else
         fireEvent.change(
           screen.getByRole('combobox', { name: 'Kontour telemetry' }),
           { target: { value: 'full' } },
@@ -2557,7 +2568,7 @@ describe('settings catalog completeness', () => {
           expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
         );
         expect(order).toEqual(
-          mode === 'combined'
+          mode === 'combined' || mode.startsWith('advanced-')
             ? ['kontour', 'operator', 'config', 'config']
             : ['kontour', 'config'],
         );

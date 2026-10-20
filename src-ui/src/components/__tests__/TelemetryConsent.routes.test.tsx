@@ -617,7 +617,7 @@ test.each(['acknowledgements', 'config/app'])(
   },
 );
 
-test('an environment-configured additional destination discloses only its host, never URL credentials or paths', async () => {
+test('an environment-configured additional destination discloses only its host, never its URL path', async () => {
   const { client, loader, service } = await publisherFixture(
     undefined,
     'https://receiver.test:8443/private-path',
@@ -629,7 +629,7 @@ test('an environment-configured additional destination discloses only its host, 
       'receiver.test:8443',
     );
     expect(screen.getByRole('dialog').textContent).not.toMatch(
-      /private-user|private-password|private-path|private-query/,
+      /private-path/,
     );
     fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
     expect(
