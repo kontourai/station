@@ -62,10 +62,14 @@ import type { ResolvedWorkspacePaneCatalogEntry } from '../resolvedWorkspacePane
 
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 
-function contribution(version = '1.0.0'): LayoutCatalogContribution {
+function contribution(
+  version = '1.0.0',
+  lifecycleGeneration?: string,
+): LayoutCatalogContribution {
   return {
     id: 'plugin:reports',
     version,
+    ...(lifecycleGeneration === undefined ? {} : { lifecycleGeneration }),
     sourceIdentity: { kind: 'local', id: 'reports', source: 'plugins/reports' },
     provenance: { origin: 'plugin', pluginId: 'reports' },
   } as LayoutCatalogContribution;
@@ -104,6 +108,7 @@ function entryOf(
   paneDescriptor: WorkspacePaneDescriptor,
   version = '1.0.0',
   project = PROJECT,
+  lifecycleGeneration?: string,
 ): ResolvedWorkspacePaneCatalogEntry {
   const pluginId = paneDescriptor.provenance.pluginId as string;
   const instance = parseWorkspacePaneInstance({
@@ -115,7 +120,7 @@ function entryOf(
       projectId: project.projectId,
       contribution:
         pluginId === 'reports'
-          ? contribution(version)
+          ? contribution(version, lifecycleGeneration)
           : {
               ...contribution(version),
               id: 'plugin:other',
@@ -205,7 +210,15 @@ function caller(
   occurrenceId: string,
   scope: Record<string, string> = {},
   target: RelatedPaneCaller['target'] = null,
-  { project = PROJECT, version = '1.0.0' } = {},
+  {
+    project = PROJECT,
+    version = '1.0.0',
+    lifecycle,
+  }: {
+    project?: typeof PROJECT;
+    version?: string;
+    lifecycle?: string;
+  } = {},
 ): RelatedPaneCaller {
   const instance = parseWorkspacePaneInstance({
     version: '1.0',
@@ -215,7 +228,7 @@ function caller(
     boundContext: {
       projectId: project.projectId,
       ...scope,
-      contribution: contribution(version),
+      contribution: contribution(version, lifecycle),
     },
   }) as WorkspacePaneInstance;
   const made = relatedPaneCaller({
@@ -1098,6 +1111,50 @@ describe('what a guard was asked about is what the open commits over', () => {
         first.unregister();
         second?.unregister();
       }
+    },
+  );
+});
+
+describe('an installation enabled again or reinstalled is a new generation', () => {
+  const installed = (lifecycle: string) => {
+    facts.catalog = {
+      ...PROJECT,
+      entries: [
+        entryOf(LIST, '1.0.0', PROJECT, lifecycle),
+        entryOf(DETAIL, '1.0.0', PROJECT, lifecycle),
+      ],
+    };
+  };
+
+  test.each([
+    ['disabled and enabled again', 'incarnation-1:r2'],
+    ['reinstalled at the same version', 'incarnation-2:r0'],
+  ])(
+    'after the plugin is %s, the earlier caller opens nothing and its kept report is not the new one’s',
+    async (_name, next) => {
+      installed('incarnation-1:r0');
+      callers.first = caller('instance:list', {}, null, {
+        lifecycle: 'incarnation-1:r0',
+      });
+      await mount();
+      const kept = (await open({})) as { handle: string };
+      await run(async () => {
+        await probe.relations?.keep(kept.handle);
+      });
+      installed(next);
+      act(() => probe.rerender?.());
+      const before = await settledStorageSnapshot();
+      expect(await open({ key: 'monthly' })).toEqual({
+        status: 'unavailable',
+        reason: 'not-authorized',
+      });
+      expect(await settledStorageSnapshot()).toEqual(before);
+      await rerenderWith(() => {
+        callers.first = caller('instance:list', {}, null, { lifecycle: next });
+      });
+      const outcome = (await open({})) as { status: string; handle: string };
+      expect(outcome.status).toBe('opened');
+      expect(outcome.handle).not.toBe(kept.handle);
     },
   );
 });

@@ -46,6 +46,15 @@ const logger = createLogger({ name: 'distribution-profile-service' });
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
+/**
+ * How many times each catalog item's lifecycle override changed. Its own file
+ * so the override file keeps the exact shape an older server parses (that
+ * parser refuses unknown keys).
+ */
+const LIFECYCLE_REVISIONS_FILE = [
+  'config',
+  'distribution-lifecycle-revisions.json',
+] as const;
 const BUILTIN_LAYOUT_CONTRIBUTION_VERSION = '1.0.0';
 
 interface PluginLayoutEntry {
@@ -57,8 +66,21 @@ interface PluginLayoutEntry {
 interface ParsedPluginLayout {
   installationReady?: boolean;
   installationReadiness?: PluginInstallationReadiness;
+  /** The installation identity (`installationIdentity`). */
+  installation: string;
   manifest: PluginManifest;
   definition: ResolvedCatalogLayout['definition'];
+}
+
+/**
+ * Which installation of a plugin this is: the admission journal's
+ * incarnation, which every install — a reinstall of the same version
+ * included — mints anew; without a journal, the package's content digest.
+ */
+function installationIdentity(catalog: {
+  artifact: { generation?: string; digest: string };
+}): string {
+  return catalog.artifact.generation ?? `digest:${catalog.artifact.digest}`;
 }
 
 export interface InstalledPluginWorkspacePaneContribution {
@@ -200,6 +222,7 @@ function readPluginManifestFile(
 ): {
   manifest: PluginManifest;
   pluginDir: string;
+  installation: string;
   installationReady: boolean;
   installationReadiness: PluginInstallationReadiness;
 } {
@@ -212,6 +235,7 @@ function readPluginManifestFile(
   return {
     manifest: catalog.manifest,
     pluginDir: catalog.packageRoot,
+    installation: installationIdentity(catalog),
     installationReady: catalog.readiness.state === 'ready',
     installationReadiness: catalog.readiness,
   };
@@ -221,12 +245,18 @@ function readPluginLayoutFiles(
   observed: ReturnType<typeof readPluginManifestFile>,
   pluginName: string,
 ): ParsedPluginLayout {
-  const { manifest, pluginDir, installationReady, installationReadiness } =
-    observed;
+  const {
+    manifest,
+    pluginDir,
+    installation,
+    installationReady,
+    installationReadiness,
+  } = observed;
   const layoutSource = manifest.layout?.source || 'layout.json';
   const layout = readContainedRegularJson(pluginDir, layoutSource);
   return {
     manifest,
+    installation,
     installationReady,
     installationReadiness,
     definition: parseLayoutDefinition(layout, manifest, pluginName),
@@ -358,6 +388,8 @@ export class DistributionProfileService {
     string,
     ReturnType<typeof readPluginManifestFile> | Error
   >;
+  /** A snapshot's one read of the revisions file (null: unreadable). */
+  private catalogRevisions?: Record<string, number> | null;
 
   /** Inert request snapshot. Each package is observed once, with no cross-request cache. */
   async captureCatalog(): Promise<DistributionCatalogReadView> {
@@ -383,6 +415,7 @@ export class DistributionProfileService {
         manifests.set(name, {
           manifest: catalog.manifest,
           pluginDir: catalog.packageRoot,
+          installation: installationIdentity(catalog),
           installationReady: catalog.readiness.state === 'ready',
           installationReadiness: catalog.readiness,
         });
@@ -396,6 +429,7 @@ export class DistributionProfileService {
       }
     }
     snapshot.catalogManifests = manifests;
+    snapshot.catalogRevisions = this.readRevisions();
     // Expose only inert readers. Applying layouts or authorizing execution must
     // use the live service and its fresh installation observation.
     return {
@@ -464,8 +498,12 @@ export class DistributionProfileService {
       const entry = { name };
       if (!isCanonicalPluginId(name) || !this.pluginIsAllowed(name)) continue;
       try {
-        const { manifest, installationReady, installationReadiness } =
-          this.readManifest(entry.name);
+        const {
+          manifest,
+          installation,
+          installationReady,
+          installationReadiness,
+        } = this.readManifest(entry.name);
         for (const descriptor of manifest.workspacePanes ?? []) {
           const id = pluginPaneContributionId(entry.name, descriptor.id);
           const policy = this.policyFor(id);
@@ -480,6 +518,7 @@ export class DistributionProfileService {
             contribution: {
               id,
               version: manifest.version,
+              lifecycleGeneration: this.lifecycleGeneration(id, installation),
               sourceIdentity: {
                 id: entry.name,
                 kind: 'local',
@@ -717,6 +756,7 @@ export class DistributionProfileService {
       contribution: {
         id,
         version: parsed.manifest.version,
+        lifecycleGeneration: this.lifecycleGeneration(id, parsed.installation),
         sourceIdentity: {
           id: pluginName,
           kind: 'local',
@@ -740,6 +780,56 @@ export class DistributionProfileService {
 
   private lifecyclePath(): string {
     return join(this.projectHomeDir, ...LIFECYCLE_FILE);
+  }
+
+  /**
+   * A plugin contribution's `lifecycleGeneration`: its installation and how
+   * many times its lifecycle override changed. A revisions file that cannot
+   * be read yields a generation no earlier read issued, so an occurrence
+   * opened before it is never taken for the current installation.
+   */
+  private lifecycleGeneration(id: string, installation: string): string {
+    const revisions =
+      this.catalogRevisions === undefined
+        ? this.readRevisions()
+        : this.catalogRevisions;
+    const revision = revisions === null ? 'unreadable' : (revisions[id] ?? 0);
+    return `${installation}:r${revision}`.slice(0, 256);
+  }
+
+  private readRevisions(): Record<string, number> | null {
+    const path = join(this.projectHomeDir, ...LIFECYCLE_REVISIONS_FILE);
+    if (!existsSync(path)) return {};
+    try {
+      const data = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+      if (
+        !isPlainObject(data) ||
+        data.version !== 1 ||
+        !isPlainObject(data.items)
+      )
+        return null;
+      const items: Record<string, number> = {};
+      for (const [id, value] of Object.entries(data.items)) {
+        assertSafeCatalogId(id);
+        if (!Number.isSafeInteger(value) || (value as number) < 0) return null;
+        items[id] = value as number;
+      }
+      return items;
+    } catch {
+      return null;
+    }
+  }
+
+  private bumpRevision(id: string): void {
+    const items = this.readRevisions() ?? {};
+    const current = items[id] ?? 0;
+    if (current >= Number.MAX_SAFE_INTEGER)
+      throw new Error('Distribution lifecycle revision is exhausted');
+    writeJsonDurably(
+      join(this.projectHomeDir, ...LIFECYCLE_REVISIONS_FILE),
+      { version: 1, items: { ...items, [id]: current + 1 } },
+      { trailingNewline: false },
+    );
   }
 
   private readOverrides(): DistributionLifecycleOverrides {
@@ -778,15 +868,22 @@ export class DistributionProfileService {
   ): void {
     assertSafeCatalogId(id);
     const state = this.readOverrides();
+    const before = state.items[id] ?? {};
     const next: DistributionLifecycleOverrides = {
       version: 1,
-      items: { ...state.items, [id]: { ...state.items[id], ...patch } },
+      items: { ...state.items, [id]: { ...before, ...patch } },
     };
     const path = this.lifecyclePath();
     mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
     // Same two-space document; the shared durable writer adds the exclusive
     // temporary, the data fsync and the directory fsync.
     writeJsonDurably(path, next, { trailingNewline: false });
+    // A change of lifecycle is a new generation; writing the same value
+    // again is not.
+    const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
+      (key) => before[key] !== patch[key],
+    );
+    if (changed) this.bumpRevision(id);
   }
 }
 

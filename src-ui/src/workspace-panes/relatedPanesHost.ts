@@ -108,10 +108,14 @@ export interface RelatedPaneCaller {
 
 /**
  * The installed plugin a contribution names, as the generation a related
- * occurrence records: its id, version and installation source. A disabled or
- * removed plugin offers no contribution, and an update changes the version,
- * so either makes an occurrence opened under the old one unavailable; the
- * same installation enabled again is the same generation.
+ * occurrence records: its id, version, installation source and the server's
+ * `lifecycleGeneration`, which a reinstall of the same version or a change of
+ * its enablement replaces. A disabled or removed plugin offers no
+ * contribution and an update changes the version, so any of them makes an
+ * occurrence opened under the old one unavailable, and enabling or
+ * reinstalling it again does not bring that occurrence back. From a server
+ * that issues no lifecycle generation, the same installation enabled again
+ * is the same generation. Null past the stored bound: refused, not cut.
  */
 export function pluginInstallGeneration(
   contribution: LayoutCatalogContribution | undefined,
@@ -120,8 +124,16 @@ export function pluginInstallGeneration(
   const source = contribution?.sourceIdentity;
   if (contribution?.provenance?.origin !== 'plugin' || !pluginId || !source)
     return null;
-  return `plugin:${pluginId}@${contribution.version}:${source.kind}:${source.id}:${source.source}`;
+  const lifecycle =
+    contribution.lifecycleGeneration === undefined
+      ? ''
+      : `#${contribution.lifecycleGeneration}`;
+  const generation = `plugin:${pluginId}@${contribution.version}:${source.kind}:${source.id}:${source.source}${lifecycle}`;
+  return generation.length <= MAX_GENERATION_LENGTH ? generation : null;
 }
+
+/** The bound a plugin occurrence's record and relation hold a generation to. */
+const MAX_GENERATION_LENGTH = 512;
 
 function scopeOf(context: WorkspacePaneBoundContext | undefined) {
   const scope: PluginPaneScope = {};

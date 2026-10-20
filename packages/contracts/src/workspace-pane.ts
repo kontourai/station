@@ -923,9 +923,21 @@ function parseLayoutCatalogContribution(
   ) {
     return null;
   }
+  if (
+    value.lifecycleGeneration !== undefined &&
+    !(
+      isNonEmptyTrimmedString(value.lifecycleGeneration) &&
+      value.lifecycleGeneration.length <= 256
+    )
+  ) {
+    return null;
+  }
   return {
     id: value.id,
     version: value.version,
+    ...(value.lifecycleGeneration === undefined
+      ? {}
+      : { lifecycleGeneration: value.lifecycleGeneration }),
     sourceIdentity: {
       id: sourceIdentity.id,
       kind: sourceIdentity.kind as LayoutCatalogContribution['sourceIdentity']['kind'],

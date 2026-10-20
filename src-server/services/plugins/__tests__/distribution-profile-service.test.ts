@@ -200,6 +200,10 @@ describe('DistributionProfileService', () => {
         contribution: {
           id: contribution.id,
           version: '1.2.3',
+          // Legacy (unjournaled) installs are identified by content digest.
+          lifecycleGeneration: expect.stringMatching(
+            /^digest:sha256:[a-f0-9]+:r0$/,
+          ),
           sourceIdentity: {
             id: 'review-plugin',
             kind: 'local',
@@ -743,5 +747,93 @@ describe('DistributionProfileService', () => {
         registrySources: [{ id: 'local', kind: 'local', source: '../escape' }],
       }),
     ).toThrow('safe relative path');
+  });
+
+  describe('a plugin contribution’s lifecycle generation', () => {
+    const LAYOUT = 'plugin:lifecycle-layout:lifecycle';
+    const generationOf = (service: DistributionProfileService) =>
+      service.resolveForCatalog(LAYOUT).item.contribution.lifecycleGeneration;
+
+    test('changes when its enablement changes, and not when the same value is written again', () => {
+      const projectHome = home();
+      writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
+      const service = new DistributionProfileService(projectHome);
+      const installed = generationOf(service);
+      expect(installed).toMatch(/^digest:sha256:[a-f0-9]+:r0$/);
+      service.setEnabled(LAYOUT, false);
+      const disabled = generationOf(service);
+      service.setEnabled(LAYOUT, false);
+      expect(generationOf(service)).toBe(disabled);
+      service.setEnabled(LAYOUT, true);
+      const enabledAgain = generationOf(service);
+      expect(new Set([installed, disabled, enabledAgain]).size).toBe(3);
+      // A new service reads the same durable generation.
+      expect(generationOf(new DistributionProfileService(projectHome))).toBe(
+        enabledAgain,
+      );
+    });
+
+    test('changes when the installation is replaced at the same version', () => {
+      const projectHome = home();
+      const pluginDir = writePlugin(
+        projectHome,
+        'lifecycle-layout',
+        'lifecycle',
+      );
+      const before = generationOf(new DistributionProfileService(projectHome));
+      const manifest = JSON.parse(
+        readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
+      );
+      writeFileSync(
+        join(pluginDir, 'plugin.json'),
+        JSON.stringify({ ...manifest, description: 'Reinstalled' }),
+      );
+      const after = generationOf(new DistributionProfileService(projectHome));
+      expect(manifest.version).toBe('1.2.3');
+      expect(after).not.toBe(before);
+    });
+
+    test('an unreadable revisions file never repeats an earlier generation', () => {
+      const projectHome = home();
+      writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
+      const service = new DistributionProfileService(projectHome);
+      const earlier = generationOf(service);
+      mkdirSync(join(projectHome, 'config'), { recursive: true });
+      writeFileSync(
+        join(projectHome, 'config', 'distribution-lifecycle-revisions.json'),
+        '{ not json',
+      );
+      expect(generationOf(service)).toMatch(/:runreadable$/);
+      expect(generationOf(service)).not.toBe(earlier);
+    });
+
+    test('keeps the override file in the shape an older server reads', () => {
+      const projectHome = home();
+      writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
+      const service = new DistributionProfileService(projectHome);
+      service.setEnabled(LAYOUT, false);
+      service.setEnabled(LAYOUT, true);
+      const overrides = JSON.parse(
+        readFileSync(
+          join(projectHome, 'config', 'distribution-lifecycle.json'),
+          'utf-8',
+        ),
+      );
+      expect(overrides).toEqual({
+        version: 1,
+        items: { [LAYOUT]: { enabled: true } },
+      });
+    });
+
+    test('is carried by a pane-only plugin’s contributions', () => {
+      const projectHome = home();
+      writePanePlugin(projectHome, 'review-plugin');
+      const [pane] = new DistributionProfileService(
+        projectHome,
+      ).listPluginWorkspacePaneContributions();
+      expect(pane?.contribution.lifecycleGeneration).toMatch(
+        /^digest:sha256:[a-f0-9]+:r0$/,
+      );
+    });
   });
 });

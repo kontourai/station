@@ -614,6 +614,37 @@ describe('WorkspacePane contract', () => {
     });
   });
 
+  test('carries a contribution’s lifecycle generation, bounded, and reads one without it', () => {
+    const instance = (lifecycleGeneration?: unknown) =>
+      parseWorkspacePaneInstance({
+        version: '1.0',
+        descriptorId: 'pane:review-queue',
+        instanceId: 'review-queue-project-a',
+        stateKey: 'review-queue-state-project-a',
+        boundContext: {
+          contribution: {
+            id: 'plugin:review-queue-plugin:review',
+            version: '1.0.0',
+            ...(lifecycleGeneration === undefined
+              ? {}
+              : { lifecycleGeneration }),
+            sourceIdentity: { id: 'review-queue-plugin', kind: 'local' },
+            provenance: { origin: 'plugin', pluginId: 'review-queue-plugin' },
+          },
+        },
+      });
+    expect(
+      instance('incarnation-1:r2')?.boundContext?.contribution,
+    ).toMatchObject({ lifecycleGeneration: 'incarnation-1:r2' });
+    expect(
+      instance()?.boundContext?.contribution?.lifecycleGeneration,
+    ).toBeUndefined();
+    expect(instance('g'.repeat(256))).not.toBeNull();
+    expect(instance('g'.repeat(257))).toBeNull();
+    expect(instance(7)).toBeNull();
+    expect(instance(' padded ')).toBeNull();
+  });
+
   test('keeps application-host details out of the serialized contract', () => {
     const descriptor = parseWorkspacePaneDescriptor({
       ...builtinDescriptorInput(),

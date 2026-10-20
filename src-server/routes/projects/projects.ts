@@ -134,6 +134,28 @@ import {
 } from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
+/**
+ * The contribution a Project layout records: the installation's identity,
+ * without the catalog's `lifecycleGeneration`. That changes with every
+ * enablement change and reinstall, which is what a related occurrence needs
+ * to tell installations apart, not what a layout binds; and the stored layout
+ * shape is strict, so an older server keeps reading what this one writes.
+ */
+function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
+  contribution: T,
+): Omit<T, 'lifecycleGeneration'>;
+function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
+  contribution: T | undefined,
+): Omit<T, 'lifecycleGeneration'> | undefined;
+function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
+  contribution: T | undefined,
+): Omit<T, 'lifecycleGeneration'> | undefined {
+  if (contribution === undefined) return undefined;
+  const { lifecycleGeneration: _lifecycleGeneration, ...binding } =
+    contribution;
+  return binding;
+}
+
 function readPluginLayout(projectHomeDir: string, pluginName: string) {
   const pluginFile = join(projectHomeDir, 'plugins', pluginName, 'plugin.json');
   if (!existsSync(pluginFile)) return null;
@@ -1560,7 +1582,10 @@ export function createProjectRoutes(
                 candidate.plugin === pluginName,
             )?.contribution;
           if (contribution) {
-            layout = { ...layout, catalogContribution: contribution };
+            layout = {
+              ...layout,
+              catalogContribution: layoutBindingContribution(contribution),
+            };
           }
         }
       }
@@ -1877,7 +1902,9 @@ export function createProjectRoutes(
       slug: layoutSlug,
       icon: resolved.definition.icon,
       description: resolved.definition.description,
-      catalogContribution: resolved.item.contribution,
+      catalogContribution: layoutBindingContribution(
+        resolved.item.contribution,
+      ),
       // archive#1497 — a catalog-materialized coding layout no longer embeds
       // the project's working directory in its persisted config; the read
       // paths derive it.

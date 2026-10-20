@@ -40,7 +40,8 @@ import type { RelatedPaneCaller } from '../relatedPanesHost';
 const ID = `plugin-pane:${'b'.repeat(32)}`;
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 
-const GENERATION = 'plugin:reports@1.0.0:local:reports:plugins/reports';
+const GENERATION =
+  'plugin:reports@1.0.0:local:reports:plugins/reports#incarnation-1:r0';
 
 const DETAIL = parseWorkspacePaneDescriptor({
   version: '1.0',
@@ -57,6 +58,7 @@ const DETAIL = parseWorkspacePaneDescriptor({
 const seen = vi.hoisted(() => ({
   catalogReads: [] as string[],
   version: '1.0.0',
+  lifecycle: 'incarnation-1:r0',
   registryAdmits: true,
   related: undefined as unknown,
 }));
@@ -74,6 +76,7 @@ vi.mock('../resolvedWorkspacePaneCatalog', () => ({
         contribution: {
           id: 'plugin:reports',
           version: seen.version,
+          lifecycleGeneration: seen.lifecycle,
           sourceIdentity: {
             kind: 'local',
             id: 'reports',
@@ -194,6 +197,7 @@ function mount(authority: Authority) {
 beforeEach(() => {
   seen.catalogReads = [];
   seen.version = '1.0.0';
+  seen.lifecycle = 'incarnation-1:r0';
   seen.registryAdmits = true;
   seen.related = undefined;
   localStorage.clear();
@@ -267,6 +271,18 @@ describe('a related plugin occurrence in a region', () => {
       'no longer admitted by the registry',
       () => {
         seen.registryAdmits = false;
+      },
+    ],
+    [
+      'disabled and enabled again',
+      () => {
+        seen.lifecycle = 'incarnation-1:r2';
+      },
+    ],
+    [
+      'reinstalled at the same version',
+      () => {
+        seen.lifecycle = 'incarnation-2:r0';
       },
     ],
   ])(
