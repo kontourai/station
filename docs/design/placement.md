@@ -1831,8 +1831,9 @@ per conversation.** Below the fold nothing above changes.
   same 32px close. The Terminal: with the shell the only kind of terminal
   (no agent connections), an open empty panel opens a shell and "+" opens
   another, no picker; its chrome — tabs, "+", the empty state, the picker
-  — is on the app's tokens and face in both themes, and only the xterm
-  viewport keeps the terminal's dark ground and monospace. The bar's New
+  — is on the app's tokens and face in both themes, and the xterm viewport
+  keeps monospace and takes the terminal palette for the mode
+  (`--terminal-*`: dark ground in dark, a light terminal in light). The bar's New
   chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A
   second Browser on the rail is "Browser 2" (`browserPreviewPaneOrdinal`);
   the stored Browser state holds a session id, not a URL, so a URL tooltip
