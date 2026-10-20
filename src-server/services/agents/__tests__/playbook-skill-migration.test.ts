@@ -32,7 +32,6 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   skillDiscoveryDuration: { record: vi.fn() },
   skillOps: { add: vi.fn() },
   canonicalSkillsDiscovered: { add: vi.fn() },
-  promptOps: { add: vi.fn() },
 }));
 
 const { SkillService } = await import('../skill-service.js');
