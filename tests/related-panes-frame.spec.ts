@@ -285,7 +285,9 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
       });
       for (const width of [1280, 390]) {
         await test.step(`Up from a frame report returns to its exact Project pane at ${width}px`, async () => {
-          const returnContext = await activeBrowser.newContext({ storageState });
+          const returnContext = await activeBrowser.newContext({
+            storageState,
+          });
           const returnPage = await returnContext.newPage();
           try {
             await returnPage.setViewportSize({ width, height: 900 });
