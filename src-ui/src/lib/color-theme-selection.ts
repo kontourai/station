@@ -80,16 +80,6 @@ export function resolveColorThemeSelection(input: {
   };
 }
 
-/** The flavor id a resolved family renders in `mode`. */
-export function colorThemeFlavorId(
-  resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
-  mode: ColorThemeMode,
-): string {
-  return mode === 'light'
-    ? FAMILIES.get(resolved.id)!.light.id
-    : resolved.darkFlavor;
-}
-
 /** A named theme's page canvas in `mode`, for `<meta name="theme-color">`. */
 export function colorThemeBackground(
   resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,

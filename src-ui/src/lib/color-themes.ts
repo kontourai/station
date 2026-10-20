@@ -13,20 +13,6 @@ import {
   type ColorThemeFlavor,
   type ColorThemeMode,
 } from './color-theme-catalog';
-import {
-  colorThemeFlavorId,
-  type ResolvedColorTheme,
-} from './color-theme-selection';
-
-/** The catalog flavor a resolved family renders in `mode`. */
-export function colorThemeFlavorFor(
-  resolved: Exclude<ResolvedColorTheme, { id: 'station' }>,
-  mode: ColorThemeMode,
-): ColorThemeFlavor {
-  const family = COLOR_THEME_FAMILIES.find((f) => f.id === resolved.id)!;
-  const id = colorThemeFlavorId(resolved, mode);
-  return [family.light, ...family.dark].find((f) => f.id === id)!;
-}
 
 /** The colors a picker shows for one flavor with one accent. */
 export interface ColorThemeSwatch {
