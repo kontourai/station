@@ -639,6 +639,10 @@ describe('WorkspacePane contract', () => {
     expect(
       instance()?.boundContext?.contribution?.lifecycleGeneration,
     ).toBeUndefined();
+    // `null`: history the server cannot vouch for, carried as such.
+    expect(
+      instance(null)?.boundContext?.contribution?.lifecycleGeneration,
+    ).toBeNull();
     expect(instance('g'.repeat(256))).not.toBeNull();
     expect(instance('g'.repeat(257))).toBeNull();
     expect(instance(7)).toBeNull();

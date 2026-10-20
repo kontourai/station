@@ -925,6 +925,7 @@ function parseLayoutCatalogContribution(
   }
   if (
     value.lifecycleGeneration !== undefined &&
+    value.lifecycleGeneration !== null &&
     !(
       isNonEmptyTrimmedString(value.lifecycleGeneration) &&
       value.lifecycleGeneration.length <= 256
@@ -937,7 +938,9 @@ function parseLayoutCatalogContribution(
     version: value.version,
     ...(value.lifecycleGeneration === undefined
       ? {}
-      : { lifecycleGeneration: value.lifecycleGeneration }),
+      : {
+          lifecycleGeneration: value.lifecycleGeneration as string | null,
+        }),
     sourceIdentity: {
       id: sourceIdentity.id,
       kind: sourceIdentity.kind as LayoutCatalogContribution['sourceIdentity']['kind'],

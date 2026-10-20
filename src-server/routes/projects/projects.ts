@@ -141,15 +141,15 @@ import {
  * to tell installations apart, not what a layout binds; and the stored layout
  * shape is strict, so an older server keeps reading what this one writes.
  */
-function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
-  contribution: T,
-): Omit<T, 'lifecycleGeneration'>;
-function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
-  contribution: T | undefined,
-): Omit<T, 'lifecycleGeneration'> | undefined;
-function layoutBindingContribution<T extends { lifecycleGeneration?: string }>(
-  contribution: T | undefined,
-): Omit<T, 'lifecycleGeneration'> | undefined {
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T): Omit<T, 'lifecycleGeneration'>;
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T | undefined): Omit<T, 'lifecycleGeneration'> | undefined;
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T | undefined): Omit<T, 'lifecycleGeneration'> | undefined {
   if (contribution === undefined) return undefined;
   const { lifecycleGeneration: _lifecycleGeneration, ...binding } =
     contribution;

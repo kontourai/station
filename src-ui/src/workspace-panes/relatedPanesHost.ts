@@ -113,9 +113,10 @@ export interface RelatedPaneCaller {
  * its enablement replaces. A disabled or removed plugin offers no
  * contribution and an update changes the version, so any of them makes an
  * occurrence opened under the old one unavailable, and enabling or
- * reinstalling it again does not bring that occurrence back. From a server
- * that issues no lifecycle generation, the same installation enabled again
- * is the same generation. Null past the stored bound: refused, not cut.
+ * reinstalling it again does not bring that occurrence back. Null when the
+ * server issues `null` (lifecycle history it cannot vouch for) and past the
+ * stored bound (refused, not cut). From a server that issues no lifecycle
+ * generation, the same installation enabled again is the same generation.
  */
 export function pluginInstallGeneration(
   contribution: LayoutCatalogContribution | undefined,
@@ -124,6 +125,9 @@ export function pluginInstallGeneration(
   const source = contribution?.sourceIdentity;
   if (contribution?.provenance?.origin !== 'plugin' || !pluginId || !source)
     return null;
+  // History the server cannot vouch for is no generation at all: nothing is
+  // opened under it, and nothing opened before renders under it.
+  if (contribution.lifecycleGeneration === null) return null;
   const lifecycle =
     contribution.lifecycleGeneration === undefined
       ? ''

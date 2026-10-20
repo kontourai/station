@@ -58,7 +58,7 @@ const DETAIL = parseWorkspacePaneDescriptor({
 const seen = vi.hoisted(() => ({
   catalogReads: [] as string[],
   version: '1.0.0',
-  lifecycle: 'incarnation-1:r0',
+  lifecycle: 'incarnation-1:r0' as string | null,
   registryAdmits: true,
   related: undefined as unknown,
 }));
@@ -283,6 +283,12 @@ describe('a related plugin occurrence in a region', () => {
       'reinstalled at the same version',
       () => {
         seen.lifecycle = 'incarnation-2:r0';
+      },
+    ],
+    [
+      'whose lifecycle history the Station cannot vouch for',
+      () => {
+        seen.lifecycle = null;
       },
     ],
   ])(

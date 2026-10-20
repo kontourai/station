@@ -69,14 +69,16 @@ Each change of a plugin item's override also advances that item's revision,
 written in the same document and the same atomic write, as a top-level
 `revisions` member (`{ epoch, items }`) that older servers ignore. A failed
 write therefore changes neither, and a retried change is counted again.
-Revisions that cannot be read refuse every change rather than starting over;
-a document an older server rewrote without them reads its items as
-`untracked`, and the next change starts a new random epoch, so no earlier
-generation comes back. A plugin's catalog contribution carries a
+Station seals the history once at start, giving it a random epoch, never
+during a read. A plugin's catalog contribution carries a
 `lifecycleGeneration`: its installation (the admission journal's incarnation,
-which every install mints anew, or the package's content digest) and that
-revision. It tells an occurrence opened before a disable, a re-enable or a
-reinstall apart from the current installation; it is identity only, never a
+which every install mints anew, or the package's content digest), the epoch
+and the item's revision, so no generation ever repeats. History Station
+cannot vouch for — the document or its revisions lost or reset, revisions
+that cannot be read, or a document an older server rewrote without them — is
+`null`, under which no related pane is opened or rendered, until a new epoch
+is sealed at the next start or by the next change. Unreadable revisions
+refuse every change and are never sealed over. It is identity only, never a
 grant, and a Project layout does not record it.
 
 The [profile contract](../../packages/contracts/src/distribution.ts),

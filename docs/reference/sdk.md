@@ -2692,9 +2692,13 @@ disabled or updated plugin's related pane stays as a tab with an unavailable
 placeholder and runs no plugin code. The generation includes the catalog
 contribution's server-issued `lifecycleGeneration`, which changes whenever
 the installation is replaced (a same-version reinstall included) or its
-enablement changes, so enabling or reinstalling the plugin again does not
-bring an earlier occurrence back. From a server that issues no lifecycle
-generation, the same installation enabled again is the same generation. Declaring `docked` placement does not
+enablement changes and never repeats, so enabling or reinstalling the plugin
+again does not bring an earlier occurrence back. While the Station cannot
+vouch for that history (`lifecycleGeneration: null`), the plugin's panes get
+no related-pane capability (every request answers `unsupported`) and its
+earlier related panes stay unavailable. From a server that issues no
+lifecycle generation, the same installation enabled again is the same
+generation. Declaring `docked` placement does not
 admit a pane to a region, and related panes are opened only through this
 capability; legacy navigation (`useNavigation`, the frame's `navigate`
 message) is unchanged.

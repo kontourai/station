@@ -789,25 +789,52 @@ export class DistributionProfileService {
   }
 
   /**
-   * A plugin contribution's `lifecycleGeneration`: its installation and its
-   * lifecycle revision. It never repeats a generation an earlier read issued
-   * for a different lifecycle: a revision is counted within a random epoch
-   * the first change mints, an item whose override has no revision (an older
-   * server rewrote the document) reads `untracked` until its next change
-   * starts a new epoch, and a revisions member that cannot be read reads
-   * `unreadable` and refuses every change until it is repaired.
+   * A plugin contribution's `lifecycleGeneration`: its installation, the
+   * epoch the lifecycle history was sealed under, and the item's revision
+   * within it. Generations never repeat: an epoch is random, minted once when
+   * history is sealed or first changed, and every change counts within it.
+   * Where the history cannot be vouched for — no sealed epoch (the document
+   * or its revisions were lost, or an older server rewrote it) or revisions
+   * that cannot be read — the generation is `null`, which no host admits, and
+   * it stays `null` until a new epoch is sealed.
    */
-  private lifecycleGeneration(id: string, installation: string): string {
+  private lifecycleGeneration(id: string, installation: string): string | null {
     const revisions = this.catalogRevisions ?? this.readRevisions();
-    const revision =
-      revisions.state === 'invalid'
-        ? 'unreadable'
-        : revisions.state === 'ok' && revisions.items[id] !== undefined
-          ? `${revisions.epoch}.r${revisions.items[id]}`
-          : this.readOverrides().items[id] !== undefined
-            ? 'untracked'
-            : 'r0';
-    return `${installation}:${revision}`.slice(0, 256);
+    if (revisions.state !== 'ok') return null;
+    return `${installation}:${revisions.epoch}.r${revisions.items[id] ?? 0}`.slice(
+      0,
+      256,
+    );
+  }
+
+  /**
+   * Seal the lifecycle history once, at Station start: an absent `revisions`
+   * member gets a new random epoch, so every plugin item reads a generation
+   * no earlier history issued. Never during a read, and never over revisions
+   * that cannot be read: those stay unsealed (and every plugin generation
+   * `null`) until they are repaired. Returns what it found.
+   */
+  sealLifecycleHistory(): 'sealed' | 'already-sealed' | 'invalid' {
+    const revisions = this.readRevisions();
+    if (revisions.state === 'ok') return 'already-sealed';
+    if (revisions.state === 'invalid') return 'invalid';
+    let items: DistributionLifecycleOverrides['items'];
+    try {
+      items = this.readOverrides().items;
+    } catch {
+      return 'invalid';
+    }
+    mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
+    writeJsonDurably(
+      this.lifecyclePath(),
+      {
+        version: 1,
+        items,
+        revisions: { epoch: randomBytes(16).toString('hex'), items: {} },
+      },
+      { trailingNewline: false },
+    );
+    return 'sealed';
   }
 
   private readRevisions(): LifecycleRevisions {

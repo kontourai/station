@@ -33,12 +33,14 @@ export interface LayoutCatalogContribution {
   /**
    * Opaque and server-issued: changes whenever this contribution's
    * installation is replaced (a reinstall of the same version included) or
-   * its enablement is changed. What a host records against an occurrence it
-   * opened, so one opened before a disable or a reinstall is not taken for
-   * the current installation. Identity only, never a permission; absent from
-   * a server that does not issue it.
+   * its enablement is changed, and never repeats. What a host records against
+   * an occurrence it opened, so one opened before a disable or a reinstall is
+   * not taken for the current installation. `null` when the server cannot
+   * vouch for the lifecycle history (lost, unreadable or rewritten): a host
+   * admits no occurrence under it. Identity only, never a permission; absent
+   * from a server that does not issue it.
    */
-  lifecycleGeneration?: string;
+  lifecycleGeneration?: string | null;
 }
 
 /**

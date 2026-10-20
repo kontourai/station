@@ -65,7 +65,7 @@ const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 
 function contribution(
   version = '1.0.0',
-  lifecycleGeneration?: string,
+  lifecycleGeneration?: string | null,
 ): LayoutCatalogContribution {
   return {
     id: 'plugin:reports',
@@ -109,7 +109,7 @@ function entryOf(
   paneDescriptor: WorkspacePaneDescriptor,
   version = '1.0.0',
   project = PROJECT,
-  lifecycleGeneration?: string,
+  lifecycleGeneration?: string | null,
 ): ResolvedWorkspacePaneCatalogEntry {
   const pluginId = paneDescriptor.provenance.pluginId as string;
   const instance = parseWorkspacePaneInstance({
@@ -218,7 +218,7 @@ function caller(
   }: {
     project?: typeof PROJECT;
     version?: string;
-    lifecycle?: string;
+    lifecycle?: string | null;
   } = {},
 ): RelatedPaneCaller {
   const instance = parseWorkspacePaneInstance({
@@ -1278,5 +1278,56 @@ describe('a close or replacement whose storage fails never unfences what remains
       status: 'fenced',
       stationId: 'station-a',
     });
+  });
+});
+
+describe('a plugin whose lifecycle history the Station cannot vouch for', () => {
+  const installed = (lifecycle: string | null) => {
+    facts.catalog = {
+      ...PROJECT,
+      entries: [
+        entryOf(LIST, '1.0.0', PROJECT, lifecycle),
+        entryOf(DETAIL, '1.0.0', PROJECT, lifecycle),
+      ],
+    };
+  };
+
+  test('gives its panes no related-pane capability', () => {
+    const instance = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: LIST.id,
+      instanceId: 'instance:list',
+      stateKey: 'instance:list',
+      boundContext: {
+        projectId: PROJECT.projectId,
+        contribution: contribution('1.0.0', null),
+      },
+    }) as WorkspacePaneInstance;
+    expect(instance.boundContext?.contribution?.lifecycleGeneration).toBeNull();
+    expect(
+      relatedPaneCaller({
+        occurrenceId: 'instance:list',
+        instance,
+        ...PROJECT,
+        layoutSlug: 'reports',
+        label: 'Reports',
+      }),
+    ).toBeNull();
+  });
+
+  test('admits nothing for a caller mounted before its history was lost', async () => {
+    installed('incarnation-1:aaaa.r0');
+    callers.first = caller('instance:list', {}, null, {
+      lifecycle: 'incarnation-1:aaaa.r0',
+    });
+    await mount();
+    installed(null);
+    act(() => probe.rerender?.());
+    const before = await settledStorageSnapshot();
+    expect(await open({})).toEqual({
+      status: 'unavailable',
+      reason: 'not-authorized',
+    });
+    expect(await settledStorageSnapshot()).toEqual(before);
   });
 });
