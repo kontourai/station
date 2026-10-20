@@ -632,10 +632,18 @@ jobs:
       # A missing or failing receipt, a receipt for another plan or head, or
       # a shard that ran anything but its own slice fails the check.
       - name: Verify fast-checks shard receipts
+        id: verify
         if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' }}
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
+
+      # #1706: the source policy reads this step's name and conclusion from
+      # the jobs API, so the required status says a deferred pass is
+      # provisional. ci-workflow-governance pins the name and trigger.
+      - name: Mark fast-checks provisional
+        if: ${{ steps.verify.outputs.provisional == 'true' }}
+        run: echo "fast-checks deferred ci-fast/test-full; Merge-queue regression runs full regression before merge"
 
   source-policy:
     name: Publish source admission

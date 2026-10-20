@@ -6,6 +6,15 @@ const CI_PATH = '.github/workflows/ci.yml';
 const METADATA_RUN_NAME =
   "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}";
 const SHA = /^[a-f0-9]{40}$/;
+/**
+ * #1706: the fast-checks aggregate runs this step only when it passed a plan
+ * that deferred ci-fast or test-full. The jobs API reports step names and
+ * conclusions, so the required status can say its green was provisional
+ * without trusting an artifact. ci-workflow-governance pins the step.
+ */
+export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
+const PROVISIONAL_NOTE =
+  ' (provisional: ci-fast/test-full deferred to Merge-queue regression)';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
@@ -55,7 +64,35 @@ function proofRows(jobs) {
         'Fork pull-request smoke',
       ].includes(job.name),
     )
-    .map((job) => [job.id, job.name, job.status, job.conclusion]);
+    .map((job) => [
+      job.id,
+      job.name,
+      job.status,
+      job.conclusion,
+      ...(['fast-checks', 'Fast checks execution'].includes(job.name)
+        ? [
+            Array.isArray(job.steps)
+              ? {
+                  inventory: 'present',
+                  markers: job.steps
+                    .filter(
+                      (step) => step?.name === FAST_CHECKS_PROVISIONAL_STEP,
+                    )
+                    .map((step) => [
+                      step.number ?? null,
+                      step.name,
+                      step.status,
+                      step.conclusion,
+                    ]),
+                }
+              : {
+                  inventory: Object.hasOwn(job, 'steps')
+                    ? 'non-array'
+                    : 'absent',
+                },
+          ]
+        : []),
+    ]);
 }
 
 function jobState(job) {
@@ -149,11 +186,21 @@ function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
       ];
   if (required.includes('failure'))
     return failure('Newest source proof failed or was cancelled');
-  if (required.every((state) => state === 'success'))
+  if (required.every((state) => state === 'success')) {
+    const provisional =
+      !fork &&
+      (
+        proofJob(jobs, ['fast-checks', 'Fast checks execution'])?.steps ?? []
+      ).some(
+        (step) =>
+          step?.name === FAST_CHECKS_PROVISIONAL_STEP &&
+          step?.conclusion === 'success',
+      );
     return {
       state: 'success',
-      description: 'Newest exact-owner source proof succeeded',
+      description: `Newest exact-owner source proof succeeded${provisional ? PROVISIONAL_NOTE : ''}`,
     };
+  }
   if (run.status === 'completed' && run.conclusion === 'cancelled')
     return failure('Newest source proof failed or was cancelled');
   return pending('Newest source proof is incomplete or unavailable');
@@ -486,7 +533,7 @@ export async function reconcileSourceVerification({
       const verdict = verdicts.find((value) => value.state === 'failure') ??
         verdicts.find((value) => value.state === 'pending') ?? {
           state: 'success',
-          description: 'All exact-owner source proofs succeeded',
+          description: `All exact-owner source proofs succeeded${verdicts.some((value) => value.description.endsWith(PROVISIONAL_NOTE)) ? PROVISIONAL_NOTE : ''}`,
         };
       return {
         verdict,

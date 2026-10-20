@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { reconcileSourceVerification } from '../source-verification-policy.mjs';
+import {
+  FAST_CHECKS_PROVISIONAL_STEP,
+  reconcileSourceVerification,
+} from '../source-verification-policy.mjs';
 
 const head = 'a'.repeat(40);
 const base = 'b'.repeat(40);
@@ -216,6 +219,42 @@ describe('source verification reconciler API boundary', () => {
       { context: 'Source verification policy', state: 'success' },
     ]);
   });
+  // #1706: a green over a plan that deferred ci-fast must not read as a
+  // full run's green on the required status.
+  test.each([
+    {
+      conclusion: 'success',
+      description:
+        'All exact-owner source proofs succeeded (provisional: ci-fast/test-full deferred to Merge-queue regression)',
+    },
+    {
+      conclusion: 'skipped',
+      description: 'All exact-owner source proofs succeeded',
+    },
+  ])(
+    'a provisional marker step that finished $conclusion publishes "$description"',
+    async ({ conclusion, description }) => {
+      const { state, execute } = fixture();
+      const aggregate = state.jobs
+        .get(10)
+        ?.find((job) => job.name === 'Fast checks execution');
+      if (!aggregate) throw new Error('Expected the aggregate job.');
+      Object.assign(aggregate, {
+        steps: [
+          { name: 'Verify fast-checks shard receipts', conclusion: 'success' },
+          { name: FAST_CHECKS_PROVISIONAL_STEP, conclusion },
+        ],
+      });
+      expect(await execute()).toEqual({ state: 'success', description });
+      expect(state.posts).toEqual([
+        {
+          context: 'Source verification policy',
+          state: 'success',
+          description,
+        },
+      ]);
+    },
+  );
   test.each(['failure', 'cancelled', 'timed_out', 'unknown'])(
     'newer source %s prevents older success reuse',
     async (conclusion) => {

@@ -126,9 +126,16 @@ function aggregateFixture({
   receipt = (_index: number, value: Record<string, unknown>) => value,
   omit = [] as number[],
   shardCount = 4,
+  deferredLanes = undefined as
+    | Array<{ id: string; reasons: string[] }>
+    | undefined,
 } = {}) {
   const { directory, head } = repository();
-  const plan = { ...planFor(head, files, files.length === 0), shardCount };
+  const plan = {
+    ...planFor(head, files, files.length === 0),
+    shardCount,
+    ...(deferredLanes ? { deferredLanes } : {}),
+  };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
@@ -211,6 +218,98 @@ describe('fast-checks aggregator exit status (child process)', () => {
         );
     },
   );
+
+  // #1706: an escalated diff deferred ci-fast, ran a narrower set (or
+  // nothing), and the required check read exactly like a full run.
+  test.each([
+    { files: [] as string[], label: 'ran nothing' },
+    { files: ['a/a.test.ts', 'a/b.test.ts'], label: 'ran a narrower set' },
+  ])(
+    'a plan deferred to ci-fast that $label passes only as provisional, naming its owner',
+    ({ files }) => {
+      const directory = aggregateFixture({
+        files,
+        deferredLanes: [
+          { id: 'ci-fast', reasons: ['escalation: package.json'] },
+        ],
+        receipt: (_index, value) =>
+          value.status === 'completed'
+            ? { ...value, status: 'provisional' }
+            : value,
+      });
+      writeFileSync(join(directory, 'github-output'), '');
+      const result = cli(
+        ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
+        {
+          cwd: directory,
+          env: {
+            GITHUB_RUN_ID: '4242',
+            GITHUB_ACTIONS: 'true',
+            GITHUB_OUTPUT: join(directory, 'github-output'),
+            NEEDS: JSON.stringify(successNeeds),
+          },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        '::warning title=fast-checks is provisional::fast-checks deferred ci-fast: the affected suite did not run in this check; Merge-queue regression runs full regression before merge',
+      );
+      expect(result.stdout).toContain('[fast-checks] PASS (provisional):');
+      expect(result.stdout).not.toContain('[fast-checks] PASS: ');
+      // The marker step the source policy reads keys on this output.
+      expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe(
+        'provisional=true\n',
+      );
+    },
+  );
+
+  test('a deferral owned outside fast-checks keeps the plain pass', () => {
+    const directory = aggregateFixture({
+      files: ['a/a.test.ts'],
+      deferredLanes: [
+        {
+          id: 'verify-e2e-full',
+          reasons: ['E2E manifest/spec boundary: tests/e2e/x.spec.ts'],
+        },
+      ],
+      receipt: (_index, value) =>
+        value.status === 'completed'
+          ? { ...value, status: 'provisional' }
+          : value,
+    });
+    writeFileSync(join(directory, 'github-output'), '');
+    const result = cli(
+      ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
+      {
+        cwd: directory,
+        env: {
+          GITHUB_RUN_ID: '4242',
+          GITHUB_ACTIONS: 'true',
+          GITHUB_OUTPUT: join(directory, 'github-output'),
+          NEEDS: JSON.stringify(successNeeds),
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('[fast-checks] PASS: ');
+    expect(result.stdout).not.toContain('::warning');
+    expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe('');
+  });
+
+  test('refuses a shard that reports completed for a deferred plan', () => {
+    const result = aggregate(
+      aggregateFixture({
+        files: ['a/a.test.ts'],
+        deferredLanes: [
+          { id: 'ci-fast', reasons: ['escalation: package.json'] },
+        ],
+      }),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "[fast-checks] FAIL: shard 1/4 reported 'completed' for a plan deferred to ci-fast",
+    );
+  });
 
   test('rejects a plan exceeding the four-runner cap', () => {
     const result = aggregate(aggregateFixture({ shardCount: 5 }));
