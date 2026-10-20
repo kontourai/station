@@ -7,7 +7,7 @@
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Run `npm run dependencies:ci` to arm hooks; `npm run` is the script interface, so never run raw npm installs. Before editing, run `npm run gate:for -- <paths...>`, then `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
 - Never `git push --no-verify`: no required CI check re-runs the pre-push gates.
-- Ordinary PRs use focused evidence and normal hooks; hosted checks and the merge queue own broad integration and full typechecking. Never background a full `typecheck` or `ci:fast` to poll its sentinel. [Verification](docs/guides/development.md#verification) owns lane selection and receipts.
+- Ordinary PRs use focused evidence and normal hooks; hosted checks and the merge queue own broad integration and full typechecking. A selector explanation, deferred selection (`test:changed` exit 3), or rerun is not completion evidence. Never background a full `typecheck` or `ci:fast` to poll its sentinel. [Verification](docs/guides/development.md#verification) owns lane selection and receipts.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 

@@ -549,8 +549,9 @@ the full static/build chain or full Vitest corpus.
 Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
-The required `fast-checks` result combines job outcomes with exact-plan shard
-receipts. A failing shard also annotates each failed test and uploads its
+The `fast-checks` result combines job outcomes with exact-plan shard receipts;
+the required `Source verification policy` context reconciles it (the
+[ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
