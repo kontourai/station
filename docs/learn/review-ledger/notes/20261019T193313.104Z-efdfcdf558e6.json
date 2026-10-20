@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed against chat.css chip changes: the guide's chat inventory and footer claims concern the inbox and app footer; lowercase 'chat inventory' already matches the term; no prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}
