@@ -2063,7 +2063,7 @@ function telemetryConsentScreens(): Screen[] {
               await included
                 .getByRole('heading', { name: "What's included" })
                 .hover();
-              await page.mouse.wheel(0, 180);
+              await page.mouse.wheel(0, 600);
               const confirmation = included.getByText(
                 /Review what's included, then select Save/,
               );
