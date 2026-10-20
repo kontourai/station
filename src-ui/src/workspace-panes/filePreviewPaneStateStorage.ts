@@ -116,6 +116,9 @@ function reclaimFilePreviewPaneStateCapacity(
       } catch {
         /* optional browser storage */
       }
+      // A corrupt record still names its occurrence; its fence goes too.
+      const stateKey = storedStateKey(key);
+      if (stateKey) removePaneFence(storage, stateKey);
       continue;
     }
     valid.set(inspected.stateKey, inspected.state);
