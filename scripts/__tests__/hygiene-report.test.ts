@@ -23,6 +23,14 @@ if (mode === 'offline') {
   process.stderr.write('error connecting to api.github.com\\n');
   process.exit(1);
 }
+if (mode === 'rate-limit') {
+  process.stdout.write(JSON.stringify({ errors: [{ type: 'RATE_LIMITED', message: 'API rate limit already exceeded for user ID 1.' }] }));
+  process.exit(1);
+}
+if (mode === 'missing-scope') {
+  process.stdout.write(JSON.stringify({ errors: [{ type: 'INSUFFICIENT_SCOPES', message: "Your token has not been granted the required scopes to execute this query." }] }));
+  process.exit(1);
+}
 const state = JSON.parse(readFileSync(process.env.FAKE_GH_STATE, 'utf8'));
 const query = process.argv.find((arg) => arg.startsWith('query=')).slice(6);
 const repository = {};
@@ -33,7 +41,10 @@ if (query.includes('issues(first: 1')) {
 }
 for (const match of query.matchAll(/n(\\d+): issueOrPullRequest\\(number: (\\d+)\\)/g)) {
   const entry = state.numbers[match[2]];
-  if (entry) repository['n' + match[1]] = entry;
+  if (mode === 'forbidden' && match[2] === '300') {
+    repository['n' + match[1]] = null;
+    errors.push({ type: 'FORBIDDEN', path: ['repository', 'n' + match[1]], message: 'Resource not accessible by integration' });
+  } else if (entry) repository['n' + match[1]] = entry;
   else {
     repository['n' + match[1]] = null;
     errors.push({ type: 'NOT_FOUND', path: ['repository', 'n' + match[1]], message: 'Could not resolve to an issue or pull request with the number of ' + match[2] + '.' });
@@ -250,6 +261,118 @@ describe('hygiene markers check', () => {
     expect(status).toBe(0);
     expect(result.findings).toEqual([]);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe('hygiene GitHub refusals', () => {
+  const root = makeRepo({
+    'src/a.ts':
+      '// UNWIRED(#100): pending.\n// TODO(#300): replace the probe.\n',
+  });
+
+  // A partial response is not a partial pass: one refused alias, a rate
+  // limit or a token without the scope each leave the issue states unknown.
+  it.each([
+    [
+      'a partial response with one refused number',
+      'forbidden',
+      'Resource not accessible by integration',
+    ],
+    ['a rate limit', 'rate-limit', 'API rate limit already exceeded'],
+    [
+      'a token without the required scope',
+      'missing-scope',
+      'has not been granted the required scopes',
+    ],
+  ])('reports NOT_VERIFIED for %s', (_label, mode, message) => {
+    const { status, stdout, calls } = run(root, ['--check', 'markers'], {
+      mode,
+    });
+    expect(calls).toHaveLength(1);
+    expect(status).toBe(2);
+    expect(stdout).toContain(
+      '[hygiene:markers] NOT_VERIFIED: GitHub refused the query:',
+    );
+    expect(stdout).toContain(message);
+    expect(stdout).not.toContain('not-an-issue');
+  });
+});
+
+describe('hygiene comment scanner edge cases', () => {
+  const root = makeRepo({
+    'src/main.rs': [
+      'fn main() {',
+      "    let quote = '\"'; // UNWIRED(#200): after a quote character.",
+      "    let escaped = '\\''; // UNWIRED(#200): after an escaped quote.",
+      '    let s: &\'static str = "x"; // UNWIRED(#200): after a lifetime.',
+      '}',
+      '',
+    ].join('\n'),
+    '.github/workflows/x.yml': [
+      "name: it's # SUNSET(#200): after a plain-scalar apostrophe.",
+      "other: it's # see #9999 from Wave 2",
+      "quoted: 'a # inside a quoted scalar is not a comment'",
+      '',
+    ].join('\n'),
+  });
+
+  it('finds markers after Rust character literals and lifetimes and YAML apostrophes', () => {
+    const { status, result } = runJson(root, 'markers');
+    expect(status).toBe(0);
+    expect(located(result.findings)).toEqual([
+      'closed-issue:.github/workflows/x.yml:1',
+      'closed-issue:src/main.rs:2',
+      'closed-issue:src/main.rs:3',
+      'closed-issue:src/main.rs:4',
+    ]);
+  });
+
+  it('feeds the same comments to the issue-reference and label checks', () => {
+    expect(located(runJson(root, 'issue-refs').result.findings)).toEqual([
+      'beyond-latest:.github/workflows/x.yml:2',
+    ]);
+    expect(located(runJson(root, 'plan-labels').result.findings)).toEqual([
+      'wave:.github/workflows/x.yml:2',
+    ]);
+  });
+});
+
+describe('hygiene feature flag shapes', () => {
+  // Shapes the derivation does not follow must not read as zero flags.
+  it.each([
+    [
+      'an aliased list',
+      [
+        "const flags = (process.env.STATION_FEATURES || '').split(',');",
+        'const selected = flags;',
+        "export const on = selected.includes('aliased-flag');",
+      ],
+      "src-server/a/flags.ts:2 list 'flags' is used other than as a membership test",
+    ],
+    [
+      'a destructured environment value',
+      [
+        "const { STATION_FEATURES = '' } = process.env;",
+        "export const on = STATION_FEATURES.split(',').includes('destructured-flag');",
+      ],
+      'src-server/a/flags.ts:1 STATION_FEATURES is destructured',
+    ],
+    [
+      'an exported list function',
+      [
+        'export function features(env = process.env) {',
+        "  return (env.STATION_FEATURES || '').split(',');",
+        '}',
+      ],
+      "src-server/a/flags.ts:2 exported function 'features' returns the STATION_FEATURES list",
+    ],
+  ])('reports NOT_VERIFIED for %s', (_label, lines, message) => {
+    const root = makeRepo({ 'src-server/a/flags.ts': `${lines.join('\n')}\n` });
+    const { status, stdout } = run(root, ['--check', 'markers']);
+    expect(status).toBe(2);
+    expect(stdout).toContain(
+      `[hygiene:markers] NOT_VERIFIED: STATION_FEATURES flags: ${message}`,
+    );
   });
 });
 

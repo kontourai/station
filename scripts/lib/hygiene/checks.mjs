@@ -105,36 +105,81 @@ function parseMarkers(text) {
 const FEATURE_ENV = 'STATION_FEATURES';
 const FLAG_ROOT = 'src-server/';
 
-function readsFeatureEnv(node) {
-  let found = false;
-  const visit = (child) => {
-    if (found) return;
-    if (
-      (ts.isPropertyAccessExpression(child) &&
-        child.name.text === FEATURE_ENV) ||
-      (ts.isElementAccessExpression(child) &&
-        ts.isStringLiteralLike(child.argumentExpression) &&
-        child.argumentExpression.text === FEATURE_ENV)
-    ) {
-      found = true;
-      return;
-    }
-    ts.forEachChild(child, visit);
-  };
-  visit(node);
-  return found;
+/** A read of the environment value: `x.STATION_FEATURES` or `x['STATION_FEATURES']`. */
+function isFeatureEnvRead(node) {
+  return (
+    (ts.isPropertyAccessExpression(node) && node.name.text === FEATURE_ENV) ||
+    (ts.isElementAccessExpression(node) &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      node.argumentExpression.text === FEATURE_ENV)
+  );
+}
+
+const LIST_METHODS = new Set(['split', 'filter', 'map', 'trim', 'toLowerCase']);
+const MEMBERSHIP = new Set(['includes', 'has', 'indexOf']);
+
+/**
+ * From an expression holding the feature list, step outward through
+ * list-preserving wrappers: parentheses, `|| ''`/`?? ''` fallbacks and
+ * `.split()`, `.filter()`, `.map()`, `.trim()` calls.
+ */
+function listChainTop(node) {
+  let current = node;
+  for (;;) {
+    const parent = current.parent;
+    if (ts.isParenthesizedExpression(parent)) current = parent;
+    else if (
+      ts.isBinaryExpression(parent) &&
+      parent.left === current &&
+      [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(
+        parent.operatorToken.kind,
+      )
+    )
+      current = parent;
+    else if (
+      ts.isPropertyAccessExpression(parent) &&
+      parent.expression === current &&
+      LIST_METHODS.has(parent.name.text) &&
+      ts.isCallExpression(parent.parent) &&
+      parent.parent.expression === parent
+    )
+      current = parent.parent;
+    else return current;
+  }
+}
+
+/** `<list>.includes('flag')`: the flag literal, or undefined. */
+function membershipFlag(list) {
+  const access = list.parent;
+  if (
+    ts.isPropertyAccessExpression(access) &&
+    access.expression === list &&
+    MEMBERSHIP.has(access.name.text) &&
+    ts.isCallExpression(access.parent) &&
+    access.parent.expression === access &&
+    access.parent.arguments.length === 1 &&
+    ts.isStringLiteralLike(access.parent.arguments[0])
+  )
+    return access.parent.arguments[0];
+  return undefined;
 }
 
 /**
  * Feature flags are the string literals tested for membership in the
- * `STATION_FEATURES` list: `x.includes('flag')` where `x` is a variable
- * initialised from that environment value, a call to a function whose body
- * reads it, or an expression that reads it directly. A flag has an adjacent
- * sunset when a `SUNSET(#N):` comment leads the statement that tests it or
- * any statement or declaration enclosing that test.
+ * `STATION_FEATURES` list. There is no declared flag registry: Station reads
+ * the environment value and tests it for literals. So every read in the file
+ * must reach a membership test through shapes this function understands: a
+ * test on the read itself, a `const` list variable whose every use is a
+ * test, or an unexported function returning the list whose every call is a
+ * test. Any other read (destructuring, aliasing, passing the list on, an
+ * exported list function) is returned in `unsupported`, so the check reports
+ * NOT_VERIFIED instead of an incomplete flag set.
+ *
+ * A flag has an adjacent sunset when a `SUNSET(#N):` comment leads the
+ * statement that tests it or any statement or declaration enclosing it.
  */
 function featureFlagsInSource(path, text) {
-  if (!text.includes(FEATURE_ENV)) return [];
+  if (!text.includes(FEATURE_ENV)) return { flags: [], unsupported: [] };
   ts ??= require('typescript-api');
   const source = ts.createSourceFile(
     path,
@@ -143,40 +188,12 @@ function featureFlagsInSource(path, text) {
     true,
     path.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
-  const listNames = new Set();
-  const producerNames = new Set();
-  const collect = (node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      readsFeatureEnv(node.initializer)
-    )
-      listNames.add(node.name.text);
-    if (
-      (ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) &&
-      node.name &&
-      ts.isIdentifier(node.name)
-    ) {
-      const body = ts.isFunctionDeclaration(node)
-        ? node.body
-        : node.initializer &&
-            (ts.isArrowFunction(node.initializer) ||
-              ts.isFunctionExpression(node.initializer))
-          ? node.initializer.body
-          : undefined;
-      if (body && readsFeatureEnv(body)) producerNames.add(node.name.text);
-    }
-    ts.forEachChild(node, collect);
-  };
-  collect(source);
-  const isFeatureList = (expression) =>
-    (ts.isIdentifier(expression) && listNames.has(expression.text)) ||
-    (ts.isCallExpression(expression) &&
-      ts.isIdentifier(expression.expression) &&
-      producerNames.has(expression.expression.text)) ||
-    readsFeatureEnv(expression);
+  const lineOf = (node) =>
+    source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
   const flags = [];
+  const unsupported = [];
+  const refuse = (node, why) =>
+    unsupported.push({ path, line: lineOf(node), why });
   const leadingSunset = (node) => {
     // Leading trivia of the test itself and of every enclosing node, up to
     // the top-level statement, covers a comment above the `if`, above the
@@ -191,28 +208,100 @@ function featureFlagsInSource(path, text) {
     }
     return false;
   };
+  const addFlag = (literal) =>
+    flags.push({
+      flag: literal.text,
+      line: lineOf(literal),
+      sunset: leadingSunset(literal),
+    });
+  /** Every reference to `name` except `declared` must be a membership test of `use(ref)`. */
+  const everyUseTests = (name, declared, use, what) => {
+    let uses = 0;
+    const visit = (node) => {
+      if (
+        ts.isIdentifier(node) &&
+        node.text === name &&
+        node !== declared &&
+        !(
+          ts.isPropertyAccessExpression(node.parent) &&
+          node.parent.name === node
+        )
+      ) {
+        uses += 1;
+        const list = use(node);
+        const literal = list && membershipFlag(list);
+        if (literal) addFlag(literal);
+        else
+          refuse(
+            node,
+            `${what} '${name}' is used other than as a membership test`,
+          );
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return uses;
+  };
+  const isExported = (node) =>
+    ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export ||
+    (ts.isVariableDeclaration(node) &&
+      ts.getCombinedModifierFlags(node.parent.parent) &
+        ts.ModifierFlags.Export);
   const visit = (node) => {
     if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ['includes', 'has', 'indexOf'].includes(node.expression.name.text) &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteralLike(node.arguments[0]) &&
-      isFeatureList(node.expression.expression)
-    ) {
-      flags.push({
-        flag: node.arguments[0].text,
-        line:
-          source.getLineAndCharacterOfPosition(
-            node.arguments[0].getStart(source),
-          ).line + 1,
-        sunset: leadingSunset(node),
-      });
+      ts.isBindingElement(node) &&
+      (node.propertyName ?? node.name)?.getText?.(source) === FEATURE_ENV
+    )
+      refuse(node, `${FEATURE_ENV} is destructured`);
+    if (isFeatureEnvRead(node)) {
+      const top = listChainTop(node);
+      const parent = top.parent;
+      const literal = membershipFlag(top);
+      if (literal) addFlag(literal);
+      else if (
+        ts.isVariableDeclaration(parent) &&
+        parent.initializer === top &&
+        ts.isIdentifier(parent.name)
+      )
+        everyUseTests(parent.name.text, parent.name, (ref) => ref, 'list');
+      else {
+        const fn = ts.isReturnStatement(parent)
+          ? ts.findAncestor(parent, ts.isFunctionLike)
+          : ts.isArrowFunction(parent) && parent.body === top
+            ? parent
+            : undefined;
+        const owner =
+          fn && ts.isFunctionDeclaration(fn)
+            ? fn
+            : fn && ts.isVariableDeclaration(fn.parent)
+              ? fn.parent
+              : undefined;
+        if (!owner?.name || !ts.isIdentifier(owner.name))
+          refuse(
+            node,
+            `${FEATURE_ENV} is read in a shape the check does not follow`,
+          );
+        else if (isExported(owner))
+          refuse(
+            node,
+            `exported function '${owner.name.text}' returns the ${FEATURE_ENV} list`,
+          );
+        else
+          everyUseTests(
+            owner.name.text,
+            owner.name,
+            (ref) =>
+              ts.isCallExpression(ref.parent) && ref.parent.expression === ref
+                ? ref.parent
+                : undefined,
+            'function',
+          );
+      }
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return flags;
+  return { flags, unsupported };
 }
 
 /**
@@ -222,6 +311,7 @@ function featureFlagsInSource(path, text) {
  */
 function flagFindings(context) {
   const flags = new Map();
+  const unsupported = [];
   for (const path of filesOf(context)) {
     if (
       !path.startsWith(FLAG_ROOT) ||
@@ -232,7 +322,9 @@ function flagFindings(context) {
       continue;
     const text = readText(context.root, path);
     if (text === null) continue;
-    for (const flag of featureFlagsInSource(path, text)) {
+    const parsed = featureFlagsInSource(path, text);
+    unsupported.push(...parsed.unsupported);
+    for (const flag of parsed.flags) {
       const entry = flags.get(flag.flag) ?? { sites: [], sunset: false };
       entry.sites.push({ path, line: flag.line });
       entry.sunset ||= flag.sunset;
@@ -248,7 +340,10 @@ function flagFindings(context) {
       line: entry.sites[0].line,
       detail: `${FEATURE_ENV} flag '${flag}' has no SUNSET(#N): comment leading the statement that reads it (${entry.sites.length} site${entry.sites.length === 1 ? '' : 's'})`,
     }));
-  return { findings, count: flags.size };
+  const notVerified = unsupported.length
+    ? `${FEATURE_ENV} flags: ${unsupported.map((site) => `${site.path}:${site.line} ${site.why}`).join('; ')}`
+    : null;
+  return { findings, count: flags.size, notVerified };
 }
 
 /** @param {CheckContext} context @returns {CheckResult} */
@@ -305,7 +400,8 @@ function checkMarkers(context) {
     'markers',
     'Unfinished-work markers and feature flags',
     sortFindings(findings),
-    resolved.unavailable ?? null,
+    [flags.notVerified, resolved.unavailable].filter(Boolean).join('; ') ||
+      null,
     `${located.length} markers, ${flags.count} ${FEATURE_ENV} flags`,
   );
 }

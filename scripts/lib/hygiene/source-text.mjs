@@ -4,10 +4,9 @@
  *
  * The checks read what a reviewer reads: comments in code, and prose in
  * Markdown. Extraction is a small per-language scanner, not a parser. Its
- * known limits: a JavaScript regular-expression literal that contains a quote
- * can hide the rest of its line, and a Rust lifetime is not mistaken for a
- * character literal only because `'` is not treated as a string delimiter in
- * Rust. Both errors are bounded to one line and the checks are advisory.
+ * known limit: a JavaScript regular-expression literal that contains a quote
+ * can hide the rest of its line. Rust character literals and lifetimes, and
+ * YAML plain scalars containing an apostrophe, are handled explicitly.
  */
 import { readFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -40,17 +39,7 @@ const C_LIKE = new Set([
   '.gradle',
 ]);
 const BLOCK_ONLY = new Set(['.css']);
-const HASH = new Set([
-  '.yml',
-  '.yaml',
-  '.sh',
-  '.bash',
-  '.zsh',
-  '.py',
-  '.rb',
-  '.toml',
-  '.ps1',
-]);
+const HASH = new Set(['.sh', '.bash', '.zsh', '.py', '.rb', '.toml', '.ps1']);
 const HASH_BASENAMES = new Set(['Dockerfile', 'Makefile', 'Caddyfile']);
 const MARKUP = new Set(['.html', '.vue', '.svelte']);
 const MARKDOWN = new Set(['.md', '.mdx']);
@@ -65,6 +54,7 @@ function textKind(path) {
   if (MARKDOWN.has(extension)) return 'markdown';
   if (C_LIKE.has(extension)) return extension === '.rs' ? 'rust' : 'c-like';
   if (BLOCK_ONLY.has(extension)) return 'css';
+  if (extension === '.yml' || extension === '.yaml') return 'yaml';
   if (HASH.has(extension) || HASH_BASENAMES.has(name.split('.')[0]))
     return 'hash';
   if (MARKUP.has(extension)) return 'markup';
@@ -130,16 +120,25 @@ export function readText(root, path) {
  * or `#` is not read as a comment.
  */
 function commentLines(kind, text) {
-  if (kind === 'hash') return hashComments(text);
+  if (kind === 'hash' || kind === 'yaml')
+    return hashComments(text, { yaml: kind === 'yaml' });
   if (kind === 'markup') return markupComments(text);
   return slashComments(text, {
     lineComments: kind !== 'css',
     quoteIsString: kind !== 'rust',
+    rustChars: kind === 'rust',
     templates: kind === 'c-like',
   });
 }
 
-function slashComments(text, { lineComments, quoteIsString, templates }) {
+/** A Rust character literal at the sticky index: one code point or an escape. */
+const RUST_CHAR =
+  /'(?:\\(?:u\{[0-9a-fA-F]{1,6}\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'/uy;
+
+function slashComments(
+  text,
+  { lineComments, quoteIsString, templates, rustChars = false },
+) {
   const out = [];
   let line = 1;
   let state = 'code';
@@ -202,6 +201,15 @@ function slashComments(text, { lineComments, quoteIsString, templates }) {
       index += 1;
       continue;
     }
+    if (rustChars && char === "'") {
+      // A Rust character literal ('"', '\\'', '\\u{1F600}') is skipped
+      // whole so a quote inside it cannot open a string; anything else
+      // starting with ' is a lifetime ('a, 'static) and is ordinary code.
+      RUST_CHAR.lastIndex = index;
+      const literal = RUST_CHAR.exec(text);
+      if (literal) index += literal[0].length - 1;
+      continue;
+    }
     if (char === '"' || (quoteIsString && char === "'")) {
       state = 'string';
       quote = char;
@@ -216,7 +224,19 @@ function slashComments(text, { lineComments, quoteIsString, templates }) {
   return out;
 }
 
-function hashComments(text) {
+/**
+ * In YAML a quote opens a string only where a scalar starts: at the start of
+ * the line or after `:`, `-`, `?`, `,`, `[` or `{` and whitespace. Inside a
+ * plain scalar (`name: it's`) an apostrophe is a character. Shell, Python,
+ * Ruby, TOML and PowerShell quote wherever the quote appears.
+ */
+function quoteOpens(raw, column, yaml) {
+  if (!yaml) return true;
+  const before = raw.slice(0, column).trimEnd();
+  return before === '' || /[:\-?,[{]$/.test(before);
+}
+
+function hashComments(text, { yaml = false } = {}) {
   const out = [];
   for (const [index, raw] of text.split('\n').entries()) {
     let quote = '';
@@ -227,7 +247,7 @@ function hashComments(text) {
         else if (char === quote) quote = '';
         continue;
       }
-      if (char === '"' || char === "'") {
+      if ((char === '"' || char === "'") && quoteOpens(raw, column, yaml)) {
         quote = char;
         continue;
       }
