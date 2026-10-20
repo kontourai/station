@@ -1,0 +1,7 @@
+{
+  "revision": "54f32fa4637ecc4412d35a49f3ceb760ff798361",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-read after the schema-guard tests were added to the node-forge test file. The guide's claims are unchanged: it names the installed-tree controls and the refusal of a residual that carries patchBinding; the new cases cover binding schema, evidence limits and layout, which the guide describes only as the verifier's Node 24, workspace, lock, patch hash and installed-byte checks.","inputs":["docs/guides/dependency-security.md","scripts/__tests__/dependency-patch-binding.test.ts"]}
+  ]
+}
