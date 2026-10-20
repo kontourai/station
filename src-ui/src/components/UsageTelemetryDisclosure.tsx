@@ -61,6 +61,8 @@ type Disclosure = {
    * sent" is a claim about a host, not a general reassurance.
    */
   endpointConfigured?: boolean;
+  additionalHost?: string;
+  authorDisclosure?: Disclosure & { destination: string };
   /**
    * The EFFECTIVE `telemetryEnabled` setting — the stored value folded over
    * the `STATION_TELEMETRY_ENABLED` fallback and the default, which is what
@@ -165,8 +167,8 @@ function subscribeToDismissal(listener: () => void): () => void {
   };
 }
 
-function readDismissal(): boolean {
-  return dismissedForPageLifetime;
+function readDismissal(): string | undefined {
+  return dismissedForPageLifetime ? dismissedRevisionForPage : undefined;
 }
 
 /**
@@ -365,6 +367,35 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         : Math.min(1000 * 2 ** failureCount, 30_000),
   });
   const status = useTelemetryStatus(query.data?.publishers !== undefined);
+  const author = useQuery({
+    queryKey: [
+      'usage-telemetry-disclosure',
+      decisionApiBase,
+      scope?.identityKey,
+      'kontour',
+      status.data?.authorEndpoint,
+    ],
+    enabled: !!status.data?.authorEndpoint,
+    queryFn: ({ signal }) =>
+      scoped
+        ? getJson(
+            `${decisionApiBase}/api/usage-telemetry/disclosure?publisher=kontour`,
+            {
+              signal,
+              timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+              ...(scope.requestScope
+                ? { requestScope: scope.requestScope }
+                : {}),
+            },
+          ).then(responseData)
+        : authenticatedFetch(
+            `${decisionApiBase}/api/usage-telemetry/disclosure?publisher=kontour`,
+            { signal },
+          ).then(responseData),
+  });
+  const dntActive = Object.values(status.data?.publishers ?? {}).some(
+    (state) => state?.reason === 'DNT',
+  );
   // Pin eligibility for this mounted choice: recording its visible notice must
   // not make it disappear before the person can save or dismiss it.
   const eligibility = useRef<{ target: string; outstanding: boolean } | null>(
@@ -375,6 +406,9 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     scope?.identityKey,
     query.data?.inventoryRevision,
     status.data?.liteInventoryRevision,
+    status.data?.authorEndpoint,
+    author.data?.acknowledged,
+    dntActive,
   ]);
   if (
     query.data?.publishers &&
@@ -388,7 +422,10 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
           (id === 'kontour' || id === 'operator') &&
           state &&
           (state.reason === 'DNT' ||
-            (state.userChoice === 'full' && !query.data?.acknowledged) ||
+            (state.userChoice === 'full' &&
+              (id === 'kontour'
+                ? !!status.data.authorEndpoint && !author.data?.acknowledged
+                : !query.data?.acknowledged)) ||
             (state.tier === 'lite' &&
               status.data.liteNotices?.[id]?.inventoryRevision !==
                 status.data.liteInventoryRevision)),
@@ -400,24 +437,34 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
   // in render rather than through the store subscription because it needs the
   // query's answer; the subscription still forces the re-render whenever a
   // dismissal happens on this page.
-  const operator = query.data?.publishers?.operator;
   const decidedUnderDnt =
-    dntDecision === query.data?.inventoryRevision &&
-    (operator?.reason === 'DNT' ||
-      operator?.userChoice === 'off' ||
-      operator?.userChoice === 'lite');
+    dntDecision === query.data?.inventoryRevision && dntActive;
   const dismissalRevision = query.data?.publishers
-    ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}`
+    ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
   const dismissed =
-    (pageDismissed && dismissedRevisionForPage === dismissalRevision) ||
+    (pageDismissed !== undefined && pageDismissed === dismissalRevision) ||
     isSnoozedFor(dismissalRevision) ||
     decidedUnderDnt;
   return {
-    data: query.data,
+    data: query.data
+      ? {
+          ...query.data,
+          ...(author.data
+            ? {
+                authorDisclosure: author.data as Disclosure & {
+                  destination: string;
+                },
+              }
+            : {}),
+        }
+      : undefined,
     dismissalRevision,
-    isError: query.isError,
-    settled: !query.isLoading && (!query.data?.publishers || !status.isLoading),
+    isError: query.isError || author.isError,
+    settled:
+      !query.isLoading &&
+      (!query.data?.publishers || !status.isLoading) &&
+      (!status.data?.authorEndpoint || !author.isLoading),
     // `events` is read with Object.entries below: a host that answers with an
     // unexpected shape (older build, error envelope) must degrade to showing
     // nothing, not throw through the app shell and blank the window.

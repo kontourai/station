@@ -13,11 +13,12 @@ same labels:
 | Detailed usage to help improve Station | `full` | Classified usage events with a monthly rotating installation code. Selecting this choice shows What's included; saving acknowledges that displayed revision before enabling detailed sharing. |
 
 The primary choice applies to Kontour and the configured additional destination.
-**Current capability limit:** Kontour detailed sharing remains unavailable in
-this UI. Choosing Detailed saves `lite` for Kontour and `full` for the additional
-destination; the surface states this split. No Kontour acknowledgement is
-created. An additional configured endpoint is introduced as **Also shared with:
-&lt;host&gt;**, without its path, credentials or query. Third-party destinations
+Saving Detailed acknowledges each configured built-in destination separately
+before storing `full` for both. Kontour's acknowledgement is bound to its
+build-provided address as well as the displayed definition revision. Without a
+Kontour address, its stored choice cannot produce traffic; a newly configured
+or changed address requires review again. An additional configured endpoint is introduced as **Also shared with:
+&lt;host&gt;**, without its path, credentials or query. The disclosure projects only the additional host for environment-configured addresses too; full addresses stay out of that response. Third-party destinations
 are excluded from first run. Their separate controls, existing built-in choices,
 connection details and local history live in the collapsed **Advanced** section.
 Advanced retains independent choices and the same three option labels. Importing a `full` setting does not acknowledge unseen details. Settings requires an explicit Detailed choice bound to the displayed revision before it creates that acknowledgement; a changed revision requires choosing Detailed again.
@@ -68,8 +69,9 @@ runtime environment variable of the same name is supplied. Source builds have
 no author address. No real receiver or release endpoint is enabled by this change.
 The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
-build destination. The current UI leaves Kontour Full unavailable; its
-destination-bound acknowledgement remains an API capability.
+build destination. The shared dialog and Settings save each required acknowledgement before
+changing either built-in preference to Full. A refusal prevents the preference
+write; an acknowledgement for one destination never authorizes the other.
 
 Every non-desktop server, including `station start`, `service run`, Docker and
 web servers with a UI port, prints one combined anonymous-usage notice for the

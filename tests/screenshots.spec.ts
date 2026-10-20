@@ -1894,6 +1894,12 @@ function telemetryConsentScreens(): Screen[] {
               await page.evaluate(() =>
                 document.documentElement.setAttribute('data-theme', 'light'),
               );
+            for (const label of await dialog
+              .locator('.usage-telemetry-disclosure__choices > label')
+              .all()) {
+              const box = await label.boundingBox();
+              expect(box?.height).toBeGreaterThanOrEqual(44);
+            }
             for (const name of ['Not now', 'Save choice']) {
               const button = dialog.getByRole('button', { name, exact: true });
               await expect(button).toBeInViewport();

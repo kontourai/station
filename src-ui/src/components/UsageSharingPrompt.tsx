@@ -53,6 +53,8 @@ export function UsageSharingPrompt({
     apiBase,
     scope?.identityKey,
     data.inventoryRevision,
+    data.authorDisclosure?.destination,
+    dnt,
   ]);
   const [selection, setSelection] = useState<{
     target: string;
@@ -102,6 +104,28 @@ export function UsageSharingPrompt({
           throw new Error('Your sharing choice could not be saved. Try again.');
       };
       if (next === 'full' && !dnt) {
+        if (status.data?.authorEndpoint) {
+          const author = data.authorDisclosure;
+          if (
+            !author ||
+            author.inventoryRevision !== data.inventoryRevision ||
+            author.destination !== status.data.authorEndpoint
+          )
+            throw new Error(
+              'Sharing details changed. Review them and try again.',
+            );
+          await write(
+            '/api/usage-telemetry/disclosure/acknowledgements',
+            'POST',
+            {
+              publisher: 'kontour',
+              destination: author.destination,
+              inventoryRevision: author.inventoryRevision,
+              acknowledgementProtocol:
+                PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+            },
+          );
+        }
         await write(
           '/api/usage-telemetry/disclosure/acknowledgements',
           'POST',
@@ -113,7 +137,7 @@ export function UsageSharingPrompt({
       }
       await write('/config/app', 'PUT', {
         telemetryTier: {
-          kontour: next === 'full' ? 'lite' : next,
+          kontour: next,
           operator: next,
         },
       });
@@ -143,9 +167,9 @@ export function UsageSharingPrompt({
       onDecided(target.apiBase, target.dnt);
     },
   });
-  let host: string | undefined;
+  let host: string | undefined = data.additionalHost;
   try {
-    if (settings?.productTelemetryEndpoint)
+    if (!host && settings?.productTelemetryEndpoint)
       host = new URL(settings.productTelemetryEndpoint).host;
   } catch {
     /* Invalid addresses are handled by Settings validation. */
@@ -166,12 +190,6 @@ export function UsageSharingPrompt({
         data={data}
         counts={status.data?.liteInventory}
       />
-      {choice === 'full' && (
-        <p>
-          Detailed usage applies to the additional destination. Kontour stays on
-          anonymous usage counts.
-        </p>
-      )}
       {(save.isError || notice.isError) && (
         <PageCallout
           calloutId="usage-sharing-error"

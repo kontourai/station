@@ -264,6 +264,7 @@ export function createConfigRoutes(
     publisher: 'kontour' | 'operator',
     reason?: TelemetryFeedbackReason,
   ) => Promise<void>,
+  canSaveAuthorFull?: () => Promise<boolean>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -802,7 +803,8 @@ export function createConfigRoutes(
             }
             if (
               next.telemetryTier?.kontour === 'full' &&
-              current.telemetryTier?.kontour !== 'full'
+              current.telemetryTier?.kontour !== 'full' &&
+              !(await canSaveAuthorFull?.())
             )
               throw new Error(
                 'Kontour Full is unavailable until a Kontour Full disclosure exists. Choose Off or Lite.',

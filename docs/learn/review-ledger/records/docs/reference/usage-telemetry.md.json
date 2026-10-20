@@ -94,8 +94,6 @@
 
     "src-ui/src/hooks/useTelemetryStatus.ts",
 
-    "src-ui/src/components/TelemetryLiteNotice.tsx",
-
     "src-ui/src/components/TelemetryFeedbackPrompt.tsx",
 
     "src-ui/src/components/TelemetryPrivacy.css",
@@ -106,7 +104,15 @@
 
     "src-ui/src/components/OnboardingGate.tsx",
 
-    "tests/screenshots.spec.ts"
+    "tests/screenshots.spec.ts",
+
+    "src-ui/src/components/UsageSharingChoices.tsx",
+
+    "src-ui/src/components/UsageSharingPrompt.tsx",
+
+    "src-ui/src/hooks/useTelemetryNotice.ts",
+
+    "packages/cli/src/commands/lifecycle.ts"
   ],
 
   "checks": [

@@ -256,6 +256,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const [telemetryConsentRevision, setTelemetryConsentRevision] = useState<
     string | null
   >(null);
+  const [telemetryConsentAuthor, setTelemetryConsentAuthor] =
+    useState<string>();
   const [telemetryFeedback, setTelemetryFeedback] = useState<
     Partial<Record<TelemetryPublisherId, TelemetryFeedbackReason>>
   >({});
@@ -709,8 +711,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (Object.keys(changed.telemetryTier).length === 0)
         delete changed.telemetryTier;
     }
-    if (telemetryConsentRevision && config.telemetryTier?.operator === 'full') {
-      changed.telemetryTier = { ...changed.telemetryTier, operator: 'full' };
+    if (telemetryConsentRevision) {
+      for (const id of ['kontour', 'operator'] as const) {
+        if (config.telemetryTier?.[id] === 'full')
+          changed.telemetryTier = { ...changed.telemetryTier, [id]: 'full' };
+      }
     }
     const { logLevel, ...plainChanges } = changed;
     const feedbackAtSave = telemetryFeedback;
@@ -736,23 +741,47 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   data.inventoryRevision !== telemetryConsentRevision
                 )
                   throw new SharingDetailsChangedError();
-                const response = await authenticatedFetch(
-                  `${currentApiBase}/api/usage-telemetry/disclosure/acknowledgements`,
-                  {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                      acknowledgementProtocol:
-                        PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
-                      inventoryRevision: telemetryConsentRevision,
-                    }),
-                  },
-                );
-                if (!response.ok) {
-                  void invalidate(['usage-telemetry-disclosure']);
-                  throw new Error(
-                    'Your sharing choice could not be saved. Review the current details and try again.',
+                const author = data.authorDisclosure;
+                if (
+                  telemetryStatus.data?.authorEndpoint &&
+                  (!author ||
+                    author.inventoryRevision !== telemetryConsentRevision ||
+                    author.destination !== telemetryConsentAuthor ||
+                    author.destination !== telemetryStatus.data.authorEndpoint)
+                )
+                  throw new SharingDetailsChangedError();
+                for (const publisher of ['kontour', 'operator'] as const) {
+                  if (
+                    telemetryTier?.[publisher] !== 'full' ||
+                    dntAtSave?.[publisher]?.reason === 'DNT'
+                  )
+                    continue;
+                  if (
+                    publisher === 'kontour' &&
+                    !telemetryStatus.data?.authorEndpoint
+                  )
+                    continue;
+                  const response = await authenticatedFetch(
+                    `${currentApiBase}/api/usage-telemetry/disclosure/acknowledgements`,
+                    {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({
+                        acknowledgementProtocol:
+                          PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+                        inventoryRevision: telemetryConsentRevision,
+                        ...(publisher === 'kontour'
+                          ? { publisher, destination: author!.destination }
+                          : {}),
+                      }),
+                    },
                   );
+                  if (!response.ok) {
+                    void invalidate(['usage-telemetry-disclosure']);
+                    throw new Error(
+                      'Your sharing choice could not be saved. Review the current details and try again.',
+                    );
+                  }
                 }
               }
               for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
@@ -776,7 +805,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 )
                   throw new Error('The telemetry tier was refused.');
                 savedTiers[publisher] = tier;
-                if (publisher === 'operator' && tier === 'full')
+                if (
+                  (publisher === 'operator' || publisher === 'kontour') &&
+                  tier === 'full'
+                )
                   setTelemetryConsentRevision(null);
                 savedPlain.telemetryTier = {
                   ...savedTelemetryChoices,
@@ -1253,11 +1285,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}
-                      onTelemetryDetailedIntent={() =>
+                      onTelemetryDetailedIntent={() => {
                         setTelemetryConsentRevision(
                           telemetryDisclosure.data?.inventoryRevision ?? null,
-                        )
-                      }
+                        );
+                        setTelemetryConsentAuthor(
+                          telemetryDisclosure.data?.authorDisclosure
+                            ?.destination,
+                        );
+                      }}
                       savedTelemetryChoices={savedConfig.telemetryTier}
                       telemetryStatusError={telemetryStatus.isError}
                       telemetryAdvanced={
@@ -1295,7 +1331,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       config={config}
                       provenance={provenance}
                       onChange={(next) => {
-                        if (next.telemetryTier?.operator !== 'full')
+                        if (
+                          next.telemetryTier?.operator !== 'full' &&
+                          next.telemetryTier?.kontour !== 'full'
+                        )
                           setTelemetryConsentRevision(null);
                         setConfig(next);
                       }}

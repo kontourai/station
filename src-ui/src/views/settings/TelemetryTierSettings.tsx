@@ -13,6 +13,7 @@ import {
   type SharingCounts,
   type SharingDisclosure,
   UsageSharingChoices,
+  UsageSharingIncluded,
 } from '../../components/UsageSharingChoices';
 import { telemetryPublisherLabel } from '../../hooks/useTelemetryStatus';
 import type { AppConfig } from '../../types';
@@ -57,10 +58,9 @@ export function TelemetryTierSettings({
     tier: TelemetryTier;
     trigger: HTMLSelectElement;
   }>();
-  const [advanced, setAdvanced] = useState(false);
-  let host: string | undefined;
+  let host: string | undefined = disclosure?.additionalHost;
   try {
-    if (config.productTelemetryEndpoint)
+    if (!host && config.productTelemetryEndpoint)
       host = new URL(config.productTelemetryEndpoint).host;
   } catch {
     /* Settings validates the address. */
@@ -74,10 +74,7 @@ export function TelemetryTierSettings({
   const kontourChoice = savedChoice('kontour');
   const additionalChoice = savedChoice('operator');
   const primaryChoice =
-    kontourChoice === additionalChoice ||
-    (kontourChoice === 'lite' && additionalChoice === 'full')
-      ? additionalChoice
-      : undefined;
+    kontourChoice === additionalChoice ? additionalChoice : undefined;
   const rank = { off: 0, lite: 1, full: 2 };
   const change = (
     publisher: TelemetryPublisherId,
@@ -96,16 +93,19 @@ export function TelemetryTierSettings({
       <section aria-label="Usage sharing choices" ref={noticeRef}>
         <UsageSharingChoices
           value={primaryChoice}
-          onChange={(tier) =>
+          onChange={(tier) => {
+            setPending(undefined);
+            onFeedback?.('kontour', 'skip');
+            onFeedback?.('operator', 'skip');
             onChange({
               ...config,
               telemetryTier: {
                 ...choices,
-                kontour: tier === 'full' ? 'lite' : tier,
+                kontour: tier,
                 operator: tier,
               },
-            })
-          }
+            });
+          }}
           data={disclosure}
           counts={counts}
           onDetailedIntent={onDetailedIntent}
@@ -119,16 +119,13 @@ export function TelemetryTierSettings({
           )}
           host={host}
         />
+        {primaryChoice !== 'full' &&
+          (kontourChoice === 'full' || additionalChoice === 'full') &&
+          disclosure && <UsageSharingIncluded data={disclosure} />}
         {primaryChoice === undefined && (
           <p>
             Custom choices are set in Advanced. Choosing an option here applies
             to both destinations.
-          </p>
-        )}
-        {primaryChoice === 'full' && (
-          <p>
-            Choosing Detailed keeps Kontour on anonymous usage counts. Detailed
-            usage applies to the additional destination.
           </p>
         )}
         {noticeError && (
@@ -154,123 +151,120 @@ export function TelemetryTierSettings({
           </PageCallout>
         )}
       </section>
-      <details
-        className="telemetry-advanced"
-        onToggle={(event) => setAdvanced(event.currentTarget.open)}
-      >
+      <details className="telemetry-advanced">
         <summary>Advanced</summary>
-        {advanced && (
-          <section aria-label="Advanced sharing controls">
-            {(
-              [
-                ...new Set([
-                  'kontour',
-                  'operator',
-                  ...Object.keys(publishers ?? {}),
-                  ...Object.keys(choices ?? {}),
-                ]),
-              ] as TelemetryPublisherId[]
-            ).map((publisher) => {
-              const label = `${telemetryPublisherLabel(publisher)} telemetry`;
-              const status = publishers?.[publisher];
-              const choice = choices?.[publisher] ?? status?.userChoice ?? '';
-              return (
-                <div key={publisher} className="telemetry-publisher">
-                  <SettingsPageRow
-                    label={label}
-                    description={
-                      publisher === 'kontour'
-                        ? "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed sharing with Kontour is unavailable."
-                        : "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed usage uses a monthly rotating installation code, never an account identity. Review What's included before saving detailed sharing."
-                    }
-                    control={
-                      <select
-                        className="editor-input"
-                        aria-label={label}
-                        value={
-                          pending?.publisher === publisher
-                            ? pending.tier
-                            : choice
-                        }
-                        onChange={(event) => {
-                          const tier = event.target.value as TelemetryTier;
-                          if (publisher === 'operator' && tier === 'full')
-                            onDetailedIntent?.();
-                          const previous =
-                            savedChoices?.[publisher] ??
-                            status?.userChoice ??
-                            status?.tier ??
-                            'lite';
-                          if (
-                            onFeedback &&
-                            status?.reason !== 'DNT' &&
-                            rank[tier] < rank[previous]
-                          )
-                            setPending({
-                              publisher,
-                              tier,
-                              trigger: event.currentTarget,
-                            });
-                          else change(publisher, tier, 'skip');
-                        }}
+        <section aria-label="Advanced sharing controls">
+          {(
+            [
+              ...new Set([
+                'kontour',
+                'operator',
+                ...Object.keys(publishers ?? {}),
+                ...Object.keys(choices ?? {}),
+              ]),
+            ] as TelemetryPublisherId[]
+          ).map((publisher) => {
+            const label = `${telemetryPublisherLabel(publisher)} telemetry`;
+            const status = publishers?.[publisher];
+            const choice = choices?.[publisher] ?? status?.userChoice ?? '';
+            return (
+              <div key={publisher} className="telemetry-publisher">
+                <SettingsPageRow
+                  label={label}
+                  description={
+                    publisher === 'kontour'
+                      ? "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice. Detailed sharing needs a configured Kontour destination and your review before saving."
+                      : "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed usage uses a monthly rotating installation code, never an account identity. Review What's included before saving detailed sharing."
+                  }
+                  control={
+                    <select
+                      className="editor-input"
+                      aria-label={label}
+                      value={
+                        pending?.publisher === publisher ? pending.tier : choice
+                      }
+                      onChange={(event) => {
+                        const tier = event.target.value as TelemetryTier;
+                        if (
+                          (publisher === 'operator' ||
+                            publisher === 'kontour') &&
+                          tier === 'full'
+                        )
+                          onDetailedIntent?.();
+                        const previous =
+                          savedChoices?.[publisher] ??
+                          status?.userChoice ??
+                          status?.tier ??
+                          'lite';
+                        if (
+                          onFeedback &&
+                          status?.reason !== 'DNT' &&
+                          rank[tier] < rank[previous]
+                        )
+                          setPending({
+                            publisher,
+                            tier,
+                            trigger: event.currentTarget,
+                          });
+                        else change(publisher, tier, 'skip');
+                      }}
+                    >
+                      <option value="" disabled>
+                        No saved choice
+                      </option>
+                      <option value="off">{SHARING_LABELS.off}</option>
+                      <option value="lite">{SHARING_LABELS.lite}</option>
+                      <option
+                        value="full"
+                        disabled={statusError || !status?.fullAvailable}
                       >
-                        <option value="" disabled>
-                          No saved choice
-                        </option>
-                        <option value="off">{SHARING_LABELS.off}</option>
-                        <option value="lite">{SHARING_LABELS.lite}</option>
-                        <option
-                          value="full"
-                          disabled={statusError || !status?.fullAvailable}
-                        >
-                          {SHARING_LABELS.full}
-                          {!status?.fullAvailable ? ' (unavailable)' : ''}
-                        </option>
-                      </select>
-                    }
-                  >
-                    <span className="settings__field-hint">
-                      {effectiveSummary(status)}
-                    </span>
-                  </SettingsPageRow>
-                  {pending?.publisher === publisher &&
-                    status?.reason !== 'DNT' && (
-                      <TelemetryFeedbackPrompt
-                        deferred
-                        targetTier={pending.tier}
-                        onCancel={() => {
-                          pending.trigger.focus();
-                          setPending(undefined);
-                        }}
-                        publisher={telemetryPublisherLabel(publisher)}
-                        onChoose={(reason) => {
-                          const { tier, trigger } = pending;
-                          change(publisher, tier, reason);
-                          trigger.focus();
-                        }}
-                      />
-                    )}
-                  {pending?.publisher === publisher &&
-                    status?.reason === 'DNT' && (
-                      <p>
-                        DO_NOT_TRACK is active. Choose a tier again to save
-                        without feedback.
-                      </p>
-                    )}
-                  {showOutbox && (
-                    <details className="telemetry-outbox-disclosure">
-                      <summary>
-                        What was sent to {telemetryPublisherLabel(publisher)}
-                      </summary>
-                      <TelemetryOutbox publisher={publisher} />
-                    </details>
+                        {SHARING_LABELS.full}
+                        {!status?.fullAvailable ? ' (unavailable)' : ''}
+                      </option>
+                    </select>
+                  }
+                >
+                  <span className="settings__field-hint">
+                    {effectiveSummary(status)}
+                  </span>
+                </SettingsPageRow>
+                {pending?.publisher === publisher &&
+                  status?.reason !== 'DNT' && (
+                    <TelemetryFeedbackPrompt
+                      deferred
+                      targetTier={pending.tier}
+                      onCancel={() => {
+                        pending.trigger.focus();
+                        setPending(undefined);
+                      }}
+                      publisher={telemetryPublisherLabel(publisher)}
+                      onChoose={(reason) => {
+                        const { tier, trigger } = pending;
+                        change(publisher, tier, reason);
+                        trigger.focus();
+                      }}
+                    />
                   )}
-                </div>
-              );
-            })}
-            {advancedContent}
-          </section>
-        )}
+                {pending?.publisher === publisher &&
+                  status?.reason === 'DNT' && (
+                    <p>
+                      DO_NOT_TRACK is active. Choose a tier again to save
+                      without feedback.
+                    </p>
+                  )}
+                {showOutbox && (
+                  <details className="telemetry-outbox-disclosure">
+                    <summary>
+                      What was sent to {telemetryPublisherLabel(publisher)}
+                    </summary>
+                    <TelemetryOutbox publisher={publisher} />
+                  </details>
+                )}
+              </div>
+            );
+          })}
+          {advancedContent}
+        </section>
       </details>
     </div>
   );

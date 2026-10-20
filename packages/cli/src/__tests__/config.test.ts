@@ -142,42 +142,45 @@ describe('telemetry commands', () => {
       'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
     );
   });
-  test('set sends one publisher through the live configuration API then reports effective state', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: { telemetryTier: { kontour: 'off', operator: 'full' } },
-      }),
-    );
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          publishers: {
-            kontour: { tier: 'off', reason: 'user' },
-            operator: { tier: 'lite', reason: 'disclosure' },
+  test.each(['operator', 'kontour'] as const)(
+    'set sends %s through the live configuration API then reports effective state',
+    async (publisher) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: { telemetryTier: { kontour: 'off', operator: 'full' } },
+        }),
+      );
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: {
+            publishers: {
+              kontour: { tier: 'off', reason: 'user' },
+              operator: { tier: 'lite', reason: 'disclosure' },
+            },
           },
-        },
-      }),
-    );
-    const { runTelemetryCommand } = await import('../commands/telemetry.js');
-    await runTelemetryCommand([
-      'set',
-      'operator',
-      'full',
-      '--api-base=http://127.0.0.1:43129',
-    ]);
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      'http://127.0.0.1:43129/config/app',
-    );
-    expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      telemetryTier: { operator: 'full' },
-    });
-    expect(consoleLog).toHaveBeenCalledWith(
-      'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
-    );
-  });
+        }),
+      );
+      const { runTelemetryCommand } = await import('../commands/telemetry.js');
+      await runTelemetryCommand([
+        'set',
+        publisher,
+        'full',
+        '--api-base=http://127.0.0.1:43129',
+      ]);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'http://127.0.0.1:43129/config/app',
+      );
+      expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
+      expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+        telemetryTier: { [publisher]: 'full' },
+      });
+      expect(consoleLog).toHaveBeenCalledWith(
+        'Additional destination: Anonymous usage counts (lite); Detailed sharing is waiting for your review in Privacy & sharing',
+      );
+    },
+  );
   test.each([['--publisher=operator'], ['--publisher', 'operator']])(
     'outbox prints the server ledger with publisher filter %j',
     async (...filter) => {
@@ -214,9 +217,6 @@ describe('telemetry commands', () => {
     await expect(
       runTelemetryCommand(['set', 'operator', 'true']),
     ).rejects.toThrow('Usage:');
-    await expect(
-      runTelemetryCommand(['set', 'kontour', 'full']),
-    ).rejects.toThrow('Detailed sharing with Kontour is unavailable');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

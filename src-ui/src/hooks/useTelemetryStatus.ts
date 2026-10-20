@@ -10,6 +10,7 @@ import { useApiBase } from '../contexts/ApiBaseContext';
 import { useOptionalRecoveryScope } from '../contexts/RecoveryQueryBoundary';
 
 export interface TelemetryStatus {
+  authorEndpoint?: string;
   publishers: Partial<Record<TelemetryPublisherId, TelemetryPublisherStatus>>;
   liteInventoryRevision: string;
   liteInventory: Record<

@@ -7,6 +7,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
+const build = vi.hoisted(() => ({ endpoint: '' }));
+vi.mock('../../../../src-server/domain/telemetry-build-constants.js', () => ({
+  get STATION_AUTHOR_TELEMETRY_ENDPOINT() {
+    return build.endpoint;
+  },
+}));
+
 const bridge = vi.hoisted(() => ({
   request: vi.fn(),
   scopedRead: vi.fn(),
@@ -83,18 +90,21 @@ import {
 
 const makeTempDir = trackTempDirs();
 
-async function publisherFixture(doNotTrack?: string) {
+async function publisherFixture(doNotTrack?: string, endpointFromEnv?: string) {
   const home = makeTempDir('station-telemetry-ui-');
   const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
   await loader.loadAppConfig();
   bridge.config = await loader.updateAppConfig({
     telemetryTier: { operator: 'lite', kontour: 'lite' },
-    productTelemetryEndpoint: 'https://receiver.test/events',
+    ...(endpointFromEnv
+      ? {}
+      : { productTelemetryEndpoint: 'https://receiver.test/events' }),
   });
   const sent: unknown[] = [];
   const tiersAtSend: string[] = [];
   const logger = createLogger({ name: 'telemetry-ui-routes', level: 'error' });
   const env: NodeJS.ProcessEnv = doNotTrack ? { DO_NOT_TRACK: doNotTrack } : {};
+  if (endpointFromEnv) env.STATION_PRODUCT_TELEMETRY_ENDPOINT = endpointFromEnv;
   const service = new UsageTelemetryService({
     homeDir: home,
     appConfig: bridge.config,
@@ -125,6 +135,7 @@ async function publisherFixture(doNotTrack?: string) {
         (updated: AppConfig) => service.reconfigure(updated),
         (publisher: 'kontour' | 'operator', reason: 'privacy' | 'skip') =>
           service.recordTierLowering(publisher, reason),
+        () => service.canSaveAuthorFull(),
       ),
     ),
   );
@@ -157,6 +168,7 @@ import { TelemetryOutbox } from '../../views/settings/TelemetryOutbox';
 beforeEach(() => {
   resetUsageTelemetryDisclosureDismissal();
   bridge.scope = null;
+  build.endpoint = '';
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -204,7 +216,7 @@ test.each(['off', 'lite', 'full'] as const)(
       await waitFor(() => expect(advance).toHaveBeenCalledOnce());
       const saved = await loader.loadAppConfig();
       expect(saved.telemetryTier).toEqual({
-        kontour: tier === 'full' ? 'lite' : tier,
+        kontour: tier,
         operator: tier,
       });
       expect((await service.disclosure()).acknowledged).toBe(tier === 'full');
@@ -340,6 +352,114 @@ test('Not now preserves anonymous counts and records only a visibly shown notice
   }
 });
 
+test.each([false, true])(
+  'Detailed acknowledges both configured destinations before saving; author refusal %s',
+  async (refuse) => {
+    build.endpoint = 'https://kontour.test/counts';
+    const { client, loader, service, sent } = await publisherFixture();
+    const refusedBeforeReview = await bridge.request(
+      'http://station.test/config/app',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ telemetryTier: { kontour: 'full' } }),
+      },
+    );
+    expect(refusedBeforeReview.ok).toBe(false);
+    expect((await loader.loadAppConfig()).telemetryTier?.kontour).toBe('lite');
+    const request = bridge.request.getMockImplementation()!;
+    if (refuse)
+      bridge.request.mockImplementation((url: string, init?: RequestInit) => {
+        if (
+          url.endsWith('/acknowledgements') &&
+          JSON.parse(String(init?.body)).publisher === 'kontour'
+        )
+          return Promise.resolve(new Response(null, { status: 403 }));
+        return request(url, init);
+      });
+    const advance = vi.fn();
+    const view = mountChoice(client, advance);
+    try {
+      const detailed = await screen.findByRole('radio', {
+        name: SHARING_LABELS.full,
+      });
+      await waitFor(() => expect(detailed).toHaveProperty('disabled', false));
+      fireEvent.click(detailed);
+      await screen.findByText('Shared with Kontour at: kontour.test');
+      bridge.request.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+      if (refuse) {
+        await screen.findByRole('alert', { name: 'Sharing choice error' });
+        expect(advance).not.toHaveBeenCalled();
+        expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+          kontour: 'lite',
+          operator: 'lite',
+        });
+        expect(calls('/config/app')).toHaveLength(0);
+      } else {
+        await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+        const acknowledgements = calls('/acknowledgements');
+        expect(acknowledgements).toHaveLength(2);
+        expect(JSON.parse(acknowledgements[0][1].body)).toMatchObject({
+          publisher: 'kontour',
+          destination: build.endpoint,
+          inventoryRevision: (await service.disclosure()).inventoryRevision,
+          acknowledgementProtocol: 2,
+        });
+        expect((await service.disclosure('kontour')).acknowledged).toBe(true);
+        expect((await service.disclosure()).acknowledged).toBe(true);
+        expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+          kontour: 'full',
+          operator: 'full',
+        });
+        const order = bridge.request.mock.calls.map(([url]) => String(url));
+        expect(
+          order.lastIndexOf(
+            'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
+          ),
+        ).toBeLessThan(order.indexOf('http://station.test/config/app'));
+        await service.track('station_started', {
+          version: '1.2.3',
+          platform: process.platform,
+          arch: process.arch,
+        });
+        await service.flush();
+        expect(sent).toHaveLength(2);
+      }
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('a counts choice under Do Not Track still needs a visible notice when tracking protection ends', async () => {
+  const { client, loader, service, env } = await publisherFixture('1');
+  const advance = vi.fn();
+  const view = mountChoice(client, advance);
+  try {
+    await screen.findByRole('region', { name: 'Do Not Track' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+    view.unmount();
+    expect((await service.telemetryStatus()).liteNotices).toEqual({});
+    delete env.DO_NOT_TRACK;
+    await service.reconfigure(await loader.loadAppConfig());
+    client.clear();
+    const next = mountChoice(client, vi.fn(), true);
+    await screen.findByRole('dialog', { name: 'Usage sharing' });
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('checked', true);
+    next.unmount();
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
 test('a stale persisted notice requires visible presentation of the current revision', async () => {
   const { client, loader, service, home } = await publisherFixture();
   await service.recordLiteNotice(
@@ -470,6 +590,34 @@ test.each(['acknowledgements', 'config/app'])(
     }
   },
 );
+
+test('an environment-configured additional destination discloses only its host, never URL credentials or paths', async () => {
+  const { client, loader, service } = await publisherFixture(
+    undefined,
+    'https://receiver.test:8443/private-path',
+  );
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    await screen.findByText('Also shared with: receiver.test:8443');
+    expect((await service.disclosure()).additionalHost).toBe(
+      'receiver.test:8443',
+    );
+    expect(screen.getByRole('dialog').textContent).not.toMatch(
+      /private-user|private-password|private-path|private-query/,
+    );
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.full }));
+    expect(
+      screen.getByRole('region', { name: "What's included" }).textContent,
+    ).toContain('definition version');
+    expect(
+      screen.getByRole('region', { name: "What's included" }).textContent,
+    ).toContain('retry code');
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
 
 test('first-run and main Settings use plain language; Advanced controls keep independent saved choices', async () => {
   const { client, loader, service } = await publisherFixture();
@@ -649,5 +797,6 @@ test('outbox uses recovery scope and tolerates an unsent null payload', async ()
     client.clear();
     loader.dispose();
     bridge.scope = null;
+    build.endpoint = '';
   }
 });

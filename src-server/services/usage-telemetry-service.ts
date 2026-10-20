@@ -360,6 +360,14 @@ export class UsageTelemetryService {
   get endpointConfigured(): boolean {
     return this.endpoint !== undefined;
   }
+  async canSaveAuthorFull(): Promise<boolean> {
+    await this.author?.loadDisclosureReceipt();
+    return (
+      !this.author ||
+      this.resolvedConfiguration().publishers.kontour.reason === 'DNT' ||
+      this.author.hasCurrentDisclosureReceipt
+    );
+  }
   async telemetryStatus(): Promise<
     ResolvedTelemetryConfiguration & {
       liteNotices: Partial<
@@ -375,7 +383,10 @@ export class UsageTelemetryService {
     return {
       ...resolved,
       publishers: {
-        kontour: { ...resolved.publishers.kontour, fullAvailable: false },
+        kontour: {
+          ...resolved.publishers.kontour,
+          fullAvailable: !!resolved.authorEndpoint,
+        },
         operator: { ...resolved.publishers.operator, fullAvailable: true },
       },
       liteNotices: this.publishers.local.notices(),
@@ -393,12 +404,19 @@ export class UsageTelemetryService {
     envelope: string;
     acknowledgementProtocol: number;
     endpointConfigured: boolean;
+    additionalHost?: string;
     telemetryEnabled: boolean;
     enabledSource: UsageTelemetryEnabledSource;
     publishers: ReturnType<typeof resolveTelemetryConfiguration>['publishers'];
   }> {
     await this.loadDisclosureReceipt();
     const resolved = this.resolvedConfiguration();
+    const additionalHost =
+      this.publisher === 'operator' &&
+      this.endpoint &&
+      URL.canParse(this.endpoint)
+        ? new URL(this.endpoint).host
+        : undefined;
     if (publisher === 'kontour' && this.publisher === 'operator') {
       if (!this.author)
         throw new Error('Author telemetry destination is unconfigured.');
@@ -411,6 +429,7 @@ export class UsageTelemetryService {
       ...(this.publisher === 'kontour'
         ? { publisher: 'kontour' as const, destination: this.endpoint }
         : {}),
+      ...(additionalHost ? { additionalHost } : {}),
       acknowledged: this.hasCurrentDisclosureReceipt,
       inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
       events: USAGE_TELEMETRY_EVENTS,

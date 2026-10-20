@@ -10,6 +10,12 @@ export const SHARING_LABELS: Record<TelemetryTier, string> = {
 };
 
 export type SharingDisclosure = {
+  additionalHost?: string;
+  authorDisclosure?: SharingDisclosure & {
+    destination: string;
+    inventoryRevision: string;
+  };
+  envelope?: string;
   events: Record<
     string,
     {
@@ -29,14 +35,36 @@ export type SharingCounts = Record<
   }
 >;
 
+function readableSharingFields(text: string): string {
+  return text
+    .replaceAll('schema_version', 'format version')
+    .replaceAll('inventory_revision', 'definition version')
+    .replaceAll('distinct_id', 'monthly installation code')
+    .replaceAll('event_id', 'retry code')
+    .replace(/\bfull (?=\d)/gi, 'complete ')
+    .replace(/\bpublisher\b/gi, 'destination')
+    .replace(/\boperator\b/gi, 'additional destination')
+    .replace(/\binventory\b/gi, 'included fields')
+    .replace(/\breceipt\b/gi, 'confirmation')
+    .replace(/\bFull\b/g, 'Detailed usage')
+    .replace(/\bLite\b/g, 'Anonymous usage counts')
+    .replaceAll('_', ' ');
+}
+
 /** One readable view of the server-owned definitions, for both sharing choices. */
-function UsageSharingIncluded(
+export function UsageSharingIncluded(
   props: { data: SharingDisclosure } | { counts: SharingCounts },
 ) {
   const daily = 'counts' in props;
   return (
     <section aria-label="What's included">
       <h3>What's included</h3>
+      {!daily && props.data.authorDisclosure && (
+        <p>
+          Shared with Kontour at:{' '}
+          {new URL(props.data.authorDisclosure.destination).host}
+        </p>
+      )}
       {daily ? (
         <>
           <p>
@@ -78,6 +106,13 @@ function UsageSharingIncluded(
             release channel, source revision and whether the build has local
             changes.
           </p>
+          {props.data.envelope && (
+            <ul>
+              {props.data.envelope.split('\n\n').map((block) => (
+                <li key={block}>{readableSharingFields(block)}</li>
+              ))}
+            </ul>
+          )}
           <ul>
             {Object.entries(props.data.events).map(([event, definition]) => (
               <li key={event}>

@@ -33,10 +33,6 @@ export async function runTelemetryCommand(args: string[]): Promise<void> {
       throw new Error(
         'Usage: station telemetry set <kontour|operator> <off|lite|full>',
       );
-    if (publisher === 'kontour' && tier === 'full')
-      throw new Error(
-        "Detailed sharing with Kontour is unavailable. Choose off (Don't share) or lite (Anonymous usage counts).",
-      );
     if (parsed.flags.offline)
       throw new Error(
         'Telemetry choices require a running Station; use its authenticated configuration API.',

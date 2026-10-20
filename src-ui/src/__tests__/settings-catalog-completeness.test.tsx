@@ -315,6 +315,7 @@ const resetDeviceSettings = vi.fn();
  */
 let telemetryEndpointConfigured: boolean | undefined;
 let telemetryDisclosureRevision = 'settings-revision';
+let telemetryAuthorDestination: string | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
@@ -330,13 +331,15 @@ vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
       data: telemetryStatusFailed
         ? undefined
         : {
+            authorEndpoint: telemetryAuthorDestination,
             publishers: Object.fromEntries(
               ['kontour', 'operator'].map((id) => [
                 id,
                 {
                   tier: telemetryDnt ? 'off' : 'lite',
                   reason: telemetryDnt ? 'DNT' : 'user',
-                  fullAvailable: id === 'operator',
+                  fullAvailable:
+                    id === 'operator' || !!telemetryAuthorDestination,
                   userChoice: (
                     configSnapshot.config?.telemetryTier as
                       | TelemetryTierChoices
@@ -363,6 +366,15 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
           : {
               endpointConfigured: telemetryEndpointConfigured,
               inventoryRevision: telemetryDisclosureRevision,
+              ...(telemetryAuthorDestination
+                ? {
+                    authorDisclosure: {
+                      destination: telemetryAuthorDestination,
+                      inventoryRevision: telemetryDisclosureRevision,
+                      events: {},
+                    },
+                  }
+                : {}),
               events: {
                 station_started: {
                   description: 'Station completed startup.',
@@ -514,6 +526,7 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     telemetryDisclosureRevision = 'settings-revision';
+    telemetryAuthorDestination = undefined;
     vi.mocked(authenticatedFetch).mockReset();
     telemetryDnt = false;
     telemetryStatusFailed = false;
@@ -2461,6 +2474,91 @@ describe('settings catalog completeness', () => {
   });
 
   test.each([
+    ['combined', 200],
+    ['combined', 403],
+    ['kontour-only', 200],
+  ] as const)(
+    'Settings %s Detailed binds author acknowledgement; response %s',
+    async (mode, status) => {
+      telemetryEndpointConfigured = true;
+      telemetryAuthorDestination = 'https://kontour.test/counts';
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { kontour: 'lite', operator: 'off' },
+        },
+        dataUpdatedAt: 1,
+      };
+      const order: string[] = [];
+      vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+        if (String(url).endsWith('/acknowledgements')) {
+          const body = JSON.parse(String(init?.body));
+          order.push(body.publisher ?? 'operator');
+          return new Response(null, {
+            status: body.publisher === 'kontour' ? status : 200,
+          });
+        }
+        return new Response(null, { status: 503 });
+      });
+      updateConfig.mockImplementation(async () => {
+        order.push('config');
+        return {};
+      });
+      await renderSettings();
+      if (mode === 'combined')
+        fireEvent.click(
+          screen.getByRole('radio', {
+            name: 'Detailed usage to help improve Station',
+          }),
+        );
+      else
+        fireEvent.change(
+          screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+          { target: { value: 'full' } },
+        );
+      expect(
+        screen.getByRole('region', { name: "What's included" }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenCalledWith(
+          'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
+          expect.objectContaining({
+            body: JSON.stringify({
+              acknowledgementProtocol: 2,
+              inventoryRevision: 'settings-revision',
+              publisher: 'kontour',
+              destination: 'https://kontour.test/counts',
+            }),
+          }),
+        ),
+      );
+      if (status === 403) {
+        await screen.findByText(
+          'Some settings could not be saved. Your changes are kept here until you retry.',
+        );
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(order).toEqual(['kontour']);
+      } else {
+        await waitFor(() =>
+          expect(updateConfig).toHaveBeenCalledWith({
+            telemetryTier: { kontour: 'full' },
+          }),
+        );
+        await waitFor(() =>
+          expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
+        );
+        expect(order).toEqual(
+          mode === 'combined'
+            ? ['kontour', 'operator', 'config', 'config']
+            : ['kontour', 'config'],
+        );
+      }
+    },
+  );
+
+  test.each([
     [200, 'lite'],
     [403, 'lite'],
     [409, 'lite'],
@@ -2517,7 +2615,7 @@ describe('settings catalog completeness', () => {
             telemetryTier: { operator: 'full' },
           }),
         );
-        expect(order).toEqual(['acknowledge', 'config']);
+        expect(order).toEqual(['acknowledge', 'config', 'config']);
       } else {
         await screen.findByText(
           'Some settings could not be saved. Your changes are kept here until you retry.',
@@ -2529,8 +2627,8 @@ describe('settings catalog completeness', () => {
     },
   );
 
-  test('importing Detailed from General saves a latent choice without acknowledging unseen details', async () => {
-    window.history.replaceState({}, '', '/settings?view=general');
+  test('importing Detailed from Advanced saves a latent choice without acknowledging unseen details', async () => {
+    window.history.replaceState({}, '', '/settings?view=advanced');
     configSnapshot = {
       config: {
         ...INITIAL_CONFIG,

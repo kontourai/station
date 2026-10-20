@@ -197,6 +197,7 @@ export function FirstRunHomeChapter({
     settled: disclosureSettled,
     outstanding: disclosureOutstanding,
     data: disclosureData,
+    dismissalRevision,
   } = useUsageTelemetryDisclosureState();
 
   const [open, setOpen] = useState(false);
@@ -394,7 +395,9 @@ export function FirstRunHomeChapter({
     // every route, and the just-closed dialog re-appears over `/agents` —
     // the #765 B1 escalation, reproduced live.
     if (step === 'disclosure') {
-      dismissUsageTelemetryDisclosure(disclosureData?.inventoryRevision);
+      dismissUsageTelemetryDisclosure(
+        dismissalRevision ?? disclosureData?.inventoryRevision,
+      );
     }
     setOpen(false);
     if (decided.current) return;
@@ -412,6 +415,7 @@ export function FirstRunHomeChapter({
   }, [
     step,
     disclosureData?.inventoryRevision,
+    dismissalRevision,
     config?.firstRun?.status,
     writeStatus,
   ]);

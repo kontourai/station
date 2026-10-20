@@ -188,8 +188,15 @@ feature flags (env-derived ones shown **read-only with provenance**, e.g.
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
-Per-publisher product-telemetry choices also use S1. Settings shows effective
-DNT/disclosure status alongside the stored choice, and resets preserve those
+Usage sharing also uses S1. Privacy & sharing has one primary choice for both
+built-in destinations: Don't share (`off`), Anonymous usage counts (`lite`), or
+Detailed usage to help improve Station (`full`). Independent destination choices
+and delivery details remain under a collapsed Advanced section, whose mounted
+rows preserve canonical deep links. Detailed selection shows the server-owned
+included fields; Save acknowledges each configured destination's displayed
+revision before storing Full. Kontour additionally binds its acknowledgement to
+the displayed build address. Importing a setting never acknowledges unseen
+fields. Do Not Track status uses the shared callout, and resets preserve saved
 choices. Telemetry destinations and SecretBinding references also use S1. Product
 observations need their own disclosure; operator metrics/traces use a separate
 collector configuration. Saved references require explicit instance destination
