@@ -45,6 +45,7 @@ import {
   type PaneRelation,
   type PaneRelationTarget,
   paneRelationOf,
+  parseProjectPaneReference,
   RELATED_TARGET_SCOPE_KEYS,
   sameRelationTarget,
   withoutPaneRelation,
@@ -177,6 +178,12 @@ export function relatedPaneCaller(input: {
       String(input.instance.instanceId) !== input.occurrenceId)
   )
     return null;
+  const projectPane = input.projectPane
+    ? parseProjectPaneReference({
+        descriptorId: String(input.instance.descriptorId),
+        instanceId: String(input.instance.instanceId),
+      })
+    : null;
   return {
     occurrenceId: input.occurrenceId,
     pluginId,
@@ -184,14 +191,7 @@ export function relatedPaneCaller(input: {
     projectId: input.projectId,
     projectSlug: input.projectSlug,
     layoutSlug: input.layoutSlug,
-    ...(input.projectPane
-      ? {
-          projectPane: {
-            descriptorId: String(input.instance.descriptorId),
-            instanceId: String(input.instance.instanceId),
-          },
-        }
-      : {}),
+    ...(projectPane ? { projectPane } : {}),
     scope: scopeOf(input.instance.boundContext),
     label: input.label.slice(0, 160) || 'Plugin pane',
     target: input.target ?? null,

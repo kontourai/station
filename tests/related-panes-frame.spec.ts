@@ -339,6 +339,20 @@ test.describe('related panes from a plugin in the sandboxed frame', () => {
               reportsDescriptor,
               decodeURIComponent(reportsRoute.split('/').at(-1)!),
             );
+            if (width === 1280) {
+              await returnPage
+                .getByRole('button', { name: 'Home', exact: true })
+                .click();
+              await expect(returnPage).toHaveURL(/\/\?(?:.*)?$|\/$/);
+              await expect(
+                pluginFrame(returnPage, 'report').getByRole('article', {
+                  name: 'Weekly report',
+                }),
+              ).toBeVisible();
+              await expect(
+                returnPage.locator('iframe[title="Plugin: reports"]'),
+              ).toHaveCount(0);
+            }
             await returnPage
               .getByRole('button', { name: 'Up to Reports', exact: true })
               .click();

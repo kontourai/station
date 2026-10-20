@@ -48,7 +48,9 @@ not yet accepted.
   pane, including a per-occurrence Station fence and cross-window locked
   writes. Other related kinds wait for their slices.
 - [ ] Quick review preserves source selection/search/scroll; Open promotes.
-  Not started.
+  Implemented separately in #3981 with lifecycle, Close and canonical Chat
+  reveal repairs in #3986. Those Drafts and their qualification are not
+  imported by this SDK repair; native and independent acceptance remain separate.
 - [ ] Source switching and cancelled guards preserve the right child and focus.
   In #3875 for file previews: source hide/restore, and Cancel on a covered,
   replaced or closed pane's guard leaves arrangement, selection, relation,
@@ -69,6 +71,13 @@ not yet accepted.
   journeys restore the old record shape, reload, reopen and click Up at both
   widths; guard and scope/source changes refuse without mutation. Unwitnessed
   legacy records retain their fallback, rather than guessing an opener.
+  SDK Up review continuation: optional metadata no longer changes transient
+  selection identity; the host and record reader share reference validation,
+  retaining a readable fallback for unrepresentable descriptors. Same-path Up
+  adds no history. Focused real-owner tests cover replacement-layer/new-guard/
+  caller supersession, mounted Station and generation rechecks, and attestation
+  fence/Project-rename refusal. Browser routed returns and mutation evidence are
+  recorded in the PR, not inferred from same-path clicks.
 - [ ] Responsive folds preserve occurrence/controller/history identity.
   In #3875 for the phone layer only (Keep through replacement, Back, reopen).
 - [ ] Coding leases stable outlets without rewriting ambient arrangements.

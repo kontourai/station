@@ -152,6 +152,14 @@ test.describe('related panes from an installed plugin', () => {
         reportsDescriptor,
         decodeURIComponent(reportsRoute.split('/').at(-1)!),
       );
+      if (width === 1280) {
+        await page.getByRole('button', { name: 'Home', exact: true }).click();
+        await expect(page).toHaveURL(/\/\?(?:.*)?$|\/$/);
+        await expect(
+          page.getByRole('article', { name: 'Weekly report' }),
+        ).toBeVisible();
+        await expect(reports(page)).toHaveCount(0);
+      }
       await page
         .getByRole('button', { name: 'Up to Reports', exact: true })
         .click();

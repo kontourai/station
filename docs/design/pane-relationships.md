@@ -122,15 +122,21 @@ The record survives reload. A routed return uses canonical navigation precommit
 and rechecks the Station and captured relation after guards answer. A phone
 child already on its opener's route uses the existing layer's scoped guard once
 before returning; Cancel leaves history, placement, state and focus unchanged.
-A replacement layer or new guard supersedes that close. Back's caption uses the
-verified relation's captured opener label for plugins as well as conversations.
-An older kept record without that reference gains it only when the same exact
+A replacement layer, new owner guard or withdrawn caller admission supersedes
+that close. Same-path Up adds no history; desktop Up already at its opener is
+a no-op. Back's caption uses any verified relation's captured opener label,
+including Files, routes, plugins and conversations.
+An older record without that reference gains it only when the same exact
 Project-pane caller reopens its target. After guards answer, the existing lock
 rechecks the caller's Station, Project, installed generation, occurrence, target
 state and fence, and the unchanged source record before adding the missing
 reference. Other openers and existing references are never rewritten. Until
 that caller witnesses it, the old record retains its truthful layout or Project
-fallback; missing identity is never guessed from ambient context.
+fallback; missing identity is never guessed from ambient context. The optional
+reference does not change preview selection identity: an unkept old preview
+still focuses for the same target and replaces for another. References outside
+the relation reader's bounds are omitted before stamping or attestation, so the
+legacy return remains readable rather than losing its relation on the next read.
 
 ## Shell controls
 

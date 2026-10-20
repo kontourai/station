@@ -231,7 +231,7 @@ function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
   const model = useRegionModelOptional();
   const relations = usePaneRelations();
   const isMobile = useIsMobile();
-  const { navigate, setLayout, setProject } = useNavigationActions();
+  const { setLayout, setProject } = useNavigationActions();
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const live = useRef(relations);
@@ -283,10 +283,8 @@ function usePluginOccurrenceUp(instanceId: string, opener: PaneOpener) {
           { maximize: null, ...(isMobile ? { dock: null } : {}) },
         );
       } else if (model?.readPhoneLayer()?.surfaceId === instanceId) {
-        model.closePhoneLayer(() => {
-          if (current()) navigate(route);
-        }, current);
-      } else if (current()) navigate(route);
+        model.closePhoneLayer(undefined, current);
+      }
       return;
     }
     const occurrence = opener.occurrenceId;

@@ -74,12 +74,16 @@ function ModelProbe() {
   return null;
 }
 
-function seedRelation(opener: PaneOpener, stationId = 'station-a') {
+function seedRelation(
+  opener: PaneOpener,
+  stationId = 'station-a',
+  generation = 'builtin',
+) {
   const relation: PaneRelation = {
     instanceId: ID,
     stateKey: ID,
     stationId,
-    generation: 'builtin',
+    generation,
     opener,
     target: {
       kind: 'file',
@@ -314,9 +318,30 @@ describe('Up to an exact Project plugin pane', () => {
   const path =
     '/projects/alpha/panes/pane%3Aplugin%253Areports%3Alist/instance%3Aplugin%3Aalpha-id%3Areports';
 
+  test('desktop Up already on its exact route creates no history or popstate', async () => {
+    navigationStore.navigate(path);
+    seedRelation(projectOpener);
+    mount();
+    const length = window.history.length;
+    const pop = vi.fn();
+    window.addEventListener('popstate', pop);
+    try {
+      act(() => screen.getByRole('button', { name: 'Up to Reports' }).click());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(window.history.length).toBe(length);
+      expect(pop).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('popstate', pop);
+    }
+  });
+
   test.each([
     'cancel',
     'station-change',
+    'station-and-record-change',
+    'generation-change',
     'source-change',
     'new-guard',
     'allow',
@@ -337,16 +362,39 @@ describe('Up to an exact Project plugin pane', () => {
       let unregisterNew = () => {};
       try {
         await settledStorageSnapshot();
-        act(() =>
-          screen.getByRole('button', { name: 'Up to Reports' }).click(),
-        );
-        await act(async () => {
-          await Promise.resolve();
-        });
+        const up = screen.getByRole('button', { name: 'Up to Reports' });
+        act(() => up.click());
+        if (answer !== 'cancel')
+          await waitFor(() => expect(proceed).toBeDefined());
         if (answer === 'station-change')
           await act(async () => {
             authoritySwitch.set?.({ station: 'station-b' });
           });
+        if (
+          answer === 'station-and-record-change' ||
+          answer === 'generation-change'
+        ) {
+          act(() => {
+            if (answer === 'station-and-record-change')
+              authoritySwitch.set?.({ station: 'station-b' });
+            seedRelation(
+              projectOpener,
+              answer === 'station-and-record-change'
+                ? 'station-b'
+                : 'station-a',
+              answer === 'generation-change' ? 'changed-generation' : 'builtin',
+            );
+            window.dispatchEvent(
+              new StorageEvent('storage', {
+                key: PANE_RELATIONS_STORAGE_KEY,
+                newValue: localStorage.getItem(PANE_RELATIONS_STORAGE_KEY),
+              }),
+            );
+          });
+          expect(screen.getByRole('button', { name: 'Up to Reports' })).toBe(
+            up,
+          );
+        }
         if (answer === 'source-change')
           await act(async () => {
             const changed = {
@@ -431,10 +479,13 @@ describe('Up to an exact Project plugin pane', () => {
     expect(await settledStorageSnapshot()).toEqual(before);
     expect(document.activeElement).toBe(up);
     accept = true;
+    const pushes = vi.spyOn(window.history, 'pushState');
     act(() => up.click());
     await waitFor(() => expect(model?.phoneLayer).toBeNull());
     expect(window.location.pathname).toBe(path);
     expect(asked).toBe(2);
+    expect(pushes).not.toHaveBeenCalled();
+    pushes.mockRestore();
     unregister();
   });
 

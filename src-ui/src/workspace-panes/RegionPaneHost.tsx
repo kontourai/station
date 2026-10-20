@@ -525,8 +525,6 @@ export function RegionPaneHost({
 }) {
   const model = useRegionModelOptional();
   const relations = usePaneRelations();
-  // The layer's way back names the conversation its pane was opened from:
-  // that is where the layer returns (it opens over Chat).
   const layerRelation = model?.phoneLayer
     ? relations.relationOf(model.phoneLayer.surfaceId)
     : undefined;

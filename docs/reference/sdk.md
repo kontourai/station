@@ -2710,12 +2710,17 @@ reload. It does not substitute the Project overview or accept a URL from the
 plugin. Cancellation and a changed Station or relation leave the current child
 in place. The phone Back caption names the captured opener; browser evidence
 for these returns is separate from native-shell acceptance.
-An older kept report gains its missing exact opener reference when that same
+An older report gains its missing exact opener reference when that same
 Reports occurrence reopens it on the same verified Station and Project, under
 the same installed generation. The locked focus transaction re-admits the
 caller and checks the unchanged source, target state and fence after guards;
 Cancel or a changed owner writes nothing. Reopening from another occurrence
 does not rewrite the original opener. No ambient route is used to infer it.
+Optional return metadata does not change which unkept preview that caller
+reuses. If the Project descriptor cannot fit the stored reference's bounds,
+Station retains its readable legacy return rather than writing an unreadable
+relation. Up already on its exact route does not add a history entry: on a
+phone it leaves through the guarded layer close; on desktop it is a no-op.
 
 From a frame, each member is a request carrying an `id`, answered by one
 `pane-host/related-result` `{ id, data }`:

@@ -252,6 +252,20 @@ function parseTargetScope(value: unknown): RelatedTargetScope | null {
   return scope;
 }
 
+export function parseProjectPaneReference(
+  value: unknown,
+): { descriptorId: string; instanceId: string } | null {
+  if (
+    !isRecordObject(value) ||
+    !boundedText(value.descriptorId, 256) ||
+    !boundedText(value.instanceId, 512) ||
+    value.descriptorId !== value.descriptorId.trim() ||
+    value.instanceId !== value.instanceId.trim()
+  )
+    return null;
+  return { descriptorId: value.descriptorId, instanceId: value.instanceId };
+}
+
 function parseSource(value: unknown): PaneOpenerSource | null {
   if (!isRecordObject(value)) return null;
   if (value.kind === 'conversation') {
@@ -292,19 +306,9 @@ function parseSource(value: unknown): PaneOpenerSource | null {
   if (value.kind === 'plugin-occurrence') {
     let projectPane: { descriptorId: string; instanceId: string } | undefined;
     if (value.projectPane !== undefined) {
-      const candidate = value.projectPane;
-      if (
-        !isRecordObject(candidate) ||
-        !boundedText(candidate.descriptorId, 256) ||
-        !boundedText(candidate.instanceId, 512) ||
-        candidate.descriptorId !== candidate.descriptorId.trim() ||
-        candidate.instanceId !== candidate.instanceId.trim()
-      )
-        return null;
-      projectPane = {
-        descriptorId: candidate.descriptorId,
-        instanceId: candidate.instanceId,
-      };
+      const parsed = parseProjectPaneReference(value.projectPane);
+      if (!parsed) return null;
+      projectPane = parsed;
     }
     if (
       !boundedText(value.projectSlug, 256) ||
@@ -465,14 +469,6 @@ export function openerSelectionKey(opener: PaneOpener): string {
     case 'route':
       return `route:${source.pathname}${source.search}`;
     case 'plugin-occurrence':
-      if (source.projectPane)
-        return JSON.stringify([
-          'plugin-occurrence',
-          source.projectSlug,
-          source.layoutSlug,
-          source.projectPane.descriptorId,
-          source.projectPane.instanceId,
-        ]);
       return `plugin-occurrence:${source.projectSlug}/${source.layoutSlug ?? ''}`;
   }
 }
