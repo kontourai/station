@@ -371,6 +371,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3567: bounded CLI executable children send to a per-test loopback
   // fixture to verify lost-response JSON handles in both entry points.
   'packages/cli/src/__tests__/core-http.test.ts',
+  // Spawns the CLI entry point as bounded children against a per-test
+  // loopback HTTP fixture to assert exit status and request shape.
+  'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.

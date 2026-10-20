@@ -1839,6 +1839,142 @@ not use the old `{type: "message"}` event example. Content is redacted before
 historical or streaming output. See the [monitoring guide](../guides/monitoring.md)
 for event keys and producer limits.
 
+### Telemetry ingest
+
+The [ingest routes](../../src-server/monitoring/otlp-receiver.ts) write rows
+into the same monitoring history the routes above read:
+
+| Route | Body |
+| --- | --- |
+| `POST /v1/agent-events` | One agent telemetry event (schema `0.x`) |
+| `POST /v1/traces` | OTLP/JSON `resourceSpans` |
+| `POST /v1/logs` | OTLP/JSON `resourceLogs` |
+
+Two credentials are accepted, checked in the
+[runtime auth boundary](../../src-server/runtime/bootstrap/runtime-http.ts):
+
+- a **telemetry producer token** (`sti_…`), sent as
+  `Authorization: Bearer <token>`. It is admitted only on these three exact
+  `POST` leaves. Anywhere else it is not a credential, and the request is
+  refused (`401`, or `403` for a path no route declares);
+- a paired credential with the `orchestration:operate` tier, as before.
+
+Responses for a producer token:
+
+| Status | `error.code` | Meaning |
+| --- | --- | --- |
+| `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` and `station.telemetry.producer_owner: <principal id>` |
+| `400` | `invalid_json`, `unsupported_schema_version`, `invalid_agent_event` | Body refused (agent events); nothing was written |
+| `401` | `authentication_required` | No credential, an unknown or revoked token, or a credential in the query string |
+| `403` | `telemetry_producer_expired` | The token passed its expiry |
+| `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
+| `429` | `authentication_rate_limited` | Too many unknown tokens (or query-string credentials) from this address; `Retry-After` says when to try again. A recognized token sent as a bearer is not counted |
+| `413`, `429` | `rate_limited` (429) | The ordinary per-credential body and rate budgets; `429` carries `Retry-After` |
+| `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted. Restore it to an owner-only (`0600`) regular file, or delete `<home>/security/telemetry-producers.json` (all tokens are lost) and create the producers again. A file written by an earlier build of this feature, before tokens recorded an owner, reads as unreadable and needs the same remedy |
+
+`POST /v1/agent-events` validates the body before reading it: `schema_version`
+must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
+`session_id`, `event_id`, `event_type` and `agent.name` are required.
+`timestamp` is epoch milliseconds, as a string of digits or a non-negative JSON
+integer, or an ISO 8601 date-time (`YYYY-MM-DDTHH:MM[:SS[.fraction]]`) with an
+uppercase `Z` or a `±HH:MM` offset, within the JavaScript date range. Impossible
+calendar values (`2026-02-30`, hour 24) are refused rather than rolled over, and
+so are a lowercase `z`, a space separator, a bare date and other date text.
+Earlier Stations read any text `Date` could parse; that looser input now
+answers 400. Unknown top-level fields are ignored. The contents of `context`,
+`enrichment` and `tool.input`/`tool.output` are stored as sent, within the
+body limit (tool content passes the usual monitoring redaction). An `event_type` outside `session.start`, `session.end`,
+`turn.user`, `tool.invoke`, `tool.result` and `agent.delegate` is recorded as
+an `unknown` event. `/v1/traces` and `/v1/logs` answer `400` for a body they
+cannot read.
+
+Rows a producer token delivers are readable, through `/monitoring/events` and
+`/api/insights`, only by the principal who created the token (today always the
+Station operator); other people never see them, and hosted readers never do.
+The session id a producer reports does not decide this: an external agent's
+session is not a Station session. The owner comes from the admitted token,
+never from the body, and stays on each row: revoking a token stops further
+ingest but its earlier rows remain readable by their owner.
+
+Every identity a producer reports (session, conversation, trace, tool-call and
+event ids, the agent slug and the engine) is stored as
+`producer:<token name>:<reported value>`; a row with no agent gets
+`producer:<token name>:(unnamed)`. This prevents joins and de-duplication
+collisions with Station's own rows. The `producer:` prefix is reserved: a request
+without a producer token (a paired credential) whose session, conversation,
+trace, tool-call or event id, agent or engine starts with it is refused with
+`400 reserved_identity`, and nothing in that request is stored. The Monitoring
+view shows a producer's own value only for rows its producer delivered.
+Required text fields are trimmed, so a whitespace-only value is refused.
+
+Separately, readers apply one rule to every row carrying
+`station.telemetry.producer`, whatever agent, model, engine, tool or
+conversation it names:
+
+- `/api/insights` never counts it toward Station's figures (agent, model and
+  tool usage, error totals and rates, chat and tool-call totals, hourly
+  activity). Each producer's activity is reported apart in
+  `producerActivity: {<token name>: {events, chats, toolCalls}}`. Chats are
+  counted by Station's rule: once per distinct trace, each END on the
+  `no-session` trace as one chat, and none for a row with no trace. An `agent`, `tool` or
+  `engine` filter matches no producer row, so a filtered response's
+  `producerActivity` is empty. With
+  `producer=<token name>`, every figure in the response is that producer's
+  alone and `applied.producer` echoes it.
+- `/monitoring/events` (and the station-control `read_monitoring_events`
+  tool) never matches it for `agent`, `engine`, `tool`, `conversation` or
+  `tools=true`, so a Station tool export never includes producer rows.
+  `producer=<token name>` returns only that producer's rows. An unfiltered
+  read lists producer rows alongside Station's. On both routes an empty or
+  invalid `producer` value (outside the token-name grammar) is a `400`.
+
+The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and
+the Monitoring view lists producer agents in a separate "External producers"
+group, outside Station's agent list and count.
+
+The ingest receiver records no tool outcome for producer rows, so a producer
+cannot report tool errors in any case. Re-creating a revoked token under the same name reuses that
+namespace, so the new token's rows group with the old one's.
+
+The station-control `read_monitoring_events` tool puts
+`station.external_producer_notice` first on every producer row and once at
+the top of its result when any are present. The Monitoring view names the
+producer on each such row. Other readers (the CLI, the SDK, raw
+`/monitoring/events` and its SSE stream) receive `station.telemetry.producer`
+on those rows but no notice text.
+
+A request counts as from this machine when it arrives on a loopback socket
+with a loopback `Host`, carries no forwarding or Tailscale headers and has no
+verified ingress identity, or when Station's UI proxy relays a loopback
+client that addressed a loopback host. The UI proxy forwards these `POST`s
+(it does not forward a `GET` to `/v1`), so a producer may use either the API
+port or the UI port; a remote producer reaches Station through Tailscale Serve
+in front of the UI port (`https://<serve-host>/v1/agent-events`).
+Serve connects from loopback, but the proxy reports its forwarding headers and
+the browser-visible host, so its requests are remote. A
+plain SSH local forward is indistinguishable from a local sender.
+
+### Telemetry producer management
+
+[These routes](../../src-server/routes/telemetry-producers.ts) require
+`access:manage` and refuse every caller but the Station operator
+(`403 operator_required`). Responses use `{success, data}`.
+
+| Route | Effect |
+| --- | --- |
+| `GET /api/telemetry-producers` | `{producers: [{name, createdAt, expiresAt, expired, allowRemote, lastUsedAt}]}` |
+| `POST /api/telemetry-producers` | Body `{name, allowRemote?, expiresInDays?}`; `201` with `{producer, token}`. The token is returned only here |
+| `DELETE /api/telemetry-producers/:name` | Revokes the token at once; `404 not_found` for an unknown name |
+
+Names are 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a
+letter or digit. `expiresInDays` is a whole number from 1 to 3650, or absent
+for no expiry. At most 32 producers exist at once; creating another, or reusing
+a name, answers `409` (`producer_limit_reached`, `producer_exists`). Station
+records the creating principal as the token's owner and stores only a SHA-256
+hash of each token in
+`<home>/security/telemetry-producers.json` (mode `0600`). An expired token stays
+listed, as `expired`, until it is revoked.
+
 ---
 
 ## Agent Invocation
@@ -2190,6 +2326,10 @@ monitoring NDJSON files and returns `{success: true, data}`. `data` contains
   windows return 400.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
+- Rows from external telemetry producers never count toward these figures;
+  they are summarized in `producerActivity`, and `producer=<token name>`
+  scopes the whole response to one producer (see
+  [Telemetry ingest](#telemetry-ingest)).
 - A positive `limit` retains the top buckets (cap 500); it does not cap the
   scanned events or recompute totals from just the displayed buckets.
 - Applied filters/limit are echoed in `data.applied`. Hours use the server's

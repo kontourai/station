@@ -3386,6 +3386,10 @@ the flag, a full limited window is conservatively marked truncated.
 `fetchMonitoringEvents(start, end, signal, filters)` retains its array return
 shape and no default limit for existing export callers. Both functions reject
 failed or malformed reads instead of reporting an empty history.
+Their filters, like `fetchInsights`' `InsightsFilters`, take `producer` to
+select one external telemetry producer; without it the other filters never
+match producer rows, and `fetchInsights` returns their activity in
+`producerActivity`. See [Telemetry ingest](api.md#telemetry-ingest).
 
 API-base initialization wakes pending callers when configuration is published,
 with a 500 ms failure bound; later reads observe the latest configured base.

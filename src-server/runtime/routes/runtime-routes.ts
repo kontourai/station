@@ -411,6 +411,7 @@ import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/na
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
+import { createTelemetryProducerRoutes } from '../../routes/telemetry-producers.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { launchesCommand } from '../../routes/working-directory-authority.js';
@@ -669,6 +670,10 @@ import {
 import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
+import {
+  admittedTelemetryProducer,
+  TelemetryProducerStore,
+} from '../../services/telemetry-producers/telemetry-producer-store.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
@@ -1407,7 +1412,13 @@ export function configureRuntimeRoutes(
         return current ? { device: current.device } : undefined;
       }
     : undefined;
+  // One store for the ingest auth seam and the management routes, so a
+  // revocation through one is seen by the other on its next read.
+  const telemetryProducerStore = new TelemetryProducerStore({
+    securityDir: join(context.configLoader.getProjectHomeDir(), 'security'),
+  });
   const runtimeSecurity = {
+    telemetryProducers: telemetryProducerStore,
     // #2893: native Device proof admission exists only when the pilot was
     // explicitly composed; otherwise proof headers refuse closed.
     ...(nativeDeviceProofAuthority
@@ -6943,7 +6954,32 @@ export function configureRuntimeRoutes(
     createOtlpReceiverRoutes(
       (event) => context.monitoringEmitter.emitRaw(event),
       () => getCachedUser().alias,
+      admittedTelemetryProducer,
     ),
+  );
+  context.app.route(
+    '/api/telemetry-producers',
+    createTelemetryProducerRoutes({
+      store: telemetryProducerStore,
+      isOperator: (c) => {
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
+      // The same principal id monitoring reads scope by (`authority.userId`).
+      resolvePrincipalId: (c) => {
+        try {
+          return resolveOrchestrationRequestPrincipal(c).id;
+        } catch {
+          return undefined;
+        }
+      },
+    }),
   );
   context.app.route(
     '/agents',
