@@ -100,8 +100,9 @@ a drift test fails when any differs:
   51858 gzip bytes at the base commit and 52486 with this change (the splash
   subset), against 62698 when every theme sat in the entry sheet;
 - the splash subset (surfaces, text and focus for every flavor), imported by
-  the splash stylesheet so the first paint is themed while the family sheet
-  loads;
+  the splash stylesheet and scoped to the splash element, so the first paint
+  is themed while the family sheet loads and the app itself is never
+  part-themed;
 - a small runtime index the startup path resolves against, so the full
   catalog (about 7.5 KB gzip) loads only with the picker;
 - an index block in `public/startup-theme.js`.
@@ -111,8 +112,13 @@ sets `data-color-theme`, `data-color-theme-flavor` and
 `data-color-theme-accent` on `<html>`, inserts the family's sheet and a
 `<meta name="theme-color">` with the effective canvas. A script-inserted sheet
 does not block rendering, so `main.tsx` waits for it (at most three seconds)
-before the first render: the splash is themed from the subset, and the app
-never appears in Station's colours after it. With no theme it renders
+before the first render: the splash is themed from the subset, and on the
+normal path the app never appears in Station's colours after it. The app has
+one rule: it is wholly Station until the family sheet has loaded, and wholly
+themed after, never theme surfaces with Station's accent. A sheet slower than
+the cap therefore shows the app in Station's colours until it arrives, while
+the attributes and `theme-color` already name the theme and a white-label
+brand is rated against the theme's surfaces. With no theme it renders
 synchronously as before. The first render is part of what `boot.ts` waits for,
 so a render that throws after that wait shows the same "could not finish
 loading" recovery as a failed module load. On a live switch the applier
@@ -134,8 +140,13 @@ Precedence, the same in the startup script, `resolveBootTheme` and the
 settings store's boot snapshot:
 
 1. An account-sourced cache wins until the page knows whose appearance
-   applies: the account's values arrive, the account boundary reports no
-   person, or the device's own appearance is chosen.
+   applies: the account's values arrive, the device's own appearance is
+   chosen, or the page resolves to no person. That last one is the session
+   gate's access check finding no session (the signed-out connect screen,
+   where the account boundary never mounts) and the account boundary seeing a
+   refused credential or no connection. An unverified authority (offline, an
+   older server) may still be the same person and keeps the cache. On release
+   the applier rewrites the cache as device-sourced.
 2. Otherwise the device envelope, then the legacy `theme` key, as before. A
    device-sourced cache is never read; the envelope is its source.
 
