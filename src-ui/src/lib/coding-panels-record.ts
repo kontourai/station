@@ -3,6 +3,7 @@ import {
   type CodingSessionPanels,
   type CodingSessionPanelsRecord,
 } from '@kontourai/station-contracts/device-settings';
+import { isRecord } from '../utils/isRecord';
 
 /**
  * The per-session Coding panels record (#3051): what the `codingPanels`
@@ -27,10 +28,6 @@ export const CLOSED_CODING_SESSION_PANELS: CodingSessionPanels = {
 /** The key a reader with no conversation on screen is remembered under. */
 export const NO_SESSION_PANELS_KEY = '~';
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function finiteOrNull(value: unknown): number | null | undefined {
   if (value === null || value === undefined) return null;
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -39,7 +36,7 @@ function finiteOrNull(value: unknown): number | null | undefined {
 }
 
 function parseSessionPanels(value: unknown): CodingSessionPanels | null {
-  if (!isPlainObject(value)) return null;
+  if (!isRecord(value)) return null;
   const side =
     value.side === null || value.side === undefined
       ? null
@@ -75,8 +72,8 @@ function parseSessionPanels(value: unknown): CodingSessionPanels | null {
 export function parseCodingSessionPanelsRecord(
   value: unknown,
 ): CodingSessionPanelsRecord | null {
-  if (!isPlainObject(value) || value.version !== 1) return null;
-  if (!isPlainObject(value.sessions)) return null;
+  if (!isRecord(value) || value.version !== 1) return null;
+  if (!isRecord(value.sessions)) return null;
   const sessions: Record<string, CodingSessionPanels> = {};
   for (const [key, entry] of Object.entries(value.sessions)) {
     if (!key) continue;

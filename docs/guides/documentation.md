@@ -481,6 +481,8 @@ malformed comments in fixtures are test inputs. Review comments in context,
 never with a bulk stripping regex or a target deletion percentage. Keep comment
 cleanup behavior-neutral and validate it separately from functional changes.
 
+[Code hygiene](code-hygiene.md) defines the `UNWIRED(#N)` and `SUNSET(#N)` markers for unfinished work, the advisory checks for lapsed markers, private plan labels, wrong issue numbers, design status and evidence retention.
+
 The repository [documentation-audit skill](../../.agents/skills/documentation-audit/SKILL.md)
 applies this workflow to feature changes and full audits. Its
 [audit plan](../plans/documentation-code-audit.md) retains the complete scope,

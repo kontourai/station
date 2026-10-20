@@ -1,5 +1,15 @@
 # Personal Board authoring review
 
+Retention: until 2027-01-14
+
+After that date, move the screenshots to the evidence archive release and keep
+this README.
+
+This work landed in #3742, squash-merged to main as `d345a6b32fb`. The commit
+IDs in this record (`e6def2c99423de5d2602b53e8ea9dca56b932118`, `7c40cda25c8`)
+are commits on that pull request's branch: they are not ancestors of main and
+are listed in the pull request's commit history.
+
 Captured from source checkout `e6def2c99423de5d2602b53e8ea9dca56b932118`
 with the managed `e2e-product-1792177228399-opxf45` product-browser run and an
 isolated temporary Station home, at 1280×900 and 390×900. These are actual

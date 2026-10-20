@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import {
   APPROVAL_MODE_OPTIONS,
+  acpApprovalFor,
   adapterDefaultApprovalMode,
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeKnobSupported,
+  foldApprovalPosture,
   resolveEffectiveApprovalMode,
+  sessionApprovalOverride,
 } from '../utils/approvalMode';
 
 describe('approvalModeKnobSupported', () => {
@@ -14,6 +17,10 @@ describe('approvalModeKnobSupported', () => {
     expect(approvalModeKnobSupported('claude')).toBe(true);
     // #2452: `muse serve` applies the mode (muse-serve-session.ts).
     expect(approvalModeKnobSupported('muse')).toBe(true);
+  });
+
+  test('#3290: opencode, the ACP engine Station sets approval rules for, has the knob', () => {
+    expect(approvalModeKnobSupported('opencode')).toBe(true);
   });
 
   test('acp, bedrock, ollama, station-agent, and an absent runtime have no knob', () => {
@@ -314,6 +321,74 @@ describe('resolveEffectiveApprovalMode', () => {
       mode: 'connection-default',
       label: 'Connection default',
       source: 'adapter default',
+    });
+  });
+});
+
+describe('acpApprovalFor (#3290)', () => {
+  test('an ACP connection that launches OpenCode is Station-governed, wherever the binary lives', () => {
+    for (const command of [
+      'opencode',
+      '/opt/homebrew/bin/opencode',
+      'C:\\Tools\\OpenCode.exe',
+    ]) {
+      expect(acpApprovalFor({ command, name: 'OpenCode' })).toEqual({
+        control: 'station',
+        engineId: 'opencode',
+        engineName: 'OpenCode',
+      });
+    }
+  });
+
+  test('any other ACP command decides for itself, whatever the connection is called', () => {
+    expect(acpApprovalFor({ command: 'kiro-cli' })).toEqual({
+      control: 'engine',
+      engineId: null,
+    });
+    expect(acpApprovalFor({ command: 'npx', name: 'opencode' })).toEqual({
+      control: 'engine',
+      engineId: null,
+      engineName: 'opencode',
+    });
+  });
+
+  test('no ACP connection is no ACP answer', () => {
+    expect(acpApprovalFor(undefined)).toBeUndefined();
+    expect(acpApprovalFor(null)).toBeUndefined();
+  });
+});
+
+describe('a new decision clears a stale takeover failure (#3290, finding 7)', () => {
+  test('a newly recorded decision (a re-pick of the same mode included) is not marked not-applied', () => {
+    const failed = {
+      approvalPosture: 'ask' as const,
+      approvalPostureSequence: 4,
+      approvalTakeoverFailed: true,
+    };
+    const folded = { ...failed, ...foldApprovalPosture(failed, 'auto', 5) };
+    expect(sessionApprovalOverride(folded)).toEqual({
+      mode: 'auto',
+      state: 'requested',
+    });
+    // A re-pick of the same mode is a new decision too.
+    const repicked = { ...failed, ...foldApprovalPosture(failed, 'ask', 6) };
+    expect(sessionApprovalOverride(repicked)?.state).toBe('requested');
+    // The same decision folded again keeps the failure it already had.
+    expect(foldApprovalPosture(failed, 'ask', 4)).toEqual({});
+  });
+});
+
+describe('sessionApprovalOverride: a pick the engine could not take (#3290)', () => {
+  test('is not-applied, not requested', () => {
+    expect(
+      sessionApprovalOverride({
+        approvalPosture: 'ask',
+        approvalTakeoverFailed: true,
+      }),
+    ).toEqual({ mode: 'ask', state: 'not-applied' });
+    expect(sessionApprovalOverride({ approvalPosture: 'ask' })).toEqual({
+      mode: 'ask',
+      state: 'requested',
     });
   });
 });
