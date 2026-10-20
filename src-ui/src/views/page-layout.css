@@ -629,7 +629,7 @@
    at every viewport like `.page__tabs` above, with an ALWAYS-visible thin
    scrollbar (not hidden, unlike Tabs' mobile-only hide): this was previously
    per-host CSS (`.settings__section-nav`, `.project-settings__section-nav`)
-   duplicated across three files, and review MED-4 found a higher-specificity
+   duplicated across three files, and a higher-specificity
    rule could silently outrank a host's own copy. Defined once here so
    nothing can defeat it. */
 .section-nav {
@@ -659,7 +659,7 @@
    inline with its links). A dedicated presentational element between two
    items, never a border modifier on the item itself — a border-based divider
    on the last item of a group visibly conflicted with that same item's
-   active-pill border when it was also selected (review MED-2). */
+   active-pill border when it was also selected. */
 .section-nav__divider {
   flex: 0 0 auto;
   width: 1px;
@@ -713,8 +713,8 @@
      every child of the strip is a link or a heading; the rail is a flex
      DIRECTION change plus a layout partner OUTSIDE the landmark, so the
      landmark, its single accessible name and its heading rotor are untouched.
-   - It lives here, beside `.section-nav`, for the reason review MED-4 gave
-     when it moved the scroll affordance here: the layout of this primitive is
+   - It lives here, beside `.section-nav`, for the reason the scroll
+     affordance moved here: the layout of this primitive is
      decided in one file, so a host's own copy cannot be silently outranked.
      `.section-nav-rail`/`__body` are the rail's layout partner, not a page's
      own responsive CSS — a host supplies only the classes. */

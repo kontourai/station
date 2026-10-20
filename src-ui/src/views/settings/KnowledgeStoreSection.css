@@ -1,5 +1,5 @@
-/* KnowledgeStoreSection — global Settings "My knowledge store" section (K4,
- * s202-knowledge-onboarding Wave 2). Follows the same CSS-variable palette
+/* KnowledgeStoreSection — global Settings "My knowledge store" section.
+ * Follows the same CSS-variable palette
  * as SettingsView.css's sibling sections (`--text-secondary`,
  * `--text-muted`, `--border-primary`, `--bg-primary`, `--accent-primary`) so
  * this section reads as native to Settings, not a new design language. */

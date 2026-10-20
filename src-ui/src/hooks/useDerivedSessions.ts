@@ -380,7 +380,6 @@ export function useDerivedSessions(
 
       const agent = agents.find((a) => a.slug === chatState.agentSlug);
 
-      // Get conversation metadata for title
       const conversationsList =
         conversationsSnapshot.conversations[chatState.agentSlug!] ||
         EMPTY_CONVERSATIONS_LIST;
@@ -388,7 +387,6 @@ export function useDerivedSessions(
         (c) => c.id === chatState.conversationId,
       );
 
-      // Get messages from backend
       const messagesKey = chatState.conversationId
         ? `messages:${chatState.agentSlug}:${chatState.conversationId}`
         : null;

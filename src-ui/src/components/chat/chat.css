@@ -376,8 +376,9 @@
    this font-size/weight, `getBoundingClientRect().width`. "Awaiting
    approval" is now the widest at ~102px (up from "Can't connect"'s ~81px);
    `min-width` is that measurement plus the same proportional headroom the
-   original 92px used (~1.135x) — this app has no runtime i18n today, so
-   cross-locale width is not a live concern, and the headroom is just an
+   original 92px used (~1.135x) — these labels are English-only (the i18n
+   catalog covers only route-shell copy), so cross-locale width is not a
+   live concern, and the headroom is just an
    unmeasured margin against ordinary engine-to-engine font-metric variance
    (WKWebView, WebView2, WebKitGTK), not a verified number for any of them.
    `text-align: center` keeps a shorter label centered in the reserved slot

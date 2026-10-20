@@ -30,17 +30,16 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
  * mid-conversation connection failure, or a model-override failure.
  *
  * Deliberately pattern-matched, not exact-string-matched: the real AWS
- * Bedrock "model not enabled" exception text could not be captured live in
- * planning (no repo precedent, no live AWS call performed — see the plan's
- * Stop-short risks). (archive#196) is where the live text gets confirmed against
- * these patterns; until then these are documented as fixture-based.
+ * Bedrock "model not enabled" exception text has not been captured live (no
+ * repo precedent, no live AWS call performed). archive#196 is where the live
+ * text gets confirmed against these patterns; until then these are
+ * documented as fixture-based.
  *
  * Consumed by both the pre-stream fetch-error path
  * (`useActiveChatSessionMessaging.ts`, via the SDK's `ChatHttpError`) and the
- * mid-stream SSE error path (`useStreamingMessage.ts`, via `writeSSEError`'s
- * `{ errorText, statusCode }` shape) — this module is the single source of
- * classification for both, replacing `useStreamingMessage.ts`'s previous
- * undocumented, partial `isModelError` regex classifier.
+ * mid-stream runtime-error path (`hooks/orchestration/turnHandlers.ts`, for a
+ * `runtime.error` event that carries an engine-binding or turn-failure code)
+ * — this module is the single source of classification for both.
  */
 
 export interface ChatErrorTranslation {
@@ -76,8 +75,7 @@ interface ChatErrorInput {
   status?: number;
   /**
    * The raw underlying message. Callers should pass whichever of
-   * `errorText` / `error` / `message` the wire shape actually populated —
-   * see the mid-stream blind-spot note in `useStreamingMessage.ts`.
+   * `errorText` / `error` / `message` the wire shape actually populated.
    */
   message: string;
   /**

@@ -191,7 +191,7 @@ export function conversationOpenPatch(
               // The predecessor's session status is not this child's. A
               // reused tab whose previous child ended 'idle' would otherwise
               // read as a LIVE session (`chatSessionIsLive`) for a child
-              // nothing has reported on yet (round 4 N5).
+              // nothing has reported on yet (#2169).
               orchestrationStatus: undefined,
               sessionAutoApprove: [],
               pendingApprovals: [],
@@ -289,7 +289,7 @@ export function conversationOpenPatch(
     // transcript rehydration guard, the unavailable-agent banner), so it is
     // deliberately left as-is; a reader that needs LIVENESS must use
     // `chatSessionIsLive` (utils/execution.ts), which treats a reopened
-    // conversation's absent `orchestrationStatus` as "not live" (round 3 F1).
+    // conversation's absent `orchestrationStatus` as "not live" (#2169).
     ...(resolution.status === 'resolved'
       ? {
           currentSessionId: resolution.currentSessionId,

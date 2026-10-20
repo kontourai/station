@@ -416,7 +416,7 @@ export function RegistryView({
         `Installed ${displayName}`,
         undefined,
         undefined,
-        // Review L7: named for what it DOES. It navigates to the installed
+        // Named for what it DOES. It navigates to the installed
         // plugin's detail page, where "What it adds" carries the action that
         // actually places the layout (and adds it outright when there is only
         // one project); calling it "Add to project" promised an add this button
