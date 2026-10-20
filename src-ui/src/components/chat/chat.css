@@ -2167,6 +2167,9 @@
   align-self: flex-end;
   gap: 4px 6px;
   min-width: 0;
+  /* Never wider than the bubble: in a narrow dock the Basis chip shrinks
+     (its standing ellipsizes) instead of the bar overflowing to the left. */
+  max-width: 100%;
 }
 
 /* The answer's Basis chip: the one labelled control in the answer's action
@@ -2189,6 +2192,22 @@
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  /* A notable standing's label may be long ("Basis · Temporarily
+     unavailable"). The chip is the row's one shrinkable control: "Basis · "
+     stays whole, Surface's label ellipsizes, and the full label stays in the
+     chip's accessible name and tooltip. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.answer-basis-chip .station-basis-affordance__lead {
+  flex: none;
+  white-space: pre;
+}
+.answer-basis-chip .station-basis-affordance__standing {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .answer-basis-chip:hover {
   background: var(--bg-hover);
@@ -2342,6 +2361,9 @@
   margin-top: -10px;
 }
 .message-meta__time {
+  /* The timestamp keeps its one line; the Basis chip beside it shrinks. */
+  flex: none;
+  white-space: nowrap;
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
