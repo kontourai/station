@@ -458,7 +458,7 @@ describe('WorkspacePaneAvailabilityList', () => {
   });
 
   test('names the remote-extension gate and routes to Registry only for a renderer absence', () => {
-    const onReviewInRegistry = vi.fn();
+    const onReviewExtensions = vi.fn();
     const rendererMissing = {
       ...entry('Remote review', {
         state: 'temporarily-unavailable' as const,
@@ -474,17 +474,15 @@ describe('WorkspacePaneAvailabilityList', () => {
       <WorkspacePaneAvailabilityList
         entries={[rendererMissing, unavailable]}
         onSelect={vi.fn()}
-        onReviewInRegistry={onReviewInRegistry}
+        onReviewExtensions={onReviewExtensions}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Remote review/ }));
-    expect(
-      screen.getByText('Extensions are disabled for this Station'),
-    ).toBeTruthy();
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
     expect(screen.queryByText('Temporarily unavailable')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Review in Registry' }));
-    expect(onReviewInRegistry).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+    expect(onReviewExtensions).toHaveBeenCalledOnce();
 
     expect(
       presentWorkspacePaneAvailability(rendererMissing.availability)
@@ -515,11 +513,9 @@ describe('WorkspacePaneAvailabilityList', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Remote retry/ }));
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
     expect(
-      screen.getByText('Extensions are disabled for this Station'),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: 'Review in Registry' }),
+      screen.queryByRole('button', { name: 'Review and enable' }),
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(onAction).toHaveBeenCalledWith(gated, gated.availability.action);
@@ -529,7 +525,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     [
       'with a remote-extension gate',
       'remote-isolation',
-      'Extensions are disabled for this Station',
+      'Extensions are off on this device',
     ],
     [
       'without a remote-extension gate',

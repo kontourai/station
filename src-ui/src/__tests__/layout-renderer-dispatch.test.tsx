@@ -194,12 +194,10 @@ describe('LayoutRenderer component dispatch', () => {
 
     renderSingleTab('knowledge-sources');
 
-    expect(
-      screen.getByText('Extensions are disabled for this Station'),
-    ).toBeTruthy();
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
     expect(
       screen.getByText(
-        'The "knowledge-sources" view is provided by an extension. Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.',
+        'This view needs extension code from the selected Station.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/not installed or registered/)).toBeNull();
@@ -232,9 +230,7 @@ describe('LayoutRenderer component dispatch', () => {
     getLayoutMock.mockReturnValue(undefined);
 
     renderSingleTab('knowledge-sources');
-    expect(
-      screen.getByText('Extensions are disabled for this Station'),
-    ).toBeTruthy();
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
 
     act(() => {
       registryLoadStatus = { state: 'loaded', failedPluginNames: [] };
@@ -243,9 +239,7 @@ describe('LayoutRenderer component dispatch', () => {
     });
 
     expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
-    expect(
-      screen.queryByText('Extensions are disabled for this Station'),
-    ).toBeNull();
+    expect(screen.queryByText('Extensions are off on this device')).toBeNull();
   });
 
   test('renders structured plugin refs through the plugin registry', () => {

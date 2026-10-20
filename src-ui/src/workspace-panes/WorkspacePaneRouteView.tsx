@@ -8,6 +8,7 @@ import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contrac
 import { useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -93,6 +94,7 @@ export function WorkspacePaneRouteView({
   instanceId: string;
 }) {
   const { navigate } = useNavigation();
+  const extensionAccess = useStationExtensionsAccess();
   const config = useConfig();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
   const [mcpResourceFailure, setMcpResourceFailure] =
@@ -522,6 +524,7 @@ export function WorkspacePaneRouteView({
     >
       <div className="project-page__inner">
         {refreshNotice}
+        {extensionAccess.dialog}
         <h2 id="workspace-pane-route-title">Workspace pane</h2>
         <p className="project-page__modal-description">
           This pane is not currently available to mount in this host.
@@ -529,6 +532,7 @@ export function WorkspacePaneRouteView({
         <WorkspacePaneAvailabilityList
           entries={[entry]}
           aria-label="Workspace pane availability"
+          onReviewExtensions={extensionAccess.review}
           onSelect={() => undefined}
           onAction={handleAction}
           canExecuteAction={canExecuteAction}

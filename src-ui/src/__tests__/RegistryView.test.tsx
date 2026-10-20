@@ -290,7 +290,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ activeConnection: { id: 'local-station' } }),
+  useConnections: () => ({
+    activeConnection: { id: 'local-station' },
+    captureSelectionIntent: () => 0,
+  }),
 }));
 
 const navigateMock = vi.fn();
@@ -520,9 +523,7 @@ describe('RegistryView', () => {
     });
 
     expect(
-      screen.getByText(
-        /Extensions are off for this remote Station on this device/,
-      ),
+      screen.getByText(/Extensions from this Station are off on this device/),
     ).toBeTruthy();
   });
 
@@ -539,13 +540,13 @@ describe('RegistryView', () => {
     });
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Enable remote extensions for this Station…',
+        name: 'Review and enable',
       }),
     );
 
     expect(
       screen.getByText(
-        /this entire app's authority, including other Stations' data/i,
+        /other Stations' data, credentials available in this window/i,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/applies only to this Station/i)).toBeNull();
@@ -566,13 +567,13 @@ describe('RegistryView', () => {
     });
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Enable remote extensions for this Station…',
+        name: 'Review and enable',
       }),
     );
 
     expect(
       screen.getByText(
-        /On this device that includes the native bridge and this device's paired Station credentials\./,
+        /This includes the native bridge and your paired Station credentials\./,
       ),
     ).toBeTruthy();
   });
@@ -590,7 +591,7 @@ describe('RegistryView', () => {
     });
 
     const consent = screen.getByRole('button', {
-      name: 'Enable remote extensions for this Station…',
+      name: 'Review and enable',
     });
     const catalog = screen.getByTestId('registry-detail');
     expect(
@@ -620,7 +621,7 @@ describe('RegistryView', () => {
     });
 
     const disable = screen.getByRole('button', {
-      name: 'Disable remote extensions',
+      name: 'Turn off extensions',
     });
     const catalog = screen.getByTestId('registry-detail');
     expect(
@@ -647,20 +648,22 @@ describe('RegistryView', () => {
     try {
       render(<RegistryView />);
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable remote extensions' }),
+        screen.getByRole('button', { name: 'Turn off extensions' }),
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable and reload' }),
+        screen.getByRole('button', { name: 'Turn off and reload' }),
       );
 
       expect(reload).not.toHaveBeenCalled();
       expect(
         screen.getByText(
-          "Couldn't disable — storage is unavailable; remote extensions remain enabled",
+          "Couldn't turn extensions off. They are still allowed.",
         ),
       ).toBeTruthy();
       expect(
-        screen.getByRole('dialog', { name: 'Disable remote extensions?' }),
+        screen.getByRole('dialog', {
+          name: 'Turn off extensions from this Station?',
+        }),
       ).toBeTruthy();
     } finally {
       removeItem.mockRestore();
@@ -681,10 +684,10 @@ describe('RegistryView', () => {
     try {
       render(<RegistryView />);
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable remote extensions' }),
+        screen.getByRole('button', { name: 'Turn off extensions' }),
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable and reload' }),
+        screen.getByRole('button', { name: 'Turn off and reload' }),
       );
 
       expect(reload).toHaveBeenCalledOnce();
@@ -947,6 +950,46 @@ describe('RegistryView', () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  test('reviews extension access inside install preview without installing or leaving the preview', () => {
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames: [],
+      failure: 'remote-isolation',
+    };
+    previewResults.set('demo-layout', validDemoPreview());
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    expect(
+      screen.getByText(
+        /You can install this plugin, but its panes and layouts will stay off/,
+      ),
+    ).toBeTruthy();
+    const preview = screen.getByRole('dialog', { name: 'Install Preview' });
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Review and enable' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(mutationCalls).toEqual([]);
+    expect(
+      screen.getByRole('dialog', { name: 'Install Preview' }),
+    ).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Review and enable' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Allow extensions' }));
+    expect(mutationCalls).toEqual([]);
+    expect(
+      screen.getByRole('dialog', { name: 'Install Preview' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+    expect(mutationCalls).toHaveLength(1);
   });
 
   test('shows an installed plugin immediately while its refetch catches up', () => {

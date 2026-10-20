@@ -152,6 +152,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     ...actual,
     useConnections: () => ({
       captureCredentialEvidence: () => sdkMocks.credentialEvidence,
+      captureSelectionIntent: () => 0,
       isCredentialEvidenceCurrent: () => sdkMocks.credentialEvidenceCurrent,
     }),
   };
@@ -824,7 +825,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   // the copy promises has no affordance. The gate here is derived, not stated:
   // a plugin-hosted descriptor plus a remote-isolation registry load failure is
   // what makes `reviewInRegistry` true.
-  test('the picker can reach the Registry for a pane whose remedy is there', async () => {
+  test('the picker reviews extension access without leaving the Project', async () => {
     pluginRegistryState.loadStatus = { failure: 'remote-isolation' };
     const contributed = paneAdaptationFromLayoutTab(
       {
@@ -848,9 +849,14 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     await renderProjectPage();
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
-    const review = screen.getByRole('button', { name: 'Review in Registry' });
+    const review = screen.getByRole('button', { name: 'Review and enable' });
     fireEvent.click(review);
-    expect(navigationMocks.navigate).toHaveBeenCalledWith('/registry');
+    expect(
+      screen.getByRole('dialog', {
+        name: 'Allow extensions from this Station?',
+      }),
+    ).toBeTruthy();
+    expect(navigationMocks.navigate).not.toHaveBeenCalledWith('/registry');
   });
 
   test('keeps layout cards visible when the panes catalog fails, and reports the failure in the picker', async () => {

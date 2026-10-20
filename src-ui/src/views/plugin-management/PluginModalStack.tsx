@@ -6,6 +6,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
@@ -158,6 +159,15 @@ export function PluginModalStack({
       {previewData && (
         <InstallPreviewModal
           previewData={previewData}
+          extensionAccess={
+            previewData.manifest?.hasBundle ||
+            previewData.manifest?.workspacePanes?.length ||
+            previewData.components.some(
+              (component) => component.type === 'layout',
+            ) ? (
+              <StationExtensionsAccess onlyWhenOff installation />
+            ) : undefined
+          }
           previewSkips={previewSkips}
           installPending={installPending}
           onClose={onClosePreview}

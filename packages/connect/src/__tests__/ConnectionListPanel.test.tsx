@@ -72,7 +72,9 @@ function renderPanel(
     onStartEdit = vi.fn(),
     onRemove = () => {},
     onRequestAccess = vi.fn(),
+    renderConnectionDetails,
   }: {
+    renderConnectionDetails?: (connection: SavedConnection) => React.ReactNode;
     connections?: SavedConnection[];
     activeConnectionId?: string;
     onRestartInjectedConnection?: (connection: SavedConnection) => void;
@@ -89,6 +91,7 @@ function renderPanel(
   render(
     <ConnectionListPanel
       connections={connections}
+      renderConnectionDetails={renderConnectionDetails}
       activeConnectionId={activeConnectionId}
       onRestartInjectedConnection={onRestartInjectedConnection}
       localStationOwnerId={localStationOwnerId}
@@ -1028,4 +1031,27 @@ describe('ConnectionListPanel', () => {
       ).toBeTruthy();
     });
   });
+});
+
+it('shows host extension management only inside the expanded Station details', () => {
+  renderPanel(vi.fn(), {
+    renderConnectionDetails: (station) => (
+      <button type="button">Extensions from {station.name}</button>
+    ),
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Extensions from Station One' }),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View details for Station One' }),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Extensions from Station One' }),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View details for Station One' }),
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Extensions from Station One' }),
+  ).toBeNull();
 });

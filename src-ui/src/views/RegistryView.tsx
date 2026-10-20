@@ -1,4 +1,3 @@
-import { useConnections } from '@kontourai/station-connect';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
@@ -14,7 +13,6 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 import {
@@ -27,19 +25,15 @@ import {
   type RegistryLayoutAction,
 } from '../components/registry/RegistryLayoutActions';
 import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  StationExtensionsAccess,
+  useStationExtensionsAccess,
+} from '../components/registry/StationExtensionsAccess';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
-import {
-  reloadAfterRemotePluginBundleRevoke,
-  remotePluginBundlesAllowed,
-  setRemotePluginBundlesAllowed,
-  subscribeRemotePluginBundleConsent,
-} from '../core/remotePluginBundleConsent';
-import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
 import {
@@ -69,11 +63,8 @@ export function RegistryView({
   const { showToast } = useToast();
   // #928 C2a: "Open a Project" means Home by name; reveal the surface.
   const showSurface = useShowSurface();
-  const { isTauri } = usePlatformProfile();
-  const { apiBase } = useApiBase();
   const invalidateQuery = useInvalidateQuery();
-  const { activeConnection } = useConnections();
-  const activeConnectionId = activeConnection?.id ?? 'default';
+  const extensionAccess = useStationExtensionsAccess();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
     initialTab ?? 'agents',
   );
@@ -95,9 +86,6 @@ export function RegistryView({
     tab: RegistryCatalogTab;
     item: RegistryItem;
   } | null>(null);
-  const [remoteBundleModal, setRemoteBundleModal] = useState<
-    'enable' | 'disable' | null
-  >(null);
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
   );
@@ -123,10 +111,6 @@ export function RegistryView({
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
-  );
-  const remoteBundlesAllowed = useSyncExternalStore(
-    subscribeRemotePluginBundleConsent,
-    () => remotePluginBundlesAllowed(activeConnectionId, apiBase),
   );
   const {
     data: availableData,
@@ -524,28 +508,8 @@ export function RegistryView({
     }
   };
 
-  const remoteBundlesSection = remoteBundlesAllowed ? (
-    <div className="page__message" role="status">
-      Remote extensions enabled for this Station on this device via security
-      override.{' '}
-      <button type="button" onClick={() => setRemoteBundleModal('disable')}>
-        Disable remote extensions
-      </button>
-    </div>
-  ) : pluginRegistryStatus.failure === 'remote-isolation' ? (
-    <div className="page__message" role="status">
-      Extensions are off for this remote Station on this device.{' '}
-      <button type="button" onClick={() => setRemoteBundleModal('enable')}>
-        Enable remote extensions for this Station…
-      </button>
-    </div>
-  ) : null;
-  // Elevation is keyed to the ACTIVE refusal: once consent is granted, the
-  // stale 'remote-isolation' status can linger until the reload completes,
-  // and the enabled-override row must not jump above the catalog then.
-  const remoteIsolationActive =
-    pluginRegistryStatus.failure === 'remote-isolation' &&
-    !remoteBundlesAllowed;
+  const remoteBundlesSection = <StationExtensionsAccess />;
+  const remoteIsolationActive = extensionAccess.blocked;
 
   return (
     <div className="registry-view">
@@ -673,6 +637,15 @@ export function RegistryView({
       {pluginInstallPreview && (
         <InstallPreviewModal
           previewData={pluginInstallPreview.data}
+          extensionAccess={
+            pluginInstallPreview.data.manifest?.hasBundle ||
+            pluginInstallPreview.data.manifest?.workspacePanes?.length ||
+            pluginInstallPreview.data.components.some(
+              (component) => component.type === 'layout',
+            ) ? (
+              <StationExtensionsAccess onlyWhenOff installation />
+            ) : undefined
+          }
           previewSkips={previewSkips}
           installPending={agentMutation.isPending || pluginMutation.isPending}
           onClose={() => setPluginInstallPreview(null)}
@@ -690,44 +663,6 @@ export function RegistryView({
           onConfirm={() => void confirmPluginInstall()}
         />
       )}
-      <ConfirmModal
-        isOpen={remoteBundleModal === 'enable'}
-        title="Enable remote extensions?"
-        message={`Remote plugin code will run with this entire app's authority, including other Stations' data, credentials reachable from this window, and these consent settings.${isTauri ? " On this device that includes the native bridge and this device's paired Station credentials." : ''} The toggle is stored per Station on this device, but the trust granted is app-wide. Enable this only for a Station server you fully control or trust.`}
-        confirmLabel="Enable remote extensions"
-        cancelLabel="Cancel"
-        variant="warning"
-        onConfirm={() => {
-          if (
-            setRemotePluginBundlesAllowed(activeConnectionId, apiBase, true)
-          ) {
-            setRemoteBundleModal(null);
-          } else {
-            setMessage("Couldn't enable — storage is unavailable.");
-          }
-        }}
-        onCancel={() => setRemoteBundleModal(null)}
-      />
-      <ConfirmModal
-        isOpen={remoteBundleModal === 'disable'}
-        title="Disable remote extensions?"
-        message="This disables remote extensions for this Station on this device. Already-executed bundle code cannot be unloaded, so Station will reload this window now."
-        confirmLabel="Disable and reload"
-        cancelLabel="Cancel"
-        variant="warning"
-        onConfirm={() => {
-          if (
-            setRemotePluginBundlesAllowed(activeConnectionId, apiBase, false)
-          ) {
-            reloadAfterRemotePluginBundleRevoke();
-          } else {
-            setMessage(
-              "Couldn't disable — storage is unavailable; remote extensions remain enabled",
-            );
-          }
-        }}
-        onCancel={() => setRemoteBundleModal(null)}
-      />
     </div>
   );
 }

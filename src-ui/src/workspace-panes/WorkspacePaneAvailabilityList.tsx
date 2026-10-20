@@ -27,7 +27,7 @@ export interface WorkspacePaneAvailabilityListProps {
   isPending?: (entry: WorkspacePaneAvailabilityCatalogEntry) => boolean;
   /** A host can report that one exact catalog occurrence is already open. */
   isOpen?: (entry: WorkspacePaneAvailabilityCatalogEntry) => boolean;
-  onReviewInRegistry?: () => void;
+  onReviewExtensions?: () => void;
   'aria-label'?: string;
 }
 
@@ -60,7 +60,7 @@ function WorkspacePaneAvailabilityCard({
   canExecuteAction,
   pending,
   open,
-  onReviewInRegistry,
+  onReviewExtensions,
 }: {
   entry: WorkspacePaneAvailabilityCatalogEntry;
   onSelect: (entry: WorkspacePaneAvailabilityCatalogEntry) => void;
@@ -74,7 +74,7 @@ function WorkspacePaneAvailabilityCard({
   ) => boolean;
   pending: boolean;
   open: boolean;
-  onReviewInRegistry?: () => void;
+  onReviewExtensions?: () => void;
 }) {
   const ids = useId();
   const [expanded, setExpanded] = useState(false);
@@ -89,11 +89,11 @@ function WorkspacePaneAvailabilityCard({
   // truthful explanation there, but retain the ordinary bounded action so a
   // card never advertises remediation with no reachable affordance.
   const actionPresentation =
-    presentation.reviewInRegistry && !onReviewInRegistry
+    presentation.reviewInRegistry && !onReviewExtensions
       ? presentWorkspacePaneAvailability(entry.availability)
       : presentation;
   const reviewActionAvailable =
-    presentation.reviewInRegistry && onReviewInRegistry !== undefined;
+    presentation.reviewInRegistry && onReviewExtensions !== undefined;
   const isAvailable =
     presentation.state === 'available' && entry.instance !== undefined && !open;
   const stateLabel = open ? 'Open in this workspace' : presentation.stateLabel;
@@ -243,10 +243,10 @@ function WorkspacePaneAvailabilityCard({
               <button
                 type="button"
                 className="workspace-pane-availability-list__remedy"
-                onClick={() => onReviewInRegistry?.()}
+                onClick={() => onReviewExtensions?.()}
                 disabled={pending}
               >
-                Review in Registry
+                Review and enable
               </button>
             )}
             {!isAvailable && executableAction && (
@@ -302,7 +302,7 @@ export function WorkspacePaneAvailabilityList({
   canExecuteAction,
   isPending,
   isOpen,
-  onReviewInRegistry,
+  onReviewExtensions,
   'aria-label': ariaLabel = 'Workspace panes',
 }: WorkspacePaneAvailabilityListProps) {
   return (
@@ -316,7 +316,7 @@ export function WorkspacePaneAvailabilityList({
           canExecuteAction={canExecuteAction}
           pending={isPending?.(entry) ?? false}
           open={isOpen?.(entry) ?? false}
-          onReviewInRegistry={onReviewInRegistry}
+          onReviewExtensions={onReviewExtensions}
         />
       ))}
     </ul>
