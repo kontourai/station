@@ -1388,6 +1388,11 @@
 .log-row > .log-data {
   min-width: 0;
 }
+/* With the column free to shrink, a long unbroken value (an MCP tool name)
+   breaks inside its pill instead of spilling out of it. */
+.log-data .pill-badge {
+  overflow-wrap: anywhere;
+}
 .pill-badge--single-line {
   display: inline-block;
   flex: 0 1 auto;

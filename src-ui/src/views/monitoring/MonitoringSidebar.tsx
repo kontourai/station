@@ -1,7 +1,6 @@
 import {
   displayMonitoringId,
   monitoringAgentName,
-  parseProducerScopedId,
 } from '@shared/monitoring-keys';
 import type {
   MonitoringEvent,
@@ -43,7 +42,13 @@ export function MonitoringSidebar({
 
   // One card shape for agents seen only in history: Station's own past
   // agents, and the agents external telemetry producers reported.
-  const renderPastAgentCard = (slug: string, statusLabel: string) => {
+  // `producer` is set only for the External producers group: the rows'
+  // own producer, never one parsed from the slug's text.
+  const renderPastAgentCard = (
+    slug: string,
+    statusLabel: string,
+    producer?: string,
+  ) => {
     // Count through the SAME naming rule the list was built with.
     // Comparing the raw field to a derived name meant the
     // '(unnamed)' card reported 0 events and then filtered to N —
@@ -54,7 +59,6 @@ export function MonitoringSidebar({
     ).length;
     const isSelected = selectedAgents.includes(slug);
     const agentColor = getAgentColor(slug);
-    const producer = parseProducerScopedId(slug)?.producer;
 
     return (
       // Same structure as the running card above: card = mouse
@@ -83,7 +87,7 @@ export function MonitoringSidebar({
           })}
         >
           <span className="agent-name" title={slug}>
-            {displayMonitoringId(slug)}
+            {displayMonitoringId(slug, producer)}
           </span>
           <span className="agent-status historical-status">{statusLabel}</span>
         </div>
@@ -229,7 +233,9 @@ export function MonitoringSidebar({
             >
               External producers
             </div>
-            {producerSlugs.map((slug) => renderPastAgentCard(slug, 'External'))}
+            {producerSlugs.map(({ slug, producer }) =>
+              renderPastAgentCard(slug, 'External', producer),
+            )}
           </>
         )}
       </div>

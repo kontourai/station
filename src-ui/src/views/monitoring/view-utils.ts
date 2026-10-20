@@ -125,14 +125,16 @@ export function getHistoricalAgentSlugs(
  * The agent names external telemetry producers reported (already namespaced
  * as `producer:<token name>:<agent>` at ingest), listed apart from Station's.
  */
-export function getProducerAgentSlugs(filteredEvents: MonitoringEvent[]) {
-  return [
-    ...new Set(
-      filteredEvents
-        .filter(isProducerEvent)
-        .map((e) => monitoringAgentName(e as Record<string, unknown>)),
-    ),
-  ];
+export function getProducerAgentSlugs(
+  filteredEvents: MonitoringEvent[],
+): { slug: string; producer: string }[] {
+  const seen = new Map<string, string>();
+  for (const event of filteredEvents) {
+    if (!isProducerEvent(event)) continue;
+    const slug = monitoringAgentName(event as Record<string, unknown>);
+    if (!seen.has(slug)) seen.set(slug, event[K.TELEMETRY_PRODUCER] as string);
+  }
+  return [...seen].map(([slug, producer]) => ({ slug, producer }));
 }
 
 export function getMonitoringAgentCountLabel(

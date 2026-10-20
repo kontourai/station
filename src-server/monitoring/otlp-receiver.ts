@@ -37,7 +37,8 @@ function attrNum(attrs: OtlpKeyValue[], key: string): number | undefined {
  * is recorded as an `unknown` event rather than refused.
  */
 const AGENT_TELEMETRY_SCHEMA_VERSION = /^0\.\d{1,4}(?:\.\d{1,4})?$/;
-const boundedText = (max: number) => z.string().min(1).max(max);
+// Trimmed, so a whitespace-only value is refused rather than stored.
+const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const agentTelemetryIngestEventSchema = z.looseObject({
   schema_version: z.string().max(32),
   timestamp: z
@@ -286,58 +287,83 @@ export function createOtlpReceiverRoutes(
     };
   };
 
+  /**
+   * `producer:`-prefixed ids are Station's namespace for producer rows, and
+   * the Monitoring view labels them as that producer's. A sender without a
+   * producer token (a paired credential) is refused rather than rewritten:
+   * a rewrite would silently store something other than what it sent, while
+   * a refusal names the problem, and no legitimate sender uses the prefix.
+   */
+  const reservedIdentity = (
+    c: Context,
+    events: readonly MonitoringEvent[],
+  ): Response | undefined => {
+    if (resolveProducer(c)) return undefined;
+    for (const event of events)
+      for (const key of PRODUCER_NAMESPACED_KEYS) {
+        const value = (event as Record<string, unknown>)[key];
+        if (typeof value === 'string' && value.startsWith(PRODUCER_ID_PREFIX))
+          return c.json(
+            {
+              error: {
+                code: 'reserved_identity',
+                message: `${key} uses the reserved "${PRODUCER_ID_PREFIX}" prefix.`,
+              },
+            },
+            400,
+          );
+      }
+    return undefined;
+  };
+
   app.post('/v1/traces', async (c) => {
+    let events: MonitoringEvent[];
     try {
       const body = await c.req.json<OtlpTracesPayload>();
-      let accepted = 0;
+      events = [];
       for (const rs of body.resourceSpans) {
         for (const ss of rs.scopeSpans) {
           for (const span of ss.spans) {
             const kind: MonitoringEvent['span.kind'] = span.endTimeUnixNano
               ? SPAN.END
               : SPAN.START;
-            emit(
-              attributed(
-                c,
-                baseEvent(span.traceId, span.attributes, kind, resolveUserId()),
-              ),
+            events.push(
+              baseEvent(span.traceId, span.attributes, kind, resolveUserId()),
             );
-            accepted++;
           }
         }
       }
-      return c.json({ success: true, accepted });
     } catch {
       return c.json({ error: 'parse error' }, 400);
     }
+    // Checked before anything is stored, so a refused batch stores nothing.
+    const refusal = reservedIdentity(c, events);
+    if (refusal) return refusal;
+    for (const event of events) emit(attributed(c, event));
+    return c.json({ success: true, accepted: events.length });
   });
 
   app.post('/v1/logs', async (c) => {
+    let events: MonitoringEvent[];
     try {
       const body = await c.req.json<OtlpLogsPayload>();
-      let accepted = 0;
+      events = [];
       for (const rl of body.resourceLogs) {
         for (const sl of rl.scopeLogs) {
           for (const rec of sl.logRecords) {
-            emit(
-              attributed(
-                c,
-                baseEvent(
-                  rec.traceId,
-                  rec.attributes,
-                  SPAN.LOG,
-                  resolveUserId(),
-                ),
-              ),
+            events.push(
+              baseEvent(rec.traceId, rec.attributes, SPAN.LOG, resolveUserId()),
             );
-            accepted++;
           }
         }
       }
-      return c.json({ success: true, accepted });
     } catch {
       return c.json({ error: 'parse error' }, 400);
     }
+    const refusal = reservedIdentity(c, events);
+    if (refusal) return refusal;
+    for (const event of events) emit(attributed(c, event));
+    return c.json({ success: true, accepted: events.length });
   });
 
   const EVENT_OP: Record<KnownAgentEventType, GenAiOperationName> = {
@@ -425,6 +451,8 @@ export function createOtlpReceiverRoutes(
         [K.TOOL_CALL_RESULT]: ev.tool.output,
       }),
     };
+    const refusal = reservedIdentity(c, [event]);
+    if (refusal) return refusal;
     emit(attributed(c, event));
     return c.json({ success: true });
   });

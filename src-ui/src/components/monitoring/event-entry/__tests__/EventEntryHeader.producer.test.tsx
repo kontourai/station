@@ -67,6 +67,12 @@ describe('EventEntryHeader producer label', () => {
     );
   });
 
+  test('a producer-looking slug on a row with no producer is shown as sent', () => {
+    renderHeader(row({ [K.AGENT_SLUG]: 'producer:flow-agents:codex' }));
+    expect(screen.getByText('producer:flow-agents:codex')).toBeTruthy();
+    expect(screen.queryByText('codex')).toBeNull();
+  });
+
   test('shows no producer label on a row Station wrote', () => {
     renderHeader(row());
     expect(screen.queryByText('Producer:')).toBeNull();

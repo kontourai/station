@@ -30,7 +30,7 @@ describe('external producer agents', () => {
     ] as unknown as MonitoringEvent[];
     expect(getHistoricalAgentSlugs(events, [])).toEqual(['old-agent']);
     expect(getProducerAgentSlugs(events)).toEqual([
-      'producer:flow-agents:default',
+      { slug: 'producer:flow-agents:default', producer: 'flow-agents' },
     ]);
     expect(getMonitoringAgentCountLabel({ agents: [] } as never, events)).toBe(
       '0 Configured • 1 Historical • 1 External',

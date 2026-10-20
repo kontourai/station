@@ -118,12 +118,32 @@ export function parseProducerScopedId(
 }
 
 /**
- * What a person sees for a monitoring id: the producer's own value for a
- * producer-namespaced id, the id itself otherwise. The full id stays the
- * key, filter value and tooltip; this is only the label.
+ * The producer's own value, only when `value` is namespaced by the producer
+ * that actually delivered the row (`event[K.TELEMETRY_PRODUCER]`). The
+ * prefix is text, so text alone proves nothing.
  */
-export function displayMonitoringId(value: string): string {
-  return parseProducerScopedId(value)?.value ?? value;
+function producerOwnValue(
+  value: string,
+  rowProducer: unknown,
+): string | undefined {
+  const parsed = parseProducerScopedId(value);
+  return parsed &&
+    typeof rowProducer === 'string' &&
+    parsed.producer === rowProducer
+    ? parsed.value
+    : undefined;
+}
+
+/**
+ * What a person sees for a monitoring id: the producer's own value for an id
+ * namespaced by the row's producer (`rowProducer`), the id itself otherwise.
+ * The full id stays the key, filter value and tooltip; this is the label.
+ */
+export function displayMonitoringId(
+  value: string,
+  rowProducer: unknown,
+): string {
+  return producerOwnValue(value, rowProducer) ?? value;
 }
 
 /**
@@ -133,9 +153,13 @@ export function displayMonitoringId(value: string): string {
  * and is shown whole when that is at most twice `length`: its ids are often
  * readable names (`codex-session-2`) that a tail would cut mid-word.
  */
-export function shortMonitoringId(value: string, length: number): string {
-  const producerValue = parseProducerScopedId(value)?.value;
+export function shortMonitoringId(
+  value: string,
+  length: number,
+  rowProducer: unknown,
+): string {
+  const producerValue = producerOwnValue(value, rowProducer);
   if (producerValue !== undefined && producerValue.length <= length * 2)
     return producerValue;
-  return displayMonitoringId(value).slice(-length);
+  return displayMonitoringId(value, rowProducer).slice(-length);
 }

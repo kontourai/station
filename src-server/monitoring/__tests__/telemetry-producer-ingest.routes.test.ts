@@ -553,6 +553,95 @@ describe('telemetry producer tokens on the ingest routes', () => {
     }
   });
 
+  test('a sender without a producer token cannot use the reserved producer: prefix', async () => {
+    const h = harness();
+    const reserved = 'producer:flow-agents:codex';
+    const attribute = [{ key: K.AGENT_SLUG, value: { stringValue: reserved } }];
+    const span = (attributes: unknown) => ({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: 't1',
+                  spanId: 's1',
+                  name: 'x',
+                  kind: 1,
+                  startTimeUnixNano: '1',
+                  attributes,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const responses = [
+      await h.send('/v1/agent-events', {
+        token: OPERATE_DEVICE,
+        body: agentEvent({
+          agent: { name: reserved, runtime: 'x', version: '1' },
+        }),
+      }),
+      await h.send('/v1/agent-events', {
+        token: OPERATE_DEVICE,
+        body: agentEvent({ session_id: 'producer:p:session' }),
+      }),
+      await h.send('/v1/traces', {
+        token: OPERATE_DEVICE,
+        body: span(attribute),
+      }),
+      await h.send('/v1/logs', {
+        token: OPERATE_DEVICE,
+        body: {
+          resourceLogs: [
+            {
+              scopeLogs: [
+                { logRecords: [{ timeUnixNano: '1', attributes: attribute }] },
+              ],
+            },
+          ],
+        },
+      }),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(400);
+      expect(
+        ((await response.json()) as { error: { code: string } }).error.code,
+      ).toBe('reserved_identity');
+    }
+    expect(h.emitted).toHaveLength(0);
+
+    // A producer's own report is namespaced under its token, so the same
+    // text is accepted there.
+    const token = await h.create('flow-agents');
+    expect(
+      (
+        await h.send('/v1/agent-events', {
+          token,
+          body: agentEvent({
+            agent: { name: reserved, runtime: 'x', version: '1' },
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(h.emitted[0]?.[K.AGENT_SLUG]).toBe(
+      `producer:flow-agents:${reserved}`,
+    );
+  });
+
+  test('a whitespace-only identity is refused', async () => {
+    const h = harness();
+    const token = await h.create('flow-agents');
+    const response = await h.send('/v1/agent-events', {
+      token,
+      body: agentEvent({ session_id: '   ' }),
+    });
+    expect(response.status).toBe(400);
+    expect(h.emitted).toHaveLength(0);
+  });
+
   test('a paired credential with the operate tier keeps working, unattributed', async () => {
     const operate = await h.send('/v1/agent-events', {
       token: OPERATE_DEVICE,

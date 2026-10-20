@@ -57,7 +57,11 @@ export function EventEntryHeader({
                 : undefined
             }
           >
-            {shortMonitoringId(event[K.TRACE_ID] as string, 8)}
+            {shortMonitoringId(
+              event[K.TRACE_ID] as string,
+              8,
+              event[K.TELEMETRY_PRODUCER],
+            )}
           </button>
         )}
       </div>
@@ -68,6 +72,7 @@ export function EventEntryHeader({
       >
         {displayMonitoringId(
           monitoringAgentName(event as Record<string, unknown>),
+          event[K.TELEMETRY_PRODUCER],
         )}
       </div>
 
@@ -90,7 +95,12 @@ export function EventEntryHeader({
               }
               title="Filter by conversation"
             >
-              ...{shortMonitoringId(event[K.CONVERSATION_ID] as string, 6)}
+              ...
+              {shortMonitoringId(
+                event[K.CONVERSATION_ID] as string,
+                6,
+                event[K.TELEMETRY_PRODUCER],
+              )}
             </button>
           </span>
         )}
@@ -104,7 +114,12 @@ export function EventEntryHeader({
               onClick={() => onToolCallClick(event[K.TOOL_CALL_ID] as string)}
               title="Filter by tool call ID"
             >
-              ...{shortMonitoringId(event[K.TOOL_CALL_ID] as string, 6)}
+              ...
+              {shortMonitoringId(
+                event[K.TOOL_CALL_ID] as string,
+                6,
+                event[K.TELEMETRY_PRODUCER],
+              )}
             </button>
           </span>
         )}
