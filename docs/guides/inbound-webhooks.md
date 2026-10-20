@@ -99,14 +99,22 @@ raises no card alerts. Nobody is present to answer an approval request from
 the webhook.
 
 The **Default approval mode** setting applies to the new session, but a
-webhook start carries no full-access grant, so the session starts inside
-Station's workspace confinement rather than with host access. With
-**Full access** selected, Codex runs without prompts inside that confinement.
-Claude Code does so at session start, and on later turns only while Station
-has observed the session confined; otherwise it gets automatic approval
-instead. Engines without an approval setting ignore it. The setting's own help
-text describes unattended sessions as running with no sandbox; for webhook
-starts that does not match the code.
+webhook start carries no full-access grant, so Station requests its
+workspace confinement for the session rather than host access. What
+**Full access** then means depends on the engine:
+
+- **Codex** runs without approval prompts inside that confinement.
+- **Claude Code** runs without prompts only when the confinement is both set
+  up and observed. Station can refuse the confinement before launch, for
+  example because the workspace is too broad or no confined credential is
+  available; the start then falls back to automatic approval and records why.
+  Even when the confinement is set up, the session switches to running without
+  prompts only after Station has observed the engine process inside the
+  sandbox.
+- **Other engines** without an approval setting ignore it.
+
+The setting's own help text describes unattended sessions as running with no
+sandbox; for webhook starts that does not match the code.
 
 A successful request returns `202` with
 `{ "success": true, "data": { "conversationId", "providerTurnId", "ephemeral": true } }`.
@@ -115,20 +123,29 @@ Station does not call the sender back when the turn ends.
 ## Responses
 
 A refusal's body is `{ "success": false, "code", "retryable" }`, except that
-a 400 for a bad body omits `retryable`. The rate limits below apply before
-anything else. Station then checks the headers in this order and reads the
-body only if they pass.
+a 400 for a bad body omits `retryable`. Station checks a request in three
+stages, and the first refusal wins:
+
+1. **Before the body is read:** the rate limits, then the configuration file,
+   the `enabled` switch, the token, its revocation, the presence of the
+   timestamp and nonce, the nonce format and the timestamp's freshness.
+2. **The body:** it is read and parsed as the expected JSON object.
+3. **After the body:** the signature, the token's grants, then the replay
+   ledger.
+
+So a request with no signature and a malformed body is refused with
+`400 malformed_request`, not `invalid_signature`.
 
 | Status | Code | Cause |
 | --- | --- | --- |
 | 202 | | The turn started (body above) |
-| 403 | `policy_unavailable` | The configuration file is invalid; checked before the token |
+| 403 | `policy_unavailable` | The configuration file is invalid (checked before the token), or the replay ledger cannot be read or written (checked last) |
 | 403 | `disabled` | `enabled` is not `true`; checked before the token, so any token ID gets this |
 | 401 | `unknown_token` | The token header is missing, malformed or names no token |
 | 403 | `revoked_token` | The token has `revokedAt` |
-| 400 | `malformed_request` | The timestamp or nonce header is missing, or the nonce is malformed (`retryable: false`); or, after the headers pass, a body that is not the expected JSON object, is over 256 KiB, or has a message over 200,000 characters (no `retryable`) |
+| 400 | `malformed_request` | Stage 1: the timestamp or nonce header is missing, or the nonce is malformed (`retryable: false`). Stage 2: the body is not the expected JSON object, is over 256 KiB, or has a message over 200,000 characters (no `retryable`) |
 | 403 | `stale_timestamp` | The timestamp is not 10 digits or is more than 5 minutes from the server's clock |
-| 403 | `invalid_signature` | The signature header is missing, malformed or does not match |
+| 403 | `invalid_signature` | Stage 3: the signature header is missing, malformed or does not match |
 | 403 | `forbidden_start` | The token's grants do not allow that Agent and Project |
 | 403 | `replay` | The token, timestamp and nonce were already used |
 | 429 | `rate_limited` | Too many attempts (`retryable: true`) |
@@ -139,7 +156,7 @@ body only if they pass.
 - **Replays:** each token, timestamp and nonce combination is accepted once.
   Station records it after the signature and grant checks pass, in
   `<STATION_HOME>/security/inbound-webhook-replays.json`, so a replay is
-  refused across restarts. A corrupt ledger refuses every request.
+  refused across restarts. A corrupt or unwritable ledger refuses every request with `policy_unavailable`.
 - **Rate limits:** each token ID may make 60 attempts a minute; over that,
   Station answers `429` with `Retry-After`. Separately, after 300 failed
   attempts in a minute from any callers, Station refuses every webhook request,

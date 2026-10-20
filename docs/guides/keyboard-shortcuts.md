@@ -40,9 +40,10 @@ clears that. Choose
 **Workspace search (this Station)** at the top to switch to workspace search.
 
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
-click outside to close. Running an item closes the palette and returns focus to
-where you were, except **Reset command history**, which keeps the palette open
-and shows whether the reset worked.
+click outside to close. Running an item usually closes the palette and returns
+focus to where you were. Some items keep it open, such as
+**Reset command history**, which shows whether the reset worked, and a message
+found on another Station, which explains that it cannot be opened here.
 
 ## Return in chat
 
