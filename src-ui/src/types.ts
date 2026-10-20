@@ -231,6 +231,8 @@ export interface ChatMessage {
       | 'user-denied'
       | 'policy-denied';
     activityAt?: string;
+    /** When the call started (ISO), from its `tool.started`; see `MessagePart.startedAt`. */
+    startedAt?: string;
     progressMessage?: string;
     /** archive#3769: the durable projection's own runtime.error marker — see
      * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */

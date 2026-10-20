@@ -3304,3 +3304,107 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     );
   });
 });
+
+// The open turn renders from the projection when its `turn.started` is in the
+// window. Its started-without-outcome calls are in flight only because the
+// server says the turn is still open; the hook is what tells the projection.
+describe('useActiveChatTranscript — calls of the open turn', () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+  });
+
+  const mountWithOpenCall = async (id: string, turnOpen: boolean) => {
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Open call',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    if (turnOpen) {
+      activeChatsStore.updateChat(id, {
+        conversationActivity: {
+          conversationId: id,
+          asOfSequence: 2,
+          openTurn: {
+            turnId: 'turn-open',
+            threadId: id,
+            startedAt: '2026-09-24T00:00:00.000Z',
+          },
+        },
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-open',
+      });
+    }
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            prompt: 'Run the tests',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'tool.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            toolCallId: 'cmd-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() =>
+      useActiveChatTranscript(`http://${id}.test`, session),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    const part = view.result.current.messages
+      .flatMap((message) => message.contentParts ?? [])
+      .find((candidate) => candidate.toolCallId === 'cmd-1');
+    return { view, part };
+  };
+
+  test('a call still open in the live open turn projects as running', async () => {
+    const id = 'open-call-live';
+    const { view, part } = await mountWithOpenCall(id, true);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(true);
+      expect(part?.state).toBe('running');
+      expect(part?.startedAt).toBe('2026-08-09T00:00:02.000Z');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the same call reads as unproven when the server reports no open turn', async () => {
+    const id = 'open-call-dead';
+    const { view, part } = await mountWithOpenCall(id, false);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(false);
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+});

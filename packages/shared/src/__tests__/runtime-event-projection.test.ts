@@ -458,7 +458,9 @@ describe('projectRuntimeEventsToMessages', () => {
     expect(Object.hasOwn(parts[1], 'url')).toBe(false);
   });
 
-  it('marks a failed tool as error and keeps its output', () => {
+  // The error is shown once: an output-less failure used to copy its error
+  // into `result` too, and the row rendered it as both Response and Error.
+  it('marks a failed tool as error and keeps its error out of the result', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),
       ev({
@@ -483,9 +485,9 @@ describe('projectRuntimeEventsToMessages', () => {
       type: 'tool-invocation',
       state: 'error',
       isError: true,
-      result: 'permission denied',
       error: 'permission denied',
     });
+    expect(part.result).toBeUndefined();
   });
 
   // station#3167: mirrors streamHandlers.test.ts's live-side
@@ -2993,5 +2995,95 @@ describe('turn-less content after a session resume', () => {
         ?.parts.filter((p) => p.type === 'text')
         .map((p) => p.text),
     ).toEqual(['second answer']);
+  });
+});
+
+// A started call with no outcome is in flight only while its turn is live —
+// which the event window alone cannot know. The caller supplies liveness
+// (`liveOpenTurn`); without it, or for any other turn, the call stays
+// `'call'` and the row reads "No result recorded".
+describe('projectRuntimeEventsToMessages — calls in a live open turn', () => {
+  const openTurn = (extra: CanonicalRuntimeEvent[] = []) => [
+    ev({ method: 'turn.started', turnId: 'live', prompt: 'go' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'live',
+      toolCallId: 'done',
+      toolName: 'Bash',
+      arguments: { command: 'ls' },
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId: 'live',
+      toolCallId: 'done',
+      toolName: 'Bash',
+      status: 'success',
+      output: 'a b',
+    }),
+    ev({
+      method: 'tool.started',
+      turnId: 'live',
+      toolCallId: 'busy',
+      toolName: 'Bash',
+      arguments: { command: 'npm test' },
+      createdAt: '2026-06-27T00:00:05.000Z',
+    }),
+    ...extra,
+  ];
+  const callState = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+    id: string,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.toolCallId === id);
+
+  it('projects an outcome-less call in the live open turn as running, with its start', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't1', turnId: 'live' },
+    });
+    expect(callState(messages, 'busy')).toMatchObject({
+      state: 'running',
+      startedAt: '2026-06-27T00:00:05.000Z',
+    });
+    // A settled sibling keeps its outcome.
+    expect(callState(messages, 'done')?.state).toBe('result');
+  });
+
+  it('keeps the call unproven when the caller reports no live turn', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn());
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven when the live turn is a different one', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't1', turnId: 'other' },
+    });
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven when the live turn belongs to another session', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't2', turnId: 'live' },
+    });
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven once its turn ended, even if the caller names it', () => {
+    const messages = projectRuntimeEventsToMessages(
+      openTurn([
+        ev({ method: 'turn.completed', turnId: 'live', finishReason: 'stop' }),
+      ]),
+      { liveOpenTurn: { threadId: 't1', turnId: 'live' } },
+    );
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it("keeps the call unproven when the open turn's session already exited", () => {
+    const messages = projectRuntimeEventsToMessages(
+      openTurn([ev({ method: 'session.exited' })]),
+      { liveOpenTurn: { threadId: 't1', turnId: 'live' } },
+    );
+    expect(callState(messages, 'busy')?.state).toBe('call');
   });
 });

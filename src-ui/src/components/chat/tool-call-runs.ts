@@ -36,6 +36,8 @@ export interface ToolCallLike {
   needsApproval?: boolean;
   cancelled?: boolean;
   progressMessage?: string;
+  /** ISO start of the call (`MessagePart.startedAt`). */
+  startedAt?: string;
   purpose?: string;
   approvalStatus?: string;
   [key: string]: unknown;
