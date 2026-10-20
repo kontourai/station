@@ -522,9 +522,11 @@ row, or under Sidebar utilities in the collapsed rail. Conversations and
 composer drafts stay in the chat dock and its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. The chat bar's
-**New chats** value lets you choose another default without leaving the workspace.
-On a phone with a long chat title, that control shows only a folder icon.
+for new chats. An existing chat stays with its original project. On a computer,
+the project beside **New** in the dock header shows that default; choose it to
+pick another without leaving the workspace. On a phone, the chat bar's **New
+chats** value does the same, and with a long chat title it shows only a folder
+icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
