@@ -486,12 +486,39 @@ Every path becomes a generation handoff:
   - Task Scheduler does not relaunch a process that exits. The supervisor
     therefore restarts core servers itself, and the logon task's wrapper
     restarts the supervisor.
-  - Known gap: a handoff can reset a connection or two that were mid-accept.
-    libuv on Windows pre-posts `AcceptEx` on a listener, and closing the
-    draining generation's copy closes every pending accept, so connections
-    already completed into them are reset; POSIX keeps them in the shared
-    backlog. A supervisor-side fix follows in its own change. Until then the
-    zero-reset handoff holds on POSIX only.
+  - Handoffs catch connections (protocol 1.1). libuv on Windows keeps
+    accepts (`AcceptEx`) posted on a listening socket: 32 on a listener Node
+    binds, one on a listener received over IPC. Windows completes a new
+    connection into one as soon as its handshake ends, and closing the
+    listener closes its accepts, resetting any connection completed into
+    one; POSIX keeps such connections in the shared backlog. Windows hands a
+    new connection to the most recently posted accept, so:
+    1. Before draining the serving generation, the supervisor asks it for
+       eight spare copies of each listener (`listener.spares`), listens on
+       them, and holds what it accepts, unread.
+    2. The draining generation closes its listeners only once no connection
+       has reached them for 50 ms, and at most 1 s after the drain began.
+    3. When the next generation reports ready (the trial, or the generation
+       a rollback starts), the supervisor closes the spares and passes each
+       held connection to it with `connection.adopt`, as the backlog would
+       have handed it to the first generation to accept. The core serves it
+       on the named listener. `net.Server` does not count such a connection,
+       so the drain waits on the core's own connection set.
+
+    A core says it speaks this when it parks (`adoptsConnections`). The
+    supervisor catches only when both the draining generation and the trial
+    say so, so a 1.0 core on either side gets the earlier handoff with no
+    added wait, and a 1.0 supervisor never asks.
+
+    Measured with a standalone reproduction on a Windows host, 100 handoffs
+    per run under 16 concurrent fresh-connection clients: without catching,
+    85 of 100 handoffs reset a connection; with one spare per listener, 33;
+    with eight spares and the draining generation closing at once, 3 in 700;
+    with the quiet close as well, none in 700. The spares close without
+    waiting for quiet: in 1,400 handoffs no connection reached one after the
+    next generation had listened. Closing any Windows listener can still
+    reset a connection completed into it in that instant, so this shrinks
+    the window rather than removing it; the tested cases saw no reset.
   - `process.kill(pid, 'SIGTERM')` ends a process outright on Windows, so a
     core signalled that way does not run its SIGTERM drain.
 
