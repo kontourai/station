@@ -4502,18 +4502,77 @@ export class EventStore {
   }
 
   /** Only for replayable background sources; exhaustion rejects to their poll. */
-  appendEventIfAbsentInBackground(
+  async appendEventIfAbsentInBackground(
     event: CanonicalRuntimeEvent,
   ): Promise<number | undefined> {
-    return this.writeInBackground(event.threadId, () =>
-      this.appendEventIfAbsent(event),
+    // One store self-delegation for every background append (station#1399
+    // writer inventory); an always-true guard never refuses.
+    const appended = await this.appendEventIfAbsentInBackgroundIf(
+      event,
+      () => true,
     );
+    return appended === false ? undefined : appended;
   }
 
   upsertSessionInBackground(session: ProviderSession): Promise<void> {
     return this.writeInBackground(session.threadId, () =>
       this.upsertSession(session),
     );
+  }
+
+  /**
+   * Like appendEventIfAbsentInBackground, but `guard` runs inside the same
+   * synchronous write attempt; `false` means it refused and nothing was
+   * written.
+   */
+  appendEventIfAbsentInBackgroundIf(
+    event: CanonicalRuntimeEvent,
+    guard: () => boolean,
+  ): Promise<number | undefined | false> {
+    return this.writeInBackground(event.threadId, () =>
+      guard() ? this.appendEventIfAbsent(event) : false,
+    );
+  }
+
+  /**
+   * Raw stored columns that define an attachment's owner, subject and
+   * progress. Equal values mean no writer changed them; any difference,
+   * even a semantically equal rewrite, reads as a change.
+   */
+  sessionAttachmentFingerprint(threadId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT control_mode, attached_source, resume_cursor
+         FROM provider_session_state WHERE thread_id = ?`,
+      )
+      .get(threadId) as
+      | {
+          control_mode: string | null;
+          attached_source: string | null;
+          resume_cursor: string | null;
+        }
+      | undefined;
+    // Stored JSON escapes NUL, so it cannot appear inside a column value.
+    return row
+      ? `${row.control_mode}\u0000${row.attached_source}\u0000${row.resume_cursor}`
+      : undefined;
+  }
+
+  /**
+   * `decide` runs inside the same synchronous write attempt as its upsert,
+   * after every earlier queued write for the Session, so a precondition it
+   * reads cannot go stale before the row is written. It returns the row to
+   * write, or a verdict to resolve with and write nothing.
+   */
+  upsertSessionInBackgroundIf(
+    threadId: string,
+    decide: () => ProviderSession | boolean,
+  ): Promise<ProviderSession | boolean> {
+    return this.writeInBackground(threadId, () => {
+      const decision = decide();
+      if (typeof decision !== 'boolean') this.upsertSession(decision);
+      return decision;
+    });
   }
 
   deleteThreadInBackground(threadId: string): Promise<void> {

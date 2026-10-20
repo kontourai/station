@@ -9,10 +9,21 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import {
+  parseHostedTenantRegistry,
+  parseTenantExecutionContext,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
+import type {
+  AttachedSessionCursor,
+  AttachedSessionDescriptor,
+  AttachedSessionReadResult,
+  AttachedSessionSource,
+} from '../../../providers/sessions/attached-session-source.js';
 import {
   ClaudeTranscriptSessionSource,
   TRANSCRIPT_LINE_SKIPPED_CODE,
@@ -25,6 +36,7 @@ import {
   resolveAttachedProjectRoots,
   resolveAttachedSessionPollInterval,
 } from '../attached-session-follow-service.js';
+import { ConversationHistoryReadService } from '../conversation-history-read-service.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore, EventStoreIngressError } from '../event-store.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
@@ -151,6 +163,49 @@ describe('AttachedSessionFollowService', () => {
     store.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  function auditWrites() {
+    const probe = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    probe.exec(`
+      CREATE TABLE follower_write_audit (target TEXT PRIMARY KEY, updates INTEGER NOT NULL);
+      INSERT INTO follower_write_audit VALUES ('session', 0), ('history', 0);
+      CREATE TRIGGER follower_session_update AFTER UPDATE ON provider_session_state
+      BEGIN UPDATE follower_write_audit SET updates = updates + 1 WHERE target = 'session'; END;
+      CREATE TRIGGER follower_history_update AFTER UPDATE ON orchestration_conversation_history
+      BEGIN UPDATE follower_write_audit SET updates = updates + 1 WHERE target = 'history'; END;
+    `);
+    return {
+      counts: () =>
+        Object.fromEntries(
+          probe
+            .prepare('SELECT target, updates FROM follower_write_audit')
+            .all()
+            .map((row) => [String(row.target), Number(row.updates)]),
+        ),
+      close: () => probe.close(),
+    };
+  }
+
+  function persistedAttachment() {
+    const persisted = store.readSessionByThread(session.threadId);
+    if (!persisted) throw new Error('attachment was not persisted');
+    return persisted;
+  }
+
+  function history() {
+    return store.listConversationHistoryPage({
+      ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      limit: 10,
+    }).records;
+  }
+
+  function summary() {
+    return buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      persisted: persistedAttachment(),
+      events: store.listEvents(session.threadId).map((row) => row.payload),
+    });
+  }
 
   test('uses the documented default and bounds an invalid poll override', () => {
     expect(resolveAttachedSessionPollInterval(undefined)).toBe(2_000);
@@ -909,7 +964,7 @@ describe('AttachedSessionFollowService', () => {
     ).toHaveLength(1);
   });
 
-  test('matches the longest canonical project root and publishes each canonical event once', async () => {
+  test('matches the longest root and preserves idle attachment and history bytes across follower restart', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
       kind: 'claude-transcript',
@@ -935,7 +990,33 @@ describe('AttachedSessionFollowService', () => {
     });
 
     await service.pollNow();
-    await service.pollNow();
+    store.upsertSession({
+      ...persistedAttachment(),
+      updatedAt: '2026-10-11T00:00:00.000Z',
+    });
+    const before = persistedAttachment();
+    const beforeHistory = history();
+    const beforeSummary = summary();
+    const audit = auditWrites();
+    const currentReads = vi.spyOn(store, 'readSessionByThread');
+    try {
+      await service.pollNow();
+      expect(currentReads).not.toHaveBeenCalled();
+      await new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+      }).pollNow();
+      expect(currentReads).not.toHaveBeenCalled();
+      expect(audit.counts()).toEqual({ session: 0, history: 0 });
+      expect(persistedAttachment()).toEqual(before);
+      expect(history()).toEqual(beforeHistory);
+      expect(summary().lastEventAt).toBe(beforeSummary.lastEventAt);
+    } finally {
+      currentReads.mockRestore();
+      audit.close();
+    }
 
     expect(store.readSessions()).toEqual([
       expect.objectContaining({
@@ -953,6 +1034,814 @@ describe('AttachedSessionFollowService', () => {
       source: 'claude-transcript',
       method: 'content.text-delta',
     });
+  });
+
+  test('same-cursor source activity advances public history without metadata writes or refusal activity', async () => {
+    const first = event('same-cursor-first');
+    const next = {
+      ...event('same-cursor-next'),
+      createdAt: '2026-07-22T00:00:02.000Z',
+    };
+    const raced = { ...next, eventId: 'same-cursor-raced' };
+    const refused = {
+      ...event('same-cursor-refused', 'x'.repeat(70_000)),
+      createdAt: '2026-12-01T00:00:00.000Z',
+    };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', events: [first], cursor: 20 })
+        .mockResolvedValue({
+          outcome: 'ok',
+          events: [first, refused, next, raced],
+          cursor: 20,
+        }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn: vi.fn() },
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    const before = persistedAttachment();
+    const peer = new EventStore(join(dir, 'orchestration.sqlite'));
+    const stopObserving = store.observeCommits({
+      eventCommitted: ({ event: committed }) => {
+        if (committed.eventId === next.eventId) peer.appendEventIfAbsent(raced);
+      },
+    });
+    const audit = auditWrites();
+    try {
+      await service.pollNow();
+      expect(store.listEvents(session.threadId).map((row) => row.id)).toContain(
+        raced.eventId,
+      );
+      expect(audit.counts()).toEqual({ session: 0, history: 2 });
+      expect(persistedAttachment()).toEqual(before);
+      expect(history()[0]?.updatedAt).toBe(next.createdAt);
+      expect(summary().lastEventAt).toBe(next.createdAt);
+      expect(
+        store.listEvents(session.threadId).map((row) => row.id),
+      ).not.toContain(refused.eventId);
+      expect(metrics.attachedSessionEventsImported.add).toHaveBeenCalledTimes(
+        2,
+      );
+      await service.pollNow();
+      expect(audit.counts()).toEqual({ session: 0, history: 2 });
+    } finally {
+      stopObserving();
+      audit.close();
+      peer.close();
+    }
+  });
+
+  test('semantic cursor, handle, affinity and completed-boundary changes persist using durable source activity', async () => {
+    const first = event('metadata-source-event');
+    let descriptor: AttachedSessionDescriptor = { ...session };
+    let cursor: AttachedSessionCursor = {
+      offset: 20,
+      sourceState: {
+        first: 1,
+        second: 2,
+        nested: { outer: { a: [1, { b: 'value', c: true }], tail: null } },
+      },
+    };
+    let events: CanonicalRuntimeEvent[] = [first];
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      continuationBoundary: 'completed-turn',
+      discover: async () => ({ outcome: 'ok', sessions: [descriptor] }),
+      read: async () => ({ outcome: 'ok', events, cursor }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    store.upsertSession({
+      ...persistedAttachment(),
+      updatedAt: '2026-10-11T00:00:00.000Z',
+    });
+    const before = persistedAttachment();
+    const audit = auditWrites();
+    try {
+      cursor = {
+        offset: 20,
+        sourceState: {
+          nested: { outer: { tail: null, a: [1, { c: true, b: 'value' }] } },
+          second: 2,
+          first: 1,
+        },
+      };
+      events = [];
+      await service.pollNow();
+      expect(audit.counts()).toEqual({ session: 0, history: 0 });
+      expect(persistedAttachment()).toEqual(before);
+
+      descriptor = {
+        ...descriptor,
+        sourceHandle: 'replacement-source-handle',
+        createdAt: '2026-08-01T00:00:00.000Z',
+      };
+      await service.pollNow();
+      expect(persistedAttachment()).toMatchObject({
+        createdAt: session.createdAt,
+        updatedAt: first.createdAt,
+        resumeCursor: { sourceHandle: descriptor.sourceHandle, cursor },
+      });
+      expect(history()[0]?.updatedAt).toBe(first.createdAt);
+
+      cursor = { offset: 20, sourceState: { first: 3, second: 2 } };
+      await service.pollNow();
+      expect(persistedAttachment().resumeCursor).toMatchObject({ cursor });
+
+      const affinity = { kind: 'fixture-source-home', ref: 'opaque-home' };
+      descriptor = { ...descriptor, affinity };
+      await service.pollNow();
+      expect(persistedAttachment().attachedSource?.affinity).toEqual(affinity);
+
+      const completed: CanonicalRuntimeEvent = {
+        eventId: 'metadata-completed',
+        provider: 'claude',
+        threadId: session.threadId,
+        createdAt: '2026-07-22T00:00:03.000Z',
+        method: 'turn.completed',
+        turnId: 'native-turn',
+        finishReason: 'stop',
+      };
+      events = [completed];
+      await service.pollNow();
+      expect(persistedAttachment().attachedSource?.completedBoundary).toEqual({
+        kind: 'completed-turn',
+        providerTurnId: 'native-turn',
+        observedEventId: completed.eventId,
+      });
+      expect(persistedAttachment().updatedAt).toBe(completed.createdAt);
+      expect(history()[0]?.updatedAt).toBe(completed.createdAt);
+      const after = audit.counts();
+      await service.pollNow();
+      expect(audit.counts()).toEqual(after);
+    } finally {
+      audit.close();
+    }
+  });
+
+  test.each([
+    'deep source state',
+    'unknown deep usage',
+    'negative cursor',
+    'deep attachment metadata',
+  ])(
+    'repairs real SQLite legacy %s before resuming a bounded source cursor',
+    async (malformation) => {
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: async () => ({ outcome: 'ok', sessions: [session] }),
+        read: vi.fn().mockResolvedValue({
+          outcome: 'ok',
+          events: [event('legacy-kept')],
+          cursor: 20,
+        }),
+      };
+      const options = {
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+      };
+      await new AttachedSessionFollowService(options).pollNow();
+      const valid = persistedAttachment();
+      // Assemble valid JSON without recursively serializing the deliberate bad legacy shape.
+      const deep = `${'{"nested":'.repeat(20_000)}0${'}'.repeat(20_000)}`;
+      let badCursor = '20';
+      if (malformation === 'deep source state')
+        badCursor = `{"offset":20,"sourceState":${deep}}`;
+      if (malformation === 'unknown deep usage')
+        badCursor = `{"offset":20,"usage":{"turnId":"old-turn","extra":${deep}}}`;
+      if (malformation === 'negative cursor') badCursor = '{"offset":-1}';
+      const envelope = `{"kind":"station.attached-session-cursor/v1","provider":"claude","sourceHandle":${JSON.stringify(session.sourceHandle)},"cursor":${badCursor}}`;
+      const attached =
+        malformation === 'deep attachment metadata'
+          ? `{"kind":"claude-transcript","externalSessionId":${JSON.stringify(session.sessionId)},"revision":${deep}}`
+          : JSON.stringify(valid.attachedSource);
+      const legacy = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+      try {
+        legacy
+          .prepare(
+            'UPDATE provider_session_state SET resume_cursor = ?, attached_source = ? WHERE thread_id = ?',
+          )
+          .run(envelope, attached, session.threadId);
+      } finally {
+        legacy.close();
+      }
+      source.read = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 });
+      await expect(
+        new AttachedSessionFollowService(options).pollNow(),
+      ).resolves.toBeUndefined();
+      expect(source.read).toHaveBeenCalledWith(
+        session,
+        malformation === 'deep attachment metadata' ? 20 : undefined,
+      );
+      expect(persistedAttachment()).toMatchObject({
+        attachedSource: {
+          kind: 'claude-transcript',
+          externalSessionId: session.sessionId,
+        },
+        resumeCursor: { cursor: 80 },
+      });
+      expect(persistedAttachment().attachedSource).not.toHaveProperty(
+        'revision',
+      );
+      expect(
+        store
+          .listEvents(session.threadId)
+          .filter((row) => row.id === 'legacy-kept'),
+      ).toHaveLength(1);
+      const after = persistedAttachment();
+      const audit = auditWrites();
+      try {
+        await new AttachedSessionFollowService(options).pollNow();
+        expect(audit.counts()).toEqual({ session: 0, history: 0 });
+        expect(persistedAttachment()).toEqual(after);
+      } finally {
+        audit.close();
+      }
+    },
+  );
+
+  test('metadata-only changes preserve two-conversation public order while same-cursor committed activity advances it through failure and restart', async () => {
+    const older: CanonicalRuntimeEvent = {
+      eventId: 'order-old-boundary',
+      provider: 'claude',
+      threadId: session.threadId,
+      createdAt: '2026-07-22T00:00:01.000Z',
+      method: 'turn.completed',
+      turnId: 'old-native-turn',
+      finishReason: 'stop',
+    };
+    const newerDescriptor: AttachedSessionDescriptor = {
+      ...session,
+      sessionId: 'order-newer-session',
+      threadId: 'external:claude:order-newer',
+      sourceHandle: 'order-newer-handle',
+      createdAt: '2026-07-22T00:00:04.000Z',
+    };
+    const newer = {
+      ...event('order-newer-event'),
+      threadId: newerDescriptor.threadId,
+      createdAt: '2026-07-22T00:00:05.000Z',
+    };
+    let descriptor: AttachedSessionDescriptor = { ...session };
+    let oldEvents: CanonicalRuntimeEvent[] = [older];
+    let cursor = 20;
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      continuationBoundary: 'completed-turn',
+      discover: async () => ({
+        outcome: 'ok',
+        sessions: [descriptor, newerDescriptor],
+      }),
+      read: async (observed) =>
+        observed.threadId === session.threadId
+          ? { outcome: 'ok', events: oldEvents, cursor }
+          : { outcome: 'ok', events: [newer], cursor: 20 },
+    };
+    const options = {
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    };
+    const authorizer = new SessionAuthorization({ eventStore: store });
+    const reader = new ConversationHistoryReadService({
+      eventStore: store,
+      canReadSession: (threadId, authority) =>
+        authorizer.canReadSession(threadId, authority),
+      hydratePersistedSession: (threadId) =>
+        store.readSessionByThread(threadId),
+      loadedSessionForThread: () => undefined,
+      observeAnswerability: () => OBSERVATION,
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      undefined,
+      undefined,
+    );
+    const publicHistory = () => reader.list({ authority, limit: 10 }).items;
+    const order = () => publicHistory().map((row) => row.id);
+    const service = new AttachedSessionFollowService(options);
+    await service.pollNow();
+    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    oldEvents = [];
+    // A real metadata repair also corrects an old inflated timestamp, without a sweep.
+    store.upsertSession({
+      ...persistedAttachment(),
+      updatedAt: '2026-10-11T00:00:00.000Z',
+    });
+    expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+    descriptor = { ...descriptor, sourceHandle: 'order-replacement-handle' };
+    await service.pollNow();
+    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    cursor = 21;
+    await service.pollNow();
+    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    descriptor = {
+      ...descriptor,
+      affinity: { kind: 'fixture-source-home', ref: 'order-home' },
+    };
+    await service.pollNow();
+    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    // A stale metadata boundary is repaired from the already durable source event.
+    store.upsertSession({
+      ...persistedAttachment(),
+      attachedSource: {
+        ...persistedAttachment().attachedSource!,
+        completedBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: 'stale-boundary',
+          observedEventId: 'stale-id',
+        },
+      },
+    });
+    await service.pollNow();
+    expect(
+      persistedAttachment().attachedSource?.completedBoundary?.observedEventId,
+    ).toBe(older.eventId);
+    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(
+      publicHistory().find((row) => row.id === session.threadId)?.updatedAt,
+    ).toBe(older.createdAt);
+
+    const advanced = {
+      ...event('order-advanced'),
+      createdAt: '2026-07-22T00:00:07.000Z',
+    };
+    oldEvents = [advanced];
+    const before = persistedAttachment();
+    const audit = auditWrites();
+    const emit = vi.spyOn(eventBus, 'emit');
+    try {
+      await service.pollNow();
+      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(persistedAttachment()).toEqual(before);
+      expect(audit.counts()).toEqual({ session: 0, history: 1 });
+      const committed = {
+        ...event('order-post-commit'),
+        createdAt: '2026-07-22T00:00:09.000Z',
+      };
+      oldEvents = [committed];
+      emit.mockImplementationOnce(() => {
+        throw new EventStoreIngressError('post-commit publication fault');
+      });
+      await expect(service.pollNow()).rejects.toThrow(
+        'post-commit publication fault',
+      );
+      emit.mockRestore();
+      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
+      expect(summary().lastEventAt).toBe(committed.createdAt);
+      expect(persistedAttachment()).toEqual(before);
+      await new AttachedSessionFollowService(options).pollNow();
+      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(persistedAttachment()).toEqual(before);
+      expect(audit.counts()).toEqual({ session: 0, history: 2 });
+      // The original follower still has its pre-failure cached clock.
+      cursor = 40;
+      await service.pollNow();
+      expect(persistedAttachment()).toMatchObject({
+        resumeCursor: { cursor: 40 },
+        updatedAt: committed.createdAt,
+      });
+      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
+      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(
+        store
+          .listEvents(session.threadId)
+          .filter((row) => row.id === committed.eventId),
+      ).toHaveLength(1);
+      expect(audit.counts()).toEqual({ session: 1, history: 3 });
+    } finally {
+      emit.mockRestore();
+      audit.close();
+    }
+  });
+
+  test('meaningful attachment writes retain independent server facts and hosted refusal boundaries', async () => {
+    let cursor = 20;
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({
+        outcome: 'ok',
+        events: [event('independent-facts')],
+        cursor,
+      }),
+    };
+    const options = {
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    };
+    await new AttachedSessionFollowService(options).pollNow();
+    const tenant = parseTenantExecutionContext({
+      tenantId: 'tenant-one',
+      source: 'session',
+    });
+    if (!tenant) throw new Error('tenant fixture rejected');
+    const independent = {
+      model: 'recorded-model',
+      persistSession: false,
+      ephemeral: true as const,
+      tenantExecutionContext: tenant,
+      continuationSourceThreadId: 'recorded-predecessor',
+      adoptionIdempotencyKey: 'recorded-adoption-key',
+    };
+    store.upsertSession({ ...persistedAttachment(), ...independent });
+    const lineage = store.conversationForSession(session.threadId);
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [
+        { id: tenantId('tenant-one'), authority: 'one.example.test' },
+        { id: tenantId('tenant-two'), authority: 'two.example.test' },
+      ],
+    });
+    const authorizer = new SessionAuthorization({
+      eventStore: store,
+      requireTenantExecutionContext: () => true,
+      validateRecoveredTenantExecutionContext: (context) =>
+        context &&
+        registry.tenants.some((entry) => entry.id === context.tenantId)
+          ? context
+          : undefined,
+    });
+    const own = sessionReadAuthorityFromRequest(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      { tenantId: tenantId('tenant-one') },
+      registry,
+    );
+    const foreign = sessionReadAuthorityFromRequest(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      { tenantId: tenantId('tenant-two') },
+      registry,
+    );
+    const missing = sessionReadAuthorityFromRequest(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      undefined,
+      registry,
+    );
+    authorizer.hydratePersistedTenantContexts(store.readSessions());
+    expect(authorizer.canReadSession(session.threadId, own)).toBe(true);
+    expect(authorizer.canReadSession(session.threadId, foreign)).toBe(false);
+    expect(authorizer.canReadSession(session.threadId, missing)).toBe(false);
+    cursor = 40;
+    await new AttachedSessionFollowService(options).pollNow();
+    expect(persistedAttachment()).toMatchObject({
+      ...independent,
+      controlMode: 'read-only-attached',
+      resumeCursor: { cursor: 40 },
+    });
+    expect(summary().model).toBe(independent.model);
+    expect(summary().persistSession).toBe(false);
+    expect(store.conversationForSession(session.threadId)).toEqual(lineage);
+    expect(authorizer.canReadSession(session.threadId, own)).toBe(true);
+    expect(authorizer.canReadSession(session.threadId, foreign)).toBe(false);
+    expect(authorizer.canReadSession(session.threadId, missing)).toBe(false);
+    const audit = auditWrites();
+    try {
+      await new AttachedSessionFollowService(options).pollNow();
+      expect(audit.counts()).toEqual({ session: 0, history: 0 });
+      expect(persistedAttachment()).toMatchObject(independent);
+    } finally {
+      audit.close();
+    }
+    const beforeReplacement = persistedAttachment();
+    const beforeEvents = store.listEvents(session.threadId);
+    const replacementRead = vi.fn().mockResolvedValue({
+      outcome: 'ok',
+      events: [event('forbidden-new-subject')],
+      cursor: 60,
+    });
+    const replacement = {
+      ...source,
+      kind: 'replacement-transcript-kind',
+      read: replacementRead,
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [replacement],
+    }).pollNow();
+    expect(replacementRead).not.toHaveBeenCalled();
+    expect(persistedAttachment()).toEqual(beforeReplacement);
+    expect(store.listEvents(session.threadId)).toEqual(beforeEvents);
+    // The cached authority still names precisely the retained OLD subject.
+    expect(authorizer.canReadSession(session.threadId, own)).toBe(true);
+    expect(authorizer.canReadSession(session.threadId, foreign)).toBe(false);
+  });
+
+  test.each([
+    'facts',
+    'cursor',
+    'deleted',
+    'owned',
+    'same-cursor-owned',
+    'subject',
+  ] as const)(
+    'revalidates the real current SQLite row after source.read yields: %s',
+    async (change) => {
+      const source: AttachedSessionSource = {
+        provider: 'claude',
+        kind: 'claude-transcript',
+        discover: async () => ({ outcome: 'ok', sessions: [session] }),
+        read: async () => ({
+          outcome: 'ok',
+          events: [event('interleave-first')],
+          cursor: 20,
+        }),
+      };
+      const service = new AttachedSessionFollowService({
+        sources: [source],
+        eventStore: store,
+        eventBus,
+        listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+      });
+      await service.pollNow();
+      store.upsertSession({
+        ...persistedAttachment(),
+        model: 'old-model',
+        persistSession: true,
+      });
+      let release!: () => void;
+      let entered!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const reading = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const next = event('interleave-next');
+      source.read = vi.fn(async (): Promise<AttachedSessionReadResult> => {
+        entered();
+        await blocked;
+        return {
+          outcome: 'ok',
+          events: [next],
+          cursor: change === 'same-cursor-owned' ? 20 : 40,
+        };
+      });
+      const poll =
+        change === 'subject'
+          ? new AttachedSessionFollowService({
+              sources: [{ ...source, kind: 'replacement-kind' }],
+              eventStore: store,
+              eventBus,
+              listProjects: () => [
+                { slug: 'app', workingDirectory: session.cwd },
+              ],
+            }).pollNow()
+          : service.pollNow();
+      await reading;
+      const tenant = parseTenantExecutionContext({
+        tenantId: 'new-tenant',
+        source: 'session',
+      });
+      if (!tenant) throw new Error('tenant fixture rejected');
+      const independent = {
+        model: 'new-model',
+        persistSession: false,
+        ephemeral: true as const,
+        tenantExecutionContext: tenant,
+        continuationSourceThreadId: 'new-provenance',
+        adoptionIdempotencyKey: 'new-adoption-key',
+      };
+      if (change === 'deleted') store.deleteThread(session.threadId);
+      else if (change === 'owned' || change === 'same-cursor-owned')
+        store.upsertSession({
+          ...persistedAttachment(),
+          ...independent,
+          controlMode: 'station-owned',
+          attachedSource: undefined,
+          resumeCursor: { claudeSessionId: 'current-owner-native' },
+        });
+      else if (change === 'cursor')
+        store.upsertSession({
+          ...persistedAttachment(),
+          ...independent,
+          resumeCursor: {
+            kind: 'station.attached-session-cursor/v1',
+            provider: 'claude',
+            sourceHandle: session.sourceHandle,
+            cursor: 80,
+          },
+        });
+      else if (change === 'subject')
+        store.upsertSession({
+          ...persistedAttachment(),
+          ...independent,
+          tenantExecutionContext: undefined,
+          attachedSource: {
+            ...persistedAttachment().attachedSource!,
+            kind: 'peer-current-kind',
+          },
+        });
+      else store.upsertSession({ ...persistedAttachment(), ...independent });
+      const current = store.readSessionByThread(session.threadId);
+      release();
+      await poll;
+      if (change === 'facts') {
+        expect(persistedAttachment()).toMatchObject({
+          ...independent,
+          resumeCursor: { cursor: 40 },
+        });
+        expect(
+          store.listEvents(session.threadId).map((row) => row.id),
+        ).toContain(next.eventId);
+      } else {
+        expect(store.readSessionByThread(session.threadId)).toEqual(current);
+        expect(
+          store.listEvents(session.threadId).map((row) => row.id),
+        ).not.toContain(next.eventId);
+      }
+      if (change === 'cursor') {
+        source.read = vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 });
+        await service.pollNow();
+        expect(source.read).toHaveBeenCalledWith(session, 80);
+        expect(persistedAttachment()).toEqual(current);
+      }
+    },
+  );
+
+  test('a same-cursor new-event page revalidates current ownership and each later new event', async () => {
+    const first = event('current-guard-first');
+    const second = event('current-guard-second');
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    source.read = async () => ({
+      outcome: 'ok',
+      events: [first, second],
+      cursor: 20,
+    });
+    let foreign = persistedAttachment();
+    const stop = store.observeCommits({
+      eventCommitted: ({ event: committed }) => {
+        if (committed.eventId === first.eventId) {
+          store.upsertSession({
+            ...persistedAttachment(),
+            controlMode: 'station-owned',
+            attachedSource: undefined,
+            resumeCursor: 'new-owner',
+          });
+          foreign = persistedAttachment();
+        }
+      },
+    });
+    try {
+      await service.pollNow();
+      expect(foreign.controlMode).toBe('station-owned');
+      expect(persistedAttachment()).toEqual(foreign);
+      expect(store.listEvents(session.threadId).map((row) => row.id)).toContain(
+        first.eventId,
+      );
+      expect(
+        store.listEvents(session.threadId).map((row) => row.id),
+      ).not.toContain(second.eventId);
+    } finally {
+      stop();
+    }
+  });
+
+  test('a meaningful attachment write rechecks ownership inside its queued write, after contention backoff', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    const logger = { warn: vi.fn() };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    const peer = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    let takenOver = false;
+    source.read = async () => {
+      // The cursor write queued after this read meets a held lock and backs
+      // off; a station-owned writer takes the row before its retry.
+      peer.exec('BEGIN IMMEDIATE');
+      setTimeout(() => {
+        peer.exec('ROLLBACK');
+        store.upsertSession({
+          ...persistedAttachment(),
+          controlMode: 'station-owned',
+          attachedSource: undefined,
+          resumeCursor: 'new-owner',
+        });
+        takenOver = true;
+      }, 0);
+      return { outcome: 'ok', events: [], cursor: 30 };
+    };
+    try {
+      await service.pollNow();
+      expect(takenOver).toBe(true);
+      expect(persistedAttachment()).toMatchObject({
+        controlMode: 'station-owned',
+        resumeCursor: 'new-owner',
+      });
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('write refused'),
+        { threadId: session.threadId, write: 'session' },
+      );
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      peer.close();
+    }
+  });
+
+  test('each page append rechecks the attachment inside its queued write, after contention backoff', async () => {
+    const first = event('queued-append-guard');
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [session] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    const logger = { warn: vi.fn() };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger,
+      listProjects: () => [{ slug: 'app', workingDirectory: session.cwd }],
+    });
+    await service.pollNow();
+    const peer = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    let takenOver = false;
+    source.read = async () => {
+      // The unchanged-row check reads under the held lock; the append then
+      // backs off and a station-owned writer takes the row before its retry.
+      peer.exec('BEGIN IMMEDIATE');
+      setTimeout(() => {
+        peer.exec('ROLLBACK');
+        store.upsertSession({
+          ...persistedAttachment(),
+          controlMode: 'station-owned',
+          attachedSource: undefined,
+          resumeCursor: 'new-owner',
+        });
+        takenOver = true;
+      }, 0);
+      return { outcome: 'ok', events: [first], cursor: 20 };
+    };
+    try {
+      await service.pollNow();
+      expect(takenOver).toBe(true);
+      expect(persistedAttachment()).toMatchObject({
+        controlMode: 'station-owned',
+        resumeCursor: 'new-owner',
+      });
+      expect(
+        store.listEvents(session.threadId).map((row) => row.id),
+      ).not.toContain(first.eventId);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('write refused'),
+        { threadId: session.threadId, write: 'event' },
+      );
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      peer.close();
+    }
   });
 
   test('persists and replays a registered source-owned kind without granting unknown or adopted sources extra authority', async () => {

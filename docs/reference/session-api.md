@@ -935,6 +935,19 @@ included; it deletes no imported event, search entry or read grant. A hosted run
 transcripts. It does follow attributed ones, but without a tenant binding no
 account can read them.
 
+A poll that finds no new event and no change to the stored attachment writes
+nothing. A real change (new events, cursor, source handle, affinity, completed
+turn boundary) stamps `updatedAt` with the latest imported source-event time,
+or the creation time when there is none, never the poll time. Server-owned
+facts on the row (model, persistence posture, tenant and lineage) are kept only
+while the source subject (provider, kind, native id and source-home affinity)
+is unchanged. A transcript new to a thread id, or a changed subject, is
+imported only after startup session recovery has finished, and never under a
+thread that is quarantined, failed recovery, or holds a tenant binding. If
+recovery fails, no new subject is imported until restart, while existing
+attachments keep following; each refusal counts as a `rejected_candidate`
+discovery outcome.
+
 `adoptSession` decides where the child runs from the transcript's cwd at
 adoption time, not from the stored attribution
 ([`attached-session-continuation-place.ts`](../../src-server/services/orchestration/attached-session-continuation-place.ts)).

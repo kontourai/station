@@ -377,6 +377,7 @@ import {
 } from './open-requests.js';
 import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge.js';
 import {
+  type AttachedSessionRecoveryObservation,
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
   deriveReadModelSession,
@@ -2159,6 +2160,12 @@ export class OrchestrationService {
    * attachment until it is true, so the projection fails open in the window.
    */
   private sessionAttachmentSettled = false;
+  // Separate from answerability settlement: a failed/partial binding scan
+  // cannot authorize a new or replacement attached source subject.
+  private attachedSubjectRecovery:
+    | { outcome: 'pending' | 'failed' }
+    | { outcome: 'observed'; observation: AttachedSessionRecoveryObservation } =
+    { outcome: 'pending' };
 
   /**
    * The instance-bound half of {@link sessionAttachmentSettled}: resolved in
@@ -3088,7 +3095,13 @@ export class OrchestrationService {
     void this.adoption
       .startReconciliation()
       .then(() => this.recoverSessions())
+      .then((observation) => {
+        this.attachedSubjectRecovery = observation.scanObserved
+          ? { outcome: 'observed', observation }
+          : { outcome: 'failed' };
+      })
       .catch((error) => {
+        this.attachedSubjectRecovery = { outcome: 'failed' };
         // Both upstream steps do unguarded durable reads
         // (`adoptionLedger.reservations()`, `readSessions()`), so this chain can
         // reject. On `main` that only produced an unhandled rejection; since
@@ -9951,6 +9964,25 @@ export class OrchestrationService {
     );
   }
 
+  /** A completed scan fences failed targets without blocking unrelated discovery. */
+  canBindNewAttachedSubject(threadId: string): boolean {
+    if (
+      !this.options.eventStore ||
+      this.attachedSubjectRecovery.outcome !== 'observed' ||
+      this.transcriptSearchStopped ||
+      this.quarantinedThreads.has(threadId) ||
+      this.attachedSubjectRecovery.observation.failedTargets.has(threadId) ||
+      this.sessionAuthz.tenantContextFor(threadId) !== undefined
+    )
+      return false;
+    const current = this.options.eventStore.readSessionByThread(threadId);
+    return (
+      current === undefined ||
+      (current.controlMode === 'read-only-attached' &&
+        !current.tenantExecutionContext)
+    );
+  }
+
   /**
    * Owner-cache invalidation for an ownership-shaped event published outside
    * `projectAndPublishEvent` (the attached-session envelope).
@@ -12510,8 +12542,8 @@ export class OrchestrationService {
     });
   }
 
-  private async recoverSessions(): Promise<void> {
-    await recoverOrchestrationSessions({
+  private async recoverSessions(): Promise<AttachedSessionRecoveryObservation> {
+    const observation = await recoverOrchestrationSessions({
       adapterRegistry: this.options.adapterRegistry,
       eventStore: this.options.eventStore,
       requireTenantExecutionContext: this.options.requireTenantExecutionContext,
@@ -12570,6 +12602,7 @@ export class OrchestrationService {
     // which is exactly when that receipt is not published either.
     this.sessionRecoveryCompletedSignal.settle();
     this.evictCollidingAttachedAliases();
+    return observation;
   }
 
   /**

@@ -789,7 +789,9 @@ point Station at a different folder (for OpenCode, the folder holding the
 database). Station checks every two seconds and reads the 128 most recently
 changed conversations from each place. Older ones stay in Activity once Station
 has read them, but new messages in them are not picked up until they are among
-the 128 again.
+the 128 again. Conversations Station has not listed before appear only after it
+finishes restoring its own sessions at startup; if that restore fails, already
+listed conversations keep updating but new ones wait until Station restarts.
 
 Each conversation is filed under a Project by the folder it ran in:
 

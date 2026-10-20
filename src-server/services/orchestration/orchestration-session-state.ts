@@ -1869,6 +1869,18 @@ export async function startRecoveredOrchestrationSession(options: {
  * That second half is not optional: without it every restored session would
  * fail its first use with `No provider session found for thread`.
  */
+/** Only a completed pass certifies which durable targets could not be observed. */
+export interface AttachedSessionRecoveryObservation {
+  readonly scanObserved: boolean;
+  readonly failedTargets: ReadonlyMap<
+    string,
+    {
+      readonly provider: string;
+      readonly reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >;
+}
+
 export async function recoverOrchestrationSessions(options: {
   adapterRegistry: IProviderAdapterRegistry;
   eventStore?: EventStore;
@@ -1891,13 +1903,20 @@ export async function recoverOrchestrationSessions(options: {
   ) => TenantExecutionContext | undefined;
   /** Removes an invalid persisted row from every in-memory read/publish path. */
   quarantineSession?: (session: ProviderSession) => void;
-}): Promise<void> {
+}): Promise<AttachedSessionRecoveryObservation> {
   const persistedSessions = options.eventStore?.readSessions() ?? [];
   // archive#1101: threadIds this pass restored — quarantined,
   // read-only-attached, already-closed/dead, and no-adapter sessions are
   // skipped and never appear in the 'session.recovery.completed' milestone
   // this function publishes once the whole pass finishes.
   const restoredThreadIds: string[] = [];
+  const failedTargets = new Map<
+    string,
+    {
+      provider: string;
+      reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >();
   for (const session of persistedSessions) {
     // Validate BEFORE every recovery escape hatch. In particular, an attached
     // session used to be tracked and published before this check, allowing an
@@ -1910,6 +1929,10 @@ export async function recoverOrchestrationSessions(options: {
           )
         : session.tenantExecutionContext;
     if (options.requireTenantExecutionContext?.() && !tenantExecutionContext) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'quarantined',
+      });
       options.quarantineSession?.(session);
       options.eventStore?.markSessionClosed(session.threadId, session.provider);
       options.logger.warn(
@@ -1938,7 +1961,13 @@ export async function recoverOrchestrationSessions(options: {
     // rows have never entered the in-memory read model and this change is
     // not the place to start.
     const adapter = options.adapterRegistry.get(session.provider);
-    if (!adapter) continue;
+    if (!adapter) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'missing-adapter',
+      });
+      continue;
+    }
     restoredThreadIds.push(session.threadId);
     // archive#3476: THIS is the whole recovery pass now. The session's state
     // is restored — it is listed, addressable, and resumable — and no engine
@@ -1962,6 +1991,10 @@ export async function recoverOrchestrationSessions(options: {
     try {
       if (await adapter.hasSession(session.threadId)) attachedAdapter = adapter;
     } catch (error) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'presence-failed',
+      });
       options.logger.warn(
         'Provider adapter could not report whether it still holds a recovered thread; treating it as not attached',
         {
@@ -1991,6 +2024,7 @@ export async function recoverOrchestrationSessions(options: {
     attemptedCount: restoredThreadIds.length,
     threadIds: restoredThreadIds,
   });
+  return { scanObserved: options.eventStore !== undefined, failedTargets };
 }
 
 function mapOrchestrationSessionState(

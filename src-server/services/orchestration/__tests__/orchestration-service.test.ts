@@ -74,6 +74,7 @@ import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-ada
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { createEnrichedAgentRoutes } from '../../../routes/agents/enriched-agents.js';
 import { foregroundMessageObjectSchema } from '../../../routes/orchestration/orchestration.js';
 import { currentTenantExecutionContext } from '../../../runtime/bootstrap/runtime-tenant-context.js';
@@ -114,6 +115,7 @@ import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../flow/flow-run-service.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { receiptBus } from '../../infra/receipt-bus.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { createServerLogReader } from '../../infra/server-log-reader.js';
@@ -131,6 +133,7 @@ import { createProjectSessionDirectoryResolver } from '../../projects/project-se
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import { AttachedSessionFollowService } from '../attached-session-follow-service.js';
 import type { ChildWorkProjection } from '../child-work-projection.js';
 import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
@@ -8609,6 +8612,565 @@ describe('OrchestrationService', () => {
     ).toEqual(['rejected']);
     expect(eventStore.readSessionByThread(draft)).toBeDefined();
   });
+
+  test('the production follower callback refuses a changed subject under a live cached tenant binding without manual cache hydration', async () => {
+    const descriptor = {
+      provider: 'claude',
+      sessionId: 'old-native-subject',
+      threadId: 'cached-subject-3551',
+      cwd: tmp,
+      createdAt: '2026-07-22T00:00:00.000Z',
+      sourceHandle: 'old-source-handle',
+    };
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({ outcome: 'ok', sessions: [descriptor] }),
+      read: async () => ({ outcome: 'ok', events: [], cursor: 20 }),
+    };
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore,
+      eventBus,
+      listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+    }).pollNow();
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [
+        { id: 'alpha', authority: 'alpha.station.test' },
+        { id: 'bravo', authority: 'bravo.station.test' },
+      ],
+    });
+    const original = eventStore.readSessionByThread(descriptor.threadId);
+    if (!original) throw new Error('old subject was never persisted');
+    eventStore.upsertSession({
+      ...original,
+      tenantExecutionContext: {
+        tenantId: registry.tenants[0]!.id,
+        source: 'session',
+      },
+    });
+    const hosted = new RawOrchestrationService({
+      adapterRegistry: createRegistry([]),
+      eventStore,
+      eventBus,
+      adoptionLedger,
+      idleSessionParkAfterMs: 0,
+      requireTenantExecutionContext: () => true,
+      validateRecoveredTenantExecutionContext: (value) =>
+        value && registry.tenants.some((entry) => entry.id === value.tenantId)
+          ? value
+          : undefined,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const owner = eventStore.findSessionOwnerUserId(descriptor.threadId);
+    if (!owner) throw new Error('old subject has no owner');
+    const alpha = sessionReadAuthorityFromRequest(
+      owner,
+      { tenantId: registry.tenants[0]!.id },
+      registry,
+    );
+    const bravo = sessionReadAuthorityFromRequest(
+      owner,
+      { tenantId: registry.tenants[1]!.id },
+      registry,
+    );
+    try {
+      hosted.initialize();
+      await hosted.whenSessionAttachmentSettled();
+      expect(hosted.canBindNewAttachedSubject('unused-new-subject')).toBe(true);
+      const freshDescriptor = {
+        ...descriptor,
+        sessionId: 'successful-new-native',
+        threadId: 'successful-new-subject-3551',
+        sourceHandle: 'fresh-source-handle',
+      };
+      const freshRead = vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [
+          {
+            eventId: 'successful-unbound-event',
+            provider: 'claude',
+            threadId: freshDescriptor.threadId,
+            createdAt: '2026-07-22T00:00:02.000Z',
+            method: 'content.text-delta',
+            itemId: 'fresh-item',
+            delta: 'unbound-source-data',
+          },
+        ],
+        cursor: 20,
+      });
+      await new AttachedSessionFollowService({
+        sources: [
+          {
+            ...source,
+            discover: async () => ({
+              outcome: 'ok',
+              sessions: [freshDescriptor],
+            }),
+            read: freshRead,
+          },
+        ],
+        eventStore,
+        eventBus,
+        listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+        invalidateSessionOwner: (threadId) =>
+          hosted.invalidateSessionOwner(threadId),
+        canBindNewAttachedSubject: (threadId) =>
+          hosted.canBindNewAttachedSubject(threadId),
+      }).pollNow();
+      expect(freshRead).toHaveBeenCalled();
+      expect(
+        eventStore.readSessionByThread(freshDescriptor.threadId),
+      ).toMatchObject({
+        controlMode: 'read-only-attached',
+        resumeCursor: { cursor: 20 },
+      });
+      expect(
+        eventStore.readSessionByThread(freshDescriptor.threadId)
+          ?.tenantExecutionContext,
+      ).toBeUndefined();
+      expect(
+        eventStore.listEvents(freshDescriptor.threadId).map((row) => row.id),
+      ).toContain('successful-unbound-event');
+      expect(hosted.canUserReadSession(freshDescriptor.threadId, alpha)).toBe(
+        false,
+      );
+      expect(hosted.canUserReadSession(descriptor.threadId, alpha)).toBe(true);
+      expect(hosted.canUserReadSession(descriptor.threadId, bravo)).toBe(false);
+      const bound = eventStore.readSessionByThread(descriptor.threadId);
+      if (!bound) throw new Error('bound subject disappeared');
+      // Deliberately reach the reviewed legacy condition: durable binding absent,
+      // while the actual already-running authorization owner still holds it.
+      eventStore.upsertSession({ ...bound, tenantExecutionContext: undefined });
+      expect(
+        eventStore.readSessionByThread(descriptor.threadId)
+          ?.tenantExecutionContext,
+      ).toBeUndefined();
+      expect(hosted.canUserReadSession(descriptor.threadId, alpha)).toBe(true);
+      expect(hosted.canBindNewAttachedSubject(descriptor.threadId)).toBe(false);
+      const before = eventStore.readSessionByThread(descriptor.threadId);
+      const beforeEvents = eventStore.listEvents(descriptor.threadId);
+      const read = vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [
+          {
+            eventId: 'forbidden-replacement-subject',
+            provider: 'claude',
+            threadId: descriptor.threadId,
+            createdAt: '2026-07-22T00:00:01.000Z',
+            method: 'content.text-delta',
+            itemId: 'new-item',
+            delta: 'new-subject-data',
+          },
+        ],
+        cursor: 40,
+      });
+      const replacement = {
+        ...source,
+        kind: 'replacement-transcript-kind',
+        read,
+      };
+      const follower = new AttachedSessionFollowService({
+        sources: [replacement],
+        eventStore,
+        eventBus,
+        listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+        // These are precisely the production runtime-initialize owner callbacks.
+        invalidateSessionOwner: (threadId) =>
+          hosted.invalidateSessionOwner(threadId),
+        canBindNewAttachedSubject: (threadId) =>
+          hosted.canBindNewAttachedSubject(threadId),
+      });
+      await follower.pollNow();
+      expect(read).not.toHaveBeenCalled();
+      expect(eventStore.readSessionByThread(descriptor.threadId)).toEqual(
+        before,
+      );
+      expect(eventStore.listEvents(descriptor.threadId)).toEqual(beforeEvents);
+      expect(hosted.canUserReadSession(descriptor.threadId, alpha)).toBe(true);
+      expect(hosted.canUserReadSession(descriptor.threadId, bravo)).toBe(false);
+    } finally {
+      await hosted.shutdown();
+    }
+  });
+
+  test('pending target observation cannot certify absence and full observation admits unrelated discovery', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'pending-owned-target',
+      status: 'ready',
+      controlMode: 'station-owned',
+      tenantExecutionContext: {
+        tenantId: registry.tenants[0]!.id,
+        source: 'session',
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    let entered!: () => void;
+    const observing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let finish!: (value: boolean) => void;
+    const result = new Promise<boolean>((resolve) => {
+      finish = resolve;
+    });
+    const presence = vi
+      .spyOn(claude, 'hasSession')
+      .mockImplementationOnce(async () => {
+        entered();
+        return result;
+      });
+    const hosted = new RawOrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventStore,
+      eventBus,
+      adoptionLedger,
+      idleSessionParkAfterMs: 0,
+      requireTenantExecutionContext: () => true,
+      validateRecoveredTenantExecutionContext: (value) =>
+        value?.tenantId === registry.tenants[0]!.id ? value : undefined,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const read = vi
+      .fn()
+      .mockResolvedValue({ outcome: 'ok', events: [], cursor: 20 });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: async () => ({
+        outcome: 'ok',
+        sessions: [
+          {
+            provider: 'claude',
+            sessionId: 'pending-new-native',
+            threadId: 'pending-new-target',
+            cwd: tmp,
+            createdAt: '2026-07-22T00:00:03.000Z',
+            sourceHandle: 'new-handle',
+          },
+        ],
+      }),
+      read,
+    };
+    const follower = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore,
+      eventBus,
+      listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+      invalidateSessionOwner: (threadId) =>
+        hosted.invalidateSessionOwner(threadId),
+      canBindNewAttachedSubject: (threadId) =>
+        hosted.canBindNewAttachedSubject(threadId),
+    });
+    try {
+      hosted.initialize();
+      await observing;
+      expect(hosted.canBindNewAttachedSubject('pending-new-target')).toBe(
+        false,
+      );
+      await follower.pollNow();
+      expect(read).not.toHaveBeenCalled();
+      expect(
+        eventStore.readSessionByThread('pending-new-target'),
+      ).toBeUndefined();
+      expect(eventStore.listEvents('pending-new-target')).toEqual([]);
+      finish(false);
+      await hosted.whenSessionAttachmentSettled();
+      expect(hosted.canBindNewAttachedSubject('pending-new-target')).toBe(true);
+      await follower.pollNow();
+      expect(read).toHaveBeenCalledOnce();
+      expect(
+        eventStore.readSessionByThread('pending-new-target'),
+      ).toMatchObject({
+        controlMode: 'read-only-attached',
+        resumeCursor: { cursor: 20 },
+      });
+    } finally {
+      finish(false);
+      await hosted.whenSessionAttachmentSettled();
+      presence.mockRestore();
+      await hosted.shutdown();
+    }
+  });
+
+  test.each([
+    'scan failure',
+    'partial failure',
+    'quarantine',
+    'presence failure',
+    'missing adapter',
+  ] as const)(
+    'target-specific recovery fences the affected subject without blocking unrelated discovery after %s',
+    async (failure) => {
+      const recordedRegistry = parseHostedTenantRegistry({
+        schemaVersion: 1,
+        tenants: [
+          { id: 'alpha', authority: 'alpha.station.test' },
+          { id: 'bravo', authority: 'bravo.station.test' },
+        ],
+      });
+      const registry =
+        failure === 'quarantine'
+          ? parseHostedTenantRegistry({
+              schemaVersion: 1,
+              tenants: [recordedRegistry.tenants[0]!],
+            })
+          : recordedRegistry;
+      if (failure !== 'scan failure') {
+        for (let index = 0; index < 2; index++) {
+          const threadId = `partial-old-${index}`;
+          const at = `2026-07-22T00:00:0${index}.000Z`;
+          eventStore.upsertSession({
+            provider: 'claude',
+            threadId,
+            status: 'ready',
+            controlMode:
+              index === 1 &&
+              (failure === 'presence failure' || failure === 'missing adapter')
+                ? 'station-owned'
+                : 'read-only-attached',
+            attachedSource:
+              index === 1 &&
+              (failure === 'presence failure' || failure === 'missing adapter')
+                ? undefined
+                : { kind: 'claude-transcript', externalSessionId: threadId },
+            tenantExecutionContext: {
+              tenantId: recordedRegistry.tenants[index]!.id,
+              source: 'session',
+            },
+            createdAt: at,
+            updatedAt: at,
+          });
+          eventStore.appendEvent({
+            eventId: `${threadId}-owner`,
+            provider: 'claude',
+            threadId,
+            createdAt: at,
+            method: 'session.configured',
+            sessionId: threadId,
+            metadata: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+          });
+        }
+      }
+      const warn = vi.fn();
+      const presence =
+        failure === 'presence failure'
+          ? vi
+              .spyOn(claude, 'hasSession')
+              .mockRejectedValueOnce(new Error('presence observation failed'))
+          : undefined;
+      const hosted = new RawOrchestrationService({
+        adapterRegistry: createRegistry(
+          failure === 'presence failure' ? [claude] : [],
+        ),
+        eventStore,
+        eventBus,
+        adoptionLedger,
+        idleSessionParkAfterMs: 0,
+        requireTenantExecutionContext: () => true,
+        validateRecoveredTenantExecutionContext: (value) => {
+          if (
+            value?.tenantId === recordedRegistry.tenants[1]!.id &&
+            failure === 'partial failure'
+          )
+            throw new Error('partial binding recovery failed');
+          return value &&
+            registry.tenants.some((entry) => entry.id === value.tenantId)
+            ? value
+            : undefined;
+        },
+        logger: { debug: vi.fn(), warn },
+      });
+      const scan =
+        failure === 'scan failure'
+          ? vi.spyOn(eventStore, 'readSessions').mockImplementationOnce(() => {
+              throw new Error('binding recovery scan failed');
+            })
+          : undefined;
+      try {
+        hosted.initialize();
+        await hosted.whenSessionAttachmentSettled();
+        scan?.mockRestore();
+        if (failure === 'scan failure' || failure === 'partial failure')
+          expect(warn).toHaveBeenCalledWith(
+            'Session recovery did not complete; attachment settles on whatever this process reached',
+            expect.objectContaining({
+              error:
+                failure === 'scan failure'
+                  ? 'binding recovery scan failed'
+                  : 'partial binding recovery failed',
+            }),
+          );
+        if (failure === 'presence failure')
+          expect(warn).toHaveBeenCalledWith(
+            'Provider adapter could not report whether it still holds a recovered thread; treating it as not attached',
+            expect.objectContaining({
+              threadId: 'partial-old-1',
+              error: 'presence observation failed',
+            }),
+          );
+        if (failure === 'quarantine')
+          expect(warn).toHaveBeenCalledWith(
+            'Hosted provider session was quarantined because its tenant execution context is missing or invalid',
+            expect.objectContaining({
+              provider: 'claude',
+              threadId: 'partial-old-1',
+            }),
+          );
+        expect(
+          eventStore.readSessionByThread('never-bound-new-subject'),
+        ).toBeUndefined();
+        const globalFailure =
+          failure === 'scan failure' || failure === 'partial failure';
+        expect(
+          hosted.canBindNewAttachedSubject('never-bound-new-subject'),
+        ).toBe(!globalFailure);
+        const read = vi
+          .fn()
+          .mockResolvedValue({ outcome: 'ok', events: [], cursor: 20 });
+        const source: AttachedSessionSource = {
+          provider: 'claude',
+          kind: 'claude-transcript',
+          discover: async () => ({
+            outcome: 'ok',
+            sessions: [
+              {
+                provider: 'claude',
+                sessionId: 'new-native',
+                threadId: 'never-bound-new-subject',
+                cwd: tmp,
+                createdAt: '2026-07-22T00:00:03.000Z',
+                sourceHandle: 'new-handle',
+              },
+            ],
+          }),
+          read,
+        };
+        await new AttachedSessionFollowService({
+          sources: [source],
+          eventStore,
+          eventBus,
+          listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+          invalidateSessionOwner: (threadId) =>
+            hosted.invalidateSessionOwner(threadId),
+          canBindNewAttachedSubject: (threadId) =>
+            hosted.canBindNewAttachedSubject(threadId),
+        }).pollNow();
+        if (globalFailure) {
+          expect(read).not.toHaveBeenCalled();
+          expect(
+            eventStore.readSessionByThread('never-bound-new-subject'),
+          ).toBeUndefined();
+          expect(eventStore.listEvents('never-bound-new-subject')).toEqual([]);
+        } else {
+          expect(read).toHaveBeenCalledOnce();
+          expect(
+            eventStore.readSessionByThread('never-bound-new-subject'),
+          ).toMatchObject({
+            controlMode: 'read-only-attached',
+            resumeCursor: { cursor: 20 },
+          });
+          // The failed target cannot escape its recovery fence by losing its
+          // durable row or changing source identity. No cache hydration here.
+          eventStore.deleteThread('partial-old-1');
+          expect(hosted.canBindNewAttachedSubject('partial-old-1')).toBe(false);
+          const affectedRead = vi
+            .fn()
+            .mockResolvedValue({ outcome: 'ok', events: [], cursor: 40 });
+          const affected: AttachedSessionSource = {
+            ...source,
+            kind: 'replacement-failed-subject',
+            discover: async () => ({
+              outcome: 'ok',
+              sessions: [
+                {
+                  provider: 'claude',
+                  sessionId: 'replacement-native',
+                  threadId: 'partial-old-1',
+                  cwd: tmp,
+                  createdAt: '2026-07-22T00:00:04.000Z',
+                  sourceHandle: 'replacement-handle',
+                },
+              ],
+            }),
+            read: affectedRead,
+          };
+          await new AttachedSessionFollowService({
+            sources: [affected],
+            eventStore,
+            eventBus,
+            listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+            invalidateSessionOwner: (threadId) =>
+              hosted.invalidateSessionOwner(threadId),
+            canBindNewAttachedSubject: (threadId) =>
+              hosted.canBindNewAttachedSubject(threadId),
+          }).pollNow();
+          expect(affectedRead).not.toHaveBeenCalled();
+          expect(
+            eventStore.readSessionByThread('partial-old-1'),
+          ).toBeUndefined();
+          expect(eventStore.listEvents('partial-old-1')).toEqual([]);
+        }
+        if (failure !== 'scan failure') {
+          const alpha = sessionReadAuthorityFromRequest(
+            LOCAL_OPERATOR_PRINCIPAL_ID,
+            { tenantId: registry.tenants[0]!.id },
+            registry,
+          );
+          expect(hosted.canUserReadSession('partial-old-0', alpha)).toBe(true);
+          const sameRead = vi
+            .fn()
+            .mockResolvedValue({ outcome: 'ok', events: [], cursor: 30 });
+          const sameSubject: AttachedSessionSource = {
+            ...source,
+            discover: async () => ({
+              outcome: 'ok',
+              sessions: [
+                {
+                  provider: 'claude',
+                  sessionId: 'partial-old-0',
+                  threadId: 'partial-old-0',
+                  cwd: tmp,
+                  createdAt: '2026-07-22T00:00:00.000Z',
+                  sourceHandle: 'same-subject-handle',
+                },
+              ],
+            }),
+            read: sameRead,
+          };
+          await new AttachedSessionFollowService({
+            sources: [sameSubject],
+            eventStore,
+            eventBus,
+            listProjects: () => [{ slug: 'fixture', workingDirectory: tmp }],
+            invalidateSessionOwner: (threadId) =>
+              hosted.invalidateSessionOwner(threadId),
+            canBindNewAttachedSubject: (threadId) =>
+              hosted.canBindNewAttachedSubject(threadId),
+          }).pollNow();
+          expect(sameRead).toHaveBeenCalledOnce();
+          expect(eventStore.readSessionByThread('partial-old-0')).toMatchObject(
+            {
+              controlMode: 'read-only-attached',
+              tenantExecutionContext: { tenantId: registry.tenants[0]!.id },
+              resumeCursor: { cursor: 30 },
+            },
+          );
+          expect(hosted.canUserReadSession('partial-old-0', alpha)).toBe(true);
+        }
+      } finally {
+        scan?.mockRestore();
+        presence?.mockRestore();
+        await hosted.shutdown();
+      }
+    },
+  );
 
   test('a freshly constructed hosted service authorizes a persisted tenant-bound command before any other call (slice 6 I11 guard)', async () => {
     // `canReadSessionForCommand` hydrates persisted tenant contexts BEFORE
