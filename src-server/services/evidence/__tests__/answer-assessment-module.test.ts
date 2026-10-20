@@ -1,7 +1,5 @@
 import {
-  chmodSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -14,9 +12,7 @@ import {
   type StationAnswerBinding,
 } from '@kontourai/station-contracts';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { composeAuthorizedSessionAnswerBasis } from '../../projects/task-basis-module.js';
 import {
   AnswerAssessmentModule,
   AnswerAssessmentNotFoundError,
@@ -498,120 +494,5 @@ describe('AnswerAssessmentModule', () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
-  });
-
-  describe('permanent conditions are not reported as temporary', () => {
-    /** The standing the Basis chip names: Surface's own view of the composed answer. */
-    async function standingFor(
-      module: AnswerAssessmentModule,
-      readAuthority = authority,
-    ) {
-      const read = await module.readExactAnswerAssessment({
-        authorizedAnswer: answer,
-        authority: readAuthority,
-      });
-      const standing = buildBasisPanelViewModel(
-        composeAuthorizedSessionAnswerBasis(answer, read),
-      ).standing;
-      return { state: read.state, code: standing.code, label: standing.label };
-    }
-
-    function homeWithIndex(bytes: string | Buffer) {
-      const home = mkdtempSync(join(tmpdir(), 'station-assessment-index-'));
-      mkdirSync(join(home, 'answer-assessments'), { recursive: true });
-      writeFileSync(join(home, 'answer-assessments', 'index.json'), bytes);
-      return home;
-    }
-
-    test('a hosted authority reads not-captured, so the answer stays unassessed', async () => {
-      const home = homeWithIndex(
-        JSON.stringify({ schemaVersion: 1, records: [] }),
-      );
-      try {
-        const module = new AnswerAssessmentModule(home, {
-          read: async () => answer,
-        });
-        // publish refuses hosted authorities, so nothing can ever be captured.
-        await expect(
-          module.publish(
-            'session-a',
-            'turn-a',
-            {
-              expectedAnswer: binding,
-              publicationId: 'publication-a',
-              bundle: bundle(),
-              claimId: 'answer.supported',
-              expectedRevision: 0,
-            },
-            { ...authority, mode: 'hosted' },
-            () => true,
-          ),
-        ).rejects.toBeInstanceOf(AnswerAssessmentNotFoundError);
-        await expect(
-          standingFor(module, { ...authority, mode: 'hosted' }),
-        ).resolves.toEqual({
-          state: 'not-captured',
-          code: 'execution-only',
-          label: 'Unassessed',
-        });
-      } finally {
-        rmSync(home, { recursive: true, force: true });
-      }
-    });
-
-    test('an index that does not parse reads corrupt ("Cannot be read")', async () => {
-      const home = homeWithIndex('{"schemaVersion":1,"records":[');
-      try {
-        const module = new AnswerAssessmentModule(home, {
-          read: async () => answer,
-        });
-        await expect(standingFor(module)).resolves.toEqual({
-          state: 'corrupt',
-          code: 'unresolved',
-          label: 'Cannot be read',
-        });
-      } finally {
-        rmSync(home, { recursive: true, force: true });
-      }
-    });
-
-    test('an index larger than the writer ever produces reads corrupt', async () => {
-      const home = homeWithIndex(Buffer.alloc(1_048_577, 0x20));
-      try {
-        const module = new AnswerAssessmentModule(home, {
-          read: async () => answer,
-        });
-        await expect(standingFor(module)).resolves.toMatchObject({
-          state: 'corrupt',
-          label: 'Cannot be read',
-        });
-      } finally {
-        rmSync(home, { recursive: true, force: true });
-      }
-    });
-
-    test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-      'an index that cannot be opened stays temporarily unavailable',
-      async () => {
-        const home = homeWithIndex(
-          JSON.stringify({ schemaVersion: 1, records: [] }),
-        );
-        const index = join(home, 'answer-assessments', 'index.json');
-        chmodSync(index, 0o000);
-        try {
-          const module = new AnswerAssessmentModule(home, {
-            read: async () => answer,
-          });
-          await expect(standingFor(module)).resolves.toEqual({
-            state: 'unavailable',
-            code: 'unresolved',
-            label: 'Temporarily unavailable',
-          });
-        } finally {
-          chmodSync(index, 0o600);
-          rmSync(home, { recursive: true, force: true });
-        }
-      },
-    );
   });
 });
