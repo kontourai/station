@@ -263,6 +263,9 @@ describe('region model', () => {
       // instance-keyed families, on the right.
       'board:': 'right',
       'layout:': 'right',
+      // #3964: a plugin's related pane opens beside the pane that opened it;
+      // the host itself lands a tool with the Tools.
+      'plugin-pane:': 'right',
     });
   });
 
