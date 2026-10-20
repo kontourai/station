@@ -1664,8 +1664,15 @@ then chooses a path:
   and shard receipts, including explicit selections above 32 files. Paths
   explicitly deferred by supplemental edges remain deferred; unknown/global
   paths are not expanded into an assumed-complete selection. Passing the mapped
-  tests does not discharge the broader obligation. Local unsharded feedback
-  keeps its bounded selection limits. A
+  tests does not discharge the broader obligation. Before related discovery,
+  hosted planning checks Vitest's resolved `forceRerunTriggers` with Vitest's
+  own matcher. Matching seeds (including nested package manifests by default)
+  become named `test-full` obligations instead of causing Vitest to select the
+  entire corpus as fast feedback. The plan retains those paths in
+  `globalTriggeredPaths`; malformed or foreign discovery metadata fails the
+  plan. Other mapped tests still run, and global-only changes remain deferred
+  rather than gaining a completed empty-test claim. Local unsharded feedback
+  keeps its existing discovery behavior and bounded selection limits. A
   `mergeQueueRegression` path, such as the SDK transport or the orchestration
   event store, leaves its consumers to the queue on purpose. The candidate
   runs the hosted [full regression](../../.github/workflows/full-regression.yml)
