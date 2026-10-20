@@ -404,7 +404,10 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   await waitFor(() => expect(client.isFetching()).toBe(0));
   const interval = () => {
     const query = client.getQueryCache().getAll()[0];
-    const option = query.options.refetchInterval as (
+    // The observer's options land on the query at runtime; QueryOptions'
+    // type omits the observer-only `refetchInterval`.
+    const option = (query.options as { refetchInterval?: unknown })
+      .refetchInterval as (
       q: typeof query,
     ) => unknown;
     return option(query);

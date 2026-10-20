@@ -1104,7 +1104,6 @@ describe('ToolCallDisplay — failed calls', () => {
           ...pending,
           state: 'error',
           error: 'exit 1',
-          isError: true,
         }}
         onApprove={vi.fn()}
       />,
@@ -1133,7 +1132,6 @@ describe('ToolCallDisplay — failed calls', () => {
           toolName: 'mcp__station-control__delete_agent',
           args: { slug: 'helper' },
           state: 'error',
-          isError: true,
           result: envelope,
         }}
       />,
@@ -1165,7 +1163,6 @@ describe('ToolCallDisplay — failed calls', () => {
           toolName: 'Bash',
           args: { command: 'npm test' },
           state: 'error',
-          isError: true,
           result: '{"success": false, "detail": "no code"}',
         }}
       />,
