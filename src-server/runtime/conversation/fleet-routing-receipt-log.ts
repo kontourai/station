@@ -36,26 +36,13 @@ import {
 export { canonicalize };
 
 export const FLEET_ROUTING_RECEIPT_DIRECTORY = 'monitoring';
-export const FLEET_ROUTING_RECEIPT_FILE = 'fleet-routing-receipts.ndjson';
+const FLEET_ROUTING_RECEIPT_FILE = 'fleet-routing-receipts.ndjson';
 
 export function fleetRoutingReceiptPath(projectHomeDir: string): string {
   return join(
     projectHomeDir,
     FLEET_ROUTING_RECEIPT_DIRECTORY,
     FLEET_ROUTING_RECEIPT_FILE,
-  );
-}
-
-/**
- * The content address of an envelope. Exported because a reader recomputing
- * it is the whole point of content addressing — a receipt whose id only its
- * writer can reproduce is a serial number.
- */
-export function computeReceiptId(
-  envelope: Omit<FleetRoutingReceiptEnvelope, 'receiptId'>,
-): string {
-  return computeChainedReceiptId(
-    envelope as unknown as Record<string, unknown>,
   );
 }
 

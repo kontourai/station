@@ -5,7 +5,6 @@ import {
   type SchedulerEvent,
   type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
-import { SCHEDULED_CHECK_STARTER_DEFINITION_VERSION } from '@kontourai/station-contracts/starter-work';
 import type {
   AddJobOpts,
   SchedulerCapability,
@@ -236,9 +235,7 @@ export interface BuiltinSchedulerOptions {
   disposeMonitorTasks?: () => void;
 }
 
-export const STARTER_SCHEDULED_CHECK_DEFINITION_VERSION =
-  SCHEDULED_CHECK_STARTER_DEFINITION_VERSION;
-export const STARTER_SCHEDULED_CHECK_JOB_NAME =
+const STARTER_SCHEDULED_CHECK_JOB_NAME =
   SCHEDULER_STARTER_CHECK_JOB_NAME;
 
 export interface PreparedStarterScheduledRun {

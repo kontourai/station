@@ -103,7 +103,7 @@ function foundationModelIdFromArn(modelArn?: string): string | null {
   return markerIndex >= 0 ? modelArn.slice(markerIndex + marker.length) : null;
 }
 
-export function bedrockProfileFoundationModelId(
+function bedrockProfileFoundationModelId(
   profile: Pick<InferenceProfile, 'models'>,
 ): string | null {
   const modelIds = profile.models.map(({ modelArn }) =>
@@ -116,7 +116,7 @@ export function bedrockProfileFoundationModelId(
   return uniqueModelIds.size === 1 ? (modelIds[0] ?? null) : null;
 }
 
-export function isLaunchableBedrockFoundationModel(model: {
+function isLaunchableBedrockFoundationModel(model: {
   outputModalities?: readonly string[];
   responseStreamingSupported?: boolean;
 }): boolean {
@@ -194,7 +194,7 @@ export function listLaunchableBedrockSelectors<
   );
 }
 
-export function resolveLaunchableBedrockSelector(
+function resolveLaunchableBedrockSelector(
   modelId: string,
   models: readonly BedrockModel[],
   profiles: readonly InferenceProfile[],

@@ -68,7 +68,7 @@ import {
 } from '../../utils/logger.js';
 import { SERVER_LOG_FILE_PATTERN } from './server-log-store.js';
 
-export const DEFAULT_SERVER_LOG_QUERY_LIMIT = 200;
+const DEFAULT_SERVER_LOG_QUERY_LIMIT = 200;
 export const MAX_SERVER_LOG_QUERY_LIMIT = 1000;
 
 /**

@@ -497,7 +497,7 @@ export async function createAgentConfig(
  *   schema does accept `execution: null`, but a persisted `null` would be a
  *   second spelling of "unbound", so the key is deleted just as `project`'s is.
  */
-export function mergeAgentConfigUpdate(
+function mergeAgentConfigUpdate(
   existing: AgentSpec,
   updates: Partial<AgentSpec>,
 ): AgentSpec {
