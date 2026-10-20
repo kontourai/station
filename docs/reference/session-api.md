@@ -466,8 +466,10 @@ error that carries no code.
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
 `code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
-Station's, or the chat runs an agent Station does not govern
-([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+Station's, the chat runs an agent Station does not govern
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
+the project's OpenCode configuration declares code OpenCode runs at launch
+([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
 The message names the setting and says what picking Default would do in that
 chat. A refused start keeps that code: it is checked before Station claims the
 start, so it is never reported as a start that may have happened
@@ -623,7 +625,11 @@ this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
 ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
-call or `ExitPlanMode`), which mints no Station session grant (#2933).
+call or `ExitPlanMode`), which mints no Station session grant (#2933). On an
+OpenCode Session Station governs, `acceptForSession` on a file edit is sent to
+the engine as `accept`, and Station keeps the grant itself, because OpenCode's
+"always" for an edit covers every later edit. Station's grant never covers an
+edit of OpenCode configuration or outside the project (#3924).
 The ACP response mapper prefers the agent's `allow_once` option. If the
 agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the
