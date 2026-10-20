@@ -711,8 +711,16 @@ class DeviceSettingsStore {
         values: AccountPreferences | undefined;
         write: (patch: AccountPreferencesPatch) => void;
         writable: boolean;
+        /** A definite no-person answer arrived while bound: hold nothing. */
+        released: boolean;
       }
     | undefined;
+  /**
+   * The account whose binding ended released, for a rebind in the same task
+   * (the boundary re-binds on every preference projection): it inherits the
+   * release. Cleared after the current task, so a later sign-in holds again.
+   */
+  private releasedRebind: { owner: string | undefined } | undefined;
   private envelope: DeviceSettingsEnvelope;
   private snapshot: DeviceSettings;
   private listeners = new Set<Listener>();
@@ -977,6 +985,9 @@ class DeviceSettingsStore {
    * chosen): stop showing the cached account appearance.
    */
   releaseBootAppearance = (): void => {
+    // Signed out while the account boundary is still mounted (an in-app
+    // sign-out): when it unmounts it must not hold this person's appearance.
+    if (this.account) this.account.released = true;
     if (!this.bootAppearance) return;
     this.bootAppearance = null;
     this.bootAppearanceOwner = null;
@@ -1002,7 +1013,14 @@ class DeviceSettingsStore {
     writable = true,
     owner?: string,
   ): (() => void) => {
-    const binding = { values, write, writable };
+    const binding = {
+      values,
+      write,
+      writable,
+      released:
+        this.releasedRebind !== undefined &&
+        this.releasedRebind.owner === owner,
+    };
     this.account = binding;
     // An appearance held for one account never stands in for another.
     if (
@@ -1028,7 +1046,13 @@ class DeviceSettingsStore {
       // itself, so the account's appearance is held, exactly like the boot
       // cache, until the account answers again, the device's own appearance
       // is chosen, or a definite no-person answer releases it.
-      if (binding.values) {
+      if (binding.released) {
+        const marker = { owner };
+        this.releasedRebind = marker;
+        queueMicrotask(() => {
+          if (this.releasedRebind === marker) this.releasedRebind = undefined;
+        });
+      } else if (binding.values) {
         const { theme, colorTheme, colorThemeFlavor, colorThemeAccent } =
           this.snapshot;
         this.bootAppearance = {
