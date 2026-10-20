@@ -411,12 +411,16 @@
      (station#3305). Mixing into the panel keeps the step visible in both
      themes. */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
-  /* Mix target for a surface that sits a step ABOVE its base (a modal sheen,
-     a card on a panel): `color-mix(in srgb, var(--bg-secondary) 88%,
-     var(--surface-lift) 12%)`. Those call sites mixed in literal `white`,
-     which ignores the palette. Dark lifts toward the palette's own text
-     colour; light lifts toward its panel (white for the built-in palette,
-     so the light rendering is unchanged). */
+  /* Mix target for a surface or border that sits a step ABOVE its base (a
+     modal sheen, a card on a panel, that card's edge):
+     `color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)`.
+     Those call sites mixed in literal `white`, which ignores the palette.
+     Dark lifts toward the palette's own text colour; light lifts toward its
+     panel, which is white for the built-in palette, so light renders as it
+     did with the literal. Measured for the lifted border
+     (--border-primary 82% / lift 18%): dark 2.15:1 on --bg-secondary and
+     2.08:1 on --bg-primary (white gave 2.22 / 2.16); light unchanged at
+     1.21 / 1.18. */
   --surface-lift: var(--k-text);
 
   --accent-light: color-mix(in srgb, var(--k-brand) 25%, transparent);
@@ -950,7 +954,8 @@ button:hover {
      commit action can never fall below the fold on a long form. */
   max-height: min(92vh, 880px);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-secondary);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: var(--radius-overlay);
   box-shadow: var(--elevation-overlay);
 }

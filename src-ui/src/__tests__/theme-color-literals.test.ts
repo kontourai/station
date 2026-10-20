@@ -84,7 +84,9 @@ describe('theme color literals', () => {
   test('no surface lifts toward a literal white or black', () => {
     // Mix toward `var(--surface-lift)` (or use an elevation token): a literal
     // ignores the palette and lifts the wrong way in one of the two modes.
-    expect(offenders(/color-mix\([^;]*?\b(?:white|black)\s+\d/g)).toEqual({});
+    expect(
+      offenders(/color-mix\([^;]*?\b(?:white|black)\s*(?:\d|\))/g),
+    ).toEqual({});
   });
 
   test('no dark-navy scrim literal', () => {

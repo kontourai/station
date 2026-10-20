@@ -349,35 +349,39 @@
   font-family: var(--font-mono);
 }
 /* Capability kinds are categories, not statuses, so they take the
-   categorical series rungs (measured for text in both themes) instead of
-   dark-only Tailwind 400 literals. */
+   categorical hues instead of dark-only Tailwind 400 literals. The text is
+   the hue pulled 20% toward --k-text (darker on light, lighter on dark): the
+   bare hue on its own 6% tint measured 3.98-4.49:1 in light over
+   --bg-primary. With the pull, text on the composited chip fill measured
+   5.11:1 (light, --k-active over --bg-primary) at worst and 6.01:1 in dark
+   (--ref over --bg-secondary), over both --bg-primary and --bg-secondary. */
 .plugins__cap--git {
-  color: var(--k-active);
+  color: color-mix(in srgb, var(--k-active) 80%, var(--k-text));
   background: color-mix(in srgb, var(--k-active) 6%, transparent);
   border-color: color-mix(in srgb, var(--k-active) 18%, transparent);
 }
 .plugins__cap--ref {
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 80%, var(--k-text));
   background: color-mix(in srgb, var(--text-muted) 6%, transparent);
   border-color: color-mix(in srgb, var(--text-muted) 15%, transparent);
 }
 .plugins__cap--bundle {
-  color: var(--series-4);
+  color: color-mix(in srgb, var(--series-4) 80%, var(--k-text));
   background: color-mix(in srgb, var(--series-4) 6%, transparent);
   border-color: color-mix(in srgb, var(--series-4) 18%, transparent);
 }
 .plugins__cap--workspace {
-  color: var(--series-3);
+  color: color-mix(in srgb, var(--series-3) 80%, var(--k-text));
   background: color-mix(in srgb, var(--series-3) 6%, transparent);
   border-color: color-mix(in srgb, var(--series-3) 18%, transparent);
 }
 .plugins__cap--agent {
-  color: var(--series-2);
+  color: color-mix(in srgb, var(--series-2) 80%, var(--k-text));
   background: color-mix(in srgb, var(--series-2) 6%, transparent);
   border-color: color-mix(in srgb, var(--series-2) 18%, transparent);
 }
 .plugins__cap--provider {
-  color: var(--series-1);
+  color: color-mix(in srgb, var(--series-1) 80%, var(--k-text));
   background: color-mix(in srgb, var(--series-1) 6%, transparent);
   border-color: color-mix(in srgb, var(--series-1) 18%, transparent);
 }
