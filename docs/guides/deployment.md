@@ -473,9 +473,13 @@ subscription, and unsubscription routes and delivery are unavailable for the
 same reason: paired-device subscriptions have no durable tenant binding. These
 surfaces return only when their backing storage carries and enforces that
 binding; personal mode retains the existing terminal and Web Push behavior.
-Answer shares are different: their list, mint, view, and revoke operations use
-the existing session authority and remain available only for authorized
-sessions. Personal mode retains its existing scheduler, task, and merged
+Answer shares are partly available. Listing and revoking use the caller's
+session authority within its tenant; without a tenant context, the list is
+empty and a revoke answers as not found. Minting a new share returns 409
+("Answer sharing is not available on a hosted Station yet") because the public
+share view does not yet read as the recorded sharer within that tenant; see
+[the share routes](../../src-server/routes/share/answer-share-routes.ts).
+Personal mode retains its existing scheduler, task, and merged
 file/session conversation behavior.
 
 ## Environment Configuration
