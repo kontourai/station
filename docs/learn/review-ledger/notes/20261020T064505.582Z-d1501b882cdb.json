@@ -1,0 +1,7 @@
+{
+  "revision": "c69ccc44ba6028c6831e00201c6ee19971414c0a",
+
+  "notes": [
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed against the help.ts delta, which adds [--json] to the tasks basis usage line only; this document makes no claim about tasks usage lines, so it remains accurate.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]}
+  ]
+}

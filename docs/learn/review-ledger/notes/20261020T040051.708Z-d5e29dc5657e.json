@@ -1,0 +1,7 @@
+{
+  "revision": "1df6c4d11a4d464a0acd73d07051ca0862da0cc4",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Reviewed against the responsive-action-surfaces chip note: no backend claim; no prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

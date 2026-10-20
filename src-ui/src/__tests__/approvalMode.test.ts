@@ -59,6 +59,32 @@ describe('APPROVAL_MODE_OPTIONS copy', () => {
   });
 });
 
+describe('full-access copy does not promise "no sandbox"', () => {
+  // Full access turns off approval prompts where the engine allows it. It
+  // does not lift Station's workspace confinement from a start that carries
+  // no full-access grant (a webhook start; `approval-posture.ts`
+  // startConfinement), so no description may promise "no sandbox" (#3918
+  // pinned the same for the Default approval mode setting).
+  test('the generic never option names the confinement and not "no sandbox"', () => {
+    const never = APPROVAL_MODE_OPTIONS.find(
+      (option) => option.value === 'never',
+    );
+    expect(never?.description).toMatch(/workspace confinement/);
+    expect(never?.description.toLowerCase()).not.toContain('no sandbox');
+  });
+
+  test('no per-engine never description promises "no sandbox"', () => {
+    for (const engine of ['codex', 'claude', 'opencode', 'acp', undefined]) {
+      expect(
+        approvalModeDescription('never', engine).toLowerCase(),
+      ).not.toContain('no sandbox');
+    }
+    expect(approvalModeDescription('never', 'opencode')).toBe(
+      'Every action runs without asking, and subagents may run. Plan mode still blocks edits.',
+    );
+  });
+});
+
 describe('approvalModeChipLabel (#1010 item 2)', () => {
   test('every mode has a chip label short enough for the pill', () => {
     for (const option of APPROVAL_MODE_OPTIONS) {

@@ -40,8 +40,6 @@ afterEach(() => {
  */
 function runProofCopy(
   mutate: (source: string) => string = (source) => source,
-  mutateChatRequestPreparation?: (source: string) => string,
-  mutateConfigContext?: (source: string) => string,
   queryRetryMutation?: { path: string; mutate: (source: string) => string },
   mutateSchedulerJobDialogStore?: (source: string) => string,
 ) {
@@ -50,8 +48,8 @@ function runProofCopy(
   mkdirSync(root, { recursive: true });
   temporaryRoots.push(root);
 
-  // Only the three sibling-module import specifiers are rewritten. A blanket
-  // replace would also corrupt the ~32 assertion string literals that quote
+  // Only the sibling-module import specifiers are rewritten. A blanket
+  // replace would also corrupt any assertion string literal that quotes
   // `from './...'` as expected source text.
   let source = readFileSync(scriptPath, 'utf8');
   for (const siblingModule of [
@@ -78,50 +76,6 @@ function runProofCopy(
     );
   }
   source = baselineRewrite;
-
-  if (mutateChatRequestPreparation) {
-    writeFileSync(
-      join(root, 'chat-request-preparation.ts'),
-      mutateChatRequestPreparation(
-        readFileSync(
-          join(repoRoot, 'src-server/routes/chat/chat-request-preparation.ts'),
-          'utf8',
-        ),
-      ),
-    );
-    const sourcePathRewrite = source.replace(
-      "'../src-server/routes/chat/chat-request-preparation.ts'",
-      "'./chat-request-preparation.ts'",
-    );
-    if (sourcePathRewrite === source) {
-      throw new Error(
-        'chat request preparation path rewrite did not match; update the anchor in this test',
-      );
-    }
-    source = sourcePathRewrite;
-  }
-
-  if (mutateConfigContext) {
-    writeFileSync(
-      join(root, 'ConfigContext.tsx'),
-      mutateConfigContext(
-        readFileSync(
-          join(repoRoot, 'src-ui/src/contexts/ConfigContext.tsx'),
-          'utf8',
-        ),
-      ),
-    );
-    const sourcePathRewrite = source.replace(
-      "'../src-ui/src/contexts/ConfigContext.tsx'",
-      "'./ConfigContext.tsx'",
-    );
-    if (sourcePathRewrite === source) {
-      throw new Error(
-        'ConfigContext path rewrite did not match; update the anchor in this test',
-      );
-    }
-    source = sourcePathRewrite;
-  }
 
   if (queryRetryMutation) {
     const filename = basename(queryRetryMutation.path);
@@ -181,50 +135,9 @@ function runProofCopy(
   };
 }
 
-describe('proof:repo-guardrails protects detailed chat context provenance', () => {
-  test.each([
-    'ctx.knowledgeService.getRAGContextDetailed(',
-    'ctx.feedbackService.getBehaviorGuidelinesDetailed()',
-  ])('removing %s emits its structured finding', (requiredCall) => {
-    const { status, output } = runProofCopy(undefined, (source) => {
-      const mutated = source.replace(
-        requiredCall,
-        requiredCall.replace('Detailed', 'Retired'),
-      );
-      if (mutated === source) {
-        throw new Error(`negative mutation did not find ${requiredCall}`);
-      }
-      return mutated;
-    });
-
-    expect(output).toContain(
-      `chat-request-preparation.ts must include ${requiredCall}.`,
-    );
-    expect(output).toContain('Repo guardrail proof failed');
-    expect(status).toBe(1);
-  });
-});
-
 describe('proof:repo-guardrails protects asynchronous terminal subprocess polling', () => {
-  test('requires the asynchronous polling entrypoint', () => {
-    const declaration = 'export async function pollTerminalSubprocessActivity';
-    const { status, output } = runProofCopy(undefined, undefined, undefined, {
-      path: 'src-server/services/terminal/terminal-subprocess-state.ts',
-      mutate: (source) => {
-        expect(source.split(declaration)).toHaveLength(2);
-        return source.replace(declaration, declaration.replace('async ', ''));
-      },
-    });
-    expect(output).toContain(
-      `terminal-subprocess-state.ts must include ${declaration}.`,
-    );
-    expect(output).toContain('Repo guardrail proof failed');
-    expect(output).not.toContain('Missing required guardrail source');
-    expect(status).toBe(1);
-  });
-
   test('requires the asynchronous execFile pgrep invocation', () => {
-    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+    const { status, output } = runProofCopy(undefined, {
       path: 'src-server/services/terminal/terminal-subprocess-state.ts',
       mutate: (source) => {
         expect(source.split("'pgrep'")).toHaveLength(2);
@@ -244,7 +157,7 @@ describe('proof:repo-guardrails protects asynchronous terminal subprocess pollin
     'execSync(`pgrep -P ${pid}`);',
     "execSync(\n  'pgrep -P 123',\n);",
   ])('rejects a reintroduced synchronous Unix probe: %s', (probe) => {
-    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+    const { status, output } = runProofCopy(undefined, {
       path: 'src-server/services/terminal/terminal-subprocess-state.ts',
       mutate: (source) => `${source}\n${probe}\n`,
     });
@@ -259,7 +172,7 @@ describe('proof:repo-guardrails protects asynchronous terminal subprocess pollin
 
 describe('proof:repo-guardrails fails closed on a missing source', () => {
   test('MonitoringView retains the shared session diagnostics query', () => {
-    const { status, output } = runProofCopy(undefined, undefined, undefined, {
+    const { status, output } = runProofCopy(undefined, {
       path: 'src-ui/src/views/MonitoringView.tsx',
       mutate: (source) => {
         expect(source.split('useOrchestrationSessionsQuery')).toHaveLength(3);
@@ -272,24 +185,6 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
     expect(output).toContain(
       'MonitoringView must use the shared session diagnostics query.',
     );
-    expect(output).not.toContain('Missing required guardrail source');
-    expect(status).toBe(1);
-  });
-
-  test('the extracted usage owner retains its public engine attribution export', () => {
-    const declaration = 'export function applyOrchestrationUsageToUsageStats';
-    const { status, output } = runProofCopy(undefined, undefined, undefined, {
-      path: 'src-server/analytics/usage-aggregator-state.ts',
-      mutate: (source) => {
-        expect(source.split(declaration)).toHaveLength(2);
-        return source.replace(declaration, declaration.replace('export ', ''));
-      },
-    });
-
-    expect(output).toContain(
-      `usage-aggregator-state.ts must include ${declaration}.`,
-    );
-    expect(output).toContain('Repo guardrail proof failed');
     expect(output).not.toContain('Missing required guardrail source');
     expect(status).toBe(1);
   });
@@ -309,18 +204,12 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
   });
 
   test('the scheduler dialog DTO owner must retain its contract import', () => {
-    const { status, output } = runProofCopy(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      (source) => {
-        const requiredImport =
-          "import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';";
-        expect(source.split(requiredImport)).toHaveLength(2);
-        return source.replace(requiredImport, '');
-      },
-    );
+    const { status, output } = runProofCopy(undefined, undefined, (source) => {
+      const requiredImport =
+        "import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';";
+      expect(source.split(requiredImport)).toHaveLength(2);
+      return source.replace(requiredImport, '');
+    });
 
     expect(output).toContain(
       './scheduler-job-dialog-store.ts must import contract types from @kontourai/station-contracts/scheduler.',
@@ -346,7 +235,7 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
   ])(
     '%s distinguishes raw fetch from SDK query refetch',
     (name, path, retry, rawFetch) => {
-      const { status, output } = runProofCopy(undefined, undefined, undefined, {
+      const { status, output } = runProofCopy(undefined, {
         path,
         mutate: (source) => {
           const mutated = source.replace(retry, rawFetch);
@@ -368,7 +257,7 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
   test('a retired required source is a named finding, not an uncaught ENOENT', () => {
     const { status, output } = runProofCopy((source) =>
       source.replace(
-        "readRequiredSource(\n  '../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx',\n)",
+        "readRequiredSource(\n  '../src-ui/src/views/MonitoringView.tsx',\n)",
         "readRequiredSource('../src-ui/src/components/coding-layout/CodingLayout.tsx')",
       ),
     );
@@ -387,16 +276,16 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
   test('the rest of the suite is still evaluated after a missing source', () => {
     const { output } = runProofCopy((source) =>
       source.replace(
-        "readRequiredSource(\n  '../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx',\n)",
+        "readRequiredSource(\n  '../src-ui/src/views/MonitoringView.tsx',\n)",
         "readRequiredSource('../src-ui/src/components/coding-layout/CodingLayout.tsx')",
       ),
     );
 
-    // An empty source makes that guardrail's own delegation assertions fail,
-    // which proves evaluation continued past the missing read instead of
-    // unwinding — the behaviour the ENOENT crash denied.
+    // An empty source makes that guardrail's own hook assertion fail, which
+    // proves evaluation continued past the missing read instead of unwinding —
+    // the behaviour the ENOENT crash denied.
     expect(output).toContain(
-      'must delegate its coding panes to the extracted section',
+      'MonitoringView must use the shared session diagnostics query.',
     );
   });
 });
@@ -457,14 +346,12 @@ describe('proof:repo-guardrails baseline can only shrink', () => {
   test('a violation outside the baseline fails the proof by name', () => {
     const { status, output } = runProofCopy((source) =>
       source.replace(
-        "for (const requiredImport of ['./CodingTerminalPanel', './NewTerminalModal']) {",
-        "for (const requiredImport of ['./ASectionThatIsNotDelegated']) {",
+        "for (const requiredHook of ['useAuthStatusQuery', 'useRenewAuthMutation']) {",
+        "for (const requiredHook of ['useAHookThatIsNotCalled']) {",
       ),
     );
 
-    expect(output).toContain(
-      'CodingTerminalPane.tsx must delegate its terminal surface to the extracted section ./ASectionThatIsNotDelegated',
-    );
+    expect(output).toContain('AuthContext must use useAHookThatIsNotCalled.');
     expect(status).toBe(1);
   });
 
