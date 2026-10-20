@@ -80,13 +80,11 @@ function hostSdkValueImports(file: string): Array<[string, string]> {
       if (bindings && ts.isNamedImports(bindings)) {
         for (const element of bindings.elements) {
           if (element.isTypeOnly) continue;
-          found.push([
-            specifier,
-            (element.propertyName ?? element.name).text,
-          ]);
+          found.push([specifier, (element.propertyName ?? element.name).text]);
         }
       }
     } else if (
+      ts.isExportDeclaration(statement) &&
       !statement.isTypeOnly &&
       statement.exportClause &&
       ts.isNamedExports(statement.exportClause)
@@ -139,9 +137,9 @@ describe('station dev SDK mock', () => {
     expect(imports.has('@kontourai/station-sdk useKnowledgeRecordQuery')).toBe(
       true,
     );
-    expect(imports.has('@kontourai/station-sdk/voice voiceSessionAdapterRegistry')).toBe(
-      true,
-    );
+    expect(
+      imports.has('@kontourai/station-sdk/voice voiceSessionAdapterRegistry'),
+    ).toBe(true);
 
     const shared = harnessSharedModules();
     const missing = [...imports]
