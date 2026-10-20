@@ -62,8 +62,9 @@ async function exercise({
     } else if (url.pathname.endsWith('/actions/runs')) {
       res.end(
         JSON.stringify({
-          workflow_runs:
-            url.searchParams.get('status') === 'in_progress' ? runs : [],
+          workflow_runs: runs.filter(
+            (run) => run.status === url.searchParams.get('status'),
+          ),
         }),
       );
     } else if (/\/actions\/runs\/\d+\/cancel$/.test(url.pathname)) {
@@ -117,22 +118,25 @@ async function exercise({
 }
 
 describe('obsolete PR CI cancellation through the GitHub API', () => {
-  it('cancels obsolete verification while retaining the current head and unrelated work', async () => {
-    const result = await exercise({
-      runs: [
-        run(1),
-        run(2, { head_sha: head }),
-        run(3, { event: 'merge_group' }),
-        run(4, { event: 'workflow_dispatch' }),
-        run(5, { path: '.github/workflows/nightly.yml' }),
-        run(6, { head_repository: { full_name: 'someone/station' } }),
-        run(7, { pull_requests: [{ number: 8 }] }),
-        run(8, { head_branch: 'another-feature' }),
-        run(9, { path: '.github/workflows/build-ios.yml' }),
-      ],
-    });
-    expect(result).toEqual({ code: 0, cancelled: [1, 9] });
-  });
+  it.each(['in_progress', 'queued', 'pending'])(
+    'cancels obsolete %s verification while retaining the current head and unrelated work',
+    async (status) => {
+      const result = await exercise({
+        runs: [
+          run(1, { status }),
+          run(2, { head_sha: head, status }),
+          run(3, { event: 'merge_group' }),
+          run(4, { event: 'workflow_dispatch' }),
+          run(5, { path: '.github/workflows/nightly.yml' }),
+          run(6, { head_repository: { full_name: 'someone/station' } }),
+          run(7, { pull_requests: [{ number: 8 }] }),
+          run(8, { head_branch: 'another-feature' }),
+          run(9, { path: '.github/workflows/build-ios.yml' }),
+        ],
+      });
+      expect(result).toEqual({ code: 0, cancelled: [1, 9] });
+    },
+  );
 
   it.each([{ changedHead: true }, { completed: true }, { fork: true }])(
     'leaves work alone when its cancellation authority disappears: %j',

@@ -557,7 +557,8 @@ PR source computation has repository-wide FIFO ceilings: at most two statics
 jobs and two affected-test shard jobs run across all PRs. Both families split
 work into two buckets; one-shard PRs can use both shard buckets, and larger
 plans retain every shard. Waiting jobs consume no runner. Different-head
-supersession still cancels obsolete source runs; same-head duplicates wait
+supersession still cancels obsolete source runs, including native FIFO
+`pending` waiters, after rechecking the live PR head and run attempt; same-head duplicates wait
 rather than cancelling another run's proof. Merge-group, push and manual
 diagnostic jobs use separate source-specific groups. These four PR computation
 slots exclude planners, security checks, platform builds and status publishers;
