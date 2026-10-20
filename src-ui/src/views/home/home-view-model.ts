@@ -986,7 +986,7 @@ function chatLifecycleLabel(
   if (correlated?.failed) return 'Failed';
   // #2310: the server says nothing was ever sent, and this chat holds no
   // transcript message to contradict it. A chat WITH one has sent a turn the
-  // cached summary predates (review H1), so it falls through to its own
+  // cached summary predates (#2338), so it falls through to its own
   // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
   if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
   if (serverLive === false) return 'Recent';
