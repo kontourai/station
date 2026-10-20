@@ -420,7 +420,10 @@ Station account** asks Station to revoke the account session and reports
 revocation only after the host validates Station's typed confirmation. If the
 response is lost or invalid, the UI reports the remote outcome as unconfirmed.
 **Forget account session on this device** only clears the host-held local
-continuation; it does not revoke the remote Station session.
+continuation; it does not revoke the remote Station session. Either action
+also hands this device back its own appearance (mode and color theme) in
+place of the signed-out account's
+([color themes decision](../decisions/user-color-themes.md)).
 
 The ordinary native transport obtains fresh ICE and verifies Station proof for
 each encrypted application peer. Its current resource surface is health,
