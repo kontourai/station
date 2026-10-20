@@ -23,9 +23,9 @@ import {
   resolveColorThemeSelection,
 } from './color-theme-selection';
 
-export const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
-export const COLOR_THEME_FLAVOR_ATTRIBUTE = 'data-color-theme-flavor';
-export const COLOR_THEME_ACCENT_ATTRIBUTE = 'data-color-theme-accent';
+const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
+const COLOR_THEME_FLAVOR_ATTRIBUTE = 'data-color-theme-flavor';
+const COLOR_THEME_ACCENT_ATTRIBUTE = 'data-color-theme-accent';
 /**
  * Set on the root to the family id when the most recent request for that
  * family's sheet failed (at startup or on a live switch). Removed when a new
