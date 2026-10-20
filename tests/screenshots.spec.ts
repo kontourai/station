@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
@@ -1771,6 +1772,36 @@ function telemetryConsentScreens(): Screen[] {
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
+          const apiBase = process.env.PW_API_BASE_URL;
+          if (!apiBase)
+            throw new Error('Telemetry gallery requires its owned API origin.');
+          const request = createAuthenticatedE2ERequest(page.request);
+          const read = async (path: string) => {
+            const response = await request.get(new URL(path, apiBase).href);
+            expect(
+              response.ok(),
+              `Telemetry gallery prerequisite ${path}`,
+            ).toBe(true);
+            const body = (await response.json()) as {
+              success: boolean;
+              data: Record<string, unknown>;
+            };
+            expect(body.success).toBe(true);
+            expect(body.data).toBeTruthy();
+            return body;
+          };
+          const [configSnapshot, disclosureSnapshot, statusSnapshot] =
+            await Promise.all([
+              read('/config/app'),
+              read('/api/usage-telemetry/disclosure'),
+              read('/api/usage-telemetry/status'),
+            ]);
+          expect(typeof disclosureSnapshot.data.inventoryRevision).toBe(
+            'string',
+          );
+          expect(typeof statusSnapshot.data.liteInventoryRevision).toBe(
+            'string',
+          );
           const publishers = {
             kontour: {
               tier: dnt ? 'off' : 'lite',
@@ -1791,8 +1822,7 @@ function telemetryConsentScreens(): Screen[] {
             [
               /\/config\/app(?:\?.*)?$/,
               async (route) => {
-                const response = await route.fetch();
-                const body = await response.json();
+                const body = structuredClone(configSnapshot);
                 body.data.telemetryTier = {
                   kontour: 'lite',
                   operator: 'lite',
@@ -1802,28 +1832,26 @@ function telemetryConsentScreens(): Screen[] {
                   : '';
                 delete body.data.telemetryEnabled;
                 delete body.data.firstRun;
-                await route.fulfill({ response, json: body });
+                await route.fulfill({ json: body });
               },
             ],
             [
               /\/api\/usage-telemetry\/disclosure$/,
               async (route) => {
-                const response = await route.fetch();
-                const body = await response.json();
+                const body = structuredClone(disclosureSnapshot);
                 Object.assign(body.data, {
                   acknowledged: !dialogVisible,
                   telemetryEnabled: false,
                   endpointConfigured: endpoint,
                   publishers,
                 });
-                await route.fulfill({ response, json: body });
+                await route.fulfill({ json: body });
               },
             ],
             [
               /\/api\/usage-telemetry\/status$/,
               async (route) => {
-                const response = await route.fetch();
-                const body = await response.json();
+                const body = structuredClone(statusSnapshot);
                 body.data.publishers = publishers;
                 body.data.liteNotices = dialogVisible
                   ? {}
@@ -1837,7 +1865,7 @@ function telemetryConsentScreens(): Screen[] {
                         },
                       ]),
                     );
-                await route.fulfill({ response, json: body });
+                await route.fulfill({ json: body });
               },
             ],
             [
