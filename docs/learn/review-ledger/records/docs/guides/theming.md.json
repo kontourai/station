@@ -104,7 +104,11 @@
 
     "src-ui/src/platform/native/startupPresentation.ts",
 
-    "src-ui/src/__tests__/startup-presentation.browser.test.tsx"
+    "src-ui/src/__tests__/startup-presentation.browser.test.tsx",
+
+    "src-ui/src/lib/root-theme.ts",
+
+    "src-ui/src/highlight/station-syntax-theme.ts"
   ],
 
   "checks": [
