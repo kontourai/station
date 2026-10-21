@@ -551,7 +551,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side
