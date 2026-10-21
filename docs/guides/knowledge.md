@@ -627,10 +627,10 @@ the shared storage contract; Station owns request authorization, registered
 roots and its adapter behavior.
 
 A separate consumer can load an installed Kit's manifest-declared provider
-entry. That is how the [repository graph interoperability check](repository-knowledge-graph.md#kit-consumer-dogfood-and-release-boundary)
-reads Station's copied records. It does not make the Kit provider a Station
-runtime dependency. That check also records fixes still awaiting publication;
-a locally tested candidate is not a published release.
+entry. The [repository graph interoperability check](repository-knowledge-graph.md#kit-consumer-dogfood-and-release-boundary)
+records dated local candidate checks and subsequent Flow Agents 6.5.0
+publication and consumer evidence. It does not make the Kit provider a Station
+runtime dependency or replace current Station adapter or live provider qualification.
 
 ## Store formats and external edits
 

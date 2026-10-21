@@ -2729,6 +2729,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       } as const;
     }
     const targetTurnId = turnId ?? record.activeTurnId;
+    const invocationId =
+      record.sdkTurns?.running?.turnId === targetTurnId
+        ? record.sdkTurns.running.startEvent?.invocationId
+        : undefined;
     // Mark before calling the SDK: its async iterator may publish the
     // `is_error` result before `interrupt()` resolves. The mark is on this
     // turn's own ledger entry, so only its result is read as the receipt.
@@ -2765,6 +2769,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: new Date().toISOString(),
       turnId: targetTurnId,
+      ...(invocationId !== undefined ? { invocationId } : {}),
       method: 'turn.aborted',
       reason: 'interrupted',
       ...(terminalMetadata ? { metadata: terminalMetadata } : {}),

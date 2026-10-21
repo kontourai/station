@@ -33,7 +33,15 @@ export type ModelResult<C extends ModelCommand> = AtomicResult<
   C
 >;
 export const keyOf = (key: RunKey): string =>
-  canonical([key.scopeId, key.conversationId, key.invocationId]);
+  JSON.stringify([key.scopeId, key.conversationId, key.invocationId]);
+// Keys reach decisions only after command/record validation.
+function sameRunKey(a: RunKey, b: RunKey): boolean {
+  return (
+    a.scopeId === b.scopeId &&
+    a.conversationId === b.conversationId &&
+    a.invocationId === b.invocationId
+  );
+}
 export const same = (a: unknown, b: unknown): boolean =>
   canonical(a) === canonical(b);
 export function commandDigest(command: Omit<ModelCommand, 'digest'> | object) {
@@ -79,7 +87,7 @@ function emit(
     return;
   }
   const position = [...state.outbox.values()].filter((v) =>
-    same(v.projection.key, run.spec.key),
+    sameRunKey(v.projection.key, run.spec.key),
   ).length;
   state.outbox.set(projection.id, {
     projection,
@@ -155,7 +163,7 @@ export function decideModel(
     )
       return refuse('unsupported');
     const rows = [...state.outbox.values()].filter((row) =>
-      same(row.projection.key, key),
+      sameRunKey(row.projection.key, key),
     );
     const maximum = rows.reduce((n, row) => Math.max(n, row.position), -1);
     const throughPosition = command.throughPosition ?? maximum;
@@ -301,7 +309,7 @@ export function decideModel(
     const row = state.outbox.get(command.projectionId);
     if (
       !row ||
-      !same(row.projection.key, key) ||
+      !sameRunKey(row.projection.key, key) ||
       hash(row.projection) !== command.projectionDigest
     )
       return refuse('conflict');

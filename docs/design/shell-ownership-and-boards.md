@@ -250,8 +250,9 @@ advertised entry point, and D4 below requires it stay palette-reachable until
 Decision: Notifications is the inbox. It widens to carry every item whose
 meaning is "a human must decide": tool approvals and pairing (already there),
 plus proposed-change decisions and paused gate reviews (from Review). The
-bell in the footer carries the single count. A project row carries the same
-count scoped to that project.
+current workspace-map refinement in D3 keeps the bell and its single projected
+count in the header; the original footer placement below remains design history.
+Project-scoped attention still requires its own backing projection.
 
 Independent-review receipts and the "run independent review" action move
 into the project's Coding layout, next to the Git range they judge. Diff

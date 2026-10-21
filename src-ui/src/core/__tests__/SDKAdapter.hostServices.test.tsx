@@ -13,6 +13,7 @@ import {
   useShortcut,
   useShortcutScope,
 } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -21,7 +22,13 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { type ReactNode, StrictMode, useEffect, useMemo } from 'react';
+import {
+  type ReactNode,
+  StrictMode,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const inputs = vi.hoisted(() => ({ isMobile: false }));
@@ -30,6 +37,12 @@ vi.mock('@kontourai/station-sdk', async (original) => ({
   useProjectLayoutsQuery: () => ({ data: [] }),
   useProjectLayoutQuery: () => ({ data: undefined }),
   useConversationsQuery: () => ({ data: [] }),
+}));
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  mountPluginTelemetryPane: async () => {
+    throw new Error('No telemetry publisher in this host-service fixture');
+  },
 }));
 vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
@@ -77,6 +90,17 @@ function RegistryProbe() {
   return null;
 }
 
+function FixtureQueries({ children }: { children: ReactNode }) {
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: 0 } },
+      }),
+  );
+  useEffect(() => () => client.clear(), [client]);
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
 function Shell({
   children,
   pluginName = 'acme-tools',
@@ -89,24 +113,26 @@ function Shell({
   layoutPlugin?: string;
 }) {
   return (
-    <ToastProvider>
-      <NavigationProvider>
-        <KeyboardShortcutsProvider>
-          <RegistryProbe />
-          <SDKAdapter
-            layout={{
-              slug: 'acme',
-              name: 'Acme',
-              tabs: [],
-              ...(layoutPlugin ? { plugin: layoutPlugin } : {}),
-            }}
-            {...(pluginName ? { boundPluginName: pluginName } : {})}
-          >
-            {children}
-          </SDKAdapter>
-        </KeyboardShortcutsProvider>
-      </NavigationProvider>
-    </ToastProvider>
+    <FixtureQueries>
+      <ToastProvider>
+        <NavigationProvider>
+          <KeyboardShortcutsProvider>
+            <RegistryProbe />
+            <SDKAdapter
+              layout={{
+                slug: 'acme',
+                name: 'Acme',
+                tabs: [],
+                ...(layoutPlugin ? { plugin: layoutPlugin } : {}),
+              }}
+              {...(pluginName ? { boundPluginName: pluginName } : {})}
+            >
+              {children}
+            </SDKAdapter>
+          </KeyboardShortcutsProvider>
+        </NavigationProvider>
+      </ToastProvider>
+    </FixtureQueries>
   );
 }
 
@@ -350,14 +376,16 @@ describe('useShortcut through the real adapter and registry', () => {
       );
     }
     render(
-      <ToastProvider>
-        <NavigationProvider>
-          <KeyboardShortcutsProvider>
-            <RegistryProbe />
-            <Both />
-          </KeyboardShortcutsProvider>
-        </NavigationProvider>
-      </ToastProvider>,
+      <FixtureQueries>
+        <ToastProvider>
+          <NavigationProvider>
+            <KeyboardShortcutsProvider>
+              <RegistryProbe />
+              <Both />
+            </KeyboardShortcutsProvider>
+          </NavigationProvider>
+        </ToastProvider>
+      </FixtureQueries>,
     );
     const dot = results.dot;
     const dash = results.dash;

@@ -932,6 +932,7 @@ export function mapClaudeSdkMessage({
         ? target.turn
         : undefined;
     const resultTurnId = resultTurn?.turnId;
+    const resultInvocationId = resultTurn?.startEvent?.invocationId;
     // A send the ledger still holds as queued (no lifecycle messages) gets
     // its start before any fact about its end.
     if (resultTurn) ensureClaudeTurnStartPublished(turnContext, resultTurn);
@@ -1005,6 +1006,9 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         turnId: resultTurnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'runtime.error',
         ...providerFailure(
           usageLimit
@@ -1111,6 +1115,9 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         turnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'turn.completed',
         // `'other'` — not `'stop'` and not `'tool-calls'` — for a deferral:
         // the turn did not reach a self-reported outcome, and `'other'`
@@ -1152,6 +1159,9 @@ export function mapClaudeSdkMessage({
           threadId: record.session.threadId,
           createdAt,
           turnId: folded.turnId,
+          ...(folded.startEvent?.invocationId !== undefined
+            ? { invocationId: folded.startEvent.invocationId }
+            : {}),
           method: 'turn.completed',
           finishReason: 'other',
         });

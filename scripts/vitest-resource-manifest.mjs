@@ -45,6 +45,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Real 1,026-part WAL/FULL setup and 1,027 one-at-a-time acknowledgements
+  // use a 120-second completion guard, not a throughput assertion. Serial
+  // ownership keeps ordinary workers from adding filesystem contention.
+  'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
   // The complete 1,200-thread seed/read/equivalence case owns its original
   // 10-second product-law bound in a fresh file/process lifecycle.
   'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',

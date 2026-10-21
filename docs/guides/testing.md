@@ -460,8 +460,10 @@ of the retained bytes, so later failures for the same request preserve earlier
 reports. The changed receipt
 and its attached diagnostic bind the retained paths and SHA-256 digests; PR CI
 uploads this failed-report directory separately from canonical text artifacts
-under verification-output. Raw reports exceeding 16 MiB and
-missing reports produce explicit omission files. If retention cannot write,
+under verification-output. Retention parses each raw report as JSON, redacts the structured values, then serializes
+it as JSON. Missing or invalid JSON reports, raw reports exceeding 16 MiB, and redacted
+serialized reports exceeding that limit produce explicit omission files; malformed input
+is not repaired. If retention cannot write,
 `retentionFailure` names the error and private temporary directory, which is
 preserved for recovery. Reporter diagnostics and retention failures never turn
 a failed run into a pass or change test selection or deadlines.
@@ -1519,8 +1521,8 @@ as given. The Veritas evidence-check default (600 s) lives in the external
 
 ### Shared Vitest worker policy
 
-Ordinary and focused Vitest invocations inherit the checked-in four-worker
-ceiling. `npm run test:full` discovers the complete corpus, validates exact and
+Ordinary Vitest invocations use the checked-in four-worker ceiling; focused
+runs use one worker with file parallelism disabled. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
 seven resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
@@ -1532,7 +1534,11 @@ files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
 aggregate load below the ordinary pool while independent temp-dir and
 dynamically allocated-port fixtures overlap. A test that owns host-global
-leases, fencing, or coordinator capacity belongs in process-exclusive. New
+leases, fencing, or coordinator capacity belongs in process-exclusive. The
+1,026-part model-runtime outbox keeper also uses that group: it owns a fresh
+one-worker lifecycle for its WAL/FULL transactions and one-at-a-time ACKs,
+with a 120-second liveness guard and complete replay geometry. The keeper
+asserts durable completion and readiness, not a 30-second performance target. New
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.

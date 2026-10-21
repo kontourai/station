@@ -1515,8 +1515,9 @@ usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is
 past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
 or more than 1,000 session records naming one level's parents) and is refused rather
-than cut. Each level's parent lookup scans session start records; there is no
-index on the JSON fields it matches.
+than cut. Each level resolves parent naming through the indexed session-parent-mentions
+projection, maintained with canonical event writes and backfilled from retained
+start and configured events. Naming and provenance grant no read or lifecycle authority.
 
 ### Reading assistant turn content programmatically
 

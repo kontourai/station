@@ -1405,7 +1405,7 @@ in `@kontourai/monument` owns the decision and record-before-effect sequence.
 Station Control's `send_to_session` and delegated task result delivery import
 it through the package's public root entry point; no server copy remains.
 
-**Interface.** `deliverSessionMessage(ports, { threadId, text, sender, mode,
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode,
 deliveryId, decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
@@ -1423,10 +1423,14 @@ expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
 extraction remain open under #3565.
 
-**Provenance.** The module frames `text` as another agent's message
-(`frameAgentMessage`) before any port sees it, naming `sender`, so the engine never
-reads it as the person's; the sender's lines stay quoted under a fixed header the
-text cannot imitate. The route stamps the same sender on the turn's
+**Provenance.** Station's `send_to_session` and delegated-result host callers
+validate their server-owned sender and frame the message (`frameAgentMessage`)
+through Monument's optional synchronous `prepareText` host port. Preparation
+runs after the deliverable branch decision, before recording or effect. The
+kernel imports no Station types or framing code; hosts without preparation
+pass opaque text unchanged. The engine reads the sender's lines
+quoted under a fixed header the text cannot imitate. The host stamps the same
+sender on the turn's
 `clientOrigin.sender` beside the unchanged `internal` actor, which is what keeps
 `isPersonActor` false and a link in the message from granting `read_conversation`
 access. The transcript projection reads the sender from that record, never from
@@ -1516,7 +1520,20 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+A lifecycle at rest alone does not authorize a result. Before recording a
+delivery and again before each effect, the host requires either the exact
+invocation terminal disposition or a read-only disposition proving genuinely
+inputless storage. Retained capture history, unavailable or contradictory proof,
+and ambiguous legacy delivery identity hold the result. Output reads retain the
+proved invocation; a reused native turn ID cannot supply another invocation's result.
+
 **Held follow-ups (#3568).**
+The chat dock can read and remove server-held entries through
+`ConversationInboxMessages` and `useConversationInbox`, with captured request
+authority and explicit unavailable and removal-unknown states. This does not
+switch all composer follow-ups from the per-tab queue to server placement;
+that routing change remains separate.
+
 [ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
 holds a person's follow-up for a busy conversation, so it is sent even if the
 app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
@@ -2606,6 +2623,10 @@ the applicable page header. An already-visible strip
 and focused tab cause no extra reveal scroll. The host retains its tabbed
 presentation; the Basis renderer uses chromeless presentation to omit duplicate
 portable MCP App controls. Identity and workspace fields are collapsed by default.
+Task tab selection survives a temporary catalog loading boundary only for the
+same Station API and Task incarnation. Explicit Basis reveal refreshes the
+current authority-scoped Task Basis reads, including an already-mounted pane.
+Neither behavior preserves unsaved text across unmount or supplies effect authority.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.

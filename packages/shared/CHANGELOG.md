@@ -1,5 +1,64 @@
 # @kontourai/station-shared
 
+## 0.12.0
+
+### Minor Changes
+
+- d6f77de: A message one agent sends to another Session (`send_to_session`) now carries
+  who sent it, and never reads as the person's (#3419).
+  
+  `ClientOrigin` gains an optional `sender` (`ClientOriginSender`, kind
+  `agent-session`: the sending Session's id, title, Agent and engine, and the
+  call's `requestKey`), stamped by the server beside the unchanged `actor`, with
+  `clientOriginSender` to read it. `ConversationMessage.metadata.sender` carries
+  it onto the transcript row, and `read_conversation` returns it on the message.
+  The receiving engine is given the text under a fixed header naming the sender
+  and not the person, with every line of the text quoted
+  (`@kontourai/station-shared/agent-message-frame`); the transcript shows the
+  sender's own words. The chat and Activity transcripts show such a message as a
+  third speaker, with a header, icon and accent derived from the sender, linking
+  to the sending Session, and the sender's transcript shows the call as "Sent to
+  <Session>" with its outcome.
+  
+  Engine-opened replies retain their recorded provider cause after settlement
+  and reload. Phone widths show a compact cause row with full details behind a
+  tap. Delivery links focus the exact request-key record, with bounded lookup
+  and explicit unavailable or ambiguous outcomes. Digests include sender
+  provenance; Inbox and Activity mark the latest agent-delivered input.
+  The Home projection adds this marker to its consent field list, so previous
+  Home role grants must be renewed. Automatic settled-child delivery remains a
+  separate prerequisite (#3158).
+- Add an explicit Station browser server scope to session approval responses and typed decision options. Keep per-tool trust separate and recheck browser authenticity on later server-granted calls.
+- 3262dd0: `ensureStationHomeSchemaSync` accepts a test-only `targetVersion` hook beside the existing `migrations` hook, so tests can drive a real home migration through the gate. Production behavior is unchanged.
+- 3262dd0: The lifecycle journal accepts the `stdout_epipe`, `supervisor_drain`, and `supervisor_disconnect` shutdown reasons, exported with the others as `LIFECYCLE_SHUTDOWN_REASONS`, instead of rejecting the event, and `classifyLifecycleExit` reports the two supervisor reasons as `supervisor_drain` and `supervisor_disconnect` rather than a crash; a non-zero exit after a supervisor drain is still a crash.
+- 9285574: Send only completed previous-day Lite aggregates, show first-start notices for CLI and unattended services, and classify telemetry write guards as POST routes so startup coverage succeeds. Unknown channel, distribution and layout-customization facts remain explicit unknowns; version fields use the running build.
+  
+  Scope monthly Full IDs to their publisher. Tier-lowering requests can include one fixed-enum reason before applying the lower choice, including Off; standalone feedback requires a recorded lowering within ten minutes. Inline and standalone reasons share a limit of one per publisher per UTC day. DNT suppresses both paths. Coalesce dropped outbox observations and retain independent age and byte bounds.
+  
+  Upgrading immediately replaces the permanent `sha256(uuid)` Full `distinct_id` with a per-publisher monthly ID, breaking existing receiver installation continuity without a migration link. Round Full occurrence and admission timestamps down to the minute. Full omits unknown channels and maps beta to preview; Lite retains unknown. Senders validate daily versions as SemVer; receivers retain their configured release lists.
+
+### Patch Changes
+
+- b7d8c21: Reset Full telemetry acknowledgements because the earlier disclosure wording overstated anonymity. Full telemetry is pseudonymous, with a monthly installation hash. Disclosure wording revision 2 participates in the Full acknowledgement hash independently of the data inventory revision used by batches and probes, so existing receipts are stale and saved operator Full choices require acknowledgement of the accurate disclosure before sending resumes.
+  
+  Under DO_NOT_TRACK, the disclosure offers Off, Lite, and Full operator choices without acknowledging. Nothing is sent while DNT is active; saving Full leaves it pending and requires confirmation after DNT is removed. Correct the legacy telemetryEnabled schema description and restrict operator Full migration guidance to the operator CLI status line.
+- 1b2d885: Export `TURN_COMPLETION_NOTIFICATION_SOURCE`, the `source` (and envelope `source.subsystem`) of the notification records Station writes when an agent's turn finishes, stops or fails, so clients can tell those records from other writers'.
+  
+  Export `OPENED_NOTIFICATION_QUERY_PARAM`, the query parameter a Web Push or desktop alert's open link carries to name the record it opens, so the client that loads the link can mark that record read.
+  
+  `isRelativeStationPath` also refuses a path whose dot segments (plain or percent-encoded, any case) normalize to `//host` or off the Station origin, such as `/..//host` or `/%2e%2e//host`. It also refuses a fragment and a link that carries `openedNotification` (only the server's OS-alert links name a record to mark read).
+- Updated dependencies [d6f77de]
+- Updated dependencies
+- Updated dependencies [32f4bb5]
+- Updated dependencies [90be0c7]
+- Updated dependencies [7ed702d]
+- Updated dependencies [0742389]
+- Updated dependencies [9088572]
+- Updated dependencies [9285574]
+- Updated dependencies [463e2e1]
+- Updated dependencies [1b2d885]
+  - @kontourai/station-contracts@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

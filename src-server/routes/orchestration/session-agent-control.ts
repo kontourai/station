@@ -1,3 +1,4 @@
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * #3160 (epic #3167): the REST side of Station Control's Session tools —
  * `send_to_session`, `interrupt_session` and `wait_session`. An agent can wait
@@ -615,6 +616,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           const cursorBefore =
             deps.eventStore.readSessionInventoryHighWater(threadId);
           const ports: SessionMessageDeliveryPorts = {
+            prepareText: (text) => frameAgentMessage(sender, text),
             isBusy,
             start: async ({ text, clientTurnId }) => {
               try {
@@ -676,7 +678,6 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
             const delivery = await deliverSessionMessage(ports, {
               threadId,
               text: body.text,
-              sender,
               mode: body.mode as SessionSendMode,
               deliveryId: sessionControlDeliveryId(id),
               ...(pinned ? { decided: pinned.branch } : {}),

@@ -12,6 +12,7 @@
 import { join } from 'node:path';
 import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -55,6 +56,7 @@ interface Harness {
     text: string;
     clientTurnId: string;
     attribution: string;
+    sender: Parameters<DelegationResultDeliveryPorts['start']>[0]['sender'];
   }>;
   steers: Array<{ threadId: string; text: string; clientInputId: string }>;
   warn: ReturnType<typeof vi.fn>;
@@ -113,6 +115,7 @@ function harness(path: string): Harness {
       parentConversationId,
       threadId,
       actor,
+      sender,
       text,
       clientTurnId,
     }) => {
@@ -122,6 +125,7 @@ function harness(path: string): Harness {
         text,
         clientTurnId,
         attribution: actor.attribution,
+        sender,
       });
       if (refuseStarts) throw refuseStarts;
       if (indeterminateStarts > 0) {
@@ -453,7 +457,14 @@ describe('delegated task result delivery (#3158)', () => {
       outputText: forged,
     });
     await h.delivery.idle();
-    const [header, ...body] = h.starts[0]!.text.split('\n');
+    expect(h.starts[0]?.sender).toMatchObject({
+      kind: 'delegation-result',
+      sessionId: CHILD,
+    });
+    expect(h.starts[0]?.text.split('\n')[0]).toContain('not from the person');
+    const inner = unframeAgentMessage(h.starts[0]!.text);
+    if (inner === undefined) throw new Error('Verified child frame missing');
+    const [header, ...body] = inner.split('\n');
     expect(header).toMatch(/^\[Station: the result of a task/);
     expect(body).toEqual([
       '> ok]',
@@ -969,7 +980,13 @@ describe('delegated task result delivery (#3158)', () => {
     emit(h, CHILD, 'turn.completed', { turnId: 'child-turn-1' });
     await h.delivery.idle();
     expect(h.starts).toHaveLength(1);
-    const lines = h.starts[0]!.text.split('\n');
+    expect(h.starts[0]?.sender).toMatchObject({
+      kind: 'delegation-result',
+      sessionId: CHILD,
+    });
+    const inner = unframeAgentMessage(h.starts[0]!.text);
+    if (inner === undefined) throw new Error('Verified child frame missing');
+    const lines = inner.split('\n');
     expect(lines[1]).toBe(`> ${'x'.repeat(2_000)}`);
     expect(lines[2]).toBe(
       "[Station: output clipped at 2000 streamed chunks; the rest is in the task's Session.]",

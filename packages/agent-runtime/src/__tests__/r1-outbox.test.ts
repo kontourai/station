@@ -104,7 +104,7 @@ it('R1.6 one drain applies more than 1024 real settled projections and reaches r
     kind: 'ready',
     tapes: [tape],
   });
-});
+}, 120_000);
 it('R1.6 initial outbox window leaves a legitimate same-run concurrent append for the next drain', async () => {
   const f = await fixture();
   cleanup.push(() => f.close());

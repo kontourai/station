@@ -518,7 +518,7 @@ Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout on desktop), where it shows that Chat page and leaves the dock alone.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout, including on phones), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -944,8 +944,10 @@ Returns a query whose `data` is the agent's `WorkflowMetadata[]`.
 
 #### `useSDK()`
 
-Returns `{ apiBase, pluginName, getPluginHeaders }`, not the entire provider
-context. `pluginName` may be empty; header attribution is not an authorization
+Returns `{ apiBase, pluginName, telemetryCapability, getPluginHeaders }`, not
+the entire provider context. `telemetryCapability` is the owning host's optional
+capability supplier, used by `useTelemetry()`; absence is not permission to
+count. `pluginName` may be empty, and header attribution is not an authorization
 grant. Prefer scoped client operations for protected data.
 
 #### `useUserLookup(alias: string | null): { data: any; loading: boolean; error: string | null }`
