@@ -342,7 +342,7 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
 
   const head = [
     `# Station Task brief (${TASK_BRIEF_VERSION}, digest ${digest.slice(0, 16)})`,
-    'Context Station attached for this Session. It is a snapshot taken when the Session was dispatched; call `get_task_brief` for the current memory.',
+    'Context Station attached for this Session, built from the Task as it stood when this brief was made (at dispatch, or by a `get_task_brief` call). It does not update itself; call `get_task_brief` for the current memory.',
     '',
     `Task: ${title}`,
     `Task id: ${task.id}`,

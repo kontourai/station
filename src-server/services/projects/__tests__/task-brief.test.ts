@@ -225,6 +225,18 @@ describe('buildTaskBrief', () => {
   });
 });
 
+describe('the brief header', () => {
+  test('is true for both callers: dispatch and get_task_brief', () => {
+    const brief = buildTaskBrief(input());
+    expect(brief.text).not.toContain(
+      'snapshot taken when the Session was dispatched',
+    );
+    expect(brief.text).toContain(
+      'built from the Task as it stood when this brief was made (at dispatch, or by a `get_task_brief` call)',
+    );
+  });
+});
+
 describe('the /chat ambient context bound admits a brief', () => {
   // The Station engine relays a first turn's composed ambient context to
   // /chat. Pinned as a literal beside the derivation.
