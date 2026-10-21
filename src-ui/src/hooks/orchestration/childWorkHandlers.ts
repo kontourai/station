@@ -13,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { ChatBackgroundTask } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { childWorkSummaryLabel } from '../../utils/child-work-display';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -150,11 +151,16 @@ function announceSettle(
   activeChatsStore.addEphemeralMessage(threadId, {
     role: 'system',
     childWorkKey: childWorkKey(after),
-    content: summary ? `${label}\n\n${summary}` : label,
+    content: summary
+      ? `${label}\n\n${after.result?.source ? `${childWorkSummaryLabel(after.result.source)}: ` : ''}${summary}`
+      : label,
     backgroundTaskNotice: {
       status: after.status as ChildWorkTerminalStatus,
       ...(after.title ? { title: after.title } : {}),
       ...(summary ? { summary } : {}),
+      ...(summary && after.result?.source
+        ? { summarySource: after.result.source }
+        : {}),
     },
   });
 }

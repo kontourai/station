@@ -96,7 +96,7 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
           status: 'completed' as const,
           title: 'Explore',
           backgrounded: true,
-          result: { summary: 'Done.' },
+          result: { summary: 'Done.', source: 'provider-summary' as const },
         },
       ],
     };
@@ -109,8 +109,9 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       },
     });
     expect(announcements()).toEqual([
-      'Background task finished — Explore\n\nDone.',
+      'Background task finished — Explore\n\nProvider summary: Done.',
     ]);
+    expect(notices()[0]?.summarySource).toBe('provider-summary');
   });
   beforeEach(async () => {
     seq = 0;

@@ -1234,3 +1234,14 @@ canonical inventory fingerprints and the independent plugin data revision.
 `parsePluginDailyPing(payload, declaration, namespacedPublisher)` requires exact declared event/property
 histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
 See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
+
+Child-work result text may carry `source`: `provider-summary`, `child-message`,
+or `provider-error`. This identifies the observed report, not verification of
+a returned artifact or successful task acceptance. Older reports omit it;
+readers must preserve that uncertainty. Claude task notifications and Muse
+workflow summaries are provider summaries; Codex child-turn messages are child
+messages, including its last-message fallback. Completion status remains an
+independent provider observation. Child transcript access is read-only and
+uses the persisted, authorized child identity; a transcript handle is not a
+produced artifact or permission to read an arbitrary path.

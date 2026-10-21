@@ -16,6 +16,7 @@ import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
   latestChildTool,
@@ -248,7 +249,13 @@ export function ChildWorkRow({
       </button>
       {expanded && (
         <div className="child-work-row__detail">
-          {summary && <p className="child-work-row__summary">{summary}</p>}
+          {summary && (
+            <p className="child-work-row__summary">
+              <strong>{childWorkSummaryLabel(item.result?.source)}</strong>
+              {' · '}
+              <span>{summary}</span>
+            </p>
+          )}
           {summary && item.result?.summaryTruncated && (
             <p className="child-work-row__note">
               Summary cut at {CHILD_WORK_SUMMARY_MAX_CHARS.toLocaleString()}{' '}

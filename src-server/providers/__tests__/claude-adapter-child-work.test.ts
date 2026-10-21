@@ -340,6 +340,7 @@ describe('#2457 Claude child work, replayed from real captures', () => {
           (candidate) => candidate.childId === childId,
         );
         expect(item?.result?.summary).toBeTruthy();
+        expect(item?.result?.source).toBe('provider-summary');
         expect(item?.result?.handle).toMatchObject({ kind: 'transcript-file' });
         expect(item?.usage?.totalTokens).toBeGreaterThan(0);
       }

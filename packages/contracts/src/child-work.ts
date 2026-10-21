@@ -288,8 +288,16 @@ export type ChildWorkResultHandle =
   | { kind: 'transcript-file'; path: string }
   | { kind: 'session'; threadId: string; conversationId?: string };
 
+export type ChildWorkSummarySource =
+  | 'provider-summary'
+  | 'child-message'
+  | 'provider-error';
+
 export interface ChildWorkResult {
+  /** Reported text, never evidence that a returned artifact was verified. */
   summary?: string;
+  /** Absent on older reports; do not infer an origin from the text. */
+  source?: ChildWorkSummarySource;
   /** Present only when `summary` was cut to `CHILD_WORK_SUMMARY_MAX_CHARS`. */
   summaryTruncated?: true;
   handle?: ChildWorkResultHandle;
@@ -512,8 +520,31 @@ function normalizeResult(
     ...(truncated || (summary !== undefined && result.summaryTruncated)
       ? { summaryTruncated: true as const }
       : {}),
+    ...(summary !== undefined &&
+    (result.source === 'provider-summary' ||
+      result.source === 'child-message' ||
+      result.source === 'provider-error')
+      ? { source: result.source }
+      : {}),
     ...(handle ? { handle } : {}),
   };
+}
+
+/** A sticky summary can only acquire provenance from the same reported text. */
+function enrichResult(
+  existing: ChildWorkResult | undefined,
+  incoming: ChildWorkResult | undefined,
+): ChildWorkResult | undefined {
+  if (!existing || !incoming) return existing ?? incoming;
+  if (existing.summary !== undefined && existing.summary !== incoming.summary) {
+    const {
+      source: _source,
+      summaryTruncated: _truncated,
+      ...other
+    } = incoming;
+    return fillAbsent(existing, other);
+  }
+  return fillAbsent(existing, incoming);
 }
 
 function normalizeDepth(depth: unknown): number | undefined {
@@ -848,7 +879,7 @@ function applySettle(
     next = normalizeItem({
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
-      result: fillAbsent(existing.result, result),
+      result: enrichResult(existing.result, result),
       ...settledUsage(existing, usage, {
         open: false,
         provisional,

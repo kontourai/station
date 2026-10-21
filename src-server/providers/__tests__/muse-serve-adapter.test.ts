@@ -654,6 +654,7 @@ describe('#2452 muse serve: workflow children are child work', () => {
       result: {
         summary:
           'Ran `date > stamp.txt` in workspace root. File stamp.txt content: "Thu Sep 24 04:40:45 UTC 2026".',
+        source: 'provider-summary',
       },
     });
     // #3337: the terminal revision carries only a duration; the settle still

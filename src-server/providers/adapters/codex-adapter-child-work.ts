@@ -386,7 +386,11 @@ function settleChild(
   context: ChildWorkContext,
   childId: string,
   status: ChildWorkTerminalStatus,
-  extra: { summary?: string; durationMs?: number } = {},
+  extra: {
+    summary?: string;
+    source?: ChildWorkResult['source'];
+    durationMs?: number;
+  } = {},
 ): void {
   const state = stateOf(context.record);
   if (state.closed) return;
@@ -398,7 +402,7 @@ function settleChild(
     ...(extra.durationMs !== undefined ? { durationMs: extra.durationMs } : {}),
   };
   const result: ChildWorkResult | undefined = extra.summary
-    ? { summary: extra.summary }
+    ? { summary: extra.summary, source: extra.source ?? 'provider-summary' }
     : undefined;
   const changed = emit(context, {
     kind: 'settle',
@@ -906,7 +910,15 @@ function handleKnownChildNotification(
             ? (finalAgentMessage(turn.items) ?? facts.lastAgentMessage)
             : undefined;
       settleChild(context, childId, status, {
-        ...(summary ? { summary } : {}),
+        ...(summary
+          ? {
+              summary,
+              source:
+                status === 'failed'
+                  ? ('provider-error' as const)
+                  : ('child-message' as const),
+            }
+          : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
       });
       pruneFacts(context.record);
@@ -937,7 +949,7 @@ function handleKnownChildNotification(
   }
 }
 
-/** The turn's final answer: a `final_answer` agentMessage, else the last one. */
+/** Reported child text, preferring an explicit final-answer phase. */
 function finalAgentMessage(items: unknown): string | undefined {
   if (!Array.isArray(items)) return undefined;
   const messages = items.filter(

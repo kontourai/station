@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
 } from '../../utils/child-work-display';
@@ -189,6 +190,9 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
         <div className="subagent-card__detail" id={detailId}>
           {summary ? (
             <div className="subagent-card__summary">
+              <span className="subagent-card__note">
+                {childWorkSummaryLabel(item.result?.source)}
+              </span>
               <LazyMarkdown>{summary}</LazyMarkdown>
             </div>
           ) : (

@@ -443,6 +443,49 @@ describe('applyChildWorkDelta', () => {
     expect(short?.result).toEqual({ summary: 'ok' });
   });
 
+  test('summary origin survives settlement and bounded normalization', () => {
+    const item = get(
+      fold(
+        settle('reported', 'completed', {
+          result: {
+            summary: 'I will investigate next.',
+            source: 'provider-summary',
+          },
+        }),
+      ),
+      'reported',
+    );
+    expect(item?.result).toEqual({
+      summary: 'I will investigate next.',
+      source: 'provider-summary',
+    });
+  });
+
+  test('late result origin cannot relabel a different retained summary', () => {
+    const first = fold(
+      settle('reported', 'completed', { result: { summary: 'first report' } }),
+    );
+    const different = applyChildWorkDelta(
+      first,
+      settle('reported', 'completed', {
+        result: { summary: 'different message', source: 'child-message' },
+      }),
+    );
+    expect(get(different, 'reported')?.result).toEqual({
+      summary: 'first report',
+    });
+    const matching = applyChildWorkDelta(
+      first,
+      settle('reported', 'completed', {
+        result: { summary: 'first report', source: 'provider-summary' },
+      }),
+    );
+    expect(get(matching, 'reported')?.result).toEqual({
+      summary: 'first report',
+      source: 'provider-summary',
+    });
+  });
+
   test('absent usage stays absent; invalid figures are dropped, not zeroed', () => {
     const none = get(fold(settle('a', 'completed')), 'a');
     expect(none).not.toHaveProperty('usage');

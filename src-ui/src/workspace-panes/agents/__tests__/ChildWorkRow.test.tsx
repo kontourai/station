@@ -760,3 +760,18 @@ test('#3163: a settled child’s transcript offers no Refresh', () => {
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 });
+
+test('a provider summary is labeled as a report rather than a verified returned artifact', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: {
+        summary: 'I will investigate next.',
+        source: 'provider-summary',
+      },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Provider summary')).toBeTruthy();
+  expect(screen.getByText('I will investigate next.')).toBeTruthy();
+});

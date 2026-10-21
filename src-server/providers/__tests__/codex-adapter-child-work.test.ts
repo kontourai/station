@@ -552,9 +552,13 @@ describe('#2458 Codex agent status mapping (capture-shaped streams)', () => {
       const item = child(events);
       expect(item.status).toBe(expected);
       expect(item.usage).toEqual({ totalTokens: 123, durationMs: 42 });
-      if (expected === 'completed') expect(item.result?.summary).toBe('final');
+      if (expected === 'completed') {
+        expect(item.result?.summary).toBe('final');
+        expect(item.result?.source).toBe('child-message');
+      }
       if (expected === 'failed') {
         expect(item.result?.summary).toBe('usage limit');
+        expect(item.result?.source).toBe('provider-error');
       }
     });
   }

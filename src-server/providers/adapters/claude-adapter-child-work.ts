@@ -604,7 +604,7 @@ export function observeClaudeTaskNotification(
   const result: ChildWorkResult | undefined =
     summary || outputFile
       ? {
-          ...(summary ? { summary } : {}),
+          ...(summary ? { summary, source: 'provider-summary' as const } : {}),
           ...(outputFile
             ? { handle: { kind: 'transcript-file' as const, path: outputFile } }
             : {}),

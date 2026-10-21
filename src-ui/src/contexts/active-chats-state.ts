@@ -1,5 +1,6 @@
 import type {
   ChildWorkModel,
+  ChildWorkSummarySource,
   ChildWorkTerminalStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
@@ -215,6 +216,7 @@ export interface BackgroundTaskNotice {
   status: ChildWorkTerminalStatus;
   title?: string;
   summary?: string;
+  summarySource?: ChildWorkSummarySource;
 }
 
 export type EphemeralMessage = ChatMessage & {
