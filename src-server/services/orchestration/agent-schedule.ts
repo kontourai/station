@@ -346,7 +346,13 @@ export type ProposeJobResult =
 export type ApproveWakeUpResult =
   | { readonly outcome: 'approved'; readonly wakeUp: AgentWakeUp }
   /** Not waiting for approval (any more): already decided, or past due. */
-  | { readonly outcome: 'settled'; readonly state: AgentWakeUpState };
+  | {
+      readonly outcome: 'settled';
+      readonly state: AgentWakeUpState;
+      readonly reasonCode?: AgentWakeUpFailureCode;
+    }
+  /** Delivery is stopped: nothing can be armed. */
+  | { readonly outcome: 'unavailable' };
 
 /**
  * Rows created in the window, counted one past the limit, inside the
@@ -614,15 +620,20 @@ export function createSqliteAgentScheduleStore(
       return Number(result.changes ?? 0) === 1;
     },
     /**
-     * Startup: an Approve a restart cut short is open again. If its job was
-     * created, approving again is refused by the scheduler as a duplicate
-     * name.
+     * Startup: an Approve a restart cut short is open again. Only claims
+     * made before `claimedBefore` (this process's start): an Approve this
+     * process already claimed is still running. If its job was created,
+     * approving again is refused by the scheduler as a duplicate name.
+     * Returns how many were reopened.
      */
-    reopenInterruptedApprovals(now: number): void {
-      db.prepare(
-        `UPDATE agent_job_proposals SET state = 'open', settled_by = NULL, updated_at = ?
-         WHERE state = 'approving'`,
-      ).run(now);
+    reopenInterruptedApprovals(claimedBefore: number, now: number): number {
+      const result = db
+        .prepare(
+          `UPDATE agent_job_proposals SET state = 'open', settled_by = NULL, updated_at = ?
+           WHERE state = 'approving' AND updated_at < ?`,
+        )
+        .run(now, claimedBefore) as { changes?: number | bigint };
+      return Number(result.changes ?? 0);
     },
     /** The proposal's raw state, `approving` included. */
     jobProposalState(id: string): string | undefined {
@@ -720,14 +731,19 @@ export class AgentWakeUpDelivery {
    * already due, decided, or canceled is not approved.
    */
   approve(id: string, userId: string): ApproveWakeUpResult {
+    if (this.stopped) return { outcome: 'unavailable' };
     const now = this.now();
-    if (!this.stopped && this.ports.store.approveWakeUp(id, userId, now)) {
+    if (this.ports.store.approveWakeUp(id, userId, now)) {
       const record = this.ports.store.wakeUp(id)!;
       this.arm(record);
       return { outcome: 'approved', wakeUp: publicWakeUp(record) };
     }
     const record = this.ports.store.wakeUp(id);
-    return { outcome: 'settled', state: record?.state ?? 'canceled' };
+    return {
+      outcome: 'settled',
+      state: record?.state ?? 'canceled',
+      ...(record?.reasonCode ? { reasonCode: record.reasonCode } : {}),
+    };
   }
 
   /**
@@ -748,7 +764,6 @@ export class AgentWakeUpDelivery {
 
   /** Startup: re-arm every waiting wake-up; due ones go now. */
   reconcile(): void {
-    this.ports.store.reopenInterruptedApprovals(this.now());
     for (const record of this.ports.store.pendingWakeUps()) this.arm(record);
   }
 
@@ -782,17 +797,25 @@ export class AgentWakeUpDelivery {
     const record = this.ports.store.wakeUp(id);
     const now = this.now();
     if (record?.state === 'needs_approval') {
+      // A timer can fire a little early, and the wall clock can step back.
+      // Before its due time it can still be approved (approval is decided
+      // by the clock), so it waits again rather than being left unsettled.
+      if (now < record.dueAtMs) {
+        this.arm(record);
+        return;
+      }
       // Not approved before it came due: never sent.
-      if (now >= record.dueAtMs)
-        this.ports.store.settleWakeUp(
-          id,
-          'failed',
-          now,
-          { reasonCode: 'not_approved' },
-          'needs_approval',
-        );
+      this.ports.store.settleWakeUp(
+        id,
+        'failed',
+        now,
+        { reasonCode: 'not_approved' },
+        'needs_approval',
+      );
       return;
     }
+    // `pending` goes when its timer fires, even a moment before `dueAtMs`
+    // by the clock: the timer measures the delay that was asked for.
     if (record?.state !== 'pending') return;
     if (now - record.dueAtMs > AGENT_WAKE_UP_MAX_HORIZON_MS) {
       this.ports.store.settleWakeUp(id, 'failed', now, {

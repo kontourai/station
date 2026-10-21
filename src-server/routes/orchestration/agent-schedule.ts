@@ -31,7 +31,9 @@ import {
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
   type AgentJobProposalJob,
   type AgentJobProposalRefusalCode,
+  type AgentWakeUpFailureCode,
   type AgentWakeUpRefusalCode,
+  type AgentWakeUpState,
   CONVERSATION_SCHEDULED_JOBS_LIMIT,
   type ConversationAgentSchedule,
   type ConversationUsageLimitResume,
@@ -76,6 +78,24 @@ export const WAKE_UP_REFUSAL_COPY: Record<AgentWakeUpRefusalCode, string> = {
   wake_up_rate_limited: `This chat scheduled ${AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW} check-backs in the last ${AGENT_SCHEDULE_RATE_WINDOW_MS / 3_600_000} hour. Try again later.`,
   wake_up_unavailable: "Check-backs aren't available on this Station.",
 };
+
+/**
+ * Why an Approve found nothing to approve. `needs_approval` here means its
+ * due time passed (approval is only taken before it); `failed` without
+ * `not_approved` failed after an earlier approval.
+ */
+function settledWakeUpCopy(
+  state: AgentWakeUpState,
+  reasonCode: AgentWakeUpFailureCode | undefined,
+): string {
+  if (
+    state === 'needs_approval' ||
+    (state === 'failed' && reasonCode === 'not_approved')
+  )
+    return 'Its time has passed.';
+  if (state === 'failed') return 'It already failed.';
+  return `It was already ${state === 'pending' ? 'approved' : state}.`;
+}
 
 /** What the agent reads when its check-back waits for the person. */
 export const WAKE_UP_NEEDS_APPROVAL_COPY =
@@ -514,15 +534,22 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         found.record.id,
         found.person.userId,
       );
+      if (result.outcome === 'unavailable')
+        return c.json(
+          {
+            success: false,
+            code: 'wake_up_unavailable',
+            error: WAKE_UP_REFUSAL_COPY.wake_up_unavailable,
+          },
+          503,
+          NO_STORE,
+        );
       if (result.outcome === 'settled')
         return c.json(
           {
             success: false,
             code: 'wake_up_settled',
-            error:
-              result.state === 'needs_approval' || result.state === 'failed'
-                ? 'Its time has passed.'
-                : `It was already ${result.state === 'pending' ? 'approved' : result.state}.`,
+            error: settledWakeUpCopy(result.state, result.reasonCode),
           },
           409,
           NO_STORE,
@@ -575,6 +602,7 @@ const APPROVABLE_FIELDS: ReadonlySet<string> = new Set([
 export function createJobProposalApproval(deps: {
   store: AgentScheduleStore | undefined;
   person(c: Context): AgentSchedulePerson | undefined;
+  logger?: { warn(message: string, meta?: Record<string, unknown>): void };
   now?: () => number;
 }): JobProposalApproval {
   return {
@@ -638,13 +666,28 @@ export function createJobProposalApproval(deps: {
       return {
         ok: true,
         commit: () => {
-          store.transitionJobProposal(
-            proposal.id,
-            'approving',
-            'approved',
-            person.userId,
-            at(),
-          );
+          // The job exists now. A claim reopened underneath it (startup
+          // reopens claims older than the process) is still this approval.
+          const committed =
+            store.transitionJobProposal(
+              proposal.id,
+              'approving',
+              'approved',
+              person.userId,
+              at(),
+            ) ||
+            store.transitionJobProposal(
+              proposal.id,
+              'open',
+              'approved',
+              person.userId,
+              at(),
+            );
+          if (!committed)
+            deps.logger?.warn('approved job proposal could not be recorded', {
+              proposalId: proposal.id,
+              state: store.jobProposalState(proposal.id) ?? 'removed',
+            });
         },
         revert: () => {
           store.transitionJobProposal(

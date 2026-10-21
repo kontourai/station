@@ -139,6 +139,26 @@ export function composeAgentSchedule(
         ),
     };
   };
+  // Approves a restart cut short are open again, with or without an inbox.
+  // Synchronous, before any route is served, and bounded by this start
+  // time, so it can never undo an Approve this process claimed.
+  if (deps.store) {
+    const startedAt = deps.now?.() ?? Date.now();
+    try {
+      const reopened = deps.store.reopenInterruptedApprovals(
+        startedAt,
+        startedAt,
+      );
+      if (reopened > 0)
+        deps.logger.warn('reopened job proposals a restart left approving', {
+          count: reopened,
+        });
+    } catch (error) {
+      deps.logger.warn('could not reopen interrupted job proposal approvals', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const inbox = deps.threadInbox;
   const delivery =
     inbox && deps.store
@@ -200,6 +220,7 @@ export function composeAgentSchedule(
     jobProposals: createJobProposalApproval({
       store: deps.hosted ? undefined : deps.store,
       person,
+      logger: deps.logger,
       ...(deps.now ? { now: deps.now } : {}),
     }),
     wakeUpConversation: (wakeUpId) =>

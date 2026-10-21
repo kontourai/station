@@ -1118,6 +1118,45 @@ describe('owner decision: a check-back in an unconfined session waits for one cl
     }
   });
 
+  test('a timer that fires before it is due waits again, then settles when due', async () => {
+    const { conversationId, id } = await hostCheckBack();
+    const dueAtMs = store.wakeUp(id)!.dueAtMs;
+    let at = dueAtMs - 1;
+    const early = newDelivery(() => at);
+    try {
+      // setTimeout may fire a millisecond early, or the clock stepped back.
+      early.fire(id);
+      expect(store.wakeUp(id)?.state).toBe('needs_approval');
+      at = dueAtMs;
+      // Re-armed: it settles on its own once due, nothing is sent.
+      await vi.waitFor(() =>
+        expect(store.wakeUp(id)).toMatchObject({
+          state: 'failed',
+          reasonCode: 'not_approved',
+        }),
+      );
+      expect(submitted).toEqual([]);
+      const approve = await personRequest(
+        'POST',
+        wakeUpAction(conversationId, id, 'approve'),
+      );
+      expect(approve.status).toBe(409);
+      expect(approve.body.error).toBe('Its time has passed.');
+    } finally {
+      early.stop();
+    }
+  });
+
+  test('a stopped delivery answers unavailable, not that its time has passed', async () => {
+    const { id } = await hostCheckBack();
+    const stopped = newDelivery(() => clock.now);
+    stopped.stop();
+    expect(stopped.approve(id, LOCAL_OPERATOR_PRINCIPAL_ID)).toEqual({
+      outcome: 'unavailable',
+    });
+    expect(store.wakeUp(id)?.state).toBe('needs_approval');
+  });
+
   test('an agent cannot approve or decline, not even a bound operator', async () => {
     const { sessionId, conversationId, id } = await hostCheckBack();
     for (const action of ['approve', 'decline'])
@@ -1339,6 +1378,111 @@ describe('Approve claims the proposal before the job is created', () => {
       proposalId: id,
     });
     expect(again.status).toBe(200);
+    expect(store.jobProposalState(id)).toBe('approved');
+  });
+});
+
+describe('startup reopens only Approves an earlier process claimed', () => {
+  async function proposeOne() {
+    const sessionId = nextSession();
+    const response = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      PROPOSALS,
+      PROPOSED,
+    );
+    expect(response.status).toBe(200);
+    return response.body.data.id as string;
+  }
+
+  /** A restart's composition over the same store, with no inbox at all. */
+  function restartAt(startedAt: number) {
+    return composeAgentSchedule({
+      store,
+      threadInbox: undefined,
+      scope,
+      orchestration: {} as never,
+      hosted: false,
+      isInternalRequest: () => false,
+      isRequestPrincipalCurrent: () => false,
+      requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+      readAuthorityFor: () => ({ mode: 'personal' }) as never,
+      tenantFor: () => undefined,
+      dispatchActor: () => ({}) as never,
+      agentProject: async () => undefined,
+      logger: quietLogger(),
+      now: () => startedAt,
+    });
+  }
+
+  test('the store reopens claims strictly before the cutoff', () => {
+    return proposeOne().then((id) => {
+      const claimedAt = clock.now;
+      expect(
+        store.transitionJobProposal(
+          id,
+          'open',
+          'approving',
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          claimedAt,
+        ),
+      ).toBe(true);
+      expect(store.reopenInterruptedApprovals(claimedAt, claimedAt)).toBe(0);
+      expect(store.jobProposalState(id)).toBe('approving');
+      expect(
+        store.reopenInterruptedApprovals(claimedAt + 1, claimedAt + 1),
+      ).toBe(1);
+      expect(store.jobProposalState(id)).toBe('open');
+    });
+  });
+
+  test('a restart without an inbox reopens a claim the old process left', async () => {
+    const id = await proposeOne();
+    store.transitionJobProposal(
+      id,
+      'open',
+      'approving',
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      clock.now,
+    );
+    const restarted = restartAt(clock.now + 1);
+    expect(restarted.delivery).toBeUndefined();
+    expect(store.jobProposalState(id)).toBe('open');
+  });
+
+  test('a claim made after this process started is left to its Approve', async () => {
+    const id = await proposeOne();
+    store.transitionJobProposal(
+      id,
+      'open',
+      'approving',
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      clock.now,
+    );
+    restartAt(clock.now);
+    expect(store.jobProposalState(id)).toBe('approving');
+  });
+
+  test('an Approve whose claim was reopened underneath it is still recorded approved', async () => {
+    const id = await proposeOne();
+    let release!: () => void;
+    addJob.mockImplementationOnce(
+      (opts: { name: string }) =>
+        new Promise((resolve) => {
+          release = () => resolve(`Job '${opts.name}' created`);
+        }),
+    );
+    const approving = personRequest('POST', '/scheduler/jobs', {
+      ...PROPOSED,
+      proposalId: id,
+    });
+    await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
+    // Another process starting later reopens this in-flight claim.
+    restartAt(clock.now + 1);
+    expect(store.jobProposalState(id)).toBe('open');
+    release();
+    expect((await approving).status).toBe(200);
     expect(store.jobProposalState(id)).toBe('approved');
   });
 });
