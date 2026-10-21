@@ -515,7 +515,9 @@ and any a plugin contributes. Besides the launch fields above, an entry
 `description` and `sourceName`. An entry that fails is left out of the
 catalogue and logged rather than shown with some fields dropped: an unknown
 platform, a URL that is not https, an over-long value, text with
-control characters, line breaks or bidi override marks, a `launchEnv` name
+control characters, line breaks, bidi override marks or characters that render
+as nothing (zero-width and directional marks, the byte order mark, tag
+characters, variation selectors), a `launchEnv` name
 without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
@@ -552,25 +554,31 @@ The registry is a catalogue source of the routes, not an
 listing is neither.
 
 - The index at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`
-  is fetched with no credentials and a 10-second timeout. An index over 1 MiB
+  is fetched with no credentials, a 10-second timeout and no redirects; an
+  answer from any other address is refused. An index over 1 MiB
   (counted as it arrives), listing more than 500 agents, not JSON, or not
   format version 1 is refused whole; the last good copy, saved in
   `<station-home>/cache/public-agent-registry/registry.json`, stays in use. A
   listing with a malformed id, an over-long or control-character field, a
-  non-https URL or a malformed distribution is refused with every reason.
+  non-https URL, an https URL with a user name or password, or a malformed
+  distribution is refused with every reason.
   Unknown fields and unknown platform keys are ignored.
 - A listing whose id is a built-in's, or one of `antigravity-acp`,
   `github-copilot-cli` and `pi-acp`, adds a `publicRegistry` object (id,
   version, publishers, licence, links, distributions) to the built-in entry and
   is not listed again. Nothing else on the built-in changes. `claude-acp` and
   `codex-acp` are listed unavailable, naming the native engine. A listing
-  whose name reads as a built-in's, or whose id a plugin entry holds, is
-  refused. A plugin entry's own `publicRegistry` is dropped.
+  whose name reads as a built-in's, as "Station" or as "Kontour", or whose id
+  a plugin entry holds, is refused. A plugin entry's own `publicRegistry` is dropped.
 - A listing is connectable only through a `binary` build for the host's
   `os-arch` key (`darwin-aarch64`, `linux-x86_64`, `windows-x86_64`, …):
   `command` is the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
   is `cursor-agent`), looked up on `PATH`, and `args` are the build's. `npx`
-  and `uvx` listings are never run. Any other listing has an empty `command`,
+  and `uvx` listings are never run. A build whose `cmd` is absolute, contains
+  a `..` segment, or names a package runner, shell, interpreter, wrapper or
+  fetcher (`npx`, `uvx`, `npm`, `sh`, `bash`, `cmd`, `powershell`, `node`,
+  `python*`, `env`, `sudo`, `curl` and the like, any case, without a Windows
+  extension) is listed unavailable with the reason. Any other listing has an empty `command`,
   `detected: false` and `publicRegistry.unavailableReason`. A build's `env` is
   returned as `publicRegistry.recommendedEnv` and never applied.
 - `POST /acp/registry/:id/install` for a listing requires the `coding:exec`
@@ -582,16 +590,18 @@ listing is neither.
   `publicRegistry: { id, version }`.
 - For an added connection with that record, a listing whose version, or whose
   command or arguments, differ from the saved ones gets `publicRegistry.update`.
-  The saved connection is not changed.
+  The saved connection is not changed. Changing the connection's `command`
+  or `args` removes its `publicRegistry` record, so it is no longer compared.
 - Reading `GET /acp/registry` or `GET /acp/registry/source` starts a
-  background download when the copy in use is more than 24 hours old, at most
+  background download when the copy in use is more than 24 hours old (or
+  dated in the future), at most
   once every 15 minutes after a failed attempt. `GET /acp/registry/source`
   returns `ACPPublicRegistrySourceStatus`: `origin` (`network`, `cache` or
   `none`), `fetchedAt`, `checkedAt`, `lastError`, `refreshing` and the refused
   listings with their reasons. `POST /acp/registry/source/refresh` downloads
   now (`orchestration:operate`), joining one already running and reusing a
-  result less than 30 seconds old. `STATION_PUBLIC_AGENT_REGISTRY=off`, or the
-  deterministic first-run mode, turns the source off; the status then reads
+  result less than 30 seconds old. `STATION_PUBLIC_AGENT_REGISTRY` set to `off`,
+  `0`, `false` or `no` (any case), or the deterministic first-run mode, turns the source off; the status then reads
   `enabled: false`.
 
 ### Runtime API

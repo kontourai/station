@@ -781,7 +781,9 @@ can connect on this computer:
 - **Found** or **Not installed**: the registry has a build for this computer's
   operating system and processor. Connecting runs the program you installed
   yourself, found on `PATH` by the name the registry gives it (`stakpak`), with
-  the registry's arguments. A **Not installed** card links to the publisher's
+  the registry's arguments. A listing whose program is a package runner, a
+  shell, an interpreter or a download tool, or is given as a path, is
+  **Unavailable** instead. A **Not installed** card links to the publisher's
   site. Station does not download the program; the registry's download links
   are not used.
 - **Unavailable**: the card says why and stays in the list. The registry may
@@ -797,7 +799,8 @@ run, and any settings it recommends. Station does not apply those settings:
 the registry is not Station's own catalogue, and an environment variable can
 change what a program runs.
 
-**Review** opens the confirm step, which shows the exact command line,
+**Review** opens the confirm step, which shows the exact command line (an
+argument with a space, or an empty one, is shown in quotes),
 publisher and version before anything is saved. Adding a registry engine is
 choosing a command, so a paired device needs the operator's `coding:exec`
 grant. If the registry changed the command between the confirm step and the
@@ -812,14 +815,17 @@ that card, never its command, arguments, settings or install instructions.
 
 When the registry later lists a new version or command for an engine you
 added from it, the engine's page says **Update listed**. Station does not
-change the saved connection; update the program yourself.
+change the saved connection; update the program yourself. Changing the
+connection's command yourself ends the comparison.
 
 Station downloads the registry index when the catalogue is read and its copy
 is more than a day old, or when you choose **Check registry**, and keeps the
 last good copy under its home folder. Without a network it lists that copy and
 says **Offline copy**. An index that is too large or malformed is refused whole
 and the saved copy stays; a single malformed listing is left out. Set
-`STATION_PUBLIC_AGENT_REGISTRY=off` to stop Station reading the registry.
+`STATION_PUBLIC_AGENT_REGISTRY=off` (or `0`, `false`, `no`) to stop Station
+reading the registry. Registry engines are offered only here, never in **Add
+model connection**.
 
 ---
 
