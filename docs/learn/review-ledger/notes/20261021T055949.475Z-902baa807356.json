@@ -1,0 +1,7 @@
+{
+  "revision": "761717c61ed972455f881122cacfa2591f8db2ed",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed changed child-work report-source and initiation-origin contracts through 761717c. Traced native Claude/Muse provider summaries and Codex own-message/error producers, normalization bounds, conservative enrichment on differing or truncated text, announcements and UI labels. Summary and handle are reported text/recovery identities, never artifact verification or authorization. Initiation projection reads only the first turn validated origin, exposes actor kind separately from client-reported surface and retains no device ID in initiator. Checked negative tests for differing/truncated summaries and initial versus later origins. Local focused tests and fault injections are revision-bound; no npm publication, live-provider/native or hosted qualification claimed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/child-work.ts","packages/contracts/src/index.ts","packages/contracts/src/orchestration.ts","src-server/providers/adapters/claude-sdk-turns.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}
