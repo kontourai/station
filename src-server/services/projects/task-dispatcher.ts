@@ -116,6 +116,9 @@ export interface TaskDispatchAssociation {
   readonly session: ProviderSession;
   readonly outcome: TaskDispatchRecord['outcome'];
   readonly claim: TaskAssignmentClaimSummary | undefined;
+  /** Epic #4003: when the start read the Task's linked work item; recorded
+   * as `TaskRecord.workItemObservedAt` with this association. */
+  readonly workItemObservedAt?: string;
 }
 
 /**
@@ -184,6 +187,8 @@ export interface TaskDispatchRemoteSessions {
   ): Promise<{
     session: ProviderSession;
     outcome: TaskDispatchRecord['outcome'];
+    /** Set only when the start observed the Task's linked work item. */
+    workItemObservedAt?: string;
   }>;
 }
 
@@ -364,6 +369,9 @@ class TaskDispatcherImplementation implements TaskDispatcher {
       const result = await this.graph.associate(reservation, intent, {
         session: remote.session,
         outcome: remote.outcome,
+        ...(remote.workItemObservedAt
+          ? { workItemObservedAt: remote.workItemObservedAt }
+          : {}),
         claim: claimResult,
       });
       let publicationPrepared = false;

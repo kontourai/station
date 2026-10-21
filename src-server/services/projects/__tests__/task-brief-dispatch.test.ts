@@ -28,7 +28,7 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
-import type { WorkItemObserver } from '../task-brief.js';
+import type { WorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
 import { composeTaskBriefSource } from '../task-brief-source.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import { TaskGraphService } from '../task-graph-service.js';
@@ -192,18 +192,22 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     provider: EngineProvider,
     options: {
       workItemRef?: string;
-      observeWorkItem?: WorkItemObserver;
+      observeWorkItem?: WorkItemObserver['observeWorkItem'];
       document?: string;
+      /** Dispatch this existing Task again instead of creating one. */
+      taskId?: string;
     } = {},
   ) {
-    const task = await graph.createTask({
-      projectId: 'brief-project',
-      title: 'Ship the Task brief',
-      description: 'Dispatched Sessions start with the Task memory.',
-      ...(options.workItemRef
-        ? { sourceProvider: 'github', workItemRef: options.workItemRef }
-        : {}),
-    });
+    const task = options.taskId
+      ? graph.readTaskView(options.taskId)!
+      : await graph.createTask({
+          projectId: 'brief-project',
+          title: 'Ship the Task brief',
+          description: 'Dispatched Sessions start with the Task memory.',
+          ...(options.workItemRef
+            ? { sourceProvider: 'github', workItemRef: options.workItemRef }
+            : {}),
+        });
     const dispatcher = composeTaskDispatcher(graph, {
       orchestrationService: service,
       // A namespaced workItemRef routes through dispatch-as-claim; stub the
@@ -227,9 +231,15 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
             text: options.document ?? DOCUMENT,
           }),
         }),
-        ...(options.observeWorkItem
-          ? { observeWorkItem: options.observeWorkItem }
-          : {}),
+        workItemObserver: {
+          observeWorkItem:
+            options.observeWorkItem ??
+            (async () => {
+              throw new Error(
+                'this dispatch was not expected to read the tracker',
+              );
+            }),
+        },
       }),
     });
     const outcome = await dispatcher.dispatch(task.id, {
@@ -293,17 +303,19 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   );
 
   test('a tracker read that does not observe the item is one line, and never fails the dispatch', async () => {
-    const observe = vi.fn<WorkItemObserver>(async () => ({
+    const observe = vi.fn<WorkItemObserver['observeWorkItem']>(async () => ({
       status: 'unauthenticated',
       reason: 'gh is not signed in',
     }));
-    const { sessionId } = await dispatch('codex', {
+    const { task, sessionId } = await dispatch('codex', {
       workItemRef: 'github:owner/repo#12',
       observeWorkItem: observe,
     });
     expect(observe).toHaveBeenCalledWith('github:owner/repo#12', {
-      commentsSince: expect.any(String),
+      commentsSince: task.createdAt,
     });
+    // An unobserved read never advances the Task's "comments since" mark.
+    expect(graph.readTaskView(task.id)!.workItemObservedAt).toBeUndefined();
     await service.dispatch({
       type: 'sendTurn',
       input: { threadId: sessionId, input: 'Go.' },
@@ -331,6 +343,80 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       adapters.find((a) => a.provider === 'claude')!.sendTurn.mock.calls[0]![0]
         .input,
     ).toContain('linked item not re-read: not-read (the tracker read failed)');
+  });
+
+  test('an observed read advances workItemObservedAt at dispatch, and the next dispatch asks for comments since it', async () => {
+    const ref = 'github:owner/repo#14';
+    const observedAt = '2026-10-21T09:30:00.000Z';
+    const observe = vi.fn<WorkItemObserver['observeWorkItem']>(async () => ({
+      status: 'observed',
+      observation: {
+        workItemRef: ref,
+        url: 'https://github.com/owner/repo/issues/14',
+        title: 'Widgets jam',
+        state: 'open',
+        labels: ['bug'],
+        updatedAt: '2026-10-21T09:00:00Z',
+        observedAt,
+        comments: [
+          {
+            author: 'reviewer',
+            createdAt: '2026-10-21T09:10:00Z',
+            excerpt: 'Seen again on Tuesday.',
+          },
+        ],
+      },
+    }));
+    const first = await dispatch('codex', {
+      workItemRef: ref,
+      observeWorkItem: observe,
+    });
+    expect(observe).toHaveBeenLastCalledWith(ref, {
+      commentsSince: first.task.createdAt,
+    });
+    expect(graph.readTaskView(first.task.id)!.workItemObservedAt).toBe(
+      observedAt,
+    );
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: first.sessionId, input: 'Go.' },
+    });
+    const input = adapters.find((a) => a.provider === 'codex')!.sendTurn.mock
+      .calls[0]![0].input;
+    expect(input).toContain('Title: Widgets jam');
+    expect(input).toContain(
+      '- reviewer (2026-10-21T09:10:00Z): Seen again on Tuesday.',
+    );
+
+    // A second dispatch of the same Task reads only what is newer.
+    await graph.updateTaskStatus(first.task.id, 'blocked');
+    await graph.updateTaskStatus(first.task.id, 'ready');
+    await dispatch('claude', {
+      taskId: first.task.id,
+      observeWorkItem: observe,
+    });
+    expect(observe).toHaveBeenLastCalledWith(ref, {
+      commentsSince: observedAt,
+    });
+  });
+
+  test('a Task with no linked work item gets a brief with no tracker wording', async () => {
+    // The shared DOCUMENT mentions a tracker in its own memory; this one does
+    // not, so any tracker wording would be Station's.
+    const { sessionId } = await dispatch('codex', {
+      document: '# Local work\n## Decisions\n- Keep it local.',
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: sessionId, input: 'Go.' },
+    });
+    const input = adapters.find((a) => a.provider === 'codex')!.sendTurn.mock
+      .calls[0]![0].input;
+    expect(input).toContain('# Station Task brief');
+    expect(input).toContain('- Keep it local.');
+    expect(input).toContain('1. Record decisions');
+    expect(input).not.toMatch(/tracker/i);
+    expect(input).not.toContain('2. ');
   });
 
   test('a caller-supplied brief in start metadata is stripped, never composed', async () => {

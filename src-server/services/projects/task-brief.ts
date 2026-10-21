@@ -5,12 +5,13 @@
  * `get_task_brief` returns on demand.
  *
  * Pure: no I/O. The caller gathers the Task record, the shared Task document,
- * the other Sessions and (at dispatch) a fresh tracker observation; this
+ * the other Sessions and a fresh tracker observation; this
  * module parses the memory sections, fits everything into one bound and
  * renders the text an engine reads.
  */
 import { createHash } from 'node:crypto';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type { WorkItemObservationResult } from '@kontourai/station-contracts/work-item-provider';
 import { TRACKER_GUIDANCE } from './task-brief-tracker-guidance.js';
 
 export const TASK_BRIEF_VERSION = 'station.task-brief/v1' as const;
@@ -36,43 +37,9 @@ const LABELS_MAX = 20;
 const SESSIONS_MAX = 12;
 const ENTRY_MAX = 1500;
 
-// TODO(lane intake): import from contracts. A local structural copy of the
-// work-item observation contract the intake lane adds to
-// packages/contracts/src/work-item-provider.ts, so the orchestrator can swap
-// the import in at integration without changing this module's callers.
-export interface WorkItemObservedComment {
-  author: string;
-  createdAt: string;
-  excerpt: string;
-}
-export interface WorkItemObservation {
-  workItemRef: string;
-  url: string;
-  title: string;
-  state: 'open' | 'closed';
-  stateReason?: string;
-  labels: string[];
-  updatedAt: string;
-  observedAt: string;
-  body?: string;
-  comments?: WorkItemObservedComment[];
-}
-export type WorkItemObservationResult =
-  | { status: 'observed'; observation: WorkItemObservation }
-  | {
-      status: 'not-found' | 'unauthenticated' | 'unavailable' | 'unsupported';
-      reason: string;
-    };
-/** The injectable tracker read; the intake lane provides the implementation. */
-export type WorkItemObserver = (
-  workItemRef: string,
-  options: { commentsSince?: string },
-) => Promise<WorkItemObservationResult>;
-
 /**
  * What the brief knows about the linked item. `not-read` is the brief's own
- * outcome (no observer on this Station, the read threw or timed out, or this
- * is a `get_task_brief` read, which does not re-read the tracker).
+ * outcome: the read threw or timed out.
  */
 export type TaskBriefObservation =
   | WorkItemObservationResult
@@ -206,9 +173,14 @@ function oneLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-/** The three fixed rules, inline because Codex has no skill channel. */
-export const TASK_BRIEF_RULES = [
-  'Record decisions, completed work and open questions in the Task memory with the `task_note` Station Control tool.',
+/**
+ * The fixed rules, inline because Codex has no skill channel. The memory rule
+ * applies to every Task; the two tracker rules only to a Task with a linked
+ * work item, so a Station-only Task's brief says nothing about a tracker.
+ */
+export const TASK_BRIEF_MEMORY_RULE =
+  'Record decisions, completed work and open questions in the Task memory with the `task_note` Station Control tool.';
+export const TASK_BRIEF_TRACKER_RULES = [
   'Post to the tracker item only at a milestone.',
   'Never close the tracker item; the merged pull request closes it.',
 ] as const;
@@ -386,7 +358,10 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     : [];
   const rules = [
     '## Rules',
-    ...TASK_BRIEF_RULES.map((rule, index) => `${index + 1}. ${rule}`),
+    ...[
+      TASK_BRIEF_MEMORY_RULE,
+      ...(task.workItemRef ? TASK_BRIEF_TRACKER_RULES : []),
+    ].map((rule, index) => `${index + 1}. ${rule}`),
   ];
   const guidance = task.workItemRef
     ? ['## Tracker guidance', TRACKER_GUIDANCE]

@@ -151,8 +151,8 @@ export interface WorkItemClaimStatus {
  * `ProviderWorkItem`, which is a row from a backend's filtered ready queue,
  * an observation is one item read by its exact identity, at a known time.
  *
- * Station re-reads the item when a person opens the Task and when a Session
- * is dispatched; nothing polls. GitHub issues only in this slice: a pull
+ * Station re-reads the item when a person opens the Task, when a Session is
+ * dispatched, and when a Session asks for its brief; nothing polls. GitHub issues only in this slice: a pull
  * request is `unsupported`, and so is any host other than github.com.
  */
 export interface WorkItemObservedComment {

@@ -3869,6 +3869,10 @@ export class StationRuntime {
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
                   roomRuntime: () => this.projectTaskRoomRuntime,
+                  // The same reader the routes get (`workItemObserver` in
+                  // the route context), so dispatch and get_task_brief
+                  // read the tracker one way.
+                  workItemObserver: this.workItemObserver,
                   logger: this.logger,
                 }),
               },

@@ -24,7 +24,8 @@ The two systems divide the work as follows:
 | A human-readable progress note on the issue | An Agent, at milestones, following the `tracker-hygiene` skill |
 
 Nothing mirrors status between the two. Station re-reads the linked item when
-a person opens the Task and when a Session is dispatched. Nothing polls.
+a person opens the Task, when a Session is dispatched, and when a Session asks
+for its brief with `get_task_brief`. Nothing polls.
 
 ## Task ↔ tracker item cardinality
 
@@ -112,15 +113,28 @@ above:
 - **Tracker guidance** goes in the brief whenever the Task has a
   `workItemRef`. It is the `tracker-hygiene` text, embedded as a server
   constant, because Station cannot ship a built-in skill and Codex has no
-  skill channel. The three rules stay inline in every brief.
+  skill channel.
+- **Rules follow the link.** Every brief carries the `task_note` rule. The
+  two tracker rules (post only at a milestone; never close the item) are
+  added only when the Task has a `workItemRef`. A Station-only Task's brief
+  has no tracker wording at all.
 - **"Comments newer than the last revision the Task recorded".** A Task
-  records no tracker revision, so the tracker read asks for comments since the
-  Task's previous dispatch, or since its creation for the first dispatch.
-  A failed, timed-out (10 s) or non-observed read becomes one line, such as
-  `linked item not re-read: unauthenticated`. It never fails the dispatch.
-- **`get_task_brief` does not re-read the tracker.** The Station memory is
-  rebuilt, and the item is reported as not re-read. Only opening the Task and
-  dispatch re-read it, as stated under Thesis.
+  records no tracker revision. It records `TaskRecord.workItemObservedAt`,
+  the time of the last tracker read that counted. Start Task sets it. A
+  dispatch whose read observed the item advances it to that read's time, and
+  only once the dispatch is recorded. A failed start therefore cannot hide
+  comments from the next one. The read asks for comments since that mark,
+  or since the Task's creation when there is none. A failed, timed-out
+  (10 s) or non-observed read becomes one line, such as `linked item not
+  re-read: unauthenticated`. It never fails the dispatch and leaves the mark
+  where it was.
+- **One reader.** Dispatch, `get_task_brief`, Start Task and the Task's
+  linked-item header all read through the runtime's single
+  `GitHubWorkItemObserver` (the host's `gh` login).
+- **`get_task_brief` re-reads the tracker** through that reader, with the same
+  10 s bound and the same one-line failure. It asks for comments since the
+  Task's mark but never moves it: the mark records what dispatched Sessions
+  were shown, not what one Session caught up on.
 
 ## Starting a Task from a tracker item
 

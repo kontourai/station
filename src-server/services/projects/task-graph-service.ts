@@ -287,6 +287,15 @@ export interface TaskDispatchAdapterDeps {
  * has no cross-provider meaning and must never be treated as a claimable
  * subject.
  */
+/** `value` when it is an ISO instant in `toISOString` form, else undefined. */
+function canonicalInstant(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) || new Date(ms).toISOString() !== value
+    ? undefined
+    : value;
+}
+
 function isNamespacedWorkItemRef(ref: string): boolean {
   return ref.includes(':');
 }
@@ -3128,13 +3137,15 @@ export class TaskGraphService {
           // already degrade to a stated gap, so a throw here is a defect,
           // logged, and the Session starts without one.
           let brief: { digest: string; text: string } | undefined;
+          let workItemObservedAt: string | undefined;
           if (taskBrief) {
             try {
               const built = await taskBrief.forDispatch(
                 reservation.task,
                 reservation.sessionId,
               );
-              brief = { digest: built.digest, text: built.text };
+              brief = { digest: built.brief.digest, text: built.brief.text };
+              workItemObservedAt = built.workItemObservedAt;
             } catch (error) {
               this.logger?.warn('Task brief could not be built for dispatch', {
                 taskId: reservation.task.id,
@@ -3193,7 +3204,11 @@ export class TaskGraphService {
                 : {}),
             },
           )) as ProviderSession;
-          return { session, outcome: 'started' as const };
+          return {
+            session,
+            outcome: 'started' as const,
+            ...(workItemObservedAt ? { workItemObservedAt } : {}),
+          };
         }
         return {
           session: this.seedSession(
@@ -3372,8 +3387,18 @@ export class TaskGraphService {
       const now = new Date().toISOString();
       const { dispatchReservation: _persistedReservation, ...unreserved } =
         currentTask;
+      // Epic #4003: the dispatch's tracker read becomes the Task's "comments
+      // since" mark only now that the Session exists, so a failed start
+      // cannot hide comments from the next dispatch. Never moves backwards,
+      // and only a canonical instant is stored (the store validates it).
+      const observedAt = canonicalInstant(association.workItemObservedAt);
+      const advanceObservation =
+        observedAt !== undefined &&
+        (unreserved.workItemObservedAt === undefined ||
+          Date.parse(observedAt) > Date.parse(unreserved.workItemObservedAt));
       const updatedTask: TaskRecord = {
         ...unreserved,
+        ...(advanceObservation ? { workItemObservedAt: observedAt } : {}),
         agentId: normalizeText(input.agentId) || unreserved.agentId,
         skillName: normalizeText(input.skillName) || unreserved.skillName,
         status: association.outcome === 'started' ? 'in_progress' : 'ready',

@@ -545,10 +545,10 @@ export interface TaskRecord {
    * issue URL or id). Absent for tasks created directly in Station. */
   workItemRef?: string;
   /**
-   * When Station last read `workItemRef` into this Task (#4003): the
-   * observation that seeded the brief on Start Task. Comments created after
-   * it are the item's "new comments". Absent for a Task that was never
-   * started from a tracker item.
+   * When Station last read `workItemRef` into this Task (#4003): set by the
+   * observation that seeded the brief on Start Task, and advanced by each
+   * dispatch whose tracker read observed the item. Comments created after
+   * it are the item's "new comments". Absent until one of those reads.
    */
   workItemObservedAt?: string;
   /**

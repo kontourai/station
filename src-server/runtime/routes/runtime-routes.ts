@@ -905,8 +905,9 @@ export interface ConfigureRuntimeRoutesContext {
   taskDispatcher: TaskDispatcher;
   /**
    * Exact-identity tracker reads (#4003): the runtime's one observer, shared
-   * by Start Task, the Task's linked-item header and dispatch. A composition
-   * without one gets a route-local GitHub observer.
+   * by Start Task, the Task's linked-item header, `get_task_brief` and (wired
+   * in `StationRuntime`) dispatch. A composition without one gets a
+   * route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
   /** The Project board aggregate; composed here when absent. */
@@ -2689,12 +2690,17 @@ export function configureRuntimeRoutes(
         context.orchestrationService.declareStationControlPullRequest(input),
     }),
   );
+  // #4003: one tracker reader for this route composition: Start Task, the
+  // Task's linked-item header and `get_task_brief` all read through it.
+  const workItemObserver =
+    context.workItemObserver ?? new GitHubWorkItemObserver();
   // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
   // session, the Task its immutable room execution binding names.
   const taskBriefSource = composeTaskBriefSource({
     taskGraph: context.taskGraphService,
     eventStore: context.orchestrationEventStore,
     roomRuntime: () => projectTaskRoomRuntime,
+    workItemObserver,
     logger: context.logger,
   });
   context.app.route(
@@ -3993,8 +3999,6 @@ export function configureRuntimeRoutes(
       ],
       context.logger,
     );
-  const workItemObserver =
-    context.workItemObserver ?? new GitHubWorkItemObserver();
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {

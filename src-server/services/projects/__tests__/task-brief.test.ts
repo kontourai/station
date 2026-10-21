@@ -139,9 +139,15 @@ describe('buildTaskBrief', () => {
     expect(linked.text).toContain(
       'linked item not re-read: unavailable (gh failed)',
     );
-    // The three inline rules stay in both.
+    // The memory rule is in both; the tracker rules, and any tracker
+    // wording at all, only where there is a tracker item.
     for (const brief of [local, linked])
-      expect(brief.text).toContain('3. Never close the tracker item');
+      expect(brief.text).toContain('1. Record decisions');
+    expect(linked.text).toContain(
+      '2. Post to the tracker item only at a milestone.',
+    );
+    expect(linked.text).toContain('3. Never close the tracker item');
+    expect(local.text).not.toMatch(/tracker/i);
   });
 
   test('tracker guidance is reserved first: a huge memory still leaves it whole', () => {

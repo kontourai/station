@@ -1,21 +1,28 @@
 /**
  * Gathers what a Task brief is built from (epic #4003): the Task record, the
- * shared Task document, the Task's other Sessions and, at dispatch only, a
- * fresh read of the linked tracker item. The builder itself is pure
- * (`task-brief.ts`); this module owns the reads and their failure words.
+ * shared Task document, the Task's other Sessions and a fresh read of the
+ * linked tracker item. The builder itself is pure (`task-brief.ts`); this
+ * module owns the reads and their failure words.
+ *
+ * Both dispatch and `get_task_brief` re-read the item through the runtime's
+ * one `WorkItemObserver`, asking for comments since
+ * `TaskRecord.workItemObservedAt` (or the Task's creation). Only dispatch
+ * reports the read's time back, so only a dispatch advances that mark: a
+ * `get_task_brief` call is the Session catching up, and must not hide new
+ * comments from the next Session dispatched.
  *
  * Authority is the caller's: `forDispatch` runs inside an already admitted
  * dispatch, and `forSession` derives the Task from the Session's immutable
  * server-owned room execution binding, never from an argument.
  */
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type { WorkItemObserver } from '../work-item-providers/github-work-item-observer.js';
 import {
   buildTaskBrief,
   type TaskBriefInput,
   type TaskBriefObservation,
   type TaskBriefSessionLine,
   type TaskBriefSnapshot,
-  type WorkItemObserver,
 } from './task-brief.js';
 
 /** A tracker read longer than this is abandoned; dispatch never waits on it. */
@@ -33,8 +40,8 @@ export interface TaskBriefSourceDeps {
   readBinding(
     sessionId: string,
   ): { projectId: string; taskId: string } | undefined;
-  /** The tracker read the intake lane provides; absent says so in the brief. */
-  observeWorkItem?: WorkItemObserver;
+  /** The runtime's one exact-identity tracker reader. */
+  workItemObserver: WorkItemObserver;
   observeTimeoutMs?: number;
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
 }
@@ -44,9 +51,22 @@ export type TaskBriefForSession =
   | { kind: 'unbound' }
   | { kind: 'unavailable'; reason: string };
 
+export interface TaskBriefForDispatch {
+  brief: TaskBriefSnapshot;
+  /**
+   * The tracker read's `observedAt`, present only when the linked item was
+   * observed. The dispatcher records it as `TaskRecord.workItemObservedAt`
+   * once the dispatch is associated, and never otherwise.
+   */
+  workItemObservedAt?: string;
+}
+
 export interface TaskBriefSource {
   /** The brief a Session dispatched for `task` receives with its first turn. */
-  forDispatch(task: TaskRecord, sessionId: string): Promise<TaskBriefSnapshot>;
+  forDispatch(
+    task: TaskRecord,
+    sessionId: string,
+  ): Promise<TaskBriefForDispatch>;
   /** The current brief for the Task the Session is bound to. */
   forSession(sessionId: string): Promise<TaskBriefForSession>;
 }
@@ -91,26 +111,16 @@ export function createTaskBriefSource(
 
   const observe = async (
     task: TaskRecord,
-    sessionId: string,
   ): Promise<TaskBriefObservation | undefined> => {
     const ref = task.workItemRef;
     if (!ref) return undefined;
-    if (!deps.observeWorkItem)
-      return {
-        status: 'not-read',
-        reason: 'this Station has no tracker reader',
-      };
-    // Comments newer than the last time Station looked: the previous
-    // dispatch, or the Task's creation (Start Task seeded what came before).
-    const prior = deps
-      .listTaskSessions(task.id)
-      .filter((session) => session.sessionId !== sessionId)
-      .at(-1);
-    const commentsSince = prior?.createdAt ?? task.createdAt;
+    // Comments newer than the last time a dispatch read the item, or than
+    // the Task's creation when none has (Start Task records its own read).
+    const commentsSince = task.workItemObservedAt ?? task.createdAt;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([
-        deps.observeWorkItem(ref, { commentsSince }),
+        deps.workItemObserver.observeWorkItem(ref, { commentsSince }),
         new Promise<TaskBriefObservation>((resolve) => {
           timer = setTimeout(
             () => resolve({ status: 'not-read', reason: 'timed out' }),
@@ -144,14 +154,20 @@ export function createTaskBriefSource(
     async forDispatch(task, sessionId) {
       const [document, observation] = await Promise.all([
         readDocument(task.id),
-        observe(task, sessionId),
+        observe(task),
       ]);
-      return buildTaskBrief({
+      const brief = buildTaskBrief({
         task,
         document,
         sessions: otherSessions(task.id, sessionId),
         ...(observation ? { observation } : {}),
       });
+      return {
+        brief,
+        ...(observation?.status === 'observed'
+          ? { workItemObservedAt: observation.observation.observedAt }
+          : {}),
+      };
     },
 
     async forSession(sessionId) {
@@ -163,7 +179,10 @@ export function createTaskBriefSource(
           kind: 'unavailable',
           reason: 'The Task this session was dispatched for no longer exists.',
         };
-      const document = await readDocument(task.id);
+      const [document, observation] = await Promise.all([
+        readDocument(task.id),
+        observe(task),
+      ]);
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
       const current = deps.readTask(binding.taskId);
@@ -182,15 +201,7 @@ export function createTaskBriefSource(
           task: current,
           document,
           sessions: otherSessions(current.id, sessionId),
-          ...(current.workItemRef
-            ? {
-                observation: {
-                  status: 'not-read' as const,
-                  reason:
-                    'get_task_brief reads Station memory only; read the item with the tracker CLI',
-                },
-              }
-            : {}),
+          ...(observation ? { observation } : {}),
         }),
       };
     },
@@ -225,7 +236,7 @@ export function composeTaskBriefSource(input: {
         ): Promise<TaskBriefInput['document']>;
       }
     | undefined;
-  observeWorkItem?: WorkItemObserver;
+  workItemObserver: WorkItemObserver;
   logger?: TaskBriefSourceDeps['logger'];
 }): TaskBriefSource {
   return createTaskBriefSource({
@@ -242,9 +253,7 @@ export function composeTaskBriefSource(input: {
       input.eventStore?.readSessionByThread(sessionId)?.status,
     readBinding: (sessionId) =>
       input.eventStore?.readProjectTaskRoomExecutionBinding(sessionId),
-    ...(input.observeWorkItem
-      ? { observeWorkItem: input.observeWorkItem }
-      : {}),
+    workItemObserver: input.workItemObserver,
     ...(input.logger ? { logger: input.logger } : {}),
   });
 }

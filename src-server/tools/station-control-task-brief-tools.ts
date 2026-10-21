@@ -16,7 +16,7 @@ import { api, jsonToolResult } from './station-control-shared.js';
 const TASK_BRIEF_API_PATH = '/api/orchestration/station-control/task-brief';
 
 const GET_TASK_BRIEF_DESCRIPTION =
-  "Read the current brief for the Task this session was dispatched for: the Task's title and id, its linked tracker item, the other Sessions working on it and their status, and the Task memory (Decisions, Done, In progress, Open questions), newest first and cut to fit, saying how much was left out. Call it when you need to catch up on what other Sessions decided or finished since you started. It reads Station's memory only: it does not re-read the tracker item. Takes no arguments. Fails with `no_task_binding` when this session was not dispatched for a Task.";
+  "Read the current brief for the Task this session was dispatched for: the Task's title and id, its linked tracker item, the other Sessions working on it and their status, and the Task memory (Decisions, Done, In progress, Open questions), newest first and cut to fit, saying how much was left out. Call it when you need to catch up on what other Sessions decided or finished since you started. It re-reads the linked tracker item (state, labels and comments newer than the Task's last recorded read); a failed read is one line, never an error. Takes no arguments. Fails with `no_task_binding` when this session was not dispatched for a Task.";
 
 export function registerTaskBriefTools(registry: StationControlToolRegistry) {
   registry.tool('get_task_brief', GET_TASK_BRIEF_DESCRIPTION, {}, async () => {

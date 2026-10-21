@@ -4,7 +4,8 @@
  * station-control authority guard and policy table, real caller derivation
  * and real token mints. Only the stores behind the route are stubs: the
  * event store answers the immutable Session → Task binding and the Task graph
- * answers the Task.
+ * answers the Task. The tracker re-read is the real `GitHubWorkItemObserver`
+ * against a fake `gh` at the process seam.
  *
  * Sessions are named for their records: `op-*` is the operator's; `*-bound`
  * was dispatched for `task-bound`, `*-other` for `task-other`, and `*-free`
@@ -20,6 +21,8 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
+import * as fakeGh from '../../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
+import { GitHubWorkItemObserver } from '../../../services/work-item-providers/github-work-item-observer.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -76,6 +79,8 @@ const TASKS = {
     updatedAt: '2026-10-20T00:00:00.000Z',
     workItemRef: 'github:owner/repo#7',
     sourceProvider: 'github',
+    // The last dispatch's read: the re-read asks for comments after it.
+    workItemObservedAt: '2026-10-20T05:00:00.000Z',
   },
   'task-other': {
     id: 'task-other',
@@ -112,6 +117,23 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
 
   async function setup() {
     const homeDir = makeTempDir('station-task-brief-route-');
+    const ghDir = makeTempDir('station-task-brief-fake-gh-');
+    const gh = fakeGh.installFakeGh(ghDir);
+    const issuePath = 'repos/owner/repo/issues/7';
+    fakeGh.answer(
+      ghDir,
+      issuePath,
+      fakeGh.issue({
+        number: 7,
+        html_url: 'https://github.com/owner/repo/issues/7',
+        title: 'The bound issue',
+        comments: 2,
+      }),
+    );
+    fakeGh.answer(ghDir, `${issuePath}/comments?per_page=30&page=1`, [
+      fakeGh.comment(1, '2026-10-20T04:00:00Z', 'Already seen at dispatch.'),
+      fakeGh.comment(2, '2026-10-20T06:00:00Z', 'Posted after the dispatch.'),
+    ]);
     const service = new NotificationService(new EventBus(), homeDir, 999_999);
     closers.push(() => service.shutdown());
     support.notificationService = service;
@@ -141,6 +163,7 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      workItemObserver: new GitHubWorkItemObserver({ command: gh }),
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
@@ -267,27 +290,37 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
     return { status: response.status, json };
   }
 
-  test('a bound caller reads the brief for its OWN Task, whatever the request names', async () => {
-    const base = await setup();
-    const { status, json } = await get(
-      base,
-      as('op-caller-bound'),
-      // Nothing the caller supplies chooses the Task.
-      '?taskId=task-other',
-    );
-    expect(status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(json.data.taskId).toBe('task-bound');
-    expect(json.data.version).toBe('station.task-brief/v1');
-    expect(json.data.text).toContain('Task: The bound Task');
-    expect(json.data.text).not.toContain('Somebody else');
-    // The other Session in the Task, with its status word; not the caller.
-    expect(json.data.text).toContain('- op-sibling-bound (claude): running');
-    expect(json.data.text).not.toContain('op-caller-bound');
-    // get_task_brief does not re-read the tracker, and says so.
-    expect(json.data.text).toContain('linked item not re-read: not-read');
-    expect(json.data.text).toContain('## Tracker guidance');
-  });
+  // The fake `gh` is a POSIX shell script.
+  test.skipIf(process.platform === 'win32')(
+    'a bound caller reads the brief for its OWN Task, whatever the request names, with the item re-read',
+    async () => {
+      const base = await setup();
+      const { status, json } = await get(
+        base,
+        as('op-caller-bound'),
+        // Nothing the caller supplies chooses the Task.
+        '?taskId=task-other',
+      );
+      expect(status).toBe(200);
+      expect(json.success).toBe(true);
+      expect(json.data.taskId).toBe('task-bound');
+      expect(json.data.version).toBe('station.task-brief/v1');
+      expect(json.data.text).toContain('Task: The bound Task');
+      expect(json.data.text).not.toContain('Somebody else');
+      // The other Session in the Task, with its status word; not the caller.
+      expect(json.data.text).toContain('- op-sibling-bound (claude): running');
+      expect(json.data.text).not.toContain('op-caller-bound');
+      // get_task_brief re-reads the linked item, for comments after the
+      // Task's recorded observation only.
+      expect(json.data.text).toContain('Title: The bound issue');
+      expect(json.data.text).toContain(
+        '- commenter2 (2026-10-20T06:00:00Z): Posted after the dispatch.',
+      );
+      expect(json.data.text).not.toContain('Already seen at dispatch.');
+      expect(json.data.text).not.toContain('linked item not re-read');
+      expect(json.data.text).toContain('## Tracker guidance');
+    },
+  );
 
   test('a caller whose session has no Task binding is refused', async () => {
     const base = await setup();

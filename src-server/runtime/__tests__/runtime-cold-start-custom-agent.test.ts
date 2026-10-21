@@ -60,6 +60,7 @@ import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -1087,6 +1088,132 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     resolveModelId.mockRestore();
     runtime = undefined;
   });
+
+  // The fake `gh` is a POSIX shell script.
+  it.skipIf(process.platform === 'win32')(
+    "dispatch reads the linked item through the runtime's own tracker observer into the Task brief (#4003)",
+    async () => {
+      // Nothing here injects an observer: the runtime's GitHubWorkItemObserver
+      // runs `gh` from PATH, and PATH finds the fake first.
+      const ghDir = mkdtempSync(join(tmpdir(), 'station-dispatch-fake-gh-'));
+      fakeGh.installFakeGh(ghDir);
+      const ref = 'github:acme/widgets#42';
+      const issuePath = 'repos/acme/widgets/issues/42';
+      fakeGh.answer(
+        ghDir,
+        issuePath,
+        fakeGh.issue({ title: 'Widgets jam at dispatch', comments: 2 }),
+      );
+      fakeGh.answer(ghDir, `${issuePath}/comments?per_page=30&page=1`, [
+        fakeGh.comment(1, '2000-01-01T00:00:00Z', 'Older than the Task.'),
+        fakeGh.comment(2, '2999-01-01T00:00:00Z', 'Newer than the Task.'),
+      ]);
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${ghDir}:${originalPath ?? ''}`;
+      try {
+        home = await createSchemaHome('station-dispatch-tracker-');
+        runtime = new StationRuntime({
+          projectHomeDir: home,
+          port: TEST_PORT,
+          host: '127.0.0.1',
+        });
+        replaceTerminalListener(runtime);
+        // A namespaced workItemRef routes dispatch through the assignment
+        // claim; stub that gate (and the workspace it needs) so this case
+        // observes the brief. Both are read when the dispatcher is composed.
+        Reflect.set(runtime, 'taskDispatchAssignmentClaims', {
+          claim: vi.fn(async () => ({
+            outcome: 'claimed',
+            record: { claimed_at: '2026-10-21T00:00:00.000Z' },
+          })),
+          release: vi.fn(),
+          status: vi.fn(),
+        });
+        Reflect.set(runtime, 'resolveTaskDispatchWorkspace', () => home);
+        await expect(runtime.initialize()).resolves.toBeUndefined();
+
+        // The engine start is the boundary: record what dispatch hands it.
+        const orchestration = Reflect.get(runtime, 'orchestrationService') as {
+          dispatch(...args: unknown[]): Promise<unknown>;
+        };
+        const starts: unknown[][] = [];
+        const realDispatch = orchestration.dispatch.bind(orchestration);
+        vi.spyOn(orchestration, 'dispatch').mockImplementation(
+          async (...args: unknown[]) => {
+            const command = args[0] as {
+              type: string;
+              input: { threadId: string };
+            };
+            if (command.type !== 'startSession') return realDispatch(...args);
+            starts.push(args);
+            const now = new Date().toISOString();
+            return {
+              provider: 'codex',
+              threadId: command.input.threadId,
+              status: 'ready',
+              createdAt: now,
+              updatedAt: now,
+            };
+          },
+        );
+
+        const graph = Reflect.get(runtime, 'taskGraphService') as {
+          createTask(input: object): Promise<{ id: string; createdAt: string }>;
+          readTaskView(id: string): { workItemObservedAt?: string } | null;
+        };
+        const projects = Reflect.get(runtime, 'projectService') as {
+          createProject(input: object): Promise<{ slug: string }>;
+        };
+        const project = await projects.createProject({
+          name: 'Tracker project',
+          slug: 'tracker-project',
+          workingDirectory: home,
+        });
+        const task = await graph.createTask({
+          projectId: project.slug,
+          title: 'Unjam the widgets',
+          sourceProvider: 'github',
+          workItemRef: ref,
+        });
+        const dispatcher = Reflect.get(runtime, 'taskDispatcher') as {
+          dispatch(taskId: string, input: object): Promise<{ kind: string }>;
+        };
+        await expect(
+          dispatcher.dispatch(task.id, {
+            ownerUserId: 'human:local:operator',
+            fullAccessGrant: null,
+            runtimeConfig: { provider: 'codex', cwd: home },
+          }),
+        ).resolves.toMatchObject({ kind: 'dispatched' });
+
+        expect(starts).toHaveLength(1);
+        const internal = starts[0]![2] as {
+          taskBrief?: { digest: string; text: string };
+        };
+        const brief = internal.taskBrief?.text ?? '';
+        expect(brief).toContain('Title: Widgets jam at dispatch');
+        expect(brief).toContain('Labels: bug, P1');
+        // Comments since the Task's creation (it has no earlier read).
+        expect(brief).toContain('Newer than the Task.');
+        expect(brief).not.toContain('Older than the Task.');
+        expect(brief).not.toContain('linked item not re-read');
+        // The read is the runtime's observer, through gh on PATH.
+        expect(fakeGh.calls(ghDir).map((call) => call.split('|')[3])).toEqual([
+          `api --hostname github.com -H Accept: application/vnd.github+json ${issuePath}`,
+          `api --hostname github.com -H Accept: application/vnd.github+json ${issuePath}/comments?per_page=30&page=1`,
+        ]);
+        // Dispatch recorded the read as the Task's new "comments since" mark.
+        const observedAt = graph.readTaskView(task.id)?.workItemObservedAt;
+        expect(observedAt).toBeDefined();
+        expect(Date.parse(observedAt!)).toBeGreaterThanOrEqual(
+          Date.parse(task.createdAt),
+        );
+      } finally {
+        process.env.PATH = originalPath;
+        rmDirSyncRetrying(ghDir);
+      }
+    },
+  );
 
   it('wires the shared unattended-grant resolver into default and persisted agent hooks (#2365)', async () => {
     // This deliberately boots StationRuntime rather than constructing either
