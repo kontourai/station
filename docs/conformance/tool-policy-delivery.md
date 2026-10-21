@@ -287,10 +287,11 @@ falls back to its title/tool label. The Ask-mode chip copy says the engine asks 
 do not already allow, rather than claiming a floor Station does not impose.
 
 The standing grant covers calls to the tool, never an escalation beyond the
-call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
-SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
-escalations in several shapes, first read in 2.1.261 and re-checked in
-2.1.278. Read, Glob, Grep and LSP ask for a path outside
+call (#2915; #2911 set the same rule for Codex). The recorded escalation
+inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
+This checkout now resolves SDK 0.3.302 as noted above; the historical
+2.1.261 and 2.1.278 observations below were not freshly rerun against it.
+That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
 drops the reason's type, which Station reads from the engine's request

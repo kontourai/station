@@ -28,6 +28,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
   codexToolServersDelivered: { add: vi.fn() },
 }));
 
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createRuntimeSelfIntegration } from '../../runtime/agents/runtime-default-agent.js';
 import {
   builtinStationControlServerPath,
@@ -112,6 +113,12 @@ function toolServersReport(input: ProviderSessionStartInput) {
   )?.toolServers;
 }
 
+const makeWorkspace = trackTempDirs();
+
+function isolatedWorkspace(): string {
+  return makeWorkspace('station-codex-control-');
+}
+
 describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station-control integration wire-safe', () => {
   test('an explicit engine override refuses a tool that resolved but cannot be delivered by the adapter', async () => {
     const resolver = createSessionAgentResolver({
@@ -121,6 +128,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     });
     const resolved = await resolver({
       threadId: 'override-delivery-refusal',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent', executionAgentId: 'codex' },
     });
@@ -144,6 +152,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
 
     const resolved = await resolver({
       threadId: 'thread-e2e-codex',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent' },
     });

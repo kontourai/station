@@ -195,6 +195,8 @@ async function respondToQuotaRead(
   process.stdout.write(`${JSON.stringify({ id: '2', result: payload })}\n`);
 }
 
+const makeSessionWorkspace = trackTempDirs();
+
 async function startQuotaSession(options: {
   adapter: CodexAdapter;
   connectionId: string;
@@ -205,6 +207,7 @@ async function startQuotaSession(options: {
   const session = options.adapter.startSession({
     provider: 'codex',
     threadId: options.threadId,
+    cwd: makeSessionWorkspace('codex-quota-workspace-'),
     modelId: 'gpt-5-codex',
     metadata: { connectionId: options.connectionId },
     ...(options.credentialProfileRef
@@ -1555,6 +1558,7 @@ describe('CodexAdapter', () => {
   test.each(['home', 'profile'] as const)(
     'a native return refuses a changed %s before starting another Codex process',
     async (changed) => {
+      const cwd = makeSessionWorkspace('codex-binding-workspace-');
       let home = '/profiles/original';
       let profileRef = 'original';
       processHandle = new FakeCodexProcess();
@@ -1568,6 +1572,7 @@ describe('CodexAdapter', () => {
         const source = adapter.startSession({
           provider: 'codex',
           threadId: 'binding-source',
+          cwd,
         });
         await flushIo();
         processHandle.stdout.write(
@@ -1602,6 +1607,7 @@ describe('CodexAdapter', () => {
           adapter.startSession({
             provider: 'codex',
             threadId: 'binding-return',
+            cwd,
             resumeCursor: { codexThreadId: 'native-source' },
             requireNativeResumeIdentity: true,
             nativeResumeBindingKey: bindingKey,
@@ -1635,6 +1641,7 @@ describe('CodexAdapter', () => {
       const started = adapter.startSession({
         provider: 'codex',
         threadId: 'strict-resume',
+        cwd: makeSessionWorkspace('codex-resume-workspace-'),
         resumeCursor: { codexThreadId: 'native-original' },
         requireNativeResumeIdentity: true,
       });
@@ -4380,6 +4387,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-3',
+      cwd: makeSessionWorkspace('codex-json-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-3', {
@@ -4424,6 +4432,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-failed-start',
+      cwd: makeSessionWorkspace('codex-failed-start-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-failed-start', {
@@ -4697,6 +4706,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-4',
+      cwd: makeSessionWorkspace('codex-approval-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-4', {
@@ -5449,6 +5459,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'configured-profile-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
         }),
       ).rejects.toThrow(
         'Credential profile environment could not be prepared.',
@@ -5534,6 +5545,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'thread-profile-ref-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
           credentialProfileRef: 'canary-profile-ref',
         }),
       ).rejects.toThrow(

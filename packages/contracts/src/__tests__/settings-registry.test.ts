@@ -131,6 +131,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'fleetContribution',
         // #1521 — candidate registry signature policy; applied separately.
         'registryTrust',
+        // Operator policy records are composite data without generic Settings editors.
+        'publicTelemetryRegistries',
+        'telemetryPublisherPolicy',
         'telemetryTier',
         'templateVariables',
         // station#2652 — the first-run "About you" answers.

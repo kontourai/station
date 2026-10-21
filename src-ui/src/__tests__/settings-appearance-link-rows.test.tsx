@@ -40,10 +40,10 @@ function renderThemeRow(values: Record<string, unknown>) {
   return save;
 }
 
-test("the Theme row's Use default resets the mode, not the color theme", () => {
+test("the Theme row's reset restores the mode, not the color theme", () => {
   const save = renderThemeRow({ theme: 'light', colorTheme: 'catppuccin' });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Use default for Theme' }),
+    screen.getByRole('button', { name: 'Reset Theme to default' }),
   );
   expect(save).toHaveBeenCalledWith({ theme: null });
 });
@@ -51,7 +51,7 @@ test("the Theme row's Use default resets the mode, not the color theme", () => {
 test('a saved color theme alone offers no reset on the Theme row', () => {
   renderThemeRow({ colorTheme: 'catppuccin', colorThemeFlavor: 'frappe' });
   expect(
-    screen.queryByRole('button', { name: 'Use default for Theme' }),
+    screen.queryByRole('button', { name: 'Reset Theme to default' }),
   ).toBeNull();
 });
 
