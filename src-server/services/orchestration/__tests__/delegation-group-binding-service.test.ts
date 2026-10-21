@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -14,6 +14,7 @@ import {
 
 let dir: string;
 let store: FileDelegationGroupBindingStore;
+const fixtureAuthority = (): undefined => undefined;
 const digest = `sha256:${'a'.repeat(64)}`;
 const binding: DelegationGroupBinding = {
   scope: { hostId: 'host', principalId: 'operator', tenantId: null },
@@ -41,11 +42,14 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 async function reserve() {
-  const result = await store.reserve({
-    binding,
-    operationId: 'operation',
-    intentDigest: digest,
-  });
+  const result = await store.reserve(
+    {
+      binding,
+      operationId: 'operation',
+      intentDigest: digest,
+    },
+    fixtureAuthority,
+  );
   if (result.kind !== 'created') throw new Error('No reservation owner');
   return { binding, ownerToken: result.ownerToken, expectedRevision: 1 };
 }
@@ -76,6 +80,7 @@ test('real physical restriction refuses before model resolution with durable lau
           ),
         ).toMatchObject({ state: 'launch-intent' });
       }
+      return fixtureAuthority;
     },
   });
   const resolveModel = vi.fn(async () => 'paid result');
@@ -113,6 +118,7 @@ test('revocation during launch admission retains intent and prevents resolution'
     async assertCurrent(record) {
       if (record.state === 'launch-intent')
         throw new Error('controller revoked');
+      return fixtureAuthority;
     },
   });
   await expect(service.execute(input, resolveModel)).rejects.toThrow(
@@ -122,6 +128,65 @@ test('revocation during launch admission retains intent and prevents resolution'
   expect(
     await store.findTurn(binding.scope, 'session', 'client-turn'),
   ).toMatchObject({ state: 'launch-intent' });
+});
+
+test('request revoked as async authorization returns cannot persist launch intent', async () => {
+  const input = await reserve();
+  const file = join(dir, 'delegation-group-bindings', 'bindings.json');
+  const retained = readFileSync(file, 'utf8');
+  const controller = new AbortController();
+  const request = new Request('http://station.test/groups/run', {
+    signal: controller.signal,
+  });
+  const resolveModel = vi.fn(async () => 'result');
+  const service = new DelegationGroupBindingService(store, {
+    async assertCurrent() {
+      await Promise.resolve();
+      request.signal.throwIfAborted();
+      queueMicrotask(() => controller.abort(new Error('request aborted')));
+      return (): undefined => {
+        request.signal.throwIfAborted();
+      };
+    },
+  });
+  await expect(service.execute(input, resolveModel)).rejects.toThrow(
+    'request aborted',
+  );
+  expect(readFileSync(file, 'utf8')).toBe(retained);
+  expect(
+    await new FileDelegationGroupBindingStore(dir).findTurn(
+      binding.scope,
+      'session',
+      'client-turn',
+    ),
+  ).toMatchObject({ state: 'reserved', revision: 1 });
+  expect(resolveModel).not.toHaveBeenCalled();
+});
+
+test('current owner replaced as async execution admission returns is rejected by its finalizer', async () => {
+  const input = await reserve();
+  const capturedOwner = {};
+  let currentOwner = capturedOwner;
+  const resolveModel = vi.fn(async () => 'result');
+  const service = new DelegationGroupBindingService(store, {
+    async assertCurrent(record) {
+      await Promise.resolve();
+      if (record.state === 'launch-intent')
+        queueMicrotask(() => {
+          currentOwner = {};
+        });
+      return (): undefined => {
+        if (currentOwner !== capturedOwner) throw new Error('owner replaced');
+      };
+    },
+  });
+  await expect(service.execute(input, resolveModel)).rejects.toThrow(
+    'owner replaced',
+  );
+  expect(
+    await store.findTurn(binding.scope, 'session', 'client-turn'),
+  ).toMatchObject({ state: 'launch-intent', revision: 2 });
+  expect(resolveModel).not.toHaveBeenCalled();
 });
 
 test('caller mutation across authorization cannot retarget the captured launch', async () => {
@@ -134,6 +199,7 @@ test('caller mutation across authorization cannot retarget the captured launch',
         input.ownerToken = 'b'.repeat(64);
         input.expectedRevision = 99;
       }
+      return fixtureAuthority;
     },
   });
   const resolveModel = vi.fn(async () => 'result');
@@ -153,7 +219,7 @@ test('missing or forged exact binding cannot invoke resolver or claim a launch',
   const input = await reserve();
   const resolveModel = vi.fn(async () => 'result');
   const service = new DelegationGroupBindingService(store, {
-    assertCurrent: async () => {},
+    assertCurrent: async () => fixtureAuthority,
   });
   await expect(
     service.execute(
@@ -180,7 +246,7 @@ test('stream route refuses before creating a lazy model stream or delivering chu
   });
   const consume = vi.fn(async (_value: string) => {});
   const service = new DelegationGroupBindingService(store, {
-    assertCurrent: async () => {},
+    assertCurrent: async () => fixtureAuthority,
   });
   await expect(
     service.consumeStream(input, async () => resolveStream(), consume),

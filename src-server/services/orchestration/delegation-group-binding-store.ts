@@ -79,6 +79,8 @@ const ledgerSchema = z
   .strict();
 
 export type DelegationGroupBindingScope = z.infer<typeof scopeSchema>;
+/** Server-created live authority check; never derived from binding metadata. */
+export type DelegationGroupBindingFinalizer = () => undefined;
 export type DelegationGroupBinding = z.infer<typeof bindingSchema>;
 export type DelegationGroupBindingRecord = Omit<
   z.infer<typeof recordSchema>,
@@ -93,6 +95,16 @@ export type ReserveDelegationGroupBindingOutcome =
   | { kind: 'existing'; record: DelegationGroupBindingRecord };
 type StoredRecord = z.infer<typeof recordSchema>;
 type Ledger = z.infer<typeof ledgerSchema>;
+type TransactionAuthority =
+  | { kind: 'internal-read' }
+  | { kind: 'current'; finalizeCurrent: DelegationGroupBindingFinalizer };
+
+function finalizeAuthority(
+  finalizeCurrent: DelegationGroupBindingFinalizer,
+): void {
+  if (finalizeCurrent() !== undefined)
+    throw new DelegationGroupBindingError('synchronous_authority_required');
+}
 
 export class DelegationGroupBindingError extends Error {
   constructor(readonly code: string) {
@@ -274,6 +286,7 @@ export class FileDelegationGroupBindingStore {
   }
 
   async #transact<T>(
+    authority: TransactionAuthority,
     work: (ledger: Ledger) => { result: T; changed?: boolean },
   ): Promise<T> {
     try {
@@ -285,80 +298,99 @@ export class FileDelegationGroupBindingStore {
     const release = await acquireFileMutationLockAsync(
       `${this.#file}.mutation`,
     );
+    let result: T;
     try {
+      if (authority.kind === 'current')
+        finalizeAuthority(authority.finalizeCurrent);
       this.#checkDirectory();
       const ledger = this.#read();
       const outcome = work(ledger);
       if (outcome.changed) {
+        if (authority.kind !== 'current')
+          throw new DelegationGroupBindingError('mutation_authority_required');
         validateLedger(ledger);
         await publishJsonFileWithOwnedLock(this.#file, ledger, {
           maxBytes: FileDelegationGroupBindingStore.maxBytes,
           beforeCommit: () => this.#checkDirectory(),
+          finalizeCommit: () => {
+            this.#checkDirectory();
+            finalizeAuthority(authority.finalizeCurrent);
+          },
         });
       }
       // The shared publisher tolerates directory fsync errors; this owner must not.
       this.#flushDirectory(this.#root);
       this.#flushDirectory(dirname(this.#root));
-      return outcome.result;
+      result = outcome.result;
     } finally {
       await release();
     }
+    if (authority.kind === 'current')
+      finalizeAuthority(authority.finalizeCurrent);
+    return result;
   }
 
-  async reserve(input: {
-    binding: DelegationGroupBinding;
-    operationId: string;
-    intentDigest: string;
-  }): Promise<ReserveDelegationGroupBindingOutcome> {
+  async reserve(
+    input: {
+      binding: DelegationGroupBinding;
+      operationId: string;
+      intentDigest: string;
+    },
+    finalizeCurrent: DelegationGroupBindingFinalizer,
+  ): Promise<ReserveDelegationGroupBindingOutcome> {
     const parsed = z
       .object({ binding: bindingSchema, operationId: id, intentDigest: digest })
       .strict()
       .parse(input);
-    return this.#transact<ReserveDelegationGroupBindingOutcome>((ledger) => {
-      const existing = ledger.records.find(
-        (r) =>
-          same(r.binding.scope, parsed.binding.scope) &&
-          r.operationId === parsed.operationId,
-      );
-      if (existing) {
-        if (
-          !same(existing.binding, parsed.binding) ||
-          existing.intentDigest !== parsed.intentDigest
-        )
-          throw new DelegationGroupBindingError('operation_intent_conflict');
-        return {
-          result: { kind: 'existing' as const, record: project(existing) },
+    return this.#transact<ReserveDelegationGroupBindingOutcome>(
+      { kind: 'current', finalizeCurrent },
+      (ledger) => {
+        const existing = ledger.records.find(
+          (r) =>
+            same(r.binding.scope, parsed.binding.scope) &&
+            r.operationId === parsed.operationId,
+        );
+        if (existing) {
+          if (
+            !same(existing.binding, parsed.binding) ||
+            existing.intentDigest !== parsed.intentDigest
+          )
+            throw new DelegationGroupBindingError('operation_intent_conflict');
+          return {
+            result: { kind: 'existing' as const, record: project(existing) },
+          };
+        }
+        if (ledger.records.length >= this.#capacity)
+          throw new DelegationGroupBindingError('capacity');
+        const ownerToken = randomBytes(32).toString('hex');
+        const record: StoredRecord = {
+          ...parsed,
+          ownerVerifier: verifier(ownerToken),
+          revision: 1,
+          state: 'reserved',
+          providerTurnId: null,
+          observationRef: null,
         };
-      }
-      if (ledger.records.length >= this.#capacity)
-        throw new DelegationGroupBindingError('capacity');
-      const ownerToken = randomBytes(32).toString('hex');
-      const record: StoredRecord = {
-        ...parsed,
-        ownerVerifier: verifier(ownerToken),
-        revision: 1,
-        state: 'reserved',
-        providerTurnId: null,
-        observationRef: null,
-      };
-      ledger.records.push(record);
-      return {
-        changed: true,
-        result: {
-          kind: 'created' as const,
-          ownerToken,
-          record: project(record),
-        },
-      };
-    });
+        ledger.records.push(record);
+        return {
+          changed: true,
+          result: {
+            kind: 'created' as const,
+            ownerToken,
+            record: project(record),
+          },
+        };
+      },
+    );
   }
 
+  /** Internal custody lookup; the caller must authorize any disclosure. */
   async read(
     scope: DelegationGroupBindingScope,
     key: string,
   ): Promise<DelegationGroupBindingRecord | undefined> {
     const parsed = scopeSchema.parse(scope);
-    return this.#transact((ledger) => {
+    return this.#transact({ kind: 'internal-read' }, (ledger) => {
       const record = ledger.records.find(
         (r) =>
           same(r.binding.scope, parsed) &&
@@ -368,6 +400,7 @@ export class FileDelegationGroupBindingStore {
     });
   }
 
+  /** Internal custody lookup; the caller must authorize any disclosure. */
   async findTurn(
     scope: DelegationGroupBindingScope,
     sessionId: string,
@@ -376,7 +409,7 @@ export class FileDelegationGroupBindingStore {
     const parsed = scopeSchema.parse(scope);
     id.parse(sessionId);
     id.parse(clientTurnId);
-    return this.#transact((ledger) => {
+    return this.#transact({ kind: 'internal-read' }, (ledger) => {
       const record = ledger.records.find(
         (r) =>
           same(r.binding.scope, parsed) &&
@@ -387,15 +420,18 @@ export class FileDelegationGroupBindingStore {
     });
   }
 
-  async advance(input: {
-    binding: DelegationGroupBinding;
-    ownerToken: string;
-    expectedRevision: number;
-    transition:
-      | { state: 'launch-intent' | 'session-started' }
-      | { state: 'turn-accepted'; providerTurnId: string }
-      | { state: 'observed'; providerTurnId: string; observationRef: string };
-  }): Promise<DelegationGroupBindingRecord> {
+  async advance(
+    input: {
+      binding: DelegationGroupBinding;
+      ownerToken: string;
+      expectedRevision: number;
+      transition:
+        | { state: 'launch-intent' | 'session-started' }
+        | { state: 'turn-accepted'; providerTurnId: string }
+        | { state: 'observed'; providerTurnId: string; observationRef: string };
+    },
+    finalizeCurrent: DelegationGroupBindingFinalizer,
+  ): Promise<DelegationGroupBindingRecord> {
     const binding = bindingSchema.parse(input.binding);
     generation.parse(input.expectedRevision);
     const token = z
@@ -418,7 +454,7 @@ export class FileDelegationGroupBindingStore {
           .strict(),
       ])
       .parse(input.transition);
-    return this.#transact((ledger) => {
+    return this.#transact({ kind: 'current', finalizeCurrent }, (ledger) => {
       const record = ledger.records.find(
         (r) =>
           delegationGroupBindingKey(r.binding) ===

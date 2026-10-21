@@ -5,6 +5,7 @@ import {
 import {
   type DelegationGroupBinding,
   DelegationGroupBindingError,
+  type DelegationGroupBindingFinalizer,
   type DelegationGroupBindingRecord,
   delegationGroupBindingKey,
   FileDelegationGroupBindingStore,
@@ -12,7 +13,9 @@ import {
 
 export interface DelegationGroupBindingHost {
   /** Authenticate the actual request and current session/turn/envelope custody. */
-  assertCurrent(record: DelegationGroupBindingRecord): Promise<void>;
+  assertCurrent(
+    record: DelegationGroupBindingRecord,
+  ): Promise<DelegationGroupBindingFinalizer>;
 }
 
 /** Restriction caller for durable group work; it cannot issue execution authority. */
@@ -36,13 +39,20 @@ export class DelegationGroupBindingService {
       delegationGroupBindingKey(captured.binding),
     );
     if (!current) throw new DelegationGroupBindingError('binding_unavailable');
-    await this.host.assertCurrent(current);
-    const intent = await this.store.advance({
-      ...captured,
-      transition: { state: 'launch-intent' },
-    });
+    const finalizeCurrent = await this.host.assertCurrent(current);
+    const intent = await this.store.advance(
+      {
+        ...captured,
+        transition: { state: 'launch-intent' },
+      },
+      finalizeCurrent,
+    );
     return runWithRequiredBoundedApiTurn(async () => {
-      await this.host.assertCurrent(structuredClone(intent));
+      const finalizeExecution = await this.host.assertCurrent(
+        structuredClone(intent),
+      );
+      if (finalizeExecution() !== undefined)
+        throw new DelegationGroupBindingError('synchronous_authority_required');
       // Refuse before resolution until the physical owner can enforce paid work.
       assertBoundedApiExecutionAvailable('delegation-group-binding');
       return resolveAndExecute(intent);
