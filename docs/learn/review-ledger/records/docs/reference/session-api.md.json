@@ -128,7 +128,19 @@
 
     "packages/cli/src/commands/mcp-clients.ts",
 
-    "src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts"
+    "src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/domain/migrations/020-conversation-fork-context.ts",
+
+    "src-server/domain/migrations/021-conversation-start-context.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
   ],
 
   "checks": [

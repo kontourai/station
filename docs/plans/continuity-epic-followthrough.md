@@ -387,3 +387,23 @@ Baseline failures are retained at
 The fourteen-case qualification owner, handoff owner and pin-codec owner pass
 34 focused tests; server-test typechecking and governance pass. The broader
 orchestration/EventStore owner run passes all 830 tests.
+
+
+### Current checkpoint after 50aa72507c3
+
+All known implementation regressions above are repaired. The source tree is
+kept on the one unpublished feature branch; normal published-master/main merges
+are retained. Full lint, governance, UI and server-test typechecking pass.
+Focused receipts include 830 orchestration/EventStore tests, 34 witness/pin
+tests, 132 conversation-route tests, 649 source/UI tests for the recovery-owner
+cleanup, and the post-merge 120 API/CLI/continuity tests with one Windows skip.
+These are separate local commands/revisions, not hosted or live qualification.
+
+Seven material CLI/SDK/contract/runtime/security reviews were recorded through
+the canonical ledger tool and the learning guide rebuilt (10 branches, 91
+module sections, 446 Markdown documents). The scoped freshness check against
+published master 0ae3da5 still selects 111 other affected documents for review.
+They have not been mass-refreshed or relabeled current. Independent full-branch
+review, final documentation/readiness, live public-client onboarding, installed
+provider lifecycle and real two-account selection/application remain unfinished.
+Second-account sign-in is explicitly deferred by Brian; no new login occurred.

@@ -708,7 +708,9 @@
 
     "src-ui/src/contexts/openRelatedOccurrence.ts",
 
-    "tests/helpers/related-pane-upgrade.ts"
+    "tests/helpers/related-pane-upgrade.ts",
+
+    "src-ui/src/contexts/conversation-open-policy.ts"
   ],
 
   "checks": [

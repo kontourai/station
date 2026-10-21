@@ -44,7 +44,13 @@
 
     "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
 
-    "packages/agent-runtime/src/__tests__/r4-replay.test.ts"
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts"
   ],
 
   "checks": [

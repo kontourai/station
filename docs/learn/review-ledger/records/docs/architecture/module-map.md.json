@@ -1170,7 +1170,17 @@
 
     "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
 
-    "packages/contracts/src/project-task-room-browser.ts"
+    "packages/contracts/src/project-task-room-browser.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/domain/migrations/020-conversation-fork-context.ts",
+
+    "src-server/domain/migrations/021-conversation-start-context.ts"
   ],
 
   "checks": [
