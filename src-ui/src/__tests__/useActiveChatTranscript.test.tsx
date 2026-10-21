@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
-import { act, renderHook, waitFor } from '@testing-library/react';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatSession } from '../types';
 
