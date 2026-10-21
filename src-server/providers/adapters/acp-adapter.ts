@@ -1909,37 +1909,6 @@ export class AcpAdapter implements ProviderAdapterShape {
             reason: 'start-refused',
           });
         }
-        // Any other failure after the announcement ends that session the
-        // same way, or the thread stays bound and a retry announces a second
-        // start on a session that never ended. A credential-recovery restart
-        // reports its own failure (see its caller).
-        if (
-          !(error instanceof SessionStartRefusedError) &&
-          !cancelled &&
-          !options?.credentialRecoveryAttempted &&
-          record.startedPublished &&
-          this.isCurrentGeneration(input.threadId, record.generation)
-        ) {
-          this.publish({
-            eventId: crypto.randomUUID(),
-            provider: this.provider,
-            threadId: input.threadId,
-            createdAt: new Date().toISOString(),
-            method: 'runtime.error',
-            ...providerFailure('provider_error', 'failed'),
-            severity: 'error',
-            message: errorMessage(error),
-          } satisfies ProviderRuntimeErrorEvent);
-          this.publish({
-            eventId: crypto.randomUUID(),
-            provider: this.provider,
-            threadId: input.threadId,
-            createdAt: new Date().toISOString(),
-            method: 'session.exited',
-            sessionId: input.threadId,
-            reason: 'start-failed',
-          });
-        }
       } catch (cleanupError) {
         throw new AggregateError(
           [error, cleanupError],

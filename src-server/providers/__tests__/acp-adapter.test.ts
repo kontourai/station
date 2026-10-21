@@ -4533,49 +4533,6 @@ describe('station#1182: runtime-reported model', () => {
     await expect(adapter.listSessions()).resolves.toEqual([]);
   });
 
-  test('any other session/new failure also ends the announced session, once', async () => {
-    const { adapter } = createAdapter({
-      newSessionError: Object.assign(new Error('internal error'), {
-        code: -32603,
-      }),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
-    const start = () =>
-      adapter.startSession({
-        provider: 'acp',
-        threadId: 'thread-start-failed',
-        cwd: '/tmp/project',
-        metadata: { connectionId: 'kiro' },
-      });
-
-    await expect(start()).rejects.toThrow('internal error');
-    await nextEvent(iterator, 'session.started');
-    await expect(nextEvent(iterator, 'runtime.error')).resolves.toMatchObject({
-      method: 'runtime.error',
-      kind: 'provider_error',
-      failurePhase: 'failed',
-      message: 'internal error',
-    });
-    await expect(nextEvent(iterator, 'session.exited')).resolves.toMatchObject({
-      method: 'session.exited',
-      sessionId: 'thread-start-failed',
-      reason: 'start-failed',
-    });
-
-    // The retry is a fresh start of its own, ending the same way, not a
-    // second `session.started` on a session that never ended.
-    await expect(start()).rejects.toThrow('internal error');
-    const methods = [];
-    for (let i = 0; i < 3; i += 1) {
-      methods.push((await nextEvent(iterator, `retry event ${i}`)).method);
-    }
-    expect(methods).toEqual([
-      'session.started',
-      'runtime.error',
-      'session.exited',
-    ]);
-  });
-
   test('auth_required on a prompt is reported as a typed sign-in failure', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
