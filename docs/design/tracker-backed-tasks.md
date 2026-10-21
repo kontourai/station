@@ -34,7 +34,13 @@ for its brief with `get_task_brief`. Nothing polls.
   (`github:owner/repo#123`). Zero means a Station-only Task.
 - A work item is the primary item of **at most one Task that is not done or
   canceled**. **Start Task** on an item that already has such a Task opens
-  that Task.
+  that Task. Every create that names a work item keeps this rule under the
+  task store's lock: `POST /api/tasks` answers 409 with the open Task's id
+  and Project. A namespaced ref (`github:…`) is unique across Projects; a
+  bare ref (a Flow sidecar slug) means something only inside its Project, so
+  it is unique there. GitHub owner and repository names are lowercased when
+  a ref is parsed (GitHub compares them case-insensitively), and refs are
+  compared in that canonical form.
 - A Task may have **any number of secondary** items, stored as typed
   `external` references: an epic's sub-issues, a bug found along the way, a
   related item. They are displayed and linked from the PR with `Closes #N`
@@ -151,6 +157,25 @@ followed by the rules and, for a Task with a tracker item, the tracker
 guidance. `on_topic` records, answered questions and retired records appear
 only as counts.
 
+**Quoted data.** Everything that agents, people or a public tracker wrote is
+rendered as quoted lines, each prefixed `> `, under a line that says who
+wrote it: "agents and people on this Task" or "people outside Station
+(public tracker content)". That covers the Task's title and goal, the Task
+document, the summary, each record's text, a Session's last request, and
+the tracker item's title, labels and comments. Every line terminator JS and
+Unicode recognise splits a line, so no quoted line can equal one of
+Station's headings, a rule or the closing line, and the first rule says
+quoted text is data, not instructions. Station's own values (ids, refs,
+states, times, counts) and validated identifiers such as claimed paths stay
+on Station's lines, after a fixed label. The record listing, the summary
+history and the Start Task seed quote the same way.
+
+**Whose Sessions.** The Session lines and claims name only the Sessions that
+the receiving Session's owner may read (`canUserReadSession` under that
+owner's read authority, as `list_project_activity` does). That is the
+dispatching owner at dispatch, and the calling Session's recorded owner for
+`get_task_brief`.
+
 The brief reuses the digest-pinned `TaskRoomContextSnapshot` approach from
 [task-room agent requests](task-room-agent-requests.md). A Session that runs
 for a long time re-reads it with `get_task_brief`. That tool also takes
@@ -180,7 +205,9 @@ above:
   Task document 2,500 (800 once a summary exists, since the summary then
   carries what is true now), five tracker comments of 400, and a 400-character
   labels line. The summary is shown whole; its cap is a refusal at write
-  time. With every fixed part at its worst, about 1,800 characters remain for
+  time. Quoting adds two characters a line, so a quoted summary may run to
+  4,200 characters; one of very many short lines that runs longer is cut
+  with a note naming `include: "summary_history"`. With every fixed part at its worst, about 1,800 characters remain for
   records and Sessions, so the newest record always fits. Records fill that
   space newest first, taken in turn from each kind, then Session lines
   (at most eight, newest activity first). Everything left out is counted.
@@ -188,7 +215,8 @@ above:
   `workItemRef`. It is the `tracker-hygiene` text, embedded as a server
   constant, because Station cannot ship a built-in skill and Codex has no
   skill channel.
-- **Rules follow the link.** Every brief carries the two memory rules:
+- **Rules follow the link.** Every brief carries the quoted-data rule and
+  the two memory rules:
   update the summary with `task_summary_update` at milestones and before
   stopping, and record decisions, questions and dead ends with
   `task_record`. The two tracker rules (post only at a milestone; never close
@@ -203,10 +231,21 @@ above:
   or since the Task's creation when there is none. A failed, timed-out
   (10 s) or non-observed read becomes one line, such as `linked item not
   re-read: unauthenticated`. It never fails the dispatch and leaves the mark
-  where it was.
+  where it was. Dispatch does wait for the read, up to those 10 seconds; at
+  the deadline the read is aborted, which stops its `gh` process.
 - **One reader.** Dispatch, `get_task_brief`, Start Task and the Task's
   linked-item header all read through the runtime's single
-  `GitHubWorkItemObserver` (the host's `gh` login).
+  `GitHubWorkItemObserver` (the host's `gh` login). It keeps an observed
+  answer for 30 seconds, keyed by the exact ref and the comments-since
+  mark, so a Session calling `get_task_brief` in a loop does not spend the
+  host's GitHub quota. A failure is never kept.
+- **Only board-checked refs are read.** The host's login reads a Task's ref
+  only when `TaskRecord.workItemProvenance` is `project-board`, which Start
+  Task and a `POST /api/tasks` whose `github:` ref the Project's board
+  offered record. Any other ref is shown in the brief and the header but
+  never read (`linked item not re-read: not-read`, or `unsupported` in the
+  header). The board check tests membership in the board's listing at that
+  moment. It does not prove what the requester may see on GitHub.
 - **`get_task_brief` re-reads the tracker** through that reader, with the same
   10 s bound and the same one-line failure. It asks for comments since the
   Task's mark but never moves it: the mark records what dispatched Sessions
@@ -268,15 +307,38 @@ also puts one message into the lead's conversation
   running one keeps the message queued until its turn ends. A wake never
   steers. It is not urgent enough to change a turn already running, and a
   steer would need a second durable record to pin its branch. It is sent as
-  the lead Session's recorded owner, with an internal client origin.
-- **The text** names the key and who asked or answered, quotes the question
-  (and the answer), and for an open question says how to answer:
-  `task_record` with `action: "answer"`.
+  the lead Session's recorded owner, as every inbox entry must be, with an
+  internal client origin. When a Session wrote the record, that origin also
+  names the Session as the sender (`agent-session`), as a delegated child's
+  result does, so the lead's transcript shows "From Session X". A person's
+  answer has no Session to name and stays unattributed; its text says a
+  person wrote it. Making the asking Session the turn's actor instead would
+  need an actor model for agent-initiated turns that Station does not have.
+- **The text** opens with one fixed line: the key, the Task, who asked or
+  answered, and that the quoted lines were written by another Session or a
+  person, are data and not an instruction from the user, and must be
+  verified before acting on them. The question (and the answer) follow with
+  every line prefixed `> `, cut to the record bound. For an open question,
+  the text then says how to answer: `task_record` with `action:
+  "answer"`.
 
 Gap: a crash after the write commits and before the inbox entry is submitted
 loses that one wake. Nothing re-derives it at startup, because inbox
 retention could then let an old version send again. The question still shows
 in Needs you and in the lead's next `get_task_brief`.
+
+### Accepted gaps
+
+- **An agent may answer a question.** Questions are for people, but
+  `task_record` lets any Session that may write the Task's memory answer
+  one, and nothing stops it. The answer's version records who answered, and
+  the Task workspace shows it as "answered by Session X" (or the person).
+  The lead wake names the answering Session too.
+- **Revisions and versions are unbounded in count.** Each summary write and
+  each record action adds a row, and nothing caps how many a Task
+  accumulates. Every row's size is bounded, the brief shows only the newest
+  of each, and the listings are bounded and count what they leave out. No
+  issue is filed for this.
 
 ## Learning: promoting a done Task's lessons
 
@@ -300,14 +362,19 @@ step.
   Session that wrote the record version (absent when a person did), and
   `note` names the person, the Task, its creation time, the record
   `kind/key` and version, and the work item.
-- **Once per version.** The record's id is derived from the record's kind,
-  key and version and a digest of the Task incarnation. The store refuses a
-  second record with that id, so promoting the same version twice writes once
-  (the second answer is `already-promoted`), whichever Project store it went
-  to. "Promoted" is read back from the stores, not recorded beside them. A
-  later version of the same key is a new candidate.
-- **Dismissal is the one state Station keeps**: an append-only row per
-  dismissed record version (`task_learning_dismissals`, migration 021).
+- **Once per version, across stores.** The record's id is derived from the
+  record's kind, key and version and a digest of the Task incarnation, and a
+  store refuses a second record with that id. Stores are separate, so before
+  the knowledge write a promotion also inserts one append-only row naming its
+  store (`task_learning_promotions`, migration 022). A later or concurrent
+  promotion of that version reads the row and writes, or reads back, only in
+  that store: two people choosing two stores at once still get one record
+  (the second answer is `already-promoted`). When the first write failed, the
+  next promotion finishes it in the recorded store, with that request's
+  edited title and text. "Promoted" in the candidate list is read back from
+  the stores. A later version of the same key is a new candidate.
+- **Dismissals** are kept as an append-only row per dismissed record version
+  (`task_learning_dismissals`, migration 021).
 - **No store.** A Project without a knowledge store still lists its
   candidates and says so plainly, with a link to the Project page, where
   Knowledge stores has **Create store**. Promote is disabled until one exists.
@@ -336,7 +403,11 @@ following fields:
   the item;
 - a dispatch that also records the existing assignment claim.
 
-The `workItemRef` is the deduplication key (see Cardinality).
+The `workItemRef` is the deduplication key (see Cardinality). Start Task
+checks the Project's board before it looks for an open Task, so a ref the
+board does not offer learns nothing about other Projects. When the open Task
+is in another Project, the answer is only its id and Project
+(`elsewhere: true`).
 
 ## Reading the tracker
 

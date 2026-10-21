@@ -129,8 +129,11 @@ refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Se
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
 workspaceBinding?}`, where `workItemRef` is a `github:owner/repo#N` issue the
-Project's board lists. When the issue already has a Task that is not done or
-canceled, the response is `200` with that Task and `existing: true`.
+Project's board lists; owner and repository compare case-insensitively and
+are stored lowercase. The board is checked first. When the issue already has
+a Task that is not done or canceled, the response is `200` with
+`existing: true` and that Task, or, when it is in another Project, only
+`{id, projectId}` with `elsewhere: true`.
 Otherwise Station re-reads the issue through the host's `gh` login, creates a
 Task seeded with the issue body and its latest comments, and answers `201`
 with `briefSaved` saying whether that copy reached the Task document. A ref
@@ -138,8 +141,17 @@ that is not a github.com issue is `422`, a ref the board does not list is
 `404`, and a failed read is `404` (not found), `422` (unsupported) or `503`
 (no `gh` login, or unavailable).
 
+`POST /api/tasks` with a `workItemRef` in the `github:` namespace accepts it
+only when it is a github.com issue ref (else `422`) and the Project's board
+lists it (else `404`), and records `workItemProvenance: "project-board"`.
+Any create naming a work item that already has a Task that is not done or
+canceled is `409` `work_item_has_open_task`, with `data: {taskId,
+projectId}`.
+
 `GET /api/tasks/:taskId/work-item` re-reads the linked item for the Task
 header, returning comments created after the Task's `workItemObservedAt`.
+It reads only a ref with `workItemProvenance: "project-board"`; any other
+answers `unsupported` without reading the tracker.
 Both routes are personal-runtime only (hosted requests get `404`), and no
 Station Control tool names them. See
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
@@ -3717,8 +3729,9 @@ released or expired claim, or releasing a released one, is `409`
 
 `GET /api/orchestration/work-claims` is the Station UI's read: `{claims}`, the
 active claims of the Sessions the requesting person may read, refused for a
-station-control caller. More than 500 active claims is `422`
-`work_claims_too_many`. See the
+station-control caller. More than 500 such claims is `422`
+`work_claims_too_many`; claims the person may not see, and those of ended
+Sessions, do not count. See the
 [routes](../../src-server/routes/orchestration/session-work-claims.ts) and the
 [store](../../src-server/services/orchestration/work-claims.ts).
 

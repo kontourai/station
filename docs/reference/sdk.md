@@ -3518,7 +3518,9 @@ Exported from the SDK root and query barrel; see
 [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
 - `startTaskFromWorkItem` and `useStartTaskFromWorkItemMutation` call
-  `POST /api/tasks/from-work-item` and resolve `{ task, existing, briefSaved }`.
+  `POST /api/tasks/from-work-item` and resolve `{ task, existing, briefSaved }`;
+  when the open Task is in another Project, `task` is only `{ id, projectId }`
+  and `elsewhere` is `true`.
 - `fetchTaskWorkItem` and `useTaskWorkItemQuery` re-read a Task's linked item
   (`GET /api/tasks/:taskId/work-item`).
 - `fetchTaskMemory` and `useTaskMemoryQuery` read the Task summary and records
