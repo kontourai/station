@@ -165,8 +165,11 @@ describe('settled assistant rows with no answer text', () => {
       false,
     );
     expect(screen.getByText('No reply')).toBeTruthy();
-    // Its footer (the turn's record) stays with it.
-    expect(container.querySelector('.turn-footer')).not.toBeNull();
+    // Its footer (the turn's record) stays with it, on the marker's line.
+    expect(
+      container.querySelector('.message__turn-outcome .turn-footer__bar'),
+    ).not.toBeNull();
+    expect(container.querySelector('.turn-footer')).toBeNull();
     expect(
       container.querySelector('[data-chat-message-key="row-1"]'),
     ).not.toBeNull();
@@ -184,8 +187,40 @@ describe('settled assistant rows with no answer text', () => {
       true,
     );
     expect(screen.getByText('Stopped')).toBeTruthy();
-    expect(stopped.container.querySelector('.turn-footer')).not.toBeNull();
+    // No reply and Stopped share one line shape: actions at the line's end,
+    // no footer row beneath.
+    expect(
+      stopped.container.querySelector(
+        '.message__turn-outcome .turn-footer__bar',
+      ),
+    ).not.toBeNull();
+    expect(stopped.container.querySelector('.turn-footer')).toBeNull();
+    // The person's own Stop needs no second line.
+    expect(
+      stopped.container.querySelector('.message__turn-outcome-detail'),
+    ).toBeNull();
     stopped.unmount();
+
+    const stalled = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        contentParts: [],
+        turnId: 'turn-stall',
+        turnEnded: 'aborted',
+        turnEndedReason: 'Stopped after the turn-stall window elapsed.',
+        turnStoppedBy: 'stall',
+      },
+      true,
+    );
+    const detail = stalled.container.querySelector(
+      '.message__turn-outcome-detail',
+    );
+    expect(detail?.textContent).toBe('No progress for too long');
+    expect(detail?.getAttribute('title')).toBe(
+      'Stopped after the turn-stall window elapsed.',
+    );
+    stalled.unmount();
 
     const quiet = renderSettledRow(
       {

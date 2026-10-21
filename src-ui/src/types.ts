@@ -280,6 +280,10 @@ export interface ChatMessage {
   answerEligible?: boolean;
   /** How this row's turn ended, on its last row; absent while open. */
   turnEnded?: 'completed' | 'aborted';
+  /** The engine's or Station's stop reason, raw, on an empty stopped row. */
+  turnEndedReason?: string;
+  /** Who stopped that turn, when Station recorded it. */
+  turnStoppedBy?: 'person' | 'stall' | 'restart';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it

@@ -651,6 +651,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
         turnEnded: message.metadata?.turnEnded,
+        turnEndedReason: message.metadata?.turnEndedReason,
+        turnStoppedBy: message.metadata?.turnStoppedBy,
       }));
     // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =

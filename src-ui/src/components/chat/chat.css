@@ -1089,14 +1089,36 @@
   padding-inline: var(--k-space-3);
 }
 
-/* A steer that stopped the running step says so inside its own bubble, on
-   the bubble's accent background. */
-/* A turn that ended with nothing to show: its row's one line. */
+/* A turn that ended with nothing to show: its row's one line, with the
+   turn's actions at its end and the same 28px height for every outcome. */
 .message__turn-outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 28px;
+}
+
+.message__turn-outcome-label {
+  min-width: 0;
   margin: 0;
   color: var(--k-text-muted);
   font-size: var(--text-xs);
 }
+
+/* Why Station or the engine stopped it, when the person did not. */
+.message__turn-outcome-detail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message__turn-outcome .turn-footer__bar {
+  margin-inline-start: auto;
+}
+
+/* A steer that stopped the running step says so inside its own bubble, on
+   the bubble's accent background. */
 
 .message__steer-note {
   margin-top: var(--space-1);

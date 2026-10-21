@@ -36,6 +36,7 @@ import {
 } from './message-bubble/utils';
 import {
   endedTurnMarker,
+  endedTurnStopDetail,
   hasAnswerText,
   useHasVisibleTranscriptContent,
 } from './message-bubble/visibleContent';
@@ -338,6 +339,7 @@ function MessageBubbleComponent({
     msg.role === 'assistant' && !hasVisibleContent
       ? endedTurnMarker(msg)
       : undefined;
+  const endedStopDetail = endedEmpty ? endedTurnStopDetail(msg) : undefined;
   if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
     return null;
 
@@ -823,6 +825,14 @@ function MessageBubbleComponent({
       )}
     </>
   );
+  // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
+  // the hover-revealed row rather than inside it.
+  const turnFooterBar = (
+    <div className="turn-footer__bar">
+      {basisChip}
+      <div className="turn-footer__actions">{footerActions}</div>
+    </div>
+  );
   const metadataAfter = (
     <>
       {msg.role === 'assistant' && msg.changedFiles && (
@@ -892,15 +902,8 @@ function MessageBubbleComponent({
             meta affordance — icon-weight, muted, so the answer above stays
             the loudest thing in the column; provenance and reasoning open
             from the overflow as dialogs (#2211). */}
-      {hasTurnFooter && !isMobile && (
-        <div className="turn-footer">
-          {/* #926 amendment (owner, 2026-10): Basis stays visible at rest,
-              beside the hover-revealed row rather than inside it. */}
-          <div className="turn-footer__bar">
-            {basisChip}
-            <div className="turn-footer__actions">{footerActions}</div>
-          </div>
-        </div>
+      {hasTurnFooter && !isMobile && !endedEmpty && (
+        <div className="turn-footer">{turnFooterBar}</div>
       )}
     </>
   );
@@ -1033,7 +1036,22 @@ function MessageBubbleComponent({
           }
         >
           {endedEmpty ? (
-            <p className="message__turn-outcome">{endedEmpty}</p>
+            // One line for No reply and Stopped alike: the footer's actions
+            // sit at its end instead of in a footer row of their own.
+            <div className="message__turn-outcome">
+              <p className="message__turn-outcome-label">
+                {endedEmpty}
+                {endedStopDetail ? (
+                  <span
+                    className="message__turn-outcome-detail"
+                    title={endedStopDetail.title}
+                  >
+                    {endedStopDetail.text}
+                  </span>
+                ) : null}
+              </p>
+              {hasTurnFooter && !isMobile ? turnFooterBar : null}
+            </div>
           ) : null}
           <MessageContent
             contentParts={

@@ -309,8 +309,14 @@ starting state before that) and eases in, and a settled row whose only content
 is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
 ended with nothing to draw (no text, tool or file rows, or only reasoning the
 reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
-was stopped, with its footer; the engine's stop reason is not drawn in its
-place. A row without answer text has no Basis chip. The pill's state changes animate its width with
+was stopped, with the turn's actions at the end of that line, so both are the
+same height. The engine's stop reason is not drawn in its place. When the
+person did not stop it, a second short line says why: "No progress for too
+long" when Station's stall detection stopped it, "Station restarted mid-turn"
+after recovery, or the engine's own reason (a known one as a short line, any
+other cut to one line with the full text as its tooltip). Who stopped it comes
+from Station's `session.stop-settled` record and the recovery abort's marker,
+not from the reason text. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line

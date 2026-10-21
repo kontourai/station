@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatSession } from '../types';
 
@@ -1118,46 +1119,98 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
-  test('a turn that ended with nothing to show keeps a row saying how it ended', async () => {
+  test('a turn that ended with nothing to show keeps a row saying how it ended, and why when Station stopped it', async () => {
+    const stallText =
+      'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.';
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
-      watermark: 6,
+      watermark: 20,
       hasMore: false,
       events: [
         event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'quiet' }),
         event('e2', 'turn.completed', { turnId: 'turn-1' }),
+        // The person's Stop: Station's record says so, whatever the reason.
         event('e3', 'turn.started', { turnId: 'turn-2', prompt: 'stop me' }),
-        event('e4', 'turn.aborted', {
+        event('e4', 'session.stop-settled', {
           turnId: 'turn-2',
+          outcome: 'forced',
+          initiatedBy: 'user',
+        }),
+        event('e5', 'turn.aborted', {
+          turnId: 'turn-2',
+          reason: 'Stopped after the cooperative cancel budget expired.',
+        }),
+        // Stall detection stopped it cooperatively: the engine's abort says
+        // only "interrupted", and Station's record lands after it.
+        event('e6', 'turn.started', { turnId: 'turn-3', prompt: 'stall' }),
+        event('e7', 'turn.aborted', {
+          turnId: 'turn-3',
           reason: 'interrupted',
         }),
+        event('e8', 'session.stop-settled', {
+          turnId: 'turn-3',
+          outcome: 'cooperative',
+          initiatedBy: 'stall',
+        }),
+        // Forced after a stall: the long reason is the tooltip.
+        event('e9', 'turn.started', { turnId: 'turn-4', prompt: 'stall 2' }),
+        event('e10', 'session.stop-settled', {
+          turnId: 'turn-4',
+          outcome: 'forced',
+          initiatedBy: 'stall',
+        }),
+        event('e11', 'turn.aborted', { turnId: 'turn-4', reason: stallText }),
+        // Recovery after Station restarted mid-turn.
+        event('e12', 'turn.started', { turnId: 'turn-5', prompt: 'crash' }),
+        event('e13', 'turn.aborted', {
+          turnId: 'turn-5',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        // An engine's own token.
+        event('e14', 'turn.started', { turnId: 'turn-6', prompt: 'early' }),
+        event('e15', 'turn.aborted', {
+          turnId: 'turn-6',
+          reason: 'engine-ended-before-start',
+        }),
         // Still open: no row until it draws something.
-        event('e5', 'turn.started', { turnId: 'turn-3', prompt: 'open' }),
+        event('e16', 'turn.started', { turnId: 'turn-7', prompt: 'open' }),
       ],
     });
 
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
-    await waitFor(() => expect(result.current.messages).toHaveLength(5));
-    const { endedTurnMarker } = await import(
+    await waitFor(() => expect(result.current.messages).toHaveLength(13));
+    const { endedTurnMarker, endedTurnStopDetail } = await import(
       '../components/chat/message-bubble/visibleContent'
     );
     expect(
-      result.current.messages.map((message) => [
-        message.role,
-        message.turnId,
-        message.contentParts?.length ?? 0,
-        message.role === 'assistant' ? endedTurnMarker(message) : undefined,
-      ]),
+      result.current.messages
+        .filter((message) => message.role === 'assistant')
+        .map((message) => [
+          message.turnId,
+          message.contentParts?.length ?? 0,
+          endedTurnMarker(message),
+          endedTurnStopDetail(message),
+        ]),
     ).toEqual([
-      ['user', 'turn-1', 1, undefined],
-      ['assistant', 'turn-1', 0, 'No reply'],
-      ['user', 'turn-2', 1, undefined],
+      ['turn-1', 0, 'No reply', undefined],
       // The engine's reason is not drawn as text in its place.
-      ['assistant', 'turn-2', 0, 'Stopped'],
-      ['user', 'turn-3', 1, undefined],
+      ['turn-2', 0, 'Stopped', undefined],
+      ['turn-3', 0, 'Stopped', { text: 'No progress for too long' }],
+      [
+        'turn-4',
+        0,
+        'Stopped',
+        { text: 'No progress for too long', title: stallText },
+      ],
+      ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
     ]);
+    expect(
+      result.current.messages.filter((message) => message.role === 'user'),
+    ).toHaveLength(7);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {

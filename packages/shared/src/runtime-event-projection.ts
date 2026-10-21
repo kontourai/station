@@ -185,7 +185,8 @@ export interface ProjectRuntimeEventsOptions {
    * ended with nothing to show keeps a row with no parts, so a chat can say
    * how it ended ("No reply", "Stopped"). An aborted turn with no text or
    * tool rows gets no reason text: `turnEnded` says it. Off, a turn with
-   * nothing to show has no row.
+   * nothing to show has no row. Such an aborted row keeps the reason as
+   * `turnEndedReason` instead.
    */
   markEndedTurns?: boolean;
 }
@@ -462,6 +463,12 @@ export function projectRuntimeEventsToMessages(
   const emitAssistantTurn = (
     releaseMarkers = true,
     ended?: 'completed' | 'aborted',
+    endedStop?: {
+      reason?: string;
+      by?: NonNullable<
+        NonNullable<ConversationMessage['metadata']>['turnStoppedBy']
+      >;
+    },
   ) => {
     flushReasoning();
     flushText();
@@ -480,7 +487,18 @@ export function projectRuntimeEventsToMessages(
     }
     if (ended && options.markEndedTurns && messages.length > rowsBefore) {
       const row = messages[messages.length - 1]!;
-      row.metadata = { ...row.metadata, turnEnded: ended };
+      row.metadata = {
+        ...row.metadata,
+        turnEnded: ended,
+        ...(endedStop && row.parts.length === 0
+          ? {
+              ...(endedStop.reason
+                ? { turnEndedReason: endedStop.reason }
+                : {}),
+              ...(endedStop.by ? { turnStoppedBy: endedStop.by } : {}),
+            }
+          : {}),
+      };
     }
     const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
@@ -617,6 +635,20 @@ export function projectRuntimeEventsToMessages(
     if (turnOpen) heldMarkers.push({ ev, marker });
     else pushTranscriptMarker(ev, marker, false);
   };
+
+  /**
+   * Who stopped each turn, from Station's own `session.stop-settled` record
+   * (which can land before or after the turn's `turn.aborted`), keyed by
+   * session and turn.
+   */
+  const stopInitiators = new Map<string, 'user' | 'stall'>();
+  if (options.markEndedTurns) {
+    for (const ev of events) {
+      if (ev.method !== 'session.stop-settled' || !ev.initiatedBy) continue;
+      const key = turnKey(ev.threadId, ev.turnId);
+      if (key) stopInitiators.set(key, ev.initiatedBy);
+    }
+  }
 
   for (const ev of events) {
     if (
@@ -1213,7 +1245,17 @@ export function projectRuntimeEventsToMessages(
         flushText();
         if (ev.reason && !(options.markEndedTurns && parts.length === 0))
           parts.push({ type: 'text', text: `_${ev.reason}_` });
-        emitAssistantTurn(true, 'aborted');
+        const initiator = stopInitiators.get(
+          turnKey(ev.threadId, ev.turnId) ?? '',
+        );
+        emitAssistantTurn(true, 'aborted', {
+          reason: ev.reason,
+          by: ev.recoveryTerminal
+            ? 'restart'
+            : initiator === 'user'
+              ? 'person'
+              : initiator,
+        });
         break;
       }
       case 'turn.completed': {

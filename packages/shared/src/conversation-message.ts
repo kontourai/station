@@ -184,6 +184,18 @@ export interface ConversationMessage {
      */
     turnEnded?: 'completed' | 'aborted';
     /**
+     * The abort's `reason`, raw, on a row that ended `aborted` with nothing
+     * to draw: the one place that reason survives, since it is not drawn as
+     * text in the row.
+     */
+    turnEndedReason?: string;
+    /**
+     * Who stopped that row's turn, when Station recorded it: a person's
+     * Stop, Station's stall detection, or recovery after Station restarted
+     * mid-turn (`recoveryTerminal`). Never inferred from `turnEndedReason`.
+     */
+    turnStoppedBy?: 'person' | 'stall' | 'restart';
+    /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a
      * second store — see `packages/contracts/src/turn-provenance.ts`.

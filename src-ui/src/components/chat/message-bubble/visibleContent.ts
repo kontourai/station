@@ -1,4 +1,5 @@
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import type { ChatMessage } from '../../../types';
 import {
   isToolCallPart,
@@ -93,6 +94,51 @@ export function endedTurnMarker(
       : undefined);
   if (outcome === 'aborted') return 'Stopped';
   return outcome === 'completed' ? 'No reply' : undefined;
+}
+
+/** A stop with no reason worth showing: the person's own Stop. */
+const PLAIN_STOP_REASONS = new Set([
+  'interrupted',
+  'stopped',
+  'cancelled',
+  'canceled',
+]);
+
+/** Short lines for the stop reasons engines and Station write as tokens. */
+const STOP_REASON_LINES: Record<string, string> = {
+  'engine-restarted': 'The agent restarted',
+  'engine-ended-before-start': 'The agent exited before starting',
+  superseded: 'Replaced by a newer message',
+  [TURN_INTERRUPTED_MESSAGE]: 'Station restarted mid-turn',
+};
+
+/**
+ * Why a stopped turn with nothing to show stopped, when it was not the
+ * person's own Stop: a second line under "Stopped". Station's own record of
+ * who stopped it wins; otherwise the engine's reason, as a known short line
+ * or as written, cut to one line (its full text is the tooltip).
+ */
+export function endedTurnStopDetail(
+  msg: Pick<ChatMessage, 'turnEnded' | 'turnEndedReason' | 'turnStoppedBy'>,
+): { text: string; title?: string } | undefined {
+  if (msg.turnEnded !== 'aborted' || msg.turnStoppedBy === 'person') return;
+  const reason = msg.turnEndedReason?.trim();
+  const text =
+    msg.turnStoppedBy === 'stall'
+      ? 'No progress for too long'
+      : msg.turnStoppedBy === 'restart'
+        ? 'Station restarted mid-turn'
+        : reason && !PLAIN_STOP_REASONS.has(reason)
+          ? (STOP_REASON_LINES[reason] ?? reason)
+          : undefined;
+  if (!text) return;
+  // A reason with no short line of its own is the tooltip, in full.
+  return reason &&
+    reason !== text &&
+    !PLAIN_STOP_REASONS.has(reason) &&
+    !(reason in STOP_REASON_LINES)
+    ? { text, title: reason }
+    : { text };
 }
 
 /**
