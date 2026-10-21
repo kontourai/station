@@ -62,6 +62,7 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
   type TaskOutputPromotion,
   TaskOutputsSection,
@@ -456,6 +457,7 @@ function TaskWorkspaceContent({
               'Discuss the objective, questions, and next steps with your team in the shared conversation.'}
           </p>
         </section>
+        <TaskMemoryPanel taskId={graph.task.id} />
         {activeExperience.id === 'direct' ? (
           <TaskRoomWorkspaceSection
             task={graph.task}

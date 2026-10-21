@@ -984,3 +984,221 @@
 .task-workspace__work-item-comments {
   margin-left: auto;
 }
+
+/* #4003: Task memory, the Task's summary and keyed records. */
+.task-memory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+}
+
+.task-memory__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.task-memory__summary-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2) var(--k-space-3);
+}
+
+.task-memory__summary-heading .task-memory__section-title,
+.task-memory__summary-heading .task-memory__meta {
+  margin: 0;
+}
+
+.task-memory__summary-heading > :last-child {
+  margin-left: auto;
+}
+
+.task-memory__summary-text {
+  margin: 0;
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-memory__summary-text--theirs {
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.task-memory__conflict {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-caution);
+  border-radius: var(--k-radius-sm);
+}
+
+.task-memory__conflict p {
+  margin: 0;
+}
+
+.task-memory__conflict .task-memory__summary-text {
+  align-self: stretch;
+}
+
+.task-memory__sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--k-space-3);
+}
+
+.task-memory__section {
+  min-width: 0;
+}
+
+.task-memory__section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.task-memory__count {
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  font-weight: 400;
+}
+
+.task-memory__entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-memory__entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+}
+
+.task-memory__text,
+.task-memory__answer {
+  margin: 0;
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+}
+
+.task-memory__answer {
+  color: var(--k-text-muted);
+}
+
+.task-memory__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-memory__tier {
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  font-size: var(--k-text-xs);
+}
+
+.task-memory__tier[data-tier="standing"] {
+  color: var(--k-text);
+}
+
+.task-memory__key {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.task-memory__session-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--k-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.task-memory__session-link:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-memory__empty,
+.task-memory__note,
+.task-memory__hint {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-memory__history > summary {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.task-memory__history > .task-memory__entries {
+  margin-top: var(--k-space-2);
+}
+
+.task-memory__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.task-memory__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-memory__field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.task-memory__field textarea:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-memory__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}

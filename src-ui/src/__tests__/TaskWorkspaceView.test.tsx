@@ -143,6 +143,22 @@ vi.mock('@kontourai/station-sdk', () => ({
   useQueryClient: () => starterQueryClient,
   useTaskGraphQuery: () => queryResult,
   useTaskWorkItemQuery: (taskId: string) => useTaskWorkItemQuery(taskId),
+  // The Task memory panel's own behavior is TaskMemoryPanel.test.tsx.
+  useTaskMemoryQuery: () => ({
+    data: {
+      version: 'station.task-memory/v1',
+      taskId: 'task-alpha',
+      records: [],
+    },
+    isLoading: false,
+  }),
+  useUpdateTaskSummaryMutation: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+  }),
+  useWriteTaskRecordMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  TaskSummaryConflictError: class extends Error {},
   useTaskTurnReferencesQuery: () => turnReferencesResult,
   useAnswerSupportBundlesQuery: () => answerSupportBundlesResult,
   useAnswerSupportClaimsQuery: () => answerSupportClaimsResult,
