@@ -3,6 +3,7 @@ import {
   workClaimSubjectDetail,
   workClaimSubjectLabel,
 } from '@kontourai/station-contracts/work-claims';
+import { clockTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 
 /**
@@ -41,10 +42,9 @@ function claimChip(claims: readonly WorkClaimView[]): InboxRowChip | undefined {
   const label = `On ${workClaimSubjectLabel(newest)}${rest.length > 0 ? ` +${rest.length}` : ''}`;
   const title = labelled
     .map((claim) => {
-      const until = new Date(claim.expiresAt).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      // A future instant: the wall-clock time, with the weekday when the
+      // claim runs past today.
+      const until = clockTime(Date.parse(claim.expiresAt), Date.now());
       return `Claimed: ${workClaimSubjectDetail(claim)}${claim.note ? ` — ${claim.note}` : ''} (until ${until})`;
     })
     .join('\n');

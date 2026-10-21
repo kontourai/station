@@ -21,9 +21,9 @@
  * stored.
  */
 import { randomUUID } from 'node:crypto';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { WorkClaimScope } from '@kontourai/station-contracts/work-claims';
-import type { OrchestrationService } from './orchestration-service.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /** Released or expired rows older than this are deleted on the next write. */
@@ -441,10 +441,24 @@ export function createActiveWorkClaimReader(
   };
 }
 
-type ClaimantStateReader = Pick<
-  OrchestrationService,
-  'currentConversationSessionId' | 'listSessionReadModel'
->;
+/**
+ * `OrchestrationService`'s two reads, structurally. Even a type import of
+ * the service puts the whole module in every typecheck that reaches the
+ * event store, which imports this file; the UI's typecheck reaches it through
+ * its server-backed tests and applies options that module does not meet.
+ */
+type ClaimantStateReader = {
+  currentConversationSessionId(conversationId: string): string;
+  listSessionReadModel(
+    authority: typeof INTERNAL_SESSION_READ_SCOPE,
+    options: { threadIds: readonly string[] },
+  ): Promise<
+    readonly Pick<
+      OrchestrationSessionSummary,
+      'threadId' | 'status' | 'lifecycleState'
+    >[]
+  >;
+};
 
 /**
  * The current Session state of each claim's claimant, by
