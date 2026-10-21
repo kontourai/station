@@ -407,3 +407,21 @@ They have not been mass-refreshed or relabeled current. Independent full-branch
 review, final documentation/readiness, live public-client onboarding, installed
 provider lifecycle and real two-account selection/application remain unfinished.
 Second-account sign-in is explicitly deferred by Brian; no new login occurred.
+
+
+### Readiness receipt and cast-ratchet tightening
+
+Veritas run veritas-1792611542372 passed governance and full lint. Its only
+required failure is documentation truth/freshness; the conservative scoped
+report retains 111 documents for further review. The optional policy diagnostic
+found a stale as-unknown baseline entry for conversations.ts after the unsafe
+UIMessage cast was removed. Exactly that obsolete exception was deleted; no
+baseline was widened. The direct type-laundering gate and full
+verification:policy:gate now pass. Receipts:
+/private/tmp/station-continuity-final-readiness-20261021.log and
+/private/tmp/station-continuity-final-verification-policy-after-20261021.log.
+
+The feature is not ready for publication: remaining documentation reviews,
+independent branch review, fresh live onboarding/provider lifecycle and the real
+two-account acceptance are still open. Sign-in remains deferred; this checkpoint
+adds no PR, push, queue, landing or live-account claim.
