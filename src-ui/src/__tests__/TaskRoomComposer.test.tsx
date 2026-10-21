@@ -36,7 +36,12 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 vi.mock('../hooks/useUnsavedGuard', () => ({
   useUnsavedGuard: () => ({ DiscardModal: () => null }),
 }));
-vi.mock('@kontourai/station-sdk', () => ({ updateTaskStatus: mocks.status }));
+vi.mock('@kontourai/station-sdk', () => ({
+  useUpdateTaskStatusMutation: () => ({
+    mutateAsync: mocks.status,
+    isPending: false,
+  }),
+}));
 vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   useProjectTaskRoomContext: () => ({
     live: {

@@ -3,7 +3,7 @@ import type {
   TaskRoomContextSnapshot,
   TaskRoomWorkInput,
 } from '@kontourai/station-contracts/task-room-work';
-import { updateTaskStatus } from '@kontourai/station-sdk';
+import { useUpdateTaskStatusMutation } from '@kontourai/station-sdk';
 import {
   TaskRoomWorkNotSentError,
   useAppendProjectTaskRoomHumanMessageMutation,
@@ -44,6 +44,7 @@ export function TaskRoomComposer({
   readable: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const statusMutation = useUpdateTaskStatusMutation();
   const room = useProjectTaskRoomContext(taskId);
   const options = useTaskRoomAgentOptionsQuery(projectSlug, scope, writable);
   const requests = useTaskRoomAgentRequestsQuery(
@@ -196,7 +197,11 @@ export function TaskRoomComposer({
           return;
         }
         try {
-          await updateTaskStatus({ taskId, status, apiBase: scope.apiBase });
+          await statusMutation.mutateAsync({
+            taskId,
+            status,
+            apiBase: scope.apiBase,
+          });
           if (currentOwner.current !== owner || !scope.isCurrent()) return;
           setDraft((current) => (current === draft ? '' : current));
           setNotice('');
