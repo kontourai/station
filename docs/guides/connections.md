@@ -710,8 +710,16 @@ the [ACP guide](acp.md) covers protocol details.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
 3. Keep the same dialog or sheet open while Station shows **Checking**.
-4. Read the readiness result and its detail. If it is
-   not Ready, use the offered retry, edit, or choose-another-engine action before closing.
+4. Read the readiness result and its detail. If it is not Ready, the result
+   names the phase that failed and its reason. Use **Retry check** after fixing
+   the cause, or edit the setup or choose another engine, before closing. The
+   engine's Agent is added only once its check succeeds.
+
+A configured engine whose card reads **Setup needed** offers **Retry check** too.
+In the Add catalogue, an app that still needs setup offers **Add and set up**: it
+adds the engine and opens it, where setup continues. Station does not check
+whether a command-backed engine is signed in, so its login row says so and does
+not block chats.
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
