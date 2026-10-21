@@ -1789,15 +1789,19 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-Native clients leave a saved Station's extensions off until this device explicitly
-allows them. A blocked pane or layout offers **Review and enable** in place.
+Native clients require this device's explicit loading consent for a saved remote
+Station profile, including one reached over a loopback address. An injected or
+owner-managed profile needs that consent when its API origin is not HTTP
+loopback. A blocked pane or layout offers **Review and enable** in place.
 Plugin previews with a client bundle or declared entrypoint explain that installation
 can proceed while custom code stays off; built-in views still work. The staged
 preview reports bundle presence separately from its manifest. The review names
 the Station and its origin. Code loaded into the app has app-wide authority.
-Paired native Stations use separate plugin frames, but their native security
-boundary is not qualified; the review says to treat that code as having access
-to app data, native features and saved credentials. This remains an explicit
+Saved remote profiles that are neither injected nor owner-managed use separate
+plugin frames in the native app. Their native security boundary is not
+qualified; the review says to treat that code as having access to app data,
+native features and saved credentials. Injected and owner-managed profiles
+load custom code inside the app. This remains an explicit
 opt-in, not a claim that frame isolation is verified. Dependency-only client code
 may first offer review when its blocked view opens; preview bundle metadata
 currently describes the staged root plugin.
