@@ -144,6 +144,9 @@ export function subscribeDelegationGroupMemberEvents(
   const seen = new Map<string, number>();
   // Stop observation at capacity; evicting IDs would permit later identity reuse.
   const maxIdentities = 4096;
+  const maxIdentityBytes = 1024 * 1024;
+  let identityBytes = 0;
+  const encodedBytes = (id: string) => new TextEncoder().encode(id).byteLength;
   let cursor = afterSequence;
   return subscribePages(
     `${memberPath(apiBase, groupId, seatId)}/events/stream?afterSequence=${afterSequence}`,
@@ -157,6 +160,13 @@ export function subscribeDelegationGroupMemberEvents(
       seen.size +
         value.events.filter((event) => !seen.has(event.eventId)).length <=
         maxIdentities &&
+      identityBytes +
+        value.events.reduce(
+          (bytes, event) =>
+            bytes + (seen.has(event.eventId) ? 0 : encodedBytes(event.eventId)),
+          0,
+        ) <=
+        maxIdentityBytes &&
       value.events.every(
         (event) =>
           !seen.has(event.eventId) ||
@@ -171,8 +181,11 @@ export function subscribeDelegationGroupMemberEvents(
       onPage(page) {
         callbacks.onPage(page);
         cursor = page.nextSequence;
-        for (const event of page.events)
+        for (const event of page.events) {
+          if (!seen.has(event.eventId))
+            identityBytes += encodedBytes(event.eventId);
           seen.set(event.eventId, event.sequence);
+        }
       },
     },
     options,

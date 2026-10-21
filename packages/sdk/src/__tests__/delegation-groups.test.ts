@@ -447,6 +447,47 @@ test('member observation stops at its retained identity bound instead of evictin
   }
 });
 
+test('large multibyte event identities cannot exceed the subscription byte budget', async () => {
+  // Repeat pages with distinct IDs until the accumulated identities exceed 1 MiB.
+  const all = Array.from({ length: 12 }, (_, index) => {
+    const page = memberPage(index, index + 1);
+    page.events[0].eventId = `${index}${'界'.repeat(30000)}`;
+    return page;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              for (const page of all)
+                c.enqueue(new TextEncoder().encode(frame(true, page)));
+            },
+          }),
+        ),
+    ),
+  );
+  let delivered = 0;
+  const errors: unknown[] = [];
+  const stream = subscribe(true, {
+    onPage() {
+      delivered++;
+    },
+    onError(error) {
+      errors.push(error);
+    },
+  });
+  try {
+    await vi.waitFor(() => assert.equal(errors.length, 1));
+    assert.equal(delivered, 11);
+    await stream.completed;
+  } finally {
+    stream.close();
+    await stream.completed;
+  }
+});
+
 for (const member of [false, true]) {
   test(`live ${member ? 'member' : 'group'} authority is checked before every callback and checkpoint`, async () => {
     let current = true;
