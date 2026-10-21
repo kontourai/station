@@ -50,6 +50,13 @@ competing DAG or promote a roster, majority vote, or coordinator narrative into
 acceptance. Independent advisory groups still need explicit bounded policy and
 durable accounting; they are not implemented by the existing roster.
 
+#107 now has local implementation: recorded delegation annotates the actual
+assistant execution row through the existing attribution badge. Streamed and
+settled rows share the source; unrelated older executions receive no inferred
+posture. Delegation does not imply read-only execution or sandbox guarantees.
+Independent source review and mounted checks passed; final exact-head browser
+and native acceptance remain open.
+
 Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
 acceptance obligations. Closed-as-batched is not implemented. In particular,
 permission posture, envelope authority, context ACKs, team presets, and topology
