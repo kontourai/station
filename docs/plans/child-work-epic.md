@@ -35,6 +35,13 @@ Installed `@kontourai/flow-agents` 6.5.1 publicly exports
 dispatches Flow-ready work under durable claims; it is not a delegation-group
 envelope, group-budget service, or Station group API.
 
+Brian authorized including upstream Flow Agents work. Its ongoing branch is
+also `feat/child-work-epic-20261021`, in its own repository, based on
+`350afa66ce1837c40468d7f4fc6c60ef31207f5f` (published 9.2.0). That source is
+owned upstream; Station must consume a subsequent published contract rather
+than import sibling internals. The upstream prerequisite and the single
+Station epic PR have separate release and acceptance evidence.
+
 Before implementing group execution, bind the published authority and
 persistence contracts for create/get/list/events/cancel, ready seats, aggregate
 reservations, idempotent accounting, source identity, timeout/cancellation, and
