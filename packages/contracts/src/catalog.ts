@@ -460,7 +460,9 @@ export interface ProviderDeclaredAuthMethod {
 export type ProviderDeclaredHandshakeFact =
   | 'agentInfo'
   | 'authMethods'
-  | 'extensionMethods';
+  | 'extensionMethods'
+  /** The probe session's `models` list (#352). */
+  | 'models';
 
 /**
  * ADR 0013: what one engine connection declared about itself at its protocol

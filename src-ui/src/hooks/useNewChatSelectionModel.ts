@@ -94,8 +94,9 @@ export interface ACPSelectionConnection {
 
 /**
  * #3028: an ACP engine's model catalog arrives on the connection's served
- * `advertisedModels` (its model config option, else its `models` list), a
- * channel neither the runtime catalog nor `agent.modelOptions` carries. Exported pure so the contract — an engine
+ * `advertisedModels` (its model config option, else its `models` list; from
+ * an older server, its model config option), a channel neither the runtime
+ * catalog nor `agent.modelOptions` carries. Exported pure so the contract — an engine
  * advertising models yields selectable models — is directly testable.
  */
 export function acpCatalogModelOptions(
@@ -438,10 +439,11 @@ export function useNewChatSelectionModel({
     const connectionModels = connection
       ? runtimeCatalogVisibleModels(connection)
       : [];
-    // #3028: an ACP engine's catalog arrives on the connection's config
-    // options (category "model"), a channel neither the runtime catalog nor
-    // agent.modelOptions carries — OpenCode advertised a full model select
-    // while this picker rendered no affordance at all.
+    // #3028: an ACP engine's catalog arrives on the connection's served
+    // `advertisedModels` (its model config option, else its #352 `models`
+    // list), a channel neither the runtime catalog nor agent.modelOptions
+    // carries — OpenCode advertised a full model select while this picker
+    // rendered no affordance at all.
     const acpModelOptions = acpCatalogModelOptions(
       acpConnections,
       agent.execution?.agentConnectionId,

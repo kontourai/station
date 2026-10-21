@@ -465,6 +465,7 @@ describe('what is served of declared facts is projected and bounded', () => {
       'Engine',
     );
     expect(connection).not.toHaveProperty('sessionModels');
+    expect(connection.declaredHandshake?.refused).toEqual(['models']);
     expect(connection.currentModel).toBeNull();
     expect(acpRuntimeCatalogStatus(connection, config).models).toEqual([]);
     expect(logger.warn).toHaveBeenCalledWith(

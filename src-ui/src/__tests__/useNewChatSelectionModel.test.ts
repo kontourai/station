@@ -86,6 +86,33 @@ describe('acpCatalogModelOptions (#3028)', () => {
     ]);
   });
 
+  test('an older server without advertisedModels is read from its model config option; an empty served list is not', () => {
+    const olderServer = {
+      id: 'opencode',
+      currentModel: 'opencode/big-pickle',
+      configOptions: [
+        { category: 'mode', options: ['build', 'plan'] },
+        {
+          category: 'model',
+          options: [
+            'opencode/big-pickle',
+            { value: 'zai-coding-plan/glm-5.2', name: 'GLM-5.2' },
+          ],
+        },
+      ],
+    };
+    expect(acpCatalogModelOptions([olderServer], 'opencode')).toEqual([
+      { id: 'opencode/big-pickle', name: 'opencode/big-pickle' },
+      { id: 'zai-coding-plan/glm-5.2', name: 'GLM-5.2' },
+    ]);
+    expect(
+      acpCatalogModelOptions(
+        [{ ...olderServer, advertisedModels: [] }],
+        'opencode',
+      ),
+    ).toEqual([]);
+  });
+
   test('no catalog, no connection id, or an empty id yield nothing', () => {
     expect(acpCatalogModelOptions(connections, 'kiro')).toEqual([]);
     expect(acpCatalogModelOptions(connections, undefined)).toEqual([]);

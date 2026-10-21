@@ -1498,9 +1498,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         });
       }
 
-      // archive#1182: the ACP agent's own reported model, when its `newSession`
-      // response includes a `model`-category config option — see
-      // `extractReportedModelFromConfigOptions`'s docblock. `loadSession`
+      // archive#1182: the ACP agent's own reported model, read from a fresh
+      // `newSession` answer by `acpAdvertisedModelCatalog`. `loadSession`
       // (the resume branch below) returns nothing, so a resumed session
       // stays honestly unset here.
       let reportedModel: string | undefined;
