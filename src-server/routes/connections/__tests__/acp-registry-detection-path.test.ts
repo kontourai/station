@@ -70,9 +70,7 @@ describe.skipIf(process.platform === 'win32')(
           },
         },
       ];
-      const { listUnconnectedACPRegistryEntries } = await import(
-        '../acp.js'
-      );
+      const { listUnconnectedACPRegistryEntries } = await import('../acp.js');
 
       const detected = await listUnconnectedACPRegistryEntries({
         loadACPConfig: async () => ({ connections: [] }),
