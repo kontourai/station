@@ -515,7 +515,12 @@ custom Agent: it cannot be renamed, rebound, imported over, or directly deleted.
   probe has handshaked. Adding, installing, or editing a connection saves its config
   first; when the probe fails, the config stays and nothing is registered. The add
   and install responses carry the probe's status and `lastError` reason, and
-  repeating the same add re-probes and registers it. After registration, readiness
+  repeating the same add re-probes and registers it. A first add whose probe ran
+  out of time on a never-connected engine answers `probing` and continues on the
+  cold first-contact budget in the background, outside the configuration queue; a
+  background probe that first handshakes a saved, unregistered connection (that
+  continuation, or the periodic sweep) registers it through the queue only if the
+  saved config still matches the config it probed. After registration, readiness
   never removes the default: availability is derived separately and returned with
   an actionable typed reason.
 - A namespace/owner collision fails before mutation. Station never suffixes, adopts,

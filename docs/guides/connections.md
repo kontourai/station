@@ -709,7 +709,11 @@ the [ACP guide](acp.md) covers protocol details.
 1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
-3. Keep the same dialog or sheet open while Station shows **Checking**.
+3. Keep the same dialog or sheet open while Station shows **Checking**. An
+   engine that is starting for the first time can take up to a minute; the
+   dialog says so and keeps checking. If it has not finished after about 90
+   seconds, the dialog stops waiting and Station keeps checking it in the
+   background.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
    the cause, or edit the setup or choose another engine, before closing. The
