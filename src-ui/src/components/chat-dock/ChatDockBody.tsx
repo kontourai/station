@@ -1398,15 +1398,31 @@ export function ChatDockBody({
     content: string;
     heldByClosedWindow?: true;
   }) => {
+    // The queue as stored, not as this render saw it: a second click lands
+    // before the re-render.
+    const latest: Pick<
+      ChatSession,
+      'queuedMessages' | 'queuedMessageMetadata'
+    > =
+      activeChatsStore.getChatForExecutionSession(activeSession.id) ??
+      activeSession;
     if (
       turn.heldByClosedWindow &&
-      (isTurnInFlight(activeSession) || activeSession.queuedMessages.length)
+      (isTurnInFlight(activeSession) || latest.queuedMessages.length)
     ) {
+      // One key, one queue entry: a repeat click, or a window restored from
+      // the back/forward cache and read as closed, finds it already queued.
+      if (
+        latest.queuedMessageMetadata?.some(
+          (entry) => entry.id === turn.clientTurnId,
+        )
+      )
+        return;
       updateChat(activeSession.id, {
-        queuedMessages: [...activeSession.queuedMessages, turn.content],
+        queuedMessages: [...latest.queuedMessages, turn.content],
         queuedMessageMetadata: [
-          ...(activeSession.queuedMessageMetadata ??
-            activeSession.queuedMessages.map(() => ({
+          ...(latest.queuedMessageMetadata ??
+            latest.queuedMessages.map(() => ({
               id: randomCorrelationId(),
               mode: 'queue' as const,
             }))),

@@ -127,6 +127,7 @@ vi.mock('../components/chat/OutboundQueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import type { ChatSession } from '../types';
 
 const chatInput = {
@@ -327,6 +328,54 @@ describe('the outbox facts the pending list reads', () => {
         { id: 'held-closed', mode: 'queue' },
       ],
     });
+  });
+  test('a second Send on the same closed-window copy before the re-render queues it once', async () => {
+    const closed = {
+      clientTurnId: 'held-twice',
+      content: 'queued in a window that closed',
+      createdAt: 1,
+      status: 'pending' as const,
+      heldElsewhere: true as const,
+      heldByClosedWindow: true as const,
+    };
+    const running: ChatSession = {
+      ...session(0),
+      status: 'running',
+      orchestrationTurnOpen: true,
+      queuedMessages: ['queued here'],
+      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
+      outboundQueuedTurns: [closed],
+    } as unknown as ChatSession;
+    // The real store owns the queue; this render's props stay stale.
+    activeChatsStore.initChat(running.id);
+    activeChatsStore.updateChat(running.id, {
+      queuedMessages: running.queuedMessages,
+      queuedMessageMetadata: running.queuedMessageMetadata,
+    });
+    updateChatSpy.mockReset();
+    updateChatSpy.mockImplementation((id, updates) =>
+      activeChatsStore.updateChat(id, updates),
+    );
+    outboxProps.mockClear();
+    try {
+      render(dock(running));
+      await waitFor(() => expect(outboxProps).toHaveBeenCalled());
+      const { onSendHeld } = outboxProps.mock.lastCall![0] as {
+        onSendHeld: (turn: typeof closed) => Promise<void>;
+      };
+      await Promise.all([onSendHeld(closed), onSendHeld(closed)]);
+      expect(updateChatSpy).toHaveBeenCalledTimes(1);
+      expect(
+        activeChatsStore.getChatForExecutionSession(running.id)
+          ?.queuedMessageMetadata,
+      ).toEqual([
+        { id: 'local-1', mode: 'queue' },
+        { id: 'held-twice', mode: 'queue' },
+      ]);
+    } finally {
+      updateChatSpy.mockReset();
+      activeChatsStore.removeChat(running.id);
+    }
   });
 });
 
