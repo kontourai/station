@@ -453,7 +453,7 @@ test('checks final SDK-expanded cap, request ordinal, redirect and semantic head
     { ...f.wire, requestOrdinal: 2 },
     { ...f.wire, redirect: 'follow' as 'error' },
     { ...f.wire, method: 'GET' },
-    { ...f.wire, url: `${f.wire.url}?key=synthetic` },
+    { ...f.wire, url: f.wire.url + '?key=synthetic' },
     {
       ...f.wire,
       headers: { ...f.wire.headers, 'anthropic-beta': 'unqualified-feature' },
@@ -919,5 +919,148 @@ test('ordinary text/thinking/safety metadata remains supported while reported sc
   refused(
     () => priceBoundedApiProviderRawUsage(ac, aq, JSON.stringify(rawA), NOW),
     'usage_unknown',
+  );
+});
+
+{
+  const contradictions: Array<{
+    name: string;
+    candidate: number;
+    components: Record<string, number | undefined>;
+    modalityCount?: number;
+  }> = [
+    {
+      name: 'zero candidate versus reported response total',
+      candidate: 0,
+      components: { candidatesTokenCount: 2, thoughtsTokenCount: undefined },
+    },
+    {
+      name: 'candidate versus modality and explicit zero thoughts',
+      candidate: 1,
+      components: { candidatesTokenCount: undefined, thoughtsTokenCount: 0 },
+      modalityCount: 2,
+    },
+    {
+      name: 'candidate versus modality with absent aggregate and thoughts',
+      candidate: 1,
+      components: {
+        candidatesTokenCount: undefined,
+        thoughtsTokenCount: undefined,
+      },
+      modalityCount: 2,
+    },
+    {
+      name: 'candidate versus inclusive output minus reported thoughts',
+      candidate: 3,
+      components: {
+        candidatesTokenCount: undefined,
+        thoughtsTokenCount: 2,
+        totalTokenCount: 9,
+      },
+    },
+    {
+      name: 'candidate versus reported aggregate with unreported residual thoughts',
+      candidate: 3,
+      components: {
+        candidatesTokenCount: 2,
+        thoughtsTokenCount: undefined,
+        totalTokenCount: 9,
+      },
+    },
+    {
+      name: 'candidate versus explicit zero modality count',
+      candidate: 2,
+      components: {
+        candidatesTokenCount: undefined,
+        thoughtsTokenCount: undefined,
+      },
+      modalityCount: 0,
+    },
+  ];
+  for (const entry of contradictions) {
+    test(`reported Google count contradiction remains unknown: ${entry.name}`, () => {
+      const f = fixture('google');
+      const c = f.resolve();
+      const q = quoteBoundedApiProviderAttempt(c, f.wire, remaining, NOW);
+      const raw = googleResponse();
+      const usage: Record<string, unknown> = raw.usageMetadata;
+      Object.assign(
+        usage,
+        {
+          promptTokenCount: 5,
+          cachedContentTokenCount: 0,
+          candidatesTokenCount: 2,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 7,
+        },
+        entry.components,
+      );
+      Object.assign(raw.candidates[0]!, { tokenCount: entry.candidate });
+      if (entry.modalityCount !== undefined)
+        usage.candidatesTokensDetails = [
+          { modality: 'TEXT', tokenCount: entry.modalityCount },
+        ];
+      refused(
+        () => priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW),
+        'usage_unknown',
+      );
+    });
+  }
+}
+
+test('Google candidate/modality counts may be matching or absent while complete total identity remains authoritative', () => {
+  const f = fixture('google');
+  const c = f.resolve();
+  const q = quoteBoundedApiProviderAttempt(c, f.wire, remaining, NOW);
+  for (const candidate of [undefined, null, 2]) {
+    for (const includeAggregate of [true, false]) {
+      const raw = googleResponse();
+      const usage: Record<string, unknown> = raw.usageMetadata;
+      Object.assign(usage, {
+        promptTokenCount: 5,
+        cachedContentTokenCount: 0,
+        candidatesTokenCount: 2,
+        thoughtsTokenCount: 0,
+        totalTokenCount: 7,
+      });
+      if (!includeAggregate) {
+        delete usage.candidatesTokenCount;
+        delete usage.thoughtsTokenCount;
+      }
+      if (candidate !== undefined)
+        Object.assign(raw.candidates[0]!, { tokenCount: candidate });
+      usage.candidatesTokensDetails = [{ modality: 'TEXT', tokenCount: 2 }];
+      assert.equal(
+        priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW)
+          .outputTokens,
+        2,
+      );
+    }
+  }
+  const empty = googleResponse();
+  Object.assign(empty.usageMetadata, {
+    promptTokenCount: 5,
+    cachedContentTokenCount: 0,
+    candidatesTokenCount: 0,
+    thoughtsTokenCount: 0,
+    totalTokenCount: 5,
+  });
+  Object.assign(empty.candidates[0]!, {
+    tokenCount: 0,
+    content: { role: 'model', parts: [] },
+  });
+  assert.equal(
+    priceBoundedApiProviderRawUsage(c, q, JSON.stringify(empty), NOW)
+      .outputTokens,
+    0,
+  );
+  const fallback = googleResponse();
+  const usage: Record<string, unknown> = fallback.usageMetadata;
+  delete usage.candidatesTokenCount;
+  delete usage.thoughtsTokenCount;
+  assert.equal(
+    priceBoundedApiProviderRawUsage(c, q, JSON.stringify(fallback), NOW)
+      .outputTokens,
+    8,
   );
 });

@@ -1419,9 +1419,21 @@ export function priceBoundedApiProviderRawUsage(
       )
         fail('usage_unknown');
       tokenDetails(usage.toolUsePromptTokensDetails, 0);
+      // Exactly one candidate: its reported count, aggregate candidate count,
+      // modality sum and total-minus-thoughts must agree whenever supplied.
+      // Missing components stay absent; the inclusive output identity above
+      // remains sufficient to price output without inventing text/thought zeros.
+      const candidateCount = optionalCount(candidate.tokenCount);
+      const candidateCounts = [
+        text,
+        candidateDetail,
+        candidateCount,
+        thoughts === undefined ? undefined : output - thoughts,
+      ].filter((count): count is number => count !== undefined);
       if (
-        candidate.tokenCount !== undefined &&
-        integer(candidate.tokenCount, 'usage_unknown') > output
+        candidateCounts.some(
+          (count) => count > output || count !== candidateCounts[0],
+        )
       )
         fail('usage_unknown');
     }
