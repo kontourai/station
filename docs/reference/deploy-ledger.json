@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-10-21T07:31:51Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2485",
+    "sha": "71cb589732f53b9372ce572fd701c873e5270129",
+    "artifactBuiltAt": "2026-10-21T06:44:08.322Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39556258288",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39556258288)"
+    ],
+    "changelog": {
+      "previousSha": "19a234c63ec38c353aeca0d81c485894cb39540c",
+      "groups": {
+        "feat": [
+          "[#3971](https://github.com/kontourai/station/pull/3971) feat(supervisor): catch connections during Windows handoffs"
+        ],
+        "fix": [
+          "[#3949](https://github.com/kontourai/station/pull/3949) fix(ui): move theme-relevant color literals onto tokens"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3967](https://github.com/kontourai/station/pull/3967) docs(design): record decisions for shipping Coding as a plugin"
+        ],
+        "other": [
+          "[#3920](https://github.com/kontourai/station/pull/3920) test(basis): pin chosen-over emptying for grounding-refused sources"
+        ]
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-10-21T06:47:45Z",
     "channel": "nightly-npm",
     "version": "0.10.0-nightly.2485.39556258288",
