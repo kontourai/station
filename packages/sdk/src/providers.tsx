@@ -1,4 +1,5 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import type { PaneRelatedPanesHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
   createContext,
   type ReactNode,
@@ -11,7 +12,9 @@ import type { PluginApiIdentity } from './api-core';
 import type {
   SDKAgentsContext,
   SDKAuthContext,
+  SDKHostContext,
   SDKNavigationContext,
+  SDKShortcutsContext,
   SDKToastContext,
 } from './host-contexts';
 
@@ -26,6 +29,11 @@ export interface SDKContextValue {
   apiBase: string;
   /** Exact request identity owned by this SDKProvider boundary. */
   pluginApiIdentity?: PluginApiIdentity;
+  /**
+   * The related-pane capability of the pane occurrence this provider wraps,
+   * when its host offers one (`useRelatedPanes`).
+   */
+  relatedPanes?: PaneRelatedPanesHost;
 
   // Core contexts (injected by core app)
   contexts: {
@@ -39,6 +47,9 @@ export interface SDKContextValue {
     toast?: SDKToastContext;
     stats?: any;
     auth?: SDKAuthContext;
+    host?: SDKHostContext;
+    shortcuts?: SDKShortcutsContext;
+    /** @deprecated Read by `useKeyboardShortcuts`; use the `shortcuts` slot. */
     keyboardShortcuts?: any;
     workflows?: any;
   };
@@ -48,6 +59,7 @@ export interface SDKContextValue {
     slashCommandHandler?: () => any;
     slashCommands?: () => any;
     toolApproval?: () => any;
+    /** @deprecated Read by `useKeyboardShortcut`; use `contexts.shortcuts`. */
     keyboardShortcut?: (
       key: string,
       callback: () => void,

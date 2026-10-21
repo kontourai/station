@@ -1,0 +1,7 @@
+{
+  "revision": "5f101d5307921f018ed3c3b592c8239814c479aa",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Scoped final copy and evidence re-review: the consent route test change at 731626960dcee72e7111e6caa9fbbb6282ff372a only formats the host-path assertion; its behavior and fault evidence are unchanged. At 5f101d53079 the shared Do Not Track callout now uses the owner-approved guarantee exactly: Do Not Track is on, so nothing is shared. It makes no promise of fresh acknowledgement in every future state: the existing server may retain an already-current acknowledgement. DNT suppression, pending Full without a current acknowledgement, visible-only count notices, destination/revision binding and saved-choice rules remain unchanged. The usage guide states these contracts accurately; no further prose change or new delivery qualification is claimed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/UsageSharingChoices.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
+  ]
+}

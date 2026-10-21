@@ -87,14 +87,30 @@ test('opens only the clicked shared Task human history and document', async () =
       if (path === '/api/account-auth/session') return account();
       if (path.endsWith('/shared-work'))
         return success([summary('project-a', 'alpha', 'Shared planning')]);
-      if (path.endsWith('/history')) return success(history('Visible message'));
+      if (path.endsWith('/history')) {
+        const cursor = new URL(input).searchParams.get('cursor');
+        return success(
+          cursor
+            ? {
+                ...history('Second page message'),
+                records: history('Second page message').records.map(
+                  (record) => ({ ...record, sequence: 2 }),
+                ),
+              }
+            : {
+                ...history('**@Planner** Visible message'),
+                hasMore: true,
+                nextCursor: 'page-two',
+              },
+        );
+      }
       if (path.endsWith('/document'))
         return success({
           kind: 'snapshot',
           project: { id: 'project-a', slug: 'alpha' },
           task: { id: taskId, createdAt: '2026-09-20T00:00:00.000Z' },
           revision: 'revision-1',
-          text: '<script>not markup</script>\nVisible document',
+          text: '## Shared goal\n\nVisible document\n\n<script>not markup</script>',
         });
       return new Response(null, { status: 500 });
     }),
@@ -104,7 +120,26 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
-  expect(screen.getByText(/<script>not markup<\/script>/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Read shared Task' })).toBeNull();
+  expect(screen.getByText('@Planner')).toBeTruthy();
+  expect(screen.queryByText(/\*\*@Planner/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
+  expect(await screen.findByText('Second page message')).toBeTruthy();
+  expect(
+    screen.getAllByText('Project member', { selector: 'strong' }),
+  ).toHaveLength(1);
+  expect(screen.getByText('Visible message')).toBeTruthy();
+  const chatTab = screen.getByRole('tab', { name: 'Chat' });
+  expect(chatTab.tabIndex).toBe(0);
+  expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
+  fireEvent.keyDown(chatTab, { key: 'ArrowRight' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('tab', { name: 'Brief' }),
+  );
+  expect(
+    await screen.findByRole('heading', { name: 'Shared goal' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Visible document')).toBeTruthy();
   expect(document.querySelector('script')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() =>
@@ -264,6 +299,11 @@ test.each([
       await screen.findByRole('button', { name: 'Read shared Task' }),
     );
     expect(await screen.findByText(new RegExp(copy))).toBeTruthy();
+    expect(
+      screen.queryByText('Shared document is too large to display.'),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    expect(screen.queryByText(new RegExp(copy))).toBeNull();
     expect(
       screen.getByText('Shared document is too large to display.'),
     ).toBeTruthy();
@@ -428,4 +468,38 @@ test('an account replacement closes a delivered shared Task', async () => {
   mount(project('project-a', 'alpha'), onScopeLost);
   await waitFor(() => expect(onScopeLost).toHaveBeenCalledOnce());
   expect(screen.queryByText('Shared planning')).toBeNull();
+});
+
+test('a history transport outage stays on Chat while Brief remains readable', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path === '/api/account-auth/session') return account();
+      if (path.endsWith('/shared-work'))
+        return success([summary('project-a', 'alpha', 'Shared planning')]);
+      if (path.endsWith('/history')) return new Response(null, { status: 503 });
+      if (path.endsWith('/document'))
+        return success({
+          kind: 'snapshot',
+          project: { id: 'project-a', slug: 'alpha' },
+          task: { id: taskId, createdAt: '2026-09-20T00:00:00.000Z' },
+          revision: 'revision-1',
+          text: '## Shared goal\n\nThe plan remains readable.',
+        });
+      return new Response(null, { status: 500 });
+    }),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Read shared Task' }),
+  );
+  expect(
+    await screen.findByText('Shared Task content is unavailable.'),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Shared goal' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Shared Task content is unavailable.')).toBeNull();
 });

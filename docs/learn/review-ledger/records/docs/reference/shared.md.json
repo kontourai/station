@@ -132,7 +132,25 @@
 
     "packages/shared/src/mcp-app-result.ts",
 
-    "packages/shared/src/delegation-files.ts"
+    "packages/shared/src/delegation-files.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/shared/src/public-network.ts",
+
+    "packages/cli/src/dev/security.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "428099963a30623f458c36b868ca2d92d6437d4f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Verified the final exhausted-account edge: a fresh provider-reported exhausted window excludes a scoped candidate before comparison-window lookup, so missing selected-window metadata cannot admit known exhausted accounts. The added real service caller regression failed before the owner fix and passed afterward. Existing guide's freshness/unknown and all-insufficient statements remain accurate. No route, authority, producer normalization or proactive selection behavior changed.","inputs":["docs/guides/connections.md","src-server/services/connections/allowance-routing-policy.ts"]}
+  ]
+}

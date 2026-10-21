@@ -49,14 +49,31 @@ export function displayedExternalLink(url: string): string {
  * owner chose any https link the user clicks; until that lands, a narrower
  * allowlist) and can fail outright, and `openExternalLink` refuses any scheme
  * but http(s) before asking a host. The notice names the URL and offers
- * a Copy action, so the reader can still get where they were going.
+ * a Copy action, so the reader can still get where they were going, except
+ * for a plugin URL refused for carrying credentials, which shows neither.
  */
 function reportUnopenedExternalLink(
   url: string,
-  reason: 'host-refused' | 'unsupported-scheme',
+  reason: 'host-refused' | 'unsupported-scheme' | 'credentials',
 ): void {
   pruneRefusalNotices();
   if (liveRefusalNotices.has(url)) return;
+  if (reason === 'credentials') {
+    // Never echo or offer to copy the link: it carries a user name or
+    // password, and the notice must not put either on screen or clipboard.
+    const id = toastStore.show(
+      'Station refused to open a link because it contains a user name or password.',
+      undefined,
+      0,
+      undefined,
+      undefined,
+      'warning',
+    );
+    liveRefusalNotices.set(url, id);
+    if (!stopWatchingNotices)
+      stopWatchingNotices = toastStore.subscribe(pruneRefusalNotices);
+    return;
+  }
   const why =
     reason === 'host-refused'
       ? 'The Station app cannot open this link.'
@@ -152,4 +169,29 @@ export async function openExternalLink(url: string): Promise<boolean> {
   if (native !== null) return native;
   window.open(url, '_blank', 'noopener,noreferrer');
   return true;
+}
+
+/**
+ * `openExternalLink` for a plugin's request (`useHost().openExternal`): the
+ * same http(s)-only rule and visible refusal, plus two plugin-specific
+ * limits. A URL carrying credentials (`https://user:pass@host`) is refused,
+ * since a plugin could use one to make a lookalike host read as trusted; and
+ * what is handed on is the parsed, normalised `href`, so the opener sees the
+ * URL the scheme check actually judged.
+ */
+export async function openPluginExternalLink(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return openExternalLink(url);
+  }
+  // Credentials before scheme: the scheme refusal names the URL and offers to
+  // copy it, which would put the user name and password on screen.
+  if (parsed.username || parsed.password) {
+    reportUnopenedExternalLink(url, 'credentials');
+    return false;
+  }
+  if (!isWebUrl(parsed.href)) return openExternalLink(url);
+  return openExternalLink(parsed.href);
 }

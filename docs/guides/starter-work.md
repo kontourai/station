@@ -59,9 +59,11 @@ Backlog, In progress, Blocked, Review, Done, and Canceled. Select a card and
 choose **Open Task** to enter its workspace. **Refresh tasks** reads the current
 Task records; status is not a percentage complete or proof that an agent is
 running. Connected provider items retain their separate read-only behavior.
-The Task workspace starts with the objective and available shared-room panes;
-**Task and workspace details** expands identity and local workspace metadata.
-Recorded answers, saved outputs, references, and inspection remain available.
+The Task workspace opens on **Chat** and makes the viewer present. **Brief** is
+the autosaved shared plan; its Goal and checklist appear beside desktop Chat.
+**Results** collects kept answers, file outputs and pull requests. **Details**
+contains identity, local workspace metadata, Basis, references and inspection.
+On narrow screens **About** holds the desktop rail context.
 
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.
@@ -83,6 +85,13 @@ belongs to, and a **No project** Session continues as a No project chat
 confined to its folder once you confirm that choice, and only in a folder
 inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
+
+Quick review hands its reply to the Chat reader on the same verified Station
+and API; the review does not adopt a Session itself. The reader's pending
+delivery is revoked when that Station, API, thread or mounted lifetime changes.
+A completed response is not permission to open or send in a later view. The
+server's durable continuation and retry identity remain separate from whether
+that particular reader is still allowed to present the result.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station

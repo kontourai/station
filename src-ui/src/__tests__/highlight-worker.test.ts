@@ -95,10 +95,10 @@ describe('chat highlight worker', () => {
     const html = response.html ?? '';
     expect(html).toContain('shiki');
     const constColour = html.match(
-      /<span style="color:(#[0-9A-Fa-f]{6})">\s*const\b/,
+      /<span style="color:(var\(--syntax-[a-z]+\))">\s*const\b/,
     )?.[1];
     const numberColour = html.match(
-      /<span style="color:(#[0-9A-Fa-f]{6})">\s*42\b/,
+      /<span style="color:(var\(--syntax-[a-z]+\))">\s*42\b/,
     )?.[1];
     expect(constColour).toBeTruthy();
     expect(numberColour).toBeTruthy();
@@ -124,10 +124,11 @@ describe('chat highlight worker', () => {
     );
     const colourOf = (text: string) =>
       lines.flat().find((token) => token.content.trim() === text)?.color;
-    // github-dark's keyword and entity foregrounds, upper-cased as the pane
+    // The keyword and entity roles, as Station variables the pane paints
+    // directly (station-syntax-theme.ts), not github-dark's literals.
     // expects to look them up.
-    expect(colourOf('const')).toBe('#F97583');
-    expect(colourOf('greet')).toBe('#B392F0');
+    expect(colourOf('const')).toBe('var(--syntax-keyword)');
+    expect(colourOf('greet')).toBe('var(--syntax-function)');
   }, 30_000);
 
   test('loads a language outside the preload list on demand', async () => {
@@ -140,7 +141,9 @@ describe('chat highlight worker', () => {
     });
 
     expect(response.error).toBeUndefined();
-    expect(response.html ?? '').toMatch(/<span style="color:#[0-9A-Fa-f]{6}">/);
+    expect(response.html ?? '').toMatch(
+      /<span style="color:var\(--syntax-[a-z]+\)">/,
+    );
   }, 30_000);
 
   test('falls back to plain text for a fence label that names no language', async () => {

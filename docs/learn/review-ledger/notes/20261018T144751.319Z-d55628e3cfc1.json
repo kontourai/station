@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed the Full receiver API, source credential, receipt, probe and deployment limits against the optional status field and producer status-only delta. No broker parser, payload, revision, ingest, credentials or PostgreSQL behavior changes; existing separate Lite/feedback integration limits remain accurate.","inputs":["packages/telemetry-broker/README.md","packages/contracts/src/product-telemetry.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

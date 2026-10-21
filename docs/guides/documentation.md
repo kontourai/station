@@ -35,7 +35,8 @@ the ADR's path. ADR status words such as `accepted` are refused.
 
 Run `npm run gen:decisions-index` to regenerate `docs/decisions/index.md`, and
 `npm run check:decisions` to validate the records and the index. `ci:fast` runs
-that check in the required `fast-checks` lane against the pull request's or
+that check in the `fast-checks` lane (reconciled by the required `Source
+verification policy` context; the ruleset lists required contexts) against the pull request's or
 merge group's base, so a file added under `docs/adr/` fails there. Locally the
 base is `origin/main`, and only committed files are compared. Corpus is not on
 npm: both commands fetch it with `npm exec` from the commit that

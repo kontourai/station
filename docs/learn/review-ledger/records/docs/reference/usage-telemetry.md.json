@@ -80,9 +80,69 @@
 
     "src-ui/src/components/UsageTelemetryDisclosure.css",
 
+    "src-ui/src/hooks/useTelemetryStatus.ts",
+
+    "src-ui/src/components/TelemetryFeedbackPrompt.tsx",
+
+    "src-ui/src/components/TelemetryPrivacy.css",
+
+    "src-ui/src/views/settings/TelemetryOutbox.tsx",
+
+    "src-ui/src/views/SettingsView.tsx",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "tests/screenshots.spec.ts",
+
+    "src-ui/src/components/UsageSharingChoices.tsx",
+
+    "src-ui/src/components/UsageSharingPrompt.tsx",
+
+    "src-ui/src/hooks/useTelemetryNotice.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
     "src-server/routes/system/__tests__/config-telemetry-paired.routes.test.ts",
 
-    "src-ui/src/__tests__/authorityRecoveryScope.test.tsx"
+    "src-ui/src/__tests__/authorityRecoveryScope.test.tsx",
+
+    "src-server/services/telemetry-publisher-service.ts",
+
+    "src-server/services/telemetry-local-state.ts",
+
+    "src-server/services/__tests__/telemetry-publishers.test.ts",
+
+    "src-server/utils/logger.ts",
+
+    "src-server/routes/system/build-provenance.ts",
+
+    "src-server/security/coding-authority.ts",
+
+    "src-ui/src/lib/startup-presentation.ts",
+
+    "src-ui/src/hooks/useSectionNavigation.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "schemas/app.schema.json",
+
+    "packages/shared/src/public-network.ts",
+
+    "src-server/services/plugin-telemetry-transport.ts",
+
+    "src-server/security/plugin-pane-context.ts"
   ],
 
   "checks": [

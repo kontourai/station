@@ -162,6 +162,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/typecheck-aggregate.mjs']),
   ]),
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/agent-runtime-import-boundary-gate.mjs']),
+  ]),
 ]);
 export const CI_FAST_RESERVED_WEIGHT = 20;
 export const FULL_REGRESSION_TEST_WEIGHT = 80;

@@ -127,6 +127,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     mutateAsync: createProjectMock,
   }),
   useProjectsQuery: () => projectsQueryState,
+  useReposQuery: () => reposQueryState,
   useFileSystemBrowseQuery: () => ({ refetch: validateDirectoryMock }),
   useSshEnvironmentsQuery: () => ({ data: [], isLoading: false }),
   // The environment picker also offers paired Stations (#2289).
@@ -154,10 +155,6 @@ vi.mock('../contexts/NavigationContext', () => ({
     setProject: setProjectMock,
     setLayout: setLayoutMock,
   }),
-}));
-
-vi.mock('../hooks/useGitActions', () => ({
-  useReposQuery: () => reposQueryState,
 }));
 
 vi.mock('../platform/PlatformProfileContext', () => ({

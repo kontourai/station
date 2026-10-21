@@ -29,6 +29,7 @@ import {
 } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { copyToClipboard } from '../../lib/clipboard';
 import {
   TaskPicker,
@@ -645,7 +646,19 @@ interface FlowRunConsoleProps {
   initialRunId?: string;
 }
 
-export function FlowRunConsole({
+export function FlowRunConsole(props: FlowRunConsoleProps = {}) {
+  const features = useDeveloperFeatures();
+  if (!features.flow)
+    return (
+      <Empty
+        label="Flow delivery preview is off"
+        description="Enable Flow delivery preview in Settings → Advanced → Developer tools."
+      />
+    );
+  return <EnabledFlowRunConsole {...props} />;
+}
+
+function EnabledFlowRunConsole({
   projectSlug: projectSlugProp,
   initialRunId,
 }: FlowRunConsoleProps = {}) {

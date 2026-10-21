@@ -26,6 +26,13 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
       <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
     </>,
   ),
+  // Half-filled circle: the same mark Settings' Appearance section uses (◐).
+  appearance: sidebarIcon(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor" />
+    </>,
+  ),
   guidance: sidebarIcon(
     <>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />

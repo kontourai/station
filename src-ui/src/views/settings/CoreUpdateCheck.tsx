@@ -2,6 +2,7 @@ import {
   type CoreUpdateRestartExpectation,
   useApplyCoreUpdateMutation,
   useCoreUpdateStatusQuery,
+  useServerUpdateStateQuery,
   useServiceUpdateProgressQuery,
 } from '@kontourai/station-sdk';
 import { requestCoreUpdateRestartStatus } from '@kontourai/station-sdk/core-update-restart-status';
@@ -22,6 +23,7 @@ import {
   TechnicalDetails,
   UpdateChannelRow,
 } from './coreUpdatePresentation';
+import { ServerUpdateStageApply } from './ServerUpdateStageApply';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
 const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
@@ -372,6 +374,19 @@ export function CoreUpdateCheck({
     status?.installKind === 'archive-service'
       ? status.serviceUpdate
       : undefined;
+  // #3851: a server that takes separate download and restart requests
+  // pushes its update state; the card reads it instead of the one-click
+  // offer's snapshot.
+  const stagedFlow =
+    status?.installKind === 'archive-service' && status.stagedUpdates === true;
+  const { data: serverUpdateState, refetch: refetchServerUpdateState } =
+    useServerUpdateStateQuery(apiBase, {
+      enabled: stagedFlow,
+    });
+  const pushedProgress =
+    stagedFlow && serverUpdateState?.supported
+      ? serverUpdateState.progress
+      : undefined;
   const serviceProgressQuery = useServiceUpdateProgressQuery(apiBase, {
     enabled:
       trackedServiceUpdate !== null ||
@@ -393,7 +408,11 @@ export function CoreUpdateCheck({
       return false;
     },
   });
-  const serviceProgress = serviceProgressQuery.data ?? reportedServiceUpdate;
+  // A followed restart polls through the disconnect, so its reads win;
+  // otherwise the pushed state is the current one.
+  const serviceProgress =
+    (trackedServiceUpdate && serviceProgressQuery.data) ||
+    (pushedProgress ?? serviceProgressQuery.data ?? reportedServiceUpdate);
   const serviceUpdateInFlight =
     !!serviceProgress && SERVICE_UPDATE_IN_FLIGHT.has(serviceProgress.state);
   const trackedOutcome =
@@ -412,7 +431,11 @@ export function CoreUpdateCheck({
     // The accepted POST is history now: nothing about it may style the offer.
     resetApply();
     void check();
-  }, [trackedOutcome, check, resetApply]);
+    // The pushed state was cached before the restart, and the server that
+    // answers now may never have pushed: read it again, or the card falls
+    // back to the pre-restart `staged` line.
+    if (stagedFlow) void refetchServerUpdateState();
+  }, [trackedOutcome, check, resetApply, stagedFlow, refetchServerUpdateState]);
   const awaitingOutcomeRecheck =
     serviceOutcomeAt !== null && dataUpdatedAt <= serviceOutcomeAt;
   // A timer, not a render-time clock read: once polling stops nothing else
@@ -532,7 +555,7 @@ export function CoreUpdateCheck({
               : 'Checking…'
             : 'Check for server updates'}
         </button>
-        {canApply && (
+        {canApply && !stagedFlow && (
           <button
             type="button"
             className="settings__update-btn settings__update-btn--apply"
@@ -550,6 +573,28 @@ export function CoreUpdateCheck({
           </button>
         )}
       </div>
+      {stagedFlow &&
+        serverUpdateState?.supported &&
+        identityMatches &&
+        !comparisonSuperseded &&
+        !trackedServiceUpdate &&
+        !awaitingOutcomeRecheck && (
+          <ServerUpdateStageApply
+            apiBase={apiBase}
+            state={serverUpdateState}
+            latestVersion={status?.latestVersion ?? null}
+            canDownload={canApply}
+            onRequested={(requestId) => {
+              applyScopeRef.current = scopeRef.current;
+              setServiceFollowExpiredOn(null);
+              setServiceUpdateRequest({
+                requestId,
+                connectionScope,
+                startedAt: Date.now(),
+              });
+            }}
+          />
+        )}
       {/*
         6-OPS-44: a re-check must not delete what is already known. A `git
         ls-remote` against a cold remote took ~30 s in the audit, and for that
@@ -654,20 +699,29 @@ export function CoreUpdateCheck({
       {/* A superseded comparison (stale scope or an accepted rebuild serving
         the old build) never speaks with a current voice: the historical line
         above replaces every derived state claim. */}
-      {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
+      {/* #3851 review F11: once the offered release is downloaded, the
+        staged line says all of it; "is available" beside it is noise. */}
+      {view &&
+        !comparisonSuperseded &&
+        !(
+          serviceProgress?.state === 'staged' &&
+          serviceProgress.version === status?.latestVersion
+        ) && <ComparisonMessage view={view} />}
       {technicalDisclosure}
       <span className="settings__field-hint">
-        {status?.applyMethod === 'service-update'
-          ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
-          : status && isArchiveInstall(status)
-            ? 'Checks this install’s signed release manifest.'
-            : status?.applyMethod === 'self-update'
-              ? 'Rebuilds from this machine’s source checkout and restarts the app.'
-              : status?.applyMethod === 'reinstall'
-                ? 'Compares this install’s build stamp against its configured source ref.'
-                : status?.installKind === 'source-checkout'
-                  ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
-                  : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
+        {stagedFlow
+          ? 'Checks this install’s signed release manifest. Download verifies the release while the server keeps running; Restart tries it and keeps the current version if it does not start.'
+          : status?.applyMethod === 'service-update'
+            ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
+            : status && isArchiveInstall(status)
+              ? 'Checks this install’s signed release manifest.'
+              : status?.applyMethod === 'self-update'
+                ? 'Rebuilds from this machine’s source checkout and restarts the app.'
+                : status?.applyMethod === 'reinstall'
+                  ? 'Compares this install’s build stamp against its configured source ref.'
+                  : status?.installKind === 'source-checkout'
+                    ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
+                    : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
       </span>
     </div>
   );

@@ -9,27 +9,23 @@ import {
 } from '../../utils/child-work-display';
 import { Button } from '../Button';
 import {
-  AgentGlyph,
   ArrowDownGlyph,
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { ChildWorkActivity } from './ChildWorkActivity';
+import { ChildWorkIdentity } from './ChildWorkIdentity';
 import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
   type TranscriptChild,
-  useTranscriptChildrenForCall,
+  useTranscriptChildrenForCalls,
 } from './transcript-child-work';
 import './SubagentTranscriptCard.css';
 
-/**
- * One card per subagent, inline at its reported spawn anchor. Everything on it comes from the child's own contract record
- * (`transcript-child-work.ts`); a fact no engine reported is either absent
- * or named as a gap, never a zero or a guess. The child's reasoning effort
- * has no producer at all, so the card has no slot for it.
- */
+/** One card at each reported spawn anchor; never borrow facts from the parent. */
 
 const loadChildWorkTranscript = () =>
   import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
@@ -128,8 +124,8 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
         aria-controls={expanded ? detailId : undefined}
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="subagent-card__glyph" aria-hidden="true">
-          <AgentGlyph />
+        <span className="subagent-card__glyph">
+          <ChildWorkIdentity provider={provider} />
         </span>
         <span className="subagent-card__text">
           <span className="subagent-card__headline">
@@ -141,31 +137,38 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               {statusLabel}
             </span>
           </span>
-          <span className="subagent-card__meta">
-            {[
-              item.kindLabel && item.kindLabel !== title
-                ? item.kindLabel
-                : null,
-              engine,
-            ]
-              .filter(Boolean)
-              .map((part) => `${part} · `)
-              .join('')}
-            <span
-              className="subagent-card__model"
-              data-reported={item.model ? 'true' : 'false'}
-              title={
-                item.model
-                  ? CHILD_WORK_MODEL_SOURCE_TEXT[item.model.source]
-                  : undefined
-              }
-            >
-              {item.model ? item.model.id : 'model not reported'}
+          {expanded && (
+            <span className="subagent-card__meta">
+              {[
+                item.kindLabel && item.kindLabel !== title
+                  ? item.kindLabel
+                  : null,
+                engine,
+              ]
+                .filter(Boolean)
+                .map((part) => `${part} · `)
+                .join('')}
+              <span
+                className="subagent-card__model"
+                data-reported={item.model ? 'true' : 'false'}
+                title={
+                  item.model
+                    ? CHILD_WORK_MODEL_SOURCE_TEXT[item.model.source]
+                    : undefined
+                }
+              >
+                {item.model ? item.model.id : 'model not reported'}
+              </span>
             </span>
-          </span>
-          {preview ? (
+          )}
+          {running ? (
+            <ChildWorkActivity
+              tool={item.latestTool}
+              progress={item.progress}
+            />
+          ) : !expanded && preview ? (
             <span className="subagent-card__preview">{preview}</span>
-          ) : !running && item.status === 'completed' ? (
+          ) : !expanded && !running && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
               No summary reported
             </span>
@@ -190,9 +193,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
             </div>
           ) : (
             <p className="subagent-card__note">
-              {running
-                ? 'Still running. Its result appears here when it finishes.'
-                : 'The engine reported no summary for this subagent.'}
+              {running ? 'Result pending' : 'No summary reported'}
             </p>
           )}
           {summary && item.result?.summaryTruncated && (
@@ -201,19 +202,23 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               characters.
             </p>
           )}
-          {usage.length > 0 && (
-            <p className="subagent-card__note">{usage.join(' · ')}</p>
-          )}
-          {item.transcript && (
+          {(usage.length > 0 || item.transcript) && (
             <div className="subagent-card__actions">
-              <Button
-                size="sm"
-                aria-expanded={transcriptOpen}
-                aria-controls={transcriptId}
-                onClick={() => setTranscriptOpen((current) => !current)}
-              >
-                {transcriptOpen ? 'Hide transcript' : 'View transcript'}
-              </Button>
+              {usage.length > 0 && (
+                <p className="subagent-card__note">{usage.join(' · ')}</p>
+              )}
+              {item.transcript && (
+                <Button
+                  size="sm"
+                  className="tap-target"
+                  variant="ghost"
+                  aria-expanded={transcriptOpen}
+                  aria-controls={transcriptOpen ? transcriptId : undefined}
+                  onClick={() => setTranscriptOpen((current) => !current)}
+                >
+                  {transcriptOpen ? 'Hide transcript' : 'View transcript'}
+                </Button>
+              )}
             </div>
           )}
           {item.transcript && transcriptOpen && (
@@ -234,7 +239,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               unavailable={(retry) => (
                 <p className="subagent-card__note" role="alert">
                   Could not load the transcript viewer.{' '}
-                  <Button size="sm" onClick={retry}>
+                  <Button size="sm" className="tap-target" onClick={retry}>
                     Retry
                   </Button>
                 </p>
@@ -247,33 +252,88 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   );
 }
 
-/** The cards for the subagents a run of tool calls spawned, in call order. */
+/** Reconstruct original runs even when the phone folds their tool work together. */
 export function SubagentCardsForCalls({
+  calls,
+}: {
+  calls: readonly { part: ToolCallLike; index: number }[];
+}) {
+  const runs: (typeof calls)[number][][] = [];
+  for (const call of calls) {
+    const run = runs.at(-1);
+    if (run && run.at(-1)!.index + 1 === call.index) run.push(call);
+    else runs.push([call]);
+  }
+  return runs.map((run) => (
+    <SubagentCallGroup
+      key={run[0].part.toolCallId ?? run[0].index}
+      calls={run}
+    />
+  ));
+}
+
+function SubagentCallGroup({
   calls,
 }: {
   calls: readonly { part: ToolCallLike }[];
 }) {
-  return (
-    <>
-      {calls.map(({ part }) =>
-        part.toolCallId ? (
-          <SubagentCardForCall
-            key={part.toolCallId}
-            toolCallId={part.toolCallId}
-          />
-        ) : null,
-      )}
-    </>
+  const children = useTranscriptChildrenForCalls(
+    calls.flatMap(({ part }) => (part.toolCallId ? [part.toolCallId] : [])),
   );
-}
+  const [expanded, setExpanded] = useState(false);
+  const groupId = useId();
+  const grouped = children.length > 1;
+  if (!children.length) return null;
+  const counts = new Map<TranscriptChild['item']['status'], number>();
+  for (const child of children)
+    counts.set(child.item.status, (counts.get(child.item.status) ?? 0) + 1);
 
-function SubagentCardForCall({ toolCallId }: { toolCallId: string }) {
-  const children = useTranscriptChildrenForCall(toolCallId);
   return (
-    <>
-      {children.map((child) => (
-        <SubagentTranscriptCard key={child.item.childId} child={child} />
-      ))}
-    </>
+    <div className="subagent-group" data-grouped={grouped}>
+      {grouped && (
+        <button
+          type="button"
+          className="subagent-group__heading"
+          aria-expanded={expanded}
+          aria-controls={groupId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="subagent-group__avatars" aria-hidden="true">
+            {children.slice(0, 3).map((child) => (
+              <ChildWorkIdentity
+                key={child.item.childId}
+                provider={child.provider}
+              />
+            ))}
+            {children.length > 3 && (
+              <span className="subagent-group__more">
+                +{children.length - 3}
+              </span>
+            )}
+          </span>
+          <strong>{children.length} subagents</strong>
+          <span className="subagent-group__counts" aria-live="polite">
+            {[...counts]
+              .map(
+                ([status, count]) =>
+                  `${count} ${CHILD_WORK_STATUS_LABEL[status].toLowerCase()}`,
+              )
+              .join(' · ')}
+          </span>
+          {expanded ? <ArrowDownGlyph /> : <ArrowRightGlyph />}
+        </button>
+      )}
+      <div
+        className="subagent-group__children"
+        id={groupId}
+        hidden={grouped && !expanded}
+        onFocusCapture={() => setExpanded(true)}
+        onClickCapture={() => setExpanded(true)}
+      >
+        {children.map((child) => (
+          <SubagentTranscriptCard key={child.item.childId} child={child} />
+        ))}
+      </div>
+    </div>
   );
 }

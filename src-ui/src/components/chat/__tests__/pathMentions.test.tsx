@@ -7,7 +7,13 @@
  * as the one mocked seam.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const existing = new Set<string>();
@@ -29,6 +35,19 @@ vi.mock('../../../contexts/useOpenInRegion', () => ({
   openFilePreviewInRegion: (...args: unknown[]) =>
     openFilePreviewInRegion(...(args as [])),
 }));
+// A session's mention is a preview related to that session; the related
+// open's own behaviour is its suite's (PaneRelations-file-preview.test.tsx).
+const openRelatedFilePreview = vi.fn(
+  async (..._args: unknown[]): Promise<RelatedOpenOutcome> =>
+    ({ ok: true }) as RelatedOpenOutcome,
+);
+vi.mock('../../../contexts/openRelatedFilePreview', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/openRelatedFilePreview')
+  >()),
+  openRelatedFilePreview: (...args: unknown[]) =>
+    openRelatedFilePreview(...args),
+}));
 vi.mock('../../../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => ({ regions: {} }),
 }));
@@ -37,6 +56,7 @@ vi.mock('../../../platform/openExternalLink', () => ({
   openNativeExternalLink: vi.fn(),
 }));
 
+import type { RelatedOpenOutcome } from '../../../contexts/openRelatedFilePreview';
 import { MarkdownLinkContext } from '../MarkdownLinkContext';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import {
@@ -135,8 +155,9 @@ describe('path mentions in a rendered chat message', () => {
     renderInConversation('Bump the version in package.json:3.');
     const link = screen.getByRole('link', { name: /package\.json:3/ });
     fireEvent.click(link);
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(
+      (openFilePreviewInRegion.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toEqual(
       expect.objectContaining({
         path: 'package.json',
         lineRange: { start: 3, end: 3 },
@@ -156,8 +177,9 @@ describe('path mentions in a rendered chat message', () => {
     existing.add('src/app.ts');
     renderInConversation('Changed /work/repo/src/app.ts:7.');
     fireEvent.click(screen.getByRole('link', { name: /app\.ts:7/ }));
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(
+      (openFilePreviewInRegion.mock.calls.at(-1) as unknown[] | undefined)?.[1],
+    ).toEqual(
       expect.objectContaining({
         path: 'src/app.ts',
         lineRange: { start: 7, end: 7 },
@@ -193,7 +215,7 @@ describe('path mentions in a rendered chat message', () => {
     expect(existenceAsks).toEqual([]);
   });
 
-  test('an isolated worktree session reads its own directory through its thread (#2476)', () => {
+  test('an isolated worktree session reads its own directory through its thread (#2476)', async () => {
     existing.add('src/app.ts');
     render(
       <MarkdownLinkContext.Provider
@@ -213,8 +235,8 @@ describe('path mentions in a rendered chat message', () => {
     for (const [, , thread] of existenceAsks) expect(thread).toBe('thread-7');
     // An absolute path under the worktree is that worktree's file.
     fireEvent.click(screen.getByRole('link', { name: /app\.ts:9/ }));
-    expect(openFilePreviewInRegion).toHaveBeenCalledWith(
-      expect.anything(),
+    await waitFor(() => expect(openRelatedFilePreview).toHaveBeenCalled());
+    expect(openRelatedFilePreview.mock.calls.at(-1)?.[3]).toEqual(
       expect.objectContaining({
         path: 'src/app.ts',
         lineRange: { start: 9, end: 9 },
@@ -249,9 +271,14 @@ describe('path mentions in a rendered chat message', () => {
     }
   });
 
-  test('a refused worktree preview never falls back to the checkout route', () => {
+  test('a refused worktree preview never falls back to the checkout route', async () => {
     existing.add('src/app.ts');
-    openFilePreviewInRegion.mockReturnValueOnce({ ok: false } as never);
+    // The region model's refusal, which a checkout file would answer with the
+    // layout route.
+    openRelatedFilePreview.mockResolvedValueOnce({
+      ok: false,
+      reason: 'no-surface',
+    });
     const openPathInMain = vi.fn();
     render(
       <MarkdownLinkContext.Provider
@@ -266,7 +293,8 @@ describe('path mentions in a rendered chat message', () => {
       </MarkdownLinkContext.Provider>,
     );
     fireEvent.click(screen.getByRole('link', { name: /app\.ts/ }));
-    expect(openFilePreviewInRegion).toHaveBeenCalled();
+    await waitFor(() => expect(openRelatedFilePreview).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
     // The layout route reads the checkout: a worktree file does not take it.
     expect(openPathInMain).not.toHaveBeenCalled();
   });

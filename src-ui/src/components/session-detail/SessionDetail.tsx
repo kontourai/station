@@ -24,13 +24,21 @@ export function SessionDetail({
   presentation = 'inspector',
   openingContinuation,
   continuationCreated,
+  draftScope,
+  handoffScope,
+  onOpenConversation,
 }: {
   /** Activity hands an external conversation's message to the dock. */
-  onContinueInChat?: (draft: string) => void;
+  onContinueInChat?:
+    | ((draft: string) => void)
+    | ((draft: string) => boolean | Promise<boolean>);
+  onOpenConversation?: () => void;
   /** Where the detail is hosted: Activity's pane, or the chat dock. */
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
   continuationCreated?: boolean;
+  draftScope?: string;
+  handoffScope?: string;
   apiBase: string;
   chatFontSize?: number;
   session: OrchestrationSessionSummary;
@@ -114,6 +122,8 @@ export function SessionDetail({
         <AttachedSessionDetail
           key={session.threadId}
           apiBase={apiBase}
+          draftScope={draftScope}
+          handoffScope={handoffScope}
           showHeader={presentation !== 'chat'}
           chatFontSize={chatFontSize}
           openingContinuation={openingContinuation}
@@ -147,7 +157,9 @@ export function SessionDetail({
   // continuation hand-off above.
   return (
     <MutableSessionDetail
+      onOpenConversation={onOpenConversation}
       apiBase={apiBase}
+      draftScope={draftScope}
       session={session}
       onTaskChanged={onTaskChanged}
       events={events}

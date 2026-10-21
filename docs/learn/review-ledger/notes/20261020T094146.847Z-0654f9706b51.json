@@ -1,0 +1,9 @@
+{
+  "revision": "640551791548fc6e6ddb788c96d64f391521944f",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"#3924 delta review round: configuration-edit bullet now says unnormalized paths (. or .. segments, repeated separators) go to a person because OpenCode passes absolute paths on as written and the file system resolves link/.. through the link, and that global locations match in any case on macOS and Windows; checked against the helper, tests and a real-binary probe.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/acp-chat-architecture.md","note":"#3924 delta review round: historical ACP chat proposal routes to the ACP guide; none of its claims depend on the edit-path rules.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

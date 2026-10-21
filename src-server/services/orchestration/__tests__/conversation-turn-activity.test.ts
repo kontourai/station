@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChildWorkProjection } from '../child-work-projection.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
-import { activeTurnIdForEvents } from '../session-lifecycle-service.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
+import {
+  activeTurnIdForEvents,
+  projectSessionLifecycle,
+} from '../session-lifecycle-service.js';
 
 /**
  * #2309: the conversation activity projection, driven through a REAL event
@@ -351,6 +355,363 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     append(ROOT, { method: 'turn.completed', turnId: 't1' });
     expect(projection.readForThread(ROOT)?.openTurn?.turnId).toBe('t2');
   });
+
+  test.each([
+    'direct',
+    'primed',
+    'direct-after-raw',
+    'primed-after-raw',
+  ] as const)(
+    'invocation %s cold seed selects B start/tools and rejects late A terminal and tool mutation',
+    (path) => {
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: 'A',
+        createdAt: '2030-01-01T00:00:00Z',
+      });
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'old-only',
+        toolName: 'Old',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      const owned = store.sessionTurnBoundaryAuthority().reserve!(
+        ROOT,
+        '2030-01-01T00:00:00Z',
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('actual B reserve prerequisite');
+      const capture = captureTurnIntent(
+        { threadId: ROOT, input: 'B' },
+        { binding: {}, requiresFreshCompanions: false },
+      );
+      expect(
+        owned.claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+      ).toEqual({ kind: 'applied' });
+      expect(owned.claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+        kind: 'applied',
+      });
+      expect(owned.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+        kind: 'applied',
+      });
+      const invocationB = capture.intent.invocationId;
+      const startB = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        invocationId: invocationB,
+        createdAt: '2030-01-02T00:00:00Z',
+      });
+      const toolB = append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: invocationB,
+        toolCallId: 'shared-tool',
+        toolName: 'B tool',
+      });
+      const cold = freshProjection();
+      if (!path.endsWith('after-raw')) {
+        if (path === 'primed')
+          cold.primeThreads(
+            store.listSessionProjectionEventsForThreads([ROOT]),
+          );
+        expect(cold.readForThread(ROOT)?.openTurn).toMatchObject({
+          turnId: 'N',
+          startedAt: startB.createdAt,
+        });
+        expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+          { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+        ]);
+      }
+      const raw = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        prompt: 'unproven legacy start',
+        createdAt: '2100-01-01T00:00:00Z',
+      });
+      if (path.endsWith('after-raw')) {
+        append(ROOT, {
+          method: 'runtime.warning',
+          severity: 'warning',
+          message: 'trailing observer',
+        });
+        append(ROOT, {
+          method: 'content.text-delta',
+          turnId: 'N',
+          itemId: 'raw',
+          delta: 'unassigned',
+        });
+        if (path.startsWith('primed'))
+          cold.primeThreads(
+            store.listSessionProjectionEventsForThreads([ROOT]),
+          );
+      }
+      expect(
+        store.listEvents(ROOT).find((row) => row.id === raw.eventId)?.payload
+          .invocationId,
+      ).toBeUndefined();
+      expect(cold.readForThread(ROOT)?.openTurn?.startedAt).toBe(
+        startB.createdAt,
+      );
+      expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+        { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+      ]);
+      for (const invocationId of ['A', undefined]) {
+        append(ROOT, {
+          method: 'turn.completed',
+          turnId: 'N',
+          invocationId,
+          createdAt: '2100-01-01T00:00:00Z',
+        });
+        expect(cold.readForThread(ROOT)?.openTurn?.turnId).toBe('N');
+      }
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'late-A-tool',
+        toolName: 'Old delayed',
+      });
+      append(ROOT, {
+        method: 'tool.completed',
+        turnId: 'N',
+        invocationId: 'A',
+        toolCallId: 'shared-tool',
+        toolName: 'Old same id',
+        status: 'success',
+      });
+      expect(cold.readForThread(ROOT)?.runningTools).toEqual([
+        { name: 'B tool', callId: 'shared-tool', startedAt: toolB.createdAt },
+      ]);
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: invocationB,
+        createdAt: '1900-01-01T00:00:00Z',
+      });
+      expect(cold.readForThread(ROOT)?.openTurn).toBeUndefined();
+      expect(
+        store.sessionTurnBoundaryAuthority().hasPossibleEffect(ROOT),
+      ).toEqual({ kind: 'available', active: false });
+    },
+  );
+
+  test.each(['single', 'batch'] as const)(
+    'bounded %s projection retains exact B terminal and error before native ranking',
+    (path) => {
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'A' });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'B' });
+      append(ROOT, {
+        method: 'runtime.error',
+        turnId: 'N',
+        invocationId: 'B',
+        severity: 'error',
+        message: 'B failed',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'B',
+      });
+      append(ROOT, {
+        method: 'runtime.error',
+        turnId: 'N',
+        invocationId: 'A',
+        severity: 'error',
+        message: 'old A failed',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'N',
+        invocationId: 'A',
+      });
+      append(ROOT, {
+        method: 'runtime.warning',
+        severity: 'warning',
+        message: 'trailing observer fact',
+      });
+      append(ROOT, {
+        method: 'content.text-delta',
+        turnId: 'N',
+        invocationId: 'A',
+        itemId: 'old',
+        delta: 'late',
+      });
+      const session = store.readSessionByThread(ROOT);
+      if (!session) throw new Error('bounded projection session prerequisite');
+      const full = store.listEvents(ROOT).map((row) => row.payload);
+      const bounded =
+        path === 'single'
+          ? store.listSessionProjectionEvents(ROOT)
+          : (store.listSessionProjectionEventsForThreads([ROOT]).get(ROOT) ??
+            []);
+      expect(
+        projectSessionLifecycle({ session, events: full }).lifecycleState,
+      ).toBe('idle');
+      expect(
+        projectSessionLifecycle({
+          session,
+          events: bounded.map((row) => row.payload),
+        }).lifecycleState,
+      ).toBe('idle');
+      expect(
+        bounded.some(
+          (row) =>
+            row.payload.method === 'turn.completed' &&
+            row.payload.invocationId === 'B',
+        ),
+      ).toBe(true);
+    },
+  );
+
+  test.each([
+    'native-less',
+    'session',
+    'legacy-superseded',
+    'running',
+  ] as const)(
+    'error-only bounded reads agree with full fold for %s scope',
+    (scope) => {
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'N',
+        ...(scope === 'legacy-superseded' ? {} : { invocationId: 'B' }),
+      });
+      const exact = append(ROOT, {
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'exact failure',
+        ...(scope === 'session'
+          ? {}
+          : {
+              turnId: 'N',
+              ...(scope === 'legacy-superseded' ? {} : { invocationId: 'B' }),
+            }),
+      });
+      if (scope === 'native-less')
+        append(ROOT, {
+          method: 'runtime.error',
+          invocationId: 'B',
+          severity: 'error',
+          message: 'later scoped missing native',
+        });
+      if (scope === 'legacy-superseded' || scope === 'running')
+        append(ROOT, {
+          method: 'turn.started',
+          turnId: 'new',
+          ...(scope === 'running' ? { invocationId: 'C' } : {}),
+        });
+      const session = store.readSessionByThread(ROOT);
+      if (!session) throw new Error('actual session prerequisite');
+      const full = store.listEvents(ROOT).map((row) => row.payload);
+      const fullState = projectSessionLifecycle({
+        session,
+        events: full,
+      }).lifecycleState;
+      expect(fullState).toBe(
+        scope === 'native-less' || scope === 'session' ? 'failed' : 'running',
+      );
+      for (const bounded of [
+        store.listSessionProjectionEvents(ROOT),
+        store.listSessionProjectionEventsForThreads([ROOT]).get(ROOT) ?? [],
+      ]) {
+        expect(
+          projectSessionLifecycle({
+            session,
+            events: bounded.map((row) => row.payload),
+          }).lifecycleState,
+        ).toBe(fullState);
+        if (scope === 'native-less')
+          expect(bounded.some((row) => row.id === exact.eventId)).toBe(true);
+      }
+    },
+  );
+
+  test.each(['provider', 'structured'] as const)(
+    'live activity admits a genuinely new %s start after B',
+    (kind) => {
+      append(ROOT, { method: 'turn.started', turnId: 'N', invocationId: 'B' });
+      projection.readForThread(ROOT);
+      append(ROOT, {
+        method: 'tool.started',
+        turnId: 'N',
+        invocationId: 'B',
+        toolCallId: 'B-tool',
+        toolName: 'B tool',
+      });
+      const started = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'new',
+        ...(kind === 'provider'
+          ? { metadata: { trigger: 'provider' } }
+          : { invocationId: 'C' }),
+      });
+      expect(projection.readForThread(ROOT)?.openTurn).toMatchObject({
+        turnId: 'new',
+        startedAt: started.createdAt,
+      });
+      expect(projection.readForThread(ROOT)?.runningTools ?? []).toEqual([]);
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'new',
+        ...(kind === 'structured' ? { invocationId: 'C' } : {}),
+      });
+      expect(projection.readForThread(ROOT)?.openTurn).toBeUndefined();
+    },
+  );
+
+  test.each(['direct', 'primed'] as const)(
+    'cold %s provider boundary prevents older B resurrection',
+    (path) => {
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'B-native',
+        invocationId: 'B',
+        prompt: 'B',
+      });
+      append(ROOT, {
+        method: 'turn.completed',
+        turnId: 'B-native',
+        invocationId: 'B',
+      });
+      append(ROOT, {
+        method: 'turn.started',
+        turnId: 'provider:new',
+        prompt: 'provider work',
+        metadata: { trigger: 'provider' },
+      });
+      const legacy = append(ROOT, {
+        method: 'turn.started',
+        turnId: 'legacy-new',
+        prompt: 'later legacy work',
+      });
+      append(ROOT, {
+        method: 'runtime.warning',
+        severity: 'warning',
+        message: 'trailing fact',
+      });
+      const cold = freshProjection();
+      if (path === 'primed')
+        cold.primeThreads(store.listSessionProjectionEventsForThreads([ROOT]));
+      expect(cold.readForThread(ROOT)?.openTurn).toMatchObject({
+        turnId: 'legacy-new',
+        startedAt: legacy.createdAt,
+      });
+      append(ROOT, { method: 'turn.completed', turnId: 'legacy-new' });
+      expect(cold.readForThread(ROOT)?.openTurn).toBeUndefined();
+    },
+  );
 
   test('sees writers that bypass the service publish path: appendEventIfAbsent closes the turn', () => {
     append(ROOT, { method: 'turn.started', turnId: 'turn-b' });

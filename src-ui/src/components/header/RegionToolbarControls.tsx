@@ -1,14 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  CENTER_OWNED_SURFACES,
   requestCenterChatPage,
   useLayoutChatPlacement,
 } from '../../app-shell/chat-placement';
-import {
-  SuspendRegionSurfaces,
-  useRegionModelOptional,
-} from '../../contexts/RegionModelContext';
+import { ShellSurfaceSuspension } from '../../app-shell/ShellSurfaceSuspension';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -553,16 +550,13 @@ function ConnectedRegionToolbarControls() {
 
 export function RegionToolbarControls() {
   const model = useRegionModelOptional();
-  const centerOwnsChat = useLayoutChatPlacement() === 'center';
   if (!model) return null;
   // The toggles report what the region shells render: with Chat suspended
   // (the Coding centre owns it), a region holding only Chat is hidden and
-  // empty, not "open: Chat".
-  return centerOwnsChat ? (
-    <SuspendRegionSurfaces surfaces={CENTER_OWNED_SURFACES}>
+  // empty, not "open: Chat"; a source-hidden preview is not "open" either.
+  return (
+    <ShellSurfaceSuspension>
       <ConnectedRegionToolbarControls />
-    </SuspendRegionSurfaces>
-  ) : (
-    <ConnectedRegionToolbarControls />
+    </ShellSurfaceSuspension>
   );
 }

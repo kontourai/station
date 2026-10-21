@@ -2,8 +2,8 @@
    Imported HERE rather than by the row so it travels in the same lazy chunk
    as the body it styles. */
 .setting-inheritance {
-  min-width: 16rem;
-  max-width: 22rem;
+  min-width: 0;
+  max-width: 100%;
 }
 .setting-inheritance__help {
   margin: 0 0 0.5rem;
@@ -31,6 +31,8 @@
 }
 .setting-inheritance__layer-value {
   margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 .setting-inheritance__layer-effect {

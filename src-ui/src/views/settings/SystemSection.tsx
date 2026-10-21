@@ -44,10 +44,7 @@ export function SystemSection({
    */
   hasUnsavedChanges?: boolean;
 }) {
-  const { data: systemStatus } = useSystemStatusForApiBaseQuery(
-    apiBase,
-    60_000,
-  );
+  const [buildDetailsOpen, setBuildDetailsOpen] = useState(false);
   const platformProfile = usePlatformProfile();
   // #2144 slice 6 item F. Local state and local hooks: unlike the Station
   // reset, this needs neither the draft config nor a server request, so
@@ -97,15 +94,53 @@ export function SystemSection({
         <ConnectedServerUpdates />
       </div>
 
-      <div {...settingsRow('deployed-build')} tabIndex={-1}>
+      <div
+        className="settings__field"
+        {...settingsRow('server-update-download-policy')}
+        tabIndex={-1}
+      >
+        <label
+          className="settings__field-label"
+          htmlFor="serverUpdateDownloadPolicy"
+        >
+          {settingsRow('server-update-download-policy').title}
+        </label>
+        <select
+          id="serverUpdateDownloadPolicy"
+          value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
+          onChange={(event) =>
+            onChange({
+              ...config,
+              serverUpdateDownloadPolicy: event.target
+                .value as AppConfig['serverUpdateDownloadPolicy'],
+            })
+          }
+        >
+          <option value="never">Never</option>
+          <option value="after-24h">After 24 hours</option>
+          <option value="immediately">Immediately</option>
+        </select>
+        <span className="settings__field-hint">
+          For a Station service installed from a release archive: when it
+          downloads an available update by itself. It never restarts without
+          you.
+        </span>
+      </div>
+
+      <details
+        {...settingsRow('deployed-build')}
+        tabIndex={-1}
+        onToggle={(event) => setBuildDetailsOpen(event.currentTarget.open)}
+      >
+        <summary>Build details</summary>
         {platformProfile.isTauri ? (
           <InstalledAppBuildProvenance
             build={platformProfile.clientBuild}
             development={platformProfile.isDevBuild}
           />
         ) : null}
-        <BuildProvenance build={systemStatus?.build} />
-      </div>
+        {buildDetailsOpen && <ConnectedBuildDetails apiBase={apiBase} />}
+      </details>
 
       <div
         className="settings__field"
@@ -247,4 +282,9 @@ export function SystemSection({
       </div>
     </SettingsSection>
   );
+}
+
+function ConnectedBuildDetails({ apiBase }: { apiBase: string }) {
+  const { data } = useSystemStatusForApiBaseQuery(apiBase, 60_000);
+  return <BuildProvenance build={data?.build} />;
 }

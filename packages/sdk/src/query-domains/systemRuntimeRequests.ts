@@ -7,12 +7,16 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
 import type {
+  ServerUpdateRunningTurns,
+  ServerUpdateState,
   ServiceUpdateProgress,
   SystemIdentityResponse,
 } from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
 import { parseRestartExpectation } from '../core-update-restart-expectation';
 import {
+  parseServerUpdateRunningTurns,
+  parseServerUpdateState,
   parseServiceUpdateProgress,
   parseSystemIdentityResponse,
   parseSystemUpdateStatus,
@@ -265,6 +269,11 @@ export interface MonitoringEventFilters {
   tool?: string;
   engine?: string;
   conversation?: string;
+  /**
+   * Only rows this external telemetry producer reported. Without it, the
+   * other filters (including `tools`) never match producer rows.
+   */
+  producer?: string;
   /** Only tool call/result events. */
   tools?: boolean;
   /**
@@ -305,6 +314,7 @@ export async function fetchMonitoringEventWindow(
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
   if (filters.conversation) params.set('conversation', filters.conversation);
+  if (filters.producer) params.set('producer', filters.producer);
   if (filters.tools) params.set('tools', 'true');
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   const response = await authenticatedFetch(
@@ -437,8 +447,10 @@ export async function requestCoreUpdateStatus(
   signal?: AbortSignal,
 ): Promise<CoreUpdateStatus> {
   const apiBase = await resolveApiBase(apiBaseOverride);
+  // `staged=1`: this SDK reads the #3851 `staged` progress state; servers
+  // older than it ignore the parameter.
   const response = await authenticatedFetch(
-    `${apiBase}/api/system/core-update`,
+    `${apiBase}/api/system/core-update?staged=1`,
     { signal },
   );
   // HTTP status is checked BEFORE the body can read as success: a 503/401
@@ -489,7 +501,7 @@ export async function requestServiceUpdateProgress(
   signal?: AbortSignal,
 ): Promise<ServiceUpdateProgress> {
   const response = await authenticatedFetch(
-    `${apiBase}/api/system/core-update/service-update`,
+    `${apiBase}/api/system/core-update/service-update?staged=1`,
     { signal },
   );
   if (!response.ok) {
@@ -580,3 +592,90 @@ export async function fetchServerCapabilities(
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, StationHttpError } from '../client/http';
 import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';
+
+/** `GET /api/system/core-update/state` (#3851); see `ServerUpdateState`. */
+export async function requestServerUpdateState(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<ServerUpdateState> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/system/core-update/state`,
+    { signal },
+  );
+  // A server older than #3851 has no such route: unsupported, not an error.
+  if (response.status === 404) return parseServerUpdateState(null);
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch the server update state: ${response.status}`,
+    );
+  }
+  return parseServerUpdateState(await response.json());
+}
+
+/** The running turns a server restart would interrupt (#3851). */
+export async function requestServerUpdateRunningTurns(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<ServerUpdateRunningTurns> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/system/core-update/running-turns`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch the running turns: ${response.status}`,
+    );
+  }
+  return parseServerUpdateRunningTurns(await response.json());
+}
+
+/**
+ * One server update action (#3851): download (`stage`), restart into the
+ * downloaded `version` (`apply`), or set or cancel applying it once no turn
+ * runs. Resolves when the server accepted it; progress arrives as state.
+ */
+export type ServerUpdateAction =
+  | { action: 'stage' }
+  | { action: 'apply'; version: string }
+  | { action: 'apply-when-idle'; version: string }
+  | { action: 'cancel-apply-when-idle' };
+
+export async function requestServerUpdateAction(
+  apiBase: string,
+  request: ServerUpdateAction,
+): Promise<{ requestId: string | null }> {
+  const url =
+    request.action === 'apply-when-idle' ||
+    request.action === 'cancel-apply-when-idle'
+      ? `${apiBase}/api/system/core-update/apply-when-idle`
+      : `${apiBase}/api/system/core-update`;
+  const init: RequestInit =
+    request.action === 'cancel-apply-when-idle'
+      ? { method: 'DELETE' }
+      : {
+          method: request.action === 'apply-when-idle' ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            request.action === 'apply-when-idle'
+              ? { version: request.version }
+              : request,
+          ),
+        };
+  const response = await authenticatedFetch(url, init);
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
+    success?: boolean;
+    error?: string;
+    serviceUpdate?: { requestId?: unknown };
+  };
+  if (!response.ok || result.success === false)
+    throw new Error(
+      apiErrorMessage(result, `The server refused the update request`),
+    );
+  const requestId = result.serviceUpdate?.requestId;
+  return {
+    requestId:
+      typeof requestId === 'string' && requestId.length > 0 ? requestId : null,
+  };
+}

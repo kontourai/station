@@ -1,4 +1,5 @@
 import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
+import { StationExtensionsAccess } from './registry/StationExtensionsAccess';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
  * unavailable. ConnectionBannerSource owns reachability disclosure while this
@@ -925,6 +926,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setStationSetupOpen(true);
         }}
         initialPanel={connectionModalMode}
+        renderConnectionDetails={(connection) =>
+          connection.id === activeConnection?.id ? (
+            <StationExtensionsAccess />
+          ) : null
+        }
         listFooterContent={
           profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined
         }

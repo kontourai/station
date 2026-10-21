@@ -338,6 +338,7 @@ describe('bounded ci:fast runner', () => {
       // before any lane ran.
       ['npm', ['run', 'build:connect']],
       [process.execPath, ['scripts/typecheck-aggregate.mjs']],
+      [process.execPath, ['scripts/agent-runtime-import-boundary-gate.mjs']],
     ]);
     expect(JSON.stringify(FAST_STATIC_COMMANDS)).not.toMatch(
       /verify:static|test:full|vitest-corpus/,

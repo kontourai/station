@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import {
   type AttachAnswerToTaskAdapter,
@@ -45,6 +51,13 @@ function inputAdapter(
   };
 }
 
+function addToTaskButton() {
+  const dialog = screen.queryByRole('dialog', { name: 'Add to Task' });
+  return dialog
+    ? within(dialog).getByRole('button', { name: 'Add to Task' })
+    : screen.getByRole('button', { name: /^Add to Task:/ });
+}
+
 describe('AttachAnswerToTaskButton', () => {
   test('selects an existing Task and attaches only the canonical tuple input', async () => {
     const attach = vi.fn(async () => undefined);
@@ -52,14 +65,12 @@ describe('AttachAnswerToTaskButton', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Add this answer to a Task (turn turn-9)',
+        name: 'Add to Task: answer',
       }),
     );
 
-    expect(
-      screen.getByRole('dialog', { name: 'Add answer to Task' }),
-    ).toBeTruthy();
-    const submit = screen.getByRole('button', { name: 'Add to Task' });
+    expect(screen.getByRole('dialog', { name: 'Add to Task' })).toBeTruthy();
+    const submit = addToTaskButton();
     expect(submit.getAttribute('disabled')).not.toBeNull();
 
     // Native buttons make each Task reachable and selectable with either
@@ -72,7 +83,7 @@ describe('AttachAnswerToTaskButton', () => {
         .getAttribute('disabled'),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
+    fireEvent.click(addToTaskButton());
     await waitFor(() =>
       expect(attach).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -84,14 +95,12 @@ describe('AttachAnswerToTaskButton', () => {
     );
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(
-      screen.getByText('Answer reference added to Task “Alpha task”.'),
-    ).toBeTruthy();
+    expect(screen.getByText('Answer added to Task “Alpha task”.')).toBeTruthy();
   });
 
   test('filters the authorized Task list without changing the attachment identity', () => {
     renderButton();
-    fireEvent.click(screen.getByRole('button', { name: /Add this answer/i }));
+    fireEvent.click(addToTaskButton());
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Find a Task' }), {
       target: { value: 'beta' },
@@ -103,11 +112,11 @@ describe('AttachAnswerToTaskButton', () => {
 
   test('uses the shared dialog lifecycle for Escape close and return focus', async () => {
     renderButton();
-    const trigger = screen.getByRole('button', { name: /Add this answer/i });
+    const trigger = addToTaskButton();
     trigger.focus();
     fireEvent.click(trigger);
 
-    const dialog = screen.getByRole('dialog', { name: 'Add answer to Task' });
+    const dialog = screen.getByRole('dialog', { name: 'Add to Task' });
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -122,14 +131,14 @@ describe('AttachAnswerToTaskButton', () => {
         }),
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /Add this answer/i }));
+    fireEvent.click(addToTaskButton());
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
+    fireEvent.click(addToTaskButton());
 
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Unable to add this to the Task. Try again.',
     );
-    expect(screen.queryByText(/Answer reference added/)).toBeNull();
+    expect(screen.queryByText(/Answer added/)).toBeNull();
   });
 
   test('pins an exact durable user input and never reflects a protected failure', async () => {
@@ -142,9 +151,9 @@ describe('AttachAnswerToTaskButton', () => {
         adapter={inputAdapter({ attach })}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add input to Task' }));
+    fireEvent.click(addToTaskButton());
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
+    fireEvent.click(addToTaskButton());
     await waitFor(() =>
       expect(attach).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -165,7 +174,7 @@ describe('AttachAnswerToTaskButton', () => {
         adapter={value}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add input to Task' }));
+    fireEvent.click(addToTaskButton());
     view.rerender(
       <AttachUserInputToTaskButton
         sessionId="session-new"
@@ -174,7 +183,7 @@ describe('AttachAnswerToTaskButton', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
+    fireEvent.click(addToTaskButton());
     await waitFor(() =>
       expect(attach).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -194,7 +203,7 @@ describe('AttachAnswerToTaskButton', () => {
         adapter={value}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add input to Task' }));
+    fireEvent.click(addToTaskButton());
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
     view.rerender(
       <AttachUserInputToTaskButton
@@ -228,9 +237,9 @@ describe('AttachAnswerToTaskButton', () => {
         adapter={inputAdapter({ attach })}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add input to Task' }));
+    fireEvent.click(addToTaskButton());
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
-    const submit = screen.getByRole('button', { name: 'Add to Task' });
+    const submit = addToTaskButton();
     fireEvent.click(submit);
     fireEvent.click(submit);
     expect(attach).toHaveBeenCalledTimes(1);
@@ -250,9 +259,9 @@ describe('AttachAnswerToTaskButton', () => {
         })}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add input to Task' }));
+    fireEvent.click(addToTaskButton());
     fireEvent.click(screen.getByRole('button', { name: /Alpha task/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
+    fireEvent.click(addToTaskButton());
     const error = await screen.findByRole('alert');
     expect(error.textContent).toBe(
       'Unable to add this to the Task. Try again.',

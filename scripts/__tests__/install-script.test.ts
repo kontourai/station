@@ -967,15 +967,20 @@ describe('one-line Station installer', {
       '#!/bin/sh\nif [ "$1 $2" = "auth token" ]; then echo test_private_token; exit 0; fi\nexit 42\n',
     );
     executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
-    const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
+    // Getting started owns the install steps; the README links to this section.
+    const guide = readFileSync(
+      join(repoRoot, 'docs/user/getting-started.md'),
+      'utf8',
+    );
     const command =
-      /^### Verified installer[^\n]*\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
-        readme,
+      /^## Install Or Upgrade[^\n]*\n[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
+        guide,
       )?.[1];
     expect(command).toBeTruthy();
 
     const result = spawnSync('sh', ['-c', command ?? 'exit 99'], {
       encoding: 'utf8',
+      windowsHide: true,
       env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
     });
     expect(result.status).toBe(42);

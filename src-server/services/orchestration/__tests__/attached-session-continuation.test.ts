@@ -235,6 +235,8 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
       stationConfinement: 'workspace',
       projectSlug: 'station',
       localProjectId: 'project-1',
+      // #3800: the verified worktree is the folder a `.codex` is judged from.
+      confinementRoot: lane,
     });
     const child = await childSummary(result.threadId, 'station');
     expect(child.cwd).toBe(lane);
@@ -476,6 +478,7 @@ describe('a conversation no project claims (#3386)', () => {
     expect(input!.confinement).toBe('workspace');
     expect(input!.metadata).not.toHaveProperty('projectSlug');
     expect(input!.metadata).not.toHaveProperty('localProjectId');
+    expect(input!.metadata).toMatchObject({ confinementRoot: folder });
     const child = await childSummary(result.threadId);
     expect(child.cwd).toBe(folder);
     expect(child.projectSlug).toBeUndefined();

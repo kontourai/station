@@ -3,6 +3,7 @@ import {
   applyChildWorkDelta,
   CHILD_WORK_ITEMS_MAX_PER_REPORTER,
   CHILD_WORK_SUMMARY_MAX_CHARS,
+  CHILD_WORK_TOOL_NAME_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkRegistryState,
@@ -475,6 +476,49 @@ describe('applyChildWorkDelta', () => {
       progress: 'Reading files',
       status: 'running',
     });
+  });
+
+  test('the latest tool survives omitted updates, snapshots, settlement and cold replay', () => {
+    const updated = fold(
+      snapshot(item('a'), item('b', { latestTool: 'Bash' })),
+      { kind: 'upsert', item: item('a', { latestTool: ' Read ' }) },
+      { kind: 'upsert', item: item('a', { progress: 'Checking sources' }) },
+      snapshot(item('a'), item('b')),
+    );
+    expect(get(updated, 'a')).toMatchObject({
+      latestTool: 'Read',
+      progress: 'Checking sources',
+    });
+    const settled = applyChildWorkDelta(updated, settle('a', 'completed'));
+    const replay = childWorkSettleFromItem(get(settled, 'a')!);
+    expect(replay).toMatchObject({ identity: { latestTool: 'Read' } });
+    expect(get(fold(replay!), 'a')).toEqual(get(settled, 'a'));
+    expect(
+      applyChildWorkDelta(settled, {
+        kind: 'upsert',
+        item: item('a', { latestTool: 'Write' }),
+      }),
+    ).toBe(settled);
+    expect(get(applyChildWorkDelta(settled, snapshot()), 'b')).toMatchObject({
+      status: 'unresolved',
+      latestTool: 'Bash',
+    });
+  });
+
+  test.each(['', '   ', 'x'.repeat(CHILD_WORK_TOOL_NAME_MAX_CHARS + 1)])(
+    'an empty or overlong tool name is unreported (%j)',
+    (latestTool) => {
+      expect(
+        get(fold(snapshot(item('a', { latestTool }))), 'a'),
+      ).not.toHaveProperty('latestTool');
+    },
+  );
+
+  test('a tool name at the contract bound is retained', () => {
+    const latestTool = 'x'.repeat(CHILD_WORK_TOOL_NAME_MAX_CHARS);
+    expect(
+      get(fold(snapshot(item('a', { latestTool }))), 'a')?.latestTool,
+    ).toBe(latestTool);
   });
 
   test('a no-op delta returns the same reference', () => {

@@ -1,9 +1,22 @@
+import { ConnectionsProvider } from '@kontourai/station-connect';
+import type { PreviewData } from '../types';
 /** @vitest-environment jsdom */
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const browseMock = vi.fn();
+const extensionLoadStatus = vi.hoisted(() => ({
+  state: 'degraded',
+  failedPluginNames: [],
+  failure: 'remote-isolation',
+}));
+vi.mock('../../../core/PluginRegistry', () => ({
+  pluginRegistry: {
+    subscribe: () => () => {},
+    getLoadStatus: () => extensionLoadStatus,
+  },
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useFileSystemBrowseQuery: (path?: string) => browseMock(path),
@@ -31,42 +44,46 @@ function renderFolderPicker(
     removeConfirm: string;
     removalRetainsData: boolean;
     showFolderPicker: boolean;
+    previewData: PreviewData;
+    onConfirmInstall: () => void;
   }> = {},
 ) {
   return render(
-    <PluginModalStack
-      showInstallModal={false}
-      showFolderPicker={overrides.showFolderPicker ?? true}
-      previewData={null}
-      previewSkips={new Set()}
-      installPending={false}
-      previewPending={false}
-      installSource=""
-      installMessage={null}
-      message={null}
-      removeConfirm={overrides.removeConfirm ?? null}
-      removalRetainsData={overrides.removalRetainsData}
-      layoutAssignment={null}
-      projects={[]}
-      quickProjectName=""
-      selectedProjects={new Set()}
-      assigningLayout={false}
-      onChangeSource={vi.fn()}
-      onBrowse={vi.fn()}
-      onInstall={vi.fn()}
-      onCloseInstall={vi.fn()}
-      onSelectFolder={overrides.onSelectFolder ?? vi.fn()}
-      onCloseFolderPicker={overrides.onCloseFolderPicker ?? vi.fn()}
-      onClosePreview={vi.fn()}
-      onToggleSkip={vi.fn()}
-      onConfirmInstall={vi.fn()}
-      onCancelRemove={vi.fn()}
-      onConfirmRemove={vi.fn()}
-      onCloseLayoutAssignment={vi.fn()}
-      onToggleProject={vi.fn()}
-      onCreateProject={vi.fn()}
-      onAddToProjects={vi.fn()}
-    />,
+    <ConnectionsProvider>
+      <PluginModalStack
+        showInstallModal={false}
+        showFolderPicker={overrides.showFolderPicker ?? true}
+        previewData={overrides.previewData ?? null}
+        previewSkips={new Set()}
+        installPending={false}
+        previewPending={false}
+        installSource=""
+        installMessage={null}
+        message={null}
+        removeConfirm={overrides.removeConfirm ?? null}
+        removalRetainsData={overrides.removalRetainsData}
+        layoutAssignment={null}
+        projects={[]}
+        quickProjectName=""
+        selectedProjects={new Set()}
+        assigningLayout={false}
+        onChangeSource={vi.fn()}
+        onBrowse={vi.fn()}
+        onInstall={vi.fn()}
+        onCloseInstall={vi.fn()}
+        onSelectFolder={overrides.onSelectFolder ?? vi.fn()}
+        onCloseFolderPicker={overrides.onCloseFolderPicker ?? vi.fn()}
+        onClosePreview={vi.fn()}
+        onToggleSkip={vi.fn()}
+        onConfirmInstall={overrides.onConfirmInstall ?? vi.fn()}
+        onCancelRemove={vi.fn()}
+        onConfirmRemove={vi.fn()}
+        onCloseLayoutAssignment={vi.fn()}
+        onToggleProject={vi.fn()}
+        onCreateProject={vi.fn()}
+        onAddToProjects={vi.fn()}
+      />
+    </ConnectionsProvider>,
   );
 }
 
@@ -158,3 +175,57 @@ describe('PluginModalStack folder picker (plugin management)', () => {
     expect(classList.contains('plugins__message--error')).toBe(true);
   });
 });
+
+test.each([
+  {
+    name: 'prebuilt bundle',
+    hasBundle: true,
+    entrypoint: undefined,
+    reviewExpected: true,
+  },
+  {
+    name: 'source entrypoint',
+    hasBundle: false,
+    entrypoint: 'src/index.tsx',
+    reviewExpected: true,
+  },
+  {
+    name: 'built-in only',
+    hasBundle: false,
+    entrypoint: undefined,
+    reviewExpected: false,
+  },
+])(
+  'plugin management previews review client code only: $name',
+  ({ hasBundle, entrypoint, reviewExpected }) => {
+    const install = vi.fn();
+    renderFolderPicker({
+      showFolderPicker: false,
+      onConfirmInstall: install,
+      previewData: {
+        valid: true,
+        manifest: {
+          name: 'bundle-plugin',
+          version: '1.0.0',
+          ...(entrypoint ? { entrypoint } : {}),
+        },
+        hasBundle,
+        components: [],
+        conflicts: [],
+      },
+    });
+    const review = screen.queryByRole('button', { name: 'Review and enable' });
+    if (reviewExpected) {
+      if (!review) throw new Error('Client code access review missing');
+      fireEvent.click(review);
+      expect(
+        screen.getByRole('dialog', { name: /Allow extensions from/ }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      expect(install).not.toHaveBeenCalled();
+    } else expect(review).toBeNull();
+    expect(
+      screen.getByRole('dialog', { name: 'Install Preview' }),
+    ).toBeTruthy();
+  },
+);
