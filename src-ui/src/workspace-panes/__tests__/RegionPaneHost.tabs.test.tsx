@@ -369,6 +369,57 @@ test('closing a tab unplaces its surface; the region keeps its other pane', asyn
 });
 
 /**
+ * A close unmounts the pane, so the pane's OWN unsaved-changes guard is asked
+ * first (scoped to its surface, `UnsavedGuardOwnerContext`). Cancel leaves
+ * the arrangement, the selection and the focus exactly as they were; a guard
+ * registered for ANOTHER surface is not asked. Reverting the close to a bare
+ * `removePane` fails the first assertion block.
+ */
+test('closing a tab asks that pane’s own guard; Cancel changes nothing', async () => {
+  await renderJoined();
+  let answer: 'cancel' | 'continue' = 'cancel';
+  let asked = 0;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('dirty activity'),
+    (continueNavigation, cancel) => {
+      asked += 1;
+      if (answer === 'cancel') cancel?.();
+      else continueNavigation();
+    },
+    'activity',
+  );
+  let unrelatedAsked = 0;
+  const unregisterUnrelated = navigationStore.registerNavigationGuard(
+    Symbol('another pane'),
+    (continueNavigation) => {
+      unrelatedAsked += 1;
+      continueNavigation();
+    },
+    'workspace-agents',
+  );
+  try {
+    const close = within(shell()).getByLabelText('Close Activity');
+    close.focus();
+    const arrangement = structuredClone(currentModel().regions);
+    fireEvent.click(close);
+    expect(asked).toBe(1);
+    expect(currentModel().regions).toEqual(arrangement);
+    expect(document.activeElement).toBe(close);
+    expect(screen.queryByTestId('sessions-view')).not.toBeNull();
+
+    answer = 'continue';
+    fireEvent.click(within(shell()).getByLabelText('Close Activity'));
+    await waitFor(() =>
+      expect(currentModel().regions.bottom.panes).toEqual(['chat']),
+    );
+    expect(unrelatedAsked).toBe(0);
+  } finally {
+    unregister();
+    unregisterUnrelated();
+  }
+});
+
+/**
  * Closing Chat's tab is the one close with a navigation mirror: Chat leaves
  * a showing region, so the mirror reads the dock as closed (`dock` param
  * cleared), and a `focusSession`-style `setDockState(true)` — a change

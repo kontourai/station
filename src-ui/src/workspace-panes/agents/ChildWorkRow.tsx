@@ -1,6 +1,7 @@
 import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
+  useOrchestrationSessionActivityQuery,
   useOrchestrationSessionQuery,
   useStopProviderTaskMutation,
 } from '@kontourai/station-sdk';
@@ -10,13 +11,16 @@ import {
 } from '@kontourai/station-shared/usage-fold';
 import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
-import { AgentGlyph } from '../../components/icons/Glyph';
+import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
+import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
   childWorkUsageClauses,
   formatChildWorkElapsed,
+  latestChildTool,
 } from '../../utils/child-work-display';
+import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
@@ -51,8 +55,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
 }
 
 /**
- * A delegate's own accounting, read from its session only while the row is
- * open — a closed row polls nothing.
+ * Lifetime accounting is read only on expansion.
  */
 function DelegateUsage({
   threadId,
@@ -85,13 +88,42 @@ function DelegateUsage({
   );
 }
 
+function DelegateActivity({
+  threadId,
+  progress,
+}: {
+  threadId: string;
+  progress?: string;
+}) {
+  const activity = useOrchestrationSessionActivityQuery(threadId, undefined, {
+    staleTime: 0,
+    refetchInterval: 2_000,
+    retry: false,
+    cancelWhenInactive: true,
+  });
+  const tool = useMemo(
+    () =>
+      activity.data
+        ? latestChildTool(
+            activity.data.events.map(({ event }) => event),
+            threadId,
+            activity.data.latestTool,
+          )
+        : undefined,
+    [activity.data, threadId],
+  );
+  return <ChildWorkActivity tool={tool} progress={progress} />;
+}
+
 export function ChildWorkRow({
   row,
   now,
   showProvenance,
   onOpenSession,
+  agent,
 }: {
   row: ChildWorkRowModel;
+  agent?: SessionIconAgent;
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
@@ -130,7 +162,6 @@ export function ChildWorkRow({
   const meta = [
     kind,
     ...(elapsedMs !== undefined ? [formatChildWorkElapsed(elapsedMs)] : []),
-    ...childWorkUsageClauses(item.usage),
   ].join(' · ');
   // #3163: an engine subagent's OWN model, or the plain fact that its engine
   // did not report one. Never the parent's. A delegate is a session of its
@@ -140,7 +171,8 @@ export function ChildWorkRow({
   const summary = item.result?.summary;
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
-  const expandable = Boolean(summary) || isDelegate;
+  const usage = childWorkUsageClauses(item.usage);
+  const expandable = Boolean(summary) || isDelegate || usage.length > 0;
 
   const stop = () => {
     if (row.stop === 'delegate-interrupt')
@@ -169,8 +201,8 @@ export function ChildWorkRow({
         disabled={!expandable}
         onClick={() => expandable && setExpanded((current) => !current)}
       >
-        <span className="child-work-row__glyph" aria-hidden="true">
-          <AgentGlyph />
+        <span className="child-work-row__glyph">
+          <ChildWorkIdentity provider={row.provider} agent={agent} />
         </span>
         <span className="child-work-row__text">
           <strong className="child-work-row__title">{row.title}</strong>
@@ -186,9 +218,17 @@ export function ChildWorkRow({
               {model ? model.id : 'model not reported'}
             </span>
           )}
-          {running && item.progress && (
-            <span className="child-work-row__progress">{item.progress}</span>
-          )}
+          {running && isDelegate ? (
+            <DelegateActivity
+              threadId={item.childId}
+              progress={item.progress}
+            />
+          ) : running ? (
+            <ChildWorkActivity
+              tool={item.latestTool}
+              progress={item.progress}
+            />
+          ) : null}
           {showProvenance && (
             <span className="child-work-row__provenance">
               {provenanceText(row.provenance)}
@@ -216,6 +256,9 @@ export function ChildWorkRow({
               {sessionHandle ? ' Open the session for the full output.' : ''}
             </p>
           )}
+          {usage.length > 0 && (
+            <p className="child-work-row__usage">{usage.join(' · ')}</p>
+          )}
           {isDelegate && (
             <DelegateUsage threadId={item.childId} running={running} />
           )}
@@ -229,6 +272,7 @@ export function ChildWorkRow({
           {(sessionHandle || transcript) && (
             <Button
               size="sm"
+              className="tap-target"
               {...(sessionHandle
                 ? {}
                 : {
@@ -251,6 +295,7 @@ export function ChildWorkRow({
           {row.stop && (
             <Button
               size="sm"
+              className="tap-target"
               variant="danger-outline"
               pending={stopRequested}
               pendingLabel="Stopping…"

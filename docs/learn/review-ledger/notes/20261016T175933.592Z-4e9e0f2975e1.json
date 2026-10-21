@@ -1,0 +1,7 @@
+{
+  "revision": "ab4cbb6a69d404a81b8d3281fda4f059c457b263",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed prepared-intent kernel cut at ab4cbb6: reserved/prepare/atomic begin/guarded resume, private independent owner tokens, both fence revisions, opaque final-input binding, configured bound columns and additive schema v1 migration. EXECUTED 391 package tests and scoped Monument typecheck; atomic-begin and independent dedup-owner mutations went RED and exact restoration GREEN. Host body retention, authorization, service resume, invocation terminal attribution and hosted release remain NOT_VERIFIED and outside this cut.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts","packages/monument/src/commands.ts","packages/monument/src/decisions/turn-boundary.ts","packages/monument/src/records.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","packages/monument/src/testing/conformance.ts","packages/monument/src/decisions/turn-dedup.ts","packages/monument/src/index.ts","packages/monument/src/__tests__/sqlite-prepared-intent.test.ts","packages/monument/src/__tests__/participants.test.ts"]}
+  ]
+}

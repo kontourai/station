@@ -1734,6 +1734,45 @@ describe('orchestration-session-state', () => {
     expect(summary.cwd).toBe('/Users/me/dev/github/kontourai/station');
   });
 
+  test('room titles use the human message instead of the appended Task brief', () => {
+    const summary = buildOrchestrationSessionSummary({
+      answerability: OBSERVATION,
+      persisted: {
+        provider: 'codex',
+        threadId: 'room-run',
+        status: 'ready',
+        createdAt: '2026-10-15T00:00:00.000Z',
+        updatedAt: '2026-10-15T00:00:00.000Z',
+      },
+      events: [
+        {
+          provider: 'codex',
+          threadId: 'room-run',
+          eventId: 'start',
+          createdAt: '2026-10-15T00:00:00.000Z',
+          method: 'session.started',
+          sessionId: 'room-run',
+          metadata: {
+            taskId: 'room-run',
+            parentTaskId: 'durable-task',
+            delegationTitle: 'How do preferences persist?',
+          },
+        },
+        {
+          provider: 'codex',
+          threadId: 'room-run',
+          eventId: 'turn',
+          createdAt: '2026-10-15T00:00:01.000Z',
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt:
+            'How do preferences persist?\n\n---\n# Task brief: Private planning context',
+        },
+      ],
+    });
+    expect(summary.displayTitle).toBe('How do preferences persist?');
+  });
+
   test('skips timezone-only prompts, bounds long titles, and remains compatible with promptless history', () => {
     const base = {
       provider: 'codex' as const,

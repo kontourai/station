@@ -20,6 +20,8 @@ import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
+import { navigationStore } from '../contexts/navigation-store';
+import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
@@ -329,6 +331,21 @@ const loadRegionBuiltinPane = () =>
   }));
 
 /**
+ * A plugin's own pane a related open placed (`plugin-pane:`), behind its own
+ * lazy boundary: the plugin render graph joins the host only when a region
+ * holds one.
+ */
+const loadRegionPluginPane = () =>
+  import('./RegionPluginPane').then((module) => ({
+    default: module.RegionPluginPane,
+  }));
+
+const loadRegionActivityReviewPane = () =>
+  import('./RegionActivityReviewPane').then((module) => ({
+    default: module.RegionActivityReviewPane,
+  }));
+
+/**
  * What a region shows for a selected pane its dock cannot supply (#2047 D6:
  * a coding pane while the dock has no project). The tab and the record keep
  * the surface; only the rendering waits. Same scroll container as every
@@ -512,6 +529,14 @@ export function RegionPaneHost({
   chatPaneFailureContext?: () => WorkspacePaneFailureContext | undefined;
 }) {
   const model = useRegionModelOptional();
+  const relations = usePaneRelations();
+  const layerRelation = model?.phoneLayer
+    ? relations.relationOf(model.phoneLayer.surfaceId)
+    : undefined;
+  const layerBackLabel =
+    layerRelation && layerRelation.stationId === relations.stationId
+      ? layerRelation.opener.label
+      : 'Chat';
   const region = regionId && model ? model.regions[regionId] : undefined;
   const regionPanes = region?.panes;
   // The panes with a built-in pane entry, in the region's tab order; an id
@@ -675,20 +700,39 @@ export function RegionPaneHost({
     },
     [model, regionId],
   );
-  const closeTab = useCallback(
-    (surfaceId: string) => {
-      if (regionId && model) model.removePane(regionId, surfaceId);
+  // A close unmounts the pane, so the pane's OWN unsaved-changes guards are
+  // asked first (scoped by `UnsavedGuardOwnerContext`, `ownedByPane`): Cancel
+  // leaves the arrangement, the selection, the relation and the pane's state
+  // exactly as they were. A related pane's state, fence and relation go with
+  // it; nothing else can read them once it is gone. The answer can arrive
+  // after the pane moved (a phone fold ending its layer puts it back in its
+  // own region): only a pane this region still held is closed, and only a
+  // closed pane's state is forgotten — a moved pane keeps everything.
+  const closePane = useCallback(
+    (surfaceId: string, forgetState: boolean) => {
+      if (!regionId || !model) return;
+      navigationStore.runNavigationGuards(
+        () => {
+          if (!model.removePane(regionId, surfaceId)) return;
+          const related = relations.relationOf(surfaceId) !== undefined;
+          if (forgetState || related) forgetRegionPaneState(surfaceId);
+          if (related) void relations.forget(surfaceId);
+        },
+        undefined,
+        { owner: surfaceId },
+      );
     },
-    [model, regionId],
+    [model, regionId, relations],
+  );
+  const closeTab = useCallback(
+    (surfaceId: string) => closePane(surfaceId, false),
+    [closePane],
   );
   // "Remove this pane" (#90 D9): the tab's close, plus the per-device state
   // the pane rendered from, which nothing can read once it is gone.
   const removePane = useCallback(
-    (surfaceId: string) => {
-      closeTab(surfaceId);
-      forgetRegionPaneState(surfaceId);
-    },
-    [closeTab],
+    (surfaceId: string) => closePane(surfaceId, true),
+    [closePane],
   );
   const reorderTab = useCallback(
     (surfaceId: string, toIndex: number) => {
@@ -776,9 +820,12 @@ export function RegionPaneHost({
             trailingSlotRef={setTrailingSlot}
             onBackToChat={
               model?.phoneLayer && model.phoneLayer.region === regionId
-                ? model.closePhoneLayer
+                ? // Called, not passed: the click event must not become
+                  // the layer close's continuation.
+                  () => model.closePhoneLayer()
                 : undefined
             }
+            backLabel={layerBackLabel}
           />
           {chooserAnchor && chooserRegion ? (
             <RegionEmptyChooser
@@ -850,7 +897,15 @@ export function RegionPaneHost({
                     return ownedByPane(
                       instance,
                       <LazyBoundary
-                        load={loadRegionBuiltinPane}
+                        load={
+                          String(instance.instanceId).startsWith('plugin-pane:')
+                            ? loadRegionPluginPane
+                            : String(instance.instanceId).startsWith(
+                                  'activity-review:',
+                                )
+                              ? loadRegionActivityReviewPane
+                              : loadRegionBuiltinPane
+                        }
                         componentProps={{ instance }}
                         pending={
                           <SkeletonBlock count={3} label="Loading pane" />

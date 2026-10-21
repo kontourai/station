@@ -5,7 +5,8 @@ same topics in a navigation rail. Both stay within Settings. General is the
 default. Customize opens management destinations from a separate sidebar-footer
 button beside Schedule and Settings, or from Sidebar utilities when the
 workspace map is collapsed. Route changes still use the
-unsaved-changes guard.
+unsaved-changes guard. When a dialog is open, section navigation updates its
+selection without scrolling or focusing the page behind that dialog.
 
 The Settings catalog assigns stable ids and deep links to its controls. A
 link opens the owning section and attempts to reveal the control. Platform
@@ -70,11 +71,26 @@ Moves so far:
   controls that previously had no Settings row at all
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
+- Color themes: the theme and accent controls moved to the Appearance page
+  (`/appearance`, listed in Customize). The `theme` and `accent-color` rows
+  stay in `appearance` with their ids, as links to that page (Theme also keeps
+  the light/dark toggle), so `highlight=theme` and `highlight=accent-color`
+  still reveal a row and Settings search still finds them.
 - #2182: `agent-defaults` is now `agent-runs`, and `station-config` is gone
   entirely — its sixteen controls moved to `host-runtime`, `sources` (new),
   `telemetry` (new), `permissions` (new), `agent-runs` and `chat`. The retired
   `/developer/config` path now redirects to `/settings` with no `view` at all,
   because a redirect cannot choose one of six.
+
+### Developer previews
+
+Advanced → Developer tools reveals three independent, default-off device opt-ins:
+`experimental-flow`, `experimental-readiness`, and `experimental-trust`.
+`surface-trust` is visible only with the Trust preview enabled. Search and the
+command palette omit hidden preview settings. A deep link to an opted-out
+control announces that the tool is off rather than waiting for a missing row.
+The registry remains a build-wide inventory; its presence does not mean a row
+is available on this device.
 
 ### Platform and rendering limits
 
@@ -105,7 +121,7 @@ Read `GET /config/app` for values.
       {
         "id": "default-max-turns",
         "label": "Default max turns",
-        "help": "Station stops an agent run once it has taken this many steps.",
+        "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
         "scope": "station",
         "section": "agent-runs",
         "route": "/settings?view=agent-runs&highlight=default-max-turns",

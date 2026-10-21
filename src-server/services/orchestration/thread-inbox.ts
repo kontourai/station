@@ -89,9 +89,12 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { turnIdentityAnchorForEvents } from './session-lifecycle-service.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
+import type { SessionTurnBoundaryAuthority } from './session-turn-boundary.js';
 import {
   evaluateSessionWait,
+  type SessionTurnWaitPorts,
   type SessionWaitFoldEvent,
 } from './session-turn-wait.js';
 import type { SqliteDatabase } from './sqlite-database.js';
@@ -480,6 +483,10 @@ export interface ThreadInboxDeliveryPorts {
   headSequence(threadId: string): number;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  /** Fresh input placement only; never requested-work acknowledgement. */
+  hasPossibleEffect?: SessionTurnBoundaryAuthority['hasPossibleEffect'];
+  readInputlessTurnDisposition?: SessionTurnWaitPorts['readInputlessTurnDisposition'];
+  readInvocationTerminal?: SessionTurnWaitPorts['readInvocationTerminal'];
   /** The conversation a Session belongs to (itself when it has none). */
   conversationOf(threadId: string): string;
   /** A conversation's current execution Session. */
@@ -926,16 +933,29 @@ export class ThreadInboxDelivery {
   }
 
   private isBusy(threadId: string): boolean {
-    return !evaluateSessionWait(
+    if (this.ports.coordinatorBusy(threadId)) return true;
+    const durable = this.ports.hasPossibleEffect?.(threadId);
+    if (durable?.kind !== 'available' || durable.active) return true;
+    const events = this.ports.foldEvents(threadId);
+    const idle = evaluateSessionWait(
       {
-        foldEvents: (thread) => this.ports.foldEvents(thread),
+        foldEvents: () => events,
         headSequence: (thread) => this.ports.headSequence(thread),
         coordinatorBusy: (thread) => this.ports.coordinatorBusy(thread),
+        readInvocationTerminal: this.ports.readInvocationTerminal,
+        readInputlessTurnDisposition: this.ports.readInputlessTurnDisposition,
       },
       threadId,
       'idle',
       0,
-    ).satisfied;
+    );
+    if (idle.satisfied) return false;
+    const anchor = turnIdentityAnchorForEvents(
+      events.map(({ event }) => event),
+    );
+    // Guarded recovery may dispose a captured effect without an ordinary ACK.
+    // A later provider/legacy start remains busy under the shared anchor policy.
+    return typeof anchor !== 'object' || anchor.turnId !== idle.view.openTurnId;
   }
 
   /**

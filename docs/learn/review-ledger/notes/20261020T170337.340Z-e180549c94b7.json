@@ -1,0 +1,7 @@
+{
+  "revision": "9f31b19022424aca4fd966533aa9c675c6be8a18",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Independent delta review on transplanted 9f31b190224: file preview explicit removal and capacity reclaim now retain the Station fence unless state absence is confirmed by removeFencedRecord. The context's per-occurrence fence and verified Station reader boundary remain accurate; no prose change. The 20-file focused set passed 266 tests including stuck-storage reclamation. No physical-device or SDK behavior claimed.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/workspace-panes/filePreviewPaneStateStorage.ts"]}
+  ]
+}

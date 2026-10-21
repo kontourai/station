@@ -105,7 +105,22 @@ export const gitPushSchema = z.object({
 
 // Telemetry
 export const telemetryEventsSchema = z.object({
-  events: z.array(z.unknown()),
+  events: z
+    .array(
+      z
+        .object({
+          event: z.string().min(1).max(48),
+          attributes: z.record(
+            z.string().max(48),
+            z.union([z.string().max(48), z.number().int().min(0).max(65535)]),
+          ),
+          plugin: z.string().max(128).optional(),
+          timestamp: z.number().finite().optional(),
+        })
+        .strict(),
+    )
+    .min(1)
+    .max(100),
 });
 
 // Voice

@@ -77,6 +77,7 @@ function toChatBackgroundTask(item: ChildWorkItem): ChatBackgroundTask {
       : {}),
     // #2457: the live status line, for the sheet's card detail.
     ...(item.progress ? { progress: item.progress } : {}),
+    ...(item.latestTool ? { latestTool: item.latestTool } : {}),
   };
 }
 

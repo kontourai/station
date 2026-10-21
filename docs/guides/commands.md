@@ -28,7 +28,7 @@ See [the ACP guide](acp.md) for engine discovery and its autocomplete limits.
 
 ## Example Agent Configuration
 
-The `commands` field belongs to the [Agent specification](agents.md).
+The `commands` field belongs to the [Agent specification](agent-configuration.md).
 It is persisted with the Agent under `<STATION_HOME>/agents/<id>/agent.json`
 and returned in the enriched Agent projection. Add the following field to an
 existing valid specification; this is not a complete Agent file:
@@ -152,7 +152,7 @@ transaction here.
   autocomplete filters to commands marked available.
 - Configuration watching can refresh Agent definitions. It is not a guarantee
   that a running engine reloads every setting or that a file edit is immediately
-  visible in every client. Follow the [Agent lifecycle](agents.md).
+  visible in every client. Follow the [Agent lifecycle](agent-configuration.md).
 - Prompt substitution is not shell execution. Tools the engine later chooses
   still follow their own authority and approval rules.
 

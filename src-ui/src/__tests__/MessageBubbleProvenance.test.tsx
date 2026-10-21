@@ -8,7 +8,7 @@
  *
  * #2211: the card no longer renders inline in the turn footer. The row keeps
  * the transcript focused on the answer: the footer is icon-copy + rating +
- * overflow, and "Turn provenance" opens the SAME card in a dialog.
+ * overflow, and "Answer details" opens the SAME card in a dialog.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -124,7 +124,7 @@ async function openProvenanceDialog() {
   fireEvent.click(
     await screen.findByRole('button', { name: 'More answer actions' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
   await screen.findByLabelText(/^Answer provenance/);
 }
 
@@ -209,7 +209,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(
       await screen.findByRole(
         'menuitem',
-        { name: 'Add this answer to a Task (turn turn-7)' },
+        { name: 'Add to Task: answer' },
         // The attach affordance mounts beside a lazy message chunk; under
         // full-corpus worker load its dynamic import can exceed findByRole's
         // 1s default, redding this file corpus-only while isolation stays
@@ -219,12 +219,12 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
 
     // …and choosing provenance swaps the menu for the dialog that hosts the
     // card, share affordance included.
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     await screen.findByLabelText('Answer provenance for turn turn-7');
     expect(
       await screen.findByRole('button', {
@@ -300,10 +300,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
+      screen.queryByRole('menuitem', { name: /Add to Task: answer/ }),
     ).toBeNull();
   });
 
@@ -337,7 +337,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     );
     expect(
       await screen.findByRole('menuitem', {
-        name: 'Add this answer to a Task (turn turn-without-provenance)',
+        name: 'Add to Task: answer',
       }),
     ).toBeTruthy();
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
@@ -368,10 +368,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
+      screen.queryByRole('menuitem', { name: /Add to Task: answer/ }),
     ).toBeNull();
   });
 

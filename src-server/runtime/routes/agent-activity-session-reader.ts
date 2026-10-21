@@ -29,6 +29,8 @@ import { pairedDevicePrincipal } from '../bootstrap/orchestration-request-princi
 
 export interface AgentActivitySessionReaderDeps {
   listDevices(): PairedDevice[];
+  /** Mint-time home-possession (`DevicePairingService.deviceLocality`). */
+  deviceLocality(deviceId: string): 'home-possession' | undefined;
   listSessionReadModel(
     authority: SessionReadAuthority,
   ): Promise<OrchestrationSessionSummary[]>;
@@ -47,7 +49,10 @@ export function createAgentActivitySessionReader(
       .listDevices()
       .find((candidate) => candidate.id === deviceId);
     if (!device || !canReadAgentActivity(device)) return null;
-    const principal = pairedDevicePrincipal(device);
+    const principal = pairedDevicePrincipal(
+      device,
+      deps.deviceLocality(device.id),
+    );
     return {
       principalId: principal.id,
       listSessions: async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "47bc787d4b2585e1c5103eec0f2fdae90338f177",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#1706 follow-up: extended the derived-completeness paragraph to say the required Source verification policy status stays success with a provisional description for a ci-fast/test-full deferral; checked against source-verification-policy.mjs and the ci.yml marker step.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/actionlint-gate.mjs","scripts/fast-checks-shard.mjs"]}
+  ]
+}

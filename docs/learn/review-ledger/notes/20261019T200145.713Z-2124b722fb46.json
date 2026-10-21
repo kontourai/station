@@ -1,0 +1,15 @@
+{
+  "revision": "a07ff172682475ba6ec4b978c228d76b70e1eb2d",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Edited this round. Tap paragraph: sw.js now resolves the payload URL against its own origin and opens /notifications for anything off it (service-worker-notificationclick.test.ts runs sw.js in a vm with hostile URLs); the server admits links only when their normalized path stays on Station (isRelativeStationPath; agent-notification-gate.test.ts sends hostile notify_user links through composeWebPushPayload and asserts the origin) and withOpenedNotification rebuilds on Station or falls back to the inbox (notification-deep-link.test.ts). Not executed: a physical browser tap.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/notification-deep-link.ts","src-ui/public/sw.js"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Its Web Push paragraph points to the guide and records that the channel race was exercised with synthetic state; this round's guide edit (same-origin tap links) does not change that claim.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Edited: envelope path targets must also normalize onto Station (isRelativeStationPath now resolves the path against a fixed origin and refuses //host after dot-segment collapse, encoded or not). Checked against notification-envelope.ts parseTarget, which returns a malformed envelope for such a target, matching the \"malformed envelopes return undefined\" sentence above it.","inputs":["docs/reference/shared.md","packages/shared/src/notification-envelope.ts"]},
+
+    {"path":"docs/reference/config.md","note":"builtin-scheduler-execution.ts change: the job-failure notification link now percent-encodes the job name (/schedule?job=<encoded>). This document cites that file only for scheduler telemetry keys (job_name, job_run_id), which are unchanged.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"builtin-scheduler-execution.ts change: the job-failure notification link percent-encodes the job name. The Scheduled jobs and notifications section describes scheduling and provider-based notifications in general and makes no claim about the link text; unaffected.","inputs":["docs/reference/station-docs.md","src-server/services/scheduling/builtin-scheduler-execution.ts"]}
+  ]
+}

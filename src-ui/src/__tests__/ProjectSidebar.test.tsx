@@ -18,6 +18,9 @@ import { openChatsStore } from '../contexts/open-chats-store';
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
+}));
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,

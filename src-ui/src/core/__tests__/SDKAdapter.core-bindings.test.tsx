@@ -14,6 +14,12 @@ vi.mock('@kontourai/station-sdk', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk')>()),
   submitToolApproval: approval,
 }));
+vi.mock('@kontourai/station-sdk/client', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk/client')>()),
+  mountPluginTelemetryPane: async () => {
+    throw new Error('No telemetry publisher in this core-binding fixture');
+  },
+}));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'https://station.test' }),
 }));

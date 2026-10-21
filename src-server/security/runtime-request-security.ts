@@ -466,6 +466,12 @@ export interface RuntimeHttpSecurityOptions {
     import('./native-device-request-authority.js').NativeDeviceRequestAuthority,
     'admit' | 'resolveCurrent'
   >;
+  /**
+   * Telemetry producer tokens, admitted only on the exact ingest leaves
+   * (`isTelemetryIngestRoute`). Absent means a producer token authenticates
+   * nothing.
+   */
+  telemetryProducers?: import('../services/telemetry-producers/telemetry-producer-store.js').TelemetryProducerAuthority;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {

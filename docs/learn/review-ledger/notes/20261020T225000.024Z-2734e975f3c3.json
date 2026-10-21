@@ -1,0 +1,7 @@
+{
+  "revision": "0abb78d7e904361bc4afb6fc03deea1e75a0b721",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed c8ff5445e22 mapper routing against the pre-tool blocking/grant boundary: every assistant frame now reaches the child-work metadata observer, but only top-level SendMessage recipient evidence records a pending resume. The existing pre-tool hooks, canUseTool decisions, person-directed exceptions, argument digests and tool emission path are unchanged. This is post-observation attribution, not new interception or grant authority. Existing bounded capability and historical experiment language remains accurate; no live experiments rerun.","inputs":["docs/conformance/tool-policy-delivery.md","pnpm-lock.yaml#/packages","src-server/providers/adapters/claude-adapter-events.ts"]}
+  ]
+}

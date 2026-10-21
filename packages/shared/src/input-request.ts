@@ -919,10 +919,12 @@ export function inputRequestAnswerTexts(
  * #3390: the decision body for a tool approval, derived from the approval
  * request by Station — never read from a payload. `sessionGrantLabel` is
  * what a session answer would grant for this request
- * (`toolRequestGrantLabel`), or undefined where none is offered.
+ * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
+ * server label is supplied only after the adapter authenticated a Station browser call.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
+  serverGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
@@ -938,6 +940,17 @@ export function approvalDecisionBody(
             },
           ]
         : []),
+      ...(serverGrantLabel
+        ? [
+            {
+              id: 'allow-server-session',
+              label: serverGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'server' as const,
+            },
+          ]
+        : []),
       { id: 'deny', label: 'Deny', effect: 'deny', scope: 'once' },
     ],
   };
@@ -945,8 +958,8 @@ export function approvalDecisionBody(
 
 /**
  * The respond decision an option sends. The approval's authority path reads
- * only this, so every surface that answers an approval sends the same
- * decision for the same option.
+ * this effect plus the separate `sessionGrantScope` on the option, so every
+ * surface forwards both the decision and its authorized scope.
  */
 export function decisionOptionResponse(
   option: InputRequestDecisionOption,

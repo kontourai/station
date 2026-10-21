@@ -121,5 +121,9 @@ export function useUnsavedGuard(dirty: boolean) {
     [showDiscard, onConfirm, onCancel],
   );
 
-  return { guard, DiscardModal };
+  return {
+    guard,
+    DiscardModal,
+    navigationGuard: { identity: navigationGuardId.current, owner },
+  };
 }

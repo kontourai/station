@@ -211,6 +211,16 @@ let serviceProgressBody: () => unknown = () => {
   throw new Error('unexpected service-update progress read');
 };
 let transportMethods: string[] = [];
+/** #3851: the server's own update state and running turns, and POST bodies. */
+let serverStateBody: () => unknown = () => ({ supported: false });
+let runningTurnsBody: () => unknown = () => ({ turns: [], hiddenCount: 0 });
+let postBodies: unknown[] = [];
+
+/** A GET or POST of the check/apply route itself, whatever its query. */
+function isCoreUpdateCall(call: string): boolean {
+  const url = call.slice(call.indexOf(' ') + 1);
+  return new URL(url).pathname.endsWith('/api/system/core-update');
+}
 
 function identityResponseFor(over: Record<string, unknown> = {}) {
   return {
@@ -402,10 +412,19 @@ describe('ConnectedServerUpdates', () => {
         if (url.includes('/api/system/core-update/service-update')) {
           return Response.json(serviceProgressBody());
         }
+        if (url.includes('/api/system/core-update/state')) {
+          return Response.json(serverStateBody());
+        }
+        if (url.includes('/api/system/core-update/running-turns')) {
+          return Response.json(runningTurnsBody());
+        }
         if (
           url.includes('/api/system/core-update') &&
           init?.method === 'POST'
         ) {
+          postBodies.push(
+            typeof init.body === 'string' ? JSON.parse(init.body) : null,
+          );
           return Response.json(applyBody(), { status: 202 });
         }
         if (url.includes('/api/system/core-update')) {
@@ -447,6 +466,9 @@ describe('ConnectedServerUpdates', () => {
     native.bundledStatus = null;
     vi.unstubAllGlobals();
     transportMethods = [];
+    postBodies = [];
+    serverStateBody = () => ({ supported: false });
+    runningTurnsBody = () => ({ turns: [], hiddenCount: 0 });
     applyBody = () => {
       throw new Error('unexpected core-update POST');
     };
@@ -488,7 +510,7 @@ describe('ConnectedServerUpdates', () => {
       });
 
     async function renderArchive(coreUpdate: () => unknown) {
-      await renderHarness({
+      const rendered = await renderHarness({
         store: PAIRED_STORE,
         profileOverrides: { supervisesBundledServer: false },
         identity: REMOTE_IDENTITY,
@@ -496,9 +518,10 @@ describe('ConnectedServerUpdates', () => {
       });
       await waitConnected();
       await waitIdentitySettled();
+      return rendered;
     }
 
-    it('applies through the service and follows the request to its rollback outcome', async () => {
+    it('on a server older than #3851 (no stagedUpdates), applies in one click and follows the request to its rollback outcome', async () => {
       await renderArchive(archiveServiceBody());
       expect(
         await screen.findByText(
@@ -552,13 +575,168 @@ describe('ConnectedServerUpdates', () => {
         { timeout: 5_000 },
       );
       expect(rolledBack.className).toContain('settings__update-msg--warning');
-      // The outcome re-checked the server rather than trusting the POST.
+      // The outcome re-checked the server rather than trusting the POST:
+      // the first check, the POST, and the re-check (the check now asks
+      // with `?staged=1`, so it is matched by path).
+      await waitFor(() =>
+        expect(
+          transportMethods.filter(isCoreUpdateCall).length,
+        ).toBeGreaterThanOrEqual(3),
+      );
+      expect(
+        transportMethods.filter(
+          (call) => call.startsWith('GET ') && isCoreUpdateCall(call),
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+    });
+
+    it('on a server with stagedUpdates, downloads, restarts only once confirmed, and follows the restart to its rollback outcome (#3851)', async () => {
+      const state = (progress: Record<string, unknown>) => () => ({
+        supported: true,
+        currentVersion: '0.8.0-preview.1',
+        availability: {
+          checkedAt: '2026-09-27T12:00:00.000Z',
+          releaseCheck: 'verified',
+          latestVersion: '0.8.0-preview.2',
+          updateAvailable: true,
+          availableSince: '2026-09-27T12:00:00.000Z',
+        },
+        progress,
+        downloadPolicy: 'never',
+        autoDownloadAt: null,
+        applyWhenIdle: null,
+      });
+      serverStateBody = state({ state: 'idle' });
+      const { queryClient } = await renderArchive(
+        archiveServiceBody({ stagedUpdates: true }),
+      );
+      // Download, never the one-click update.
+      const download = await screen.findByRole('button', {
+        name: 'Download 0.8.0-preview.2',
+      });
+      expect(
+        screen.queryByRole('button', { name: /Update server to/ }),
+      ).toBeNull();
+      applyBody = () => ({
+        success: true,
+        serviceUpdate: { requestId: 'stage-request', intent: 'stage' },
+      });
+      serverStateBody = state({
+        state: 'staging',
+        requestId: 'stage-request',
+        intent: 'stage',
+        stagePhase: 'downloading',
+        downloadedBytes: 25 * 1024 * 1024,
+        totalBytes: 100 * 1024 * 1024,
+      });
+      fireEvent.click(download);
+      expect(
+        await screen.findByText(
+          'Downloading the release: 25.0 of 100.0 MB (25%)…',
+        ),
+      ).toBeTruthy();
+      expect(postBodies).toEqual([{ action: 'stage' }]);
+
+      // The server now reports `staged` (it pushes it as
+      // server-update:changed; the push itself is useServerEvents' test):
+      // the card's state query reads it.
+      serverStateBody = state({
+        state: 'staged',
+        requestId: 'stage-request',
+        version: '0.8.0-preview.2',
+        stagedAt: '2026-09-27T12:05:00.000Z',
+      });
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: ['server-update-state'],
+        });
+      });
+      runningTurnsBody = () => ({
+        turns: [
+          {
+            sessionId: 's-1',
+            conversationId: 'c-1',
+            title: 'Fix the build',
+            engine: 'codex',
+            startedAt: null,
+          },
+        ],
+        hiddenCount: 0,
+      });
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Restart server to update to 0.8.0-preview.2',
+        }),
+      );
+      // Opening the confirmation restarts nothing; it names the turn.
+      expect(await screen.findByText('Fix the build (codex)')).toBeTruthy();
+      expect(postBodies).toHaveLength(1);
+
+      applyBody = () => ({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID, intent: 'apply' },
+      });
+      serviceProgressBody = () => ({
+        state: 'updating',
+        requestId: REQUEST_ID,
+        phase: 'trial',
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        attempts: 1,
+      });
+      const checksBeforeRestart = coreUpdateAttempts(queryClient);
+      fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+      await waitFor(() =>
+        expect(postBodies.at(-1)).toEqual({
+          action: 'apply',
+          version: '0.8.0-preview.2',
+        }),
+      );
+      expect(
+        await screen.findByText(/Trying Station 0\.8\.0-preview\.2/),
+      ).toBeTruthy();
+
+      serviceProgressBody = () => ({
+        state: 'rolled-back',
+        requestId: REQUEST_ID,
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        reason: 'candidate-exited:1',
+        finishedAt: '2026-09-27T12:10:00.000Z',
+      });
+      coreUpdateBody = archiveServiceBody({
+        stagedUpdates: true,
+        serviceUpdate: serviceProgressBody(),
+      });
+      serverStateBody = state(serviceProgressBody() as Record<string, unknown>);
+      const rolledBack = await screen.findByText(
+        /The update to 0\.8\.0-preview\.2 was rolled back: the new version exited \(1\)\. The server runs 0\.8\.0-preview\.1/,
+        {},
+        { timeout: 5_000 },
+      );
+      expect(rolledBack.className).toContain('settings__update-msg--warning');
+      // It stays the rollback once the card stops following the restart:
+      // the server's state is read again, not the cached pre-restart one.
       await waitFor(() =>
         expect(
           transportMethods.filter((call) =>
-            call.endsWith('/api/system/core-update'),
+            call.includes('/api/system/core-update/state'),
           ).length,
         ).toBeGreaterThanOrEqual(3),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        screen.getByText(/was rolled back: the new version exited \(1\)/)
+          .className,
+      ).toContain('settings__update-msg--warning');
+      expect(screen.queryByText(/is downloaded and verified/)).toBeNull();
+      // The outcome re-checked the server rather than trusting the POST:
+      // counted at the query (see coreUpdateAttempts), since this harness
+      // does not record every native request path.
+      await waitFor(() =>
+        expect(coreUpdateAttempts(queryClient)).toBeGreaterThan(
+          checksBeforeRestart,
+        ),
       );
     });
 

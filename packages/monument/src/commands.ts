@@ -2,9 +2,14 @@ import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
   InboxEntryKind,
   InboxEntryRecord,
+  InvocationTerminalFact,
+  PreparedDedupSnapshot,
+  PreparedTurnIntent,
+  PreparedTurnSettlement,
   RequestKeyId,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
+  TurnBoundarySnapshot,
   TurnBoundaryState,
   TurnDedupRecord,
 } from './records.js';
@@ -36,6 +41,14 @@ export type TurnDedupClaimResult =
   | { readonly kind: 'claimed'; readonly reclaimed: boolean }
   | { readonly kind: 'resolved'; readonly value: string }
   | { readonly kind: 'contended' }
+  /** Retained input needs explicit guarded resume, never an ordinary claim. */
+  | { readonly kind: 'prepared'; readonly invocationId: string }
+  | {
+      readonly kind: 'settled';
+      readonly disposition: PreparedTurnSettlement['disposition'];
+      readonly invocationId: string;
+      readonly settlementId: string;
+    }
   /** The dead owner may have started the effect. Never replay it. */
   | { readonly kind: 'indeterminate' }
   /**
@@ -105,7 +118,7 @@ export interface TurnBoundaryCreateCommand {
   readonly type: 'turnBoundary.create';
   readonly boundaryId: string;
   readonly threadId: string;
-  readonly state: 'lifecycle' | 'prepared';
+  readonly state: 'lifecycle' | 'reserved' | 'prepared';
   readonly purpose: TurnBoundaryPurpose;
   readonly owner: OwnerIdentity;
   readonly now: string;
@@ -113,6 +126,90 @@ export interface TurnBoundaryCreateCommand {
 export type TurnBoundaryCreateResult =
   | { readonly kind: 'applied' }
   | { readonly kind: 'busy' };
+
+export interface TurnBoundaryPrepareCommand {
+  readonly type: 'turnBoundary.prepare';
+  readonly boundaryId: string;
+  readonly ownerId: string;
+  readonly intent: PreparedTurnIntent;
+  /** The linked claim's private token, independent of the boundary token. */
+  readonly dedupOwnerId?: string;
+  readonly now: string;
+}
+export type TurnBoundaryPrepareResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'stale' };
+
+export interface TurnBoundaryBeginInvocationCommand {
+  readonly type: 'turnBoundary.beginInvocation';
+  readonly boundaryId: string;
+  readonly ownerId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly dedupOwnerId?: string;
+  readonly now: string;
+}
+/** An applied retry acknowledges the same begin; it never authorizes a second effect. */
+export type TurnBoundaryBeginInvocationResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
+
+export interface TurnBoundaryResumePreparedCommand {
+  readonly type: 'turnBoundary.resumePrepared';
+  readonly boundaryId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly observed: Omit<TurnBoundaryReconcileObservation, 'boundaryId'>;
+  readonly owner: OwnerIdentity;
+  readonly dedup?: {
+    readonly previousOwner: OwnerIdentity;
+    readonly createdAt: number;
+    readonly updatedAt: string;
+    readonly owner: OwnerIdentity;
+  };
+  readonly now: string;
+}
+export type TurnBoundaryResumePreparedResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
+
+export interface PreparedSettlementInput {
+  readonly boundaryId: string;
+  readonly intent: PreparedTurnIntent;
+  readonly boundary: TurnBoundarySnapshot;
+  readonly dedup?: PreparedDedupSnapshot;
+  readonly settlementId: string;
+  readonly now: string;
+}
+
+/** Explicit host-authorized cancellation of a never-begun prepared intent. */
+export interface TurnBoundaryCancelPreparedCommand
+  extends PreparedSettlementInput {
+  readonly type: 'turnBoundary.cancelPrepared';
+}
+
+/** The host asserts a definitive refusal; errors/timeouts alone never imply it. */
+export interface TurnBoundaryRecordDefinitiveRefusalCommand
+  extends PreparedSettlementInput {
+  readonly type: 'turnBoundary.recordDefinitiveRefusal';
+}
+
+export type PreparedSettlementResult =
+  | { readonly kind: 'applied' }
+  | { readonly kind: 'refused' };
+
+/** Latched owned acceptance; neither acknowledgement authorizes another effect. */
+export interface TurnBoundaryAcceptInvocationCommand {
+  readonly type: 'turnBoundary.acceptInvocation';
+  readonly expected: TurnBoundaryRecord;
+  readonly expectedDedup?: TurnDedupRecord;
+  readonly providerTurnId: string;
+  readonly now: string;
+}
+export type TurnBoundaryAcceptInvocationResult =
+  | { readonly kind: 'accepted' }
+  | { readonly kind: 'terminal'; readonly terminal: InvocationTerminalFact }
+  | { readonly kind: 'ambiguous' }
+  | { readonly kind: 'stale' };
 
 export interface TurnBoundaryTransitionCommand {
   readonly type: 'turnBoundary.transition';
@@ -158,6 +255,7 @@ export interface TurnBoundaryRecordAcceptedCommand {
 
 export interface TurnBoundaryObserveTerminalCommand {
   readonly type: 'turnBoundary.observeTerminal';
+  readonly invocationId?: string;
   readonly threadId: string;
   readonly providerTurnId?: string;
   /** A session-level terminal retires every turn row on the thread. */
@@ -223,6 +321,8 @@ export type TurnBoundaryReconcileResult = {
    * rows (unchanged). The caller retires each once it has reported it.
    */
   readonly interrupted: readonly TurnBoundaryRecord[];
+  /** Retained candidates, not permission to invoke; resume checks both fences. */
+  readonly resumable: readonly TurnBoundaryRecord[];
 };
 
 export interface TurnBoundaryForgetThreadCommand {
@@ -432,6 +532,12 @@ export interface KernelResults {
   'turnDedup.read': TurnDedupReadResult;
   'turnDedup.forgetPrefix': TurnDedupForgetPrefixResult;
   'turnBoundary.create': TurnBoundaryCreateResult;
+  'turnBoundary.prepare': TurnBoundaryPrepareResult;
+  'turnBoundary.beginInvocation': TurnBoundaryBeginInvocationResult;
+  'turnBoundary.resumePrepared': TurnBoundaryResumePreparedResult;
+  'turnBoundary.cancelPrepared': PreparedSettlementResult;
+  'turnBoundary.recordDefinitiveRefusal': PreparedSettlementResult;
+  'turnBoundary.acceptInvocation': TurnBoundaryAcceptInvocationResult;
   'turnBoundary.transition': TurnBoundaryTransitionResult;
   'turnBoundary.remove': TurnBoundaryRemoveResult;
   'turnBoundary.recordAccepted': TurnBoundaryCreateResult;
@@ -464,6 +570,12 @@ export type KernelCommand =
   | TurnDedupReadCommand
   | TurnDedupForgetPrefixCommand
   | TurnBoundaryCreateCommand
+  | TurnBoundaryPrepareCommand
+  | TurnBoundaryBeginInvocationCommand
+  | TurnBoundaryResumePreparedCommand
+  | TurnBoundaryCancelPreparedCommand
+  | TurnBoundaryRecordDefinitiveRefusalCommand
+  | TurnBoundaryAcceptInvocationCommand
   | TurnBoundaryTransitionCommand
   | TurnBoundaryRemoveCommand
   | TurnBoundaryRecordAcceptedCommand
@@ -494,6 +606,13 @@ export interface ParticipantRefusal {
   readonly reason: string;
 }
 
+/** Command/result map shared with the public atomic testing port. */
+export type KernelAtomicProtocol = {
+  readonly [K in KernelCommand['type']]: {
+    readonly command: Extract<KernelCommand, { readonly type: K }>;
+    readonly result: KernelResults[K] | ParticipantRefusal;
+  };
+};
+
 export type KernelResult<C extends KernelCommand> =
-  | KernelResults[C['type']]
-  | ParticipantRefusal;
+  KernelAtomicProtocol[C['type']]['result'];

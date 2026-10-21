@@ -90,8 +90,11 @@ describe('@kontourai/station-basis-pane package boundary', () => {
     // answer chip names a notable Surface standing on its face (a closed list
     // of Surface's standing codes), carries the standing in its accessible
     // name and uses Surface's description as its title. Measured 6_925 at
-    // that change (main was 6_877); the cap leaves 35 bytes of headroom.
-    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_960);
+    // that change (main was 6_877). Raised again to 7_020 when the notable
+    // chip split its text into a "Basis · " lead and an ellipsizable Surface
+    // label with the full label in its tooltip (narrow docks, #3926 review):
+    // measured 6_982, leaving 38 bytes of headroom.
+    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(7_020);
     expect(
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);

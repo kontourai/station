@@ -10,9 +10,9 @@ import { useShowSurface } from '../../contexts/useShowSurface';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
-import { orchestrationLifecycleLabel } from '../../utils/session-state';
 import { sessionTitle } from '../../utils/sessionDisplay';
 import { PeopleGlyph } from '../icons/Glyph';
+import { activeLiveWorkSessions } from './liveWork';
 import './ProjectSidebarPresenceTray.css';
 
 /** Faces in the stack before the rest collapse into a "+k". */
@@ -237,13 +237,7 @@ export function ProjectSidebarPresenceTray({
       : 'roster';
   const activeSessions =
     sessionsRead === 'roster'
-      ? (sessionsQuery.data ?? []).flatMap((session) => {
-          if (session.controlMode === 'read-only-attached') return [];
-          const state = orchestrationLifecycleLabel(session);
-          return state === 'Running' || state === 'Needs attention'
-            ? [{ session, state }]
-            : [];
-        })
+      ? activeLiveWorkSessions(sessionsQuery.data ?? [])
       : [];
   const inventorySessionIds = new Set(
     sessionsRead === 'roster'

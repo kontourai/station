@@ -1,0 +1,91 @@
+{
+  "path": "docs/design/pane-relationships.md",
+
+  "kind": "design",
+
+  "state": "partial",
+
+  "summary": "Pane workspace contract across file previews, direct/frame SDK related panes and Main Activity quick review: locked relations, Station fences, captured openers and exact targets, existing region and SessionDetail owners, source-preserving review, draft protection, Keep, guarded close, phone history and host-stamped exact Project-pane references for canonical Up.",
+
+  "limits": "Partial implementation and qualification. Coding presentation, phone inbox/conversation roots, selection-properties sheets, cold child links and closed built-in SDK targets remain planned. This local source consolidation is unqualified as a combined tree. Fresh SDK-Up source review and Activity independent review remain pending; canonical review notes for the final SDK repair remain pending. Older unattested plugin opener records retain their legacy fallback. Prior source/focused/browser evidence does not establish combined native, hosted, publication or landing acceptance.",
+
+  "sources": [
+    "src-ui/src/regions/pane-relations.ts",
+
+    "src-ui/src/regions/pane-fence.ts",
+
+    "src-ui/src/regions/pane-opener.ts",
+
+    "src-ui/src/regions/region-model.ts",
+
+    "src-ui/src/contexts/PaneRelationsContext.tsx",
+
+    "src-ui/src/contexts/openRelatedFilePreview.ts",
+
+    "src-ui/src/contexts/RegionModelContext.tsx",
+
+    "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
+
+    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
+
+    "src-ui/src/views/SessionsView.tsx",
+
+    "src-ui/src/views/activity/openActivityReview.ts",
+
+    "src-ui/src/contexts/ActivityReviewContext.tsx",
+
+    "src-ui/src/workspace-panes/activityReviewPane.ts",
+
+    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
+
+    "src-ui/src/views/activity/__tests__/ActivityReview.test.tsx",
+
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
+
+    "src-ui/src/components/session-detail/SessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/AttachedSessionDetail.tsx",
+
+    "src-ui/src/components/session-detail/MutableSessionDetail.tsx",
+
+    "src-ui/src/hooks/useMutableSessionDetailState.ts",
+
+    "src-ui/src/app-shell/ActivityRegionShell.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
+
+    "src-ui/src/components/chat-dock/ImportedConversationPane.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/contexts/open-chats-store.ts",
+
+    "src-ui/src/lib/attached-continuation-handoff.ts",
+
+    "src-ui/src/__tests__/ActivityReview.lifecycle.test.tsx",
+
+    "src-ui/src/__tests__/ActivityReview.chatExit.test.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "src-ui/src/workspace-panes/relatedPanesHost.ts",
+
+    "src-ui/src/workspace-panes/workspacePaneDirectRoute.ts",
+
+    "src-ui/src/workspace-panes/__tests__/RelatedPaneStrip.up.test.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/relatedPanesHost.test.tsx",
+
+    "tests/related-panes.spec.ts",
+
+    "tests/related-panes-frame.spec.ts",
+
+    "src-ui/src/contexts/openRelatedOccurrence.ts",
+
+    "tests/helpers/related-pane-upgrade.ts"
+  ],
+
+  "checks": []
+}

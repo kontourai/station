@@ -1,0 +1,11 @@
+{
+  "revision": "dbb540201f03ddb3a4c4e1a5c6cce98735db9a68",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Read full owner instructions/context and the bounded testing-guide delta. Ordinary corpus stays4workers; focused launcher is1worker/no-file-parallelism. R1.6keeper joins existing process-exclusive1group while preserving30s/1026parts/1027ACK/WAL-FULL/freshvalidation. Verification selection remains exact and disjoint; classification67testsPASS and20runtime suites152PASS are localdiagnostics, not hosted/global exclusion/performance or release proof. Route/service/privatepackage/readonlysnapshot and UI navigation/guard/geometry evidence distinctions remain unchanged; no new evidence authority or deadline relaxation.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read full owner instructions/context and the bounded testing-guide delta. Ordinary corpus stays4workers; focused launcher is1worker/no-file-parallelism. R1.6keeper joins existing process-exclusive1group while preserving30s/1026parts/1027ACK/WAL-FULL/freshvalidation. Verification selection remains exact and disjoint; classification67testsPASS and20runtime suites152PASS are localdiagnostics, not hosted/global exclusion/performance or release proof. Route/service/privatepackage/readonlysnapshot and UI navigation/guard/geometry evidence distinctions remain unchanged; no new evidence authority or deadline relaxation.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Read full owner instructions/context and the bounded testing-guide delta. Ordinary corpus stays4workers; focused launcher is1worker/no-file-parallelism. R1.6keeper joins existing process-exclusive1group while preserving30s/1026parts/1027ACK/WAL-FULL/freshvalidation. Verification selection remains exact and disjoint; classification67testsPASS and20runtime suites152PASS are localdiagnostics, not hosted/global exclusion/performance or release proof. Route/service/privatepackage/readonlysnapshot and UI navigation/guard/geometry evidence distinctions remain unchanged; no new evidence authority or deadline relaxation.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

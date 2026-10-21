@@ -908,6 +908,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/activity-related-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Exercises Activity quick review through its real caller, Related shell host and SessionDetail: filtered sibling order, source selection/search/scroll preservation, durable Open and kept-target focus, changed results and real phone Back/Up.',
+    exceptions: [],
+  },
+  {
     path: 'tests/device-pane.spec.ts',
     bucket: 'product',
     surface: 'Device',
@@ -955,6 +965,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Proves remote plugin bundles execute only through the isolated plugin host: hostile storage, DOM, parent-global, network, bridge, and spoofed-message attacks remain contained; mismatched declared exports visibly fail; and a benign bundle raising the pane-host contract's confirm intent is answered by Station's own modal, with the decision reaching the frame back across the boundary on desktop and at 390x844.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, a removed plugin leaving its pane unavailable without running its code, and a same-version reinstall not bringing it back.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes-frame.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the same related-pane capability from a plugin running in the sandboxed plugin frame: on a Station the spec owns, reached under a non-loopback name so every plugin is isolated, the real example list (a frame document) opens, replaces, focuses and closes its own report frames and opens a tool, through the real frame bootstrap, frame server, catalog and pairing, with nothing mocked.',
     exceptions: [],
   },
   {
@@ -1707,6 +1737,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station lifecycle proof for durable Task workspace binding, inline local references and diff inspection, Direct/Deliver/Learn/Operate authority and unavailable-state boundaries (including hostile owner-shaped metadata), task switching isolation, plus a real Ollama-generated project answer pinned through the keyboard-safe Task basis UI and reopened after same-home restart.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-inventory-layout.spec.ts',
+    bucket: 'extended',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      "#3882: a real chat (one turn through a local model fixture) in a wide bottom dock opens Chat inventory from the session context card at 1600px and 1440px and measures the dock: the inventory aside sits flush against the transcript (no dead gutter), the transcript keeps its 640px floor, the card gives way to the inventory (its chip remains) and returns when the inventory closes. Opened with Enter and closed with Close or Escape, focus moves into the panel and returns to the card's Chat inventory button, never the page.",
     exceptions: [],
   },
   {

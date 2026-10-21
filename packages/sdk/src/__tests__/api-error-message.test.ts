@@ -173,6 +173,28 @@ describe('readEnvelopeFailure / envelopeError', () => {
       failurePhase: 'indeterminate',
     });
     // Old servers retain the same eligibility for existing public codes.
+    for (const disposition of ['cancelled', 'definitively-refused']) {
+      expect(
+        envelopeError(
+          response(409),
+          {
+            success: false,
+            error: 'A new request requires a new turn key.',
+            code: 'client_turn_settled',
+            disposition,
+            kind: 'unknown-engine-kind',
+            retryable: true,
+          },
+          'fallback',
+        ),
+      ).toMatchObject({
+        status: 409,
+        code: 'client_turn_settled',
+        kind: 'conflict',
+        retryable: false,
+        failurePhase: undefined,
+      });
+    }
     expect(
       envelopeError(
         response(400),

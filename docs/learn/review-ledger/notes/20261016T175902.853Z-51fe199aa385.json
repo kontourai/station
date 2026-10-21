@@ -1,0 +1,7 @@
+{
+  "revision": "ab4cbb6a69d404a81b8d3281fda4f059c457b263",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed kernel ownership at ab4cbb6: opaque immutable prepared binding, atomic linked fences, exact dead-owner compare-and-transfer, retained prepared recovery candidates versus legacy cleanup, and host ownership of input bodies/authority/effects. Package tests 391 GREEN; independent begin-write and dedup-owner guard mutations RED then exact-restored GREEN. No host APIs, automatic resume, invocation terminal attribution or mixed-writer compatibility claim.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","packages/monument/src/records.ts","packages/monument/src/commands.ts","packages/monument/src/decisions/turn-boundary.ts","packages/monument/src/decisions/turn-dedup.ts","packages/monument/src/testing/conformance.ts"]}
+  ]
+}

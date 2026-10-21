@@ -1,0 +1,7 @@
+{
+  "revision": "49e0d9871e6b322495004238a409017894a1d0aa",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed pair-completeness fix at 49e0d987 after independent review REQUEST_CHANGES: missing either preparedInvocationId or preparedUpdatedAt now throws in SQLite and remains non-replayable in portable claim/begin/release/prepare/compound begin decisions. Actual prepare-corrupt-reopen regression RED 6 then GREEN 270; all 399 package tests GREEN and scoped Monument tsc GREEN. Separate mutations restoring revision-only reclaim and link-only compound begin each failed the intended portable assertion; exact-byte restoration GREEN. Legacy no-marker controls preserved; host/terminal/body scope unchanged.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-prepared-intent.test.ts","packages/monument/src/decisions/turn-boundary.ts","packages/monument/src/decisions/turn-dedup.ts","packages/monument/src/sqlite.ts","packages/monument/src/__tests__/decisions.test.ts"]}
+  ]
+}

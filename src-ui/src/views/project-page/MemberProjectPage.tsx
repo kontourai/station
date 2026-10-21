@@ -1,5 +1,7 @@
 import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import { StatusBadge } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
@@ -109,7 +111,10 @@ export function MemberProjectPage({
               {sharedWork.data.map((item) => (
                 <li key={`${item.shareId}:${item.task.id}`}>
                   <strong>{item.task.title}</strong>
-                  <span>{item.task.status.replaceAll('_', ' ')}</span>
+                  <StatusBadge
+                    tone="neutral"
+                    status={taskStatusLabel(item.task.status)}
+                  />
                   <Button
                     aria-expanded={selectedShareId === item.shareId}
                     onClick={() =>

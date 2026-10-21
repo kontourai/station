@@ -10,6 +10,7 @@ const apiBaseWaiters = new Set<() => void>();
 
 export interface PluginApiIdentity {
   readonly pluginName: string;
+  telemetryCapability?: () => string | undefined;
   getHeaders(extraHeaders?: Record<string, string>): Record<string, string>;
 }
 

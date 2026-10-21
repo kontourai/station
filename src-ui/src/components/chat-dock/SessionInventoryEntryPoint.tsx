@@ -26,12 +26,14 @@ export function SessionInventoryEntryPoint({
   dockMode,
   fullscreen,
   onClose,
+  restoreFocusFallback,
 }: {
   launch: SessionInventoryLaunch;
   isMobile: boolean;
   dockMode: DockMode;
   fullscreen: boolean;
   onClose(): void;
+  restoreFocusFallback?: () => void;
 }) {
   const authority = useHostRequestAuthorityScope();
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export function SessionInventoryEntryPoint({
         dockMode={dockMode}
         fullscreen={fullscreen}
         onClose={onClose}
+        restoreFocusFallback={restoreFocusFallback}
       />
     </div>
   );

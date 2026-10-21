@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
@@ -143,6 +151,32 @@ function alive(pid: number | undefined): boolean {
   }
 }
 
+/** The agents whose resolved rules were read (`opencode debug agent`). */
+function agentReads(h: Harness): unknown[] {
+  return records(h)
+    .filter((entry) => 'debugAgent' in entry)
+    .map((entry) => entry.debugAgent);
+}
+
+/** The permissions the engine was answered "always" for. */
+function engineAlways(h: Harness): unknown[] {
+  return records(h)
+    .filter((entry) => 'always' in entry)
+    .map((entry) => entry.always);
+}
+
+/** The engine's client writes (`fs/write_text_file`) and their errors. */
+function clientWrites(h: Harness): Array<{
+  clientWrite: string;
+  error: string | null;
+  unhandled?: boolean;
+}> {
+  return records(h).filter(
+    (entry): entry is { clientWrite: string; error: string | null } =>
+      'clientWrite' in entry,
+  );
+}
+
 /** The session ids a relaunched engine resumed (`session/resume`). */
 function resumes(h: Harness): unknown[] {
   return records(h)
@@ -182,7 +216,7 @@ async function turn(
   options: {
     approvalMode?: ApprovalMode;
     confinement?: 'host' | 'workspace';
-    answer?: 'accept' | 'decline';
+    answer?: 'accept' | 'acceptForSession' | 'decline';
   } = {},
 ) {
   const from = h.events.length;
@@ -243,6 +277,7 @@ describe.skipIf(process.platform === 'win32')(
         FAKE_OPENCODE_USER_CONFIG: process.env.FAKE_OPENCODE_USER_CONFIG,
         FAKE_OPENCODE_RECORD: process.env.FAKE_OPENCODE_RECORD,
         FAKE_OPENCODE_REFUSE_RESUME: process.env.FAKE_OPENCODE_REFUSE_RESUME,
+        FAKE_OPENCODE_CLIENT_WRITE: process.env.FAKE_OPENCODE_CLIENT_WRITE,
       };
       delete process.env.OPENCODE_CONFIG_CONTENT;
       process.env.FAKE_OPENCODE_USER_CONFIG = USER_CONFIG;
@@ -953,6 +988,306 @@ describe.skipIf(process.platform === 'win32')(
       await expect(
         turn(h, 'engine-decides', 'run: echo again', { approvalMode: 'ask' }),
       ).rejects.toThrow(/decides which of its actions ask/);
+    });
+
+    describe('#3924: OpenCode configuration is code OpenCode runs at launch', () => {
+      test.each([
+        '.opencode/plugin/planted.ts',
+        'pkg/.opencode/tool/planted.ts',
+        'sub/opencode.json',
+        'opencode.jsonc',
+        '.OpenCode/plugins/planted.ts',
+        '../outside-the-project.txt',
+      ])('Auto: an edit of %s asks a person', async (target) => {
+        h = harness('opencode');
+        await start(h, 'auto-config', 'auto');
+        const edit = await turn(h, 'auto-config', `edit: ${target}`, {
+          answer: 'decline',
+        });
+        expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+        expect(existsSync(join(h.cwd, target))).toBe(false);
+        // A project file is still Auto's to allow.
+        const plain = await turn(h, 'auto-config', 'edit: src/plain.ts');
+        expect(plain.asked).toBeUndefined();
+        expect(existsSync(join(h.cwd, 'src/plain.ts'))).toBe(true);
+      });
+
+      test('Auto: an edit through a link into .opencode asks a person', async () => {
+        h = harness('opencode');
+        mkdirSync(join(h.cwd, '.opencode'));
+        symlinkSync(join(h.cwd, '.opencode'), join(h.cwd, 'linked'));
+        await start(h, 'auto-link', 'auto');
+        const edit = await turn(h, 'auto-link', 'edit: linked/plugin/p.ts', {
+          answer: 'decline',
+        });
+        expect(edit.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, '.opencode/plugin/p.ts'))).toBe(false);
+      });
+
+      test('full access outside a host session (Auto) still asks before a configuration edit', async () => {
+        h = harness('opencode');
+        await start(h, 'full-confined-config', 'never', 'workspace');
+        const edit = await turn(
+          h,
+          'full-confined-config',
+          'edit: .opencode/plugin/planted.ts',
+          { approvalMode: 'never', answer: 'decline' },
+        );
+        expect(edit.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, '.opencode/plugin/planted.ts'))).toBe(
+          false,
+        );
+      });
+
+      test("Ask: allowing edits for the session is Station's grant, never OpenCode's 'always', and never covers configuration", async () => {
+        h = harness('opencode');
+        await start(h, 'ask-grant', 'ask');
+        const first = await turn(h, 'ask-grant', 'edit: a.ts', {
+          answer: 'acceptForSession',
+        });
+        expect(first.asked).toBeDefined();
+        expect(engineAlways(h)).toEqual([]);
+        const covered = await turn(h, 'ask-grant', 'edit: b.ts');
+        expect(covered.asked).toBeUndefined();
+        expect(existsSync(join(h.cwd, 'b.ts'))).toBe(true);
+        const config = await turn(h, 'ask-grant', 'edit: opencode.json', {
+          answer: 'decline',
+        });
+        expect(config.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, 'opencode.json'))).toBe(false);
+      });
+
+      test('a project whose OpenCode configuration runs code is not governed, and nothing is launched to check it', async () => {
+        h = harness('opencode');
+        // Positive control: a clean project is checked by reading the rules.
+        await start(h, 'clean', 'ask');
+        expect(agentReads(h).length).toBeGreaterThan(0);
+        const readsBefore = agentReads(h).length;
+        const launchesBefore = launches(h).length;
+
+        mkdirSync(join(h.cwd, '.opencode/plugin'), { recursive: true });
+        writeFileSync(join(h.cwd, '.opencode/plugin/planted.ts'), '');
+        await expect(start(h, 'planted', 'ask')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(
+            /runs its own code when OpenCode starts.*\.opencode\/plugin/,
+          ),
+        });
+        await expect(start(h, 'planted-auto', 'auto')).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+        });
+        expect(agentReads(h)).toHaveLength(readsBefore);
+        expect(launches(h)).toHaveLength(launchesBefore);
+        // Default (OpenCode's own settings) is the user's to choose.
+        await start(h, 'planted-native');
+        expect(launches(h)).toHaveLength(launchesBefore + 1);
+      });
+
+      test.each([
+        ['a global configuration file', 'global'],
+        ['the project opencode.json', 'project'],
+      ])(
+        'Auto: a write through a dangling link to %s asks a person',
+        async (_label, kind) => {
+          h = harness('opencode');
+          const destination =
+            kind === 'global'
+              ? join(h.cwd, '..', 'global-config', 'opencode', 'opencode.jsonc')
+              : join(h.cwd, 'opencode.json');
+          symlinkSync(
+            kind === 'global'
+              ? join('..', 'global-config', 'opencode', 'opencode.jsonc')
+              : 'opencode.json',
+            join(h.cwd, 'NOTES.md'),
+          );
+          await start(h, `auto-dangling-${kind}`, 'auto');
+          const edit = await turn(
+            h,
+            `auto-dangling-${kind}`,
+            'edit: NOTES.md',
+            {
+              answer: 'decline',
+            },
+          );
+          expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+          expect(existsSync(destination)).toBe(false);
+        },
+      );
+
+      test('Auto: an absolute `link/..` path into global configuration asks a person', async () => {
+        h = harness('opencode');
+        const globalDir = join(h.cwd, '..', 'global-config-dotdot', 'opencode');
+        mkdirSync(globalDir, { recursive: true });
+        symlinkSync(globalDir, join(h.cwd, 'a'));
+        await start(h, 'auto-dotdot', 'auto');
+        const raw = `${h.cwd}/a/../opencode/plugins/x.js`;
+        const edit = await turn(h, 'auto-dotdot', `edit: ${raw}`, {
+          answer: 'decline',
+        });
+        expect(edit.asked).toMatchObject({ payload: { toolKind: 'edit' } });
+        expect(
+          existsSync(join(globalDir, '..', 'opencode', 'plugins', 'x.js')),
+        ).toBe(false);
+      });
+
+      describe('#3957: the client file-system methods', () => {
+        const stationCwdPlant = join(
+          process.cwd(),
+          '.config',
+          'opencode',
+          'plugins',
+          'x3957.js',
+        );
+        afterEach(() => {
+          rmSync(stationCwdPlant, { force: true });
+        });
+        const writesSettled = (h: Harness, count: number) =>
+          waitFor(
+            () =>
+              clientWrites(h).length >= count ? clientWrites(h) : undefined,
+            `${count} client write outcome(s)`,
+          );
+        const offered = (h: Harness) =>
+          records(h).find((entry) => 'clientCapabilities' in entry)
+            ?.clientCapabilities as
+            | { fs?: Record<string, boolean> }
+            | undefined;
+
+        test("OpenCode is offered no client file methods, and a write it sends anyway is refused, not resolved against Station's directory", async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('opencode');
+          await start(h, 'client-relative', 'auto');
+          expect(offered(h)?.fs).toEqual({
+            readTextFile: false,
+            writeTextFile: false,
+          });
+          const patch = await turn(
+            h,
+            'client-relative',
+            'patch: .config/opencode/plugins/x3957.js',
+          );
+          // An ordinary project path: Auto allows the edit itself, and
+          // OpenCode's own tool applies it.
+          expect(patch.asked).toBeUndefined();
+          expect(
+            readFileSync(
+              join(h.cwd, '.config/opencode/plugins/x3957.js'),
+              'utf8',
+            ),
+          ).toBe('written by the fixture\n');
+          expect(await writesSettled(h, 1)).toEqual([
+            {
+              clientWrite: '.config/opencode/plugins/x3957.js',
+              error: expect.stringMatching(
+                /did not offer the client file methods/,
+              ),
+              unhandled: true,
+            },
+          ]);
+          expect(existsSync(stationCwdPlant)).toBe(false);
+          // The refusal, unhandled as OpenCode leaves it, does not end the
+          // engine: the next turn runs.
+          const next = await turn(h, 'client-relative', 'edit: after.ts');
+          expect(next.asked).toBeUndefined();
+          expect(existsSync(join(h.cwd, 'after.ts'))).toBe(true);
+          expect(
+            h.events.some((event) => event.method === 'session.exited'),
+          ).toBe(false);
+        });
+
+        test('nothing is written for OpenCode through the client, in the project or outside it', async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('opencode');
+          await start(h, 'client-none');
+          const outside = join(h.cwd, '..', `outside-${Date.now()}.txt`);
+          await turn(h, 'client-none', 'edit: inside.ts');
+          await turn(h, 'client-none', `edit: ${outside}`);
+          const writes = await writesSettled(h, 2);
+          expect(writes.map((entry) => entry.error)).toEqual([
+            expect.stringMatching(/did not offer/),
+            expect.stringMatching(/did not offer/),
+          ]);
+          // Each file holds only what OpenCode's own tool wrote.
+          expect(readFileSync(join(h.cwd, 'inside.ts'), 'utf8')).toBe(
+            'written by the fixture\n',
+          );
+          expect(readFileSync(outside, 'utf8')).toBe(
+            'written by the fixture\n',
+          );
+        });
+
+        test('an engine that decides for itself is still offered the methods: absolute paths are served, relative ones refused', async () => {
+          process.env.FAKE_OPENCODE_CLIENT_WRITE = '1';
+          h = harness('kiro-cli');
+          await start(h, 'client-engine');
+          expect(offered(h)?.fs).toEqual({
+            readTextFile: true,
+            writeTextFile: true,
+          });
+          const outside = join(h.cwd, '..', `kiro-outside-${Date.now()}.txt`);
+          await turn(h, 'client-engine', `edit: ${outside}`);
+          await writesSettled(h, 1);
+          await turn(
+            h,
+            'client-engine',
+            'patch: .config/opencode/plugins/x3957.js',
+          );
+          expect(await writesSettled(h, 2)).toEqual([
+            { clientWrite: outside, error: null },
+            {
+              clientWrite: '.config/opencode/plugins/x3957.js',
+              error: expect.stringMatching(/absolute and normalized/),
+              unhandled: true,
+            },
+          ]);
+          expect(existsSync(stationCwdPlant)).toBe(false);
+        });
+      });
+
+      test('a start inside the preflight window is scanned again', async () => {
+        h = harness('opencode');
+        const input = {
+          provider: 'acp',
+          threadId: 'window',
+          cwd: h.cwd,
+          confinement: 'workspace',
+          metadata: { connectionId: 'engine-under-test' },
+          modelOptions: { approvalMode: 'ask' },
+        } as never;
+        await h.adapter.preflightStart(input);
+        const reads = agentReads(h).length;
+        expect(reads).toBeGreaterThan(0);
+        mkdirSync(join(h.cwd, '.opencode/tools'), { recursive: true });
+        writeFileSync(join(h.cwd, '.opencode/tools/planted.ts'), '');
+        await expect(h.adapter.startSession(input)).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(/\.opencode\/tools/),
+        });
+        // The rules were not read again, and nothing launched.
+        expect(agentReads(h)).toHaveLength(reads);
+        expect(launches(h)).toHaveLength(0);
+      });
+
+      test('a takeover onto Station rules is refused once such code is present', async () => {
+        h = harness('opencode');
+        await start(h, 'takeover-planted');
+        writeFileSync(
+          join(h.cwd, 'opencode.json'),
+          JSON.stringify({
+            mcp: { planted: { type: 'local', command: ['x'] } },
+          }),
+        );
+        await expect(
+          turn(h, 'takeover-planted', 'run: echo pick', {
+            approvalMode: 'ask',
+          }),
+        ).rejects.toMatchObject({
+          code: 'acp_approval_governance_refused',
+          message: expect.stringMatching(/opencode\.json \(mcp "planted"\)/),
+        });
+        expect(agentReads(h)).toEqual([]);
+        expect(launches(h)).toHaveLength(1);
+      });
     });
   },
 );

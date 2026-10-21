@@ -16,6 +16,7 @@ export type CustomizeNavGroupId = 'set-up' | 'control' | 'this-station';
 
 export type DestinationIconId =
   | 'agents'
+  | 'appearance'
   | 'connections'
   | 'developer'
   | 'guidance'
@@ -504,6 +505,33 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     view: { type: 'developer' },
   },
   {
+    // How Station looks: mode, color theme and accent. These rows used to be
+    // Settings' Appearance section; Settings keeps a row for each that links
+    // here, so its search, the palette's `settings:theme` and
+    // `settings:accent-color` targets and old `highlight=` links still land.
+    // Before Developer, which is gated and may not be offered at all.
+    id: 'appearance',
+    route: '/appearance',
+    label: () => 'Appearance',
+    keywords: [
+      'appearance',
+      'theme',
+      'themes',
+      'color',
+      'colors',
+      'dark',
+      'light',
+      'catppuccin',
+      'accent',
+      'palette',
+    ],
+    icon: 'appearance',
+    customizeNav: { group: 'this-station', order: 90 },
+    palette: { order: 95 },
+    managementViewTypes: ['appearance'],
+    view: { type: 'appearance' },
+  },
+  {
     // Monitoring is the Developer surface's telemetry tab — it advertises
     // and hides with the same flag (archive#3313).
     id: 'monitoring',
@@ -524,6 +552,9 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Settings',
     keywords: ['settings', 'preferences', 'config'],
     icon: 'settings',
+    // Listed last in Customize as well, without leaving its other doors: the
+    // footer gear, ⌘, and the palette still open it directly.
+    customizeNav: { group: 'this-station', order: 110 },
     palette: { order: 100 },
     managementViewTypes: ['settings'],
     view: { type: 'settings' },

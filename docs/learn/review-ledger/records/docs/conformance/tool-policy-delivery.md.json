@@ -94,6 +94,10 @@
 
     "src-server/services/orchestration/session-agent-start-policy.ts",
 
+    "src-ui/src/components/chat/InputRequestDecision.tsx",
+
+    "src-ui/src/components/chat/InputRequestDecision.css",
+
     "src-server/providers/adapters/codex-approval-mode.ts",
 
     "src-server/providers/adapters/codex-adapter-notifications.ts",

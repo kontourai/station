@@ -1,0 +1,7 @@
+{
+  "revision": "a8e8bee4718afa7dea52a4fc6bc51d5fe15a8b44",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced the shared approval DecisionActionRow through inline and request-sheet callers at a8e8bee. Restored the pre-migration disabled presentation: opacity one, transparent fill, dashed border and existing faint-text/line tokens; authority and answer routing are unchanged. Canonical orchestration browser run passed all four tests, including decision-label contrast and dimensions in both themes. Pre-fix 12fbb26 failed the settled Deny opacity assertion; fixture selection repair remains separately committed. No provider, native-device or release claim.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/InputRequestDecision.tsx","src-ui/src/components/chat/InputRequestDecision.css"]}
+  ]
+}

@@ -5,6 +5,7 @@
 
 import type { RefObject } from 'react';
 import { useEffect, useState } from 'react';
+import { useAgents } from '../../contexts/AgentsContext';
 import { useChatBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import {
   ResponsiveDialogCloseButton,
@@ -61,6 +62,7 @@ export function BackgroundTasksSheet({
   onOpenTranscript,
   onClose,
 }: BackgroundTasksSheetProps) {
+  const agents = useAgents();
   const { running, finished } = useChatBackgroundTasks(chatThreadId);
   const [sections, setSections] = useState<SectionState>(readSectionState);
   const [now, setNow] = useState(() => Date.now());
@@ -114,6 +116,7 @@ export function BackgroundTasksSheet({
                 <TaskRow
                   key={entry.id}
                   entry={entry}
+                  agents={agents}
                   elapsedMs={backgroundTaskElapsedMs(entry, now)}
                   onOpenTranscript={onOpenTranscript}
                 />
@@ -140,6 +143,7 @@ export function BackgroundTasksSheet({
                   <TaskRow
                     key={entry.id}
                     entry={entry}
+                    agents={agents}
                     elapsedMs={backgroundTaskElapsedMs(entry, now)}
                     outcomeChip={entry.state}
                     onOpenTranscript={onOpenTranscript}

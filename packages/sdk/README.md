@@ -89,6 +89,16 @@ Plugin install mutations expose typed current parent/dependency permission statu
 through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
 for older-server unknown-status handling and registry result types.
 
+## Plugin publisher counts
+
+`useTelemetry()` captures the calling Pane's kernel capability and returns
+`telemetry.count(event, props)`. Non-React clients use
+`createPluginTelemetry(apiBase, paneCapability)`. Both send only to the Station
+kernel; the kernel validates the signed public-registry declaration and applies
+publisher consent before delivery. See the
+[SDK reference](../../docs/reference/sdk.md#plugin-publisher-counts) and
+[author guide](../../docs/guides/plugins.md#publisher-analytics).
+
 ## Telemetry delivery and destination grants
 
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,

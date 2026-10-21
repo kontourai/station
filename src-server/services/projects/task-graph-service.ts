@@ -1843,6 +1843,62 @@ export class TaskGraphService {
     }
   }
 
+  async startTaskRoomWork(
+    taskId: string,
+    expectedCreatedAt: string,
+  ): Promise<{ task: TaskRecord; changed: boolean }> {
+    return this.mutateStore<{ task: TaskRecord; changed: boolean }>((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task || task.createdAt !== expectedCreatedAt)
+        throw new Error(`Task not found: ${taskId}`);
+      if (task.dispatchReservation)
+        throw new Error('Task dispatch is being established; status is locked');
+      if (task.status !== 'todo' && task.status !== 'ready')
+        return { data, result: { task, changed: false } };
+      const next: TaskRecord = {
+        ...task,
+        status: 'in_progress',
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) => (item.id === taskId ? next : item)),
+        },
+        result: { task: next, changed: true },
+      };
+    });
+  }
+
+  async updateTaskTitle(
+    taskId: string,
+    title: string,
+    expectedCreatedAt: string,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    const trimmed = title.trim();
+    if (!trimmed || trimmed.length > 512)
+      throw new Error('Task title must contain 1–512 characters');
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task || task.createdAt !== expectedCreatedAt)
+        throw new Error(`Task not found: ${taskId}`);
+      const next = {
+        ...task,
+        title: trimmed,
+        updatedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) => (item.id === taskId ? next : item)),
+        },
+        result: next,
+      };
+    });
+  }
+
   /**
    * Task-lifecycle boundary release (review finding #2, following the S4
    * ship): `session.exited` (`releaseClaimForSession`) only ever fires for
@@ -2358,6 +2414,12 @@ export class TaskGraphService {
    * only list form exposed to the Session-inventory seam; it cannot widen a
    * Session view to another Task's live external references.
    */
+  listKeptDeclaredPullRequests(taskId: string): TaskKeptDeclaredPullRequest[] {
+    return this.readStore()
+      .declaredPullRequestKeeps.filter((keep) => keep.taskId === taskId)
+      .map((keep) => structuredClone(stripDeclaredPullRequestKeep(keep)));
+  }
+
   listKeptDeclaredPullRequestsForSession(
     taskId: string,
     sessionId: string,

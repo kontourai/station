@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
+import { incompleteDiagnosticReasons } from '../lib/changed-verification-diagnostics.mjs';
 import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import { runProductLawGate } from '../product-law-gate.mjs';
@@ -476,6 +477,19 @@ describe('changed verification selection', () => {
     ]);
     expect(selection.lanes).toEqual([]);
   });
+  test('a Basis pane manifest change names its readers instead of reaching related discovery (#3860)', () => {
+    // Vitest's default forceRerunTriggers match any package.json, so a
+    // manifest handed to related discovery selects all ~3,700 suites on a
+    // hosted checkout and overruns the fast-checks shard budget.
+    const selection = selectChangedVerification([
+      'packages/basis-pane/package.json',
+    ]);
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual([
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ]);
+  });
   test('a root package.json change escalates and still names its readers (#2176)', () => {
     // Before, its ordinary doc-example edge cancelled the escalation, so a
     // package.json-only change completed on one documentation suite.
@@ -729,6 +743,7 @@ describe('changed verification selection', () => {
       [
         'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
         'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-append-statements.test.ts',
         'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
         'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
         'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
@@ -2561,6 +2576,96 @@ setInterval(() => {}, 1000);`,
       'Vitest JSON report contains 1 test(s) that never finished',
     );
   });
+  test('a diff that escalates to ci-fast writes an incomplete diagnostic (#1706)', async () => {
+    const run = reportedRun({ report: passingReport });
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        // README.md has no impact edge, so it escalates to ci-fast.
+        paths: [scenarios.sourceEdges.server, 'README.md'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(result.exitCode).toBe(3);
+    expect(result.selection).toMatchObject({ escalated: true });
+    const diagnostics = JSON.parse(
+      writeReceipt.mock.calls.find(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )?.[1],
+    );
+    expect(diagnostics.selection).toMatchObject({
+      relatedPathCount: 1,
+      deferredLanes: ['ci-fast'],
+      escalated: true,
+    });
+    expect(diagnostics.executions).toEqual([]);
+    expect(diagnostics.complete).toBe(false);
+    expect(diagnostics.incompleteReasons).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+      '1 selected target(s), and no test executed',
+    ]);
+  });
+  test('a deferral owned outside the selection leaves a run that executed complete (#1706)', () => {
+    // The shape of a healthy hosted receipt: E2E defers on every pull
+    // request by design, and the selected suites ran.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 4,
+          exactTestCount: 7,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 88, passed: 88, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([]);
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 5,
+          exactTestCount: 3,
+          deferredLanes: ['ci-fast'],
+          escalated: true,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 75, passed: 75, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+    ]);
+    // An owned deferral does not excuse selected suites that never ran:
+    // nothing outside this selection runs them either.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 1,
+          exactTestCount: 0,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [],
+      }),
+    ).toEqual(['1 selected target(s), and no test executed']);
+  });
   test('escalates a selection in which every test declined to run', async () => {
     const writeReceipt = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
@@ -2600,6 +2705,7 @@ setInterval(() => {}, 1000);`,
     expect(diagnostics.complete).toBe(false);
     expect(diagnostics.incompleteReasons).toEqual([
       'related: Vitest executed zero of 3 selected test(s) (3 skipped, 0 todo)',
+      'test-full deferred: its suite did not run here; Merge-queue regression runs it before merge',
     ]);
   });
   test('names the identity shortfall when failures outrun the identity bound', async () => {
@@ -2685,7 +2791,7 @@ setInterval(() => {}, 1000);`,
         join(root, fixture),
         `import { describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
 describe('primary error fixture', () => {
-  test('preserves the primary message', () => {
+  test('preserves the primary message api_key=secret-query-token', () => {
     const cause = new Error('nested root failure; Authorization: Bearer secret-fixture-token');
     const message = process.env.STATION_FIXTURE_FAILURE_MESSAGE;
     const error = new Error(message, { cause });
@@ -2889,8 +2995,13 @@ describe('primary error fixture', () => {
       } else if (mode !== 'malformed-companion') {
         expect(details).toContain('fixture primary failure');
         expect(details).toContain('nested root failure');
-      } else expect(details).toBe('{invalid-json');
+      } else
+        expect(JSON.parse(details)).toEqual({
+          omitted: 'Vitest report is not valid JSON',
+        });
       expect(details).not.toContain('secret-fixture-token');
+      expect(retained).not.toContain('secret-query-token');
+      expect(details).not.toContain('secret-query-token');
       expect(result.receipt.artifacts).toContainEqual(companion);
       const attached = attachCiFastDiagnostics(
         {

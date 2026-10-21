@@ -309,6 +309,8 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   delegationEnvironmentKind:
     'Whether a session is this Station’s record of a task running on a paired Station',
   environmentId: 'Remote environment identifiers',
+  receivedAgentMessage:
+    'Whether the latest recorded input came from another agent Session',
   environmentLabel: 'Remote environment names',
 } as const satisfies Record<string, string>;
 

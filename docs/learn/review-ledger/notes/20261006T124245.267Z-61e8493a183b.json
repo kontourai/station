@@ -1,0 +1,7 @@
+{
+  "revision": "290af34a8ba94c2f6379fa7095fe7f226f553bda",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-checked after orchestration-chat-flow.spec.ts's approval-card layout check began counting Deny, Allow Once and the session-choice menu: the doc makes no claim about that test's button count or the approval card layout.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

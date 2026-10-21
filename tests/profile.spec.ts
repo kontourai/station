@@ -161,7 +161,7 @@ test.describe('Profile retained usage', () => {
     await setupRoutes(page);
   });
 
-  test('navigates through the avatar menu', async ({ page }) => {
+  test('navigates through the sidebar account menu', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Profile and settings' }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();

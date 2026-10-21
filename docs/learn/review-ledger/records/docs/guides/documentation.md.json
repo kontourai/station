@@ -30,7 +30,9 @@
 
     "corpus.json",
 
-    "docs/guides/documentation-review-ledger.md"
+    "docs/guides/documentation-review-ledger.md",
+
+    "scripts/__tests__/learning-media.test.ts"
   ],
 
   "checks": [

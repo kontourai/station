@@ -5,7 +5,7 @@
 
   "state": "classified",
 
-  "summary": "Proposal for one Browser access and Computer access experience across engines, with target-preserving backend selection and common authority/control requirements. Separately records the current Claude-to-Station browser delivery and human-only device-control limit.",
+  "summary": "Proposal for one Browser access and Computer access experience across engines, with target-preserving backend selection and common authority/control requirements. Separately records the current Claude-to-Station browser delivery and the bounded local Device tool path described in the opening implementation section.",
 
   "limits": "Design exploration only. Cross-engine browser resolution, native harness alternatives, packaged computer control and full multi-provider execution are not implemented or qualified by this document.",
 

@@ -39,6 +39,7 @@ export interface ChildWorkRowModel {
   key: string;
   item: ChildWorkItem;
   title: string;
+  provider?: string;
   /** Epoch ms, only when reported (or taken from the spawning tool card). */
   startedAtMs?: number;
   endedAtMs?: number;
@@ -295,6 +296,7 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
         key,
         item,
         title: titleFor(item, sessions),
+        ...(provider ? { provider } : {}),
         ...(startedAtMs !== undefined ? { startedAtMs } : {}),
         ...(endedAtMs !== undefined ? { endedAtMs } : {}),
         ...(stop ? { stop } : {}),

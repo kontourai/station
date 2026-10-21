@@ -5,7 +5,7 @@ most behavior: `config/app.json` for runtime-wide settings and
 `agents/<slug>/agent.json` per agent. Shared saved-Station metadata is separate
 at `$STATION_ROOT/config/profiles.json`.
 
-For usage context, see [docs/guides/agents.md](../guides/agents.md).
+For usage context, see [docs/guides/agent-configuration.md](../guides/agent-configuration.md).
 
 ---
 
@@ -72,12 +72,13 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `defaultApprovalMode` | `"connection-default"` \| `"ask"` \| `"auto"` \| `"never"` | `"connection-default"` | Approval posture applied when a session starts, below the chat's own pick, its Agent's default, and the signed-in person's per-engine default for new interactive chats; never applied to a session already running. Raising it to `"never"` (full access) needs the operator in person or an authenticated caller, such as a paired device, whose scope carries `approval:full-access` (for a device tied to a person, only while that person's Station group is Admin); an Agent can never set it. A refused write is 403 `approval-full-access-not-granted`; when a paired device asked, the refusal names that device and the operator's grant command (`station environment access scope <device> --add approval:full-access`). When the device's person is in the Member group, the refusal names that group and People as the first step, and carries the grant command only if the device's own grant also lacks the scope. See [Device access and remote work](../guides/machine-relationships.md#what-a-paired-device-may-do-and-full-access). |
 | `runtime` | `"voltagent"` \| `"strands"` | `"voltagent"` | Agent framework runtime. Use `--features=strands-runtime` to opt in to Strands. |
 | `gitRemote` | string | — | Not currently used. The update path reads the git remote from the Station checkout itself, never from config. |
+| `serverUpdateDownloadPolicy` | `"never"` \| `"after-24h"` \| `"immediately"` | `"after-24h"` | For a Station service run by the fixed launcher (an archive install): when the server downloads an available update by itself, once a check (on boot, or when a newer client connects) finds it. Downloading verifies and stages the release and keeps the server running; only Restart, or Update when idle, applies it. Other install kinds ignore it. |
 | `logLevel` | `"trace"` \| `"debug"` \| `"info"` \| `"warn"` \| `"error"` | `"info"` | Server log level. Overridden by `STATION_LOG_LEVEL` when set — see [Logging](#logging) below. |
 | `defaultEmbeddingProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultEmbeddingModel` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `defaultVectorDbProvider` | string | — | Not currently applied. Typed and settable, but no project-creation path reads it — new projects do not pick up this value. |
 | `terminalShell` | string | — | Shell to use for terminal sessions (e.g. `/bin/zsh`); a paired device needs the `coding:exec` grant to change it |
-| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
+| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
 ### telemetry destinations
@@ -88,9 +89,11 @@ accounting. No destination is configured by default.
 
 | field | type | default | description |
 |---|---|---|---|
-| `telemetryTier` | map of `kontour`/`operator` to `off`/`lite`/`full` | Lite per absent publisher | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; only operator Full has a sender in this foundation. Updating one publisher preserves the other. Standard paired devices may lower tiers; raises require the operator or `access:manage`. Reset preserves choices. |
+| `telemetryTier` | map of `kontour`/`operator`/`publisher:<id>` to `off`/`lite`/`full` | Lite for Kontour/operator; Off for plugins | Saved choices precede `STATION_TELEMETRY_TIER` and legacy boolean fallbacks. DNT forces Off. Full requires a current disclosure; Lite sends after notice; Full requires a separate current receipt for each publisher. Updating one publisher preserves the other. Standard paired devices may lower tiers; raises require the operator or `access:manage`. Reset preserves choices. |
+| `publicTelemetryRegistries` | array of exact registry source keys | empty | Operator classification of public catalogs eligible for plugin telemetry; verified signatures and matching public item identity are also required. |
+| `telemetryPublisherPolicy` | map of publisher ID to tier | Built-in Lite / plugin Off ceiling | Operator defaults can lower a publisher to Off; Lite/Full never raise its default. Explicit choices win; distribution manifests will use the same resolver. |
 | `telemetryEnabled` | boolean | deprecated | A stored legacy false migrates to both Off; stored true migrates to operator Full with a current receipt, otherwise Lite, and Kontour Lite. A legacy write of false withdraws both publishers; true requests operator Full, still gated by disclosure. Writes follow the same authorization rules, and the legacy key is never persisted beside `telemetryTier`. |
-| `productTelemetryEndpoint` | HTTP(S) URL | unset | Full product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
+| `productTelemetryEndpoint` | HTTP(S) URL | unset | Operator product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
 | `productTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact product grant for the selected destination. Missing, revoked or ungranted references fail without environment fallback. |
 | `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
 | `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
@@ -101,7 +104,7 @@ remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
 is a build-time server-banner constant, empty in source, never a runtime enabling
 variable. It is exposed in resolved telemetry configuration independently of the
-operator address and currently has no sender. See the [program decision](../decisions/telemetry-tiers.md).
+operator address; its independent sender remains inert when the build value is empty. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an
@@ -177,6 +180,12 @@ connection and account. They do not assert current provider availability.
 ```
 
 ---
+
+`PUT /config/app` also accepts request-only `telemetryFeedbackReason` with a
+`telemetryTier` change. A fixed-enum reason is sent once to each publisher whose
+tier actually decreases, before applying its new choice (including Off). DNT
+suppresses feedback; feedback failure does not block lowering. This metadata is
+not persisted as a setting. See [Usage telemetry](usage-telemetry.md#local-ledger-and-feedback).
 
 ## Logging
 
@@ -466,7 +475,7 @@ full TTL window.
 ### tools
 
 Controls integration selection and Station-engine approval. Provider delivery and
-external-engine approval are separate; see the [Agent guide](../guides/agents.md).
+external-engine approval are separate; see the [Agent guide](../guides/agent-configuration.md).
 
 | field | type | description |
 |---|---|---|
@@ -474,9 +483,9 @@ external-engine approval are separate; see the [Agent guide](../guides/agents.md
 | `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
 | `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
 | `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
-| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
+| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agent-configuration.md#unattended-runs) |
 
 Project source permissions are stored separately in
 `<STATION_HOME>/security/tool-library.json`, keyed by exact local Project ID.

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "related-reports",
+  "version": "1.0.0",
+  "description": "A report list that opens each report beside it as a related pane.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Related Reports",
+      "entrypoint": "./src/index.tsx",
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Arelated-reports:reports",
+          "name": "Reports",
+          "description": "Lists reports and opens each one beside the list.",
+          "rendererId": "renderer:plugin%3Arelated-reports:plugin-component:reports",
+          "renderer": { "kind": "plugin-component", "name": "reports" },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            { "id": "project", "contextRequirement": { "project": true } }
+          ],
+          "provenance": { "origin": "plugin", "pluginId": "related-reports" },
+          "lifecycle": { "stage": "preview" }
+        },
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Arelated-reports:report",
+          "name": "Report",
+          "description": "One report, opened from Reports.",
+          "rendererId": "renderer:plugin%3Arelated-reports:plugin-component:report",
+          "renderer": { "kind": "plugin-component", "name": "report" },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            { "id": "project", "contextRequirement": { "project": true } }
+          ],
+          "relationRole": "destination",
+          "provenance": { "origin": "plugin", "pluginId": "related-reports" },
+          "lifecycle": { "stage": "preview" }
+        },
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Arelated-reports:log",
+          "name": "Report log",
+          "description": "A tool opened from Reports, kept with the Tools.",
+          "rendererId": "renderer:plugin%3Arelated-reports:plugin-component:log",
+          "renderer": { "kind": "plugin-component", "name": "log" },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            { "id": "project", "contextRequirement": { "project": true } }
+          ],
+          "relationRole": "tool",
+          "provenance": { "origin": "plugin", "pluginId": "related-reports" },
+          "lifecycle": { "stage": "preview" }
+        }
+      ]
+    }
+  }
+}

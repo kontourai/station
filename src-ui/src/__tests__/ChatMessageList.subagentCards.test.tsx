@@ -223,7 +223,11 @@ function spawningTurn() {
 function progress() {
   return childWork('2026-10-14T14:30:00.000Z', {
     kind: 'upsert',
-    item: { ...runningChild, progress: 'Reading the decision records' },
+    item: {
+      ...runningChild,
+      latestTool: 'Read',
+      progress: 'Reading the decision records',
+    },
   });
 }
 
@@ -1123,6 +1127,11 @@ describe('subagent transcript cards', () => {
       }),
     ];
     renderTranscript();
+    const group = await screen.findByText('2 subagents');
+    const disclosure = group.closest('button')!;
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(within(disclosure).getByText('2 running')).toBeTruthy();
+    fireEvent.click(disclosure);
     await screen.findByText('second');
     const cards = screen.getAllByTestId('subagent-card');
     expect(cards).toHaveLength(2);
@@ -1178,18 +1187,22 @@ describe('subagent transcript cards', () => {
       );
       renderTranscript();
       const card = await findCard();
+      expect(
+        within(card).getByRole('img', { name: 'Claude Code' }),
+      ).toBeTruthy();
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(
         within(card).getByText('[opus] review station#3657 ADR freeze'),
+      ).toBeTruthy();
+      expect(
+        within(card).getByText('Read', {
+          selector: '.child-work-activity__name',
+        }),
       ).toBeTruthy();
       expect(within(card).getByText('Running')).toBeTruthy();
       expect(
         within(card).getByText('Reading the decision records'),
       ).toBeTruthy();
-      // Engine and subagent type are the record's; the model was not reported,
-      // and says so rather than borrowing the parent's.
-      expect(card.textContent).toContain('general-purpose · Claude Code · ');
-      expect(within(card).getByText('model not reported')).toBeTruthy();
       // Spawn point: after the intent, before the reply that followed the
       // call, in the same assistant row.
       const text = document.body.textContent ?? '';
@@ -1203,6 +1216,10 @@ describe('subagent transcript cards', () => {
       expect(replyAt).toBeGreaterThan(
         cardAt + (card.textContent ?? '').length - 1,
       );
+      expect(within(card).queryByText('model not reported')).toBeNull();
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(card.textContent).toContain('general-purpose · Claude Code · ');
+      expect(within(card).getByText('model not reported')).toBeTruthy();
       expect(unexpectedRequests).toEqual([]);
     },
   );
@@ -1220,6 +1237,7 @@ describe('subagent transcript cards', () => {
     view.rerender();
     const card = await findCard();
     await within(card).findByText('Completed');
+    expect(card.querySelector('.child-work-activity')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
     expect(within(card).getByText('17:04')).toBeTruthy();

@@ -60,7 +60,9 @@ export interface BackgroundTaskEntry {
   source: BackgroundTaskSource;
   chatThreadId: string;
   title: string;
+  delegationTitle?: string;
   detail?: string;
+  latestTool?: string;
   /**
    * When the card's work started, on this client's clock basis. #2459:
    * absent for a provider subagent whose spawning tool call this client never
@@ -169,13 +171,16 @@ function backgroundTaskEntryFromChildWork(
     // #2457: the child's live status line when it reports one, else its kind.
     // #3163: else its own reported model (Codex children carry no kind).
     detail: item.progress ?? item.kindLabel ?? item.model?.id,
+    ...(item.latestTool ? { latestTool: item.latestTool } : {}),
     ...(placement.startedAt !== undefined
       ? { startedAt: placement.startedAt }
       : {}),
     state,
+    ...(item.reporterThreadId
+      ? { sessionThreadId: item.reporterThreadId }
+      : {}),
     ...(item.controls?.stop && item.reporterThreadId
       ? {
-          sessionThreadId: item.reporterThreadId,
           // station#1877: task-scoped, so stopping one subagent leaves its
           // siblings and the turn running. Deliberately NOT 'turn-interrupt'
           // as a fallback — that ends every other subagent too. Offered only
@@ -217,6 +222,7 @@ function providerTaskChildWork(task: ChatBackgroundTask): ChildWorkItem {
     ...(task.subagentType ? { kindLabel: task.subagentType } : {}),
     ...(task.model ? { model: task.model } : {}),
     ...(task.progress ? { progress: task.progress } : {}),
+    ...(task.latestTool ? { latestTool: task.latestTool } : {}),
     // #2459: a stop only for a child that carried the seam itself, and only
     // with a session to address it to. A session thread alone is not a seam:
     // deriving one from it offered a Codex child a Stop wired to nothing.
@@ -377,12 +383,21 @@ function foldSessionLifecycle(
     {
       chatThreadId: parentTaskId,
       startedAt: parseTime(event.createdAt, Date.now()),
+      title: metaString(event.metadata, 'delegationTitle'),
     },
   );
   return {
     ...state,
     delegateParents,
-    entries: { ...state.entries, [taskId]: entry },
+    entries: {
+      ...state.entries,
+      [taskId]: {
+        ...entry,
+        ...(metaString(metadata, 'delegationTitle')
+          ? { delegationTitle: metaString(metadata, 'delegationTitle') }
+          : {}),
+      },
+    },
   };
 }
 
@@ -396,7 +411,11 @@ function foldDelegateTurnStarted(
     Boolean(parentTaskId) || existing?.source === 'delegate-session';
   if (!isKnownDelegate) return state;
 
-  const title = firstLine(event.prompt) ?? existing?.title ?? 'Delegated task';
+  const title =
+    existing?.delegationTitle ??
+    firstLine(event.prompt) ??
+    existing?.title ??
+    'Delegated task';
   if (existing) {
     if (existing.state === 'running' && existing.title === title) return state;
     const reopened = existing.state !== 'running';
@@ -588,11 +607,14 @@ export function reconcileBackgroundTasksSnapshot(
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
         title:
+          session.delegation?.title ??
           session.displayTitle ??
           (child.kindLabel
             ? `Delegated task — ${child.kindLabel}`
             : 'Delegated task'),
       });
+      if (session.delegation?.title)
+        entry.delegationTitle = session.delegation.title;
       const settled =
         !isActive && child.endedAt
           ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }

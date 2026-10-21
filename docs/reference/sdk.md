@@ -74,7 +74,7 @@ commands, environment variables or credential material. Personal tool accounts
 require the managed Station engine; external engines report these sources as
 unsupported. Installation, Project
 policy and personal account connection remain distinct operations. See the
-[Agent guide](../guides/agents.md#shared-projects) and
+[Agent guide](../guides/agent-configuration.md#shared-projects) and
 [API reference](api.md#project-tool-library).
 
 ## Agent development entry
@@ -132,6 +132,17 @@ This client cache policy leaves server read-time observations unchanged and does
 not replace dispatch authorization. Fetching session summaries directly still
 returns the latest server timestamps.
 
+`useOrchestrationSessionActivityQuery(threadId, apiBase?, config?)` reads only
+one newest turn through the bounded session event-window endpoint. It has a
+separate cache by API base and Session, does not paginate older history, and
+forwards cancellation when the final active observer leaves. Running child
+rows poll this window for their own latest reported tool; full-history usage
+accounting is loaded only on expansion. A new turn clears the previous tool
+name. The window's server-reported `latestTool` remains available when transcript
+caps omit its start event. An explicit `null` clears activity; only older
+responses without the field fall back to their loaded events. A missing tool
+report remains absent.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
@@ -163,6 +174,15 @@ and default-Agent migration remain separately tracked by #1372.
 ```
 
 ---
+
+## Account-recovery allowance preference
+
+`useSetCredentialRecoveryAutomaticPolicyMutation` forwards optional
+`allowancePreference: { windowId, minimumRemainingPercent }` to the existing
+credential-recovery policy endpoint. Omit the field to preserve the saved
+preference, or pass `null` to clear it. The mutation does not enroll accounts,
+probe quota by itself, apply credentials, or prove a recovery succeeded. See
+[the policy and evidence boundaries](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
 
 ## Credential-profile device-code login
 
@@ -247,8 +267,11 @@ The server also checks the expected Task incarnation.
 The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
 or stale scope never falls back to the ambient connection. Request caches
 include connection authority, Task identity and incarnation. Request cards
-poll every five seconds and can be refreshed explicitly; journal changes are
-not currently published through room SSE. Mutation retries are disabled.
+refresh before fresh submission and after request acknowledgement. Live presence
+and history use room SSE rather than polling request cards. Mutation retries
+are disabled. The composer uses the latest saved brief by default; uncertain
+retries retain their original context. Briefs over 16,000 characters include an
+explicit shortening notice in the snapshot markdown.
 Send refreshes Project-scoped delegation options and requires the selected
 agent to be ready before the version negotiation and create.
 
@@ -290,6 +313,7 @@ or use client functions that take an explicit API base and request options.
 | Surface | Current default Station binding |
 | --- | --- |
 | Agents, navigation, toast, auth | Bound host contexts |
+| `useHost`, `useHostFacts`, `useShortcut`, `useShortcutScope` | Bound; see [Host service hooks](#host-service-hooks) and [Keyboard Hooks](#keyboard-hooks) |
 | Layout list/detail | Bound list and selected-layout projection |
 | `useApiBase` | Returns `{ apiBase }`, not a string |
 | Create/send/open chat | Bound host callbacks; see their UI identity/async distinctions below |
@@ -301,7 +325,7 @@ or use client functions that take an explicit API base and request options.
 | `useSlashCommandHandler()` | Core chat command dispatcher; requires a local Dock entry and its command context |
 | `useToolApproval()` | Core approval handler; preserves server refusal and settled-request outcomes |
 | `useConversation`, `useConversationMessages` | Corresponding methods are not supplied; calling them through this adapter fails |
-| Stats, workflow and keyboard contexts; slash-command-list hook slot | Not supplied by this adapter |
+| Stats and workflow contexts; deprecated keyboard slots; slash-command-list hook slot | Not supplied by this adapter |
 
 The unbound hooks remain exported custom-host contracts, not deprecated or
 removed APIs. A custom `SDKProvider` may implement their slots. Default plugin
@@ -511,7 +535,7 @@ not interchangeable with a local Dock-entry ID.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout on desktop), where it shows that Chat page and leaves the dock alone.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout, including on phones), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -826,20 +850,117 @@ Returns stats for a specific conversation.
 
 ### Keyboard Hooks
 
-These require optional host slots absent from the default Station adapter.
-The following registration example describes a custom host that supplies them.
+#### `useShortcut(shortcut: SDKShortcut): SDKShortcutRegistration`
+
+Registers a shortcut in Station's shortcut registry while the component is
+mounted. It appears in the shortcut list and Settings, the user can rebind it,
+and an open modal suppresses it like Station's own shortcuts.
+
+```tsx
+const result = useShortcut({
+  id: 'open-picker',
+  keys: { key: 'p', modifiers: ['cmd', 'shift'] }, // cmd: ⌘ on a Mac, Ctrl elsewhere
+  description: 'Open the picker',
+  when: { not: 'composerFocused' },
+  run: () => setOpen(true), // return false to leave the key alone
+});
+```
+
+`id` is 1-64 letters, digits, `-` or `_`; Station lists it as
+`plugin.<plugin>.<id>`, with the installed plugin's name percent-encoded. The
+result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
+`reason` one of `'unbound'`, `'reserved'`, `'invalid-id'`, `'invalid-keys'` or
+`'invalid-when'`. A refused shortcut is not registered.
+
+- `'unbound'`: the pane has no installed-plugin identity Station verified.
+  Only an installed plugin's Workspace Pane has one; a project layout's own
+  `plugin` field does not count.
+- `'reserved'`: the command palette (⌘K), Settings (⌘,) and the shortcut list
+  (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
+  Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
+
+Plugin shortcuts rank below Station's own: a Station shortcut on the same
+chord wins whichever registered first. See
+[plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
+
+A `when` string is a host context key (`'composerFocused'`,
+`'terminalFocused'`, `'dialogOpen'`, `'dockFocused'`) or one of your own scope
+names; combine them with `{ not }`, `{ and: [] }` and `{ or: [] }`.
+
+#### `useShortcutScope(name: string, active = true): void`
+
+Turns on one of your plugin's scopes while mounted and `active`. A scope is
+visible only to your plugin's shortcuts. A host context key, an invalid name
+or a pane without a verified plugin identity throws.
+
+```tsx
+const [editing, setEditing] = useState(false);
+useShortcutScope('editor', editing);
+useShortcut({ id: 'save', keys: { key: 's', modifiers: ['cmd', 'alt'] },
+  description: 'Save', when: 'editor', run: save });
+```
 
 #### `useKeyboardShortcut(key: string, callback: () => void, deps?: any[]): void`
 
-Registers a keyboard shortcut for the lifetime of the component.
-
-```tsx
-useKeyboardShortcut('cmd+k', () => setOpen(true));
-```
+Deprecated: use `useShortcut`. This signature has no id or description, so the
+registry could not list it or check it against reserved chords. Station's
+adapter does not supply it, and calling it there throws. A custom host may
+still supply the slot.
 
 #### `useKeyboardShortcuts()`
 
-Returns all registered keyboard shortcuts.
+Deprecated: use `useShortcut`. It would hand a plugin the raw registry, which
+can replace and rebind Station's shortcuts. Station's adapter does not supply
+it.
+
+---
+
+### Host service hooks
+
+#### `useHost(): SDKHost`
+
+Requests Station carries out with its own chrome and platform plumbing. None of
+the promises rejects.
+
+```tsx
+const host = useHost();
+const copied = await host.clipboard.writeText(command); // false: no clipboard or refused
+const opened = await host.openExternal(pullRequest.url); // http(s) only
+const name = await host.prompt({ title: 'Rename', label: 'New name', initial: file });
+const decision = await host.confirm({ title: 'Delete?', message: 'This cannot be undone.' });
+```
+
+- `clipboard.writeText` resolves `true` only for a write the platform
+  accepted. Over plain `http://` there is no clipboard, so it resolves `false`.
+- `openExternal` opens `http:` and `https:` URLs in the desktop app's system
+  opener or a new browser tab, so the Station app is never replaced. It hands
+  on the parsed, normalised URL. Any other scheme, or a URL with a user name or
+  password, resolves `false`, and Station tells the user. The desktop app's own
+  link policy may also refuse a link.
+- `prompt` shows Station's prompt dialog and resolves the trimmed text, or
+  `null` when cancelled. A newer prompt cancels an open one. A prompt the pane
+  outlives resolves `null`, and so does a call after the pane has gone. Empty
+  text cannot be submitted.
+- `confirm` shows Station's confirm dialog and resolves `'confirmed'` or
+  `'cancelled'`, with the [pane-host contract](../design/pane-host-contract.md)'s
+  semantics; a call after the pane has gone resolves `'cancelled'`.
+
+Both dialogs are Station's standard modal chrome with a close button, drawn by
+the host rather than the plugin, and headed "From <plugin>" (or "From an
+unverified layout"). They are not trust or approval prompts, and an
+in-process plugin can draw lookalike dialogs.
+
+#### `useHostFacts(): PaneHostFacts`
+
+The pane host's environment facts, `{ device: { isMobile } }`. It re-renders
+when they change. `isMobile` is Station's single phone and coarse-pointer
+derivation, the same value a Workspace Pane receives as `host.facts`.
+
+These hooks serve in-process plugins. A sandboxed frame plugin uses the
+pane-host messages instead, which do not yet include prompt, clipboard,
+external links or shortcuts. `station dev` supplies all four hooks with
+browser stand-ins (`window.prompt`, `window.confirm`, a window key listener)
+that apply the same refusals.
 
 ---
 
@@ -863,8 +984,10 @@ Returns a query whose `data` is the agent's `WorkflowMetadata[]`.
 
 #### `useSDK()`
 
-Returns `{ apiBase, pluginName, getPluginHeaders }`, not the entire provider
-context. `pluginName` may be empty; header attribution is not an authorization
+Returns `{ apiBase, pluginName, telemetryCapability, getPluginHeaders }`, not
+the entire provider context. `telemetryCapability` is the owning host's optional
+capability supplier, used by `useTelemetry()`; absence is not permission to
+count. `pluginName` may be empty, and header attribution is not an authorization
 grant. Prefer scoped client operations for protected data.
 
 #### `useUserLookup(alias: string | null): { data: any; loading: boolean; error: string | null }`
@@ -1337,6 +1460,57 @@ currently becomes `null`, so that value is not proof of a clean repository.
 Accepts the same `{ projectSlug, workingDir }` location. Default count: 5;
 disabled unless both fields are nonempty. A `success: false` envelope currently
 becomes `[]`, which does not establish an empty repository history.
+
+### `useGitBranchesQuery(location, config?)`
+
+Accepts the same `{ projectSlug, workingDir }` location and reads
+`/api/coding/git/branches`, returning `GitBranch[]` (`name`, `sha`, a relative
+committer `date`, `current`). Disabled unless both fields are nonempty. A
+`success: false` envelope currently becomes `[]`, which does not establish a
+repository without branches.
+
+### `useReposQuery(location, config?)`
+
+Discovers the git repositories under a folder through `/api/coding/repos` and
+returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
+`DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
+and current `branch` (`''` for a detached HEAD or a repository the Project does
+not own). `location` is a `ReposLocation`, `{ projectSlug?, workingDir }`: the
+same shape as the git reads, except that `projectSlug` is optional because a
+folder may not be a Project yet. With a Project the server confines the folder
+to it; without one only the operator in person gets an answer. Disabled
+without a `workingDir`. A `success: false` envelope currently becomes an empty
+result, so no repositories is not proof the folder holds none.
+
+### `useGitCheckoutMutation(location)`
+
+Takes the same `{ projectSlug, workingDir }` location as the git reads.
+`mutate({ branch, create? })` posts to `/api/coding/git/checkout` and resolves
+to `GitCheckoutResult` (`{ branch }`, the branch HEAD now names). `create`
+creates the branch from HEAD.
+
+### `useGitCommitMutation(location)`
+
+`mutate({ message })` commits every change through `/api/coding/git/commit`
+and resolves to `GitCommitResult` (`{ sha }`). The server resolves the
+Project's own folder from `projectSlug`; `workingDir` selects a repository
+inside it.
+
+### `useGitPushMutation(location)`
+
+`mutate({ remote?, branch?, setUpstream? })` pushes through
+`/api/coding/git/push` and resolves to `GitPushResult` (`{ output, remote? }`).
+`remote` is optional: Stations released before SDK 0.8.0 answer with `output`
+alone.
+
+Commit and push are the Station operator's act: the server answers any other
+caller with `403`, and the SDK grants nothing of its own. A write whose
+location lacks a Project or folder rejects without sending a request. Every
+other refusal is the server's: its validation reasons when it sends them,
+otherwise its `error` sentence (a refused secret-looking file, repository
+configuration or remote is named there). A successful write invalidates that
+folder's `useGitStatusQuery`, `useGitBranchesQuery` and `useGitLogQuery`
+reads.
 
 ### `useProviderCommandsQuery(provider, config?)`
 
@@ -1985,17 +2159,17 @@ not imply edit, execution or administration support.
 `@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
-`readProjectSharedTaskHistory(...)` returns bounded `human-message` bodies with
-human or agent attribution; this body-kind filter does not mean every author is
-human. Structured tool events, attachment metadata and room
-write authority are excluded. Human messages and shared documents are returned
-verbatim without redaction and may themselves contain paths, secrets, or other
-private text. `readProjectSharedTaskDocument(...)` returns the current text
-snapshot. Each response is limited to one MiB and validated without extra
-fields. The current server reports an incomplete history page as `unavailable`.
-Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
-unavailable and too-large results retain their named states. None is an empty
-complete history, and none permits inferring private records.
+`readProjectSharedTaskHistory(apiBase, slug, taskId, options?)` returns bounded
+human-authored room messages. It excludes agent answers, structured tool events,
+attachment metadata, private thread fragments and room write authority. Human
+messages and shared documents are returned verbatim without redaction and may
+contain private text. `readProjectSharedTaskDocument(...)` returns the current
+text snapshot. Each response is limited to one MiB and validated without extra
+fields. When history returns `hasMore: true`, pass `nextCursor` as
+`options.cursor` to read the next page. Keep the pages in sequence; an empty
+filtered page does not mean the room is empty. Gap, stale, invalid-cursor,
+unavailable and too-large results retain their named states and never imply a
+complete history or permission to infer private records.
 `getProjectSharedTaskPublication(...)` gives a member
 `{ kind: 'shared', publication }`, where `publication` is the same summary the
 list returns for that Task. An unshared, stale, unknown or other-scope Task
@@ -2627,6 +2801,160 @@ qualify before the host transfers code. The frame supplies the nonsecret
 `window.__stationPaneHostOrigin` origin bootstrap; self-rendering pane code
 uses it with the SDK helper. This does not establish that arbitrary React
 component bundles can render in the isolated frame.
+
+## Related panes
+
+A plugin pane can open **its own** registered panes as related panes
+(see [Pane relationships](../design/pane-relationships.md)): a report list
+opening each report beside it, for example. The capability is optional,
+versioned and bound to the pane occurrence that receives it. A direct (trusted
+in-process) pane calls `useRelatedPanes()` from the SDK root; a pane running in
+Station's sandboxed plugin frame calls `createRelatedPanesPaneHost(window.parent,
+window.__stationPaneHostOrigin)` from `@kontourai/station-sdk/workspace-pane`,
+whose source the frame runtime also injects as
+`window.__stationCreateRelatedPanesPaneHost`. Both reach one host
+implementation, so admission, budget and refusals are the same in either tier.
+
+```tsx
+import { useRelatedPanes } from '@kontourai/station-sdk';
+
+const related = useRelatedPanes();
+const outcome = await related.open({
+  descriptorId: 'pane:plugin%3Areports:report', // one of THIS plugin's descriptors
+  modeId: 'project',                            // a mode it declares
+  key: report.id,                               // the plugin's own opaque key
+  title: report.title,                          // optional
+});
+if (outcome.status === 'unavailable') showReportHere(outcome.reason);
+else rememberHandle(outcome.handle);
+```
+
+| Member | Answers |
+| --- | --- |
+| `open(request)` | `{ status: 'opened' \| 'focused' \| 'replaced', handle, presentation }`, or `unavailable` |
+| `reveal(handle)` | `{ status: 'focused', presentation }`, or `unavailable` |
+| `close(handle)` | `{ status: 'closed' }`, or `unavailable`; asks the pane's own unsaved-changes guard first |
+| `target()` | the `{ descriptorId, modeId, key }` this occurrence was opened for, or `null` |
+| `supported` | `false` on a host without the capability (hook only) |
+
+**No promise rejects.** Every outcome is a value. On a host without the
+capability (`supported: false`, or a frame host that refuses the method by
+name) every request answers `unavailable: unsupported`; keep showing the
+content in your own pane rather than opening nothing.
+
+What the plugin names and what the host decides:
+
+- `descriptorId` must be one of the calling plugin's own descriptors offered in
+  the caller's Project, and `modeId` a mode it declares whose context
+  requirements the caller's own captured context satisfies. Another plugin's
+  descriptor, a built-in pane or an MCP pane is `unknown-descriptor`.
+- `key` is opaque to Station: it identifies the target for dedupe and for
+  `target()`. It is not a path, URL, Session id or grant. Bounds are refused,
+  never truncated: `descriptorId` and `key` 256 characters, `modeId` 128,
+  `title` 160, no control characters; any other field is `invalid-request`.
+- The host stamps the opener (the calling occurrence), the exact verified
+  Station, the caller's captured context (at most its own Task, Session, run,
+  workspace and source identity) and the plugin's installed generation. A
+  related pane never gets more context than its opener had, and nothing here
+  grants a read.
+- Presentation is the host's choice, reported back: `beside` the opener, as a
+  phone `child` screen, or with the Tools (`tool`) for a descriptor declaring
+  `relationRole: 'tool'`. `sheet` is reserved for a selection-inspector role
+  plugins cannot declare yet.
+- One reusable preview per opening occurrence: opening another target
+  `replaced` it; opening the same target, or a target the user kept,
+  `focused` it. The user's **Keep open**, or unsaved work in the preview,
+  keeps it as an ordinary tab.
+- "The same target" is exact: the same descriptor, mode and key, in the same
+  Project, with the same captured context and the same installed generation.
+  A kept report opened for another Session, run or installation is never the
+  one an open focuses; a new occurrence opens instead.
+- A handle reveals or closes only what this occurrence opened, for its own
+  Project, context, plugin and installed generation; anything else is
+  `unknown-handle`.
+- Before anything changes, the host asks the unsaved-changes guard of every
+  pane the request would take off screen (the preview it replaces, the pane
+  it covers, the pane a `close` removes). It commits only if, when the last
+  guard answers, everything is still as it asked about: the same Station and
+  holder, the plugin still admitted, the same pane in front, and no unsaved
+  work registered meanwhile for a pane it would hide. Otherwise it answers
+  `superseded` (or the admission's own reason) and leaves everything as it
+  was.
+- The capability belongs to the occurrence that received it, on the Station
+  it was received on. When the occurrence unmounts, or another Station is
+  verified, the capability is revoked: it answers `context-mismatch`,
+  including for a request whose guard is still being answered, and the
+  occurrence gets a new one. Call through the latest `useRelatedPanes()`
+  value rather than keeping one from an earlier render. A frame's requests
+  are bound to the frame document that sent them: one from a replaced
+  document changes nothing.
+
+`unavailable` reasons: `unsupported`, `invalid-request`, `unknown-descriptor`,
+`mode-unsatisfiable`, `not-authorized` (the plugin was disabled, removed or
+updated since the caller was mounted, or its renderer is not admitted),
+`context-mismatch` (the caller's Project or Station is no longer the one on
+screen), `station-unverified`, `capacity` (too many related panes; nothing is
+evicted), `contended` (another window was writing at that moment),
+`superseded`, `rate-limited` (four at once, then one every five seconds, per
+plugin, across both tiers; a `close` spends from it only when it would ask the
+pane's unsaved-changes guard), `guard-cancelled`, `unknown-handle` and
+`refused`.
+
+A related occurrence is fenced to the Station it was opened on and renders only
+while its plugin is still the installed generation it was opened under; a
+disabled or updated plugin's related pane stays as a tab with an unavailable
+placeholder and runs no plugin code. The generation includes the catalog
+contribution's server-issued `lifecycleGeneration`, which changes whenever
+the installation is replaced (a same-version reinstall included) or its
+enablement changes and never repeats, so enabling or reinstalling the plugin
+again does not bring an earlier occurrence back. While the Station cannot
+vouch for that history (`lifecycleGeneration: null`), the plugin's panes get
+no related-pane capability (every request answers `unsupported`) and its
+earlier related panes stay unavailable. From a server that issues no
+lifecycle generation, the same installation enabled again is the same
+generation. Declaring `docked` placement does not
+admit a pane to a region, and related panes are opened only through this
+capability; legacy navigation (`useNavigation`, the frame's `navigate`
+message) is unchanged.
+
+For a direct Project-pane opener, Station captures the catalog-issued
+descriptor and instance IDs itself. The related pane's Up action returns to
+that exact pane through the canonical pane route, including after Keep and
+reload. It does not substitute the Project overview or accept a URL from the
+plugin. Cancellation and a changed Station or relation leave the current child
+in place. The phone Back caption names the captured opener; browser evidence
+for these returns is separate from native-shell acceptance.
+An older report gains its missing exact opener reference when that same
+Reports occurrence reopens it on the same verified Station and Project, under
+the same installed generation. The locked focus transaction re-admits the
+caller and checks the unchanged source, target state and fence after guards;
+Cancel or a changed owner writes nothing. Reopening from another occurrence
+does not rewrite the original opener. No ambient route is used to infer it.
+Optional return metadata does not change which unkept preview that caller
+reuses. If the Project descriptor cannot fit the stored reference's bounds,
+Station retains its readable legacy return rather than writing an unreadable
+relation. Up already on its exact route does not add a history entry: on a
+phone it leaves through the guarded layer close; on desktop it is a no-op.
+
+From a frame, each member is a request carrying an `id`, answered by one
+`pane-host/related-result` `{ id, data }`:
+`pane-host/related-open` `{ id, request }`, `pane-host/related-reveal`
+`{ id, handle }`, `pane-host/related-close` `{ id, handle }` and
+`pane-host/related-target` `{ id }`. Use the SDK client rather than the
+messages: it pins the host window and origin, decodes only the shapes above,
+holds at most 16 requests and settles an unanswered request `refused` after
+30 seconds.
+
+The [Related Reports example](../../examples/related-reports/README.md) uses
+both tiers. The hook is on the SDK root only: plugin bundles receive the root
+from their host at runtime, which is what binds the hook to the host's
+provider. The Pane subpath carries the frame client, `UNSUPPORTED_RELATED_PANES`
+and the types. Source: [contract](../../packages/contracts/src/workspace-pane-host-contract.ts),
+[SDK hook](../../packages/sdk/src/related-panes-hook.ts) and
+[frame client](../../packages/sdk/src/related-panes.ts),
+[host](../../src-ui/src/workspace-panes/relatedPanesHost.ts). These exports
+require a published SDK and contracts release before external consumers can
+import them.
 
 ---
 
@@ -3426,6 +3754,10 @@ the flag, a full limited window is conservatively marked truncated.
 `fetchMonitoringEvents(start, end, signal, filters)` retains its array return
 shape and no default limit for existing export callers. Both functions reject
 failed or malformed reads instead of reporting an empty history.
+Their filters, like `fetchInsights`' `InsightsFilters`, take `producer` to
+select one external telemetry producer; without it the other filters never
+match producer rows, and `fetchInsights` returns their activity in
+`producerActivity`. See [Telemetry ingest](api.md#telemetry-ingest).
 
 API-base initialization wakes pending callers when configuration is published,
 with a 500 ms failure bound; later reads observe the latest configured base.
@@ -3447,31 +3779,32 @@ the `HostResourceSnapshot` contract from
 keep omitted memory/process values unknown. CPU and resource sample timestamps
 are independent.
 
-### `telemetry`
+### Plugin publisher counts
 
-Best-effort client telemetry for plugins. `track(event, attributes?)` buffers
-up to 1,000 events at a time, drops new events while full, and schedules a flush
-after ten seconds. `flush()` also allows an explicit flush. Only one request is
-in flight at a time, with a five-second abort deadline.
+Declare the bounded event/property inventory in the plugin manifest first; see
+[Publisher analytics](../guides/plugins.md#publisher-analytics). In a Pane:
 
 ```ts
-import { telemetry } from '@kontourai/station-sdk';
+import { useTelemetry } from '@kontourai/station-sdk';
 
-telemetry.track('panel.opened', { panel: 'overview' });
+const telemetry = useTelemetry();
+await telemetry.count('opened', { surface: 'main', items: 2 });
 ```
 
-The buffer is removed before dispatch. Network failures are swallowed, HTTP
-status is not checked, and events are not retried; a resolved `flush()` is not
-proof of server receipt. The sender uses direct browser `fetch`, outside the
-SDK's authenticated transport. The legacy imperative plugin label is currently
-empty, so this helper does not establish package attribution.
+`useTelemetry()` captures that Pane's Station and kernel-issued five-minute capability, renewed by the host while mounted. Outside React, pass a capability supplied by the owning host to `createPluginTelemetry(apiBase, paneCapability)` from the root or `@kontourai/station-sdk/client`. Plugin names and headers cannot substitute for a capability.
+`count(event, props?)` returns a Promise; a kernel rejection rejects it. It sends
+only to `/api/telemetry/events`, through the SDK's authenticated request boundary,
+with a five-second deadline and no retry. Broker routes are unavailable for this
+optional feature. It never contacts the publisher endpoint.
 
-With the host's raw-egress policy installed, a changed connection/account
-authority drops its captured events instead of retargeting them. Browser broker
-routes drop optional telemetry. Without that policy, the helper compares only
-the configured API base. Do not put secrets in events or use this buffer as an
-accounting record. See [telemetry](../../packages/sdk/src/telemetry.ts) and the
-[identity getter](../../packages/sdk/src/api-core.ts).
+The kernel requires a currently selected signed public-registry installation,
+validates the complete event/property/value inventory, then admits collection
+under that publisher's effective tier. Count properties are bounded integers at
+input and bucket labels at output. Collection and receiver delivery are separate:
+a successful kernel response does not prove receiver acceptance. Inspect
+`station telemetry outbox --publisher publisher:<id>` for local delivery results.
+
+The old unqualified `telemetry.count`/`track` and automatic `instrument()` diagnostics are no-ops. In development, instrumentation warns. Use a Pane-scoped object and declared inventory; do not put prompts, paths, names, account identifiers or error text in telemetry properties.
 
 ---
 
@@ -3596,10 +3929,12 @@ Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
-the connection dropped before the answer arrived. It is read-only and returns a
-`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+the connection dropped before the answer arrived. It is read-only and, on success,
+returns a `TurnDeliveryInspection`; only `not-received` means the same key may be sent
 again. A Station without the lookup answers `404`, which throws a refusal
-rather than reading as `not-received`. The
+rather than reading as `not-received`. An explicitly settled key answers HTTP
+`409` with `client_turn_settled` and its actual disposition; that is a refusal,
+not a successful delivery outcome or permission to resend the key. The
 [Session API](session-api.md) defines each outcome.
 `queueExecutionMessage(apiBase, input)` sends a follow-up that Station holds in
 the conversation's inbox while its turn runs (#3568). It needs `conversationId`
@@ -3607,8 +3942,16 @@ and `clientTurnId`, takes no approval pick, and resolves
 `{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
 (`outcome: 'queued'`). A Station that predates the inbox, and any send it
 cannot hold (attachments, a target other than the conversation's binding),
-refuses a busy send as before, so keep the message on
-`provider_turn_in_progress` or `provider_session_starting`.
+can refuse a send before its keyed dispatch begins with
+`provider_turn_in_progress` or `provider_session_starting`; that message can
+wait for the Session to be free. On a current Station, a begun keyed send
+refused with one of those busy codes answers HTTP `409` with
+`client_turn_settled` and its actual disposition only when authorized inspection
+of the original key proves its retained settlement. Other first definitive
+adapter refusals preserve their original actionable error envelope even when
+the key has closed. A subsequent authorized lookup or same-key retry reports
+the retained closed-key `409`. Never retry a settled key or generate a
+replacement key automatically. A deliberate new user request requires a new key.
 `listConversationInbox(apiBase, conversationId)` lists the held messages and
 `cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
 one, or dismisses one that is `unconfirmed` or `refused`.
@@ -4085,6 +4428,14 @@ await respondToRequest(requestScope.apiBase, {
 }, { requestScope });
 ```
 
+`RespondToRequestInput` also takes an optional `sessionGrantScope: 'server'`
+with `decision: 'acceptForSession'`. It widens the grant to the built-in
+Station browser server and only where the request offered that choice. Omit it
+for the per-tool grant; a Station that predates the field ignores it.
+The approval decision option carries the same optional `sessionGrantScope`;
+renderers must forward it separately from `acceptForSession` so the server
+choice cannot collapse into ordinary per-tool trust.
+
 The host captures `requestScope`; do not reconstruct it from a URL or title.
 Response commands preserve their existing receipts. An event mismatch or lost
 request authority is a refusal to act, requiring fresh inspection rather than a
@@ -4216,8 +4567,10 @@ than passing it on. `applyMethod` is `'service-update'` for an
 `archive-service`, `'station-upgrade'` for an installed archive no launcher
 runs, and `'reinstall'` for any other archive copy. An `archive-service`
 status also carries `serviceUpdate`, a `ServiceUpdateProgress` from
-`@kontourai/station-contracts/system-status` (an update under way, or the
-last one's outcome). `applyCoreUpdate` returns `serviceUpdate: { requestId }`
+`@kontourai/station-contracts/system-status` (an update under way, a downloaded
+and verified release waiting for a restart (`staged`), or the last one's
+outcome). `requestCoreUpdateStatus` and `requestServiceUpdateProgress` ask for
+`staged` with `?staged=1`. `applyCoreUpdate` returns `serviceUpdate: { requestId }`
 when it queued such an update; follow it with
 `requestServiceUpdateProgress(apiBase, signal?)` (`GET
 /api/system/core-update/service-update`) or
@@ -4225,6 +4578,21 @@ when it queued such an update; follow it with
 })`, correlating the outcome by `requestId`. A progress body this SDK cannot
 read parses as `{ state: 'unavailable' }`, never as a neighbouring state, and
 a non-ok status throws a `StationHttpError`.
+
+For a server the service launcher runs (#3851), the SDK has these server
+update functions:
+- `requestServerUpdateState(apiBase, signal?)` and `useServerUpdateStateQuery`
+  read `GET /api/system/core-update/state`.
+- `applyServerUpdateStateEvent(queryClient, apiBase, payload)` writes a
+  `server-update:changed` payload into that cached state, under the key
+  `serverUpdateStateQueryKey(apiBase)`. A payload whose failed-download
+  `reason` the broadcast withheld (`withheld`) is not stored; the state is
+  read again from its route instead.
+- `requestServerUpdateRunningTurns` and `useServerUpdateRunningTurnsQuery`
+  read the agent turns a restart would interrupt.
+- `requestServerUpdateAction` and `useServerUpdateActionMutation` send a
+  `ServerUpdateAction`: stage, apply the staged version, or set or cancel
+  apply-when-idle.
 
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
@@ -4631,6 +4999,11 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
+'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
+Keep the human draft visible and inspect the full run before resending; the field
+does not grant retry or execution authority.
 
 ### Queued foreground retries
 

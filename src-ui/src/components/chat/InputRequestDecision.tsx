@@ -4,29 +4,28 @@ import type {
 } from '@kontourai/station-contracts/input-request';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
+import './InputRequestDecision.css';
 
 /**
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
  * the options' effect and scope, never a source. Answering one is a grant,
  * so it hands the choice to the approval's own authority path
- * (`onApprove`'s `once` / `trust` / `deny`), which is unchanged.
+ * (`onApprove`'s `once` / `trust` / `trust-server` / `deny`).
  */
-export type ApprovalAction = 'once' | 'trust' | 'deny';
+export type ApprovalAction = 'once' | 'trust' | 'trust-server' | 'deny';
 
 function approvalActionForOption(
   option: InputRequestDecisionOption,
 ): ApprovalAction {
   if (option.effect === 'deny') return 'deny';
-  return option.scope === 'session' ? 'trust' : 'once';
+  return option.scope === 'session'
+    ? option.sessionGrantScope === 'server'
+      ? 'trust-server'
+      : 'trust'
+    : 'once';
 }
 
-const BUTTON_CLASS: Record<ApprovalAction, string> = {
-  once: 'tool-call__approve-btn tool-call__approve-btn--primary',
-  trust: 'tool-call__approve-btn tool-call__approve-btn--secondary',
-  deny: 'tool-call__approve-btn tool-call__approve-btn--danger',
-};
-
-/** Desktop: one button per option, in the body's order. */
+/** Desktop: keep the one-call decision visible and standing grants in the overflow. */
 export function DecisionButtons({
   body,
   busy,
@@ -37,22 +36,13 @@ export function DecisionButtons({
   onChoose: (action: ApprovalAction) => void;
 }) {
   return (
-    <>
-      {body.options.map((option) => {
-        const action = approvalActionForOption(option);
-        return (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => onChoose(action)}
-            disabled={busy}
-            className={BUTTON_CLASS[action]}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </>
+    <DecisionActionRow
+      body={body}
+      busy={busy}
+      inFlight={false}
+      onChoose={onChoose}
+      overflowLabel="More ways to allow this request"
+    />
   );
 }
 
@@ -66,11 +56,13 @@ export function DecisionActionRow({
   inFlight,
   chosen,
   onChoose,
+  overflowLabel = 'More approval options',
 }: {
   body: InputRequestDecisionBody;
   busy: boolean;
   inFlight: boolean;
   chosen?: ApprovalAction;
+  overflowLabel?: string;
   onChoose: (action: ApprovalAction) => void;
 }) {
   const deny = body.options.find((option) => option.effect === 'deny');
@@ -82,7 +74,8 @@ export function DecisionActionRow({
   );
   return (
     <ActionRow
-      overflowLabel="More approval options"
+      className="approval-decision-row"
+      overflowLabel={overflowLabel}
       secondary={
         deny ? (
           <Button

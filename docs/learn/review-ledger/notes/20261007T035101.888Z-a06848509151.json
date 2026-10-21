@@ -1,0 +1,7 @@
+{
+  "revision": "e059b195c089c8c9f00e99ce915cb027ab1211b9",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-reviewed the Session control sender paragraph at current committed bytes: canonical Session accents, real SDK/region one-shot anchored reads with 20-page limit, public bounded sender fields, unchanged internal actor/reference authority, persisted SQLite provider cause and open #3158 dependency. Current focused244 and prior real-region62 are diagnostic; no runtime or publication claim.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

@@ -57,7 +57,6 @@ const ROUTES: NavigationView[] = [
  */
 const UNFRAMED = new Set([
   'home', // hero prompt, not a page name
-  'task', // task workspace owns its viewport
   'project', // project identity header is the content
   'layout', // a layout renders edge to edge
   'personal-board', // a Board is a layout, rendered by the same renderer

@@ -211,49 +211,50 @@ describe('a pane opened on a phone opens over Chat', () => {
       current().openSurfaceInRegion(PR);
     });
     await waitFor(() => expect(onLayerEntry()).toBe(true));
-    act(() => current().closePhoneLayer());
+    act(() => {
+      void current().closePhoneLayer();
+    });
     await waitFor(() => expect(current().regions.bottom.occupant).toBe('chat'));
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
-  // Gap G1: the layer's maximize rides Chat's `?maximize`, so a reload with
-  // a layer open came back with Chat maximized and no layer to undo it. A
-  // reload is simulated as a fresh provider mount on the SAME entry — its
-  // URL and history state as the unloaded page left them, and the tab's
-  // session storage.
-  test('a reload with a layer open lands in the pre-layer dock state', async () => {
-    navigationStore.setDockState(true, false);
-    await mount();
-    act(() => {
-      current().openSurfaceInRegion(PR);
-    });
-    await waitFor(() => expect(onLayerEntry()).toBe(true));
-    await waitFor(() => expect(maximizeParam()).toBe('true'));
+  /**
+   * Simulates a reload with a layer open: a fresh provider mount ON the
+   * layer's entry, with the entry beneath it the pre-layer one — the URL,
+   * history state and session record exactly as the unloaded page left them.
+   * The test's unmount, unlike a real reload, runs the layer's cleanup (which
+   * travels Back over the entry and clears the record), so both are put back.
+   */
+  async function reloadOverLayer(
+    rewriteRecord?: (record: Record<string, unknown>) => void,
+  ) {
     const href = window.location.href;
     const state = window.history.state;
     const record = sessionStorage.getItem('station.phoneLayer.preLayerDock.v1');
     expect(record).toContain(
       (state as Record<string, string>)[DIALOG_HISTORY_KEY],
     );
-
-    // The unload: no React cleanup runs on a real reload, so the entry and
-    // the session record are put back exactly as they were after the test's
-    // unmount (which, as a real unmount, clears the record).
     cleanup();
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(
       sessionStorage.getItem('station.phoneLayer.preLayerDock.v1'),
     ).toBeNull();
-    if (record)
-      sessionStorage.setItem('station.phoneLayer.preLayerDock.v1', record);
-    window.history.replaceState(state, '', href);
-    navigationStore.navigate(window.location.pathname, {
-      dock: 'open',
-      maximize: 'true',
-    });
-    window.history.replaceState(state, '', href);
+    if (record) {
+      const parsed = JSON.parse(record) as Record<string, unknown>;
+      rewriteRecord?.(parsed);
+      sessionStorage.setItem(
+        'station.phoneLayer.preLayerDock.v1',
+        JSON.stringify(parsed),
+      );
+    }
+    // Back on the layer's entry, over the pre-layer one, and the store reading
+    // its URL (two same-entry param writes, which keep the entry's state).
+    window.history.pushState(state, '', href);
+    navigationStore.updateParams({ maximize: null });
+    navigationStore.updateParams({ maximize: 'true' });
+    // The entries the reloaded page starts with: a restore adds none.
+    const historyLength = window.history.length;
     model = null;
-
     render(
       <KeyboardShortcutsProvider>
         <NavigationProvider>
@@ -264,6 +265,65 @@ describe('a pane opened on a phone opens over Chat', () => {
       </KeyboardShortcutsProvider>,
     );
     await waitFor(() => expect(model).not.toBeNull());
+    return { historyLength };
+  }
+
+  // Gap G1 kept its pre-layer state for the reload; the pane relationships
+  // contract restores the exact child on top of it: the reader comes back to
+  // the pane they were reading, on the entry they were on.
+  test('a reload with a layer open restores that exact pane, and Back returns to the pre-layer dock', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    const entry = (window.history.state as Record<string, string>)[
+      DIALOG_HISTORY_KEY
+    ];
+
+    const { historyLength } = await reloadOverLayer();
+    await waitFor(() =>
+      expect(current().phoneLayer).toEqual({ region: 'bottom', surfaceId: PR }),
+    );
+    expect(current().regions.bottom).toMatchObject({
+      occupant: PR,
+      visible: true,
+      maximized: true,
+    });
+    // The same entry, adopted rather than pushed again.
+    expect(
+      (window.history.state as Record<string, string>)[DIALOG_HISTORY_KEY],
+    ).toBe(entry);
+    expect(window.history.length).toBe(historyLength);
+    // The record is live again for the restored layer.
+    expect(
+      sessionStorage.getItem('station.phoneLayer.preLayerDock.v1'),
+    ).toContain(PR);
+
+    act(() => window.history.back());
+    await waitFor(() => expect(current().phoneLayer).toBeNull());
+    expect(current().regions.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+      maximized: false,
+    });
+    await waitFor(() => expect(maximizeParam()).toBeNull());
+    expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  test('a reload whose layer pane no longer resolves lands in the pre-layer dock state', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await waitFor(() => expect(maximizeParam()).toBe('true'));
+    await reloadOverLayer((record) => {
+      record.surfaceId = 'retired-surface';
+    });
     expect(current().phoneLayer).toBeNull();
     expect(current().regions.bottom).toMatchObject({
       occupant: 'chat',
@@ -273,6 +333,20 @@ describe('a pane opened on a phone opens over Chat', () => {
     await waitFor(() => expect(maximizeParam()).toBeNull());
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     expect(navigationStore.lastDockMaximized).toBe(false);
+  });
+
+  test('a record an older build wrote, with no pane, keeps the pre-layer dock state', async () => {
+    navigationStore.setDockState(true, false);
+    await mount();
+    act(() => {
+      current().openSurfaceInRegion(PR);
+    });
+    await waitFor(() => expect(onLayerEntry()).toBe(true));
+    await reloadOverLayer((record) => {
+      delete record.surfaceId;
+    });
+    expect(current().phoneLayer).toBeNull();
+    expect(current().regions.bottom.occupant).toBe('chat');
   });
 
   // G1's record names the layer's live entry exactly: a record found on any
@@ -449,7 +523,9 @@ describe('a pane opened on a phone opens over Chat', () => {
     });
     await waitFor(() => expect(onLayerEntry()).toBe(true));
     await waitFor(() => expect(maximizeParam()).toBe('true'));
-    act(() => current().closePhoneLayer());
+    act(() => {
+      void current().closePhoneLayer();
+    });
     await waitFor(() =>
       expect(current().regions.bottom).toMatchObject({
         panes: ['chat'],
