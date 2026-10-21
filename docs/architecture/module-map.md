@@ -1681,6 +1681,11 @@ old aliases and require confirmed engine retirement before transfer. The compact
 history contract preserves ordered provider boundaries and explicit fork
 ancestry; neither a return request nor lineage alone proves native identity.
 
+An ordinary follow-up after a native return requires observed completion of
+that handoff's seed-bearing turn. A failed or uncertain catch-up refuses ordinary
+continuation before reuse or cursor resume; it does not reopen the accepted-start
+boundary or automatically resend context.
+
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
 not the terminal `completed`), and a failed or stopped turn rests it `failed`
