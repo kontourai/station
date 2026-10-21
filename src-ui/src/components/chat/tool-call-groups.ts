@@ -344,15 +344,20 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   const settledCount = calls.filter(
     (c) => !c.inProgress && !c.awaitingApproval,
   ).length;
+  // "Done" is a call that finished successfully: a failed, cancelled or
+  // denied one is not done, and wears its own badge instead.
+  const doneCount = calls.filter(
+    (c) => c.phase === 'done' && !c.failed && !c.cancelled && !c.denied,
+  ).length;
   // The progress count belongs to a multi-call run in flight (a solo call's
-  // label already says it is running), and only once something settled: "0
+  // label already says it is running), and only once something finished: "0
   // done" says nothing. A run waiting on a grant leads with that badge.
   const summary =
     inProgress &&
     calls.length > 1 &&
-    settledCount > 0 &&
+    doneCount > 0 &&
     awaitingApprovalCount === 0
-      ? `${aggregateSummary} · ${settledCount} done`
+      ? `${aggregateSummary} · ${doneCount} done`
       : aggregateSummary;
   const failedCount = calls.filter((c) => c.failed && !c.recovered).length;
   const recoveredCount = calls.filter((c) => c.recovered).length;

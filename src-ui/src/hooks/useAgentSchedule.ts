@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 /**
@@ -13,8 +13,9 @@ import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
  * a usage-limit stop waiting for its reset. One cache entry, read by the
  * in-chat notes and by the "This chat" card's Scheduled section.
  *
- * No polling: the chat re-reads it on each snapshot update (`refreshKey`) and
- * once just after the soonest item is due.
+ * No polling: the chat re-reads it when its schedule may have changed
+ * (`refreshKey`: a turn boundary, a finished scheduling call) and once just
+ * after the soonest item is due.
  */
 
 const EMPTY: ConversationAgentSchedule = {
@@ -83,9 +84,15 @@ export function useAgentSchedule(
   });
   const data = query.data ?? EMPTY;
 
+  // Re-read when the key changes, not when it is first seen: the mount's
+  // own read already covers that, and a refetch then would cancel it.
+  const seenKey = useRef(refreshKey);
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the trigger.
   useEffect(() => {
-    if (enabled && refreshKey !== undefined) void query.refetch();
+    if (refreshKey === seenKey.current) return;
+    seenKey.current = refreshKey;
+    if (enabled && refreshKey !== undefined)
+      void query.refetch({ cancelRefetch: false });
   }, [refreshKey]);
 
   const due = soonest(data);

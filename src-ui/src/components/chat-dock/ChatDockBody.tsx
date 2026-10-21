@@ -2,6 +2,7 @@ import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
   inspectOrchestrationSteerInput,
   type OrchestrationSessionSummary,
@@ -83,6 +84,8 @@ import {
   transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
+import { turnToolsRunning } from '../../utils/turn-tools-running';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import type { ChatInputArea } from '../chat/ChatInputArea';
@@ -113,6 +116,36 @@ import {
 } from './retry-attachments';
 import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
+
+/** The station-control tools that change what a chat has scheduled. */
+const SCHEDULE_TOOLS = new Set([
+  'schedule_wake_up',
+  'cancel_wake_up',
+  'propose_job',
+]);
+
+/**
+ * When the chat's schedule may have changed: a turn started or ended (a
+ * check-back sent, a stop), or the running turn finished a scheduling tool
+ * call. Not every streamed event: the summary's event count moves on every
+ * delta, and each move re-read the schedule.
+ */
+export function agentScheduleRefreshKey(
+  openTurnId: string | undefined,
+  parts:
+    | readonly { type?: string; toolName?: string; state?: string }[]
+    | undefined,
+): string {
+  const scheduled = (parts ?? []).filter(
+    (part) =>
+      part.type === 'tool-invocation' &&
+      SCHEDULE_TOOLS.has(stationControlToolName(part.toolName) ?? '') &&
+      part.state !== 'call' &&
+      part.state !== 'running' &&
+      part.state !== 'partial-call',
+  ).length;
+  return `${openTurnId ?? 'idle'}:${scheduled}`;
+}
 
 const loadChatInputArea = () =>
   import('../chat/ChatInputArea').then((module) => ({
@@ -1561,7 +1594,9 @@ export function ChatDockBody({
           are empty, and stays mounted so its rows can animate in and out. */}
       {activeSession.queuedMessages.length || !activeSession.replay ? (
         <LazyBoundary
-          key={activeSession.conversationId ?? activeSession.id}
+          // The chat's own id: a new chat gaining its conversation id is the
+          // same list, not a new one to mount (and replay its rows' entry).
+          key={activeSession.id}
           load={loadConversationInboxMessages}
           pending={null}
           componentProps={{
@@ -1572,9 +1607,17 @@ export function ChatDockBody({
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
-            waitingForTools: hasActiveToolCall(
-              activeSession.streamingMessage?.contentParts,
-            ),
+            // The pill's fact when the server's turn record is here (it
+            // survives a reload; the live parts do not), unless the user
+            // owes an approval, which the turn waits on instead. The live
+            // parts only without that record.
+            waitingForTools: activeSession.conversationActivity
+              ? turnToolsRunning(activeSession.conversationActivity) &&
+                requestsWaitingOnUser({
+                  pendingApprovals: activeSession.pendingApprovals ?? [],
+                  answeredApprovals: activeSession.answeredApprovals,
+                }).length === 0
+              : hasActiveToolCall(activeSession.streamingMessage?.contentParts),
             sendNowPending:
               activeSession.queueSendNowPending ||
               activeSession.queueDrainSettling,
@@ -1920,7 +1963,10 @@ export function ChatDockBody({
       {activeSession.conversationId && !activeSession.replay ? (
         <AgentScheduleNotes
           conversationId={activeSession.conversationId}
-          refreshKey={`${activeOrchestrationSession?.eventCount ?? ''}:${activeOrchestrationSession?.updatedAt ?? ''}`}
+          refreshKey={agentScheduleRefreshKey(
+            activeSession.conversationActivity?.openTurn?.turnId,
+            activeSession.streamingMessage?.contentParts,
+          )}
         />
       ) : null}
       {agent?.available === false &&

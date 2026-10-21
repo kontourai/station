@@ -405,13 +405,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   );
   // The open turn renders from the projection, and the server says it is
   // still executing: its calls with no outcome yet are in flight, not
-  // abandoned. Only this caller knows that, so it tells the projection.
-  const liveOpenTurnThread = openTurnProjected
-    ? projectedOpenThread
-    : undefined;
-  const liveOpenTurnId = openTurnProjected
-    ? projectedOpenTurn?.turnId
-    : undefined;
+  // abandoned. Only this caller knows that, so it tells the projection —
+  // naming the turn by the SERVER's record (`conversationActivity.openTurn`),
+  // never by the window's own last turn: a window that ends inside some
+  // other unterminated turn must not have that turn's calls claimed live.
+  // Without the server's record, nothing is claimed.
+  const serverOpenTurn = session.conversationActivity?.openTurn;
+  const liveOpenTurnThread =
+    openTurnProjected && serverOpenTurn ? serverOpenTurn.threadId : undefined;
+  const liveOpenTurnId =
+    openTurnProjected && serverOpenTurn ? serverOpenTurn.turnId : undefined;
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {

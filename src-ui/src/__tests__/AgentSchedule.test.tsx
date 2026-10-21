@@ -505,3 +505,58 @@ describe('the "This chat" card’s Scheduled section', () => {
     expect(view.container.innerHTML).toBe('');
   });
 });
+
+describe('when the chat re-reads its schedule', () => {
+  const gets = () => calls.filter((call) => call.method === 'GET').length;
+
+  test('once on mount, again only when the refresh key changes', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const at = (key: string) => (
+      <QueryClientProvider client={client}>
+        <AgentScheduleNotes conversationId={CONVERSATION} refreshKey={key} />
+      </QueryClientProvider>
+    );
+    const view = render(at('turn-1:0'));
+    await screen.findByText(/Checking back at/);
+    expect(gets()).toBe(1);
+    view.rerender(at('turn-1:0'));
+    await act(async () => undefined);
+    expect(gets()).toBe(1);
+    view.rerender(at('turn-1:1'));
+    await waitFor(() => expect(gets()).toBe(2));
+  });
+
+  test('the key moves with a turn boundary or a finished scheduling call, not with streamed output', async () => {
+    const { agentScheduleRefreshKey } = await import(
+      '../components/chat-dock/ChatDockBody'
+    );
+    const running = [
+      { type: 'text' },
+      {
+        type: 'tool-invocation',
+        toolName: 'mcp__station-control__schedule_wake_up',
+        state: 'running',
+      },
+    ];
+    const base = agentScheduleRefreshKey('turn-1', running);
+    // More text, another tool: same key.
+    expect(
+      agentScheduleRefreshKey('turn-1', [
+        ...running,
+        { type: 'text' },
+        { type: 'tool-invocation', toolName: 'Bash', state: 'completed' },
+      ]),
+    ).toBe(base);
+    // The scheduling call finished: a new key.
+    expect(
+      agentScheduleRefreshKey('turn-1', [
+        running[0]!,
+        { ...running[1]!, state: 'completed' },
+      ]),
+    ).not.toBe(base);
+    // The turn ended.
+    expect(agentScheduleRefreshKey(undefined, [])).not.toBe(base);
+  });
+});

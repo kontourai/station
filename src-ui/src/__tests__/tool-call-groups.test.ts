@@ -447,7 +447,7 @@ describe('classifyToolCallRun', () => {
     ]);
   });
 
-  test('a failed sibling counts as settled and is disclosed by its badge immediately', () => {
+  test('a failed sibling is not "done": it is disclosed by its badge immediately', () => {
     const parts = [
       toolCall({
         toolCallId: 'a',
@@ -465,7 +465,9 @@ describe('classifyToolCallRun', () => {
       }),
     ];
     const group = classifyFirstRun(parts);
-    expect(group.summary).toBe('1 file read, 1 command · 1 done');
+    // Settled, but it failed: "1 done" would call a failure finished work.
+    expect(group.summary).toBe('1 file read, 1 command');
+    expect(group.settledCount).toBe(1);
     expect(group.activeCalls.map((call) => call.part.toolCallId)).toEqual([
       'b',
     ]);
@@ -695,7 +697,8 @@ describe('classifyToolCallRun', () => {
       // "Running 2 commands…" would be as false for the unresolved call as
       // "Ran" was; the bare verb is the only form true of both, and the
       // ellipsis (which means "still going") is dropped with it.
-      expect(group.summary).toBe('2 commands · 1 done');
+      // The unresolved call has no outcome: it is not "done" either.
+      expect(group.summary).toBe('2 commands');
       expect(group.inProgress).toBe(true);
       expect(group.unresolvedCount).toBe(1);
     });
@@ -1484,4 +1487,19 @@ describe('classifyToolCallRun — a mutating kind whose every call failed', () =
     const group = classifyFirstRun([bash('a', true), bash('b', true)]);
     expect(group.summary).toBe('Ran 2 commands');
   });
+});
+
+test('"N done" counts only calls that finished successfully', () => {
+  const group = classifyFirstRun([
+    toolCall({ toolCallId: 'ok', toolName: 'Bash', state: 'completed' }),
+    toolCall({
+      toolCallId: 'failed',
+      toolName: 'Bash',
+      state: 'error',
+      error: 'exit 1',
+    }),
+    toolCall({ toolCallId: 'stopped', toolName: 'Bash', state: 'cancelled' }),
+    toolCall({ toolCallId: 'live', toolName: 'Bash', state: 'running' }),
+  ]);
+  expect(group.summary).toBe('4 commands · 1 done');
 });

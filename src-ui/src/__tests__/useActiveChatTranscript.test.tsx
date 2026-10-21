@@ -3320,7 +3320,11 @@ describe('useActiveChatTranscript — calls of the open turn', () => {
     );
   });
 
-  const mountWithOpenCall = async (id: string, turnOpen: boolean) => {
+  const mountWithOpenCall = async (
+    id: string,
+    turnOpen: boolean,
+    serverTurnId = 'turn-open',
+  ) => {
     activeChatsStore.initChat(id, {
       agentSlug: 'codex',
       agentName: 'Codex',
@@ -3334,13 +3338,13 @@ describe('useActiveChatTranscript — calls of the open turn', () => {
           conversationId: id,
           asOfSequence: 2,
           openTurn: {
-            turnId: 'turn-open',
+            turnId: serverTurnId,
             threadId: id,
             startedAt: '2026-09-24T00:00:00.000Z',
           },
         },
         orchestrationTurnOpen: true,
-        openTurnId: 'turn-open',
+        openTurnId: serverTurnId,
       });
     }
     fetchWindow.mockResolvedValueOnce({
@@ -3401,6 +3405,19 @@ describe('useActiveChatTranscript — calls of the open turn', () => {
     const { view, part } = await mountWithOpenCall(id, false);
     try {
       expect(view.result.current.openTurnProjected).toBe(false);
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the window’s unterminated turn is not the server’s open one: its calls are not claimed running', async () => {
+    // The window ends inside turn A ('turn-open', no terminal in this read)
+    // while the server says turn B is the one executing.
+    const id = 'open-call-other-turn';
+    const { view, part } = await mountWithOpenCall(id, true, 'turn-b');
+    try {
       expect(part?.state).toBe('call');
     } finally {
       view.unmount();

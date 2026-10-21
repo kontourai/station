@@ -3,6 +3,7 @@ import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
+import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
@@ -179,8 +180,7 @@ export function deriveChatStatus(
     };
   }
   const details: ChatStatus['details'] = [];
-  const running =
-    activity?.openTurn && (activity.runningTools?.length ?? 0) > 0;
+  const running = turnToolsRunning(activity);
   let label = running
     ? 'Working'
     : input.activityHint?.kind === 'thinking'

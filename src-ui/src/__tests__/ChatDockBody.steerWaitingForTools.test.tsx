@@ -9,7 +9,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const STABLE_AGENTS = [{ slug: 'agent-one', name: 'Agent One' }];
@@ -242,5 +242,69 @@ describe('ChatDockBody steer status follows the tool rows', () => {
     expect(
       screen.queryByText('Steer · Waiting for tools to finish'),
     ).toBeNull();
+  });
+
+  test('after a reload (no live parts) the server’s running call holds the steer for tools, as the pill reads it', async () => {
+    // The server's record belongs to the chat's conversation.
+    activeChatsStore.assignConversationId(SESSION, SESSION);
+    activeChatsStore.updateChat(SESSION, {
+      conversationActivity: {
+        conversationId: SESSION,
+        asOfSequence: 4,
+        openTurn: {
+          turnId: 'turn-1',
+          threadId: SESSION,
+          startedAt: '2026-10-20T12:00:00.000Z',
+        },
+        runningTools: [
+          {
+            name: 'Bash',
+            callId: 'call-1',
+            startedAt: '2026-10-20T12:00:01.000Z',
+          },
+        ],
+      },
+    } as never);
+    mountDock();
+    expect(
+      await screen.findByText('Steer · Waiting for tools to finish'),
+    ).toBeTruthy();
+  });
+
+  test('a live part still marked running does not hold it once the server says no call runs', async () => {
+    // The server's record belongs to the chat's conversation.
+    activeChatsStore.assignConversationId(SESSION, SESSION);
+    activeChatsStore.updateChat(SESSION, {
+      streamingMessage: streamingWith({}),
+      conversationActivity: {
+        conversationId: SESSION,
+        asOfSequence: 5,
+        openTurn: {
+          turnId: 'turn-1',
+          threadId: SESSION,
+          startedAt: '2026-10-20T12:00:00.000Z',
+        },
+        runningTools: [],
+      },
+    } as never);
+    mountDock();
+    expect(
+      await screen.findByText('Steer · Waiting for this turn to finish'),
+    ).toBeTruthy();
+  });
+
+  test('the pending list stays mounted when a new chat gains its conversation id', async () => {
+    mountDock();
+    const row = await screen.findByText('use the other port');
+    const list = row.closest('.queued-messages');
+    expect(list).not.toBeNull();
+    act(() => {
+      activeChatsStore.assignConversationId(SESSION, 'conv-new');
+    });
+    await act(async () => undefined);
+    // The same element: not unmounted and mounted again.
+    expect(
+      screen.getByText('use the other port').closest('.queued-messages'),
+    ).toBe(list);
   });
 });
