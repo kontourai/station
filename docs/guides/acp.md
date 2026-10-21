@@ -570,17 +570,30 @@ listing is neither.
   `codex-acp` are listed unavailable, naming the native engine. A listing
   whose name reads as a built-in's, as "Station" or as "Kontour", or whose id
   a plugin entry holds, is refused. A plugin entry's own `publicRegistry` is dropped.
-- A listing is connectable only through a `binary` build for the host's
-  `os-arch` key (`darwin-aarch64`, `linux-x86_64`, `windows-x86_64`, …):
-  `command` is the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
-  is `cursor-agent`), looked up on `PATH`, and `args` are the build's. `npx`
-  and `uvx` listings are never run. A build whose `cmd` is absolute, contains
-  a `..` segment, or names a package runner, shell, interpreter, wrapper or
-  fetcher (`npx`, `uvx`, `npm`, `sh`, `bash`, `cmd`, `powershell`, `node`,
-  `python*`, `env`, `sudo`, `curl` and the like, any case, without a Windows
-  extension) is listed unavailable with the reason. Any other listing has an empty `command`,
-  `detected: false` and `publicRegistry.unavailableReason`. A build's `env` is
-  returned as `publicRegistry.recommendedEnv` and never applied.
+- What can run is bounded by a reviewed list in Station's source,
+  `REVIEWED_REGISTRY_LISTINGS` in
+  [public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts):
+  for each reviewed registry id, the program and exact arguments its vendor
+  documents, with the citation. Today it holds `cortex-code` (`cortex acp
+  serve`), `crow-cli` (`crow-cli acp`), `stakpak` (`stakpak acp`) and `vtcode`
+  (`vtcode acp`). A listing is connectable only when all of these hold:
+  - its id is on the reviewed list;
+  - it has a `binary` build for the host's `os-arch` key (`darwin-aarch64`,
+    `linux-x86_64`, `windows-x86_64`, …);
+  - the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
+    is `cursor-agent`; only `.exe`, `.cmd` and `.bat` are dropped, and only on
+    Windows is case ignored) is the reviewed program;
+  - its arguments are at most 4, each a plain word or flag
+    (`^--?[a-z][a-z0-9-]*(=[A-Za-z0-9._:/-]*)?$` or `^[a-z][a-z0-9-]*$`), and
+    equal to the reviewed ones.
+
+  Then `command` is the reviewed program, looked up on `PATH`, and `args` are
+  the reviewed arguments. Station never downloads a program, never runs `npx`
+  or `uvx`, and runs nothing without the confirm step below. Every other
+  listing, a listing not yet reviewed included, is listed with an empty
+  `command`, `detected: false` and `publicRegistry.unavailableReason`. A
+  build's `env` is returned as `publicRegistry.recommendedEnv` and never
+  applied (VT Code reads the same switches from its own `vtcode.toml`).
 - `POST /acp/registry/:id/install` for a listing requires the `coding:exec`
   grant on a paired device (`403 command-not-granted`) and a JSON body
   `{ "confirmCommand": { "command", "args" } }` equal to the listing's

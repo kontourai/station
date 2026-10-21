@@ -778,20 +778,21 @@ Below Station's own engines, **Add engine** lists the engines in the
 Each card shows the publisher, the version the registry lists, and whether it
 can connect on this computer:
 
-- **Found** or **Not installed**: the registry has a build for this computer's
-  operating system and processor. Connecting runs the program you installed
-  yourself, found on `PATH` by the name the registry gives it (`stakpak`), with
-  the registry's arguments. A listing whose program is a package runner, a
-  shell, an interpreter or a download tool, or is given as a path, is
-  **Unavailable** instead. A **Not installed** card links to the publisher's
-  site. Station does not download the program; the registry's download links
-  are not used.
-- **Unavailable**: the card says why and stays in the list. The registry may
-  have no build for this computer, or the engine may run only from a package
-  (`npx` or `uvx`) that Station would have to download and run, which it does
-  not do. You can install such an engine yourself and add it as a custom
-  engine. Listings for engines Station connects directly, such as Claude Code
-  and Codex, point to those engines instead.
+- **Found** or **Not installed**: Station has reviewed this listing against
+  the publisher's own documentation, and the registry has a build for this
+  computer's operating system and processor. Connecting runs only the program
+  Station reviewed (`stakpak`), which you installed yourself and Station finds
+  on `PATH`, with the reviewed arguments (`acp`), and only after the confirm
+  step. A **Not installed** card links to the publisher's site. Station never
+  downloads the program; the registry's download links are not used.
+- **Unavailable**: the card says why and stays in the list, with its
+  publisher, version and links. Most listings read **Not yet reviewed by
+  Station**. Others have no build for this computer, run only from a package
+  (`npx` or `uvx`) that Station would have to download and run, or name a
+  different program or arguments than Station reviewed. You can install such
+  an engine yourself and add it as a custom engine. Listings for engines
+  Station connects directly, such as Claude Code and Codex, point to those
+  engines instead.
 
 **About this listing** on each card shows what the registry lists: its id,
 how it is distributed, its builds and packages, the command connecting would

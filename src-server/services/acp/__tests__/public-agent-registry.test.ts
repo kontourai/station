@@ -392,6 +392,25 @@ describe('public agent registry source', () => {
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
   });
 
+  test('accepts an answer from the address it asked for, however it was spelled', async () => {
+    const fetchImpl = vi.fn(async () => {
+      const response = new Response(FIXTURE);
+      Object.defineProperty(response, 'url', {
+        value: 'https://cdn.example.test/registry/v1/latest/registry.json',
+      });
+      return response;
+    });
+    const registry = new PublicAgentRegistrySource({
+      cacheDir: makeTempDir('public-registry-'),
+      fetch: fetchImpl as unknown as typeof fetch,
+      url: 'https://CDN.example.test:443/registry/v1/latest/registry.json',
+      commandExists: () => false,
+    });
+    const status = await registry.refresh();
+    expect(status.lastError).toBeNull();
+    expect(registry.agents()).toHaveLength(FIXTURE_AGENT_COUNT);
+  });
+
   test('does not follow redirects, and refuses an answer from another address', async () => {
     const cacheDir = makeTempDir('public-registry-');
     await source(serve(FIXTURE), { cacheDir }).refresh();
@@ -424,6 +443,11 @@ describe('public agent registry source', () => {
     ['a tag character', 'Goose\u{E0041}'],
     ['a variation selector', 'Goose\uFE0F'],
     ['a word joiner', 'Go\u2060ose'],
+    ['a soft hyphen', 'Go\u00ADose'],
+    ['a combining grapheme joiner', 'Go\u034Fose'],
+    ['a Hangul choseong filler', 'Goose\u115F'],
+    ['a Hangul filler', 'Goose\u3164'],
+    ['a halfwidth Hangul filler', 'Goose\uFFA0'],
   ])('refuses a listing whose text hides %s', (_, name) => {
     const [agent] = fixtureAgents();
     const result = parsePublicAgentRegistry(withAgents([{ ...agent, name }]));

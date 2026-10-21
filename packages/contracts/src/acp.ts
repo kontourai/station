@@ -201,28 +201,30 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'FACTORY_',
 ] as const;
 /**
+ * Characters that render as nothing (Unicode Default_Ignorable_Code_Point:
+ * soft hyphen, zero-width and joiner marks, Hangul fillers, variation
+ * selectors, tag characters and the like).
+ */
+const DEFAULT_IGNORABLE = /\p{Default_Ignorable_Code_Point}/u;
+
+/**
  * C0/C1 controls (including line breaks), bidi embedding/override/isolate
- * marks, and characters that render as nothing: zero-width and directional
- * marks, invisible operators, the byte order mark, line and paragraph
- * separators, tag characters and variation selectors. Descriptor text is a
- * name, a sentence or a command argument; none of them needs one, and each
- * can hide a difference a person is asked to trust.
+ * marks, the Arabic letter mark, line and paragraph separators, and every
+ * character that renders as nothing. Descriptor text is a name, a sentence
+ * or a command argument; none of them needs one, and each can hide a
+ * difference a person is asked to trust. This also refuses emoji built with
+ * a zero-width joiner or a variation selector.
  */
 export function hasUnsafeTextChar(value: string): boolean {
+  if (DEFAULT_IGNORABLE.test(value)) return true;
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (
       code <= 0x1f ||
       (code >= 0x7f && code <= 0x9f) ||
       code === 0x061c ||
-      code === 0x180e ||
-      (code >= 0x200b && code <= 0x200f) ||
       (code >= 0x2028 && code <= 0x202e) ||
-      (code >= 0x2060 && code <= 0x2069) ||
-      (code >= 0xfe00 && code <= 0xfe0f) ||
-      code === 0xfeff ||
-      (code >= 0xe0000 && code <= 0xe007f) ||
-      (code >= 0xe0100 && code <= 0xe01ef)
+      (code >= 0x2066 && code <= 0x2069)
     )
       return true;
   }

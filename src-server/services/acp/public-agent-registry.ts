@@ -425,7 +425,7 @@ async function downloadIndex(
     redirect: 'error',
     headers: { accept: 'application/json' },
   });
-  if (response.url && response.url !== url) {
+  if (response.url && response.url !== new URL(url).href) {
     throw new RegistryRefusedError(
       'The registry answered from an address other than the one Station asked.',
     );

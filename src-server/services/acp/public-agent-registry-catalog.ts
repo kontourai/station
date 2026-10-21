@@ -2,10 +2,11 @@
  * Public agent registry listings as Add engine catalogue entries. A listing
  * is never a built-in: one whose id is a built-in's only enriches that card
  * with display facts, and one that would read as a built-in is refused.
- * Connecting runs only a program the person already installed, found on the
- * host's PATH by the name the registry gives it, with the registry's
- * arguments. Package-runner listings (npx, uvx) are listed with a reason and
- * never run: running one downloads and executes the package.
+ * Only listings Station has reviewed (REVIEWED_REGISTRY_LISTINGS) connect, and
+ * then only the reviewed program, found on the host's PATH, with arguments
+ * that pass the argument grammar and match the review. Every other listing,
+ * including package-runner listings (npx, uvx), is shown with a reason and
+ * never run.
  */
 
 import {
@@ -41,58 +42,80 @@ export const NATIVE_ENGINE_LISTINGS: Readonly<Record<string, string>> = {
   'codex-acp': 'Codex',
 };
 
-const PROGRAM_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+/**
+ * Public registry listings Station has reviewed: for each registry id, the
+ * program its vendor documents running and the exact arguments of its
+ * documented editor setup. Only these listings are ever connectable, and only
+ * while the registry's build names this program with these arguments. A
+ * program name cannot bound what a command runs (a wrapper such as `nice`
+ * re-launches anything), so every other listing is shown, unconnectable.
+ * Add an entry only from the vendor's own documentation, and cite it.
+ */
+export const REVIEWED_REGISTRY_LISTINGS: Readonly<
+  Record<string, { program: string; args: readonly string[]; source: string }>
+> = {
+  'cortex-code': {
+    program: 'cortex',
+    args: ['acp', 'serve'],
+    source:
+      'https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-acp',
+  },
+  'crow-cli': {
+    program: 'crow-cli',
+    args: ['acp'],
+    source: 'https://github.com/crow-cli/crow-cli#readme',
+  },
+  stakpak: {
+    program: 'stakpak',
+    args: ['acp'],
+    source: 'https://github.com/stakpak/agent#readme',
+  },
+  vtcode: {
+    program: 'vtcode',
+    args: ['acp'],
+    source: 'https://github.com/vinhnx/VTCode/blob/main/docs/guides/zed-acp.md',
+  },
+};
 
 /**
- * Programs that run whatever their arguments name: package runners, shells,
- * interpreters, privilege and environment wrappers, and fetchers. A listing
- * that names one would make Station download or run code the registry
- * chooses, so it is never connectable.
+ * The arguments a reviewed listing may carry: a few plain words and flags,
+ * so nothing in them can name a file, a command or a shell construct.
  */
-const RUNNER_PROGRAMS = new Set([
-  'npx',
-  'pnpx',
-  'bunx',
-  'uvx',
-  'pipx',
-  'npm',
-  'pnpm',
-  'yarn',
-  'bun',
-  'deno',
-  'uv',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'dash',
-  'ksh',
-  'cmd',
-  'powershell',
-  'pwsh',
-  'node',
-  'ruby',
-  'perl',
-  'php',
-  'env',
-  'sudo',
-  'doas',
-  'curl',
-  'wget',
-  'osascript',
-]);
+const ARGUMENT_PATTERN =
+  /^--?[a-z][a-z0-9-]*(=[A-Za-z0-9._:/-]*)?$|^[a-z][a-z0-9-]*$/;
+const MAX_ARGUMENTS = 4;
 
-function isRunnerProgram(program: string): boolean {
-  const name = program.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '');
-  return RUNNER_PROGRAMS.has(name) || /^python[0-9.]*$/.test(name);
-}
-
-/** A `cmd` that is a path rather than a program inside the download. */
-function namesAPath(cmd: string): boolean {
-  return (
-    /^([\\/]|~|[A-Za-z]:)/.test(cmd) ||
-    cmd.split(/[\\/]/).some((segment) => segment === '..')
-  );
+/** Why a host build of a listing is not connectable, or undefined if it is. */
+function launchRefusal(
+  agent: PublicRegistryAgent,
+  program: string,
+  args: readonly string[],
+  platform: string,
+): string | undefined {
+  const reviewed = REVIEWED_REGISTRY_LISTINGS[agent.id];
+  if (!reviewed) {
+    return `Not yet reviewed by Station. Station connects a registry engine only after checking its program and arguments against the publisher's documentation. You can install ${agent.name} yourself and add it as a custom engine.`;
+  }
+  const same =
+    platform === 'win32'
+      ? program.toLowerCase() === reviewed.program
+      : program === reviewed.program;
+  if (!same) {
+    return `The registry now names ${agent.name}'s program '${program.slice(0, 64)}', not the '${reviewed.program}' Station reviewed.`;
+  }
+  if (
+    args.length > MAX_ARGUMENTS ||
+    !args.every((arg) => ARGUMENT_PATTERN.test(arg))
+  ) {
+    return `The registry lists arguments for ${agent.name} that are not plain words or flags.`;
+  }
+  if (
+    args.length !== reviewed.args.length ||
+    args.some((arg, index) => arg !== reviewed.args[index])
+  ) {
+    return `The registry now lists different arguments for ${agent.name} than Station reviewed.`;
+  }
+  return undefined;
 }
 
 const OS_KEYS: Readonly<Record<string, string>> = {
@@ -260,37 +283,34 @@ export function mapPublicRegistryListings(input: {
         ? agent.binary[hostKey]
         : undefined;
     const program = target ? publicRegistryProgramName(target.cmd) : undefined;
-    const programRefusal = !target
-      ? undefined
-      : namesAPath(target.cmd)
-        ? `The registry names ${agent.name}'s program by a path (${target.cmd.slice(0, 80)}), not as a program in its download. Station does not run it.`
-        : program && isRunnerProgram(program)
-          ? `The registry runs ${agent.name} through ${program.slice(0, 64)}, which runs whatever it is given. Station does not run it.`
-          : undefined;
+    const programRefusal =
+      target && program !== undefined
+        ? launchRefusal(agent, program, target.args, input.platform)
+        : undefined;
     let entry: ACPConnectionRegistryEntry;
-    if (
-      target &&
-      program &&
-      !programRefusal &&
-      PROGRAM_NAME_PATTERN.test(program)
-    ) {
+    const reviewed = REVIEWED_REGISTRY_LISTINGS[agent.id];
+    if (target && program !== undefined && reviewed && !programRefusal) {
       entry = {
         id: agent.id,
         name: agent.name,
         ...(agent.description ? { description: agent.description } : {}),
-        command: program,
+        // The reviewed name: on Windows the registry may spell it in any case.
+        command: reviewed.program,
         args: [...target.args],
         tags: ['registry'],
-        detected: input.commandExists(program),
+        detected: input.commandExists(reviewed.program),
         hostInstall: {
           ...(agent.websiteUrl || agent.repositoryUrl
             ? { docsUrl: agent.websiteUrl ?? agent.repositoryUrl }
             : {}),
-          note: `Install ${agent.name} by following ${publisherName(agent.publishers[0])}'s instructions, so ${program} is on the PATH of the computer Station runs on. Station does not download it.`,
+          note: `Install ${agent.name} by following ${publisherName(agent.publishers[0])}'s instructions, so ${reviewed.program} is on the PATH of the computer Station runs on. Station does not download it.`,
         },
         publicRegistry: {
           ...listing,
-          hostLaunch: { command: program, args: [...target.args] },
+          hostLaunch: {
+            command: reviewed.program,
+            args: [...target.args],
+          },
           ...(target.env && Object.keys(target.env).length > 0
             ? { recommendedEnv: { ...target.env } }
             : {}),
@@ -307,11 +327,8 @@ export function mapPublicRegistryListings(input: {
         detected: false,
         publicRegistry: {
           ...listing,
-          unavailableReason: programRefusal
-            ? programRefusal
-            : target && program
-              ? `The registry names its ${agent.name} program '${program.slice(0, 64)}', which is not a plain program name Station can look up.`
-              : unavailableReason(agent, hostKey, hostLabel),
+          unavailableReason:
+            programRefusal ?? unavailableReason(agent, hostKey, hostLabel),
         },
       };
     }
