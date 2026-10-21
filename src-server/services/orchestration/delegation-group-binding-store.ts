@@ -102,8 +102,11 @@ type TransactionAuthority =
 function finalizeAuthority(
   finalizeCurrent: DelegationGroupBindingFinalizer,
 ): void {
-  if (finalizeCurrent() !== undefined)
+  const result: unknown = finalizeCurrent();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => {});
     throw new DelegationGroupBindingError('synchronous_authority_required');
+  }
 }
 
 export class DelegationGroupBindingError extends Error {

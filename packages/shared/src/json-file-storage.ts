@@ -190,8 +190,11 @@ export async function publishJsonFileWithOwnedLock(
       await descriptor.close();
     }
     if (options?.finalizeCommit) {
-      if (options.finalizeCommit() !== undefined)
+      const result: unknown = options.finalizeCommit();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => {});
         throw new Error('JSON publication finalizer must be synchronous.');
+      }
       renameSync(temporaryPath, path);
     } else {
       await renameAsync(temporaryPath, path);

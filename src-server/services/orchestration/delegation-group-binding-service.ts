@@ -51,8 +51,11 @@ export class DelegationGroupBindingService {
       const finalizeExecution = await this.host.assertCurrent(
         structuredClone(intent),
       );
-      if (finalizeExecution() !== undefined)
+      const result: unknown = finalizeExecution();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => {});
         throw new DelegationGroupBindingError('synchronous_authority_required');
+      }
       // Refuse before resolution until the physical owner can enforce paid work.
       assertBoundedApiExecutionAvailable('delegation-group-binding');
       return resolveAndExecute(intent);

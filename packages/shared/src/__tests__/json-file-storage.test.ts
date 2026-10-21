@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   mkdtempSync,
   readdirSync,
@@ -5,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -187,3 +189,69 @@ describe('json file storage reads and optimistic writes', () => {
     ).toThrow();
   });
 });
+
+test.each([
+  'rejecting',
+  'resolving',
+  'scalar',
+  'then-getter',
+  'current',
+] as const)(
+  'synchronous finalizer containment survives a child process (%s)',
+  (variant) => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--unhandled-rejections=strict',
+        '--import',
+        createRequire(import.meta.url).resolve('tsx'),
+        '--input-type=module',
+        '--eval',
+        `const variant = ${JSON.stringify(variant)};
+const directory = ${JSON.stringify(root())};
+const moduleUrl = ${JSON.stringify(new URL('../json-file-storage.ts', import.meta.url).href)};
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { join } from 'node:path';
+import { setImmediate as immediate } from 'node:timers/promises';
+const invalidResult = () => {
+  if (variant === 'rejecting') return (async () => {
+    await Promise.resolve();
+    throw new Error('async authority revoked');
+  })();
+  if (variant === 'resolving') return Promise.resolve();
+  if (variant === 'scalar') return 'invalid authority result';
+  if (variant === 'then-getter') return { get then() { throw new Error('then getter revoked'); } };
+  return undefined;
+};
+let refusal;
+const { publishJsonFileWithOwnedLock } = await import(moduleUrl);
+const target = join(directory, 'state.json');
+fs.writeFileSync(target, '{"retained":true}');
+const retained = fs.readFileSync(target, 'utf8');
+try {
+  await publishJsonFileWithOwnedLock(target, { replacement: true }, {
+    finalizeCommit: invalidResult,
+  });
+} catch (error) { refusal = error; }
+if (variant === 'current') {
+  assert.equal(refusal, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), { replacement: true });
+} else {
+  assert.equal(refusal?.message, 'JSON publication finalizer must be synchronous.');
+  assert.equal(fs.readFileSync(target, 'utf8'), retained);
+}
+assert.deepEqual(fs.readdirSync(directory), ['state.json']);
+await immediate();
+await immediate();
+console.log('finalizer-check-survived');
+`,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stdout).toContain('finalizer-check-survived');
+  },
+  30_000,
+);

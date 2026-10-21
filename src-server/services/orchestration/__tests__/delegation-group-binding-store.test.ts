@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   linkSync,
@@ -8,6 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -416,3 +418,77 @@ describe('durable group launch identity', () => {
     ).rejects.toThrow('unsafe_storage');
   });
 });
+
+test.each([
+  'rejecting',
+  'resolving',
+  'scalar',
+  'then-getter',
+  'current',
+] as const)(
+  'synchronous finalizer containment survives a child process (%s)',
+  (variant) => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--unhandled-rejections=strict',
+        '--import',
+        createRequire(import.meta.url).resolve('tsx'),
+        '--input-type=module',
+        '--eval',
+        `const variant = ${JSON.stringify(variant)};
+const directory = ${JSON.stringify(dir)};
+const moduleUrl = ${JSON.stringify(new URL('../delegation-group-binding-store.ts', import.meta.url).href)};
+const binding = ${JSON.stringify(binding())};
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { join } from 'node:path';
+import { setImmediate as immediate } from 'node:timers/promises';
+const invalidResult = () => {
+  if (variant === 'rejecting') return (async () => {
+    await Promise.resolve();
+    throw new Error('async authority revoked');
+  })();
+  if (variant === 'resolving') return Promise.resolve();
+  if (variant === 'scalar') return 'invalid authority result';
+  if (variant === 'then-getter') return { get then() { throw new Error('then getter revoked'); } };
+  return undefined;
+};
+let refusal;
+const { FileDelegationGroupBindingStore } = await import(moduleUrl);
+const store = new FileDelegationGroupBindingStore(directory);
+const created = await store.reserve({ binding, operationId: 'containment', intentDigest: binding.authorityDigest }, () => undefined);
+assert.equal(created.kind, 'created');
+const ledgerDir = join(directory, 'delegation-group-bindings');
+const target = join(ledgerDir, 'bindings.json');
+const retained = fs.readFileSync(target, 'utf8');
+let stagedFinalizerReached = false;
+try {
+  await store.advance({ binding, ownerToken: created.ownerToken, expectedRevision: 1, transition: { state: 'launch-intent' } }, () => {
+    if (!fs.readdirSync(ledgerDir).some((name) => name.endsWith('.tmp'))) return undefined;
+    stagedFinalizerReached = true;
+    return invalidResult();
+  });
+} catch (error) { refusal = error; }
+assert.equal(stagedFinalizerReached, true);
+if (variant === 'current') {
+  assert.equal(refusal, undefined);
+  assert.equal(JSON.parse(fs.readFileSync(target, 'utf8')).records[0].revision, 2);
+} else {
+  assert.equal(refusal?.code, 'synchronous_authority_required');
+  assert.equal(fs.readFileSync(target, 'utf8'), retained);
+}
+assert.deepEqual(fs.readdirSync(ledgerDir), ['bindings.json']);
+await immediate();
+await immediate();
+console.log('finalizer-check-survived');
+`,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stdout).toContain('finalizer-check-survived');
+  },
+  30_000,
+);

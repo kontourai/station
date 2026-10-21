@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -254,3 +256,80 @@ test('stream route refuses before creating a lazy model stream or delivering chu
   expect(resolveStream).not.toHaveBeenCalled();
   expect(consume).not.toHaveBeenCalled();
 });
+
+test.each([
+  'rejecting',
+  'resolving',
+  'scalar',
+  'then-getter',
+  'current',
+] as const)(
+  'synchronous finalizer containment survives a child process (%s)',
+  (variant) => {
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--unhandled-rejections=strict',
+        '--import',
+        createRequire(import.meta.url).resolve('tsx'),
+        '--input-type=module',
+        '--eval',
+        `const variant = ${JSON.stringify(variant)};
+const directory = ${JSON.stringify(dir)};
+const moduleUrl = ${JSON.stringify(new URL('../delegation-group-binding-service.ts', import.meta.url).href)};
+const binding = ${JSON.stringify(binding)};
+const storeUrl = ${JSON.stringify(new URL('../delegation-group-binding-store.ts', import.meta.url).href)};
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { join } from 'node:path';
+import { setImmediate as immediate } from 'node:timers/promises';
+const invalidResult = () => {
+  if (variant === 'rejecting') return (async () => {
+    await Promise.resolve();
+    throw new Error('async authority revoked');
+  })();
+  if (variant === 'resolving') return Promise.resolve();
+  if (variant === 'scalar') return 'invalid authority result';
+  if (variant === 'then-getter') return { get then() { throw new Error('then getter revoked'); } };
+  return undefined;
+};
+let refusal;
+const { DelegationGroupBindingService } = await import(moduleUrl);
+const { FileDelegationGroupBindingStore } = await import(storeUrl);
+const store = new FileDelegationGroupBindingStore(directory);
+const created = await store.reserve({ binding, operationId: 'containment', intentDigest: binding.authorityDigest }, () => undefined);
+assert.equal(created.kind, 'created');
+const ledgerDir = join(directory, 'delegation-group-bindings');
+const target = join(ledgerDir, 'bindings.json');
+let retained;
+let finalized = false;
+let resolved = false;
+const service = new DelegationGroupBindingService(store, {
+  async assertCurrent(record) {
+    if (record.state === 'reserved') return () => undefined;
+    retained = fs.readFileSync(target, 'utf8');
+    return () => { finalized = true; return invalidResult(); };
+  },
+});
+try {
+  await service.execute({ binding, ownerToken: created.ownerToken, expectedRevision: 1 }, async () => { resolved = true; });
+} catch (error) { refusal = error; }
+assert.equal(finalized, true);
+assert.equal(resolved, false);
+assert.equal(refusal?.code, variant === 'current' ? 'bounded_api_execution_unavailable' : 'synchronous_authority_required');
+assert.equal(fs.readFileSync(target, 'utf8'), retained);
+assert.equal(JSON.parse(retained).records[0].state, 'launch-intent');
+assert.deepEqual(fs.readdirSync(ledgerDir), ['bindings.json']);
+await immediate();
+await immediate();
+console.log('finalizer-check-survived');
+`,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(child.stdout).toContain('finalizer-check-survived');
+  },
+  30_000,
+);
