@@ -164,8 +164,12 @@ At `fedcf0ee664e47508dd7b27b53742dce0e64c539`, the runtime composes public Flow
 controllers with Station persistence. Independent review found replacement
 preparation in retention callbacks and observation publication without a final
 commit fence. Repair `5b65281e0ef` retains the composition's capture and checks
-at observation publication and after release; fresh independent review remains
-in progress. Routes remain unmounted.
+at observation publication and after release. The completed independent R3 review
+reproduced both failures on the original source, checked all five retention
+callbacks and real staged-file/release boundaries, caught two distinct mutations,
+and passed its restored 21-record probe run. The earlier interrupted R2 review
+remains incomplete and contributes no completed evidence. The reviewed runtime
+blob remains unchanged through `3004ad1efbe`. Routes remain unmounted.
 
 Managed validation at `c5f062c606c` passes server-test typechecking. The seven-file
 persistence/runtime/observation selection has 76 passing cases across its first
@@ -175,6 +179,24 @@ focused fixture results, not full readiness or live execution acceptance. Curren
 launch fencing, raw response settlement, context ACKs and supported execution
 still require integration and acceptance evidence. Isolated drafts and safe
 refusals do not establish supported group execution.
+
+Additional local increments at `100d4571b25` and `03cf52c427e` add the
+single-use final-fetch fence/wire-intent owner and the boot-scoped credential
+source observation owner. Their primary managed selections passed 18 and 29
+cases respectively; these are separate runs. At `3004ad1efbe`, the observation
+suite passes 18 cases including a partial StationRuntime fixture using the real
+read queues, EventStore and ProviderService. Bypassing those queues failed the
+intended zero-publication assertion; byte-identical restoration passed. This
+fixture selects its stable revision and is not a booted route test. The scoped
+server-test type lane passes. Credential-source currency remains distinct from
+model entitlement, provider qualification and paid execution authority.
+
+The sealed-source SDK owner, explicit Flow rounds/continuation, raw-provider
+stream repair, and exact tariff settlement remain isolated candidates. Their
+source, review and publication work does not activate Station groups. In
+particular, tariff-derived integer micros must retain their cost basis and must
+not be silently converted to provider-reported Relay dollars. A candidate public
+API or a successful synthetic SDK response is not a published serving contract.
 
 - Finish independent delta review and meaningful injected/restored checks.
 - Reconcile canonical documentation and generated review evidence.
