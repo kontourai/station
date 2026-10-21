@@ -63,6 +63,8 @@ import {
 } from './work-claim-limits.js';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
+/** Claims the UI read takes from the store at a time. */
+const WORK_CLAIM_LIST_PAGE = 200;
 
 export interface SessionWorkClaimRoutesDeps {
   workClaims: WorkClaimStore;
@@ -363,29 +365,45 @@ export function createSessionWorkClaimRoutes(deps: SessionWorkClaimRoutesDeps) {
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
-    const unexpired = deps.workClaims.listUnexpired({
-      limit: WORK_CLAIM_LIST_MAX + 1,
-    });
-    if (unexpired.length > WORK_CLAIM_LIST_MAX)
-      return c.json(
-        {
-          success: false,
-          code: 'work_claims_too_many',
-          error: `More than ${WORK_CLAIM_LIST_MAX} claims are active.`,
-        },
-        422,
-        NO_STORE,
+    // Review F7: the bound counts only claims this person may see that are
+    // still live. The listing is read a page at a time and each page is
+    // filtered first, so other people's claims and ended Sessions' claims
+    // can never push this read past it.
+    const claims: WorkClaimRecord[] = [];
+    let after: Pick<WorkClaimRecord, 'claimedAt' | 'claimId'> | undefined;
+    for (;;) {
+      const page = deps.workClaims.listUnexpired({
+        limit: WORK_CLAIM_LIST_PAGE,
+        ...(after ? { after } : {}),
+      });
+      const readable = page.filter((claim) =>
+        deps.orchestrationService.canUserReadSession(
+          claim.sessionId,
+          authority,
+        ),
       );
-    const readable = unexpired.filter((claim) =>
-      deps.orchestrationService.canUserReadSession(claim.sessionId, authority),
-    );
-    const states = await readWorkClaimantStates(
-      deps.orchestrationService,
-      readable,
-    );
-    const claims = readable.filter(
-      (claim) => !workClaimSessionEnded(states.get(workClaimantKey(claim))),
-    );
+      const states = await readWorkClaimantStates(
+        deps.orchestrationService,
+        readable,
+      );
+      claims.push(
+        ...readable.filter(
+          (claim) => !workClaimSessionEnded(states.get(workClaimantKey(claim))),
+        ),
+      );
+      if (claims.length > WORK_CLAIM_LIST_MAX)
+        return c.json(
+          {
+            success: false,
+            code: 'work_claims_too_many',
+            error: `More than ${WORK_CLAIM_LIST_MAX} claims are active.`,
+          },
+          422,
+          NO_STORE,
+        );
+      if (page.length < WORK_CLAIM_LIST_PAGE) break;
+      after = page[page.length - 1];
+    }
     return c.json(
       { success: true, data: { claims: claims.map(workClaimView) } },
       200,

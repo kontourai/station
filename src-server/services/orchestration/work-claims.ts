@@ -112,6 +112,11 @@ export interface WorkClaimQuery {
   };
   /** Read at most this many; the caller decides what one more means. */
   readonly limit?: number;
+  /**
+   * Only claims after this one in the listing's order (newest first), so a
+   * caller can read the listing a page at a time.
+   */
+  readonly after?: Pick<WorkClaimRecord, 'claimedAt' | 'claimId'>;
 }
 
 /**
@@ -353,6 +358,14 @@ export function createSqliteWorkClaimStore(
           values.push(...conversationIds);
         }
         where.push(`(${parts.join(' OR ')})`);
+      }
+      if (query.after) {
+        where.push('(claimed_at < ? OR (claimed_at = ? AND claim_id > ?))');
+        values.push(
+          query.after.claimedAt,
+          query.after.claimedAt,
+          query.after.claimId,
+        );
       }
       const limit =
         query.limit !== undefined ? ` LIMIT ${Math.max(0, query.limit)}` : '';

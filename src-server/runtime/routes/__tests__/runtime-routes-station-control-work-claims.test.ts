@@ -887,6 +887,33 @@ describe('station-control work claims (#3413 B)', () => {
       ).toEqual([]);
     });
 
+    test("other people's and unknown Sessions' claims never push a person's UI read past its bound (review F7)", async () => {
+      const { tool, store, p1, uiClaims } = await setup();
+      await claim(tool, bound('a-caller'), { workItemRef: '#mine' });
+      // More than WORK_CLAIM_LIST_MAX (500) unexpired claims this person may
+      // not see: another person's live Session, and a Session Station has no
+      // record of.
+      const raw = store.createWorkClaimStore({ maxActivePerClaimant: 1000 });
+      for (const sessionId of ['carol-p1', 'session-nobody-knows'])
+        for (let i = 0; i < 501; i += 1)
+          expect(
+            raw.claim({
+              claimant: { sessionId },
+              scope: { kind: 'project', id: p1.id },
+              workItemRef: `#${sessionId}-${i}`,
+              paths: [],
+              ttlSeconds: 600,
+            }).kind,
+          ).toBe('claimed');
+      const ui = await uiClaims();
+      expect([
+        ui.status,
+        (ui.body.data?.claims as any[] | undefined)?.map(
+          (claim) => claim.workItemRef,
+        ),
+      ]).toEqual([200, ['#mine']]);
+    });
+
     test('the UI read answers a person with the claims of Sessions they may read, and no agent', async () => {
       const { tool, uiClaims, asTool, rawRequest } = await setup();
       await claim(tool, bound('a-caller'), { workItemRef: '#mine' });
