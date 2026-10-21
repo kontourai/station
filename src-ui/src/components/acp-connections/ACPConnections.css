@@ -4,10 +4,6 @@
  * native engine setup and not-connected page beside it). The `acp-add-dialog`
  * class names are the setup's content blocks, kept from when it was a dialog.
  */
-.engine-setup:focus {
-  outline: none;
-}
-
 .engine-setup__actions {
   justify-content: flex-end;
 }
