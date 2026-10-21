@@ -29,6 +29,7 @@ import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import { engineCredentials } from '../../services/acp/engine-credentials.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
@@ -787,6 +788,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
           await ctx.configLoader.saveACPConfig(config);
           beginMutation();
           await ctx.acpBridge.removeConnection(id);
+          // Nor may a sign-in it was running, or what it learned about it.
+          engineSignIn()?.forget(id);
           // A key stored for this connection must not outlive it.
           await engineCredentials()
             ?.removeConnection(id)

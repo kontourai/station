@@ -46,6 +46,12 @@ const { CodexAdapter } = await import(
 const { addACPManagerConnection, removeACPManagerConnection } = await import(
   '../../../services/acp/acp-manager-orchestration.js'
 );
+const { EngineCredentials, registerEngineCredentials } = await import(
+  '../../../services/acp/engine-credentials.js'
+);
+const { EngineSignInService, registerEngineSignIn } = await import(
+  '../../../services/acp/engine-sign-in.js'
+);
 const { getACPManagerStatus } = await import(
   '../../../services/acp/acp-manager-view.js'
 );
@@ -1371,6 +1377,51 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(500);
     expect(ctx.acpBridge.removeConnection).not.toHaveBeenCalled();
     expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+
+  test('deleting a connection removes its stored keys and forgets its sign-in', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-acp-delete-keys-'));
+    homes.push(home);
+    const keys = new EngineCredentials(home);
+    registerEngineCredentials(keys);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const command = '/usr/local/bin/droid';
+      await keys.set('droid', 'FACTORY_API_KEY', 'fk-delete-me', [
+        'FACTORY_API_KEY',
+      ]);
+      await keys.set('other', 'FACTORY_API_KEY', 'fk-keep-me', [
+        'FACTORY_API_KEY',
+      ]);
+      const ctx = createMockRuntimeContext();
+      let stored = {
+        connections: [
+          { id: 'droid', name: 'Droid', command, enabled: true },
+          { id: 'other', name: 'Other', command, enabled: true },
+        ],
+      };
+      ctx.configLoader.loadACPConfig.mockImplementation(async () =>
+        structuredClone(stored),
+      );
+      ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
+        stored = structuredClone(next) as typeof stored;
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const res = await app.request('/connections/droid', { method: 'DELETE' });
+
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledWith('droid');
+      expect(keys.envFor('droid', ['FACTORY_API_KEY'])).toEqual({});
+      expect(keys.envFor('other', ['FACTORY_API_KEY'])).toEqual({
+        FACTORY_API_KEY: 'fk-keep-me',
+      });
+    } finally {
+      registerEngineCredentials(null);
+      registerEngineSignIn(null);
+    }
   });
 
   test('serializes ACP connection updates and deletion', async () => {

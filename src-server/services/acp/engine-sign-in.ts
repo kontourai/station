@@ -596,3 +596,17 @@ export class EngineSignInService {
       if (live.view.state === 'running') live.cancel();
   }
 }
+
+let registeredSignIn: EngineSignInService | null = null;
+
+/**
+ * Route composition installs the instance's service so removing a connection
+ * and stopping Station can end its running sign-ins; tests install their own.
+ */
+export function registerEngineSignIn(service: EngineSignInService | null) {
+  registeredSignIn = service;
+}
+
+export function engineSignIn(): EngineSignInService | null {
+  return registeredSignIn;
+}

@@ -460,7 +460,10 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
-import { EngineSignInService } from '../../services/acp/engine-sign-in.js';
+import {
+  EngineSignInService,
+  registerEngineSignIn,
+} from '../../services/acp/engine-sign-in.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -5341,11 +5344,15 @@ export function configureRuntimeRoutes(
   );
 
   context.app.route('/acp', createACPRoutes(runtimeContext));
+  const engineSignInService = new EngineSignInService({
+    terminal: context.terminalService,
+  });
+  registerEngineSignIn(engineSignInService);
   context.app.route(
     '/acp',
     createACPSignInRoutes({
       ctx: runtimeContext,
-      service: new EngineSignInService({ terminal: context.terminalService }),
+      service: engineSignInService,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));

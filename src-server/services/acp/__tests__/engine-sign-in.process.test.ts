@@ -271,6 +271,35 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     expect((await settle(service, 'droid')).state).toBe('timed-out');
   });
 
+  test.each([
+    ['cancel', (s: EngineSignInService) => s.cancel('droid')],
+    ['forget', (s: EngineSignInService) => s.forget('droid')],
+    ['dispose', (s: EngineSignInService) => s.dispose()],
+  ] as const)('%s ends a running sign-in', async (how, end) => {
+    const droid = engineProgram('droid', 'factory-droid.json', [
+      '--authenticate-delay-ms',
+      '60000',
+    ]);
+    const service = new EngineSignInService({ terminal: null });
+    await service.startAgent(
+      connection('droid', droid.command),
+      'device-pairing',
+    );
+    expect(service.attempt('droid')?.state).toBe('running');
+    end(service);
+    if (how === 'forget') {
+      expect(service.attempt('droid')).toBeNull();
+      // Another start is not refused as "already running".
+      await service.startAgent(
+        connection('droid', droid.command),
+        'device-pairing',
+      );
+      service.dispose();
+      return;
+    }
+    expect((await settle(service, 'droid')).state).toBe('cancelled');
+  });
+
   test('a terminal method is never passed to authenticate', async () => {
     const pi = engineProgram('pi-acp', 'pi-acp.json');
     const service = new EngineSignInService({ terminal: null });
