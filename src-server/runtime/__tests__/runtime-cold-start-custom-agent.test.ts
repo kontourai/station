@@ -45,6 +45,7 @@ import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
@@ -474,6 +475,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   let home: string;
   let runtime: InstanceType<typeof StationRuntime> | undefined;
   let releaseKitDiscovery: (() => void) | undefined;
+  // Created before the afterEach below, so its directories are removed after
+  // that hook has shut the runtime down (after-hooks run in reverse order).
+  const makeTempDir = trackTempDirs();
 
   afterEach(async () => {
     releaseKitDiscovery?.();
@@ -1095,7 +1099,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     async () => {
       // Nothing here injects an observer: the runtime's GitHubWorkItemObserver
       // runs `gh` from PATH, and PATH finds the fake first.
-      const ghDir = mkdtempSync(join(tmpdir(), 'station-dispatch-fake-gh-'));
+      const ghDir = makeTempDir('station-dispatch-fake-gh-');
       fakeGh.installFakeGh(ghDir);
       const ref = 'github:acme/widgets#42';
       const issuePath = 'repos/acme/widgets/issues/42';
@@ -1210,7 +1214,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         );
       } finally {
         process.env.PATH = originalPath;
-        rmDirSyncRetrying(ghDir);
       }
     },
   );
