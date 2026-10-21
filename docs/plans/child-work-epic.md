@@ -104,8 +104,12 @@ provider launchability and the existing stable runtime Agent revision. The CLI r
 a synchronous finalizer after its asynchronous setup, checking request authority last before
 spawn. The implementer reports 496 focused passes across 14 files, focused types, and four
 failures from a compiling mutation that skipped this finalizer, followed by byte-identical
-restoration. Fresh independent review is pending. These checks do not establish atomic
-filesystem-to-execution custody or hostile same-UID isolation. The source remains unqualified; no final-preparation or launch acceptance follows from these counts. The caller stops at the first unsupported guarantee
+restoration. Fresh independent review passed the bounded managed-owner scope and 121 focused
+tests, rechecking all seven prior findings. Its filesystem probes also showed that transient
+creation/deletion of absent files and late direct cwd/preset changes can escape pre-spawn
+checks before postflight refusal. The pass does not establish atomic filesystem-to-execution
+custody, universal drift refusal or hostile same-UID isolation. Booted composition and live
+credentials/providers remain unverified; no final-preparation or launch acceptance follows from these counts. The caller stops at the first unsupported guarantee
 and returns a refusal, not a complete prepared snapshot. API engines and option/reasoning catalog
 discovery are unsupported. Real credential/model entitlement, launch-time context consumption and
 subsequent effect enforcement still need implementation and evidence.
