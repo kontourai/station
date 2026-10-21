@@ -10,6 +10,7 @@ import {
 
 import { createHash } from 'node:crypto';
 import {
+  type BigIntStats,
   type Dirent,
   existsSync,
   lstatSync,
@@ -357,7 +358,7 @@ export class ConfigLoader {
             }
             if (dir === home) break;
           }
-          let before;
+          let before: BigIntStats;
           try {
             before = lstatSync(path, { bigint: true });
           } catch (error) {
