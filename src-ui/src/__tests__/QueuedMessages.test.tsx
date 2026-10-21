@@ -68,12 +68,9 @@ describe('one queue surface: the outbox joins the pending list', () => {
         metadata={[{ id: 'local-1', mode: 'queue' }]}
         outbox={{
           count: 3,
-          inOrder: 0,
           needsReview: true,
           notSent: false,
-          render: () => (
-            <div className="queued-message">held in a closed window</div>
-          ),
+          node: <div className="queued-message">held in a closed window</div>,
         }}
       />,
     );
@@ -101,10 +98,9 @@ describe('one queue surface: the outbox joins the pending list', () => {
         metadata={[{ id: 'local-1', mode: 'queue' }]}
         outbox={{
           count: 1,
-          inOrder: 0,
           needsReview: false,
           notSent: false,
-          render: () => <div className="queued-message">offline send</div>,
+          node: <div className="queued-message">offline send</div>,
         }}
       />,
     );
@@ -120,10 +116,9 @@ describe('one queue surface: the outbox joins the pending list', () => {
         messages={[]}
         outbox={{
           count: 1,
-          inOrder: 0,
           needsReview: false,
           notSent: false,
-          render: () => <div className="queued-message">offline send</div>,
+          node: <div className="queued-message">offline send</div>,
         }}
       />,
     );
@@ -155,15 +150,7 @@ describe('one send order and one count across the list', () => {
     onRetry: vi.fn(),
   });
 
-  it('numbers rows in the order they send, next to send lowest: Station’s, the outbox’s, then this window’s', () => {
-    const render_ = vi.fn((part: string, orderStart: number) => (
-      <div className="queued-message">
-        <span className="queued-message__order">
-          {part === 'ordered' ? orderStart + 1 : ''}
-        </span>
-        <span className="queued-message__body">outbox {part}</span>
-      </div>
-    ));
+  it('numbers rows in the order they send, next to send lowest: Station’s, then this window’s; the outbox has none', () => {
     const { container } = renderQueue(
       <QueuedMessages
         sessionId="s1"
@@ -178,44 +165,46 @@ describe('one send order and one count across the list', () => {
           heldEntry('h3', 'unconfirmed'),
         ])}
         outbox={{
-          count: 2,
-          inOrder: 1,
+          count: 1,
           needsReview: false,
           notSent: false,
-          render: render_,
+          node: (
+            <div className="queued-message">
+              <span className="queued-message__order" />
+              <span className="queued-message__body">outbox</span>
+            </div>
+          ),
         }}
       />,
     );
-    // Station sends its two first, so the outbox starts after them.
-    expect(render_).toHaveBeenCalledWith('ordered', 2);
     const rows = [...container.querySelectorAll('.queued-message')].map(
       (row) =>
         `${row.querySelector('.queued-message__order')?.textContent ?? ''}:${
           row.querySelector('.queued-message__body')?.textContent
         }`,
     );
+    // Station sends its two first, then this window's two follow-ups; an
+    // unconfirmed held row is in no order.
     expect(rows).toEqual([
-      ':outbox attention',
-      '5:local later',
-      '4:local next',
-      '3:outbox ordered',
+      ':outbox',
+      '4:local later',
+      '3:local next',
       ':station h3',
       '2:station h2',
       '1:station h1',
     ]);
     // Every row listed is counted, whatever its state.
     expect(
-      screen.getByRole('button', { name: /^7 pending messages/ }),
+      screen.getByRole('button', { name: /^6 pending messages/ }),
     ).toBeTruthy();
   });
 
   it('a send that fails is shown and announced while the list is closed', () => {
     const outbox = (notSent: boolean) => ({
       count: 1,
-      inOrder: 0,
       needsReview: notSent,
       notSent,
-      render: () => <div className="queued-message">offline send</div>,
+      node: <div className="queued-message">offline send</div>,
     });
     const { container, rerender } = render(
       <QueuedMessages sessionId="s1" messages={[]} outbox={outbox(false)} />,

@@ -8,6 +8,7 @@ import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import React, {
   useCallback,
   useEffect,
@@ -94,7 +95,7 @@ import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
-import { outboxNeedsReview, outboxSendsInOrder } from '../chat/pendingMessages';
+import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
@@ -1387,15 +1388,44 @@ export function ChatDockBody({
   // This browser's outbox: rows in the one pending-message list above the
   // composer, not a list of its own.
   const outboundTurns = activeSession.outboundQueuedTurns ?? [];
+  // Send on a copy a closed window held. While a turn runs or this window's
+  // queue holds follow-ups, it joins that queue (whose durable copy then takes
+  // the key over), so it sends in the queue's order and takes its number;
+  // otherwise it goes now. An open window's copy is released as before: that
+  // window's queue holds it too, and one message has one sender.
+  const sendHeldCopy = async (turn: {
+    clientTurnId: string;
+    content: string;
+    heldByClosedWindow?: true;
+  }) => {
+    if (
+      turn.heldByClosedWindow &&
+      (isTurnInFlight(activeSession) || activeSession.queuedMessages.length)
+    ) {
+      updateChat(activeSession.id, {
+        queuedMessages: [...activeSession.queuedMessages, turn.content],
+        queuedMessageMetadata: [
+          ...(activeSession.queuedMessageMetadata ??
+            activeSession.queuedMessages.map(() => ({
+              id: randomCorrelationId(),
+              mode: 'queue' as const,
+            }))),
+          // Its own key: the queue's durable copy takes the held row over.
+          { id: turn.clientTurnId, mode: 'queue' },
+        ],
+      });
+      return;
+    }
+    const { outboundDispatch } = await import('../../lib/outboundQueue');
+    await outboundDispatch.sendHeld(turn.clientTurnId);
+  };
   const outboxRows: OutboxRows | undefined = outboundTurns.length
     ? {
         count: outboundTurns.length,
-        inOrder: outboundTurns.filter(outboxSendsInOrder).length,
         needsReview: outboundTurns.some(outboxNeedsReview),
         notSent: outboundTurns.some((turn) => turn.status === 'failed'),
-        render: (part, orderStart) => (
+        node: (
           <LazyBoundary
-            key={part}
             load={loadOutboundQueuedMessages}
             pending={
               <SkeletonList
@@ -1405,10 +1435,9 @@ export function ChatDockBody({
               />
             }
             componentProps={{
-              part,
-              orderStart,
               sessionId: activeSession.id,
               turns: outboundTurns,
+              onSendHeld: sendHeldCopy,
               messages: renderedSession.messages,
               onError: (error: string) => surfaceRecoveryFailure(error),
               // The "x" discards the same queued turn as the notice's Discard;

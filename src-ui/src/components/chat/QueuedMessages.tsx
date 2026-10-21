@@ -44,10 +44,10 @@ interface QueuedMessagesProps {
   held?: HeldMessages;
   /**
    * This browser's durable outbox for the chat (sends that failed, got no
-   * answer, or wait in a window that closed): its rows join this list rather
-   * than forming a second list. Rows it sends on its own take their place in
-   * the send order; the rest lead the list. One that waits on the person
-   * marks the collapsed list "Needs review", or "Not sent".
+   * answer, or wait in a window that closed): its rows join this list, at
+   * the top and unnumbered, rather than forming a second list. One that
+   * waits on the person marks the collapsed list "Needs review", or "Not
+   * sent".
    */
   outbox?: OutboxRows;
 }
@@ -55,17 +55,11 @@ interface QueuedMessagesProps {
 export interface OutboxRows {
   /** How many outbox messages the rows show. */
   count: number;
-  /** How many of them this window sends on its own, in order. */
-  inOrder: number;
   /** One of them needs the person (`outboxNeedsReview`). */
   needsReview: boolean;
   /** One of them was not sent. */
   notSent: boolean;
-  /**
-   * The rows of one part: those that send in order (numbered from
-   * `orderStart + 1`), or the rest.
-   */
-  render: (part: 'attention' | 'ordered', orderStart: number) => ReactNode;
+  node: ReactNode;
 }
 
 export interface HeldMessages {
@@ -182,9 +176,9 @@ export function QueuedMessages({
   const attention = notSent ? 'Not sent' : 'Needs review';
 
   // One send order, numbered from 1 = next to send: Station sends what it
-  // holds when the turn ends, then this window's outbox goes, then its own
-  // follow-ups. Rows in no automatic order (a copy another window holds, a
-  // failed or unconfirmed send) carry no number.
+  // holds as the turn ends, then this window's own follow-ups go, one per
+  // turn. Outbox rows carry no number: they go when the turn ends too, and
+  // which lands first is not known ahead.
   const heldOrder = new Map(
     heldEntries
       .filter(heldSendsInOrder)
@@ -195,35 +189,24 @@ export function QueuedMessages({
       )
       .map((entry, index) => [entry, index + 1]),
   );
-  const outboxOrderStart = heldOrder.size;
-  const localOrderStart = outboxOrderStart + (outbox?.inOrder ?? 0);
+  const localOrderStart = heldOrder.size;
   const visible =
     outboxCount > 0 ||
     localRows.length > 0 ||
     heldEntries.length > 0 ||
     Boolean(held?.unavailable);
 
-  // Top to bottom: outbox rows in no send order (they wait on the person or
-  // are under way), then the send order with its next at the very bottom:
-  // local follow-ups newest first, the outbox rows this window sends on its
-  // own, then what Station holds, which it sends itself when the turn ends.
-  const outboxAttention = outbox ? outbox.count - outbox.inOrder : 0;
+  // Top to bottom: this browser's outbox (unnumbered, see above), then the
+  // send order with its next at the very bottom: local follow-ups newest
+  // first, then what Station holds, which it sends itself when the turn ends.
   const displayRows: { key: string; node: ReactNode }[] = [
-    ...(outbox && outboxAttention > 0
-      ? [{ key: 'outbox', node: outbox.render('attention', 0) }]
+    ...(outboxCount > 0 && outbox
+      ? [{ key: 'outbox', node: outbox.node }]
       : []),
     ...[...localRows].reverse().map(({ row, idx }) => ({
       key: `local:${row.id}`,
       node: renderLocalRow(row, idx),
     })),
-    ...(outbox && outbox.inOrder > 0
-      ? [
-          {
-            key: 'outbox:ordered',
-            node: outbox.render('ordered', outboxOrderStart),
-          },
-        ]
-      : []),
     ...[...heldEntries]
       .map((entry, index) => ({ entry, index }))
       .sort(
@@ -244,7 +227,7 @@ export function QueuedMessages({
 
   function renderLocalRow(row: QueueRow, idx: number) {
     const msg = row.message;
-    // 1 = next to send, after what Station holds and the outbox sends.
+    // 1 = next to send, after what Station holds.
     const orderNum = localOrderStart + idx + 1;
     return (
       <div className="queued-message">

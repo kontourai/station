@@ -7,7 +7,6 @@ import {
   AWAITING_CONFIRMATION_LABEL,
   MAY_HAVE_REACHED_LABEL,
 } from './deliveryLabels';
-import { outboxSendsInOrder } from './pendingMessages';
 import {
   UnconfirmedDiscardConfirm,
   useUnconfirmedDiscardDisclosure,
@@ -73,13 +72,11 @@ interface OutboundQueuedMessagesProps {
     clientTurnId: string,
   ) => void | Promise<void>;
   /**
-   * Which rows to render: the ones this window's flush sends in order
-   * (`ordered`, numbered), or the rest, which wait on the person or are
-   * under way (`attention`, unnumbered). Both by default.
+   * Send on a held copy. The caller may queue it behind this window's own
+   * follow-ups instead of releasing it to the outbox (see `ChatDockBody`).
+   * Without it, Send releases it (`sendHeld`).
    */
-  part?: 'attention' | 'ordered';
-  /** How many rows of the list send before this one's first ordered row. */
-  orderStart?: number;
+  onSendHeld?: (turn: OutboundQueuedTurn) => Promise<void>;
 }
 
 /**
@@ -96,8 +93,7 @@ export function OutboundQueuedMessages({
   onDiscarded,
   onRetry,
   onStartNewChat,
-  part,
-  orderStart = 0,
+  onSendHeld,
 }: OutboundQueuedMessagesProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -143,23 +139,9 @@ export function OutboundQueuedMessages({
     }
   };
 
-  // Rows this window sends in order, first to send first. They render
-  // reversed, like the list's own follow-ups: the next to send sits lowest,
-  // so visual up is later in the order.
-  const ordered = turns.filter(outboxSendsInOrder);
-  const shown = turns
-    .map((turn, index) => ({ turn, index }))
-    .filter(({ turn }) =>
-      part === undefined
-        ? true
-        : (part === 'ordered') === outboxSendsInOrder(turn),
-    );
-  const reversed = part === 'ordered';
-  const rowsInView = reversed ? [...shown].reverse() : shown;
   const rows = (
     <>
-      {rowsInView.map(({ turn, index }) => {
-        const orderIndex = ordered.indexOf(turn);
+      {turns.map((turn, index) => {
         const workspaceRefused = isWorkspaceRefusedTurn(turn);
         const refusedAt = turn.createdAt;
         // 'May have been answered' requires an ANSWER: only a newer
@@ -186,15 +168,11 @@ export function OutboundQueuedMessages({
           mergePreviewId === turn.clientTurnId && canMergeWithNext;
         return (
           <div className="queued-message" key={turn.clientTurnId}>
-            {/* Only a row this window sends on its own has a place in the
-                send order; a held copy, a failed send or one under way does
-                not. */}
-            <span
-              className="queued-message__order"
-              aria-hidden={orderIndex === -1 ? true : undefined}
-            >
-              {orderIndex === -1 ? null : orderStart + orderIndex + 1}
-            </span>
+            {/* No number: the outbox sends when the turn ends, alongside the
+                list's own follow-ups, and which lands first is not known
+                ahead; a held copy or a failed send is in no order at all.
+                The column stays so the rows line up. */}
+            <span className="queued-message__order" aria-hidden="true" />
             {editingId === turn.clientTurnId ? (
               <input
                 ref={editInputRef}
@@ -250,7 +228,7 @@ export function OutboundQueuedMessages({
               </div>
             ) : null}
             <StationWaitNote waitingForStation={turn.waitingForStation} />
-            <HeldCopyNotice turn={turn} onError={onError} />
+            <HeldCopyNotice turn={turn} onError={onError} onSend={onSendHeld} />
             {turn.status === 'may-have-started' ||
             turn.status === 'invoking' ? (
               <span
@@ -333,18 +311,10 @@ export function OutboundQueuedMessages({
               <>
                 {turn.status === 'pending' && !turn.heldElsewhere ? (
                   <>
-                    {/* The ordered part is shown next-to-send lowest, so
-                        there visual up moves a row later ('down'). */}
                     <button
                       type="button"
-                      onClick={() =>
-                        reorder(turn.clientTurnId, reversed ? 'down' : 'up')
-                      }
-                      disabled={
-                        reversed
-                          ? orderIndex === ordered.length - 1
-                          : index === 0
-                      }
+                      onClick={() => reorder(turn.clientTurnId, 'up')}
+                      disabled={index === 0}
                       className="queued-message__btn"
                       aria-label="Move message up"
                     >
@@ -352,12 +322,8 @@ export function OutboundQueuedMessages({
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        reorder(turn.clientTurnId, reversed ? 'up' : 'down')
-                      }
-                      disabled={
-                        reversed ? orderIndex === 0 : index === turns.length - 1
-                      }
+                      onClick={() => reorder(turn.clientTurnId, 'down')}
+                      disabled={index === turns.length - 1}
                       className="queued-message__btn"
                       aria-label="Move message down"
                     >
@@ -451,13 +417,11 @@ export function OutboundQueuedMessages({
 function HeldCopyNotice({
   turn,
   onError,
+  onSend,
 }: {
-  turn: {
-    clientTurnId: string;
-    heldElsewhere?: true;
-    heldByClosedWindow?: true;
-  };
+  turn: OutboundQueuedTurn;
   onError: (message: string) => void;
+  onSend?: (turn: OutboundQueuedTurn) => Promise<void>;
 }) {
   if (!turn.heldElsewhere) return null;
   const { clientTurnId } = turn;
@@ -476,15 +440,17 @@ function HeldCopyNotice({
       <button
         type="button"
         onClick={() =>
-          void import('../../lib/outboundQueue')
-            .then(({ outboundDispatch }) =>
-              outboundDispatch.sendHeld(clientTurnId),
-            )
-            .catch((error: unknown) =>
-              onError(
-                `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
-              ),
-            )
+          void (
+            onSend
+              ? onSend(turn)
+              : import('../../lib/outboundQueue').then(({ outboundDispatch }) =>
+                  outboundDispatch.sendHeld(clientTurnId),
+                )
+          ).catch((error: unknown) =>
+            onError(
+              `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          )
         }
       >
         Send

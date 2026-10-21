@@ -10,25 +10,8 @@ import type { ConversationInboxEntry } from '@kontourai/station-contracts/orches
 /** The fields of an outbox row these rules read. */
 export interface PendingOutboxTurn {
   status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
-  heldElsewhere?: true;
   /** The window holding this copy is proven closed. */
   heldByClosedWindow?: true;
-  waitingForStation?: string;
-  behindUnsent?: true;
-}
-
-/**
- * An outbox row this window's flush sends on its own, in the outbox's order,
- * once the turn ends: not a copy another window holds, not one written for
- * another Station, not one behind a message that was not sent.
- */
-export function outboxSendsInOrder(turn: PendingOutboxTurn): boolean {
-  return (
-    turn.status === 'pending' &&
-    !turn.heldElsewhere &&
-    !turn.waitingForStation &&
-    !turn.behindUnsent
-  );
 }
 
 /**

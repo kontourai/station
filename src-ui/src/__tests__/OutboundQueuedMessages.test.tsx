@@ -206,74 +206,41 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
-  it('the ordered part numbers its rows after the earlier ones, next to send lowest', async () => {
-    const turns = [
-      {
-        clientTurnId: 'held-away',
-        content: 'held elsewhere',
-        status: 'pending' as const,
-        heldElsewhere: true as const,
-      },
-      {
-        clientTurnId: 'first',
-        content: 'goes first',
-        status: 'pending' as const,
-      },
-      {
-        clientTurnId: 'second',
-        content: 'goes second',
-        status: 'pending' as const,
-      },
-    ];
+  it('rows carry no order number, and Send on a held copy goes to the caller when it decides', async () => {
+    const onSendHeld = vi.fn(async () => {});
     const { container } = render(
       <OutboundQueuedMessages
         sessionId="session-1"
-        turns={turns}
-        part="ordered"
-        orderStart={2}
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+            heldByClosedWindow: true,
+          },
+          { clientTurnId: 'first', content: 'goes first', status: 'pending' },
+        ]}
+        onSendHeld={onSendHeld}
         onError={vi.fn()}
         onRetry={vi.fn()}
         onStartNewChat={vi.fn()}
       />,
     );
-    // Only the rows this window sends on its own; the held copy is not one.
-    expect(screen.queryByText('held elsewhere')).toBeNull();
-    const rows = [...container.querySelectorAll('.queued-message')].map(
-      (row) => [
-        row.querySelector('.queued-message__order')?.textContent,
-        row.querySelector('.queued-message__body')?.textContent,
-      ],
-    );
-    // Two rows send before these (Station's), so they are 3 and 4, and the
-    // next to send sits lowest, like the list's own follow-ups.
-    expect(rows).toEqual([
-      ['4', 'goes second'],
-      ['3', 'goes first'],
-    ]);
-    // Visual up on the lower row moves it later in the queue.
-    const ups = screen.getAllByRole('button', { name: 'Move message up' });
-    expect((ups[0] as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(ups[1]!);
-    await waitFor(() =>
-      expect(reorderOutboundTurnMock).toHaveBeenCalledWith('first', 'down'),
-    );
-
-    const attention = render(
-      <OutboundQueuedMessages
-        sessionId="session-1"
-        turns={turns}
-        part="attention"
-        onError={vi.fn()}
-        onRetry={vi.fn()}
-        onStartNewChat={vi.fn()}
-      />,
-    );
-    const held = attention.container.querySelector('.queued-message')!;
-    expect(held.textContent).toContain('held elsewhere');
-    expect(held.querySelector('.queued-message__order')?.textContent).toBe('');
+    // When an outbox row lands relative to the list's own follow-ups is not
+    // known ahead, so no row claims a place in the order.
     expect(
-      attention.container.querySelectorAll('.queued-message'),
-    ).toHaveLength(1);
+      [...container.querySelectorAll('.queued-message__order')].map(
+        (order) => order.textContent,
+      ),
+    ).toEqual(['', '']);
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(onSendHeld).toHaveBeenCalledWith(
+        expect.objectContaining({ clientTurnId: 'held-away' }),
+      ),
+    );
+    expect(sendHeldMock).not.toHaveBeenCalled();
   });
 
   it('keeps merging opt-in, previews the text, and offers a pre-send undo', async () => {

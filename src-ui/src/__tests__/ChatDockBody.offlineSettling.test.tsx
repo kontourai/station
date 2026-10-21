@@ -12,6 +12,8 @@ const fetchConversationWindow = vi.hoisted(() => vi.fn());
 const transcriptMounts = vi.hoisted(() => vi.fn());
 const queueMounts = vi.hoisted(() => vi.fn());
 const composerProps = vi.hoisted(() => vi.fn());
+const updateChatSpy = vi.hoisted(() => vi.fn());
+const outboxProps = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async () => ({
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
@@ -70,7 +72,7 @@ vi.mock('../contexts/NavigationContext', () => {
 });
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
-    updateChat: vi.fn(),
+    updateChat: updateChatSpy,
     clearEphemeralMessages: vi.fn(),
     addEphemeralMessage: vi.fn(),
   }),
@@ -94,23 +96,10 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 const queuedMessagesProps = vi.hoisted(() => vi.fn());
 vi.mock('../components/chat/QueuedMessages', () => ({
-  // The outbox's rows render inside this one list, in their two parts.
-  QueuedMessages: (props: {
-    outbox?: {
-      count: number;
-      inOrder: number;
-      render: (part: 'attention' | 'ordered', orderStart: number) => ReactNode;
-    };
-  }) => {
+  // The outbox's rows render inside this one list.
+  QueuedMessages: (props: { outbox?: { node: ReactNode } }) => {
     queuedMessagesProps(props);
-    const outbox = props.outbox;
-    if (!outbox) return null;
-    return (
-      <>
-        {outbox.count > outbox.inOrder ? outbox.render('attention', 0) : null}
-        {outbox.inOrder > 0 ? outbox.render('ordered', 0) : null}
-      </>
-    );
+    return props.outbox?.node ?? null;
   },
 }));
 vi.mock('../components/chat/ChatMessageList', () => ({
@@ -128,7 +117,8 @@ vi.mock('../components/chat/ChatMessageList', () => ({
   },
 }));
 vi.mock('../components/chat/OutboundQueuedMessages', () => ({
-  OutboundQueuedMessages: () => {
+  OutboundQueuedMessages: (props: unknown) => {
+    outboxProps(props);
     useEffect(() => {
       queueMounts();
     }, []);
@@ -237,7 +227,6 @@ describe('the outbox facts the pending list reads', () => {
     const lastOutbox = () =>
       queuedMessagesProps.mock.lastCall?.[0]?.outbox as {
         count: number;
-        inOrder: number;
         needsReview: boolean;
         notSent: boolean;
       };
@@ -263,7 +252,6 @@ describe('the outbox facts the pending list reads', () => {
     await waitFor(() =>
       expect(lastOutbox()).toMatchObject({
         count: 2,
-        inOrder: 1,
         needsReview: false,
         notSent: false,
       }),
@@ -284,7 +272,6 @@ describe('the outbox facts the pending list reads', () => {
     );
     await waitFor(() =>
       expect(lastOutbox()).toMatchObject({
-        inOrder: 0,
         needsReview: true,
         notSent: false,
       }),
@@ -304,6 +291,42 @@ describe('the outbox facts the pending list reads', () => {
     await waitFor(() =>
       expect(lastOutbox()).toMatchObject({ needsReview: true, notSent: true }),
     );
+  });
+
+  test('Send on a copy from a closed window joins this window’s queue while a turn runs, under its own key', async () => {
+    const closed = {
+      clientTurnId: 'held-closed',
+      content: 'queued in a window that closed',
+      createdAt: 1,
+      status: 'pending' as const,
+      heldElsewhere: true as const,
+      heldByClosedWindow: true as const,
+    };
+    const running: ChatSession = {
+      ...session(0),
+      status: 'running',
+      orchestrationTurnOpen: true,
+      queuedMessages: ['queued here'],
+      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
+      outboundQueuedTurns: [closed],
+    } as unknown as ChatSession;
+    updateChatSpy.mockClear();
+    outboxProps.mockClear();
+    render(dock(running));
+    await waitFor(() => expect(outboxProps).toHaveBeenCalled());
+    const { onSendHeld } = outboxProps.mock.lastCall![0] as {
+      onSendHeld: (turn: typeof closed) => Promise<void>;
+    };
+    await onSendHeld(closed);
+    // It sends after what is already queued here, in that order, and keeps
+    // its key, so the queue's durable copy takes the held row over.
+    expect(updateChatSpy).toHaveBeenCalledWith('offline-thread', {
+      queuedMessages: ['queued here', 'queued in a window that closed'],
+      queuedMessageMetadata: [
+        { id: 'local-1', mode: 'queue' },
+        { id: 'held-closed', mode: 'queue' },
+      ],
+    });
   });
 });
 
