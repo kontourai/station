@@ -505,6 +505,13 @@ describe('session-terminal boundary ordering', () => {
       };
       store.appendEvent(event);
       const settled = settle(store, path, event, mode);
+      // Each path retires it on its own: the live observe deletes the row,
+      // and a poll already reads it as settled before any restart.
+      if (mode === 'observe') expect(boundaries(path)).toEqual([]);
+      if (mode === 'read')
+        expect(
+          settled.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+        ).toEqual({ kind: 'available', active: false });
       // Boot recovery settles turn rows only, so nothing else would ever
       // clear this one: the thread would stay busy for good.
       const current =
