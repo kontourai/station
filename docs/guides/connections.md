@@ -721,6 +721,10 @@ the [ACP guide](acp.md) covers protocol details.
    engine's Agent is added only once its check succeeds.
 
 A configured engine that reads **Setup required** offers **Retry check** too, on its card and on its engine page.
+An engine whose first check never succeeded is saved but has no Agent yet; its
+card reads **Not connected yet** and offers **Retry check**, **Remove**, and,
+for a custom engine, **Edit setup**. It is not counted as one of your engines
+until a check succeeds.
 In the Add catalogue, an app that still needs setup offers **Add and set up**: it
 adds the engine and opens it, where setup continues. Station does not check
 whether a command-backed engine is signed in, so its login row says so and does

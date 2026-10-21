@@ -226,3 +226,36 @@ test('keeps plugin-provided engines inspectable without unsupported mutations', 
     screen.getByRole('button', { name: 'Open Kiro CLI connection details' }),
   ).toBeTruthy();
 });
+
+// A saved connection whose engine never registered (a failed first add):
+// shown so it can be repaired, labelled so it is not read as an engine
+// Station has, and offering the three repairs.
+test('an unregistered connection reads Not connected yet and offers its repairs', () => {
+  const onReconnect = vi.fn();
+  const onEditSetup = vi.fn();
+  const onRemove = vi.fn();
+  render(
+    <ACPConnectionCard
+      conn={{ ...connection, status: 'unavailable' }}
+      unregistered
+      agents={[]}
+      onClick={vi.fn()}
+      onToggle={vi.fn()}
+      onRemove={onRemove}
+      onReconnect={onReconnect}
+      onEditSetup={onEditSetup}
+    />,
+  );
+
+  expect(
+    screen.getByRole('status', { name: 'Readiness: Not connected yet' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+  expect(onReconnect).toHaveBeenCalledTimes(1);
+  expect(overflowItems(openOverflow('Manage Kiro CLI'))).toEqual([
+    { name: 'Edit setup', danger: false },
+    { name: 'Remove', danger: true },
+  ]);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
+  expect(onEditSetup).toHaveBeenCalledTimes(1);
+});

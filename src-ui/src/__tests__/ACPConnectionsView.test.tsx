@@ -24,6 +24,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   useACPConnectionsQuery: () => acpConnectionsState,
   useACPConnectionRegistryQuery: () => ({ data: acpRegistryState.data }),
   useACPConnectionProbeStatusesQuery: () => ({ data: undefined }),
+  useUnregisteredACPConnectionsQuery: () => ({ data: [], refetch: vi.fn() }),
+  useCheckACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
+  splitACPArgs: (args: string) => args.split(/\s+/).filter(Boolean),
   useCreateACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useInstallACPConnectionRegistryEntryMutation: () => ({
     mutateAsync: installRegistryEntry,

@@ -13,9 +13,11 @@ import type {
 
 export function ACPConnectionSetupHeader({
   stage,
+  editing = false,
   onClose,
 }: {
   stage: ACPConnectionSetupStage;
+  editing?: boolean;
   onClose: () => void;
 }) {
   const custom = stage === 'custom';
@@ -33,7 +35,7 @@ export function ACPConnectionSetupHeader({
     <div className="acp-add-dialog__header">
       <div>
         <h3 id="add-provider-title">
-          {custom ? 'Custom engine' : 'Add engine'}
+          {editing ? 'Edit engine' : custom ? 'Custom engine' : 'Add engine'}
         </h3>
         <p className="acp-add-dialog__subtitle">{subtitle}</p>
       </div>
@@ -356,12 +358,15 @@ export function ACPConnectionCustomStage({
   draft,
   advancedOpen,
   nameInputRef,
+  idLocked = false,
   onDraftChange,
   onAdvancedChange,
 }: {
   draft: ACPConnectionDraft;
   advancedOpen: boolean;
   nameInputRef: RefObject<HTMLInputElement | null>;
+  /** A saved connection's id cannot change (it names its engine). */
+  idLocked?: boolean;
   onDraftChange: (field: keyof ACPConnectionDraft, value: string) => void;
   onAdvancedChange: (open: boolean) => void;
 }) {
@@ -373,6 +378,7 @@ export function ACPConnectionCustomStage({
     <label>
       {label}
       <input
+        disabled={field === 'id' && idLocked}
         value={draft[field]}
         onChange={(event) => onDraftChange(field, event.target.value)}
         placeholder={placeholder}

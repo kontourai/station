@@ -4,6 +4,7 @@ import {
   useACPConnectionProbeStatusesQuery,
   useACPConnectionRegistryQuery,
   useACPConnectionsQuery,
+  useUnregisteredACPConnectionsQuery,
 } from '@kontourai/station-sdk';
 
 export type { ACPConnectionInfo, ACPConnectionRegistryEntry };
@@ -18,6 +19,11 @@ export function useACPConnectionProbeStatuses(enabled: boolean) {
     enabled,
     refetchInterval: enabled ? 2_000 : undefined,
   });
+}
+
+/** Saved connections whose engine never registered (not installed engines). */
+export function useUnregisteredACPConnections() {
+  return useUnregisteredACPConnectionsQuery();
 }
 
 export function useACPConnectionRegistry() {

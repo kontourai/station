@@ -143,7 +143,32 @@ function reduceACPConnectionSetup(
   }
 }
 
-function initialState(entries: ACPConnectionRegistryEntry[]) {
+/** The setup form filled with a saved connection's values (Edit setup). */
+function draftFor(connection: ACPConnectionInfo): ACPConnectionDraft {
+  return {
+    id: connection.id,
+    name: connection.name ?? '',
+    command: connection.command ?? '',
+    args: (connection.args ?? []).join(' '),
+    icon: connection.icon ?? '',
+    cwd: connection.cwd ?? '',
+  };
+}
+
+function initialState({
+  entries,
+  editConnection,
+}: {
+  entries: ACPConnectionRegistryEntry[];
+  editConnection?: ACPConnectionInfo;
+}): ACPConnectionSetupState {
+  if (editConnection) {
+    return {
+      ...initialState({ entries }),
+      stage: 'custom',
+      draft: draftFor(editConnection),
+    };
+  }
   return {
     stage: entries.length === 0 ? ('custom' as const) : ('catalog' as const),
     selectedEntry: null,
@@ -247,11 +272,14 @@ function useSetupSubmit(
   dispatch: (action: SetupAction) => void,
   onAdd: (draft: ACPConnectionDraft) => unknown,
   onInstallRegistryEntry: ((id: string) => unknown) | undefined,
+  editConnection: ACPConnectionInfo | undefined,
+  onUpdate: ((id: string, draft: ACPConnectionDraft) => unknown) | undefined,
 ) {
   return useCallback(
     async (entry = state.selectedEntry) => {
       const id =
         entry?.id ??
+        editConnection?.id ??
         getACPConnectionDraftId(
           state.draft.id,
           state.draft.command,
@@ -261,7 +289,9 @@ function useSetupSubmit(
       try {
         const response = entry
           ? await onInstallRegistryEntry?.(entry.id)
-          : await onAdd({ ...state.draft, id });
+          : editConnection && onUpdate
+            ? await onUpdate(id, { ...state.draft, id })
+            : await onAdd({ ...state.draft, id });
         dispatch({
           type: 'complete',
           connection: addedConnectionFor(response, id),
@@ -275,7 +305,7 @@ function useSetupSubmit(
         });
       }
     },
-    [dispatch, onAdd, onInstallRegistryEntry, state],
+    [dispatch, onAdd, onInstallRegistryEntry, editConnection, onUpdate, state],
   );
 }
 
@@ -307,6 +337,8 @@ export function useACPConnectionSetup({
   onRefreshConnections,
   probeStatuses,
   probeStatusesUpdatedAt,
+  editConnection,
+  onUpdate,
 }: {
   registryEntries: ACPConnectionRegistryEntry[];
   connections: ACPConnectionInfo[];
@@ -320,13 +352,17 @@ export function useACPConnectionSetup({
   }>;
   /** When `probeStatuses` was fetched (epoch ms). */
   probeStatusesUpdatedAt?: number;
+  /** Edit setup: start on the form with this saved connection's values. */
+  editConnection?: ACPConnectionInfo;
+  /** Saves an edit (PUT); used instead of `onAdd` while editing. */
+  onUpdate?: (id: string, draft: ACPConnectionDraft) => unknown;
   onAdd: (draft: ACPConnectionDraft) => unknown;
   onInstallRegistryEntry?: (id: string) => unknown;
   onRefreshConnections?: () => unknown;
 }) {
   const [state, dispatch] = useReducer(
     reduceACPConnectionSetup,
-    registryEntries,
+    { entries: registryEntries, editConnection },
     initialState,
   );
   // The listed connection is fresher when it exists. A first add that is not
@@ -373,7 +409,14 @@ export function useACPConnectionSetup({
     dispatch,
     onRefreshConnections,
   );
-  const submit = useSetupSubmit(state, dispatch, onAdd, onInstallRegistryEntry);
+  const submit = useSetupSubmit(
+    state,
+    dispatch,
+    onAdd,
+    onInstallRegistryEntry,
+    editConnection,
+    onUpdate,
+  );
   const retryRefresh = useRefreshRetry(dispatch, onRefreshConnections);
 
   return {

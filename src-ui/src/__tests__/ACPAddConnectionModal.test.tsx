@@ -606,6 +606,60 @@ describe('ACPAddConnectionModal', () => {
     expect(screen.getByRole('status').textContent).toContain('Checking');
   });
 
+  // Edit setup on a custom engine that never registered: the same form,
+  // filled with what was saved, saving through the update (its id is fixed).
+  test('edits a saved custom engine through the update and shows its result', async () => {
+    const saved = {
+      ...failedFirstAddResponse,
+      id: 'stub',
+      name: 'Stub Engine',
+      command: 'stub-acp',
+      args: ['--acp'],
+      cwd: '/srv/stub',
+    };
+    const onUpdate = vi.fn().mockResolvedValue({
+      ...saved,
+      command: 'stub-acp-fixed',
+      status: 'available',
+      lastError: undefined,
+    });
+    const onAdd = vi.fn();
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[kiro]}
+        connections={[]}
+        editConnection={saved}
+        onAdd={onAdd}
+        onUpdate={onUpdate}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('Stub Engine')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'stub-acp-fixed' },
+    });
+    fireEvent.click(screen.getByText('Advanced'));
+    expect((screen.getByLabelText('ID') as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByDisplayValue('--acp')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('Ready'),
+    );
+    expect(onUpdate).toHaveBeenCalledWith('stub', {
+      id: 'stub',
+      name: 'Stub Engine',
+      command: 'stub-acp-fixed',
+      args: '--acp',
+      icon: '🔌',
+      cwd: '/srv/stub',
+    });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
   test('focuses the first custom field and contains Tab at the shared dialog boundary', () => {
     render(
       <ACPAddConnectionModal

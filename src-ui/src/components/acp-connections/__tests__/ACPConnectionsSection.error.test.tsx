@@ -22,9 +22,12 @@ vi.mock('../../../hooks/useACPConnections', () => ({
   }),
   useACPConnectionRegistry: () => ({ data: [] }),
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
+  useUnregisteredACPConnections: () => ({ data: [], refetch: vi.fn() }),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  splitACPArgs: (args: string) => args.split(/\s+/).filter(Boolean),
+  useCheckACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useCreateACPConnectionMutation: () => ({
     isPending: false,
     mutateAsync: vi.fn(),

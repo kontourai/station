@@ -15,6 +15,8 @@ export function ACPConnectionCard({
   onToggle,
   onRemove,
   onReconnect,
+  unregistered = false,
+  onEditSetup,
 }: {
   conn: ACPConnectionInfo;
   agents: AgentSummary[];
@@ -22,17 +24,25 @@ export function ACPConnectionCard({
   onToggle: (enabled: boolean) => void;
   onRemove: () => void;
   onReconnect: () => void;
+  /**
+   * Saved, but its engine never registered (a failed first add): not an
+   * engine Station has yet, so its only actions are the repairs.
+   */
+  unregistered?: boolean;
+  /** Custom engines only: reopen the setup with this connection's values. */
+  onEditSetup?: () => void;
 }) {
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
-  const {
-    isConnected,
-    isConnecting,
-    isPlugin,
-    statusLabel,
-    statusTone,
-    recommendedAction,
-  } = getACPConnectionStatusView(conn);
+  const view = getACPConnectionStatusView(conn);
+  const { isConnected, isConnecting, isPlugin } = view;
+  const statusLabel = unregistered ? 'Not connected yet' : view.statusLabel;
+  const statusTone = unregistered ? 'setup-needed' : view.statusTone;
+  const recommendedAction = unregistered
+    ? isConnecting
+      ? null
+      : 'Retry check'
+    : view.recommendedAction;
 
   return (
     <div className={`acp-connection-card acp-connection-card--${statusTone}`}>
@@ -154,7 +164,16 @@ export function ACPConnectionCard({
             ) : null
           }
           overflow={[
-            ...(conn.enabled
+            ...(unregistered && onEditSetup
+              ? [
+                  {
+                    key: 'edit',
+                    label: 'Edit setup',
+                    onSelect: onEditSetup,
+                  },
+                ]
+              : []),
+            ...(conn.enabled && !unregistered
               ? [
                   {
                     key: 'disable',

@@ -1,4 +1,7 @@
 import {
+  type ACPConnectionInfo,
+  splitACPArgs,
+  useCheckACPConnectionMutation,
   useCreateACPConnectionMutation,
   useDeleteACPConnectionMutation,
   useInstallACPConnectionRegistryEntryMutation,
@@ -11,6 +14,7 @@ import {
   useACPConnectionProbeStatuses,
   useACPConnectionRegistry,
   useACPConnections,
+  useUnregisteredACPConnections,
 } from '../../hooks/useACPConnections';
 import type { AgentSummary } from '../../types';
 import { Button } from '../Button';
@@ -45,6 +49,13 @@ export function ACPConnectionsSection({
     refetch: refetchConnections,
   } = useACPConnections();
   const { data: registryEntries = [] } = useACPConnectionRegistry();
+  // Saved connections whose engine never registered (a failed first add).
+  // Listed for repair; never counted with `connections` (station#1548).
+  const { data: unregistered = [], refetch: refetchUnregistered } =
+    useUnregisteredACPConnections();
+  const checkConnectionMutation = useCheckACPConnectionMutation();
+  const [editingConnection, setEditingConnection] =
+    useState<ACPConnectionInfo | null>(null);
   const [firstContactPending, setFirstContactPending] = useState(false);
   const { data: probeStatuses, dataUpdatedAt: probeStatusesUpdatedAt } =
     useACPConnectionProbeStatuses(firstContactPending);
@@ -146,6 +157,30 @@ export function ACPConnectionsSection({
     return installRegistryEntryMutation.mutateAsync(id);
   };
 
+  // Edit setup saves through PUT, which re-probes and registers on success.
+  const updateSetup = async (id: string, draft: ACPConnectionDraft) => {
+    return updateConnectionMutation.mutateAsync({
+      id,
+      updates: {
+        name: draft.name,
+        command: draft.command,
+        args: splitACPArgs(draft.args),
+        ...(draft.icon ? { icon: draft.icon } : {}),
+        ...(draft.cwd ? { cwd: draft.cwd } : {}),
+      },
+    });
+  };
+
+  const retryUnregistered = async (id: string) => {
+    // A failed check is shown by the card's refreshed status; it is not an
+    // unhandled rejection.
+    try {
+      await checkConnectionMutation.mutateAsync(id);
+    } catch {
+      await Promise.resolve(refetchUnregistered()).catch(() => undefined);
+    }
+  };
+
   // Registry entries are suggestions only. Once installed, the connection
   // query is the single configured-engine projection used by this page.
   const availableRegistryEntries = registryEntries.filter(
@@ -182,7 +217,42 @@ export function ACPConnectionsSection({
         />
       )}
 
+      {editingConnection && (
+        <ACPAddConnectionModal
+          registryEntries={[]}
+          connections={connections}
+          editConnection={editingConnection}
+          onUpdate={updateSetup}
+          onAdd={addConnection}
+          onRefreshConnections={refetchConnections}
+          probeStatuses={probeStatuses}
+          probeStatusesUpdatedAt={probeStatusesUpdatedAt}
+          onFirstContactPendingChange={setFirstContactPending}
+          onCancel={() => setEditingConnection(null)}
+        />
+      )}
+
       <div className="acp-connections-section__grid">
+        {unregistered.map((conn) => {
+          const custom = !registryEntries.some((entry) => entry.id === conn.id);
+          return (
+            <ACPConnectionCard
+              key={`unregistered-${conn.id}`}
+              conn={conn}
+              unregistered
+              agents={[]}
+              onClick={() => {
+                if (custom) setEditingConnection(conn);
+              }}
+              onToggle={() => undefined}
+              onRemove={() => removeConnection(conn.id)}
+              onReconnect={() => void retryUnregistered(conn.id)}
+              {...(custom
+                ? { onEditSetup: () => setEditingConnection(conn) }
+                : {})}
+            />
+          );
+        })}
         {connections.map((conn) => (
           <ACPConnectionCard
             key={conn.id}
@@ -230,7 +300,8 @@ export function ACPConnectionsSection({
       )}
       {!connectionQueryPending &&
         !connectionQueryIsError &&
-        connections.length === 0 && (
+        connections.length === 0 &&
+        unregistered.length === 0 && (
           /* empty-state action: the frame's one "Add engine" action is
              adjacent (this section owns no add action of its own — #592
              slice 2) */

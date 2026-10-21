@@ -32,6 +32,8 @@ export function ACPAddConnectionModal({
   probeStatuses,
   probeStatusesUpdatedAt,
   onFirstContactPendingChange,
+  editConnection,
+  onUpdate,
 }: {
   registryEntries?: ACPConnectionRegistryEntry[];
   connections?: ACPConnectionInfo[];
@@ -55,6 +57,9 @@ export function ACPAddConnectionModal({
   probeStatusesUpdatedAt?: number;
   /** Tells the owner when to poll `probeStatuses`. */
   onFirstContactPendingChange?: (pending: boolean) => void;
+  /** Edit setup of a saved custom engine; saves through `onUpdate`. */
+  editConnection?: ACPConnectionInfo;
+  onUpdate?: (id: string, draft: ACPConnectionDraft) => unknown;
 }) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const initialProviderHandled = useRef(false);
@@ -76,7 +81,10 @@ export function ACPAddConnectionModal({
     onRefreshConnections,
     probeStatuses,
     probeStatusesUpdatedAt,
+    editConnection,
+    onUpdate,
   });
+  const editing = Boolean(editConnection);
   useEffect(() => {
     onFirstContactPendingChange?.(awaitingFirstContact);
   }, [awaitingFirstContact, onFirstContactPendingChange]);
@@ -124,7 +132,11 @@ export function ACPAddConnectionModal({
       initialFocusPolicy="desktop"
       returnFocusTarget={returnFocusTarget}
     >
-      <ACPConnectionSetupHeader stage={state.stage} onClose={onCancel} />
+      <ACPConnectionSetupHeader
+        stage={state.stage}
+        editing={editing}
+        onClose={onCancel}
+      />
       <div className="acp-add-dialog__body">
         {state.stage === 'catalog' && (
           <ACPConnectionCatalogStage
@@ -141,6 +153,7 @@ export function ACPAddConnectionModal({
             draft={state.draft}
             advancedOpen={state.advancedOpen}
             nameInputRef={nameInputRef}
+            idLocked={editing}
             onDraftChange={(field, value) =>
               dispatch({ type: 'draft', field, value })
             }
@@ -159,7 +172,7 @@ export function ACPAddConnectionModal({
       </div>
       <ACPConnectionSetupActions
         stage={state.stage}
-        hasRegistryEntries={registryEntries.length > 0}
+        hasRegistryEntries={!editing && registryEntries.length > 0}
         isCustom={isCustom}
         canSubmit={Boolean(state.draft.name && state.draft.command)}
         ready={readiness?.statusLabel === 'Ready'}
