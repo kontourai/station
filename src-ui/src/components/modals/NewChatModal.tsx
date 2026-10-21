@@ -91,7 +91,10 @@ import {
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
 import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
-import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
+import {
+  AutomaticEnginePreparation,
+  preparationFeedbackText,
+} from './AutomaticEnginePreparation';
 import {
   GLOBAL_CONTEXT,
   modelPickerProviders,
@@ -1430,7 +1433,8 @@ export function NewChatModal({
                 setDiscoveryInProgress(false);
                 setPreparedEngineId(engineId);
                 setDiscoveryCompleted(true);
-                if (failure) setSelectFeedback(failure);
+                if (failure)
+                  setSelectFeedback(preparationFeedbackText(failure, notice));
                 else setStartingNotice(notice ?? null);
               }}
             />

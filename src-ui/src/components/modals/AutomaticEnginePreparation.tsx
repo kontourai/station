@@ -12,6 +12,17 @@ import {
 } from '../first-run/first-run-engines';
 import { ErrorState, SkeletonList } from '../state';
 
+/**
+ * The failure the new-chat dialog shows. A still-starting app from the same
+ * pass is kept beside it: it is the one that may still work.
+ */
+export function preparationFeedbackText(
+  failure: string,
+  startingNotice?: string,
+): string {
+  return startingNotice ? `${failure} ${startingNotice}` : failure;
+}
+
 export function AutomaticEnginePreparation({
   agents,
   refresh,
