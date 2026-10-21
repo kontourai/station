@@ -83,6 +83,10 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   ([Project activity](#project-activity))
 - `claim_work`, `renew_claim` and `release_claim` to say what the Session is
   working on, so peers in its Project see it ([Work claims](#work-claims))
+- `get_task_brief` to re-read the brief of the Task the Session was dispatched
+  for, and `task_summary_update` and `task_record` to keep that Task's summary,
+  decisions, open questions and dead ends; none of them changes Task status or
+  the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
