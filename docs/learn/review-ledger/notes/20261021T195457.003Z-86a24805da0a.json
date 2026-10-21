@@ -1,0 +1,7 @@
+{
+  "revision": "b6b028813eb353c6b6f7d1ad013dd78aa2938cea",
+
+  "notes": [
+    {"path":"examples/fieldwork-review/README.md","note":"Reviewed current README against the unchanged example facade, reviewed-source parser/finally-close, browser raw fetch and Station-less query keys, sandbox/no-referrer frame, availability polling and reviewed-output discard/boolean paths. Compared cited host deltas from merge base 5a38729: telemetry admission/removal and server-update readiness do not change plugin request draining or dispose-before-authority-change; checked actual quiesce/uninstall and plugin dispose owners. Compared the reachable pinned Fieldwork 0.14.1 lock graph: 148 nodes both sides; Survey 8.0 changes MCP server/core 2.0.0 to 2.3.1, without changing the documented Fieldwork public facade or its exact package artifact. Root Flow 9.3 consumption does not replace this owner with sibling internals. No prose change needed. Source/delta review only; no new facade/provider, installed-plugin/browser, remote/native, billing or exhaustive transitive-dependency qualification claimed; historical test receipts remain historical.","inputs":["examples/fieldwork-review/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
