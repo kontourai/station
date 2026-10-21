@@ -43,6 +43,58 @@ export const NATIVE_ENGINE_LISTINGS: Readonly<Record<string, string>> = {
 
 const PROGRAM_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 
+/**
+ * Programs that run whatever their arguments name: package runners, shells,
+ * interpreters, privilege and environment wrappers, and fetchers. A listing
+ * that names one would make Station download or run code the registry
+ * chooses, so it is never connectable.
+ */
+const RUNNER_PROGRAMS = new Set([
+  'npx',
+  'pnpx',
+  'bunx',
+  'uvx',
+  'pipx',
+  'npm',
+  'pnpm',
+  'yarn',
+  'bun',
+  'deno',
+  'uv',
+  'sh',
+  'bash',
+  'zsh',
+  'fish',
+  'dash',
+  'ksh',
+  'cmd',
+  'powershell',
+  'pwsh',
+  'node',
+  'ruby',
+  'perl',
+  'php',
+  'env',
+  'sudo',
+  'doas',
+  'curl',
+  'wget',
+  'osascript',
+]);
+
+function isRunnerProgram(program: string): boolean {
+  const name = program.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, '');
+  return RUNNER_PROGRAMS.has(name) || /^python[0-9.]*$/.test(name);
+}
+
+/** A `cmd` that is a path rather than a program inside the download. */
+function namesAPath(cmd: string): boolean {
+  return (
+    /^([\\/]|~|[A-Za-z]:)/.test(cmd) ||
+    cmd.split(/[\\/]/).some((segment) => segment === '..')
+  );
+}
+
 const OS_KEYS: Readonly<Record<string, string>> = {
   darwin: 'darwin',
   linux: 'linux',
@@ -85,6 +137,9 @@ export function publicRegistryProgramName(cmd: string): string {
 function publisherName(author: string): string {
   return author.replace(/\s*<[^>]*>\s*$/, '') || author;
 }
+
+/** Names a plugin provider may not register under, nor a listing read as. */
+const RESERVED_NAMES = new Set(['station', 'kontour']);
 
 function listingFacts(agent: PublicRegistryAgent): ACPPublicRegistryListing {
   const distributions: ACPPublicRegistryDistributionKind[] = [];
@@ -184,6 +239,13 @@ export function mapPublicRegistryListings(input: {
       });
       continue;
     }
+    if (RESERVED_NAMES.has(nameSkeleton(agent.name))) {
+      refused.push({
+        id: agent.id,
+        reasons: [`name '${agent.name}' reads as Station's own`],
+      });
+      continue;
+    }
     if (builtinNames.has(nameSkeleton(agent.name))) {
       refused.push({
         id: agent.id,
@@ -198,8 +260,20 @@ export function mapPublicRegistryListings(input: {
         ? agent.binary[hostKey]
         : undefined;
     const program = target ? publicRegistryProgramName(target.cmd) : undefined;
+    const programRefusal = !target
+      ? undefined
+      : namesAPath(target.cmd)
+        ? `The registry names ${agent.name}'s program by a path (${target.cmd.slice(0, 80)}), not as a program in its download. Station does not run it.`
+        : program && isRunnerProgram(program)
+          ? `The registry runs ${agent.name} through ${program.slice(0, 64)}, which runs whatever it is given. Station does not run it.`
+          : undefined;
     let entry: ACPConnectionRegistryEntry;
-    if (target && program && PROGRAM_NAME_PATTERN.test(program)) {
+    if (
+      target &&
+      program &&
+      !programRefusal &&
+      PROGRAM_NAME_PATTERN.test(program)
+    ) {
       entry = {
         id: agent.id,
         name: agent.name,
@@ -233,8 +307,9 @@ export function mapPublicRegistryListings(input: {
         detected: false,
         publicRegistry: {
           ...listing,
-          unavailableReason:
-            target && program
+          unavailableReason: programRefusal
+            ? programRefusal
+            : target && program
               ? `The registry names its ${agent.name} program '${program.slice(0, 64)}', which is not a plain program name Station can look up.`
               : unavailableReason(agent, hostKey, hostLabel),
         },

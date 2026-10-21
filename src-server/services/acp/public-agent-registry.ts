@@ -152,11 +152,21 @@ function optionalHttpsUrl(
   if (value === undefined) return undefined;
   const url = text(value, FIELD_MAX.url, field, reasons);
   if (url === undefined) return undefined;
+  let parsed: URL | undefined;
   try {
-    if (new URL(url).protocol === 'https:') return url;
+    parsed = new URL(url);
   } catch {}
-  reasons.push(`${field} is not an https URL`);
-  return undefined;
+  if (parsed?.protocol !== 'https:') {
+    reasons.push(`${field} is not an https URL`);
+    return undefined;
+  }
+  // A link shown as "example.com" must not carry credentials or hide its
+  // host behind a user name.
+  if (parsed.username || parsed.password) {
+    reasons.push(`${field} must not carry a user name or password`);
+    return undefined;
+  }
+  return url;
 }
 
 function argList(value: unknown, field: string, reasons: string[]): string[] {
@@ -407,11 +417,19 @@ async function downloadIndex(
 ): Promise<string> {
   // No credentials or cookies: the index is public and nothing of this
   // Station's goes with the request.
+  // Redirects are not followed: the index comes from this address or not
+  // at all, never from wherever another server points.
   const response = await fetchImpl(url, {
     signal,
     credentials: 'omit',
+    redirect: 'error',
     headers: { accept: 'application/json' },
   });
+  if (response.url && response.url !== url) {
+    throw new RegistryRefusedError(
+      'The registry answered from an address other than the one Station asked.',
+    );
+  }
   if (!response.ok) {
     throw new RegistryRefusedError(
       `The registry answered with HTTP status ${response.status}.`,
@@ -521,8 +539,11 @@ export class PublicAgentRegistrySource {
    */
   refreshIfStale(): void {
     const now = this.now();
+    // A copy dated in the future (a clock that moved back, or an edited
+    // file) counts as stale rather than as fresh for ever.
     const fresh =
       this.snapshot !== null &&
+      this.snapshot.fetchedAt <= now &&
       now - this.snapshot.fetchedAt < this.limits.refreshAfterMs;
     if (fresh || this.inflight) return;
     if (
@@ -655,14 +676,17 @@ export class PublicAgentRegistrySource {
 
 /**
  * The source for a Station home, or `undefined` when this Station does not
- * read the public registry: `STATION_PUBLIC_AGENT_REGISTRY=off`, or the
+ * read the public registry: `STATION_PUBLIC_AGENT_REGISTRY` set to `off`,
+ * `0`, `false` or `no` (any case), or the
  * deterministic first-run mode that also turns off engine detection.
  */
 export function createPublicAgentRegistrySource(
   stationHomeDir: string,
   env: NodeJS.ProcessEnv = process.env,
 ): PublicAgentRegistrySource | undefined {
-  if (env.STATION_PUBLIC_AGENT_REGISTRY === 'off') return undefined;
+  const setting = env.STATION_PUBLIC_AGENT_REGISTRY?.trim().toLowerCase();
+  if (setting && ['off', '0', 'false', 'no'].includes(setting))
+    return undefined;
   if (env.STATION_E2E_FIRST_RUN === '1') return undefined;
   return new PublicAgentRegistrySource({
     cacheDir: join(stationHomeDir, 'cache', 'public-agent-registry'),

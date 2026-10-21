@@ -768,7 +768,12 @@ export function createACPRoutes(
               const commandRefused = refuseUngrantedCommandChoice(c);
               if (commandRefused) return commandRefused;
             }
-            const next = { ...previous, ...body, id };
+            const next: ACPConnectionConfig = { ...previous, ...body, id };
+            // A connection whose command changed no longer runs what its
+            // public listing named, so it stops being compared with it.
+            if (changesAny(body, previous, ['command', 'args'])) {
+              delete next.publicRegistry;
+            }
             if (isDeepStrictEqual(previous, next)) {
               return c.json({ success: true, data: previous });
             }

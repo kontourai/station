@@ -123,12 +123,40 @@ describe('ACPAddConnectionModal', () => {
       'which Station does not apply',
     );
 
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Connect Stakpak' }));
     expect(onInstallRegistryEntry).toHaveBeenCalledWith('stakpak', {
       command: 'stakpak',
       args: ['acp'],
     });
     expect(screen.queryByText(/\bACP\b/)).toBeNull();
+  });
+
+  test('the confirm step tells one argument with a space from two, and shows an empty one', () => {
+    const render1 = (args: string[]) =>
+      render(
+        <ACPAddConnectionModal
+          registryEntries={[
+            {
+              ...stakpak,
+              args,
+              publicRegistry: {
+                ...stakpak.publicRegistry,
+                hostLaunch: { command: 'stakpak', args },
+              },
+            },
+          ]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={vi.fn()}
+          onCancel={vi.fn()}
+          initialProviderId="stakpak"
+        />,
+      );
+    const one = render1(['acp --x', '']);
+    expect(screen.getByText('stakpak "acp --x" ""')).toBeTruthy();
+    one.unmount();
+    render1(['acp', '--x']);
+    expect(screen.getByText('stakpak acp --x')).toBeTruthy();
   });
 
   test('shows Checking until the refreshed connection result reports Ready', async () => {

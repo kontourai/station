@@ -23,11 +23,28 @@ import { RegistryEntryInstallHint } from './RegistryEntryInstallHint';
 import { registryEntryDiscovery } from './registryEntryDiscovery';
 import './PublicRegistry.css';
 
-/** The listing's exact command line, as connecting would run it. */
+/**
+ * The listing's exact command line, as connecting would run it. An argument
+ * that is empty or holds a space or quote is shown quoted, so `["acp --x"]`
+ * and `["acp", "--x"]` read differently.
+ */
 export function publicRegistryCommandLine(
   launch: NonNullable<ACPPublicRegistryListing['hostLaunch']>,
 ): string {
-  return [launch.command, ...launch.args].join(' ');
+  return [launch.command, ...launch.args.map(displayArgument)].join(' ');
+}
+
+function displayArgument(arg: string): string {
+  return /^[A-Za-z0-9._/:=@+,%-]+$/.test(arg) ? arg : JSON.stringify(arg);
+}
+
+/** The host a link goes to, shown beside its label. */
+function linkHost(href: string): string {
+  try {
+    return new URL(href).host;
+  } catch {
+    return href;
+  }
 }
 
 function ago(iso: string | null, now: number): string | null {
@@ -199,12 +216,12 @@ function PublicRegistryDetails({
       <div className="public-registry__links">
         {listing.websiteUrl ? (
           <ExternalLink href={listing.websiteUrl}>
-            {`${entry.name} website`}
+            {`${entry.name} website (${linkHost(listing.websiteUrl)})`}
           </ExternalLink>
         ) : null}
         {listing.repositoryUrl ? (
           <ExternalLink href={listing.repositoryUrl}>
-            {`${entry.name} source`}
+            {`${entry.name} source (${linkHost(listing.repositoryUrl)})`}
           </ExternalLink>
         ) : null}
       </div>

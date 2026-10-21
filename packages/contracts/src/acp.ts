@@ -200,15 +200,29 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'DROID_',
   'FACTORY_',
 ] as const;
-/** C0/C1 controls (including line breaks) and bidi embedding/override/isolate marks. */
+/**
+ * C0/C1 controls (including line breaks), bidi embedding/override/isolate
+ * marks, and characters that render as nothing: zero-width and directional
+ * marks, invisible operators, the byte order mark, line and paragraph
+ * separators, tag characters and variation selectors. Descriptor text is a
+ * name, a sentence or a command argument; none of them needs one, and each
+ * can hide a difference a person is asked to trust.
+ */
 export function hasUnsafeTextChar(value: string): boolean {
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (
       code <= 0x1f ||
       (code >= 0x7f && code <= 0x9f) ||
-      (code >= 0x202a && code <= 0x202e) ||
-      (code >= 0x2066 && code <= 0x2069)
+      code === 0x061c ||
+      code === 0x180e ||
+      (code >= 0x200b && code <= 0x200f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2060 && code <= 0x2069) ||
+      (code >= 0xfe00 && code <= 0xfe0f) ||
+      code === 0xfeff ||
+      (code >= 0xe0000 && code <= 0xe007f) ||
+      (code >= 0xe0100 && code <= 0xe01ef)
     )
       return true;
   }

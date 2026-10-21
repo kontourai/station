@@ -1213,6 +1213,7 @@ describe('AgentConnectionView', () => {
           id: 'gemini',
           version: '0.65.0',
           publishers: ['Google'],
+          websiteUrl: 'https://geminicli.com/docs',
           distributions: ['npx'],
           binaryPlatforms: [],
           packages: [
@@ -1267,6 +1268,12 @@ describe('AgentConnectionView', () => {
     // Still inspectable: the listing's details are there to open.
     expect(within(gemini).getByText('About this listing')).toBeTruthy();
     expect(within(gemini).getByText('@google/gemini-cli@0.65.0')).toBeTruthy();
+    // A link names the host it goes to.
+    expect(
+      within(gemini).getByRole('link', {
+        name: 'Gemini CLI website (geminicli.com)',
+      }),
+    ).toBeTruthy();
 
     expect(
       within(group).getByText(

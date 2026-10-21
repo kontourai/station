@@ -86,3 +86,8 @@
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
+
+.public-registry__details code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

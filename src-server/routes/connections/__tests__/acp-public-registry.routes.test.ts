@@ -406,4 +406,40 @@ describe('public agent registry in the engine catalogue', () => {
     );
     expect(entry?.publicRegistry).not.toHaveProperty('update');
   });
+
+  test("changing an added registry engine's command drops its listing record", async () => {
+    const saved = {
+      id: 'stakpak',
+      name: 'Stakpak',
+      command: 'stakpak',
+      args: ['acp'],
+      icon: '🔌',
+      enabled: true,
+      publicRegistry: { id: 'stakpak', version: '0.3.80' },
+    };
+    const { app, store } = await fixture({ connections: [saved] });
+
+    const renamed = await app.request('/connections/stakpak', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'My Stakpak' }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(store.connections[0]).toMatchObject({
+      publicRegistry: { id: 'stakpak', version: '0.3.80' },
+    });
+
+    const changed = await app.request('/connections/stakpak', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args: ['serve'] }),
+    });
+    expect(changed.status).toBe(200);
+    expect(store.connections[0]).not.toHaveProperty('publicRegistry');
+    const body = await json(await app.request('/registry'));
+    const entry = (body.data as Array<Record<string, any>>).find(
+      (candidate) => candidate.id === 'stakpak',
+    );
+    expect(entry?.publicRegistry).not.toHaveProperty('update');
+  });
 });

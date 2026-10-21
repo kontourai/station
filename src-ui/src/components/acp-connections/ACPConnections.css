@@ -408,6 +408,11 @@
   margin: 0;
 }
 
+.acp-add-dialog__confirm code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .acp-add-dialog__confirm-note {
   margin: 0;
   color: var(--text-muted);

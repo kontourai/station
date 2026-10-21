@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  createPublicAgentRegistrySource,
   PUBLIC_AGENT_REGISTRY_LIMITS,
   PUBLIC_AGENT_REGISTRY_URL,
   type PublicAgentRegistryLimits,
@@ -54,6 +55,11 @@ function source(
 
 function withAgents(agents: unknown[], version = '1.0.0'): string {
   return JSON.stringify({ version, agents, extensions: [] });
+}
+
+/** Lets a refresh that `refreshIfStale` started reach its fetch, if it will. */
+async function settle() {
+  for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
 }
 
 function fixtureAgents(): Array<Record<string, any>> {
@@ -319,8 +325,11 @@ describe('public agent registry source', () => {
     await vi.waitFor(() => expect(registry.status().origin).toBe('network'));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
 
+    // A refresh that starts awaits the source's load before it fetches, so
+    // every "no fetch" below is read only after that has had its chance.
     now += PUBLIC_AGENT_REGISTRY_LIMITS.refreshAfterMs - 1;
     registry.refreshIfStale();
+    await settle();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
 
     now += 2;
@@ -337,6 +346,7 @@ describe('public agent registry source', () => {
 
     now += PUBLIC_AGENT_REGISTRY_LIMITS.retryAfterFailureMs - 1;
     registry.refreshIfStale();
+    await settle();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     now += 2;
     registry.refreshIfStale();
@@ -366,5 +376,89 @@ describe('public agent registry source', () => {
 
     await registry.refresh();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('treats a saved copy dated in the future as stale', async () => {
+    const cacheDir = makeTempDir('public-registry-');
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(
+      join(cacheDir, 'registry.json'),
+      JSON.stringify({ fetchedAt: '2099-01-01T00:00:00.000Z', body: FIXTURE }),
+    );
+    const fetchImpl = serve(FIXTURE);
+    const registry = source(fetchImpl, { cacheDir });
+    await registry.ready();
+    registry.refreshIfStale();
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+  });
+
+  test('does not follow redirects, and refuses an answer from another address', async () => {
+    const cacheDir = makeTempDir('public-registry-');
+    await source(serve(FIXTURE), { cacheDir }).refresh();
+    const redirected = vi.fn(
+      async (_url: string | URL | Request, _init?: RequestInit) => {
+        const response = new Response(FIXTURE);
+        Object.defineProperty(response, 'url', {
+          value: 'http://cdn.example.test/registry.json',
+        });
+        return response;
+      },
+    );
+    const registry = source(redirected, { cacheDir });
+
+    const status = await registry.refresh();
+
+    expect(redirected.mock.calls[0][1]?.redirect).toBe('error');
+    expect(status.lastError).toBe(
+      'The registry answered from an address other than the one Station asked.',
+    );
+    expect(status.origin).toBe('cache');
+    expect(registry.agents()).toHaveLength(FIXTURE_AGENT_COUNT);
+  });
+
+  test.each([
+    ['a zero-width space', 'Goo\u200Bse'],
+    ['a byte order mark', '\uFEFFGoose'],
+    ['an Arabic letter mark', 'Goose\u061C'],
+    ['a line separator', 'Goose\u2028x'],
+    ['a tag character', 'Goose\u{E0041}'],
+    ['a variation selector', 'Goose\uFE0F'],
+    ['a word joiner', 'Go\u2060ose'],
+  ])('refuses a listing whose text hides %s', (_, name) => {
+    const [agent] = fixtureAgents();
+    const result = parsePublicAgentRegistry(withAgents([{ ...agent, name }]));
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.agents).toEqual([]);
+    expect(result.refused[0].reasons).toEqual([
+      'name is missing, too long or not plain text',
+    ]);
+  });
+
+  test('refuses an https link that carries a user name or password', () => {
+    const [agent] = fixtureAgents();
+    const result = parsePublicAgentRegistry(
+      withAgents([{ ...agent, website: 'https://user:pw@example.test/' }]),
+    );
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.refused[0].reasons).toEqual([
+      'website must not carry a user name or password',
+    ]);
+  });
+
+  test.each(['off', 'OFF', '0', 'false', 'No'])(
+    'STATION_PUBLIC_AGENT_REGISTRY=%s turns the source off',
+    (value) => {
+      expect(
+        createPublicAgentRegistrySource('/tmp/home', {
+          STATION_PUBLIC_AGENT_REGISTRY: value,
+        }),
+      ).toBeUndefined();
+    },
+  );
+
+  test('the source is on by default', () => {
+    expect(createPublicAgentRegistrySource('/tmp/home', {})).toBeInstanceOf(
+      PublicAgentRegistrySource,
+    );
   });
 });
