@@ -181,10 +181,7 @@ import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
-import {
-  useInboxNeedsYouCount,
-  useInboxWorkingCount,
-} from './useInboxGroups';
+import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently

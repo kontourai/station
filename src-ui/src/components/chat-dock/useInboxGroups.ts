@@ -7,11 +7,11 @@ import {
 import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { useInboxScope } from './InboxScopeFilter';
 import {
   groupMobileActivity,
   type MobileActivityGroup,
 } from './mobile-activity-groups';
-import { useInboxScope } from './InboxScopeFilter';
 import { useHeldLifecycles } from './useHeldLifecycles';
 
 /**

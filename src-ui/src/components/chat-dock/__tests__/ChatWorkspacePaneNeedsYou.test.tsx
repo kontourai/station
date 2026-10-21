@@ -376,9 +376,9 @@ test('the toggle’s working count is the inbox’s Running rows', async () => {
       { name: 'Show inbox, 2 working' },
       { timeout: 15_000 },
     );
-    expect(
-      toggle.querySelector('.chat-dock__inbox-working')?.textContent,
-    ).toBe('2');
+    expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(
+      '2',
+    );
   } finally {
     deviceSettingsStore.reset('inboxOpen');
     for (const id of ['one', 'two', 'rest']) activeChatsStore.removeChat(id);
