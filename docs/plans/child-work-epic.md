@@ -219,11 +219,16 @@ the installed legacy controller refuses settlement without provider-reported
 dollars and retains the full allocation. AccountingV1 integration and independent
 review of this composition remain required.
 
-Explicit Flow rounds/continuation remains an isolated candidate. Its latest
-independent review ended with a provider failure and supplies no completed
-verdict. Additive exact-tariff accounting is adopted in the Flow
-Agents worktree with its required readiness checks passing, but is unpublished;
-Station still consumes published 9.3.0. Tariff-derived integer micros must retain
+Flow rounds/continuation and v3 authority renewal are adopted in the Flow Agents
+worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
+session-bound context-sync paths to AccountingV1. The combined source builds,
+passes documentation checks and 20 focused cases. A compiling recipient-return
+mutation loses sync accounting as intended; exact restoration passes the three
+accounting cases. Independent reviews of the combined Flow source and Station
+response composition are running. The earlier rounds review failed without a
+completed verdict. Required full readiness for this new Flow head is pending;
+the earlier accounting-only readiness pass does not qualify it. Everything
+remains unpublished, and Station still consumes published 9.3.0. Tariff-derived integer micros must retain
 their cost basis and must not be silently converted to provider-reported Relay
 dollars. A candidate public API or a successful synthetic SDK response is not a
 published serving contract.
