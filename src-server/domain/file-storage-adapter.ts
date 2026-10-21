@@ -108,6 +108,10 @@ const OWNED_LAYOUT_MAX_BYTES = 2 * 1024 * 1024;
 const OWNED_LAYOUT_IMMUTABLE_FIELDS = ['id', 'createdAt'] as const;
 
 export class FileStorageAdapter implements IStorageAdapter {
+  getProjectHomeDir(): string {
+    return this.projectHomeDir;
+  }
+
   readonly #transactions: ProjectFileTransactions;
 
   constructor(

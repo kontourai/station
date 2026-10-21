@@ -200,6 +200,10 @@ function parseLockRecord(value: unknown): EnvironmentSecurityLockRecord {
  * for remote discovery and verifyCredential at the authorization boundary.
  */
 export class EnvironmentSecurityService {
+  getProjectHomeDir(): string {
+    return this.#homeDir;
+  }
+
   readonly #homeDir: string;
   readonly #securityDir: string;
   readonly #recordPath: string;

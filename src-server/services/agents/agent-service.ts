@@ -246,6 +246,10 @@ function projectStationEngineBinding<
 }
 
 export class AgentService {
+  getProjectHomeDir(): string {
+    return this.configLoader.getProjectHomeDir();
+  }
+
   constructor(
     private configLoader: ConfigLoader,
     private storageAdapter: IStorageAdapter,
