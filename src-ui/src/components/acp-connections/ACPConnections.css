@@ -230,7 +230,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(7, 10, 16, 0.68);
+  background: var(--overlay-modal);
   backdrop-filter: blur(6px);
 }
 

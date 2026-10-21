@@ -54,7 +54,7 @@
 }
 
 .voice-pill--listening {
-  border-color: #4caf50;
+  border-color: var(--health-success);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: none;
   transform: scale(var(--audio-scale, 1));
@@ -86,9 +86,18 @@
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(76, 175, 80, calc(0.3 + var(--audio-glow, 0) * 0.7));
+  border: 2px solid
+    color-mix(
+      in srgb,
+      var(--health-success) calc((0.3 + var(--audio-glow, 0) * 0.7) * 100%),
+      transparent
+    );
   box-shadow: 0 0 calc(4px + var(--audio-glow, 0) * 16px)
-    rgba(76, 175, 80, calc(var(--audio-glow, 0) * 0.6));
+    color-mix(
+      in srgb,
+      var(--health-success) calc(var(--audio-glow, 0) * 60%),
+      transparent
+    );
   pointer-events: none;
   /* Same audio-reactive smoothing exception as `.voice-pill--listening`
      above. */
@@ -98,13 +107,13 @@
 }
 
 .voice-pill--thinking {
-  border-color: #ff9800;
+  border-color: var(--health-warning);
   border-top-color: transparent;
   animation: voice-spin var(--motion-status-spin) var(--ease-linear) infinite;
 }
 
 .voice-pill--speaking {
-  border-color: #2196f3;
+  border-color: var(--k-active);
   box-shadow: none;
   animation: voice-pulse var(--motion-status-pulse) var(--ease-standard)
     infinite;
@@ -115,7 +124,8 @@
   position: absolute;
   inset: 0;
   /* Retain the original speaking halo color; only its opacity is animated. */
-  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.4);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--health-success) 40%, transparent);
   opacity: 0;
   border-radius: inherit;
   pointer-events: none;
@@ -159,7 +169,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ef5350;
+  background: var(--error-fill);
   font-size: var(--text-xs);
   display: flex;
   align-items: center;

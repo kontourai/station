@@ -411,6 +411,16 @@
      (station#3305). Mixing into the panel keeps the step visible in both
      themes. */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* Mix target for a surface or border that sits a step ABOVE its base (a
+     modal sheen, a card on a panel, that card's edge):
+     `color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)`.
+     Those call sites mixed in literal `white`, which ignores the palette.
+     Dark lifts toward the palette's own text colour; light lifts toward its
+     panel, which is white for the built-in palette, so light renders as it
+     did with the literal. For the lifted border (--border-primary 82% /
+     lift 18%) dark lands about 4% below the white mix's contrast and light
+     matches it; absolute ratios depend on how the layers are composited. */
+  --surface-lift: var(--k-text);
 
   --accent-light: color-mix(in srgb, var(--k-brand) 25%, transparent);
   --accent-medium: color-mix(in srgb, var(--k-brand) 15%, transparent);
@@ -505,6 +515,8 @@
   --bg-highlight: color-mix(in srgb, var(--k-text) 16%, var(--k-bg));
   /* Same derivation as the dark block above (operands resolve per theme). */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* See the dark block: a light surface lifts toward the panel, not the text. */
+  --surface-lift: var(--k-panel);
   --bg-modal: var(--k-panel);
 
   /* Text */
@@ -941,7 +953,8 @@ button:hover {
      commit action can never fall below the fold on a long form. */
   max-height: min(92vh, 880px);
   background: var(--bg-secondary);
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: var(--radius-overlay);
   box-shadow: var(--elevation-overlay);
 }
@@ -3807,7 +3820,9 @@ button:hover {
   border: none;
   border-radius: 50%;
   background: var(--color-primary, var(--accent-primary));
-  color: #fff;
+  /* The accent's own contrast partner: literal white failed on a light
+     accent (dark brand-contrast channels, custom accent presets). */
+  color: var(--text-on-accent);
   font-size: 20px;
   font-weight: bold;
   cursor: pointer;
@@ -7247,7 +7262,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-xs);
   padding: 1px 8px;
   border-radius: 10px;
-  color: #fff;
+  /* Was white text with no fill of its own, so it vanished on the light
+     theme's modal surface. */
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   font-weight: 500;
   text-transform: lowercase;
 }
@@ -9135,7 +9153,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      (true of a rejected credential, a mismatched identity, and a pending
      approval alike — none of the three is a dead connection). */
   color: var(--text-primary);
-  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  background: color-mix(in srgb, var(--health-warning) 18%, transparent);
 }
 
 /* archive#4512: `max-width` + ellipsis is a BELT, not the primary fit

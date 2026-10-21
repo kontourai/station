@@ -296,7 +296,7 @@
 
 .editor-btn--danger:hover {
   border-color: var(--error-text);
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
 }
 
 .editor-btn--small {
