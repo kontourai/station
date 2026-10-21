@@ -124,6 +124,8 @@ A reattached session can answer from its own stored state rather than the agent'
 
 Stored sessions now grow by a few a day per connection instead of one per probe. Reattaching still writes to the agent's store: Grok appends about 670 bytes to the session's update log per resume, roughly 160 KB a day per connection, compared with about 30 MB a day before. An agent that advertises none of these methods still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used, because it frees runtime resources and does not remove the stored session. Station does not delete sessions that leaked before this change; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
+Each successful probe also records what the engine declared about itself at `initialize`: its protocol version, `agentInfo` (name, title and version, when sent), the core session methods named under `sessionCapabilities` (`list`, `resume`, `close`, `fork`, `delete`), its `authMethods` reduced to `id`, `name`, `description` and `type` (a terminal method's `args`, `env` and any `_meta` are not served), and any extension methods listed under an `agentCapabilities._meta.<namespace>.extensionMethods` list (ADR 0013). These are bounded (`ACP_DECLARED_FACT_BOUNDS`: 256 characters per identifier or label, 1024 per description, at most 32 sign-in methods, 256 extension methods and 1024 listed models). A fact beyond a bound is refused whole, never shortened: it is left out, named in `declaredHandshake.refused`, and logged as a warning; the probe itself still succeeds. A `models` list beyond its bound is named `models` in `refused`, offers no catalog, and a start that requests a model from it is refused. These appear as `declaredHandshake` on the connection status and as `capabilityInventory.declaredHandshake`, dated by the handshake. They are the engine's own claims, never proof that a surface works, and are not written into the capability matrix. The inventory's `displayName` is the connection's configured name and its `version` is the declared `agentInfo.version`.
+
 | Status | Meaning |
 |---|---|
 | `available` | Last probe succeeded — command found, handshake completed |
@@ -171,7 +173,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -656,6 +658,20 @@ initialization with `station acp connections reconnect <connection-id>` after
 addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
+
+An engine offers models in one of two ways (#352). Most send a `session/new`
+config option of category `model` and switch with `session/set_config_option`;
+Station reads the applied value back and refuses a mismatch. Some, such as
+earlier Grok releases, send no model option and instead a `models` list
+(`availableModels`, `currentModelId`) switched with `session/set_model`, a
+method the pinned ACP SDK no longer declares. Station uses the config option
+(category `model` with a non-empty `id`) when one exists, and the `models` list
+otherwise, by one rule (`acpAdvertisedModelCatalog`) for the connection's
+`advertisedModels` and `currentModel`, the model picker's catalog, and a session
+start. The current model falls back to the list's `currentModelId` when the
+option reports none. `session/set_model` answers with no current
+value, so for that dialect the engine's success answer is the only confirmation
+Station gets. Either way the model is chosen at session start only.
 
 A new session on a model the engine's fresh `session/new` options did not offer
 is refused by the adapter with the `model_not_advertised` code

@@ -9,11 +9,11 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import {
-  type AgentCapabilities,
   type Client,
   ClientSideConnection,
   type ContentBlock,
   type DisableProviderResponse,
+  type InitializeResponse,
   type ListProvidersResponse,
   type McpServer,
   ndJsonStream,
@@ -120,18 +120,15 @@ function quickLivenessGone(pid: number): boolean {
   }
 }
 
-export interface InitializeResult {
-  protocolVersion: number;
-  agentInfo?: { name: string; version?: string };
-  // archive#895 wave B: the SDK's full AgentCapabilities shape (loadSession,
-  // promptCapabilities, mcpCapabilities, sessionCapabilities, …) — was a
-  // locally-typed subset (loadSession/promptCapabilities only); switched to
-  // the SDK type so probe evidence (acp-probe.ts) can cache the whole
-  // handshake without a parallel type to keep in sync.
-  agentCapabilities?: AgentCapabilities;
+/**
+ * The agent's `initialize` answer as the SDK types it, kept whole: agentInfo,
+ * authMethods and the result's own `_meta` are handshake facts too (ADR 0013
+ * Layer 2), and the pinned SDK passes them through unvalidated.
+ */
+export type InitializeResult = InitializeResponse & {
   /** Present only when initialize advertised `providers` and list succeeded. */
   providerRouting?: ProviderInfo[];
-}
+};
 
 export class ACPProviderRoutingUnsupportedError extends Error {
   constructor() {
@@ -236,6 +233,20 @@ function describeSpawnFailure(
     : new Error(`Cannot start '${command}': ${detail}`);
 }
 
+/**
+ * #352: the `models` field of a `session/new` (or load/resume) answer, the
+ * model dialect switched with `session/set_model`. The pinned SDK no longer
+ * types it; Grok and other agents still send it.
+ */
+export interface AcpSessionModelState {
+  currentModelId?: string;
+  availableModels: Array<{
+    modelId: string;
+    name?: string;
+    description?: string | null;
+  }>;
+}
+
 interface SessionResult {
   sessionId: string;
   modes?: {
@@ -243,6 +254,7 @@ interface SessionResult {
     currentModeId?: string;
   };
   configOptions?: any[];
+  models?: unknown;
 }
 
 export class ACPProcess extends EventEmitter {
@@ -589,6 +601,20 @@ export class ACPProcess extends EventEmitter {
       sessionId: this._sessionId,
       configId,
       value,
+    });
+  }
+
+  /**
+   * #352: select a model through `session/set_model`, the dialect paired with
+   * a session's `models` field. Sent by name because the pinned SDK no longer
+   * declares the method; the agent answers it like any other request.
+   */
+  async setModel(modelId: string): Promise<unknown> {
+    if (!this.connection || !this._sessionId)
+      throw new Error('No active session');
+    return this.connection.request('session/set_model', {
+      sessionId: this._sessionId,
+      modelId,
     });
   }
 

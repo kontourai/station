@@ -70,6 +70,11 @@ import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
 import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
+  acpAdvertisedModelCatalog,
+  findAcpModelConfigOption,
+  parseAcpSessionModelState,
+} from '../../services/acp/acp-handshake-facts.js';
+import {
   type AcpInboundExtensionRefusalReason,
   createAcpInboundExtensionRequestHandler,
 } from '../../services/acp/acp-inbound-extension-policy.js';
@@ -142,7 +147,6 @@ import {
 import {
   type AcpExtensionErrorNotification,
   type AcpMapperContext,
-  extractReportedModelFromConfigOptions,
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
@@ -171,10 +175,7 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
-  ACP_INTERJECT_METHODS,
-  ACP_SESSION_STEER_METHOD,
-  acpInterjectParams,
-  acpSessionSteerParams,
+  acpSteerParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
@@ -440,48 +441,6 @@ interface AcpSlashCommand {
   name: string;
   description: string;
   argumentHint?: string;
-}
-
-type AcpModelConfigOption = {
-  id: string;
-  category: 'model';
-  currentValue?: string;
-  options: Array<{ value: string }>;
-};
-
-function findAcpModelConfigOption(
-  configOptions: unknown,
-): AcpModelConfigOption | undefined {
-  if (!Array.isArray(configOptions)) return undefined;
-  for (const option of configOptions) {
-    if (!option || typeof option !== 'object') continue;
-    const candidate = option as Record<string, unknown>;
-    if (
-      candidate.category !== 'model' ||
-      typeof candidate.id !== 'string' ||
-      !candidate.id.trim()
-    ) {
-      continue;
-    }
-    const options = Array.isArray(candidate.options)
-      ? candidate.options.flatMap((entry) =>
-          entry &&
-          typeof entry === 'object' &&
-          typeof (entry as { value?: unknown }).value === 'string'
-            ? [{ value: (entry as { value: string }).value }]
-            : [],
-        )
-      : [];
-    return {
-      id: candidate.id,
-      category: 'model',
-      ...(typeof candidate.currentValue === 'string'
-        ? { currentValue: candidate.currentValue }
-        : {}),
-      options,
-    };
-  }
-  return undefined;
 }
 
 /**
@@ -763,8 +722,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('acp'),
     // A fresh ACP session can advertise a model config option and confirm an
-    // applied value through session/set_config_option. Resume and per-turn
-    // lack the fresh option evidence required by that fail-closed path.
+    // applied value through session/set_config_option, or list `models` and
+    // accept session/set_model (#352). Resume and per-turn lack the fresh
+    // session evidence either fail-closed path requires.
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -1582,9 +1542,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         });
       }
 
-      // archive#1182: the ACP agent's own reported model, when its `newSession`
-      // response includes a `model`-category config option — see
-      // `extractReportedModelFromConfigOptions`'s docblock. `loadSession`
+      // archive#1182: the ACP agent's own reported model, read from a fresh
+      // `newSession` answer by `acpAdvertisedModelCatalog`. `loadSession`
       // (the resume branch below) returns nothing, so a resumed session
       // stays honestly unset here.
       let reportedModel: string | undefined;
@@ -1739,17 +1698,57 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.configOptions = appliedMode.configOptions;
           }
         }
-        reportedModel = extractReportedModelFromConfigOptions(
-          sessionResult.configOptions,
+        // #352: a `model` config option is preferred; an agent without one
+        // may still list models on the session and switch with set_model.
+        const sessionModelsObservation = parseAcpSessionModelState(
+          sessionResult.models,
         );
+        const sessionModels =
+          sessionModelsObservation.kind === 'listed'
+            ? sessionModelsObservation.state
+            : undefined;
+        reportedModel = acpAdvertisedModelCatalog(
+          sessionResult.configOptions,
+          sessionModels,
+        ).currentModelId;
         const requestedModel = input.modelId?.trim();
-        if (requestedModel) {
-          const modelOption = findAcpModelConfigOption(
-            sessionResult.configOptions,
+        const modelOption = requestedModel
+          ? findAcpModelConfigOption(sessionResult.configOptions)
+          : undefined;
+        if (
+          requestedModel &&
+          !modelOption &&
+          sessionModelsObservation.kind === 'refused'
+        ) {
+          throw new SessionStartRefusedError(
+            `ACP model list refused: connection '${config.id}' listed models beyond Station's bounds for this session.`,
+            MODEL_NOT_ADVERTISED_CODE,
           );
+        }
+        if (requestedModel && !modelOption && sessionModels) {
+          if (
+            !sessionModels.availableModels.some(
+              (model) => model.modelId === requestedModel,
+            )
+          ) {
+            throw new SessionStartRefusedError(
+              `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
+            );
+          }
+          // The set_model answer carries no current value to read back; an
+          // agent refuses an unknown id with an error, so success is the
+          // acceptance this dialect offers.
+          await acpProcess.setModel(requestedModel);
+          reportedModel = requestedModel;
+          verifiedModelSelection = modelSelectionReceipt(
+            requestedModel,
+            requestedModel,
+          );
+        } else if (requestedModel) {
           if (!modelOption) {
             throw new SessionStartRefusedError(
-              `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option or model list for this session.`,
               MODEL_NOT_ADVERTISED_CODE,
             );
           }
@@ -3548,38 +3547,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     text: string,
   ): Promise<boolean> {
-    const channel = resolveAcpSteerChannel({
-      command: record.command,
-      args: record.args,
-      agentName: record.process.initResult?.agentInfo?.name,
-    });
+    const selection = resolveAcpSteerChannel(record.process.initResult);
     const sessionId = record.process.sessionId;
-    if (!sessionId) return false;
-    if (channel === 'session-steer') {
+    if (!sessionId || selection.channel === 'cancel-reprompt') return false;
+    for (const method of selection.methods) {
       try {
         await record.process.extMethod(
-          ACP_SESSION_STEER_METHOD,
-          acpSessionSteerParams(sessionId, text),
+          method,
+          acpSteerParams(selection.channel, sessionId, text),
         );
         return true;
       } catch (error) {
         if (!isAcpMethodNotFound(error)) throw error;
-        return false;
       }
-    }
-    if (channel === 'interject') {
-      for (const method of ACP_INTERJECT_METHODS) {
-        try {
-          await record.process.extMethod(
-            method,
-            acpInterjectParams(sessionId, text),
-          );
-          return true;
-        } catch (error) {
-          if (!isAcpMethodNotFound(error)) throw error;
-        }
-      }
-      return false;
     }
     return false;
   }
