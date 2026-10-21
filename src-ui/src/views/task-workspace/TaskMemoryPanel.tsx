@@ -362,6 +362,9 @@ function TaskRecordItem({
         </span>
         <code className="task-memory__key">{record.key}</code>
         {record.version > 1 ? <span>v{record.version}</span> : null}
+        {/* An answer's version is the answerer's: an agent may answer
+            (#4003 accepted gap F11a), so the panel says who did. */}
+        {record.state === 'answered' ? <span>answered by</span> : null}
         <AuthorLabel author={record.author} />
         <When at={record.createdAt} />
       </p>

@@ -326,6 +326,25 @@ describe('Task memory panel', () => {
     expect(within(panel).getByText('Answer: No.')).toBeTruthy();
   });
 
+  test('an answered question says who answered it, a Session included (F11a)', async () => {
+    store.writeRecord({
+      ...write(PERSON),
+      write: { kind: 'question', key: 'tier', text: 'Which tier?' },
+    });
+    store.writeRecord({
+      ...write(LEAD),
+      write: { kind: 'question', key: 'tier', action: 'answer', text: 'Warm.' },
+    });
+    renderPanel();
+    const panel = await screen.findByTestId('task-memory-panel');
+    await within(panel).findByText('Answer: Warm.');
+    const entry = within(panel)
+      .getByText('Answer: Warm.')
+      .closest('[data-testid="task-memory-record"]') as HTMLElement;
+    const meta = entry.querySelector('.task-memory__meta')!.textContent ?? '';
+    expect(meta).toMatch(/answered by\s*Session session-lead…/);
+  });
+
   test('leaving with an unsaved summary edit asks first, and an untouched draft does not', async () => {
     store.updateSummary({
       ...write(LEAD),
