@@ -27,7 +27,6 @@ import {
   bodyRef,
   canonical,
   codecId,
-  decode,
   digestBytes,
   encode,
   projectionSchema,
@@ -294,9 +293,7 @@ function loadState(
     .prepare('SELECT id,record FROM agent_runtime_runs')
     .all()) {
     const value = stored.parse(row);
-    const record = runRecordSchema.parse(
-      decode(new TextEncoder().encode(value.record)),
-    );
+    const record = runRecordSchema.parse(JSON.parse(value.record));
     if (value.id !== keyOf(record.spec.key))
       throw new RuntimeError('DURABLE_RECORD_DAMAGED');
     result.runs.set(value.id, record);
