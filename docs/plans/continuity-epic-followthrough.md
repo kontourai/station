@@ -333,3 +333,36 @@ no feature PR, push, queue or landing claim. Documentation review/readiness and
 independent branch review remain unfinished. Fresh public-client onboarding,
 installed-provider lifecycle and the two-account identity/quota/selection/
 credential-application acceptance remain NOT_VERIFIED. Brian deferred sign-in.
+
+
+### Fork metadata consistency
+
+HTTP probes reproduced three failures: both engine directions kept the original
+Agent on global fork lookup after handoff, and a renamed saved fork reopened
+with its initial title. Global reads now validate the file record against the
+canonical fork owner/resource/digest, use its mutable title before first send,
+and use the current authorized execution projection after a handoff. Private
+snapshot bookkeeping is not copied into the public lookup DTO. The immutable
+context remains unchanged; first send after rename still carries the saved
+parent text. Fork disclosure now explicitly describes text replay rather than
+implying non-text content is delivered to the engine.
+
+Baseline: /private/tmp/station-continuity-fork-metadata-before-20261021.log
+(three intended failures, nine passes). The repaired twelve-case owner, server
+test typecheck and governance pass. This is source and local scripted evidence,
+not browser/native-provider or two-account qualification.
+
+
+The broader conversation-route owner initially failed twenty cases because its
+fork fixtures provided only the retired append-only interface. Fork-only route
+compositions now use the real EventStore and context module; mock file adapters
+retain their created records/messages, and the Project-scope success fixture
+uses the real ensureChatConversation producer. No ownership, Project, registry,
+historical-Session or idempotency assertion was removed. All 132 route tests
+pass, as does server-test typechecking. This fixture evidence remains distinct
+from the twelve full-service/FileMemory qualification cases and from live
+provider/account acceptance. Diagnostics are retained in
+/private/tmp/station-continuity-conversation-route-owner-20261021.log and
+/private/tmp/station-continuity-conversation-route-real-store-20261021.log; the
+passing owner receipt is
+/private/tmp/station-continuity-conversation-route-real-store-final-20261021.log.

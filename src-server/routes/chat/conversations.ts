@@ -2449,6 +2449,45 @@ export function createGlobalConversationRoutes(
   const authorityFor =
     getSessionReadAuthority ?? createRequestAuthorityResolver(getUserId);
 
+  const readSavedForkMetadata = async (
+    id: string,
+    authority: SessionReadAuthority,
+  ) => {
+    const saved = sessionConversationReader.readForkConversation?.(
+      id,
+      authority,
+    );
+    if (!saved) return saved;
+    const stored = await memoryAdapters
+      .get(runtimeAgentKey(saved.resourceId))
+      ?.getConversation(id);
+    if (
+      stored &&
+      (stored.id !== saved.id ||
+        stored.userId !== saved.userId ||
+        stored.resourceId !== saved.resourceId ||
+        stored.metadata?.forkContextDigest !== saved.metadata.forkContextDigest)
+    )
+      throw new ConversationForkContextError(
+        'The saved fork record binding is unavailable.',
+      );
+    const source = stored?.metadata.titleSource;
+    const titleSource: ConversationListItem['titleSource'] =
+      source === 'user' ||
+      source === 'agent' ||
+      source === 'generated' ||
+      source === 'provider' ||
+      source === 'prompt'
+        ? source
+        : undefined;
+    return {
+      ...saved,
+      title: stored?.title ?? saved.title,
+      updatedAt: stored?.updatedAt ?? saved.updatedAt,
+      titleSource,
+    };
+  };
+
   app.get('/search', async (c) => {
     const parsed = messageSearchQuerySchema.safeParse({
       query: c.req.query('query'),
@@ -2689,6 +2728,26 @@ export function createGlobalConversationRoutes(
           authority,
         );
       if (resolved) {
+        if (resolved.status === 'fork-ready') {
+          const saved = await readSavedForkMetadata(id, authority);
+          if (!saved)
+            return c.json(
+              { success: false, error: 'Conversation not found' },
+              404,
+            );
+          return c.json({
+            success: true,
+            data: {
+              ...resolved,
+              conversation: {
+                ...resolved.conversation,
+                title: saved.title,
+                updatedAt: saved.updatedAt,
+                titleSource: saved.titleSource,
+              },
+            },
+          });
+        }
         return c.json({
           success: true,
           data: resolved,
@@ -2713,21 +2772,33 @@ export function createGlobalConversationRoutes(
       const id = param(c, 'id');
       const authority = authorityFor(c.req.raw);
       const hosted = isHostedSessionReadAuthority(authority);
-      const fork = sessionConversationReader.readForkConversation?.(
-        id,
-        authority,
-      );
+      const fork = await readSavedForkMetadata(id, authority);
       if (fork === null)
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       if (fork) {
+        const resolution =
+          await sessionConversationReader.resolveConversationOpen?.(
+            id,
+            authority,
+          );
+        const metadata =
+          resolution && resolution.status !== 'fork-ready'
+            ? resolution.conversation
+            : {
+                id: fork.id,
+                agentSlug: publicAgentIdFromRuntimeKey(fork.resourceId),
+                title: fork.title,
+                titleSource: fork.titleSource,
+                createdAt: fork.createdAt,
+                updatedAt: fork.updatedAt,
+                ...(typeof fork.metadata.projectSlug === 'string'
+                  ? { projectSlug: fork.metadata.projectSlug }
+                  : {}),
+              };
         return c.json({
           success: true,
           data: {
-            ...fork,
-            agentSlug: publicAgentIdFromRuntimeKey(fork.resourceId),
-            ...(typeof fork.metadata.projectSlug === 'string'
-              ? { projectSlug: fork.metadata.projectSlug }
-              : {}),
+            ...metadata,
             ...(eventStore
               ? {
                   forkProvenance: eventStore.readConversationForkProvenance(id),

@@ -400,6 +400,16 @@ describe('scripted fork delivery and canonical history qualification', () => {
         'AFTER-FORK-DIVERGENCE',
       );
       expect(f.store.conversationSessions(f.conversationId)).toHaveLength(2);
+      const lookup = await f.globalRoutes.request(
+        `/${encodeURIComponent(f.conversationId)}`,
+      );
+      expect(lookup.status).toBe(200);
+      await expect(lookup.json()).resolves.toMatchObject({
+        data: {
+          id: f.conversationId,
+          agentSlug: provider === 'codex' ? 'claude' : 'codex',
+        },
+      });
       expect(
         f.store.readConversationForkProvenance(f.conversationId).forkedFrom
           ?.sourceConversationId,
@@ -530,6 +540,15 @@ describe('scripted fork delivery and canonical history qualification', () => {
 
   test('an owned unstarted fork opens with copied context and no invented provider Session', async () => {
     const f = await fixture('codex');
+    const renamed = await f.routes.request(
+      `/codex/conversations/${encodeURIComponent(f.conversationId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Renamed saved fork' }),
+      },
+    );
+    expect(renamed.status).toBe(200);
     const response = await f.globalRoutes.request(
       `/${encodeURIComponent(f.conversationId)}/open`,
     );
@@ -540,11 +559,21 @@ describe('scripted fork delivery and canonical history qualification', () => {
     const opened = body.data;
     expect(opened).toMatchObject({
       status: 'fork-ready',
-      conversation: { id: f.conversationId, agentSlug: 'codex' },
+      conversation: {
+        id: f.conversationId,
+        agentSlug: 'codex',
+        title: 'Renamed saved fork',
+      },
       transcript: { available: true, owner: 'fork-context', messageCount: 2 },
       canContinue: true,
     });
     expect(opened).not.toHaveProperty('currentSessionId');
+    const lookup = await f.globalRoutes.request(
+      `/${encodeURIComponent(f.conversationId)}`,
+    );
+    await expect(lookup.json()).resolves.toMatchObject({
+      data: { title: 'Renamed saved fork' },
+    });
     expect(
       await f.service.resolveConversationOpen(
         f.conversationId,
@@ -556,6 +585,10 @@ describe('scripted fork delivery and canonical history qualification', () => {
       ),
     ).toBeNull();
     expect(f.receiver.starts).toHaveLength(0);
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(1));
+    expect(f.receiver.starts).toHaveLength(1);
+    expect(f.receiver.turns[0]?.ambientContext).toContain(PARENT_ONLY);
   });
 
   test('deleting an unstarted fork prevents its saved seed from activating later', async () => {

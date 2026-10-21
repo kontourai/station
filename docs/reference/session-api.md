@@ -67,7 +67,11 @@ provenance, rather than another child Session in the parent's lineage.
 
 An authorized fork with no provider Session opens as `fork-ready`, with
 `transcript.owner: 'fork-context'`. First send creates the real provider Session;
-opening alone does not. Deleting an unstarted fork tombstones its saved seed
+opening alone does not. The engine replay is text-only; non-text entries stay
+in the saved history and attachment references retain their existing retention
+rules. Mutable titles are read from the owner/digest-checked file record; after
+handoff, lookup uses the current authorized execution projection. These display
+updates do not change the pinned context. Deleting an unstarted fork tombstones its saved seed
 under the existing lifecycle guard before file cleanup, so a failed cleanup
 cannot make it eligible for later activation. Runtime-owned history remains
 read-only through that file deletion route. These paths have scripted local

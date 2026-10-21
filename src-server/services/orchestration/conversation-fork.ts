@@ -6,7 +6,7 @@ import {
 } from './conversation-transcript-seed.js';
 
 export const FORK_REPLAY_DISCLOSURE =
-  'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
+  'The engine replays text from the selected history. Engine cursor, tool state, and approval state do not carry.';
 
 /**
  * A branch point names a completed assistant turn. Legacy file transcripts do
