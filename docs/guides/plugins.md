@@ -1791,8 +1791,8 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-Native clients require this device's explicit loading consent for a saved remote
-Station profile, including one reached over a loopback address. An injected or
+Native clients require this device's explicit loading consent for a saved
+Station, including one reached over a loopback address. An injected or
 owner-managed profile needs that consent when its API origin is not HTTP
 loopback. A blocked pane or layout offers **Review and enable** in place.
 Plugin previews with a client bundle or declared entrypoint explain that installation
