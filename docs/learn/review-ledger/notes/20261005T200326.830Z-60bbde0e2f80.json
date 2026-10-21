@@ -1,0 +1,7 @@
+{
+  "revision": "29282fce51d3f6535de02b8be4b0e42212dc66cd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-read against the ToolCallDisplay change: the inline card's session choices (per-tool grant label and, when offered, the Station browser server label) moved behind the row's overflow menu; Allow Once and Deny stay visible. The doc's claims concern which grants the shared computation offers and the adapter honours, not button layout, so none changes; labels and typed scope are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

@@ -250,7 +250,9 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   whose tokens are not a general signature (connection-broker.md). It is
   created on the first registration, never before.
 - **Registration.** `POST /api/system/native-push/register` from a paired
-  device, body `{ token, packageName, platform: 'android' }`, returns
+  device's own credential (a relay alias is refused with
+  `device_pairing_required`, after the credential gate's read-scope
+  refusal), body `{ token, packageName, platform: 'android' }`, returns
   `{ registrationId, stationId, stationKey, payloadKey }`. `registrationId` is
   128 random bits and is the value the phone checks on every push
   (`device_id`); `stationId` is the environment id (`user_id`); `stationKey`
@@ -424,7 +426,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   the session read model once per reading principal: each phone reads with
   the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
-  device itself), so a card never holds a session that credential may not
+  operator for a credential minted with home-possession, else the device
+  itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below
   that gets one final empty card and then nothing. A scope change requests

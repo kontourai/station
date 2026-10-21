@@ -53,7 +53,9 @@ and profile owners.
 Pass `activeHealth` with the selected connection's ID, live status and optional
 failure reason. The manager uses that snapshot only for the matching selected
 connection; other unchecked rows remain idle. Opening a row reveals details,
-and **Switch to this Station** performs the selection separately. Supply
+and **Switch to this Station** performs the selection separately. The optional
+`renderConnectionDetails(connection)` host callback adds controls inside that
+expanded row; it supplies no credential or selection authority. Supply
 `guardConnectionChange(proceed)` when the host owns unsaved work, and call
 `proceed` only after its guard allows the switch. Omitting the optional guard
 does not add an unsaved-work decision automatically.

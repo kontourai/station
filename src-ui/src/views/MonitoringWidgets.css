@@ -551,6 +551,13 @@
   margin-top: 0.5rem;
 }
 
+/* The sidebar header already draws the line above the list; a group header
+   that opens the list (no configured agents) must not draw a second one. */
+.agent-list > .agent-historical-header:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
 .running-conversations {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -1340,6 +1347,36 @@
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
+}
+
+/* An inline group that may shrink to the row's width and wrap its label
+   above its pill, so a long value gets the whole column (the tool and
+   producer groups). The producer pill stays on one line with an ellipsis and
+   its full value in the title; a tool pill breaks inside itself instead. */
+.log-inline--shrink {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+/* The 1fr grid column otherwise keeps the data column at least as wide as
+   its widest nowrap pill, so nothing inside it could truncate. */
+.log-row > .log-data {
+  min-width: 0;
+}
+/* With the column free to shrink, a long unbroken value (an MCP tool name)
+   breaks inside its pill instead of spilling out of it. */
+.log-data .pill-badge {
+  overflow-wrap: anywhere;
+}
+.pill-badge--single-line {
+  display: inline-block;
+  flex: 0 1 auto;
+  max-width: 16rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .tool-badge {

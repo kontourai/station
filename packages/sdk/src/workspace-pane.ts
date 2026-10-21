@@ -56,6 +56,7 @@ export type {
   WorkspacePaneProvenance,
   WorkspacePaneProvenanceOrigin,
   WorkspacePaneRegion,
+  WorkspacePaneRelationRole,
   WorkspacePaneRendererCandidate,
   WorkspacePaneRendererCapability,
   WorkspacePaneRendererId,
@@ -103,7 +104,18 @@ export {
   resolveWorkspacePaneAvailability,
   toWorkspacePaneAvailabilityTelemetry,
 } from '@kontourai/station-contracts/workspace-pane-availability';
-export type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
+export type {
+  PaneRelatedPanesHost,
+  PaneSkillExperienceHost,
+  RelatedPaneCloseOutcome,
+  RelatedPaneOpenOutcome,
+  RelatedPaneOpenRequest,
+  RelatedPanePresentation,
+  RelatedPaneRevealOutcome,
+  RelatedPaneTarget,
+  RelatedPaneUnavailable,
+  RelatedPaneUnavailableReason,
+} from '@kontourai/station-contracts/workspace-pane-host-contract';
 export type {
   WorkspacePaneHostActionCatalog,
   WorkspacePaneHostActionExecution,
@@ -120,4 +132,10 @@ export {
 // Catalog data is opt-in with the Pane contract so the root SDK namespace
 // bridge does not pull this query into every Station UI bundle.
 export { useProjectWorkspacePanesQuery } from './query-domains/workspaceProjects';
+// The hook a direct plugin uses, `useRelatedPanes`, is on the root only.
+export {
+  createRelatedPanesPaneHost,
+  type RelatedPanes,
+  UNSUPPORTED_RELATED_PANES,
+} from './related-panes';
 export { createSkillExperiencePaneHost } from './skill-experience-pane';

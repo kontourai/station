@@ -1,0 +1,7 @@
+{
+  "revision": "c231a12d0806692311c28814f81f9572d9897fe8",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed c231a12d080 at the real knowledge-document quote caller: only an admitted Open invokes the enclosing viewer owner close, so the real ChatDock is unobscured. Guard Cancel and scope refusals preserve both document and inspection. The context is internal and changes no public SDK API, quote-source requestScope, response bounds or original-Station read rules. tests/answer-quoting.spec.ts now uses the real model and providers with a model-driven Chat stand-in; it does not establish ChatDock or native execution. Existing saved-quotation reference remains accurate; no prose change.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat/QuoteSourceLink.tsx"]}
+  ]
+}

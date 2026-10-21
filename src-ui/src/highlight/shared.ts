@@ -9,7 +9,24 @@
  * literals nothing in the entry chunk uses are eighteen too many.
  */
 
-export const THEME = 'github-dark';
+/**
+ * The one theme the highlighters load (`station-syntax-theme.ts`). Its
+ * colours are CSS variables, so highlighted HTML is theme-independent: the
+ * cache key below carries no theme, and nothing re-highlights when the
+ * light/dark mode or a palette changes.
+ */
+export const THEME = 'station-syntax';
+
+/** The colour a token gets when no rule colours it: ordinary code text. */
+export const SYNTAX_FOREGROUND = 'var(--syntax-foreground)';
+
+/**
+ * Escaped-code fallback when highlighting throws. Painted from the same
+ * variables as highlighted blocks, so it follows the theme too.
+ */
+export function plainCodeBlockHtml(code: string): string {
+  return `<pre style="background:var(--syntax-background);color:var(--syntax-foreground);padding:12px;border-radius:6px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`;
+}
 
 /** FNV-1a 32-bit hash — cache-key component for highlighted code. */
 export function fnv1a(str: string): number {

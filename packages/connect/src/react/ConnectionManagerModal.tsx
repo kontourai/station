@@ -51,6 +51,8 @@ export interface ConnectionManagerModalProps {
   initialPanel?: ConnectionManagerPanel;
   /** Optional host-owned connection route content in the Stations list footer. */
   listFooterContent?: ReactNode;
+  /** Host-owned controls for the expanded saved Station row. */
+  renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
   /** Host-owned destination and grant setup, mounted in its stable shell. */
   onConnectStation?: () => void;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
@@ -115,6 +117,7 @@ export function ConnectionManagerModal({
   checkCompatibility,
   initialPanel,
   listFooterContent,
+  renderConnectionDetails,
   onConnectStation,
   initialPairingPayload,
   pairingLinkError,
@@ -143,6 +146,7 @@ export function ConnectionManagerModal({
         checkCompatibility={checkCompatibility}
         initialPanel={initialPanel}
         listFooterContent={listFooterContent}
+        renderConnectionDetails={renderConnectionDetails}
         onConnectStation={onConnectStation}
         initialPairingPayload={initialPairingPayload}
         pairingLinkError={pairingLinkError}

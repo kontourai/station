@@ -91,6 +91,7 @@ export * from './work-item-provider.js';
 export * from './work-reference.js';
 export * from './workflow.js';
 export * from './workspace-activity-pane.js';
+export * from './workspace-activity-review-pane.js';
 export * from './workspace-agents-pane.js';
 export * from './workspace-browser-pane.js';
 export * from './workspace-browser-preview.js';

@@ -1,0 +1,29 @@
+{
+  "revision": "05adf0f04757e88aa8745d9fd1f64e113b7bebfb",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Re-read after 05adf0f: the index.ts delta only adds the ReposLocation type export beside the git/repository domain types. This document makes no claim about those types, the coding git routes or the barrel's export list that the addition changes. No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read after the sdk.md git-hook signature change (location objects, optional push remote): the guide routes plug-in authors to the SDK reference and states no hook signatures. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Re-read after the sdk.md git-hook signature change: still routes to the SDK reference; nothing here names git hook signatures. No prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Rewrote the useReposQuery and checkout/commit/push sections for 05adf0f: every git hook takes a location object (ReposLocation with optional projectSlug for discovery; GitReadLocation for writes), a write without a Project or folder rejects before any request, and GitPushResult.remote is optional for Stations before SDK 0.8.0. Checked each against projectData.ts and git-repos-domain.public.test.tsx (refresh, missing-location and remote-less push cases).","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","packages/sdk/src/query-domains/projectData.ts"]}
+  ]
+}

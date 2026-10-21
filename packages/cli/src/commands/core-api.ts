@@ -451,7 +451,12 @@ export async function requestJson<T>(
     payload = (await response.json()) as JsonEnvelope<T>;
   } catch {
     if (!response.ok) {
-      throw new Error(`Request failed with HTTP ${response.status}`);
+      // The status rides along as it does for a JSON refusal, so a caller
+      // can tell "the server refused" from "no usable reply".
+      throw Object.assign(
+        new Error(`Request failed with HTTP ${response.status}`),
+        { status: response.status },
+      );
     }
     throw new Error('Expected JSON response');
   }

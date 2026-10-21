@@ -1,0 +1,7 @@
+{
+  "revision": "49e0d9871e6b322495004238a409017894a1d0aa",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Re-reviewed prepared-fence ownership after pair fix49e0d987: complete nonempty backlink/revision required, partial metadata never authorizes ordinary or compound invocation; SQLite rejects incomplete pair and portable decisions fence it. Whole package399 GREEN, scoped tsc GREEN, both missing-member mechanisms fail targeted mutation and exact restoration passes. Body, host authority, automatic resume and invocation terminal attribution remain outside kernel cut.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/decisions/turn-boundary.ts","packages/monument/src/decisions/turn-dedup.ts","packages/monument/src/sqlite.ts"]}
+  ]
+}

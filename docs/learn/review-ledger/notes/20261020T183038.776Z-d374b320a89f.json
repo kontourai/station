@@ -1,0 +1,9 @@
+{
+  "revision": "909accc3ea3c10084f050d4bd09eabc83ef1f3ec",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed VerificationCoordinator against 909accc3ea3. The coordinator production source and all ownership, FIFO, capacity, receipt and deadline assertions are unchanged. Its test file now reads Vitest's resolved host-adjusted timeout with a 45-second recovery floor and removes the two fixed whole-test overrides; setup intentionally scrubs the factor environment. The module map's interface, custody and evidence-limit claims remain accurate. Baseline: clean main 19a234c reproduced the 30-second whole-test timeout. Focused repaired-file validation is pending; no runtime or release qualification is claimed.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed test-impact-manifest.mjs at 909accc3ea3: Getting Started now explicitly selects install-script.test.ts because its private installer command moved there from README. Executed selectChangedVerification on that document and confirmed the installer suite is selected along with existing documentation suites. The testing guide still accurately explains focused selection and resolved host liveness scaling, including the worker environment scrub. Coordinator tests preserve their behavioral assertions and inherit the resolved budget with a 45-second floor. No product deadline, gate disposition or hosted qualification rule changed.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs","tests/screenshots.spec.ts"]}
+  ]
+}

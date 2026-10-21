@@ -290,7 +290,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ activeConnection: { id: 'local-station' } }),
+  useConnections: () => ({
+    activeConnection: { id: 'local-station' },
+    captureSelectionIntent: () => 0,
+  }),
 }));
 
 const navigateMock = vi.fn();
@@ -348,6 +351,7 @@ vi.mock('../core/PermissionManager', () => ({
 import { RegistryView } from '../views/RegistryView';
 
 afterEach(() => {
+  localStorage.clear();
   for (const installedItems of Object.values(installedByTab)) {
     installedItems.clear();
   }
@@ -521,7 +525,7 @@ describe('RegistryView', () => {
 
     expect(
       screen.getByText(
-        /Extensions are off for this remote Station on this device/,
+        /Extensions from http:\/\/127.0.0.1:3141 are off on this device/,
       ),
     ).toBeTruthy();
   });
@@ -539,20 +543,20 @@ describe('RegistryView', () => {
     });
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Enable remote extensions for this Station…',
+        name: 'Review and enable',
       }),
     );
 
     expect(
       screen.getByText(
-        /this entire app's authority, including other Stations' data/i,
+        /other Stations' data, credentials available in this window/i,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/applies only to this Station/i)).toBeNull();
     expect(screen.queryByText(/native bridge/i)).toBeNull();
   });
 
-  test('names the native bridge and paired credentials in native-host consent copy', () => {
+  test('names framed native loading and its unverified protection without promising app isolation', () => {
     platformProfile.isTauri = true;
     render(<RegistryView />);
 
@@ -566,15 +570,19 @@ describe('RegistryView', () => {
     });
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Enable remote extensions for this Station…',
+        name: 'Review and enable',
       }),
     );
 
     expect(
       screen.getByText(
-        /On this device that includes the native bridge and this device's paired Station credentials\./,
+        /Station hasn't verified that the frames keep extension code away from the rest of the app/,
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(/native features and saved Station credentials/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/run inside this app/)).toBeNull();
   });
 
   test('puts the remote-isolation consent section before the catalog', () => {
@@ -590,7 +598,7 @@ describe('RegistryView', () => {
     });
 
     const consent = screen.getByRole('button', {
-      name: 'Enable remote extensions for this Station…',
+      name: 'Review and enable',
     });
     const catalog = screen.getByTestId('registry-detail');
     expect(
@@ -600,6 +608,7 @@ describe('RegistryView', () => {
   });
 
   test('granted consent with a stale refusal keeps the override row below the catalog', () => {
+    platformProfile.isTauri = true;
     // Right after consent is granted, the 'remote-isolation' status lingers
     // until the reload completes; the enabled row must not jump above the
     // catalog during that window (archive#2539).
@@ -620,7 +629,7 @@ describe('RegistryView', () => {
     });
 
     const disable = screen.getByRole('button', {
-      name: 'Disable remote extensions',
+      name: 'Turn off extensions',
     });
     const catalog = screen.getByTestId('registry-detail');
     expect(
@@ -630,6 +639,7 @@ describe('RegistryView', () => {
   });
 
   test('keeps remote extensions enabled and shows an error when revocation cannot be verified', () => {
+    platformProfile.isTauri = true;
     const apiBase = 'http://127.0.0.1:3141';
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
@@ -647,20 +657,22 @@ describe('RegistryView', () => {
     try {
       render(<RegistryView />);
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable remote extensions' }),
+        screen.getByRole('button', { name: 'Turn off extensions' }),
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable and reload' }),
+        screen.getByRole('button', { name: 'Turn off and reload' }),
       );
 
       expect(reload).not.toHaveBeenCalled();
       expect(
         screen.getByText(
-          "Couldn't disable — storage is unavailable; remote extensions remain enabled",
+          "Couldn't turn extensions off. They are still allowed.",
         ),
       ).toBeTruthy();
       expect(
-        screen.getByRole('dialog', { name: 'Disable remote extensions?' }),
+        screen.getByRole('dialog', {
+          name: 'Turn off extensions from http://127.0.0.1:3141?',
+        }),
       ).toBeTruthy();
     } finally {
       removeItem.mockRestore();
@@ -669,6 +681,7 @@ describe('RegistryView', () => {
   });
 
   test('reloads only after remote extension revocation is verified', () => {
+    platformProfile.isTauri = true;
     const apiBase = 'http://127.0.0.1:3141';
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
@@ -681,10 +694,10 @@ describe('RegistryView', () => {
     try {
       render(<RegistryView />);
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable remote extensions' }),
+        screen.getByRole('button', { name: 'Turn off extensions' }),
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Disable and reload' }),
+        screen.getByRole('button', { name: 'Turn off and reload' }),
       );
 
       expect(reload).toHaveBeenCalledOnce();
@@ -947,6 +960,77 @@ describe('RegistryView', () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  test('a built-in-only layout preview does not ask for app-wide extension access', () => {
+    platformProfile.isTauri = true;
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames: [],
+      failure: 'remote-isolation',
+    };
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      hasBundle: false,
+    });
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    const preview = screen.getByRole('dialog', { name: 'Install Preview' });
+    expect(
+      within(preview).queryByRole('button', { name: 'Review and enable' }),
+    ).toBeNull();
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Confirm Install' }),
+    );
+    expect(mutationCalls).toHaveLength(1);
+  });
+
+  test('reviews extension access inside install preview without installing or leaving the preview', () => {
+    pluginRegistryStatus = {
+      state: 'degraded',
+      failedPluginNames: [],
+      failure: 'remote-isolation',
+    };
+    platformProfile.isTauri = true;
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      hasBundle: true,
+    });
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    expect(
+      screen.getByText(
+        /You can install this plugin now. Its custom extension code stays off/,
+      ),
+    ).toBeTruthy();
+    const preview = screen.getByRole('dialog', { name: 'Install Preview' });
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Review and enable' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(mutationCalls).toEqual([]);
+    expect(
+      screen.getByRole('dialog', { name: 'Install Preview' }),
+    ).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(preview).getByRole('button', { name: 'Review and enable' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Allow extensions' }));
+    expect(mutationCalls).toEqual([]);
+    expect(
+      screen.getByRole('dialog', { name: 'Install Preview' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+    expect(mutationCalls).toHaveLength(1);
   });
 
   test('shows an installed plugin immediately while its refetch catches up', () => {

@@ -50,8 +50,16 @@ a token never starts work. Revalidate Project access, agent identity/readiness
 and execution authority at send time. A stale or unavailable selection retains
 the draft with a useful recovery action rather than routing to another agent.
 
-Use a compact work card for each request: queued/active/needs-input/settled state,
-who requested it, agent, scope, and result. Detailed execution is expandable.
+Opening a Task joins its presence; closing or leaving it departs. Chat is the
+default tab. Brief, Results and Details keep the shared purpose, kept work and
+inspection separate. A right rail derives Goal and Done when from the saved
+brief and shows results and published participants; narrow layouts put this
+context behind an About tab.
+
+Running agents have an inline status with Watch and Stop. Completed canonical
+answers return to the room with markdown, Keep and Open full run. Replies in an
+agent answer thread continue that Session; human-to-human threads are not
+implemented. Detailed execution opens in the existing dock.
 Preserve uncertainty when completion or cancellation cannot be established.
 Agents should not respond to every human message or create reply loops.
 

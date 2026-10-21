@@ -231,7 +231,7 @@ export default function TurnActionsMenu({
                   role="menuitem"
                   onClick={() => setView('provenance')}
                 >
-                  Turn provenance
+                  Answer details
                 </button>
               )}
               {reasoning && reasoningWordCount > 0 && (

@@ -1,0 +1,7 @@
+{
+  "revision": "4dee2ca1dbd03c589c24ddb9c2496ad687203941",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Re-read the Appearance-topic passage (Customize order, Appearance page owning mode/color theme/flavor/accent, Settings keeping the mode toggle, haptics and the Theme/Accent link rows) and the per-setting Use default passage against settings-catalog.ts at 3ee917fe6cb. That commit only rewords the row-scoping comment and drops a duplicated 'color theme' from the Theme row's keywords ('color theme' stays in its searchKeywords), so search still finds the row and no claim here changes.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

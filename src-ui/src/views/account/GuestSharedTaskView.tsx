@@ -1,14 +1,26 @@
-import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
+import type {
+  ProjectSharedTaskHistory,
+  ProjectSharedTaskSummary,
+} from '@kontourai/station-contracts/project-shared-task';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { StationHttpError } from '@kontourai/station-sdk';
 import {
   listProjectSharedTasks,
   readProjectSharedTaskDocument,
   readProjectSharedTaskHistory,
 } from '@kontourai/station-sdk/project-shared-tasks';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { Empty, SkeletonList } from '../../components/state';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { IconButton } from '../../components/IconButton';
+import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
+import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
+import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -45,6 +57,22 @@ async function authorizedRead<Value>(
   }
 }
 
+function SharedMessageText({ text }: { text: string }) {
+  const mention = /^\*\*@(.+?)\*\*\s+/.exec(text);
+  return (
+    <p>
+      {mention ? (
+        <>
+          <span className="task-room-mention">@{mention[1]}</span>{' '}
+          {text.slice(mention[0].length)}
+        </>
+      ) : (
+        text
+      )}
+    </p>
+  );
+}
+
 function historyState(kind: string) {
   if (kind === 'too-large') return 'Shared history is too large to display.';
   if (kind === 'unavailable') return 'Shared history is unavailable.';
@@ -71,6 +99,7 @@ export function GuestSharedTaskView({
 }) {
   const client = useQueryClient();
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
+  const [tab, setTab] = useState('Chat');
   const [notice, setNotice] = useState<string>();
   const taskTriggers = useRef(new Map<string, HTMLButtonElement>());
   const onScopeLostRef = useRef(onScopeLost);
@@ -133,9 +162,12 @@ export function GuestSharedTaskView({
     )
       throw new GuestSharedScopeLost();
   };
-  const history = useQuery({
+  const historyPages = useInfiniteQuery({
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectSharedTaskHistory) =>
+      page.kind === 'available' && page.hasMore ? page.nextCursor : undefined,
     queryKey: ['guest-shared-task-history', ...projectKey, ...selectedKey],
-    queryFn: ({ signal }) => {
+    queryFn: ({ signal, pageParam }) => {
       if (!selected) throw new GuestSharedScopeLost();
       requirePublication(selected);
       return authorizedRead(apiBase, principalId, signal, async () => {
@@ -143,7 +175,10 @@ export function GuestSharedTaskView({
           apiBase,
           project.slug,
           selected.task.id,
-          requestOptions(signal),
+          {
+            ...requestOptions(signal),
+            ...(pageParam ? { cursor: pageParam } : {}),
+          },
         );
         requirePublication(selected);
         return value;
@@ -153,6 +188,20 @@ export function GuestSharedTaskView({
     retry: false,
     gcTime: 0,
   });
+  const lastHistoryPage = historyPages.data?.pages.at(-1);
+  const history = {
+    ...historyPages,
+    data:
+      lastHistoryPage?.kind === 'available'
+        ? {
+            ...lastHistoryPage,
+            records:
+              historyPages.data?.pages.flatMap((page) =>
+                page.kind === 'available' ? page.records : [],
+              ) ?? [],
+          }
+        : lastHistoryPage,
+  };
   const document = useQuery({
     queryKey: ['guest-shared-task-document', ...projectKey, ...selectedKey],
     queryFn: ({ signal }) => {
@@ -225,6 +274,10 @@ export function GuestSharedTaskView({
     [apiBase, client, principalId, project.id, project.slug],
   );
 
+  const refreshTasks = () => {
+    setNotice(undefined);
+    void tasks.refetch();
+  };
   if (scopeLost) return null;
   if (tasks.isPending)
     return <SkeletonList count={1} label="Reading shared Tasks" />;
@@ -241,56 +294,59 @@ export function GuestSharedTaskView({
       className="account-entry__shared-tasks"
       aria-labelledby="shared-tasks-title"
     >
-      <div className="account-entry__shared-tasks-heading">
-        <h4 id="shared-tasks-title">Shared Tasks</h4>
-        <Button
-          onClick={() => {
-            setNotice(undefined);
-            void tasks.refetch();
-          }}
-        >
-          Refresh shared Tasks
-        </Button>
+      <div hidden={!!selected}>
+        <div className="account-entry__shared-tasks-heading">
+          <h4 id="shared-tasks-title">Shared Tasks</h4>
+          <Button onClick={refreshTasks}>Refresh shared Tasks</Button>
+        </div>
+        {notice && <p role="status">{notice}</p>}
+        {tasks.data.length === 0 ? (
+          <Empty
+            variant="compact"
+            label="Tasks are not currently shared from this Project."
+          />
+        ) : (
+          <ul className="account-entry__shared-task-list">
+            {tasks.data.map((summary: ProjectSharedTaskSummary) => (
+              <li key={summary.shareId}>
+                <div>
+                  <strong>{summary.task.title}</strong>
+                  <small>{taskStatusLabel(summary.task.status)}</small>
+                </div>
+                <Button
+                  ref={(element) => {
+                    if (element)
+                      taskTriggers.current.set(summary.task.id, element);
+                    else taskTriggers.current.delete(summary.task.id);
+                  }}
+                  onClick={() => {
+                    setNotice(undefined);
+                    setSelectedTaskId(summary.task.id);
+                    setTab('Chat');
+                  }}
+                >
+                  Read shared Task
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      {notice && <p role="status">{notice}</p>}
-      {tasks.data.length === 0 ? (
-        <Empty
-          variant="compact"
-          label="Tasks are not currently shared from this Project."
-        />
-      ) : (
-        <ul className="account-entry__shared-task-list">
-          {tasks.data.map((summary: ProjectSharedTaskSummary) => (
-            <li key={summary.shareId}>
-              <div>
-                <strong>{summary.task.title}</strong>
-                <small>{summary.task.status.replaceAll('_', ' ')}</small>
-              </div>
-              <Button
-                ref={(element) => {
-                  if (element)
-                    taskTriggers.current.set(summary.task.id, element);
-                  else taskTriggers.current.delete(summary.task.id);
-                }}
-                onClick={() => {
-                  setNotice(undefined);
-                  setSelectedTaskId(summary.task.id);
-                }}
-              >
-                Read shared Task
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
       {selected && (
         <section
-          className="account-entry__shared-task-detail"
+          className="account-entry__shared-task-detail task-room-guest"
           aria-label={`${selected.task.title} shared content`}
         >
           <div className="account-entry__shared-task-heading">
             <h5>{selected.task.title}</h5>
-            <Button
+            <IconButton
+              aria-label="Refresh shared Tasks"
+              onClick={refreshTasks}
+            >
+              <RefreshGlyph />
+            </IconButton>
+            <IconButton
+              aria-label="Close"
               onClick={() => {
                 const taskId = selected.task.id;
                 setSelectedTaskId(undefined);
@@ -299,23 +355,71 @@ export function GuestSharedTaskView({
                 );
               }}
             >
-              Close
-            </Button>
+              <CloseGlyph />
+            </IconButton>
           </div>
-          {(history.isPending || document.isPending) && (
+          <div
+            className="task-room-tabs"
+            role="tablist"
+            aria-label="Shared Task views"
+          >
+            {['Chat', 'Brief'].map((name) => (
+              <Button
+                key={name}
+                role="tab"
+                tabIndex={tab === name ? 0 : -1}
+                aria-selected={tab === name}
+                onClick={() => setTab(name)}
+                onKeyDown={(event) => {
+                  if (
+                    !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                      event.key,
+                    )
+                  )
+                    return;
+                  event.preventDefault();
+                  const next =
+                    event.key === 'Home'
+                      ? 'Chat'
+                      : event.key === 'End'
+                        ? 'Brief'
+                        : name === 'Chat'
+                          ? 'Brief'
+                          : 'Chat';
+                  setTab(next);
+                  const tabs =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      '[role="tab"]',
+                    );
+                  tabs?.[next === 'Chat' ? 0 : 1]?.focus();
+                }}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
+          {(tab === 'Chat' ? history.isPending : document.isPending) && (
             <SkeletonList count={2} label="Reading shared Task content" />
           )}
-          {(history.isError || document.isError) && !scopeLost && (
-            <p role="alert">Shared Task content is unavailable.</p>
-          )}
+          {(tab === 'Chat' ? history.isError : document.isError) &&
+            !scopeLost && (
+              <p role="alert">Shared Task content is unavailable.</p>
+            )}
           {history.data?.kind === 'available' ? (
-            <div className="account-entry__shared-history">
-              <h6>Shared messages</h6>
+            <div
+              className="account-entry__shared-history"
+              hidden={tab !== 'Chat'}
+            >
               {history.data.hasMore && (
-                <p role="status">
-                  Shared history is incomplete; only the available page is
-                  shown.
-                </p>
+                <p role="status">More shared messages are available.</p>
+              )}
+              {history.hasNextPage && (
+                <Button
+                  onClick={() => void history.fetchNextPage()}
+                  pending={history.isFetchingNextPage}
+                >
+                  Load more messages
+                </Button>
               )}
               {history.data.records.length === 0 ? (
                 <Empty
@@ -323,25 +427,44 @@ export function GuestSharedTaskView({
                   label="Human messages were not published in this page."
                 />
               ) : (
-                <ol>
-                  {history.data.records.map((record) => (
-                    <li key={record.sequence}>
-                      <strong>{record.actor.label}</strong>
-                      <p>{record.body.text}</p>
-                    </li>
-                  ))}
+                <ol aria-label="Shared messages">
+                  {history.data.records.map((record, index, records) => {
+                    const grouped =
+                      records[index - 1]?.actor.label === record.actor.label;
+                    return (
+                      <li
+                        key={record.sequence}
+                        className={
+                          grouped
+                            ? 'task-room-guest-message--grouped'
+                            : undefined
+                        }
+                      >
+                        {!grouped && <RoomAvatar name={record.actor.label} />}
+                        {!grouped && <strong>{record.actor.label}</strong>}
+                        <SharedMessageText text={record.body.text} />
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
             </div>
-          ) : history.data ? (
+          ) : history.data && tab === 'Chat' ? (
             <p role="status">{historyState(history.data.kind)}</p>
           ) : null}
           {document.data?.kind === 'snapshot' ? (
-            <div className="account-entry__shared-document">
-              <h6>Shared document</h6>
-              <pre>{document.data.text}</pre>
+            <div
+              className="account-entry__shared-document task-room-brief-rendered"
+              hidden={tab !== 'Brief'}
+            >
+              <LazyMarkdown
+                skipHtml
+                loadingProjection={<SkeletonBlock label="Loading brief" />}
+              >
+                {document.data.text}
+              </LazyMarkdown>
             </div>
-          ) : document.data ? (
+          ) : document.data && tab === 'Brief' ? (
             <p role="status">{documentState(document.data.kind)}</p>
           ) : null}
         </section>
@@ -349,3 +472,5 @@ export function GuestSharedTaskView({
     </section>
   );
 }
+
+import '../TaskWorkspaceView.css';

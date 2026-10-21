@@ -82,7 +82,7 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 
 1. Receives the server-resolved ACP connection binding (the raw connection id never comes from the UI request)
 2. Spawns the configured command as a subprocess via `ACPProcess`
-3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
+3. Calls `connection.initialize()` with `clientCapabilities`: terminal, plus fs read/write for every engine except OpenCode, which is offered no file methods ([why](#file-system-and-terminal-tools-station--runtime))
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
    its persisted resume cursor only after validating the connection identity
    and execution fingerprint, and that the engine advertises a way to
@@ -372,7 +372,7 @@ The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) ri
 
 ### Tool Approval (Runtime → User)
 
-When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session".
+When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session". The exception is a file edit on an OpenCode session Station governs (#3924): OpenCode's own "always" for an edit covers every later edit, so Station sends allow-once and keeps the grant itself, and the grant never covers an edit that must go to a person ([what the modes cannot govern](#what-ask-and-auto-cannot-govern-on-opencode)).
 
 #### Which side decides which calls ask
 
@@ -398,8 +398,8 @@ Station answers each request that does arrive by the chat's approval mode ([answ
 | Approval mode | What Station does with a request |
 |---|---|
 | Default, before Station takes over | Shows it to a person; your OpenCode rules decided it should ask |
-| Ask | Shows it to a person |
-| Auto | Allows a file edit (ACP kind `edit`); shows anything else to a person |
+| Ask | Shows it to a person. Plugins and custom tools send no request ([below](#what-ask-and-auto-cannot-govern-on-opencode)) |
+| Auto | Allows a file edit (ACP kind `edit`) inside the project; shows anything else to a person, including an edit of OpenCode configuration or outside the project ([below](#what-ask-and-auto-cannot-govern-on-opencode)) |
 | Full access | Allows it (on the full-access floor nothing asks). In a session that is not `host`-confined, applies Auto instead: an ACP engine has no process sandbox |
 | Default, after Station took over | Ask, reported as "Ask — Ask first", as on other engines (`resolveDefaultPick`). For OpenCode this survives the engine exiting (an idle park, a crash): the takeover is read from the engine's own durable report that it ran a Station mode, not only from memory, so a respawned OpenCode is not silently handed back to its own settings. The chip learns the applied mode from the engine's reports, which a reloaded page has not seen yet: until the next turn starts, it reads "Engine default — OpenCode's own settings" there while the server applies Ask |
 
@@ -413,6 +413,24 @@ If the switch fails (Station's rules are not effective, the chat runs your own a
 
 The recorded pick stays the conversation's decision, so the next turn tries the switch again. Authored policy (`autoApprove`, the staged evaluator, session grants) still runs first, and a plan exit or a question still goes to a person. A rule OpenCode itself denies never reaches Station, so no approval mode can allow it.
 
+#### What Ask and Auto cannot govern on OpenCode
+
+OpenCode runs some code without any permission request, so no approval mode reaches it. Station keeps the agent from adding such code without a person, and refuses to govern a project that already has it (#3924, checked against OpenCode 1.18.18):
+
+- **Project configuration that runs code.** OpenCode loads `opencode.json`, `opencode.jsonc` and `.opencode/` from every directory between the session's directory and the git root (with no git root, upward from the session's directory). It imports plugins (`.opencode/plugin/`, `.opencode/plugins/`, a config `plugin` list) and custom tools (`.opencode/tool/`, `.opencode/tools/`) as it loads, `opencode debug agent` included, and starts the local MCP servers, formatters and language servers that configuration declares. Before a governed start or takeover, and before Station reads OpenCode's rules, Station checks those places without running OpenCode ([project scan](../../src-server/services/acp/opencode-project-config.ts)). A start that reuses a check made moments before is checked again. If any such code is declared, or a configuration file there cannot be read or parsed, Station does not govern the chat: the refusal (`acp_approval_governance_refused`) names each file. A cloned repository's own plugins count the same as ones written in the chat. Your home directory and OpenCode's global configuration are not scanned.
+- **Edits of OpenCode configuration.** In Ask, in Auto, and in full access outside a `host` session (which applies Auto), an edit of a path through a `.opencode` directory, or of a file named `opencode.json` or `opencode.jsonc`, at any depth and in any letter case, goes to a person. So do these edits:
+
+  - an edit outside the project (the git root of the session's directory), which is where OpenCode's global configuration usually lives;
+  - an edit of the global configuration locations themselves (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG`), for a project that contains them. On macOS and Windows these are matched in any letter case;
+  - an edit whose target Station cannot read;
+  - an edit whose path goes through a symbolic link in the project, whether or not the link resolves. Such a link can point anywhere, and the write follows it;
+  - an edit whose path is not already normalized, such as one with a `.` or `..` segment or a repeated separator. OpenCode passes an absolute path on as written, and the file system resolves `link/..` through the link, so Station judges the path as written instead of simplifying it.
+
+  Links above the project are resolved. No approval mode, session grant or authored allow answers these edits.
+- **Your own plugins and custom tools.** Plugins and custom tools from your global OpenCode configuration still load, and their tools do not ask in any mode.
+- **Tooling that runs project files.** Auto allows ordinary project edits, and OpenCode's formatters and language servers can run project tooling on edited files without asking. So a file Auto allows can change what that tooling runs.
+- **Approved commands.** A shell command a person allows can change anything, OpenCode configuration included.
+
 The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
 
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
@@ -422,6 +440,8 @@ A permission request belongs to the prompt that raised it. When `session/prompt`
 ### File System and Terminal Tools (Station → Runtime)
 
 The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers unchanged, so the runtime can read/write files and spawn subprocesses on the Station host exactly as before this cutover.
+
+The client file-system methods (`fs/read_text_file`, `fs/write_text_file`) act in Station's own process (#3957). Station serves them only for absolute, normalized paths: a relative path would resolve against Station's working directory, so it is refused for every engine (on Windows, `/` counts as a separator). Station does not offer the methods to OpenCode, because OpenCode's own tools write every edit. OpenCode 1.18.18 still sends `fs/write_text_file` after each allowed edit, at the permission's path, which for `apply_patch` is worktree-relative. It does not wait for the answer, so Station refuses that call and reads or writes nothing for it. The edit is still applied by OpenCode's tool, and the refusal does not end the engine (checked against OpenCode 1.18.18). An engine that decides for itself keeps the methods for absolute paths anywhere, as before.
 
 ### Station-control over HTTP MCP
 

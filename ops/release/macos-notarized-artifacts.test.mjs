@@ -34,6 +34,7 @@ const requirement =
 const currentRequirement = `Executable=/app/Station.app/Contents/MacOS/Station\ndesignated => ${requirement}`;
 
 function fixture({
+  appVersion = '1.2.3',
   files = ['Station.app'],
   reject = false,
   app = '/app/Station.app',
@@ -76,6 +77,8 @@ function fixture({
       };
     }
     if (program === '/usr/libexec/PlistBuddy') {
+      if (args[1] === 'Print :CFBundleShortVersionString')
+        return { status: 0, stdout: `${appVersion}\n`, stderr: '' };
       return { status: 0, stdout: 'io.kontourai.station', stderr: '' };
     }
     if (program === 'codesign' && args[0] === '-dvv') {
@@ -965,6 +968,33 @@ test('derives, validates, then signs the updater with literal tar operands', asy
   expect(release.calls.indexOf(validation)).toBeLessThan(
     release.calls.indexOf(signer),
   );
+});
+
+test('binds the staged app version into the updater signature (#3851)', async () => {
+  const release = fixture({ appVersion: '0.1.11-nightly.2482.3' });
+  await createMacosNotarizedArtifacts(release.options, release);
+  const signer = release.calls.find(
+    ([program, _args, options]) =>
+      program === 'npx' && options.phase === 'updater signature derivation',
+  );
+  expect(signer[1]).toEqual([
+    'tauri',
+    'signer',
+    'sign',
+    '--app-version',
+    '0.1.11-nightly.2482.3',
+    '/assets/station-v1.2.3-macos-aarch64.app.tar.gz',
+  ]);
+});
+
+test('refuses to sign an updater for an app with no usable version', async () => {
+  for (const appVersion of ['', 'not a version', '1.2']) {
+    const release = fixture({ appVersion });
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toThrow(/cannot be bound into the updater signature/);
+    expect(release.calls.some(([program]) => program === 'npx')).toBe(false);
+  }
 });
 
 test('refuses corrupt or truncated updater archives before invoking the signer', async () => {

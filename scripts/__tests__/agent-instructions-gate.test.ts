@@ -139,7 +139,7 @@ describe('agent instruction topology', () => {
         ...fixture(),
         encoder: { encode: () => Array(9_999), free() {} },
       }),
-    ).toContain('AGENTS.md exceeds tokens budget (9999 > 2048)');
+    ).toContain('AGENTS.md exceeds tokens budget (9999 > 1536)');
     expect(
       instructionGateErrors({ ...fixture({ 'CLAUDE.md': '@AGENTS.md\n' }) }),
     ).toContain(

@@ -72,11 +72,10 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     });
     hasSelection = vi.fn(() => Boolean(this.selection));
     getSelection = vi.fn(() => this.selection);
+    options: { theme?: Record<string, string> } & Record<string, unknown>;
 
-    options: { fontSize?: number } | undefined;
-
-    constructor(options?: { fontSize?: number }) {
-      this.options = options;
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = { ...options };
       FakeTerminal.instances.push(this);
     }
 
@@ -462,4 +461,47 @@ test('sends a remote Station credential only in the first frame, never in the so
     type: 'auth',
     credential,
   });
+});
+
+test('repaints the canvas from the terminal variables when the root theme changes', async () => {
+  // The real cascade shape: the variables differ per root attribute, and the
+  // terminal must re-read them, since xterm paints a canvas CSS cannot reach.
+  const sheet = document.createElement('style');
+  sheet.textContent = `
+    .coding-terminal { --terminal-background: #1a1a2e; --terminal-foreground: #e0e0e0; }
+    [data-theme="light"] .coding-terminal { --terminal-background: #ffffff; --terminal-foreground: #24292f; }
+    [data-color-theme="latte"] .coding-terminal { --terminal-background: #eff1f5; }
+  `;
+  document.head.append(sheet);
+  const root = document.documentElement;
+  root.setAttribute('data-theme', 'dark');
+  try {
+    renderTerminal();
+    const { terminal } = await connectTerminal();
+    expect(terminal.options.theme).toMatchObject({
+      background: '#1a1a2e',
+      foreground: '#e0e0e0',
+    });
+
+    await act(async () => {
+      root.setAttribute('data-theme', 'light');
+    });
+    await waitFor(() =>
+      expect(terminal.options.theme).toMatchObject({
+        background: '#ffffff',
+        foreground: '#24292f',
+      }),
+    );
+
+    await act(async () => {
+      root.setAttribute('data-color-theme', 'latte');
+    });
+    await waitFor(() =>
+      expect(terminal.options.theme?.background).toBe('#eff1f5'),
+    );
+  } finally {
+    sheet.remove();
+    root.removeAttribute('data-color-theme');
+    root.setAttribute('data-theme', 'dark');
+  }
 });

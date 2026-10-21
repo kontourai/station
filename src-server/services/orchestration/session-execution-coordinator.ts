@@ -1,5 +1,8 @@
 import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   SessionTurnBoundaryAuthority,
   SessionTurnBoundaryClaim,
@@ -9,6 +12,8 @@ import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 
 type ThreadState = {
   activeTurnIds: Set<string>;
+  begunInvocationIds: Set<string>;
+  terminalInvocationIds: string[];
   terminalTurnIds: string[];
   turnStartActive: boolean;
   lifecycleActive: boolean;
@@ -68,20 +73,45 @@ export class SessionExecutionCoordinator {
     threadId: string,
     operation: (claim: SessionTurnBoundaryClaim) => Promise<T>,
     workspaceKey?: string,
+    preparedIntent = false,
   ): Promise<T> {
     if (workspaceKey)
       return this.workspaces.runTurnStart(
         workspaceKey,
         threadId,
-        () => this.runThreadTurnStart(threadId, operation),
+        () => this.runThreadTurnStart(threadId, operation, preparedIntent),
         () => this.hasActiveTurn(threadId),
       );
-    return this.runThreadTurnStart(threadId, operation);
+    return this.runThreadTurnStart(threadId, operation, preparedIntent);
+  }
+
+  /** Uses the same local/workspace barriers while a guarded resume adopts its durable fence. */
+  async runPreparedTurnStart<T>(
+    threadId: string,
+    operation: () => Promise<T>,
+    workspaceKey?: string,
+  ): Promise<T> {
+    if (workspaceKey)
+      return this.workspaces.runTurnStart(
+        workspaceKey,
+        threadId,
+        () => this.runPreparedTurnStart(threadId, operation),
+        () => this.hasActiveTurn(threadId),
+      );
+    await this.acquireTurnStart(threadId);
+    try {
+      if (!this.retryPendingLifecycleRelease(threadId))
+        throw new Error('Prepared turn input is unavailable.');
+      return await operation();
+    } finally {
+      this.releaseTurnStart(threadId);
+    }
   }
 
   private async runThreadTurnStart<T>(
     threadId: string,
     operation: (claim: SessionTurnBoundaryClaim) => Promise<T>,
+    preparedIntent: boolean,
   ): Promise<T> {
     await this.acquireTurnStart(threadId);
     let owned:
@@ -96,7 +126,10 @@ export class SessionExecutionCoordinator {
           'Session lifecycle coordination is temporarily unavailable.',
         );
       }
-      const claimed = this.boundaries.claim(threadId, new Date().toISOString());
+      const claimed =
+        preparedIntent && this.boundaries.reserve
+          ? this.boundaries.reserve(threadId, new Date().toISOString())
+          : this.boundaries.claim(threadId, new Date().toISOString());
       if (claimed.kind !== 'owner') {
         throw new Error(
           claimed.kind === 'busy'
@@ -171,49 +204,170 @@ export class SessionExecutionCoordinator {
   }
 
   /** Returns false when the exact terminal arrived before sendTurn resolved. */
-  markTurnAccepted(threadId: string, turnId: string): boolean {
+  markTurnBegun(threadId: string, invocationId: string): void {
+    this.state(threadId).begunInvocationIds.add(invocationId);
+  }
+
+  markTurnAccepted(
+    threadId: string,
+    turnId: string,
+    invocationId?: string,
+  ): boolean {
     const state = this.state(threadId);
-    if (state.terminalTurnIds.includes(turnId)) return false;
-    state.activeTurnIds.add(turnId);
+    const key = JSON.stringify([turnId, invocationId ?? null]);
+    if (invocationId) state.begunInvocationIds.delete(invocationId);
+    if (
+      invocationId
+        ? state.terminalInvocationIds.includes(invocationId)
+        : state.terminalTurnIds.includes(key)
+    )
+      return false;
+    state.activeTurnIds.add(key);
     return true;
   }
 
-  observe(event: CanonicalRuntimeEvent): void {
-    this.boundaries.observe(event);
-    if (event.method === 'turn.started' && event.turnId) {
-      const state = this.state(event.threadId);
-      state.terminalTurnIds = state.terminalTurnIds.filter(
-        (turnId) => turnId !== event.turnId,
+  settleInvocation(threadId: string, invocationId: string): void {
+    const state = this.states.get(threadId);
+    if (!state) return;
+    state.begunInvocationIds.delete(invocationId);
+    for (const key of state.activeTurnIds)
+      if (JSON.parse(key)[1] === invocationId) state.activeTurnIds.delete(key);
+    this.deleteEmptyState(threadId, state);
+  }
+
+  invocationForTurn(threadId: string, turnId: string): string | undefined {
+    const ids = [...(this.states.get(threadId)?.activeTurnIds ?? [])]
+      .map((key) => JSON.parse(key) as [string | null, string | null])
+      .filter(([native]) => native === turnId)
+      .map(([, invocation]) => invocation);
+    return ids.length === 1 && ids[0] !== null ? ids[0] : undefined;
+  }
+
+  ownsTurnEvent(event: CanonicalRuntimeEvent): boolean {
+    const state = this.states.get(event.threadId);
+    if (!state) return true;
+    if (
+      event.method === 'session.exited' ||
+      (event.method === 'runtime.error' &&
+        event.turnId === undefined &&
+        event.invocationId === undefined)
+    )
+      return true;
+    if (event.invocationId !== undefined)
+      return (
+        state.begunInvocationIds.has(event.invocationId) ||
+        state.activeTurnIds.has(
+          JSON.stringify([event.turnId ?? null, event.invocationId]),
+        )
       );
-      state.activeTurnIds.add(event.turnId);
+    return (
+      state.begunInvocationIds.size === 0 &&
+      ![...state.activeTurnIds].some((key) => JSON.parse(key)[1] !== null)
+    );
+  }
+
+  observe(event: CanonicalRuntimeEvent): void {
+    const observed = this.boundaries.observe(event);
+    if (observed.kind !== 'applied') return;
+    const state = this.state(event.threadId);
+    const key = JSON.stringify([
+      event.turnId ?? null,
+      event.invocationId ?? null,
+    ]);
+    if (event.method === 'turn.started' && event.turnId) {
+      const known =
+        state.begunInvocationIds.size > 0 ||
+        [...state.activeTurnIds].some((key) => JSON.parse(key)[1] !== null);
+      if (
+        !known ||
+        (event.invocationId &&
+          (state.begunInvocationIds.has(event.invocationId) ||
+            state.activeTurnIds.has(key)))
+      ) {
+        state.activeTurnIds.add(key);
+      }
       return;
     }
     if (
-      event.method !== 'turn.completed' &&
-      event.method !== 'turn.aborted' &&
-      event.method !== 'runtime.error' &&
-      event.method !== 'session.exited'
-    ) {
+      ![
+        'turn.completed',
+        'turn.aborted',
+        'runtime.error',
+        'session.exited',
+      ].includes(event.method) ||
+      isDeferredRetriableTurnError(event) ||
+      (event.method === 'runtime.error' &&
+        event.code === 'SESSION_START_INDETERMINATE') ||
+      (event.method === 'turn.aborted' && event.recoveryTerminal === true)
+    )
       return;
+    if (
+      event.invocationId === undefined &&
+      state.turnStartActive &&
+      state.begunInvocationIds.size === 0 &&
+      state.activeTurnIds.has(key)
+    ) {
+      state.terminalTurnIds = [
+        ...state.terminalTurnIds.filter((id) => id !== key),
+        key,
+      ].slice(-TERMINAL_TURN_MEMORY);
+      state.activeTurnIds.delete(key);
     }
-    const state = this.state(event.threadId);
-    this.workspaces.releaseThread(event.threadId);
-    if ('turnId' in event && typeof event.turnId === 'string') {
-      state.activeTurnIds.delete(event.turnId);
-      if (state.turnStartActive) {
+    const disposition = this.boundaries.hasPossibleEffect(event.threadId);
+    if (disposition.kind !== 'available' || disposition.active) return;
+    const sessionTerminal =
+      event.method === 'session.exited' ||
+      (event.method === 'runtime.error' &&
+        event.turnId === undefined &&
+        event.invocationId === undefined);
+    const matched =
+      state.activeTurnIds.has(key) ||
+      (event.invocationId !== undefined &&
+        state.begunInvocationIds.has(event.invocationId)) ||
+      state.terminalTurnIds.includes(key);
+    if (!sessionTerminal && !matched) return;
+    if (sessionTerminal) {
+      state.activeTurnIds.clear();
+      state.begunInvocationIds.clear();
+    } else {
+      state.activeTurnIds.delete(key);
+      if (
+        event.invocationId &&
+        state.begunInvocationIds.has(event.invocationId)
+      ) {
+        state.terminalInvocationIds = [
+          ...state.terminalInvocationIds.filter(
+            (id) => id !== event.invocationId,
+          ),
+          event.invocationId,
+        ].slice(-TERMINAL_TURN_MEMORY);
+        state.begunInvocationIds.delete(event.invocationId);
+      } else if (!event.invocationId && state.turnStartActive) {
         state.terminalTurnIds = [
-          ...state.terminalTurnIds.filter((turnId) => turnId !== event.turnId),
-          event.turnId,
+          ...state.terminalTurnIds.filter((id) => id !== key),
+          key,
         ].slice(-TERMINAL_TURN_MEMORY);
       }
-    } else {
-      state.activeTurnIds.clear();
     }
+    // The committed projection has disposed every durable effect on this thread.
+    state.activeTurnIds.clear();
+    state.begunInvocationIds.clear();
+    this.workspaces.releaseThread(event.threadId);
     this.deleteEmptyState(event.threadId, state);
   }
 
+  /** Threads this coordinator holds turn state for (#3851 idle check). */
+  threadIdsWithTurnState(): string[] {
+    return [...this.states.keys()];
+  }
+
   hasActiveTurn(threadId: string): boolean {
-    if ((this.states.get(threadId)?.activeTurnIds.size ?? 0) > 0) return true;
+    const state = this.states.get(threadId);
+    if (
+      (state?.activeTurnIds.size ?? 0) > 0 ||
+      (state?.begunInvocationIds.size ?? 0) > 0
+    )
+      return true;
     const durable = this.boundaries.hasPossibleEffect(threadId);
     return durable.kind === 'unavailable' || durable.active;
   }
@@ -243,6 +397,7 @@ export class SessionExecutionCoordinator {
     const state = this.state(threadId);
     state.turnStartActive = false;
     state.terminalTurnIds = [];
+    state.terminalInvocationIds = [];
     this.drain(threadId, state);
   }
 
@@ -283,6 +438,8 @@ export class SessionExecutionCoordinator {
     if (!state) {
       state = {
         activeTurnIds: new Set(),
+        begunInvocationIds: new Set(),
+        terminalInvocationIds: [],
         terminalTurnIds: [],
         turnStartActive: false,
         lifecycleActive: false,
@@ -297,6 +454,7 @@ export class SessionExecutionCoordinator {
   private deleteEmptyState(threadId: string, state: ThreadState): void {
     if (
       state.activeTurnIds.size === 0 &&
+      state.begunInvocationIds.size === 0 &&
       state.terminalTurnIds.length === 0 &&
       !state.turnStartActive &&
       !state.lifecycleActive &&

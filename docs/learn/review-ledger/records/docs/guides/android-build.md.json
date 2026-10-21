@@ -102,8 +102,6 @@
 
     "src-desktop/build.rs",
 
-    "src-desktop/capabilities/desktop-updater.json",
-
     "src-desktop/src/lib.rs",
 
     "src-desktop/src/service_state.rs",
@@ -125,8 +123,6 @@
     "src-desktop/tauri.nightly.conf.json",
 
     "src-server/tools/instance-registry-bridge.ts",
-
-    "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
 
     "src-ui/src/core/PluginRegistry.ts",
 

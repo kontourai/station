@@ -980,6 +980,7 @@ describe('one-line Station installer', {
 
     const result = spawnSync('sh', ['-c', command ?? 'exit 99'], {
       encoding: 'utf8',
+      windowsHide: true,
       env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
     });
     expect(result.status).toBe(42);

@@ -1,0 +1,9 @@
+{
+  "revision": "06bb8a0bd1c7ce099aa805e9ab89c4721acb4fc3",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Re-read the Named color themes section after merging lane A's failed-sheet round (24a8eeb1d8e: a failed sheet is dropped and the selection unclaimed; the next apply retries). Added the Appearance page's failed state: card reads Not loaded, a warning offers Try again, which re-applies. Covered by AppearancePage.test.tsx and a real 404 sheet in appearance-page-keyboard.test.ts (executed, fault-injected twice). Lane A's own prose in the section is unchanged by this edit.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md changed only in its Named color themes section (Appearance page failed-sheet state). This document cites theming for white-label branding and #2902's theming, which this edit does not touch. No prose change.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

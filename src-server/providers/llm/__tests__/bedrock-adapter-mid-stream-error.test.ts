@@ -134,6 +134,7 @@ describe('BedrockAdapter + a real AiSdkLLMProvider subclass: station#3586 mid-st
     await adapter
       .sendTurn({
         threadId: 'mid-stream-error',
+        invocationId: 'failed-stream-origin',
         input: 'Inspect the repository',
       })
       .catch(() => {});
@@ -145,7 +146,10 @@ describe('BedrockAdapter + a real AiSdkLLMProvider subclass: station#3586 mid-st
     );
 
     expect(terminal).toBeDefined();
-    expect(terminal?.method).toBe('runtime.error');
+    expect(terminal).toMatchObject({
+      method: 'runtime.error',
+      invocationId: 'failed-stream-origin',
+    });
     expect(events.some((event) => event.method === 'turn.completed')).toBe(
       false,
     );

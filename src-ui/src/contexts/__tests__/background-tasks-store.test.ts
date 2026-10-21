@@ -312,6 +312,29 @@ describe('ingestBackgroundTaskEvent — delegate/agent cards', () => {
     expect(state.entries['task:delegate-1'].title).toBe('Fix the failing test');
   });
 
+  test('a named delegation keeps its title when a follow-up turn starts', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('session.started', {
+        threadId: 'task:delegate-1',
+        metadata: {
+          taskId: 'task:delegate-1',
+          parentTaskId: 'chat-1',
+          delegationTitle: 'Review the migration',
+        },
+      }),
+    );
+    for (const prompt of ['First question', 'Follow-up question']) {
+      state = ingestBackgroundTaskEvent(
+        state,
+        event('turn.started', { threadId: 'task:delegate-1', prompt }),
+      );
+      expect(state.entries['task:delegate-1'].title).toBe(
+        'Review the migration',
+      );
+    }
+  });
+
   test.each([
     ['turn.completed', 'completed'],
     ['turn.aborted', 'stopped'],

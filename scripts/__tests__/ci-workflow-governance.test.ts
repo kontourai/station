@@ -15,6 +15,8 @@ import {
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
   FAST_CHECKS_PLANNED_STEP_IF,
+  FAST_CHECKS_PROVISIONAL_RUN,
+  FAST_CHECKS_PROVISIONAL_STEP_IF,
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
@@ -103,8 +105,12 @@ jobs:
       - name: Require every fast-checks part job to succeed
         run: ${block(FAST_CHECKS_PART_RESULTS_RUN, 10)}
       - name: Verify fast-checks shard receipts
+        id: verify
         if: ${FAST_CHECKS_AGGREGATE_STEP_IF}
         run: '${FAST_CHECKS_AGGREGATE_RUN}'
+      - name: Mark fast-checks provisional
+        if: ${FAST_CHECKS_PROVISIONAL_STEP_IF}
+        run: '${FAST_CHECKS_PROVISIONAL_RUN}'
   completion:
     steps:
       - name: Run connected agents
@@ -726,6 +732,18 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
       `        if: ${FAST_CHECKS_AGGREGATE_STEP_IF}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
       `        if: \${{ needs.fast-checks-plan.outputs.legacy != 'false' }}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'a renamed provisional marker the source policy no longer reads (#1706)',
+      '      - name: Mark fast-checks provisional\n',
+      '      - name: Note provisional fast-checks\n',
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
+    ],
+    [
+      'a provisional marker detached from the aggregate output (#1706)',
+      '        id: verify\n',
+      '        id: receipts\n',
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
     ],
     [
       'a dropped shard',

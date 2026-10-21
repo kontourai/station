@@ -1,0 +1,7 @@
+{
+  "revision": "c7e8df2ccf029ea2c84a00234a941076f50da0c1",
+
+  "notes": [
+    {"path":"docs/design/channel-home-authority.md","note":"orchestration-service.ts delta since the last review: main's elicitation-form answer plumbing plus this PR's additive sessionGrantScope 'server' marker on answers. Checked this document's orchestration claims; neither change alters the documented answer, posture or delivery behavior it describes.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -14,6 +14,7 @@ import {
 } from '../../runtime/plugins/runtime-provider-resolution.js';
 import { guardRuntimeGenerationTools } from '../../runtime/tools/runtime-generation-tools.js';
 import type { ITool, RuntimeContext } from '../../runtime/types.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import { errorMessage } from '../schemas/schemas.js';
 
 type ModelOverrideResult = {
@@ -64,8 +65,9 @@ export async function resolveChatAgentModelOverride({
   const appConfigLaunchabilityRevision = lease.appConfigLaunchabilityRevision;
   const agentConfigurationRevision = lease.agentConfigurationRevision;
   let resolvedModel: string;
-  const originalSpec = ctx.agentSpecs.get(slug);
-  const originalTools = ctx.agentTools.get(slug);
+  const runtimeKey = runtimeAgentKey(slug);
+  const originalSpec = ctx.agentSpecs.get(runtimeKey);
+  const originalTools = ctx.agentTools.get(runtimeKey);
   const appConfig = ctx.appConfig;
   const instructions = agent.instructions ?? '';
   const leaseIsCurrent = () => runtimeConfigurationLeaseIsCurrent(ctx, lease);
@@ -121,7 +123,7 @@ export async function resolveChatAgentModelOverride({
   }
 
   if (!leaseIsCurrent()) return agentConfigurationConflict(agent);
-  const cacheKey = `${slug}:${providerConnection.id}:${resolvedModel}:${providerLaunchabilityRevision}:${appConfigLaunchabilityRevision}:${agentConfigurationRevision}`;
+  const cacheKey = `${runtimeKey}:${providerConnection.id}:${resolvedModel}:${providerLaunchabilityRevision}:${appConfigLaunchabilityRevision}:${agentConfigurationRevision}`;
   const cachedAgent = ctx.activeAgents.get(cacheKey);
   if (cachedAgent) {
     return { agent: cachedAgent, resolvedModelId: resolvedModel };
@@ -179,19 +181,19 @@ export async function resolveChatAgentModelOverride({
         // archive#914: this rebuilds the agent for a session model override on an
         // *existing* conversation, so without the slug's own store the
         // override silently costs the user their history.
-        memoryAdapter: ctx.memoryAdapters?.get(slug),
+        memoryAdapter: ctx.memoryAdapters?.get(runtimeKey),
         // archive#1834: the rebuilt agent keeps the slug's OWN gate — the
         // same hooks instance chat streams register approval requesters on,
         // so interactive approvals keep working under a model override
         // instead of the tools running ungated.
-        hooks: ctx.agentHooksMap?.get(slug),
+        hooks: ctx.agentHooksMap?.get(runtimeKey),
       });
       const resolvedAgent =
         ((tempWrapper as { raw?: unknown }).raw as typeof agent) || tempWrapper;
 
       if (!leaseIsCurrent()) return agentConfigurationConflict(agent);
 
-      const cachePrefix = `${slug}:`;
+      const cachePrefix = `${runtimeKey}:`;
       for (const key of ctx.activeAgents.keys()) {
         if (key !== cacheKey && key.startsWith(cachePrefix)) {
           ctx.activeAgents.delete(key);

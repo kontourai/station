@@ -19,6 +19,7 @@ COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY packages/telemetry-broker/package.json packages/telemetry-broker/
 COPY packages/monument/package.json packages/monument/
+COPY packages/agent-runtime/package.json packages/agent-runtime/
 COPY packages/supervisor/package.json packages/supervisor/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
 COPY examples/fieldwork-review/package.json examples/fieldwork-review/
@@ -52,6 +53,8 @@ COPY docs ./docs
 # build needs the repository's formatter config; biome.json's vcs.useIgnoreFile
 # makes Biome refuse to run without .gitignore beside it.
 COPY biome.json .gitignore ./
+# The server build copies third-party notices (Cedar) from here into the bundle.
+COPY packaging/licenses ./packaging/licenses
 # The dependencies stage copies only the two config files its install reads;
 # the server bundle imports more (config/release-manifest-keys.json in
 # archive-update.ts), so the build stage takes config/ wholesale, as the

@@ -555,7 +555,10 @@ function persistFailureNotification({
             priority: 'high',
             dedupeTag: `scheduler:fail:${job}:${id}`,
             actions: [{ id: 'view-logs', label: 'View Logs' }],
-            metadata: { jobName: job, link: `/schedule?job=${job}` },
+            metadata: {
+              jobName: job,
+              link: `/schedule?job=${encodeURIComponent(job)}`,
+            },
           });
         } catch (failure) {
           resolve(false);

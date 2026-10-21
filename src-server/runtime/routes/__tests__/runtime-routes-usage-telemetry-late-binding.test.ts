@@ -15,11 +15,14 @@
  */
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileSecretBindingAdministration } from '../../../services/secrets/secret-binding-administration.js';
 import {
   FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
@@ -34,6 +37,7 @@ import {
 } from '../../../telemetry-delivery-state.js';
 import type { Logger } from '../../../utils/logger.js';
 import { StationRuntime } from '../../bootstrap/station-runtime.js';
+import type { AgentConfigurationMutationRunner } from '../../types.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 const runtimeSupport = vi.hoisted(() => {
@@ -216,6 +220,7 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       }),
     );
     await result.kitLifecycleReady;
+    assertRuntimeHttpRouteCoverage(app.routes);
 
     const beforeReady = await app.request(
       '/api/usage-telemetry/disclosure',
@@ -244,82 +249,6 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 
     // `StationRuntime` finishes constructing it. No re-registration happens in
     // production, and none happens here.
-    const acknowledgeDisclosure = vi.fn().mockResolvedValue(undefined);
-    usageTelemetry = {
-      disclosure: vi.fn().mockResolvedValue(disclosure),
-      acknowledgeDisclosure,
-    } as unknown as UsageTelemetryService;
-
-    const afterReady = await app.request(
-      '/api/usage-telemetry/disclosure',
-      undefined,
-      loopbackEnv(),
-    );
-    expect(afterReady.status).toBe(200);
-    await expect(afterReady.json()).resolves.toEqual({
-      success: true,
-      data: disclosure,
-    });
-
-    for (const [body, status] of [
-      [undefined, 426],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 1,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-        426,
-      ],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 3,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-        426,
-      ],
-      [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
-      [
-        JSON.stringify({
-          acknowledgementProtocol: 2,
-          inventoryRevision: 'stale-revision',
-        }),
-        409,
-      ],
-    ] as const) {
-      const refused = await app.request(
-        '/api/usage-telemetry/disclosure/acknowledgements',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          ...(body ? { body } : {}),
-        },
-        loopbackEnv(),
-      );
-      expect(refused.status).toBe(status);
-      expect(acknowledgeDisclosure).not.toHaveBeenCalled();
-    }
-
-    const acknowledged = await app.request(
-      '/api/usage-telemetry/disclosure/acknowledgements',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          acknowledgementProtocol: 2,
-          inventoryRevision: disclosure.inventoryRevision,
-        }),
-      },
-      loopbackEnv(),
-    );
-    expect(acknowledged.status).toBe(200);
-    expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
-      disclosure.inventoryRevision,
-    );
-    await expect(acknowledged.json()).resolves.toEqual({
-      success: true,
-      data: disclosure,
-    });
-
     const fetch = vi.fn();
     const live = new UsageTelemetryService({
       homeDir,
@@ -339,6 +268,84 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     });
     usageTelemetry = live;
     try {
+      const disclosureSpy = vi
+        .spyOn(live, 'disclosure')
+        .mockResolvedValue(disclosure);
+      const acknowledgeDisclosure = vi
+        .spyOn(live, 'acknowledgeDisclosure')
+        .mockResolvedValue(undefined);
+      const afterReady = await app.request(
+        '/api/usage-telemetry/disclosure',
+        undefined,
+        loopbackEnv(),
+      );
+      expect(afterReady.status).toBe(200);
+      await expect(afterReady.json()).resolves.toEqual({
+        success: true,
+        data: disclosure,
+      });
+
+      for (const [body, status] of [
+        [undefined, 426],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 1,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+          426,
+        ],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 3,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+          426,
+        ],
+        [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
+        [
+          JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: 'stale-revision',
+          }),
+          409,
+        ],
+      ] as const) {
+        const refused = await app.request(
+          '/api/usage-telemetry/disclosure/acknowledgements',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            ...(body ? { body } : {}),
+          },
+          loopbackEnv(),
+        );
+        expect(refused.status).toBe(status);
+        expect(acknowledgeDisclosure).not.toHaveBeenCalled();
+      }
+
+      const acknowledged = await app.request(
+        '/api/usage-telemetry/disclosure/acknowledgements',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: disclosure.inventoryRevision,
+          }),
+        },
+        loopbackEnv(),
+      );
+      expect(acknowledged.status).toBe(200);
+      expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
+        disclosure.inventoryRevision,
+      );
+      await expect(acknowledged.json()).resolves.toEqual({
+        success: true,
+        data: disclosure,
+      });
+
+      disclosureSpy.mockRestore();
+      acknowledgeDisclosure.mockRestore();
       const status = await app.request(
         '/api/usage-telemetry/delivery-status',
         undefined,
@@ -525,7 +532,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
                         protocol: 'station-product-probe/v1',
                         sourceId: '22222222-2222-4333-8444-555555555555',
                         inventoryRevision:
-                          FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
+                          PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
                         checkedAt: '2026-10-11T06:00:00.000Z',
                         storage: 'postgres-schema-v1',
                       },
@@ -644,13 +651,13 @@ describe('persisted telemetry configuration during Agent activation', () => {
         const during = await live.deliveryStatus();
         if (productChanged) {
           expect(pendingSignal?.aborted).toBe(true);
-          expect(during.queued).toBe(0);
+          expect(during.queued).toBe('telemetryEnabled' in update ? 0 : 1);
           expect(during.counts.withdrawn).toBe(1);
           if ('telemetryEnabled' in update)
             expect(during.phase).toBe('disabled');
         } else {
           expect(pendingSignal?.aborted).toBe(false);
-          expect(during.queued).toBe(1);
+          expect(during.queued).toBe(collectorChanged ? 2 : 1);
           expect(during.lastAcknowledged).toEqual(before.lastAcknowledged);
         }
         expect(getOtelTelemetryDeliveryStatus().phase).toBe(
@@ -810,6 +817,82 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       heldDisclosure: true,
     },
   ])('$label survives held and failing Agent activation', async (scenario) => {
+    const diagnose = 'staleSnapshot' in scenario;
+    const started = performance.now();
+    const stages: { stage: string; ms: number; error?: unknown }[] = [];
+    const knownMessages = new Set([
+      'injected unrelated Agent activation failure',
+      'App configuration changed while capturing a snapshot.',
+      'App configuration changed before product telemetry initialization.',
+      'Configuration mutation and runtime reload both failed.',
+      'App config updated',
+      'Failed to update app config',
+      'Configuration activation failed after persistence',
+    ]);
+    const summarize = (value: unknown) => {
+      const message = value instanceof Error ? value.message : value;
+      return {
+        kind:
+          value instanceof TypeError
+            ? 'TypeError'
+            : value instanceof SyntaxError
+              ? 'SyntaxError'
+              : value instanceof Error
+                ? 'Error'
+                : typeof value,
+        message:
+          typeof message === 'string' && knownMessages.has(message)
+            ? message
+            : '[content omitted]',
+        messageLength: typeof message === 'string' ? message.length : undefined,
+        code:
+          value instanceof Error &&
+          'code' in value &&
+          typeof value.code === 'string' &&
+          [
+            'EACCES',
+            'EBUSY',
+            'EEXIST',
+            'EIO',
+            'ENOENT',
+            'ENOSPC',
+            'EPERM',
+            'ETIMEDOUT',
+          ].includes(value.code)
+            ? value.code
+            : undefined,
+      };
+    };
+    const mark = (stage: string, error?: unknown) => {
+      if (diagnose && stages.length < 100)
+        stages.push({
+          stage,
+          ms: performance.now() - started,
+          ...(error === undefined ? {} : { error: summarize(error) }),
+        });
+    };
+    // Observe settlement without substituting the promise awaited by callers.
+    const observe = <T>(stage: string, run: () => Promise<T>): Promise<T> => {
+      mark(`${stage}:entry`);
+      let promise: Promise<T>;
+      try {
+        promise = run();
+      } catch (error) {
+        mark(`${stage}:throw`, error);
+        throw error;
+      }
+      void promise.then(
+        () => mark(`${stage}:fulfilled`),
+        (error: unknown) => mark(`${stage}:rejected`, error),
+      );
+      return promise;
+    };
+    const request: {
+      state: 'not-started' | 'pending' | 'fulfilled' | 'rejected';
+      status?: number;
+      body?: unknown;
+      error?: unknown;
+    } = { state: 'not-started' };
     const homeDir = makeTempDir('station-late-telemetry-');
     const loader = new ConfigLoader({
       projectHomeDir: homeDir,
@@ -903,14 +986,54 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     runtime.secretBindingAdministration = bindings;
     runtime.buildProvenanceSnapshot = null;
     runtime.orchestrationService = { setUsageTelemetry: vi.fn() };
+    runtime.eventBus = new EventBus();
     let releaseActivation!: () => void;
     const activation = new Promise<void>((resolve) => {
       releaseActivation = resolve;
     });
     runtime.reloadAgentsFromDisk = vi.fn(async () => {
+      mark('reload:entry');
       await activation;
-      throw new Error('injected unrelated Agent activation failure');
+      const error = new Error('injected unrelated Agent activation failure');
+      mark('reload:rejected', error);
+      throw error;
     });
+    const runMutation: AgentConfigurationMutationRunner =
+      runtime.applyAgentConfigurationMutation.bind(runtime);
+    const observedMutation: AgentConfigurationMutationRunner = (
+      operation,
+      options,
+    ) =>
+      observe('runner', () =>
+        runMutation(
+          (beginMutation, receipt) =>
+            observe('operation', () =>
+              operation(() => {
+                mark('beginMutation:entry');
+                beginMutation();
+                mark('beginMutation:return');
+              }, receipt),
+            ),
+          options,
+        ),
+      );
+    if (diagnose) {
+      const load = loader.loadAppConfig.bind(loader);
+      vi.spyOn(loader, 'loadAppConfig').mockImplementation((...args) =>
+        observe('load', () => load(...args)),
+      );
+      const mutate = loader.mutateAppConfig.bind(loader);
+      vi.spyOn(loader, 'mutateAppConfig').mockImplementation((operation) =>
+        observe('mutate', () =>
+          mutate((current) => {
+            mark('mutate-callback:entry');
+            const result = operation(current);
+            mark('mutate-callback:return');
+            return result;
+          }),
+        ),
+      );
+    }
     const app = new Hono();
     bindOperatorPrincipal(app);
     const mounted = configureRuntimeRoutesProduction(
@@ -918,8 +1041,9 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         configLoader: loader,
         usageTelemetry: undefined,
         getUsageTelemetry: () => runtime.usageTelemetry,
-        applyAgentConfigurationMutation:
-          runtime.applyAgentConfigurationMutation.bind(runtime),
+        applyAgentConfigurationMutation: diagnose
+          ? observedMutation
+          : runMutation,
       }),
     );
     await mounted.kitLifecycleReady;
@@ -927,6 +1051,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     let releaseDisclosure: (() => void) | undefined;
     let disclosureLoading = false;
     let capturedSnapshot = false;
+    let capturedRevision: number | undefined;
     const capture = loader.captureAppConfigLaunchabilitySnapshot.bind(loader);
     let supersededSnapshots = 0;
     if ('staleSnapshot' in scenario) {
@@ -934,11 +1059,17 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         loader,
         'captureAppConfigLaunchabilitySnapshot',
       ).mockImplementationOnce(async () => {
-        const snapshot = await capture();
+        const snapshot = await observe('snapshot', capture);
+        capturedRevision = snapshot.revision;
         capturedSnapshot = true;
+        mark('snapshot:held');
         await new Promise<void>((resolve) => {
-          releaseSnapshot = resolve;
+          releaseSnapshot = () => {
+            mark('snapshot:release');
+            resolve();
+          };
         });
+        mark('snapshot:return');
         return snapshot;
       });
     }
@@ -970,14 +1101,49 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     }
     let initializing: Promise<void> | undefined;
     let saving: Promise<Response> | undefined;
+    let diagnosticFailure: Error | undefined;
+    const checkpoint = () => ({
+      stages: [...stages],
+      stageLimitReached: stages.length === 100,
+      request: { ...request },
+      reloadCalls: runtime.reloadAgentsFromDisk.mock.calls.length,
+      fetchCalls: fetch.mock.calls.length,
+      capturedSnapshot,
+      capturedRevision,
+      configurationRevision: runtime.agentConfigurationRevision,
+      persistenceRevision: runtime.agentConfigurationPersistenceRevision,
+      mutationsClosed: runtime.agentConfigurationMutationsClosed,
+      logger: Object.fromEntries(
+        Object.entries(logger).map(([level, mock]) => [
+          level,
+          {
+            count: mock.mock.calls.length,
+            calls: mock.mock.calls.slice(-8).map((args, index, calls) => ({
+              order:
+                mock.mock.invocationCallOrder[
+                  mock.mock.calls.length - calls.length + index
+                ],
+              message: summarize(args[0]),
+              error: summarize(args[1]?.error),
+            })),
+          },
+        ]),
+      ),
+    });
     try {
       if ('staleSnapshot' in scenario) {
-        initializing = runtime.initializeUsageTelemetry();
+        initializing = observe<void>('initialize', () =>
+          runtime.initializeUsageTelemetry(),
+        );
         await vi.waitFor(() => expect(capturedSnapshot).toBe(true));
       }
       if ('heldDisclosure' in scenario) {
         initializing = runtime.initializeUsageTelemetry();
         await vi.waitFor(() => expect(disclosureLoading).toBe(true));
+      }
+      if (diagnose) {
+        request.state = 'pending';
+        mark('request:entry');
       }
       const saveResponse = Promise.resolve(
         app.request(
@@ -994,9 +1160,57 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         ),
       );
       saving = saveResponse;
+      if (diagnose) {
+        void saveResponse.then(
+          (response) => {
+            request.state = 'fulfilled';
+            request.status = response.status;
+            mark('request:fulfilled');
+            request.body = '[pending clone read]';
+            try {
+              void response
+                .clone()
+                .json()
+                .then(
+                  (body: unknown) => {
+                    // Never retain the returned config, keys, tokens or arbitrary errors.
+                    request.body =
+                      body && typeof body === 'object'
+                        ? {
+                            success: 'success' in body && body.success === true,
+                            error: summarize(
+                              'error' in body ? body.error : undefined,
+                            ),
+                            activationPending:
+                              'configurationActivation' in body &&
+                              body.configurationActivation !== undefined,
+                            otherFields: '[omitted]',
+                          }
+                        : '[non-object body omitted]';
+                    mark('request:body-read');
+                  },
+                  (error: unknown) => {
+                    request.body = { readError: summarize(error) };
+                    mark('request:body-rejected', error);
+                  },
+                );
+            } catch (error) {
+              request.body = { cloneError: summarize(error) };
+              mark('request:clone-threw', error);
+            }
+          },
+          (error: unknown) => {
+            request.state = 'rejected';
+            request.error = summarize(error);
+            mark('request:rejected', error);
+          },
+        );
+      }
+      mark('reload-wait:entry');
       await vi.waitFor(() =>
         expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
       );
+      mark('reload-wait:fulfilled');
       if (!('heldDisclosure' in scenario))
         expect(runtime.usageTelemetry).toBeUndefined();
       expect(runtime.appConfig).toBe(initial);
@@ -1055,15 +1269,34 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       expect(runtime.appConfig).toBe(initial);
       releaseActivation();
       expect((await saveResponse).status).toBe(202);
+    } catch (error) {
+      if (!diagnose) throw error;
+      mark('test:failed');
+      diagnosticFailure = new Error(
+        `Stale-snapshot diagnostics before cleanup: ${JSON.stringify(checkpoint())}`,
+        { cause: error },
+      );
+      throw diagnosticFailure;
     } finally {
+      mark('cleanup:entry');
       runtime.agentConfigurationMutationsClosed = true;
+      mark('activation:release');
       releaseActivation();
       releaseSnapshot?.();
       releaseDisclosure?.();
-      await Promise.allSettled([saving, initializing]);
+      const settled = await Promise.allSettled([saving, initializing]);
+      if (diagnose)
+        settled.forEach((result, index) =>
+          mark(
+            `cleanup:${index === 0 ? 'request' : 'initialize'}:${result.status}`,
+            result.status === 'rejected' ? result.reason : undefined,
+          ),
+        );
       for (const timer of runtime.timers) clearTimeout(timer);
       await runtime.drainConfigurationQueues();
       await runtime.usageTelemetry?.shutdown();
+      if (diagnosticFailure)
+        diagnosticFailure.message += `\nAfter cleanup: ${JSON.stringify(checkpoint())}`;
     }
   });
 });

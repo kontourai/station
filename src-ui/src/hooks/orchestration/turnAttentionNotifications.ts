@@ -15,9 +15,11 @@ import { isReplayThread } from './replay/replay-registry';
  * reason other than this user's Stop, or the engine replied on its own
  * (#2324). The foreground chat never toasts; the transcript already shows it.
  *
- * The server sends the same news as a push only when the user has NO live
- * event stream (`turn-completion-notifications.ts`), so a connected client
- * is the only place this is surfaced, and the two never meet.
+ * The server also records the same news (`turn-completion-notifications.ts`)
+ * and its delivery router decides which surfaces it interrupts: a focused
+ * surface with a live stream gets no OS alert or push for it. This client
+ * does not toast those records (`handleNotificationDeliveredToast`), so in
+ * the app this module is the one place a turn ending is toasted.
  *
  * Needs-input is not handled here: `request.opened` already raises an
  * approval card for every request, foreground or not.

@@ -1,0 +1,7 @@
+{
+  "revision": "67ee40b81d42741d8d0ebb7b998d7a5420fcaf21",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the changed Task workspace explanation through 67ee40b81d4 against TaskWorkspaceView, TaskTurnReferenceView and TaskOutputsSection: identity/workspace fields are disclosed on demand, Basis renders after an explicit action, and successful Keep retains Details and its confirmation while the Results badge updates. Confirmed regenerated station-docs-content.ts preserves this meaning. The focused suite catches reintroduced auto-navigation and eager Basis, with restored green. Owner screenshots inspected in both themes at wide and 390px. No hosted, provider or release claim.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

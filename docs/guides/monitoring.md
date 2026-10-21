@@ -6,13 +6,13 @@ Station has three separate measurement paths:
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
 | OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Full product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, operator tier resolves to Full, DO_NOT_TRACK permits sending, and the current disclosure receipt is acknowledged |
+| Product-usage telemetry | Independent publisher sinks owned by `UsageTelemetryService` | A configured address and resolved tier; Lite requires shown notice, Full requires that publisher's current disclosure receipt |
 
 Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
 event. Full product telemetry is pseudonymous: its installation hash rotates
-monthly and is never linked to an account by Station. Lite is identifier-free
-by contract, but has no sender in this foundation. The optional [product receiver](../../packages/telemetry-broker/README.md)
+monthly and is never linked to an account by Station. Built-in Lite is identifier-free
+by contract and sends only the completed previous UTC day after notice. Plugin publishers default Off and require opt-in; plugin-chosen Lite counts can encode identifiers even though Station adds none. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
 and deduplicates retained source/event UUIDs. Its operator queries describe received
 observations with unknown delivery coverage; these observations are separate from
@@ -442,7 +442,7 @@ in its Tempo data source. No manual import is needed.
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
 
-Product observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+Operator Full observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
 disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
 Legacy names remain supported until a separate release decision. Bootstrap
 notices name aliases or conflicts without printing key material.
@@ -939,6 +939,8 @@ Station extensions:
 | `station.output.chars` | Output character count |
 | `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
+| `station.telemetry.producer` | The telemetry producer token that delivered an ingested row. Absent on rows Station wrote itself or a paired credential sent. |
+| `station.telemetry.producer_owner` | The principal who created that token. A producer row is readable only by this principal, whatever session id the producer reported, and stays so after the token is revoked. Set from the admitted token, never from the body. |
 
 ### Emitter Methods
 
@@ -951,6 +953,47 @@ Station extensions:
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |
+
+### External telemetry producers
+
+Programs outside Station can add rows to this history through the
+[telemetry ingest routes](../reference/api.md#telemetry-ingest). Flow Agents'
+Codex and Claude Code telemetry hooks are the first such producer. The
+contract a producer implements:
+
+1. **Credential.** The operator creates a token for it:
+   `station telemetry producers create <name> --token-file=<path>`. The file
+   holds one `sti_…` token and has mode `0600`. Station keeps only its hash.
+2. **Configuration.** The producer is given the full URL of the ingest route,
+   for example `http://127.0.0.1:3141/v1/agent-events` on this machine, or
+   `https://<serve-host>/v1/agent-events` (the Tailscale Serve HTTPS address) in
+   front of the UI port for a remote producer, and the token file's path. It
+   does not guess Station's port.
+3. **Request.** One event per `POST`, with `Authorization: Bearer <token>`,
+   `Content-Type: application/json`, and the event JSON as the body
+   (`schema_version` `0.x`; see the reference for required fields).
+4. **Responses.** `2xx`: accepted. `400`: the event does not match the schema;
+   resending it will not help. `401`: no token, or an unknown or revoked one.
+   `403`: the token expired (`telemetry_producer_expired`) or the sender is not
+   on this machine and the token does not allow that
+   (`telemetry_producer_remote_not_allowed`). `413`/`429`: the body or rate
+   budget; `429` carries `Retry-After`. `503`: the token store is unreadable (the
+   [API reference](../reference/api.md#telemetry-ingest) gives the remedy).
+5. **Rotation.** Create a new token, point the producer at it, then revoke the
+   old one with `station telemetry producers revoke <name>`. Revocation and
+   expiry take effect on the next request.
+
+Session, conversation, trace, tool-call and event ids, the agent slug and the
+engine a producer reports are stored as `producer:<token name>:<value>`, so a
+producer row never joins a Station conversation, agent or engine, and a
+re-created token with the same name shares the old one's namespace. Agents reading monitoring through station-control see producer
+rows marked as external, unverified data, and the Monitoring view shows a
+`Producer:` label on them.
+
+A token accepts senders on this machine only unless it was created with
+`--allow-remote`, which a producer on another tailnet device needs. Every
+row a token writes names it in `station.telemetry.producer`. A token reads
+nothing and is refused on every other route.
 
 ### Consuming Events
 
@@ -978,7 +1021,9 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Agent buckets count chats only; there is no
+hourly activity and totals. Rows from external telemetry producers never count toward
+them; they are summarized per producer in `producerActivity`, and
+`producer=<token name>` scopes the response to one producer. Agent buckets count chats only; there is no
 per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine

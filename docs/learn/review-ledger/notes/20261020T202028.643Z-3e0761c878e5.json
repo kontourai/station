@@ -1,0 +1,7 @@
+{
+  "revision": "107c4cc2eb0d13160a51251564e9c35ffe319de4",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 round 7: the trusted repository is now chosen from the canonical root only; a repository found only on the lexical path (an agent-built parent of a link into the Project) trusts nothing and is still walked so its .codex is refused. Traced to findUnaccountedCodexConfig/findOnPath innermostRepository in codex-project-config-provenance.ts.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

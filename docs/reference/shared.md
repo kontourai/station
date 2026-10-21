@@ -11,6 +11,7 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 
 For runtime helpers, use explicit subpaths:
 
+- `@kontourai/station-shared/agent-message-frame` — agent-message framing and its read-side inverse; every message line is quoted under a fixed header. The server-recorded `clientOrigin.sender`, rather than framed text, identifies the sender. This grants no Session read, invocation or person authority.
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
@@ -75,6 +76,15 @@ It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
 retention and operator-only counts belong to the
 [Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
+
+`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
+returns undefined for unmapped labels. Full omits that field; Lite supplies
+`unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
+release list by default; the sender selects `semver` to admit valid versions
+or `custom` without claiming catalog membership.
+`mapRuntimeVersionToTelemetryVersion` preserves SemVer within the 64-character
+bound and maps other running versions to `custom` before daily validation.
+Source/fork versions can reuse a release version.
 
 `parseProductTelemetryCommitReceipt` additionally requires the exact requested
 event-ID set, valid timestamp and matching inserted/duplicate counts before a
@@ -277,6 +287,7 @@ interface PluginPreview {
   valid: boolean;
   error?: string;
   manifest?: PluginManifest;
+  hasBundle?: boolean;
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }
@@ -296,6 +307,10 @@ interface ConflictInfo {
   existingSource?: string;
 }
 ```
+
+`hasBundle` reports whether the staged root plugin already contains
+`dist/bundle.js`. Installation may build client code from `manifest.entrypoint`
+even when this field is false; it does not establish runtime readiness.
 
 ## agent types
 
@@ -810,7 +825,12 @@ legacy top-level fields. Read it with `readNotificationEnvelope` from
 `@kontourai/station-shared/notification-envelope`. Missing, unknown-version or
 malformed envelopes return `undefined`. Valid v1 reads ignore unknown keys;
 an unknown source or audience kind forces silent presentation, and an unknown
-target kind drops that target.
+target kind drops that target. A `path` target must be a same-origin Station
+path (`isRelativeStationPath`) whose normalized form also stays on Station:
+dot segments that collapse to `//host` (`/..//host`, `/%2e%2e//host`) make the
+envelope malformed, as do a fragment and an `openedNotification` parameter
+(opening a link that names a record marks it read; only the server's OS-alert
+links may).
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
 keys, known kinds, no unresolved `principal` audience, and no producer-authored
@@ -1394,3 +1414,14 @@ See the [connection factory](../../packages/shared/src/mcp-connection.ts),
 [custody owner](../../packages/shared/src/mcp-local-custody.ts),
 [CLI caller](../../packages/cli/src/dev/mcp.ts), and
 [Station MCP composition](../../src-server/runtime/mcp/mcp-manager.ts).
+
+
+## Plugin publisher telemetry
+
+`@kontourai/station-shared/plugin-telemetry` is a Node-only leaf for strict
+`parsePublisherTelemetryDeclaration`, `parsePluginDailyPing(payload, declaration, namespacedPublisher)`,
+count bucketing, namespaced publisher IDs and inventory fingerprints. The Node-only `public-network` subpath shares the development proxy public-address validator and pinned lookup with plugin telemetry; it validates every resolved DNS answer. It exports
+`PLUGIN_TELEMETRY_DATA_REVISION` separately from Station's built-in data revision.
+The parser is reusable by a future broker lane; importing it does not enable
+broker acceptance. See [Publisher analytics](../guides/plugins.md#publisher-analytics)
+and the [owning source](../../packages/shared/src/plugin-telemetry.ts).
