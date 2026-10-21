@@ -449,6 +449,15 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  // This leaf mints a mounted plugin capability, rather than ingesting events.
+  // Standard paired clients must not create credentials for another plugin.
+  {
+    id: '/api/telemetry/panes:manage',
+    method: 'POST',
+    prefix: '/api/telemetry/panes',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/account-usage:manage',
     method: '*',

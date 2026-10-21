@@ -822,6 +822,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ],
     ['GET', '/api/usage-telemetry/disclosure', 'orchestration:read'],
     ['GET', '/api/usage-telemetry/delivery-status', 'orchestration:read'],
+    ['POST', '/api/telemetry/panes', 'access:manage'],
     ['POST', '/api/usage-telemetry/connection-checks/product', 'access:manage'],
     ['POST', '/api/usage-telemetry/connection-checks/otel', 'access:manage'],
     [
@@ -1784,4 +1785,37 @@ describe('engine device-code login routes', () => {
       requiredPairingScope('GET', '/api/connections/agent/:id/enrolment/:ref'),
     ).toBe('access:manage');
   });
+});
+
+test('minting a plugin telemetry pane capability requires an access-management credential', async () => {
+  const required = requiredPairingScope('POST', '/api/telemetry/panes');
+  expect(required).toBe('access:manage');
+  expect(isLeafScopeDeclared('POST', '/api/telemetry/panes')).toBe(true);
+  for (const granted of [
+    pairingScopePresetString('read-only'),
+    pairingScopePresetString('standard'),
+  ]) {
+    await expect(
+      credentialAuthorizedForScope(
+        {
+          verifyCredential: async () => true,
+          identifyDevice: () => null,
+          resolveGrantedScope: async () => granted,
+        },
+        required!,
+        'paired-device',
+      ),
+    ).resolves.toBe(false);
+  }
+  await expect(
+    credentialAuthorizedForScope(
+      {
+        verifyCredential: async () => true,
+        identifyDevice: () => null,
+        resolveGrantedScope: async () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+      required!,
+      'local-grant',
+    ),
+  ).resolves.toBe(true);
 });

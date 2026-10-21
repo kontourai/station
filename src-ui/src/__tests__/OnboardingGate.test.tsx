@@ -26,6 +26,7 @@ import {
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
+import { SHARING_LABELS } from '../components/UsageSharingChoices';
 import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
 import type { BundledServerStatus } from '../platform/native';
 
@@ -586,12 +587,15 @@ describe('OnboardingGate', () => {
             <PendingReads />
           </RecoveryQueryBoundary>,
         );
-      const label = { off: 'Off', lite: 'Lite', full: 'Full' }[tier];
+      const label = SHARING_LABELS[tier];
+      const disclosureReads = () =>
+        reads.mock.calls.filter(([url]) => String(url).includes('/disclosure'))
+          .length;
       let view = mount();
       fireEvent.click(await screen.findByRole('radio', { name: label }));
       fireEvent.click(
         screen.getByRole('button', {
-          name: `Save operator choice as ${label}`,
+          name: 'Save choice',
         }),
       );
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -605,8 +609,11 @@ describe('OnboardingGate', () => {
       resetUsageTelemetryDisclosureDismissal();
       localStorage.clear();
       for (const [key, value] of persisted) localStorage.setItem(key, value);
+      let priorDisclosureReads = disclosureReads();
       view = mount();
-      await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(disclosureReads()).toBeGreaterThan(priorDisclosureReads),
+      );
       await waitFor(() =>
         expect(
           screen.getByLabelText('Pending disclosure reads').textContent,
@@ -615,8 +622,11 @@ describe('OnboardingGate', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
       view.unmount();
       dnt = false;
+      priorDisclosureReads = disclosureReads();
       view = mount();
-      await waitFor(() => expect(reads).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(disclosureReads()).toBeGreaterThan(priorDisclosureReads),
+      );
       await waitFor(() =>
         expect(
           screen.getByLabelText('Pending disclosure reads').textContent,
@@ -625,7 +635,7 @@ describe('OnboardingGate', () => {
       if (tier === 'full') {
         expect(screen.getByRole('dialog')).toBeTruthy();
         expect(
-          screen.getByRole('button', { name: 'Allow Full usage telemetry' }),
+          screen.getByRole('button', { name: 'Save choice' }),
         ).toBeTruthy();
       } else {
         expect(screen.queryByRole('dialog')).toBeNull();

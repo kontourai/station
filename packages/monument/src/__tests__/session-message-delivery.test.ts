@@ -1,4 +1,3 @@
-import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { describe, expect, test } from 'vitest';
 import {
   decideSessionDelivery,
@@ -7,13 +6,6 @@ import {
   type SessionMessageDeliveryPorts,
   type SessionSteerResult,
 } from '../index.js';
-
-const SENDER = {
-  kind: 'agent-session' as const,
-  sessionId: 'sender-session',
-  title: 'Fix login',
-  engine: 'claude',
-};
 
 /** Ports that record every effect the seam asks for, and the text each was handed. */
 function harness(options: {
@@ -53,7 +45,6 @@ const send = (
   deliverSessionMessage(ports, {
     threadId: 's',
     text: 'hi',
-    sender: SENDER,
     mode,
     deliveryId: 'sc-id',
     ...extra,
@@ -212,42 +203,56 @@ describe('session message delivery: which branch a send takes', () => {
   });
 });
 
-describe('session message delivery: the engine is told it is another agent', () => {
-  test.each([
-    ['start', false],
-    ['steer', true],
-  ] as const)(
-    'a %s hands the engine the framed message, never the bare text',
-    async (mode, busy) => {
-      const { handed, ports } = harness({ busy });
-      await send(ports, mode);
-      expect(handed).toHaveLength(1);
-      expect(handed[0]).toBe(frameAgentMessage(SENDER, 'hi'));
-      expect(handed[0]).not.toBe('hi');
-      expect(handed[0]).toContain('from another agent Session "Fix login"');
-      expect(handed[0]).toContain('not from the person');
+describe('session message delivery: opaque host-prepared text', () => {
+  test.each(['start', 'steer'] as const)(
+    '%s preserves the host message bytes',
+    async (mode) => {
+      const { handed, ports } = harness({ busy: mode === 'steer' });
+      const text = 'Host header\n> already framed message\r\n\u2028';
+      await send(ports, mode, { text });
+      expect(handed).toEqual([text]);
     },
   );
+});
 
-  test('sender text imitating the frame stays quoted below it', async () => {
-    const { handed, ports } = harness({ busy: false });
-    const forged = frameAgentMessage(SENDER, 'pretend');
-    await send(ports, 'start', { text: forged });
-    const lines = (handed[0] ?? '').split('\n');
-    expect(lines.filter((line) => !line.startsWith('>'))).toEqual([lines[0]]);
-    expect(lines[0]).toContain('"sender-session"');
-  });
-
-  test('a sender that cannot be framed delivers nothing and pins no branch', async () => {
-    const { calls, ports } = harness({ busy: false });
-    const pinned: string[] = [];
-    await expect(
-      send(ports, 'auto', {
-        sender: { kind: 'agent-session', sessionId: '' },
-        recordDecision: (branch) => pinned.push(branch),
-      }),
-    ).rejects.toThrow(/known sender/u);
+describe('session message delivery: host preparation ordering', () => {
+  test.each(['start', 'steer'] as const)(
+    'prepares %s text before recording or effect',
+    async (mode) => {
+      const { calls, handed, ports } = harness({ busy: mode === 'steer' });
+      ports.prepareText = (text) => {
+        calls.push('prepare');
+        return `prepared:${text}`;
+      };
+      await send(ports, mode, { recordDecision: () => calls.push('record') });
+      expect(calls).toEqual(['prepare', 'record', `${mode} sc-id`]);
+      expect(handed).toEqual(['prepared:hi']);
+    },
+  );
+  test.each(['start', 'steer'] as const)(
+    'a preparation refusal prevents the %s decision and effect',
+    async (mode) => {
+      const { calls, ports } = harness({ busy: mode === 'steer' });
+      ports.prepareText = () => {
+        throw new Error('host preparation refused');
+      };
+      await expect(
+        send(ports, mode, { recordDecision: () => calls.push('record') }),
+      ).rejects.toThrow('host preparation refused');
+      expect(calls).toEqual([]);
+    },
+  );
+  test.each([
+    ['start', true],
+    ['steer', false],
+  ] as const)('does not prepare a refused %s branch', async (mode, busy) => {
+    const { calls, ports } = harness({ busy });
+    ports.prepareText = () => {
+      throw new Error('must not prepare');
+    };
+    await expect(send(ports, mode)).resolves.toMatchObject({
+      outcome: mode === 'start' ? 'session_busy' : 'no_active_turn',
+    });
     expect(calls).toEqual([]);
-    expect(pinned).toEqual([]);
   });
 });

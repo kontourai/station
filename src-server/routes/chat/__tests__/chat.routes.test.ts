@@ -6,6 +6,8 @@ import { describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import type { ITool, RuntimeContext } from '../../../runtime/types.js';
 import { createProjectNativeToolLoader } from '../../../services/projects/project-native-tools.js';
@@ -36,6 +38,13 @@ const { createChatRoutes, externalEngineChatRedirectMessage } = await import(
   '../chat.js'
 );
 const { prepareChatRequest } = await import('../chat-request-preparation.js');
+const { resolveChatAgentModelOverride } = await import(
+  '../chat-model-override.js'
+);
+const realModelOverride = await vi.importActual<
+  typeof import('../chat-model-override.js')
+>('../chat-model-override.js');
+const makeTempDir = trackTempDirs();
 
 type ProjectChatFixture = Pick<
   RuntimeContext,
@@ -60,6 +69,150 @@ type ProjectChatFixture = Pick<
 };
 
 describe('Chat Routes', () => {
+  test.each(['station', 'reader'])(
+    '/%s/chat retains its registered tools, memory and approval hooks when selecting another model',
+    async (publicSlug) => {
+      const runtimeKey = publicSlug === 'station' ? 'default' : publicSlug;
+      const home = makeTempDir('chat-model-override-');
+      const memory = new FileMemoryAdapter({ projectHomeDir: home });
+      const hooks = {
+        beforeToolCall: vi.fn(async () => false),
+        registerApprovalRequester: vi.fn(() => vi.fn()),
+      };
+      const tool: ITool = {
+        name: 'owned_read',
+        description: 'Read with the registered Agent',
+        parameters: z.object({}),
+        execute: async () => 'owned result',
+      };
+      const framework = new VoltAgentFramework();
+      const registered = await framework.createTempAgent({
+        agentId: publicSlug,
+        name: runtimeKey,
+        instructions: 'Keep my registered instructions',
+        model: {},
+        tools: [tool],
+        memoryAdapter: memory,
+        hooks,
+      });
+      assert('raw' in registered && registered.raw instanceof Agent);
+      const createTempAgent = vi.fn(
+        (options: Parameters<VoltAgentFramework['createTempAgent']>[0]) =>
+          framework.createTempAgent(options),
+      );
+      const provider = {
+        id: 'local-models',
+        name: 'Local models',
+        type: 'ollama' as const,
+        enabled: true,
+        capabilities: ['llm' as const],
+        config: {},
+      };
+      const ctx: ProjectChatFixture &
+        Pick<RuntimeContext, 'agentTools' | 'agentHooksMap'> & {
+          framework: Pick<
+            RuntimeContext['framework'],
+            'createModel' | 'createTempAgent'
+          >;
+          providerService: Pick<
+            RuntimeContext['providerService'],
+            | 'getLaunchabilityRevision'
+            | 'listProviderConnections'
+            | 'resolveModelForProvider'
+          >;
+        } = {
+        appConfig: { defaultModel: '', invokeModel: '', structureModel: '' },
+        activeAgents: new Map([[runtimeKey, registered]]),
+        agentSpecs: new Map(),
+        agentTools: new Map([[runtimeKey, registered.raw.getTools()]]),
+        memoryAdapters: new Map([[runtimeKey, memory]]),
+        agentHooksMap: new Map([[runtimeKey, hooks]]),
+        storageAdapter: {
+          getProject: () => {
+            throw new Error('A chat without a Project must not look one up.');
+          },
+        },
+        configLoader: {
+          getProjectHomeDir: () => home,
+          getLaunchabilityRevision: () => 0,
+        },
+        providerService: {
+          getLaunchabilityRevision: () => 0,
+          listProviderConnections: () => [provider],
+          resolveModelForProvider: async (_id, model) => model,
+        },
+        getAgentConfigurationRevision: () => 0,
+        commitAgentConfigurationRead: async (_revision, operation) =>
+          operation(),
+        framework: {
+          createModel: async () => ({}),
+          createTempAgent,
+        },
+        logger: {
+          debug: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        },
+      };
+      const app = createChatRoutes(
+        // @ts-expect-error Request preparation and streaming are replaced after the real route/resolver/framework selection.
+        ctx,
+      );
+      streamPrimaryAgentChat.mockReturnValue(new Response('stream'));
+      for (const model of ['model-a', 'model-b']) {
+        vi.mocked(prepareChatRequest).mockResolvedValueOnce({
+          options: { model },
+          resolvedProviderConn: provider,
+          injectContext: null,
+          ragContext: null,
+          contextInjection: {},
+        });
+        vi.mocked(resolveChatAgentModelOverride).mockImplementationOnce(
+          realModelOverride.resolveChatAgentModelOverride,
+        );
+        const response = await app.request(`/${publicSlug}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: 'hello', options: { model } }),
+        });
+        expect(response.status).toBe(200);
+        const selected = streamPrimaryAgentChat.mock.calls.at(-1)?.[0].agent;
+        expect(selected.getTools().map((value: ITool) => value.name)).toEqual([
+          'owned_read',
+        ]);
+        expect(createTempAgent.mock.calls.at(-1)?.[0]).toMatchObject({
+          agentId: publicSlug,
+          instructions: 'Keep my registered instructions',
+          memoryAdapter: memory,
+          hooks,
+        });
+        const conversationId = `${publicSlug}-${model}`;
+        await selected.getMemory().createConversation({
+          id: conversationId,
+          resourceId: publicSlug,
+          userId: 'owner',
+        });
+        await selected.getMemory().saveMessageWithContext(
+          {
+            id: conversationId,
+            role: 'user',
+            parts: [{ type: 'text', text: model }],
+          },
+          'owner',
+          conversationId,
+        );
+        expect(await memory.getMessages('owner', conversationId)).toEqual([
+          expect.objectContaining({
+            parts: [{ type: 'text', text: model }],
+          }),
+        ]);
+      }
+      expect(ctx.activeAgents.size).toBe(2);
+      expect(ctx.activeAgents.get(runtimeKey)).toBe(registered);
+    },
+  );
+
   test.each(['station', 'reader'])(
     'loads Project tools for /%s/chat without leaking them into the shared Agent',
     async (publicSlug) => {
