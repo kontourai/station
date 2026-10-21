@@ -1,0 +1,7 @@
+{
+  "revision": "2f80811dc733492aa9a67dba4788248bb70557aa",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed only the native-return ordinary-follow-up delta against ConversationLineage and its exact handoff-status read: after observed seeded-turn failure, an ordinary send is explicitly refused before reuse/resume; no start-boundary reopening or automatic resend. New real service/adapter qualification failed before repair while six existing cases passed; after repair four owner suites passed28 and server-test types passed after own Connect build. Existing session/fork provenance and caller authority remain unchanged. Limits: durable seed pinning, accepted-through cursor, live provider/account, UI, hosted delivery and master landing remain unqualified.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
