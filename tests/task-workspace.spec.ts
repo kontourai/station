@@ -678,9 +678,9 @@ test.describe
       });
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await page.getByRole('tab', { name: /^Results/ }).click();
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await page
-        .getByRole('tabpanel', { name: /^Results/ })
+        .getByRole('tabpanel', { name: 'Details', exact: true })
         .locator('summary', { hasText: 'Answer details' })
         .click();
       await expect(
@@ -712,9 +712,9 @@ test.describe
         uiOrigin: live.ui,
       });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await page.getByRole('tab', { name: /^Results/ }).click();
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await page
-        .getByRole('tabpanel', { name: /^Results/ })
+        .getByRole('tabpanel', { name: 'Details', exact: true })
         .locator('summary', { hasText: 'Answer details' })
         .click();
       await expect(

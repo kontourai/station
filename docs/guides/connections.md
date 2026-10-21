@@ -1036,7 +1036,7 @@ Agent can bind its own Model connection through `execution.modelConnectionId`.
 For Station-engine Agents, connection selection uses that explicit binding,
 then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
 connections without a default are ambiguous; readiness does not silently choose
-one. See [Agent configuration](agents.md#agent-configuration).
+one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
 The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or

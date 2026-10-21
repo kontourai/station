@@ -399,6 +399,51 @@ last 100 non-merge `origin/main` subjects still pass and that every merge
 subject in the last 3000 commits is exempt or conforming, so a vocabulary
 that stops fitting the repo fails a gate rather than its contributors.
 
+## Landing a pull request
+
+`main` is governed by the **main requires green checks** ruleset, which
+includes a merge queue. The ruleset is the authority for required checks,
+batching, and merge method; read it rather than copying its values into
+prose that drifts:
+
+```bash
+gh api repos/kontourai/station/rules/branches/main
+```
+
+- **Arm auto-merge; do not merge by hand.**
+  `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
+  PR: a green PR that nobody armed sits forever, which is the usual reason a
+  ready PR has not landed.
+- **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
+  the strategy, and `gh pr merge --squash` is refused with `The merge strategy
+  for main is set by the merge queue`. The `pull_request` rule's
+  `allowed_merge_methods` list does not grant permission to pass a flag.
+- **Read the queue, not the exit text.** A refused method flag prints a `!`
+  line that looks like a failure while the PR is queued anyway, and a second
+  attempt then reports `already queued to merge`. `autoMergeRequest` is `null`
+  for an entry already in the queue. The merge queue has no REST endpoint, so
+  confirm once with this GraphQL query, using the
+  [automation token](#github-automation-token), then stop:
+
+  ```bash
+  gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
+    mergeQueue { entries(first:20) { nodes {
+      position state pullRequest { number } } } } } }'
+  ```
+
+  Never poll the queue; a red or conflicted dequeue shows only on the PR
+  itself. A red entry is removed and the entries behind it rebuild.
+- **Branches need not be up to date** (`strict_required_status_checks_policy`
+  is `false`), but two independently green PRs can still break `main` in
+  combination. `.github/workflows/main-health.yml` files a P1 when that
+  happens.
+- **Keep authorship real.** The ruleset sets
+  `require_extra_approval_for_unattributed_changes`, so a commit GitHub cannot
+  attribute needs an extra approval. Credit delegates with a `Co-authored-by:`
+  trailer.
+- **Do not arm another lane's in-flight PR.** Coordinate with the owning
+  session first; green checks do not make its merge yours.
+
 ## GitHub automation token
 
 Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
@@ -440,7 +485,7 @@ Each refusal starts with a stable reason code, such as
 `gh api repos/kontourai/station/commits/<sha>/check-runs` and
 `gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
 REST endpoint, so confirm an armed PR with the single GraphQL query in
-[AGENTS.md](../../AGENTS.md), once, with the app token.
+[Landing a pull request](#landing-a-pull-request), once, with the app token.
 
 ### Setup (owner, once)
 
@@ -513,8 +558,9 @@ the full static/build chain or full Vitest corpus.
 Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
-The required `fast-checks` result combines job outcomes with exact-plan shard
-receipts. A failing shard also annotates each failed test and uploads its
+The `fast-checks` result combines job outcomes with exact-plan shard receipts;
+the required `Source verification policy` context reconciles it (the
+[ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.

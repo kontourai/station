@@ -563,15 +563,6 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Results"
       >
         <TaskRoomResults task={graph.task} />
-        <details className="task-workspace__record-details">
-          <summary>Answer details</summary>
-          <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
-            <TaskTurnReferenceView
-              taskId={taskId}
-              projectId={graph.task.projectId}
-            />
-          </WorkspacePaneHostOpenContext.Provider>
-        </details>
       </div>
       <div
         className="task-room-panel"
@@ -604,6 +595,18 @@ function TaskWorkspaceContent({
           onOpenActionChange={captureBasisHostOpen}
           visible={basisVisible}
         />
+        {/* #3883: Kept answers open Basis panes into the host just above, in
+            the same panel, so an already-visible strip and focused tab can be
+            revealed without moving the page. */}
+        <details className="task-workspace__record-details">
+          <summary>Answer details</summary>
+          <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
+            <TaskTurnReferenceView
+              taskId={taskId}
+              projectId={graph.task.projectId}
+            />
+          </WorkspacePaneHostOpenContext.Provider>
+        </details>
         <TaskUserInputReferences taskId={taskId} />
         <TaskOutputsSection
           task={graph.task}

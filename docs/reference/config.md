@@ -5,7 +5,7 @@ most behavior: `config/app.json` for runtime-wide settings and
 `agents/<slug>/agent.json` per agent. Shared saved-Station metadata is separate
 at `$STATION_ROOT/config/profiles.json`.
 
-For usage context, see [docs/guides/agents.md](../guides/agents.md).
+For usage context, see [docs/guides/agent-configuration.md](../guides/agent-configuration.md).
 
 ---
 
@@ -475,7 +475,7 @@ full TTL window.
 ### tools
 
 Controls integration selection and Station-engine approval. Provider delivery and
-external-engine approval are separate; see the [Agent guide](../guides/agents.md).
+external-engine approval are separate; see the [Agent guide](../guides/agent-configuration.md).
 
 | field | type | description |
 |---|---|---|
@@ -483,9 +483,9 @@ external-engine approval are separate; see the [Agent guide](../guides/agents.md
 | `mcpMode` | `add` / `replace` | Preserve harness MCP integrations or replace their configured list. Omission retains legacy engine behavior. Harness built-in tools remain. |
 | `mcpLoading` | `on-demand` / `always` | Claude native tool-search setting; omission preserves the harness default. |
 | `available` | string[] | Loaded-tool filter. Omitted or `["*"]` includes all loaded tools; `[]` includes none. The VoltAgent loader matches runtime/original MCP names through its mapping; Strands matches runtime/mapped original names and trailing-`*` prefixes. |
-| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agents.md#what-autoapprove-never-covers)) |
+| `autoApprove` | string[] | Tool-name grants that skip interactive confirmation after stale-generation, delegation, and config-protection checks. The Station-engine hook matches runtime names and exact loader-qualified `mcp/<server>/<action>` keys; external-engine approval is separate. A grant covers plain calls only, never an escalation or a plan exit, even for `*` (see [what autoApprove never covers](../guides/agent-configuration.md#what-autoapprove-never-covers)) |
 | `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
-| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
+| `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agent-configuration.md#unattended-runs) |
 
 Project source permissions are stored separately in
 `<STATION_HOME>/security/tool-library.json`, keyed by exact local Project ID.

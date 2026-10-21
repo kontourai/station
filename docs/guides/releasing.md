@@ -142,10 +142,10 @@ main advancement does not require a fresh PR run; divergent base evidence does
 not qualify. A failed, cancelled, missing or unfinished source proof cannot
 be replaced by an older success. Metadata-only suites do not own source proof.
 
-During activation, retain required `fast-checks` until real `Source verification
-policy` statuses are verified on the intended heads, then replace only that
-required context. Keep CodeQL, dependency review, Windows, iOS, merge-queue
-regression and title policy requirements. The legacy `fast-checks` source aggregate remains available through migration;
+Activation replaced only the required `fast-checks` context with `Source
+verification policy` after real statuses were verified on the intended heads;
+CodeQL, dependency review, Windows, iOS, merge-queue regression and title
+policy remain required (the ruleset lists required contexts). The legacy `fast-checks` source aggregate remains available through migration;
 its skipped metadata job is never admission evidence.
 Use the publisher's explicit exact-SHA dispatch only to reconcile existing
 trusted evidence during rollout; do not manually write successful statuses.

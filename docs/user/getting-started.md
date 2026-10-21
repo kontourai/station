@@ -32,7 +32,7 @@ AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
-the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
+the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,

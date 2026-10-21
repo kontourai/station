@@ -301,6 +301,25 @@ function json(data: unknown) {
 }
 
 /** Whether no part of any matched element is inside the viewport. */
+/**
+ * A Task opens on Chat; Kept answers (Answer details) and the Basis host share
+ * the Details tab, as the reveal contract (#3883) requires.
+ */
+async function openAnswerDetails(page: Page) {
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
+  const answerDetails = page
+    .getByRole('tabpanel', { name: 'Details', exact: true })
+    .locator('details', {
+      has: page.locator('summary', { hasText: 'Answer details' }),
+    });
+  if (
+    !(await answerDetails.evaluate((node) => (node as HTMLDetailsElement).open))
+  )
+    await answerDetails
+      .locator('summary', { hasText: 'Answer details' })
+      .click();
+}
+
 function outOfView(target: Locator): Promise<boolean> {
   return target.evaluateAll((nodes) =>
     nodes.every((node) => {
@@ -365,7 +384,9 @@ function scrollOffsets(page: Page): Promise<number[]> {
 /** Whether every matched element sits in view below the page's sticky header. */
 function inViewBelowHeader(target: Locator): Promise<boolean> {
   return target.evaluateAll((nodes) => {
-    const header = document.querySelector('.task-workspace > .detail-header');
+    const header =
+      document.querySelector('.task-workspace > .detail-header') ??
+      document.querySelector('.page-frame > .page-frame__header');
     const top = header?.getBoundingClientRect().bottom ?? 0;
     return (
       nodes.length > 0 &&
@@ -1056,6 +1077,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(
     page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toBeVisible();
+  await openAnswerDetails(page);
   const answerReference = page.locator('.task-workspace__answer-reference');
   await expect(answerReference).toHaveCount(1);
   await expect(
@@ -1083,16 +1105,20 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expectNoBlockingAccessibilityViolations(page, 'task-answer-support');
 
   await page.setViewportSize({ width: 1280, height: 900 });
+  // #3883: the Basis host renders on the first open, so before it the room
+  // (and its tab strip) is not shown: the first Open Basis must reveal it.
+  await expect(
+    page.getByRole('region', { name: 'Task room workspace' }),
+  ).toBeHidden();
+  const openBasis = page.getByRole('button', { name: 'Open Basis' });
+  await openBasis.scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole('tablist', { name: 'Workspace panes' }),
+  ).toBeHidden();
+  await openBasis.click();
   await expect(
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeVisible();
-  const openBasis = page.getByRole('button', { name: 'Open Basis' });
-  // #3883: the room the pane opens in is far above Kept answers.
-  await openBasis.scrollIntoViewIfNeeded();
-  expect(
-    await outOfView(page.getByRole('tablist', { name: 'Workspace panes' })),
-  ).toBe(true);
-  await openBasis.click();
   const nativeBasis = page.locator('.station-basis-pane');
   await expect(nativeBasis).toBeVisible();
   await expectOpenedPaneRevealed(page, nativeBasis);
@@ -1359,6 +1385,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   roomAvailable = false;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await openAnswerDetails(page);
   const mobileBasisTrigger = page.getByRole('button', { name: 'Open Basis' });
   await mobileBasisTrigger.focus();
   await mobileBasisTrigger.click();
@@ -1579,6 +1606,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   });
 
   await page.goto('/tasks/pinned-input-ui');
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const inputs = page.getByRole('region', { name: 'Pinned inputs' });
   await expect(inputs).toContainText(
     'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
@@ -1586,7 +1614,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await expect(inputs).toContainText('brief.png · image/png · 1,024 bytes');
   await expect(inputs.getByText('Authored prompt')).toHaveCount(0);
   await expect(
-    contrastRatio(page.locator('.detail-header__badge--muted')),
+    contrastRatio(page.locator('.task-room-status-pill')),
   ).resolves.toBeGreaterThanOrEqual(4.5);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
@@ -1597,6 +1625,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await expectNoBlockingAccessibilityViolations(page, 'task-user-input-pin');
 
   await page.goto('/tasks/pinned-input-revoked');
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const revoked = page.getByRole('region', { name: 'Pinned inputs' });
   await expect(revoked).toContainText('Pinned inputs are unavailable');
   await expect(revoked.getByRole('button', { name: 'Retry' })).toBeVisible();

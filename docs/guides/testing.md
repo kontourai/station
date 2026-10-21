@@ -78,6 +78,10 @@ even complete disposition coverage does not prove that no other defects exist.
 
 ## Fixture fidelity and test effectiveness
 
+Structural scans prove only structural rules. Use typed fixtures and real user
+actions, and profile before adding a performance abstraction. Review the delta
+of every fix round, and bind each measurement to its revision and environment.
+
 Blocking checks must name the failure they prevent. Documentation gates should
 verify runnable commands, links, schemas, generated references, and disclosure
 boundaries; prose wording and line wrapping are editorial, not release criteria.
@@ -202,7 +206,8 @@ then success or failure after live validation. Trusted workflow code validates
 all open main-target PRs sharing that exact head; a truncated inventory fails.
 Publishers serialize by SHA and never wait for source jobs or install dependencies. Source pushes and base retargets still run the
 source checks. On metadata-only events the skipped source aggregate has a
-different name, so it cannot replace a failing required `fast-checks` result.
+different name, so it cannot replace a failing `fast-checks` result, which the
+required `Source verification policy` context reconciles.
 The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
 That merge-group acknowledgment POST retries explicit HTTP 500, 502, 503 and 504
@@ -2212,7 +2217,9 @@ invariants must state the product decision and replacement behavioral evidence
 in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
-The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
+The `fast-checks` check is an aggregator (#2709); the required `Source
+verification policy` context reconciles it, and the ruleset lists required
+contexts. `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
 `scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
@@ -2250,8 +2257,9 @@ Transitionally, a pull request branched before the sharded lane (no
 job and `fast-checks-statics`; its statics therefore run twice. That path is
 removed once open pull requests have merged `main`.
 
-The required `fast-checks` check covers critical browser smoke before merge,
-through `fast-checks-statics`.
+The `fast-checks` check, reconciled by the required `Source verification
+policy` context, covers critical browser smoke before merge, through
+`fast-checks-statics`.
 The required repository-governance evidence rejects moving that suite into an
 optional/manual dependency or swallowing its result. Product-law observations
 use named structured results: missing, skipped, or unavailable evidence is not

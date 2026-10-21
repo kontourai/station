@@ -2556,11 +2556,12 @@ Shared history pages retain their continuation cursor and human-only filter.
 Room dispatch records a human-authored title separately from the provider prompt
 that includes the brief. Failed runs retain retry and inspection controls.
 
-`WorkspacePaneHost` remains in Details for Basis. Open Basis and Open Whole Task
-Basis from Results reveal Details and the pane, select the pane and focus its
-host tab. The page-published open action retains the #3883 reveal behavior:
-unless the visible room's tab strips were already in view, it scrolls the tab's
-pane group into view below the applicable page header. An already-visible strip
+`WorkspacePaneHost` remains in Details for Basis, with Kept answers (Answer
+details) directly below it in the same panel. Open Basis and Open Whole Task
+Basis reveal the pane, select it and focus its host tab. The page-published
+open action retains the #3883 reveal behavior: unless the visible room's tab
+strips were already in view, it scrolls the tab's pane group into view below
+the applicable page header. An already-visible strip
 and focused tab cause no extra reveal scroll. The host retains its tabbed
 presentation; the Basis renderer uses chromeless presentation to omit duplicate
 portable MCP App controls. Identity and workspace fields are collapsed by default.

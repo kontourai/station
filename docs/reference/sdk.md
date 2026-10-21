@@ -74,7 +74,7 @@ commands, environment variables or credential material. Personal tool accounts
 require the managed Station engine; external engines report these sources as
 unsupported. Installation, Project
 policy and personal account connection remain distinct operations. See the
-[Agent guide](../guides/agents.md#shared-projects) and
+[Agent guide](../guides/agent-configuration.md#shared-projects) and
 [API reference](api.md#project-tool-library).
 
 ## Agent development entry
