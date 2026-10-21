@@ -48,6 +48,8 @@ const makeTempDir = trackTempDirs();
 
 /** Every engine send into the lead, across every incarnation. */
 let sends: string[] = [];
+/** Each send's invocation, which a turn's events carry back (#3991). */
+let invocations: (string | undefined)[] = [];
 let incarnation = 0;
 let sequence = 0;
 
@@ -56,6 +58,7 @@ class CountingAdapter extends GateTestAdapter {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     sends.push(input.input);
+    invocations.push(input.invocationId);
     return { threadId: input.threadId, turnId: `turn-${sends.length}` };
   }
 }
@@ -131,6 +134,15 @@ function boot(
         })),
     headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
     coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+    // The production inbox's durable turn-boundary reads
+    // (`createThreadInboxDelivery` in runtime-routes.ts): without them the
+    // inbox treats every Session as busy and never delivers.
+    hasPossibleEffect: (threadId) =>
+      store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
+    readInputlessTurnDisposition: (threadId) =>
+      store.readInputlessTurnDisposition(threadId),
+    readInvocationTerminal: (threadId, invocationId, turnId) =>
+      store.readInvocationTerminal(threadId, invocationId, turnId),
     conversationOf: (threadId) =>
       store.conversationForSession(threadId)?.conversationId ?? threadId,
     currentSessionId: (conversationId) =>
@@ -259,6 +271,8 @@ async function emit(
   world: World,
   method: string,
   fields: Record<string, unknown>,
+  /** The send this turn's events belong to, as a real engine reports it. */
+  invocationId?: string,
 ) {
   sequence += 1;
   world.adapter.events.push({
@@ -268,6 +282,7 @@ async function emit(
     createdAt: new Date().toISOString(),
     method,
     ...fields,
+    ...(invocationId === undefined ? {} : { invocationId }),
   } as unknown as CanonicalRuntimeEvent);
   await new Promise((resolve) => setTimeout(resolve, 5));
 }
@@ -326,6 +341,7 @@ afterEach(async () => {
     world.store.close();
   }
   sends = [];
+  invocations = [];
 });
 
 describe('Task question lead wake (#4003)', () => {
@@ -378,8 +394,9 @@ describe('Task question lead wake (#4003)', () => {
         },
       }),
     ).toMatchObject({ kind: 'recorded', record: { version: 2 } });
-    await emit(world, 'turn.started', { turnId: 'turn-1' });
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // The question's wake turn runs and ends; the answer's wake follows it.
+    await emit(world, 'turn.started', { turnId: 'turn-1' }, invocations[0]);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, invocations[0]);
     await settle(world);
     expect(wakeSends()).toHaveLength(2);
     expect(wakeSends()[1]).toContain('answered by a person (owner-1)');
@@ -397,12 +414,17 @@ describe('Task question lead wake (#4003)', () => {
       type: 'sendTurn',
       input: { threadId: LEAD, input: 'work', clientTurnId: 'first' },
     });
-    await emit(world, 'turn.started', { turnId: 'turn-1', prompt: 'work' });
+    await emit(
+      world,
+      'turn.started',
+      { turnId: 'turn-1', prompt: 'work' },
+      invocations[0],
+    );
     await askAsHelper(world);
     await settle(world);
     expect(wakeSends()).toEqual([]);
     expect(world.inbox.list(LEAD)).toMatchObject([{ state: 'queued' }]);
-    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, invocations[0]);
     await settle(world);
     expect(wakeSends()).toHaveLength(1);
   });
