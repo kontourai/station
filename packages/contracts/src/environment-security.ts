@@ -1185,6 +1185,13 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /**
+   * The authenticated delegation-group lifecycle and supervision routes are
+   * mounted with their host authority owners. Absent/false means unsupported;
+   * single-delegation, preparation and client exports do not imply support.
+   * This static protocol flag does not establish provider availability or consent.
+   */
+  delegationGroups?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /** Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`). */

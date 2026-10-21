@@ -5118,6 +5118,10 @@ Their public data types live in `@kontourai/station-contracts/delegation-group`.
 These are transport clients: corresponding server routes are not mounted in
 this increment, paid execution is unavailable, and package publication remains
 unverified. The clients do not issue preparation, grants, budgets or acceptance.
+The public handshake's `capabilities.delegationGroups` is currently `false`.
+Absent/false means unsupported, including older receivers. Single-delegation or
+preparation support and SDK exports cannot substitute for this capability. The
+transport functions do not automatically negotiate it.
 
 Every operation takes `apiBase` first and optional `ClientRequestOptions` last.
 Create accepts `{preparationId, operationId}`. Run/cancel accept a group ID and

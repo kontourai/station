@@ -1182,6 +1182,9 @@ The local CLI has group transport commands. They require a serving Station with
 the corresponding group routes; this checkout has not mounted those routes or
 enabled bounded paid execution. A client command is not a capability probe or
 permission to launch. Group preparation IDs must come from a server owner.
+The public handshake currently advertises `delegationGroups: false`; an absent
+flag on an older receiver also means unsupported. These commands do not infer
+support from single delegation or automatically negotiate the group flag.
 
 ```bash
 station group get <group-id> --json
