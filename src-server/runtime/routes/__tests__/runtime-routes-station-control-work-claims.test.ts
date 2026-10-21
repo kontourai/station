@@ -119,6 +119,7 @@ const OWNER: Record<string, string> = {
   'a-other': A,
   'g-caller': A,
   'u-caller': A,
+  'x-move': A,
   'carol-p1': CAROL,
 };
 
@@ -435,6 +436,7 @@ describe('station-control work claims (#3413 B)', () => {
 
     return {
       store,
+      startSession,
       orchestration,
       tool,
       asTool,
@@ -550,6 +552,47 @@ describe('station-control work claims (#3413 B)', () => {
       expect(
         (await claimsListedTo(tool, bound('g-caller')))['g-caller'],
       ).toEqual(['GLOBAL-CLAIM']);
+    });
+
+    test('a conversation that continued in another Project does not carry its old Project’s claims there', async () => {
+      const { tool, store, startSession, at, p1, p2 } = await setup();
+      // `x-move` ran in Project 2; its conversation continued in
+      // `x-move-next`, a Session in Project 1 (the handoff writer the runtime
+      // uses, then the successor's start record).
+      startSession('x-move', A, p2);
+      store.reserveConversationHandoff({
+        conversationId: 'x-move',
+        predecessorSessionId: 'x-move',
+        sessionId: 'x-move-next',
+        idempotencyKey: 'x-move-switch',
+        messageDigest: 'x-move-digest',
+        targetAgentId: 'codex-agent',
+        targetEnvironmentId: 'this-station',
+        createdAt: at(),
+      });
+      startSession('x-move-next', A, p1);
+      const moved = await claim(tool, bound('x-move'), {
+        workItemRef: 'MOVED-PROJECT-2-CLAIM',
+      });
+      expect(moved).toMatchObject({
+        conversationId: 'x-move',
+        scope: { kind: 'project', id: p2.id },
+      });
+      for (const kind of CALLER_KINDS) {
+        const listed = await tool(
+          kind('a-caller'),
+          'list_project_activity',
+          {},
+        );
+        const rows = listed.body.data.sessions as any[];
+        // The conversation's Project 1 Session is listed, without the claim
+        // its Project 2 Session made.
+        expect([
+          kind('a-caller').channel,
+          rows.some((row) => row.sessionId === 'x-move-next'),
+          JSON.stringify(rows).includes('MOVED-PROJECT-2-CLAIM'),
+        ]).toEqual([kind('a-caller').channel, true, false]);
+      }
     });
 
     test('a claim names paths, a work item, or both; a claim naming neither, or another Session, is an MCP error', async () => {
