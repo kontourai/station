@@ -3895,9 +3895,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     page: async ({
       scope,
@@ -3925,9 +3923,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     authorize: ({ scope, routeFamily, authority, request }) => {
       if (

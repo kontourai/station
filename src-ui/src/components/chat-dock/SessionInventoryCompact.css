@@ -114,6 +114,11 @@
   border-color: var(--accent-primary);
 }
 
+.chat-dock__conversation-surface:has(.session-inventory-compact) {
+  container-type: inline-size;
+  position: relative;
+}
+
 /* A split needs the transcript's 640px floor plus the inventory's 16rem.
    Below it, inspection occupies the dock and Close returns to the chat. */
 @container (max-width: 895px) {
