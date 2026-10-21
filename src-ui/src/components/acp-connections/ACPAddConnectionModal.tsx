@@ -34,6 +34,7 @@ export function ACPAddConnectionModal({
   onFirstContactPendingChange,
   editConnection,
   onUpdate,
+  onCheck,
 }: {
   registryEntries?: ACPConnectionRegistryEntry[];
   connections?: ACPConnectionInfo[];
@@ -60,6 +61,7 @@ export function ACPAddConnectionModal({
   /** Edit setup of a saved custom engine; saves through `onUpdate`. */
   editConnection?: ACPConnectionInfo;
   onUpdate?: (id: string, draft: ACPConnectionDraft) => unknown;
+  onCheck?: (id: string) => unknown;
 }) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const initialProviderHandled = useRef(false);
@@ -70,6 +72,7 @@ export function ACPAddConnectionModal({
     awaitingFirstContact,
     submit,
     retryMutation,
+    retryCheck,
     retryRefresh,
   } = useACPConnectionSetup({
     registryEntries,
@@ -83,6 +86,7 @@ export function ACPAddConnectionModal({
     probeStatusesUpdatedAt,
     editConnection,
     onUpdate,
+    onCheck,
   });
   const editing = Boolean(editConnection);
   useEffect(() => {
@@ -192,6 +196,7 @@ export function ACPAddConnectionModal({
         onConfirm={() => void submit(state.selectedEntry)}
         onSubmit={() => void submit(null)}
         onRetryMutation={() => void retryMutation()}
+        onRetryCheck={() => void retryCheck()}
         onRetryRefresh={() => void retryRefresh()}
         onClose={onCancel}
       />

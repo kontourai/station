@@ -165,8 +165,10 @@ export function ACPConnectionsSection({
         name: draft.name,
         command: draft.command,
         args: splitACPArgs(draft.args),
-        ...(draft.icon ? { icon: draft.icon } : {}),
-        ...(draft.cwd ? { cwd: draft.cwd } : {}),
+        // Sent even when empty: the server reads an empty folder as none
+        // and an empty icon as the default, so an edit can clear them.
+        icon: draft.icon,
+        cwd: draft.cwd,
       },
     });
   };
@@ -223,6 +225,7 @@ export function ACPConnectionsSection({
           connections={connections}
           editConnection={editingConnection}
           onUpdate={updateSetup}
+          onCheck={(id) => checkConnectionMutation.mutateAsync(id)}
           onAdd={addConnection}
           onRefreshConnections={refetchConnections}
           probeStatuses={probeStatuses}

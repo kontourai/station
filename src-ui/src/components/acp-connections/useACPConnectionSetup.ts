@@ -143,6 +143,12 @@ function reduceACPConnectionSetup(
   }
 }
 
+function sameDraft(a: ACPConnectionDraft, b: ACPConnectionDraft) {
+  return (Object.keys(a) as Array<keyof ACPConnectionDraft>).every(
+    (field) => a[field] === b[field],
+  );
+}
+
 /** The setup form filled with a saved connection's values (Edit setup). */
 function draftFor(connection: ACPConnectionInfo): ACPConnectionDraft {
   return {
@@ -274,9 +280,13 @@ function useSetupSubmit(
   onInstallRegistryEntry: ((id: string) => unknown) | undefined,
   editConnection: ACPConnectionInfo | undefined,
   onUpdate: ((id: string, draft: ACPConnectionDraft) => unknown) | undefined,
+  onCheck: ((id: string) => unknown) | undefined,
 ) {
   return useCallback(
-    async (entry = state.selectedEntry) => {
+    async (
+      entry = state.selectedEntry,
+      { recheck = false }: { recheck?: boolean } = {},
+    ) => {
       const id =
         entry?.id ??
         editConnection?.id ??
@@ -287,11 +297,19 @@ function useSetupSubmit(
         );
       dispatch({ type: 'submit', entry, id });
       try {
+        // Editing: an unchanged form, or Retry check, re-checks the saved
+        // engine. The update would save nothing and probe nothing.
+        const recheckSaved =
+          editConnection &&
+          onCheck &&
+          (recheck || sameDraft(state.draft, draftFor(editConnection)));
         const response = entry
           ? await onInstallRegistryEntry?.(entry.id)
-          : editConnection && onUpdate
-            ? await onUpdate(id, { ...state.draft, id })
-            : await onAdd({ ...state.draft, id });
+          : recheckSaved
+            ? await onCheck(id)
+            : editConnection && onUpdate
+              ? await onUpdate(id, { ...state.draft, id })
+              : await onAdd({ ...state.draft, id });
         dispatch({
           type: 'complete',
           connection: addedConnectionFor(response, id),
@@ -305,7 +323,15 @@ function useSetupSubmit(
         });
       }
     },
-    [dispatch, onAdd, onInstallRegistryEntry, editConnection, onUpdate, state],
+    [
+      dispatch,
+      onAdd,
+      onInstallRegistryEntry,
+      editConnection,
+      onUpdate,
+      onCheck,
+      state,
+    ],
   );
 }
 
@@ -339,6 +365,7 @@ export function useACPConnectionSetup({
   probeStatusesUpdatedAt,
   editConnection,
   onUpdate,
+  onCheck,
 }: {
   registryEntries: ACPConnectionRegistryEntry[];
   connections: ACPConnectionInfo[];
@@ -356,6 +383,8 @@ export function useACPConnectionSetup({
   editConnection?: ACPConnectionInfo;
   /** Saves an edit (PUT); used instead of `onAdd` while editing. */
   onUpdate?: (id: string, draft: ACPConnectionDraft) => unknown;
+  /** Re-checks the saved connection (POST /:id/check) while editing. */
+  onCheck?: (id: string) => unknown;
   onAdd: (draft: ACPConnectionDraft) => unknown;
   onInstallRegistryEntry?: (id: string) => unknown;
   onRefreshConnections?: () => unknown;
@@ -416,6 +445,7 @@ export function useACPConnectionSetup({
     onInstallRegistryEntry,
     editConnection,
     onUpdate,
+    onCheck,
   );
   const retryRefresh = useRefreshRetry(dispatch, onRefreshConnections);
 
@@ -426,6 +456,7 @@ export function useACPConnectionSetup({
     awaitingFirstContact,
     submit,
     retryMutation: () => submit(),
+    retryCheck: () => submit(undefined, { recheck: true }),
     retryRefresh,
   };
 }

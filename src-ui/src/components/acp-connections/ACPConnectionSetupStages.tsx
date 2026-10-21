@@ -58,6 +58,7 @@ export function ACPConnectionSetupActions({
   onCustom,
   onConfirm,
   onRetryMutation,
+  onRetryCheck,
   onSubmit,
   onRetryRefresh,
   onClose,
@@ -77,6 +78,8 @@ export function ACPConnectionSetupActions({
   onCustom: () => void;
   onConfirm: () => void;
   onRetryMutation: () => void;
+  /** Retry check on a result; defaults to re-running the add. */
+  onRetryCheck?: () => void;
   onSubmit: () => void;
   onRetryRefresh: () => void;
   onClose: () => void;
@@ -113,6 +116,7 @@ export function ACPConnectionSetupActions({
         onCatalog={onCatalog}
         onCustom={onCustom}
         onRetryMutation={onRetryMutation}
+        onRetryCheck={onRetryCheck ?? onRetryMutation}
         onRetryRefresh={onRetryRefresh}
         onClose={onClose}
       />
@@ -201,6 +205,7 @@ function ACPConnectionSetupCompletionActions({
   onCatalog,
   onCustom,
   onRetryMutation,
+  onRetryCheck,
   onRetryRefresh,
   onClose,
 }: {
@@ -212,6 +217,7 @@ function ACPConnectionSetupCompletionActions({
   onCatalog: () => void;
   onCustom: () => void;
   onRetryMutation: () => void;
+  onRetryCheck: () => void;
   onRetryRefresh: () => void;
   onClose: () => void;
 }) {
@@ -232,7 +238,7 @@ function ACPConnectionSetupCompletionActions({
         <button
           type="button"
           className="button button--primary"
-          onClick={onRetryMutation}
+          onClick={onRetryCheck}
         >
           Retry check
         </button>

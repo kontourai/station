@@ -194,8 +194,44 @@ describe('saved connections whose engine never registered', () => {
           command: 'stub-acp-fixed',
           args: ['--acp'],
           icon: '🔌',
+          // Sent even when empty, so an edit can clear the folder.
+          cwd: '',
         },
       }),
     );
+  });
+
+  // Saving Edit setup with nothing changed must still re-check the engine:
+  // the update would change nothing and probe nothing. The check route
+  // re-probes the saved config and answers its status.
+  test('an unchanged Edit setup re-checks the saved engine and shows its result', async () => {
+    mocks.check.mockResolvedValue({
+      ...unregistered[0],
+      status: 'unavailable',
+      lastError: { phase: 'spawn', message: 'spawn stub-acp ENOENT' },
+    });
+    render(<ACPConnectionsSection acpAgents={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Stub Engine' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit engine' });
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Check engine' }),
+    );
+
+    await vi.waitFor(() =>
+      expect(within(dialog).getByRole('status').textContent).toContain(
+        'Setup required',
+      ),
+    );
+    expect(mocks.check).toHaveBeenCalledWith('stub');
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    // Retry check re-checks the saved engine too, not a re-sent update.
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Retry check' }),
+    );
+    await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledTimes(2));
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });
