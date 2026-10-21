@@ -134,7 +134,10 @@ import {
   type ActiveWorkPanel,
 } from './ActiveWorkContextFrame';
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
-import { ChatDockActiveIdentity } from './ChatDockActiveIdentity';
+import {
+  ChatDockActiveIdentity,
+  delegatedTaskLabel,
+} from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
@@ -1462,7 +1465,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'input-origin',
-            label: `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`,
+            label: delegatedTaskLabel(activeOrchestrationSession.inputOrigin),
             disabled: true,
             onSelect: () => {},
           },
@@ -2753,7 +2756,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? (sessionProjectName ?? activeSession.projectSlug)
                   : null,
                 inputOriginLabel: activeOrchestrationSession?.inputOrigin
-                  ? `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`
+                  ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
                   : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),

@@ -117,6 +117,17 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
         ?.split('\n')
         .at(-1),
     ).toBe('Driven from delegated task: Review Station');
+    // With no task title, it says so plainly rather than show the raw id.
+    rerender(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{ kind: 'delegation', taskId: 'task:01da7f' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Driven from delegation').getAttribute('title'),
+    ).toBe('Driven from a delegated task');
   });
 
   test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {

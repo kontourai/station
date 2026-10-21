@@ -29,6 +29,13 @@ interface ChatDockActiveIdentityProps {
 }
 
 /** One line: the conversation title, then the agent and engine, muted; the engine and then the agent step aside before the title truncates. */
+/** Where a delegated conversation is driven from; a task id says nothing. */
+export function delegatedTaskLabel(origin: OrchestrationInputOrigin): string {
+  return origin.title
+    ? `Driven from delegated task: ${origin.title}`
+    : 'Driven from a delegated task';
+}
+
 export function ChatDockActiveIdentity({
   session,
   agent,
@@ -108,11 +115,7 @@ export function ChatDockActiveIdentity({
   const contextTitle = [!originLabel ? agentName : null, fullTrail]
     .filter(Boolean)
     .join(' · ');
-  const delegationTitle = inputOrigin
-    ? inputOrigin.title
-      ? `Driven from delegated task: ${inputOrigin.title}`
-      : `Driven from delegated task ${inputOrigin.taskId}`
-    : null;
+  const delegationTitle = inputOrigin ? delegatedTaskLabel(inputOrigin) : null;
 
   return (
     <div className="chat-dock__active-identity">
