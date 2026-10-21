@@ -271,6 +271,13 @@ not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
 the disk image and the updater archive's application both carry stapled
 tickets. Preview and stable releases keep the serial staple-then-package order,
 so an application copied out of one of their disk images validates offline.
+The macOS packager retries `stapler staple` or `stapler validate` once when
+exit 68 carries the specific Apple CloudKit ticket-lookup transport diagnostics.
+Missing or invalid tickets, signature failures, timeouts, truncated diagnostics
+and a second transport failure remain terminal. Each attempt stays within the
+release deadline; notarization acceptance, staple validation and Gatekeeper
+assessment remain required before artifact admission.
+
 The independently published CLI remains outside this cohort. The Nightly
 Android, macOS, and Windows matrix cells carry `requiredForPromotion: true` and the
 `per-platform-native-cohort` availability policy; these are invariants
