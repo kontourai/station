@@ -106,6 +106,9 @@ describe('public registry listings as catalogue entries', () => {
     expect(entry(catalog, 'stakpak')?.publicRegistry).not.toHaveProperty(
       'unavailableReason',
     );
+    expect(entry(catalog, 'stakpak')?.hostInstall?.note).toBe(
+      "Install Stakpak by following Stakpak Team's instructions, so stakpak is on the PATH of the computer Station runs on. Station does not download it.",
+    );
     expect(entry(catalog, 'amp-acp')).toMatchObject({
       command: 'amp-acp',
       args: [],

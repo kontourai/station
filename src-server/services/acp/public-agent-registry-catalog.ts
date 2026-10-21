@@ -81,6 +81,11 @@ export function publicRegistryProgramName(cmd: string): string {
   return base.replace(/\.(exe|cmd|bat)$/i, '');
 }
 
+/** "Stakpak Team <contact@stakpak.dev>" reads as "Stakpak Team" in a sentence. */
+function publisherName(author: string): string {
+  return author.replace(/\s*<[^>]*>\s*$/, '') || author;
+}
+
 function listingFacts(agent: PublicRegistryAgent): ACPPublicRegistryListing {
   const distributions: ACPPublicRegistryDistributionKind[] = [];
   if (Object.keys(agent.binary).length > 0) distributions.push('binary');
@@ -207,7 +212,7 @@ export function mapPublicRegistryListings(input: {
           ...(agent.websiteUrl || agent.repositoryUrl
             ? { docsUrl: agent.websiteUrl ?? agent.repositoryUrl }
             : {}),
-          note: `Install ${agent.name} by following ${agent.publishers[0]}'s instructions, so ${program} is on the PATH of the computer Station runs on. Station does not download it.`,
+          note: `Install ${agent.name} by following ${publisherName(agent.publishers[0])}'s instructions, so ${program} is on the PATH of the computer Station runs on. Station does not download it.`,
         },
         publicRegistry: {
           ...listing,
