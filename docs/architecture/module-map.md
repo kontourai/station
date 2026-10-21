@@ -1405,7 +1405,7 @@ in `@kontourai/monument` owns the decision and record-before-effect sequence.
 Station Control's `send_to_session` and delegated task result delivery import
 it through the package's public root entry point; no server copy remains.
 
-**Interface.** `deliverSessionMessage(ports, { threadId, text, sender, mode,
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode,
 deliveryId, decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
@@ -1423,10 +1423,14 @@ expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
 extraction remain open under #3565.
 
-**Provenance.** The module frames `text` as another agent's message
-(`frameAgentMessage`) before any port sees it, naming `sender`, so the engine never
-reads it as the person's; the sender's lines stay quoted under a fixed header the
-text cannot imitate. The route stamps the same sender on the turn's
+**Provenance.** Station's `send_to_session` and delegated-result host callers
+validate their server-owned sender and frame the message (`frameAgentMessage`)
+through Monument's optional synchronous `prepareText` host port. Preparation
+runs after the deliverable branch decision, before recording or effect. The
+kernel imports no Station types or framing code; hosts without preparation
+pass opaque text unchanged. The engine reads the sender's lines
+quoted under a fixed header the text cannot imitate. The host stamps the same
+sender on the turn's
 `clientOrigin.sender` beside the unchanged `internal` actor, which is what keeps
 `isPersonActor` false and a link in the message from granting `read_conversation`
 access. The transcript projection reads the sender from that record, never from

@@ -99,6 +99,7 @@ import {
   isSessionLifecycleState,
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
@@ -1782,6 +1783,7 @@ export class DelegationResultDelivery {
       requestKey: row.deliveryId,
     };
     const ports: SessionMessageDeliveryPorts = {
+      prepareText: (text) => frameAgentMessage(sender, text),
       isBusy: (thread) =>
         !evaluateSessionWait(this.foldPorts(), thread, 'idle', 0).satisfied,
       start: ({ text, clientTurnId }) => {
@@ -1812,7 +1814,6 @@ export class DelegationResultDelivery {
       delivery = await deliverSessionMessage(ports, {
         threadId,
         text: row.text,
-        sender,
         mode: 'auto',
         deliveryId: row.deliveryId,
         ...(pinned ? { decided: pinned.branch } : {}),
