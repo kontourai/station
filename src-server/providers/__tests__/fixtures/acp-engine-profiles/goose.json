@@ -1,0 +1,31 @@
+{
+  "engine": "goose",
+  "registry": {
+    "id": "goose",
+    "version": "1.55.0",
+    "distribution": "binary",
+    "cmd": "goose",
+    "args": ["acp"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "goose",
+      "title": "goose",
+      "version": "1.55.0"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "goose-provider",
+        "name": "Configure a provider",
+        "description": "Run `goose configure`"
+      }
+    ]
+  }
+}

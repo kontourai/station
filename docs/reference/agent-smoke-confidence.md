@@ -66,6 +66,46 @@ connection in the inventory. Repeat `--connection=ID` to select an explicit
 subset. Live smoke remains an opt-in dogfood receipt; deterministic CI uses
 fake adapters and never contacts providers or incurs spend.
 
+## Qualify a new engine
+
+A command-backed engine reaches **Smoke passed** in four steps. Only the last
+two contact the engine or spend allowance.
+
+1. **Profile.** Add `<engine>.json` to the
+   [engine profiles](../../src-server/providers/__tests__/fixtures/acp-engine-profiles/README.md).
+   It holds the engine's `initialize` answer, its `session/new` answer, its
+   permission options and its vendor notifications. Record each field's
+   provenance (registry, vendor docs, a researched `initialize`, a recording,
+   or assumed) in that directory's README. An assumed shape is never labelled
+   as recorded.
+2. **Fake conformance.** The
+   [qualification test](../../src-server/providers/__tests__/acp-engine-qualification.process.test.ts)
+   launches the profile through a child-process fake engine built on the ACP
+   SDK. It runs that engine through the real adapter and capability probe,
+   and it requires all of these to hold:
+   - the probe records the declared capabilities, modes and config options;
+   - a turn streams text, a plan update and the vendor notifications;
+   - an approval prompt reaches the engine as one of its own allow or reject
+     options;
+   - an engine that requires authentication fails with the engine's reason,
+     at the probe, at session start and on the first prompt;
+   - an engine that exits on start or answers slowly fails at `initialize`
+     with a reason.
+
+   Other suites can launch the same profiles, including their failure modes,
+   through `acp-engine-qualification-harness.ts`. This step proves how
+   Station handles the profile's shapes. It does not prove the engine sends
+   them.
+3. **Live smoke.** Add the engine as a connection on an isolated Station, then
+   run **Check connection** or `npm run dogfood:agent-smoke` against that
+   connection, as described above. One billable turn writes a receipt.
+4. **Tier.** The connection's `readinessEvidence.level` becomes
+   `smoke-passed` while the receipt is fresh (24 hours) and it matches the
+   connection's current configuration fingerprint. For an engine connection,
+   that fingerprint covers the saved command, arguments and environment. The
+   receipt does not record the engine's version. An engine upgraded in place
+   at the same command therefore keeps its tier until the receipt expires.
+
 ## Source and checks
 
 [ConnectionService](../../src-server/services/connections/connection-service.ts)
