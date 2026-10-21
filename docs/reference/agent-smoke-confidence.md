@@ -96,8 +96,8 @@ two contact the engine or spend allowance.
    Other suites can launch the same profiles, including their failure modes,
    through `acp-engine-qualification-harness.ts`. This step proves how
    Station handles the profile's shapes. It does not prove the engine sends
-   them. Nothing in Station reads a profile's `authMethods` or `agentInfo`
-   yet. Most profiles therefore exercise the same path, and they differ only
+   them. Nothing this test drives reads a profile's `authMethods` or
+   `agentInfo`. Most profiles therefore exercise the same path, and they differ only
    in their capabilities, session answer, permission options and vendor
    notifications.
 3. **Live smoke.** Add the engine as a connection on an isolated Station, then
