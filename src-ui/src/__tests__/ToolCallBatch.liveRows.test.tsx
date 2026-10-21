@@ -73,6 +73,18 @@ describe('ToolCallBatch — live child rows', () => {
     const label = rows[0]!.querySelector('.tool-call__label');
     expect(label?.textContent).toBe('Running step d');
     expect(label?.className).toContain('tool-call__label--active');
+    // The highlight says it is running: the row spends its width on what
+    // runs, and the verb stays for screen readers and the tooltip.
+    const visible = [...(label?.childNodes ?? [])]
+      .filter(
+        (node) =>
+          !(node instanceof HTMLElement && node.classList.contains('sr-only')),
+      )
+      .map((node) => node.textContent)
+      .join('');
+    expect(visible).toBe('step d');
+    expect(label?.querySelector('.sr-only')?.textContent).toBe('Running ');
+    expect(label?.getAttribute('title')).toBe('Running step d');
     // The summary itself is not a call and does not animate.
     expect(
       summaryButton().querySelector('.tool-call__label--active'),
