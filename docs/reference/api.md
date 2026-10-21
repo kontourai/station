@@ -875,6 +875,20 @@ Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
 routes for principal-owned layouts.
 
+Project layouts may declare `workspaceBinding: 'repository'`. The server derives
+`config.workingDirectory` from the owning Project (or the named `config.repoId`),
+never from a second persisted path in the layout. A named repository with no
+local binding yields no path; it does not fall back to another repository.
+Create and update reject a supplied path that differs from the derived value;
+an equal value is accepted and stripped before storage. This declaration grants
+no filesystem or terminal permission.
+
+A stored `type: 'coding'` layout remains repository-bound without an installed
+Coding plugin. Reads project the explicit binding; its next write preserves it,
+including when its type changes. Other layouts keep their own configuration
+unless they declare the binding. Request and persisted-record parsers reject
+unknown bindings and `null`.
+
 
 ---
 

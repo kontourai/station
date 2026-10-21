@@ -20,6 +20,8 @@ import {
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
   type LayoutReadView,
+  type LayoutWorkspaceBinding,
+  layoutUsesRepositoryWorkspace,
   RetiredLayoutKeyError,
 } from '@kontourai/station-contracts/layout';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -122,7 +124,7 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import {
-  codingLayoutRepoId,
+  layoutRepositoryId,
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
@@ -592,10 +594,14 @@ export function createProjectRoutes(
    */
   async function derivedLayoutWorkingDirectory(
     slug: string,
-    layout: { type?: string; config?: Record<string, unknown> },
+    layout: {
+      type?: string;
+      workspaceBinding?: LayoutWorkspaceBinding;
+      config?: Record<string, unknown>;
+    },
     project?: ProjectConfig,
   ): Promise<string | undefined> {
-    const repoId = codingLayoutRepoId(layout);
+    const repoId = layoutRepositoryId(layout);
     if (repoId === undefined)
       return project?.workingDirectory ?? projectWorkingDirectory(slug);
     // Read the project anyway, so an unknown slug still throws here exactly as
@@ -620,14 +626,14 @@ export function createProjectRoutes(
    */
   function conflictingWorkingDirectory(
     projectSlug: string,
-    type: string | undefined,
+    layout: { type?: string; workspaceBinding?: LayoutWorkspaceBinding },
     body: { config?: Record<string, unknown> },
     derived: string | undefined,
   ): string | undefined {
-    if (type !== 'coding') return undefined;
+    if (!layoutUsesRepositoryWorkspace(layout)) return undefined;
     const supplied = body.config?.workingDirectory;
     if (supplied === undefined || supplied === derived) return undefined;
-    return `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
+    return `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
   }
 
   /**
@@ -1632,7 +1638,10 @@ export function createProjectRoutes(
         assertSafeLayoutPathSegment('project slug', slug);
         assertSafeLayoutPathSegment('layout slug', layoutSlug);
         const revision = storageAdapter.layoutRevision(slug, layoutSlug);
-        const existing = revision.value;
+        const stored = revision.value;
+        const existing = layoutUsesRepositoryWorkspace(stored)
+          ? { ...stored, workspaceBinding: 'repository' as const }
+          : stored;
         const immutableMismatch = layoutImmutableMismatch(
           existing,
           slug,
@@ -1720,7 +1729,7 @@ export function createProjectRoutes(
         const derived = await derivedLayoutWorkingDirectory(slug, layout);
         const conflict = conflictingWorkingDirectory(
           slug,
-          layout.type,
+          layout,
           body,
           derived,
         );
@@ -1873,6 +1882,9 @@ export function createProjectRoutes(
       id: randomUUID(),
       projectSlug: slug,
       type: resolved.definition.type,
+      ...(resolved.definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: resolved.definition.workspaceBinding }),
       name: resolved.definition.name,
       slug: layoutSlug,
       icon: resolved.definition.icon,

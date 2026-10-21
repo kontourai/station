@@ -162,7 +162,29 @@ export function layoutOwnerProjectSlug(
   return owner.kind === 'project' ? owner.projectSlug : undefined;
 }
 
+export type LayoutWorkspaceBinding = 'repository';
+
+/** A legacy Coding record remains repository-bound even without its plugin. */
+export function layoutUsesRepositoryWorkspace(layout: {
+  type?: string;
+  workspaceBinding?: LayoutWorkspaceBinding;
+}): boolean {
+  return layout.workspaceBinding === 'repository' || layout.type === 'coding';
+}
+
+/** Parse the optional declaration; null and unknown bindings are invalid. */
+export function parseLayoutWorkspaceBinding(
+  value: unknown,
+): LayoutWorkspaceBinding | undefined {
+  if (value === undefined || value === 'repository') return value;
+  throw new TypeError(
+    'Layout workspaceBinding must be repository when supplied',
+  );
+}
+
 export interface LayoutConfig {
+  /** Derive the workspace from the owning Project; this grants no file access. */
+  workspaceBinding?: LayoutWorkspaceBinding;
   id: string;
   /**
    * Present on a project-owned Layout only, and still the ONLY ownership
@@ -252,6 +274,8 @@ export interface LayoutMetadata {
 }
 
 export interface AvailableProjectLayout {
+  /** Derive the workspace from the owning Project; this grants no file access. */
+  workspaceBinding?: LayoutWorkspaceBinding;
   source: 'builtin' | 'plugin';
   plugin?: string;
   name: string;
@@ -272,6 +296,7 @@ export const BUILTIN_CODING_LAYOUT: AvailableProjectLayout = Object.freeze({
   icon: '🔧',
   description: 'Files, changes, terminal, and chat',
   type: 'coding',
+  workspaceBinding: 'repository',
 });
 
 /** Dependency-free task starter backed by Station's existing task service. */
@@ -432,6 +457,8 @@ export interface LayoutTemplate {
 }
 
 export interface LayoutDefinition {
+  /** Derive the workspace from the owning Project; this grants no file access. */
+  workspaceBinding?: LayoutWorkspaceBinding;
   dashboard?: PersonalBoardDefinition;
   name: string;
   slug: string;

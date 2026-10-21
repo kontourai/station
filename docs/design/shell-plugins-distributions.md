@@ -1468,6 +1468,12 @@ derivation (so only `type === 'coding'` works) must fail the fixture half.
 
 ### a2. Workspace binding field and a generic panel record [security]
 
+The server workspace-binding portion is implemented in source: Project layout
+creation, updates, reads and catalog application accept the repository binding
+and retain legacy Coding restrictions. See [the current API](../reference/api.md#layout-management).
+The generic panel record and its device-settings migration below remain
+unfinished; this is not completion of a2 or the Coding extraction.
+
 - Add `workspaceBinding?: 'repository'` to the layout contract. A layout
   declaring it gets the working directory derived from its project, and a
   write that sets `config.workingDirectory` is refused. This replaces the

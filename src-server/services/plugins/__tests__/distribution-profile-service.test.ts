@@ -490,6 +490,27 @@ describe('DistributionProfileService', () => {
     ).toBe('session-board');
   });
 
+  test.each([null, '', 'none', 'terminal', true, {}])(
+    'refuses invalid plugin workspace binding %j at catalog resolution',
+    (workspaceBinding) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-binding');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad binding',
+          slug: 'bad-binding',
+          workspaceBinding,
+          tabs: [],
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-binding:bad-binding'),
+      ).toThrow('known installed contribution');
+    },
+  );
+
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
     const projectHome = home();
     writePlugin(projectHome, 'disabled-layout', 'disabled');
