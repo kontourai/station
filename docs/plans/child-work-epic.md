@@ -228,19 +228,25 @@ to durable intent and source authorization. A focused selection passes 41
 SDK/Google cases; 33 observer cases passed separately before the added Google
 regressions. Server-test types pass. Exact tariff usage remains private evidence:
 the installed legacy controller refuses settlement without provider-reported
-dollars and retains the full allocation. AccountingV1 integration and independent
-review of this composition remain required.
+dollars and retains the full allocation. AccountingV1 integration remains
+required. The independent composition review completed with no blocking findings: it checked canonical durable joins, exact
+wire/source binding, pending duplicate isolation, incomplete JSON/SSE usage,
+unknown allocations and SDK-waiter cleanup. Its compiling waiter-refusal mutation
+failed as intended and exact restoration passed. Real provider/registry authority
+and AccountingV1 settlement acceptance were not established.
 
 Flow rounds/continuation and v3 authority renewal are adopted in the Flow Agents
 worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
 session-bound context-sync paths to AccountingV1. The combined source builds,
 passes documentation checks and 20 focused cases. A compiling recipient-return
 mutation loses sync accounting as intended; exact restoration passes the three
-accounting cases. Independent reviews of the combined Flow source and Station
-response composition are running. The earlier rounds review failed without a
-completed verdict. Required full readiness for this new Flow head is pending;
-the earlier accounting-only readiness pass does not qualify it. Everything
-remains unpublished, and Station still consumes published 9.3.0. Tariff-derived integer micros must retain
+accounting cases. Independent review of the combined Flow source is running;
+the Station response composition review passed within its stated fixture scope.
+The earlier rounds review failed without a completed verdict. The interrupted
+full-readiness process left no terminal receipt and is being requalified on the
+same Flow head; the earlier accounting-only readiness pass does not qualify it.
+Everything remains unpublished, and Station still consumes published 9.3.0.
+Tariff-derived integer micros must retain
 their cost basis and must not be silently converted to provider-reported Relay
 dollars. A candidate public API or a successful synthetic SDK response is not a
 published serving contract.
