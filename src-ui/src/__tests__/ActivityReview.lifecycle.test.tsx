@@ -17,6 +17,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
+import { SessionDetail } from '../components/session-detail/SessionDetail';
 import {
   AuthorityHarness,
   authoritySwitch,
@@ -34,6 +35,7 @@ const boundary = vi.hoisted(() => ({
   adopt: vi.fn(),
   open: vi.fn(),
   send: vi.fn(),
+  handoff: vi.fn(),
 }));
 
 const source: OrchestrationSessionSummary = {
@@ -162,6 +164,7 @@ beforeEach(() => {
   boundary.adopt.mockReset();
   boundary.open.mockReset().mockResolvedValue(true);
   boundary.send.mockReset();
+  boundary.handoff.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -279,4 +282,76 @@ test('a handoff waits for its exact Station reader and never fills the other Sta
     ).value,
   ).toBe('Only Station A');
   expect(takeAttachedContinuationHandoff(source.threadId, scope)).toBeNull();
+});
+
+test('the real attached sender preserves a newer same-scope draft while handoff awaits', async () => {
+  const transfer = deferred<boolean>();
+  boundary.handoff.mockReturnValue(transfer.promise);
+  const draftScope = 'same-scope-transfer-fixture';
+  chatDraftsStore.clearActivityDraft(draftScope, source.threadId);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <AuthorityHarness initial={{ station: 'station-a' }}>
+            <SessionDetail
+              apiBase="http://station.test"
+              presentation="chat"
+              session={source}
+              draftScope={draftScope}
+              getSelectionIntent={() => 0}
+              onTaskChanged={() => {}}
+              onAdopted={() => {
+                throw new Error('Handoff must not adopt here');
+              }}
+              onContinueInChat={boundary.handoff}
+            />
+          </AuthorityHarness>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Submitted reply' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() =>
+      expect(boundary.handoff).toHaveBeenCalledExactlyOnceWith(
+        'Submitted reply',
+      ),
+    );
+    act(() =>
+      chatDraftsStore.setActivityDraft(
+        draftScope,
+        source.threadId,
+        'Newer reply from this scope',
+      ),
+    );
+    await act(async () => {
+      transfer.resolve(true);
+      await transfer.promise;
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Send message',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(chatDraftsStore.getActivityDraft(draftScope, source.threadId)).toBe(
+      'Newer reply from this scope',
+    );
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Newer reply from this scope');
+    expect(boundary.adopt).not.toHaveBeenCalled();
+    expect(boundary.send).not.toHaveBeenCalled();
+  } finally {
+    chatDraftsStore.clearActivityDraft(draftScope, source.threadId);
+  }
 });

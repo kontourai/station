@@ -12,8 +12,14 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import {
+  LayoutChatPlacementContext,
+  requestCenterChatPage,
+  subscribeCenterChatPageRequests,
+} from '../app-shell/chat-placement';
+import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
 import {
   AuthorityHarness,
   authoritySwitch,
@@ -42,6 +48,13 @@ import { ToastProvider } from '../contexts/ToastContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import { useChatDockActions } from '../hooks/useChatDockActions';
 import { MOBILE_MEDIA_QUERY } from '../hooks/useIsMobile';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import {
+  attachedContinuationScope,
+  discardAttachedContinuationHandoff,
+  handOffAttachedContinuation,
+  takeAttachedContinuationHandoff,
+} from '../lib/attached-continuation-handoff';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { writePaneFence } from '../regions/pane-fence';
 import {
@@ -71,7 +84,26 @@ const session: OrchestrationSessionSummary = {
   createdAt: '2026-10-20T00:00:00.000Z',
   updatedAt: '2026-10-20T00:00:00.000Z',
 };
-const network = vi.hoisted(() => ({ apiBase: 'http://station.test' }));
+const attachedSession: OrchestrationSessionSummary = {
+  ...session,
+  controlMode: 'read-only-attached',
+  lifecycleState: 'completed',
+  answerability: {
+    answerable: false,
+    qualification: 'provider_absent',
+    observedBy: 'review-fixture',
+    observedAt: '2026-10-20T00:00:00.000Z',
+  },
+  attachedSource: {
+    kind: 'claude-transcript',
+    externalSessionId: 'review-source',
+    affinity: { kind: 'fixture-home', ref: 'review-source' },
+  },
+};
+const network = vi.hoisted(() => ({
+  apiBase: 'http://station.test',
+  attached: false,
+}));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: network.apiBase }),
   useHostRequestAuthorityScope: () => null,
@@ -88,6 +120,13 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({ updateChat: vi.fn(), removeChat: vi.fn() }),
 }));
+vi.mock('../hooks/useActiveChatSessionMessaging', () => ({
+  useSendMessage: () => () => {
+    throw new Error(
+      'This handoff fixture must not dispatch a provider message',
+    );
+  },
+}));
 vi.mock('../hooks/orchestration/useSessionEventStream', async () => {
   const { NO_ELIDED_HISTORY } = await import('../utils/elidedHistory');
   return {
@@ -102,7 +141,24 @@ vi.mock('../hooks/orchestration/useSessionEventStream', async () => {
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   authenticatedFetch: async () =>
-    new Response(JSON.stringify({ success: true, data: { session } })),
+    new Response(
+      JSON.stringify({
+        success: true,
+        data: { session: network.attached ? attachedSession : session },
+      }),
+    ),
+  useOrchestrationSessionQuery: (threadId: string) => {
+    if (threadId && threadId !== session.threadId)
+      throw new Error(`Unexpected reader Session: ${threadId}`);
+    return {
+      data: threadId ? { session: attachedSession } : undefined,
+      refetch: vi.fn(),
+    };
+  },
+  adoptOrchestrationSession: () => {
+    throw new Error('This handoff fixture must not launch a continuation');
+  },
+  getStarterWork: async () => ({ state: 'bound' }),
   useOrchestrationCommandReceiptsQuery: () => ({ data: [] }),
   useAttentionQuery: () => ({ data: [], refetch: vi.fn() }),
   useAcknowledgeAttentionItemMutation: () => ({ mutate: vi.fn() }),
@@ -113,6 +169,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 let model: ReturnType<typeof useRegionModel>;
 let relations: ReturnType<typeof usePaneRelations>;
+let reviewApi: ReturnType<typeof useActivityReview>;
 let paneId = '';
 let detach: (() => void) | undefined;
 
@@ -120,6 +177,7 @@ function Owner() {
   model = useRegionModel();
   relations = usePaneRelations();
   const review = useActivityReview();
+  reviewApi = review;
   const actions = useChatDockActions({
     sessions: [
       {
@@ -159,7 +217,7 @@ function Owner() {
           label: 'Activity',
           source: { kind: 'activity', selectedThreadId: null },
         },
-        items: [session],
+        items: [network.attached ? attachedSession : session],
         review: async () => ({ ok: false, reason: 'superseded' }),
         restoreFocus: () => {},
       }),
@@ -168,7 +226,31 @@ function Owner() {
   return null;
 }
 
-async function mount(phone = false) {
+function OtherDirtyWork() {
+  const [text, setText] = useState('');
+  const { DiscardModal } = useUnsavedGuard(text.length > 0);
+  return (
+    <>
+      <textarea
+        aria-label="Other work in this pane"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <DiscardModal />
+    </>
+  );
+}
+
+async function mount(
+  phone = false,
+  options: {
+    center?: boolean;
+    attached?: boolean;
+    otherDirty?: boolean;
+    recipient?: boolean;
+  } = {},
+) {
+  network.attached = options.attached ?? false;
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
     value: phone ? 390 : 1280,
@@ -226,12 +308,28 @@ async function mount(phone = false) {
             <RegionModelProvider>
               <PaneRelationsProvider>
                 <ActivityReviewProvider>
-                  <ToastProvider>
-                    <Owner />
-                    <UnsavedGuardOwnerContext.Provider value={paneId}>
-                      <RegionActivityReviewPane instance={instance} />
-                    </UnsavedGuardOwnerContext.Provider>
-                  </ToastProvider>
+                  <LayoutChatPlacementContext.Provider
+                    value={options.center ? 'center' : 'none'}
+                  >
+                    <ToastProvider>
+                      <Owner />
+                      <UnsavedGuardOwnerContext.Provider value={paneId}>
+                        <RegionActivityReviewPane instance={instance} />
+                        {options.otherDirty && <OtherDirtyWork />}
+                      </UnsavedGuardOwnerContext.Provider>
+                      {options.recipient && (
+                        <ImportedConversationPane
+                          threadId={session.threadId}
+                          apiBase={network.apiBase}
+                          onContinueInDock={() => {
+                            throw new Error(
+                              'This fixture stops at recipient confirmation',
+                            );
+                          }}
+                        />
+                      )}
+                    </ToastProvider>
+                  </LayoutChatPlacementContext.Provider>
                 </ActivityReviewProvider>
               </PaneRelationsProvider>
             </RegionModelProvider>
@@ -247,7 +345,9 @@ async function mount(phone = false) {
     model.placeSurface(paneId, 'right');
     if (phone) model.openSurfaceInRegion(paneId);
   });
-  await screen.findByRole('heading', { name: 'Reviewed conversation' });
+  await within(
+    screen.getByRole('region', { name: 'Activity quick review' }),
+  ).findByRole('heading', { name: 'Reviewed conversation' });
 }
 
 function requestOpen() {
@@ -258,6 +358,11 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   network.apiBase = 'http://station.test';
+  network.attached = false;
+  discardAttachedContinuationHandoff(
+    session.threadId,
+    attachedContinuationScope('station-a', network.apiBase),
+  );
   chatDraftsStore.clearActivityDraft(
     JSON.stringify(['activity-review', 'station-a', network.apiBase]),
     session.threadId,
@@ -440,5 +545,234 @@ test('a covered owner changed in the guard callback is read from the committed m
     expect(model.readRegions().bottom.occupant).toBe('workspace-agents');
   } finally {
     unregister();
+  }
+});
+
+test('a centre receiver removed while a phone guard waits refuses before restoration', async () => {
+  await mount(true, { center: true });
+  const requested = vi.fn();
+  const removeReceiver = subscribeCenterChatPageRequests(requested);
+  let proceed: (() => void) | undefined;
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('pending centre exit'),
+    (accept) => {
+      proceed = accept;
+    },
+    paneId,
+  );
+  try {
+    requestOpen();
+    await waitFor(() => expect(proceed).toBeDefined());
+    removeReceiver();
+    const before = await settledStorageSnapshot();
+    const layer = model.readPhoneLayer();
+    const regions = structuredClone(model.readRegions());
+    const url = window.location.href;
+    await act(async () => {
+      proceed?.();
+    });
+    expect(model.readPhoneLayer()).toEqual(layer);
+    expect(model.readRegions()).toEqual(regions);
+    expect(window.location.href).toBe(url);
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(requested).not.toHaveBeenCalled();
+    expect(navigationStore.getSnapshot().activeChat).not.toBe(
+      'conversation-review',
+    );
+  } finally {
+    removeReceiver();
+    unregister();
+  }
+});
+
+test('a centre Chat request keeps the review selected in the shared dock region', async () => {
+  await mount(false, { center: true });
+  act(() => {
+    model.placeSurface(paneId, 'bottom');
+    model.openSurfaceInRegion(paneId);
+  });
+  const requested = vi.fn();
+  const removeReceiver = subscribeCenterChatPageRequests(requested);
+  try {
+    requestOpen();
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().activeChat).toBe(
+        'conversation-review',
+      ),
+    );
+    expect(requested).toHaveBeenCalledTimes(1);
+    expect(model.readRegions().bottom.occupant).toBe(paneId);
+  } finally {
+    removeReceiver();
+  }
+});
+
+test('phone attached Send carries its reply but still asks other dirty work owned by the same pane', async () => {
+  await mount(true, { attached: true, otherDirty: true, recipient: true });
+  const review = within(
+    screen.getByRole('region', { name: 'Activity quick review' }),
+  );
+  const message = await review.findByRole('textbox', { name: 'Message' });
+  fireEvent.change(message, {
+    target: { value: 'Only the submitted reply moves' },
+  });
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Other work in this pane' }),
+    {
+      target: { value: 'A separate unsaved edit' },
+    },
+  );
+  fireEvent.click(review.getByRole('button', { name: 'Send message' }));
+  const layer = model.readPhoneLayer();
+  const discard = await screen.findByRole('dialog', {
+    name: 'Unsaved Changes',
+  });
+  fireEvent.click(within(discard).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() =>
+    expect(
+      (
+        review.getByRole('button', {
+          name: 'Send message',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false),
+  );
+  expect(model.readPhoneLayer()).toEqual(layer);
+  expect((message as HTMLTextAreaElement).value).toBe(
+    'Only the submitted reply moves',
+  );
+  expect(screen.queryByRole('dialog', { name: 'Continue here?' })).toBeNull();
+  fireEvent.click(review.getByRole('button', { name: 'Send message' }));
+  const secondDecision = await screen.findByRole('dialog', {
+    name: 'Unsaved Changes',
+  });
+  fireEvent.click(
+    within(secondDecision).getByRole('button', { name: 'Discard' }),
+  );
+  await screen.findByRole('dialog', { name: 'Continue here?' });
+  expect(screen.queryByRole('dialog', { name: 'Unsaved Changes' })).toBeNull();
+  expect(model.readPhoneLayer()).toBeNull();
+  const recipient = within(
+    screen.getByRole('region', { name: 'Conversation' }),
+  );
+  expect(
+    (
+      recipient.getByRole('textbox', {
+        name: 'Message',
+        hidden: true,
+      }) as HTMLTextAreaElement
+    ).value,
+  ).toBe('Only the submitted reply moves');
+  expect(
+    chatDraftsStore.getActivityDraft(
+      JSON.stringify(['activity-review', 'station-a', network.apiBase]),
+      session.threadId,
+    ),
+  ).toBe('');
+});
+
+test('a new closing-owner guard registered by the centre request prevents restoration', async () => {
+  await mount(true, { center: true });
+  const requested = vi.fn();
+  const asked = vi.fn();
+  let unregisterNew = () => {};
+  const removeReceiver = subscribeCenterChatPageRequests(() => {
+    requested();
+    unregisterNew = navigationStore.registerNavigationGuard(
+      Symbol('new centre work'),
+      (_accept, cancel) => {
+        asked();
+        cancel?.();
+      },
+      paneId,
+    );
+  });
+  try {
+    const before = await settledStorageSnapshot();
+    const layer = model.readPhoneLayer();
+    const regions = structuredClone(model.readRegions());
+    const url = window.location.href;
+    requestOpen();
+    await waitFor(() => expect(requested).toHaveBeenCalledTimes(1));
+    expect(await settledStorageSnapshot()).toEqual(before);
+    expect(model.readPhoneLayer()).toEqual(layer);
+    expect(model.readRegions()).toEqual(regions);
+    expect(window.location.href).toBe(url);
+    expect(asked).not.toHaveBeenCalled();
+    expect(navigationStore.getSnapshot().activeChat).not.toBe(
+      'conversation-review',
+    );
+  } finally {
+    removeReceiver();
+    unregisterNew();
+  }
+});
+
+test('an admitted transfer resolves true after its commit clears the submitted draft', async () => {
+  await mount(true, { center: true });
+  const scope = JSON.stringify([
+    'carrier-result',
+    'station-a',
+    network.apiBase,
+  ]);
+  chatDraftsStore.setActivityDraft(
+    scope,
+    session.threadId,
+    'Carried exactly once',
+  );
+  const identity = Symbol('carried reply guard');
+  const asked = vi.fn();
+  const unregister = navigationStore.registerNavigationGuard(
+    identity,
+    (_accept, cancel) => {
+      asked();
+      cancel?.();
+    },
+    paneId,
+  );
+  const requested = vi.fn();
+  const removeReceiver = subscribeCenterChatPageRequests(requested);
+  try {
+    let accepted: boolean | undefined;
+    await act(async () => {
+      accepted = await reviewApi.reveal(
+        paneId,
+        'chat',
+        (current) => {
+          if (!current()) throw new Error('Transfer was not admitted');
+          handOffAttachedContinuation({
+            threadId: session.threadId,
+            draft: 'Carried exactly once',
+            scope: attachedContinuationScope('station-a', network.apiBase),
+          });
+          chatDraftsStore.clearActivityDraft(scope, session.threadId);
+        },
+        () => true,
+        {
+          transfer: {
+            guard: { identity, owner: paneId },
+            current: () =>
+              chatDraftsStore.getActivityDraft(scope, session.threadId) ===
+              'Carried exactly once',
+          },
+          destination: { kind: 'center-chat', reveal: requestCenterChatPage },
+        },
+      );
+    });
+    expect(accepted).toBe(true);
+    expect(asked).not.toHaveBeenCalled();
+    expect(requested).toHaveBeenCalledTimes(1);
+    expect(model.readPhoneLayer()).toBeNull();
+    expect(chatDraftsStore.getActivityDraft(scope, session.threadId)).toBe('');
+    expect(
+      takeAttachedContinuationHandoff(
+        session.threadId,
+        attachedContinuationScope('station-a', network.apiBase),
+      ),
+    ).toBe('Carried exactly once');
+  } finally {
+    unregister();
+    removeReceiver();
+    chatDraftsStore.clearActivityDraft(scope, session.threadId);
   }
 });
