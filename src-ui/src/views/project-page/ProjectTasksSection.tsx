@@ -10,6 +10,7 @@ import {
   useDispatchTaskMutation,
   useLaunchStartTaskStarterMutation,
   useQueryClient,
+  useStartTaskFromWorkItemMutation,
   useTaskClaimQuery,
   useTaskGraphQuery,
   useTasksQuery,
@@ -74,10 +75,11 @@ function isNamespacedWorkItemRef(ref: string): boolean {
  * Provider-backed work items to render alongside local tasks (archive#583, part of
  * epic archive#580, S3). Local-kind provider results are excluded — the local task
  * list above already renders those TaskRecords directly — and any item
- * whose (namespaced) `workItemRef` already matches a local task's
+ * whose (namespaced) `workItemRef` already matches an open local task's
  * `workItemRef` is excluded too, so a task that has already joined its
- * upstream work item doesn't render twice. Read-only this slice: no
- * dispatch/write for these rows (S4/FA2-post-bump territory).
+ * upstream work item doesn't render twice. A done or canceled Task no longer
+ * holds its item (#4003 cardinality), so that item shows again and can start
+ * a new Task. The tracker item itself stays read-only.
  */
 function externalProviderItems(
   providers: Array<{ identity: { kind: string }; items: ProviderWorkItem[] }>,
@@ -85,7 +87,10 @@ function externalProviderItems(
 ): ProviderWorkItem[] {
   const localWorkItemRefs = new Set(
     localTasks.flatMap((task) =>
-      task.workItemRef && isNamespacedWorkItemRef(task.workItemRef)
+      task.workItemRef &&
+      isNamespacedWorkItemRef(task.workItemRef) &&
+      task.status !== 'done' &&
+      task.status !== 'canceled'
         ? [task.workItemRef]
         : [],
     ),
@@ -150,6 +155,8 @@ export function ProjectTasksSection({
   const createTaskMutation = useCreateTaskMutation();
   const dispatchTaskMutation = useDispatchTaskMutation();
   const launchStarterMutation = useLaunchStartTaskStarterMutation();
+  const startFromWorkItemMutation = useStartTaskFromWorkItemMutation();
+  const [startFromWorkItemError, setStartFromWorkItemError] = useState('');
   const starterOperationId = useRef<string | null>(null);
   const selectedTask = sortedTasks.find((task) => task.id === selectedTaskId);
   const { data: taskGraph } = useTaskGraphQuery(selectedTaskId, {
@@ -360,12 +367,53 @@ export function ProjectTasksSection({
     await invalidateTasks(result.task.id);
   }
 
+  /**
+   * Start Task on a board item (#4003): the server observes the item, creates
+   * the Task with the item's body and latest comments as its brief, or answers
+   * with the item's open Task, which this opens instead.
+   */
+  async function startTaskFromProviderItem(item: ProviderWorkItem) {
+    if (!item.workItemRef) return;
+    setStartFromWorkItemError('');
+    let result: Awaited<
+      ReturnType<typeof startFromWorkItemMutation.mutateAsync>
+    >;
+    try {
+      result = await startFromWorkItemMutation.mutateAsync({
+        projectId: slug,
+        workItemRef: item.workItemRef,
+        agentId: agents?.[0],
+        workspaceBinding: {
+          workingDirectory: projectWorkingDirectory,
+          repoRoot: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          worktreePath: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          branch: gitStatus?.isRepo ? gitStatus.branch : undefined,
+          sourceSurface: 'ui',
+        },
+      });
+    } catch (error) {
+      setStartFromWorkItemError(describeReadFailure(error));
+      return;
+    }
+    if (result.existing)
+      toastStore.show('This item already has an open Task. Opening it.');
+    else if (!result.briefSaved)
+      toastStore.show(
+        'The Task was created, but the item’s description could not be copied into it. Open the item to read it.',
+        undefined,
+        12_000,
+      );
+    await invalidateTasks(result.task.id);
+    navigate(`/tasks/${encodeURIComponent(result.task.id)}`);
+  }
+
   function selectLocalTask(taskId: string) {
     setSelectedProviderItemId('');
     setSelectedTaskId(taskId);
   }
 
   function selectProviderItem(itemId: string) {
+    setStartFromWorkItemError('');
     setSelectedTaskId('');
     setSelectedProviderItemId(itemId);
   }
@@ -589,10 +637,32 @@ export function ProjectTasksSection({
                       </div>
                     )}
                 </div>
+                {selectedProviderItem.workItemRef ? (
+                  <div className="project-page__task-detail-actions">
+                    <Button
+                      variant="primary"
+                      pending={startFromWorkItemMutation.isPending}
+                      pendingLabel="Starting…"
+                      onClick={() =>
+                        void startTaskFromProviderItem(selectedProviderItem)
+                      }
+                    >
+                      Start Task
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              <div className="project-page__task-empty">
-                Linked work item — dispatch is not available for this item yet.
-              </div>
+              {startFromWorkItemError ? (
+                <p className="project-page__task-detail-meta" role="alert">
+                  Couldn’t start a Task from this item. {startFromWorkItemError}
+                </p>
+              ) : (
+                <div className="project-page__task-empty">
+                  {selectedProviderItem.workItemRef
+                    ? 'Start Task copies this item’s description and latest comments into a new Task, or opens the item’s open Task.'
+                    : 'This item has no tracker reference, so a Task can’t be started from it.'}
+                </div>
+              )}
             </>
           ) : selectedTask ? (
             <>

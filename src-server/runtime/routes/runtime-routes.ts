@@ -667,6 +667,10 @@ import { publicIngressOriginResolver } from '../../services/tailscale/public-ing
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
 import {
   checkpointCaptureOps,
@@ -897,6 +901,12 @@ export interface ConfigureRuntimeRoutesContext {
   secretBindingIntegrationAdministration: SecretBindingIntegrationAdministration;
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
+  /**
+   * Exact-identity tracker reads (#4003): the runtime's one observer, shared
+   * by Start Task, the Task's linked-item header and dispatch. A composition
+   * without one gets a route-local GitHub observer.
+   */
+  workItemObserver?: WorkItemObserver;
   orchestrationService: OrchestrationService;
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -3948,10 +3958,34 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  // One board aggregate for the Tasks board route and for Start Task, which
+  // accepts only a ref the Project's board lists (#4003).
+  const workItemProviderService = new WorkItemProviderService(
+    [
+      new LocalWorkItemProvider(context.taskGraphService),
+      new FlowAgentsWorkItemProvider({ logger: context.logger }),
+    ],
+    context.logger,
+  );
+  const workItemObserver =
+    context.workItemObserver ?? new GitHubWorkItemObserver();
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      workItemObserver,
+      resolveProviderWorkItem: async ({ projectId, workItemRef }) => {
+        const workingDirectory = resolveWorkspacePath(projectId);
+        if (!workingDirectory) return undefined;
+        const board = await workItemProviderService.listWorkItems({
+          projectId,
+          workingDirectory,
+        });
+        return board.providers
+          .filter((provider) => provider.identity.kind !== 'local')
+          .flatMap((provider) => provider.items)
+          .find((item) => item.workItemRef === workItemRef);
+      },
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
         projectTaskRoomRuntime?.seedProposalBrief(input) ??
@@ -6472,27 +6506,18 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/projects/:slug/work-items',
-    createWorkItemRoutes(
-      new WorkItemProviderService(
-        [
-          new LocalWorkItemProvider(context.taskGraphService),
-          new FlowAgentsWorkItemProvider({ logger: context.logger }),
-        ],
-        context.logger,
-      ),
-      {
-        getWorkspacePath: resolveWorkspacePath,
-        // Mode only: work items are refused when hosted, whoever asks.
-        getSessionReadAuthority: readAuthorityForRequest,
-        // Stateless service (package-root resolution only) — a separate
-        // instance from the one `StationRuntime` wires into
-        // `taskGraphService` (roadmap #584) is cheap and avoids widening
-        // this function's context type just to share one.
-        assignmentClaimService: new AssignmentClaimService({
-          logger: context.logger,
-        }),
-      },
-    ),
+    createWorkItemRoutes(workItemProviderService, {
+      getWorkspacePath: resolveWorkspacePath,
+      // Mode only: work items are refused when hosted, whoever asks.
+      getSessionReadAuthority: readAuthorityForRequest,
+      // Stateless service (package-root resolution only) — a separate
+      // instance from the one `StationRuntime` wires into
+      // `taskGraphService` (roadmap #584) is cheap and avoids widening
+      // this function's context type just to share one.
+      assignmentClaimService: new AssignmentClaimService({
+        logger: context.logger,
+      }),
+    }),
   );
   context.app.route(
     '/api/projects/:slug/operating-state',

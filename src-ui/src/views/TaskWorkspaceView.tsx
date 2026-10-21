@@ -1,6 +1,10 @@
 import { resolveWorkspaceBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import {
+  gitHubIssueUrlFromWorkItemRef,
+  WORK_ITEM_OBSERVATION_LIMITS,
+} from '@kontourai/station-contracts/work-item-provider';
+import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID,
   WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-task-room';
@@ -15,6 +19,7 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -436,6 +441,12 @@ function TaskWorkspaceContent({
     <div className="page page--full task-workspace">
       <TaskHeader task={graph.task} />
       <div className="task-workspace__body">
+        {graph.task.workItemRef ? (
+          <TaskWorkItemHeader
+            taskId={graph.task.id}
+            workItemRef={graph.task.workItemRef}
+          />
+        ) : null}
         <section className="task-workspace__section" aria-label="Task brief">
           <h3 className="task-workspace__section-title">
             What we're working toward
@@ -773,6 +784,89 @@ function TaskHeader({ task }: { task: TaskRecord }) {
   );
 }
 
+/**
+ * The Task's linked tracker item (#4003), re-read every time the Task opens.
+ * The tracker owns state and labels; Station shows them as read, never syncs
+ * them. "New comments" are those created after the Task last recorded the
+ * item (`workItemObservedAt`).
+ */
+function TaskWorkItemHeader({
+  taskId,
+  workItemRef,
+}: {
+  taskId: string;
+  workItemRef: string;
+}) {
+  const { data, error, isLoading } = useTaskWorkItemQuery(taskId);
+  const observation = data?.status === 'observed' ? data.observation : null;
+  const url = observation?.url ?? gitHubIssueUrlFromWorkItemRef(workItemRef);
+  const newComments =
+    observation && data?.commentsSince !== undefined
+      ? (observation.comments?.length ?? 0)
+      : undefined;
+  const newCommentLabel =
+    newComments === undefined
+      ? null
+      : newComments === 0
+        ? 'No new comments'
+        : `${newComments}${newComments >= WORK_ITEM_OBSERVATION_LIMITS.comments ? '+' : ''} new comment${newComments === 1 ? '' : 's'}`;
+  return (
+    <section
+      className="task-workspace__work-item"
+      aria-label="Linked work item"
+      data-testid="task-work-item-header"
+    >
+      {url ? (
+        <a
+          className="task-workspace__work-item-ref"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {workItemRef}
+        </a>
+      ) : (
+        <span className="task-workspace__work-item-ref">{workItemRef}</span>
+      )}
+      {observation ? (
+        <>
+          <span
+            className={`task-workspace__work-item-state task-workspace__work-item-state--${observation.state}`}
+          >
+            {observation.state === 'open' ? 'Open' : 'Closed'}
+            {observation.stateReason && observation.state === 'closed'
+              ? ` · ${observation.stateReason.replaceAll('_', ' ')}`
+              : ''}
+          </span>
+          {observation.labels.map((label) => (
+            <span className="task-workspace__work-item-label" key={label}>
+              {label}
+            </span>
+          ))}
+          {newCommentLabel ? (
+            <span className="task-workspace__work-item-comments">
+              {newCommentLabel}
+            </span>
+          ) : null}
+        </>
+      ) : isLoading ? (
+        <span className="task-workspace__work-item-note">
+          Reading the item…
+        </span>
+      ) : (
+        <span className="task-workspace__work-item-note" role="status">
+          Couldn’t read the item.{' '}
+          {data && data.status !== 'observed'
+            ? data.reason
+            : error
+              ? errorText(error)
+              : ''}
+        </span>
+      )}
+    </section>
+  );
+}
+
 function TaskIdentitySection({ task }: { task: TaskRecord }) {
   const origin = task.updatedClientOrigin ?? task.createdClientOrigin;
   const originDetail = clientOriginDetail(origin);
@@ -789,6 +883,9 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
         <TaskDetail label="Title" value={task.title} />
         <TaskDetail label="Status" value={task.status} />
         <TaskDetail label="Project" value={task.projectId} />
+        {task.workItemRef ? (
+          <TaskDetail label="Work item" value={task.workItemRef} />
+        ) : null}
         <TaskDetail label="Last action origin" value={originDetail} />
       </dl>
     </section>

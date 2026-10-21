@@ -14,6 +14,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
@@ -26,6 +27,7 @@ const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
 let realDiffLocation: { workingDir?: string; projectSlug?: string } | undefined;
 
+const useTaskWorkItemQuery = vi.fn();
 let queryResult: {
   data?: any;
   isLoading: boolean;
@@ -140,6 +142,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),
   useQueryClient: () => starterQueryClient,
   useTaskGraphQuery: () => queryResult,
+  useTaskWorkItemQuery: (taskId: string) => useTaskWorkItemQuery(taskId),
   useTaskTurnReferencesQuery: () => turnReferencesResult,
   useAnswerSupportBundlesQuery: () => answerSupportBundlesResult,
   useAnswerSupportClaimsQuery: () => answerSupportClaimsResult,
@@ -442,6 +445,92 @@ describe('TaskWorkspaceView', () => {
       isFetching: false,
       refetch: vi.fn(),
     };
+  });
+
+  describe('linked work item header (#4003)', () => {
+    const ref = 'github:acme/widgets#42';
+    const observed = (comments: number) => ({
+      data: {
+        status: 'observed',
+        commentsSince: '2026-10-21T10:00:00.000Z',
+        observation: {
+          workItemRef: ref,
+          url: 'https://github.com/acme/widgets/issues/42',
+          title: 'Widgets jam',
+          state: 'closed',
+          stateReason: 'not_planned',
+          labels: ['bug', 'P1'],
+          updatedAt: '2026-10-21T12:00:00Z',
+          observedAt: '2026-10-21T12:30:00.000Z',
+          comments: Array.from({ length: comments }, (_, index) => ({
+            author: `c${index}`,
+            createdAt: '2026-10-21T11:00:00Z',
+            excerpt: 'new',
+          })),
+        },
+      },
+      isLoading: false,
+    });
+    beforeEach(() => {
+      useTaskWorkItemQuery.mockReset();
+      queryResult = {
+        data: graph({
+          workItemRef: ref,
+          workItemObservedAt: '2026-10-21T10:00:00.000Z',
+        }),
+        isLoading: false,
+        refetch: vi.fn(),
+      };
+    });
+
+    test('shows the item, its state and labels, and comments since the Task last read it', () => {
+      useTaskWorkItemQuery.mockReturnValue(observed(2));
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      const header = screen.getByRole('region', { name: 'Linked work item' });
+      expect(useTaskWorkItemQuery).toHaveBeenCalledWith('task-alpha');
+      const link = within(header).getByRole('link', { name: ref });
+      expect(link.getAttribute('href')).toBe(
+        'https://github.com/acme/widgets/issues/42',
+      );
+      expect(within(header).getByText('Closed · not planned')).toBeTruthy();
+      expect(within(header).getByText('bug')).toBeTruthy();
+      expect(within(header).getByText('P1')).toBeTruthy();
+      expect(within(header).getByText('2 new comments')).toBeTruthy();
+    });
+
+    test('a full comment page reads as at least that many', () => {
+      useTaskWorkItemQuery.mockReturnValue(observed(30));
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      expect(screen.getByText('30+ new comments')).toBeTruthy();
+    });
+
+    test('says why the item could not be read', () => {
+      useTaskWorkItemQuery.mockReturnValue({
+        data: {
+          status: 'unauthenticated',
+          reason: 'Run `gh auth login` on the Station host.',
+        },
+        isLoading: false,
+      });
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      const header = screen.getByRole('region', { name: 'Linked work item' });
+      expect(header.textContent).toContain(
+        'Couldn’t read the item. Run `gh auth login` on the Station host.',
+      );
+      // The ref still links to the item even when it cannot be read.
+      expect(
+        within(header).getByRole('link', { name: ref }).getAttribute('href'),
+      ).toBe('https://github.com/acme/widgets/issues/42');
+    });
+
+    test('a Task without a linked item has no header and no tracker read', () => {
+      queryResult = { data: graph(), isLoading: false, refetch: vi.fn() };
+      render(<TaskWorkspaceView taskId="task-alpha" />);
+      expect(
+        screen.queryByRole('region', { name: 'Linked work item' }),
+      ).toBeNull();
+      expect(useTaskWorkItemQuery).not.toHaveBeenCalled();
+    });
   });
 
   test('renders a retained Task as orphaned when its Project has been deleted', () => {

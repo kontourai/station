@@ -41,6 +41,10 @@ import { createProjectNativeToolLoader } from '../../services/projects/project-n
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
@@ -1043,6 +1047,9 @@ export class StationRuntime {
   >;
   private readonly resolveTaskDispatchWorkspace: WorkspacePathResolver;
   private taskDispatcher!: TaskDispatcher;
+  /** #4003: the one exact-identity tracker reader (host `gh` login). */
+  private readonly workItemObserver: WorkItemObserver =
+    new GitHubWorkItemObserver();
   private terminalService!: TerminalService;
   private terminalWsServer!: TerminalWebSocketServer;
   private terminalWsStarted = false;
@@ -4372,6 +4379,7 @@ export class StationRuntime {
       taskGraphService: this.taskGraphService,
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
+      workItemObserver: this.workItemObserver,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,

@@ -950,3 +950,37 @@
   min-height: calc(var(--k-space-6) + var(--k-space-3));
   white-space: normal;
 }
+
+/* #4003: the Task's linked tracker item, read when the Task opens. */
+.task-workspace__work-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-workspace__work-item-ref {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.task-workspace__work-item-state,
+.task-workspace__work-item-label {
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+
+.task-workspace__work-item-state--open {
+  color: var(--k-text);
+}
+
+.task-workspace__work-item-comments {
+  margin-left: auto;
+}
