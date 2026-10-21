@@ -13,7 +13,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { acpProviderRoutingStatus } from '../../connections/connection-service-helpers.js';
 import { getACPManagerStatus } from '../acp-manager-view.js';
 import { ACPProbe, MAX_CLEANUP_RETRY_ATTEMPTS } from '../acp-probe.js';
-import { ACPProcess } from '../acp-process.js';
+import { ACPCommandNotFoundError, ACPProcess } from '../acp-process.js';
 
 describe('ACPProbe', () => {
   test.each([
@@ -191,6 +191,82 @@ process.stdin.on('data', (chunk) => {
     expect(process.destroy).toHaveBeenCalledOnce();
     await expect(probe.dispose()).resolves.toBeUndefined();
     expect(process.newSession).not.toHaveBeenCalled();
+  });
+
+  // A command that is not installed never starts, so its failure belongs to
+  // the launch, not to `initialize`: the setup surfaces choose "install it"
+  // over "it started but did not finish connecting" from this phase.
+  test('attributes a command that could not be launched to spawn, and a started one that failed to initialize', async () => {
+    const config = {
+      id: 'kiro',
+      name: 'Kiro',
+      command: 'kiro-cli',
+      enabled: true,
+    };
+    const base = {
+      newSession: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: () => false,
+      releaseIfConfirmedGone: () => {},
+    };
+    const missing = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(new ACPCommandNotFoundError('kiro-cli')),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(missing.probe()).resolves.toBe(false);
+    expect(missing.lastError).toMatchObject({ phase: 'spawn' });
+
+    const spawnRefused = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(
+              Object.assign(new Error('spawn kiro-cli EACCES'), {
+                code: 'EACCES',
+                syscall: 'spawn kiro-cli',
+              }),
+            ),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(spawnRefused.probe()).resolves.toBe(false);
+    expect(spawnRefused.lastError).toMatchObject({ phase: 'spawn' });
+
+    const exited = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(new Error('ACP process exited with code 1')),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(exited.probe()).resolves.toBe(false);
+    expect(exited.lastError).toMatchObject({ phase: 'initialize' });
+
+    await Promise.all([
+      missing.dispose(),
+      spawnRefused.dispose(),
+      exited.dispose(),
+    ]);
   });
 
   // The first-contact continuation retries only a cold start: a

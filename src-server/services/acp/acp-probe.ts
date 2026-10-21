@@ -20,6 +20,7 @@ import {
   PROBE_SESSION_REFRESH_MS,
 } from './acp-probe-session.js';
 import {
+  ACPCommandNotFoundError,
   ACPProcess,
   assertACPProviderRouteSupported,
   type InitializeResult,
@@ -96,6 +97,18 @@ export async function destroyProcessWithEscalation(
 
 /** Default cleanup deadline: comfortably above SIGTERM → 1s → SIGKILL → 1s. */
 const DESTROY_ESCALATION_UPPER_BOUND_MS = 5_000;
+
+/** The command was not found, or the OS refused to spawn it. */
+function isLaunchFailure(error: unknown): boolean {
+  if (error instanceof ACPCommandNotFoundError) return true;
+  const { code, syscall } = (error ?? {}) as {
+    code?: unknown;
+    syscall?: unknown;
+  };
+  return typeof syscall === 'string' && syscall.startsWith('spawn')
+    ? code === 'ENOENT' || code === 'EACCES'
+    : false;
+}
 
 class ACPProbeDeadlineError extends Error {
   constructor(message: string) {
@@ -973,7 +986,9 @@ export class ACPProbe {
       }
       this.lastError = {
         message: probeErrorMessage(err),
-        phase: probePhase,
+        // `process.start()` both launches and initializes; a command that
+        // never launched failed at spawn, not while initializing.
+        phase: isLaunchFailure(err) ? 'spawn' : probePhase,
       };
       this.lastFailureWasDeadline = err instanceof ACPProbeDeadlineError;
       // archive#3404: "has this connection ever handshaked" is
