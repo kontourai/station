@@ -72,11 +72,17 @@ export function useSessionInventoryHostRegistration(
   latestExecution.current = executionId;
   const available = Boolean(authorityKey && chatStoreId && executionId);
   useEffect(
-    () => registerSessionInventoryHost(hostId, available ? {
-      authorityKey: authorityKey!,
-      chatStoreId: chatStoreId!,
-      executionId: latestExecution.current!,
-    } : null),
+    () =>
+      registerSessionInventoryHost(
+        hostId,
+        available
+          ? {
+              authorityKey: authorityKey!,
+              chatStoreId: chatStoreId!,
+              executionId: latestExecution.current!,
+            }
+          : null,
+      ),
     [hostId, authorityKey, chatStoreId, available],
   );
   useEffect(() => {

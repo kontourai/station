@@ -214,6 +214,84 @@ describe('SessionInventoryModule', () => {
     },
   );
 
+  test.each(['tool-result', 'output'] as const)(
+    'does not report an exact empty when %s descriptors were withheld',
+    async (withheld) => {
+      const answer = {
+        ...currentAnswer(),
+        inputs: [],
+        results:
+          withheld === 'tool-result'
+            ? [
+                {
+                  eventId: 'unknown-result',
+                  toolCallId: 'call-a',
+                  result: {
+                    resultId: 'unknown-result',
+                    name: 'shell',
+                    terminalStatus: 'unknown' as const,
+                    content: [],
+                    truncated: false,
+                    omittedParts: 0,
+                    omittedTextBytes: 0,
+                    omittedMetadataBytes: 0,
+                  },
+                },
+              ]
+            : [],
+      };
+      const module = createSessionInventoryModule({
+        canReadSession: () => true,
+        readAnswerLineage: () => ({
+          status: 'found',
+          decisions: [],
+          delegations: [],
+          partialDelegations: false,
+        }),
+        readExactAnswerBasis: async () => ({
+          status: 'found',
+          answer,
+          projection: composeAuthorizedSessionAnswerBasis(answer),
+        }),
+        sessionOutputs: {
+          list: async () => ({
+            status: 'found',
+            page: {
+              version: 'session-outputs/v1',
+              items: [],
+              partial: withheld === 'output',
+            },
+          }),
+        } as never,
+      });
+      const result = await module.read({
+        scope: {
+          kind: 'current-answer',
+          sessionId: 'session-a',
+          turnId: 'turn-a',
+        },
+        authority,
+        current: () => true,
+        clientProtocol: 3,
+      });
+      if (result.status !== 'found')
+        throw new Error('Expected exact inventory');
+      expect(
+        result.projection.groups.find(
+          (group) =>
+            group.id === (withheld === 'output' ? 'outputs' : 'execution'),
+        ),
+      ).toMatchObject({
+        state: withheld === 'output' ? 'corrupt' : 'not-captured',
+        items: [],
+        gaps: [{ kind: withheld === 'output' ? 'corrupt' : 'not-captured' }],
+      });
+      expect(parseSessionInventoryProjection(result.projection)).toEqual(
+        result.projection,
+      );
+    },
+  );
+
   test('maps the work-item owner projection for the exact session with only trusted facts', async () => {
     const observation = workItem();
     const module = createSessionInventoryModule({

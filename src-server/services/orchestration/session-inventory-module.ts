@@ -225,7 +225,10 @@ export function createSessionInventoryModule(input: {
       });
       let decisions = gap('decisions');
       const execution: SessionInventoryRow[] = [];
-      let partialDelegations = false;
+      let partialDelegations = answer.results.some(
+        ({ toolCallId, result }) =>
+          !toolCallId || result.terminalStatus === 'unknown',
+      );
       let lineageGap: 'not-captured' | 'corrupt' | 'unavailable' =
         'not-captured';
       if (clientProtocol >= 3 && input.readAnswerLineage) {
@@ -258,7 +261,7 @@ export function createSessionInventoryModule(input: {
                 ...item,
               })),
             );
-            partialDelegations = lineage.partialDelegations;
+            partialDelegations ||= lineage.partialDelegations;
           } else {
             decisions = gap('decisions', 'corrupt');
             partialDelegations = true;
@@ -273,10 +276,15 @@ export function createSessionInventoryModule(input: {
       const executionGroup = (
         items: SessionInventoryRow[],
       ): SessionInventoryV2Group => ({
-        ...group('execution', items),
+        ...(partialDelegations && !items.length
+          ? gap('execution', lineageGap)
+          : group('execution', items)),
         ...(partialDelegations
           ? {
               state: items.length ? ('available' as const) : lineageGap,
+              ...(items.length
+                ? { count: { kind: 'at-least' as const, value: items.length } }
+                : {}),
               gaps: [{ kind: lineageGap }],
             }
           : {}),
@@ -633,17 +641,22 @@ export function createSessionInventoryModule(input: {
       relations: ['produced-by'] as const,
       output,
     }));
+    if (!items.length && result.page.partial) return gap('outputs', 'corrupt');
     return {
       id: 'outputs',
       owner: owner('station.session-outputs'),
-      state: items.length ? 'available' : 'empty',
+      state: items.length
+        ? 'available'
+        : result.page.partial
+          ? 'corrupt'
+          : 'empty',
       count: {
-        kind: result.page.cursor ? 'at-least' : 'exact',
+        kind: result.page.cursor || result.page.partial ? 'at-least' : 'exact',
         value: result.page.items.length,
       },
       items,
       ...(result.page.cursor ? { continuation: result.page.cursor } : {}),
-      gaps: [],
+      gaps: result.page.partial ? [{ kind: 'corrupt' }] : [],
     };
   };
   const workItems = (

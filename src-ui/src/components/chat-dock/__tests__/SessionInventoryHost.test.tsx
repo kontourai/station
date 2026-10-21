@@ -105,8 +105,14 @@ describe('SessionInventoryHost', () => {
       dockMode: 'bottom' as const,
       fullscreen: false,
     };
-    const view = renderHook(({ chatStoreId, executionId }) =>
-      useSessionInventoryHostRegistration('refresh-host', 'handoff-test', chatStoreId, executionId),
+    const view = renderHook(
+      ({ chatStoreId, executionId }) =>
+        useSessionInventoryHostRegistration(
+          'refresh-host',
+          'handoff-test',
+          chatStoreId,
+          executionId,
+        ),
       { initialProps: input },
     );
     const occurrence = renderHook(() =>
