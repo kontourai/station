@@ -42,6 +42,7 @@
   border-collapse: collapse;
   text-align: left;
   width: 100%;
+  min-width: 48rem;
 }
 .ensemble-inspection th,
 .ensemble-inspection td {

@@ -173,7 +173,12 @@ function InspectionForm({
             {result.environmentId} · Observed {result.observedAt}
           </p>
           <p>{result.limits}</p>
-          <div className="ensemble-inspection__table">
+          <section
+            className="ensemble-inspection__table"
+            aria-label="Scrollable Ensemble configuration and provenance"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll this wide table.
+            tabIndex={0}
+          >
             <table>
               <caption>Ensemble configuration and provenance</caption>
               <thead>
@@ -238,7 +243,7 @@ function InspectionForm({
                 ))}
               </tbody>
             </table>
-          </div>
+          </section>
           {result.resolutions.map(({ memberId, receipt }) => (
             <details key={memberId} id={`ensemble-resolution-${memberId}`}>
               <summary>Resolution receipt for {memberId}</summary>
