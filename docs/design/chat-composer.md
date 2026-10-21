@@ -626,7 +626,8 @@ window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
 Send on a closed window's copy, while a turn runs or this window's queue holds
 follow-ups, queues it here under its own key, so it sends in that order and
-takes its number; otherwise it goes now.
+takes its number; otherwise it goes now. A key already in the queue is not
+queued again, so a repeat Send adds no second row.
 Rows, and the list itself, grow in and collapse out (height and opacity) rather
 than popping.
 In a dock too short for the list and the draft, the list yields before the
@@ -635,7 +636,9 @@ scrolls inside it.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the
-collapsed rows announces it when it appears. Its disclosure
+collapsed rows announces it when it appears. The region mounts empty and takes
+its text after mount, so a list that first appears already failed is announced
+too, once. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending

@@ -744,7 +744,9 @@ aborted. Two aborts count, and they settle different sets
   `runtime_exit`, not `review_pending`. A turn still running at a normal stop
   takes the same path on the next boot: the `session.exited` Station writes as
   it shuts down (`reason: 'orchestration_shutdown'`) does not retire the
-  turn's boundary, so recovery finds it as it would after a crash. A log written before recovery recorded
+  turn's boundary, so recovery finds it as it would after a crash. The session
+  stays `closed` with its folder and resume cursor, so the next message
+  continues the conversation. A log written before recovery recorded
   those resolutions holds the abort with the request still open; every server
   read treats that request as settled all the same.
 - **A live turn was stopped**: `turn.aborted`, or the
