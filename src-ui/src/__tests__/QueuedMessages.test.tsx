@@ -59,6 +59,71 @@ describe('pending message disclosure', () => {
   });
 });
 
+describe('one queue surface: the outbox joins the pending list', () => {
+  it('one panel counts and lists both, and says when one needs the person', () => {
+    const { container, rerender } = render(
+      <QueuedMessages
+        sessionId="s1"
+        messages={['new follow-up']}
+        metadata={[{ id: 'local-1', mode: 'queue' }]}
+        outbox={{
+          count: 3,
+          needsReview: true,
+          node: <div className="queued-message">held in a closed window</div>,
+        }}
+      />,
+    );
+    // One frame and one count, not a second list with its own.
+    expect(container.querySelectorAll('.queued-messages')).toHaveLength(1);
+    const toggle = screen.getByRole('button', {
+      name: '4 pending messages, needs review',
+    });
+    // Compact until opened, like the rest of the queue.
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    const list = container.querySelector('.queued-messages__list')!;
+    expect(list.textContent).toContain('held in a closed window');
+    expect(list.textContent).toContain('new follow-up');
+    // The outbox leads: none of it is in this queue's send order.
+    expect(list.textContent?.indexOf('held in a closed window')).toBeLessThan(
+      list.textContent?.indexOf('new follow-up') ?? -1,
+    );
+
+    // Nothing that needs the person: no review flag.
+    rerender(
+      <QueuedMessages
+        sessionId="s1"
+        messages={['new follow-up']}
+        metadata={[{ id: 'local-1', mode: 'queue' }]}
+        outbox={{
+          count: 1,
+          needsReview: false,
+          node: <div className="queued-message">offline send</div>,
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: '2 pending messages' }),
+    ).toBeTruthy();
+  });
+
+  it('shows the outbox alone, with nothing else queued', () => {
+    render(
+      <QueuedMessages
+        sessionId="s1"
+        messages={[]}
+        outbox={{
+          count: 1,
+          needsReview: false,
+          node: <div className="queued-message">offline send</div>,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '1 pending message' }));
+    expect(screen.getByText('offline send')).toBeTruthy();
+  });
+});
+
 describe('#3157 usage-limit hold', () => {
   it('says why the queue is held, even while collapsed, and only while held', () => {
     const { rerender } = render(

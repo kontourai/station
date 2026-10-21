@@ -41,6 +41,21 @@ interface QueuedMessagesProps {
    * removed through the inbox, not edited, reordered or sent from here.
    */
   held?: HeldMessages;
+  /**
+   * This browser's durable outbox for the chat (sends that failed, got no
+   * answer, or wait in a window that closed): its rows join this list, at
+   * the top, rather than forming a second list. One that waits on the person
+   * marks the collapsed list "Needs review".
+   */
+  outbox?: OutboxRows;
+}
+
+export interface OutboxRows {
+  /** How many outbox messages the rows show. */
+  count: number;
+  /** One of them needs the person: failed, may have reached, or held. */
+  needsReview: boolean;
+  node: ReactNode;
 }
 
 export interface HeldMessages {
@@ -86,6 +101,7 @@ export function QueuedMessages({
   onRetry,
   heldByUsageLimit,
   held,
+  outbox,
 }: QueuedMessagesProps) {
   const {
     editingIndex,
@@ -99,6 +115,7 @@ export function QueuedMessages({
     moveDown,
   } = useQueuedMessages(sessionId);
 
+  const outboxCount = outbox?.count ?? 0;
   const [expanded, setExpanded] = useState(false);
   const queueId = useId();
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -136,9 +153,10 @@ export function QueuedMessages({
   const heldPending = heldEntries.filter(
     (entry) => entry.state === 'queued' || entry.state === 'sending',
   ).length;
-  const pendingCount = localRows.length + heldPending;
+  const pendingCount = localRows.length + heldPending + outboxCount;
   const needsReview = Boolean(
     failure ||
+      (outboxCount > 0 && outbox?.needsReview) ||
       metadata?.some((entry) => entry.delivery === 'indeterminate') ||
       held?.removalError ||
       held?.unavailable ||
@@ -147,14 +165,20 @@ export function QueuedMessages({
       ),
   );
   const visible =
+    outboxCount > 0 ||
     localRows.length > 0 ||
     heldEntries.length > 0 ||
     Boolean(held?.unavailable);
 
-  // Top to bottom: local follow-ups newest first (the next to send last, as
-  // before), then what Station holds, which it sends itself when the current
-  // turn ends, in its own send order (its next at the very bottom).
+  // Top to bottom: this browser's outbox (it sends on its own, or on Send,
+  // outside this queue's order), local follow-ups newest first (the next to
+  // send last, as before), then what Station holds, which it sends itself
+  // when the current turn ends, in its own send order (its next at the very
+  // bottom).
   const displayRows: { key: string; node: ReactNode }[] = [
+    ...(outboxCount > 0 && outbox
+      ? [{ key: 'outbox', node: outbox.node }]
+      : []),
     ...[...localRows].reverse().map(({ row, idx }) => ({
       key: `local:${row.id}`,
       node: renderLocalRow(row, idx),

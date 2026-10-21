@@ -1522,6 +1522,23 @@
   overflow-y: auto;
 }
 
+/* The pending list yields next, down to its toggle row (ChatInputArea counts
+   only that row as taken): its rows scroll inside it rather than pushing the
+   draft off the dock. */
+.chat-dock__body > .queued-messages-presence {
+  flex-shrink: 500;
+  min-height: 0;
+}
+.chat-dock__body
+  > .queued-messages-presence:not(
+    [data-phase="entering"],
+    [data-phase="exiting"]
+  )
+  > .queued-presence__clip {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* No room above the composer (data-composer-priority): the transcript has
    shrunk to nothing, so the send-failure notice inside it cannot be read; the
    composer repeats the latest one as a single line. */

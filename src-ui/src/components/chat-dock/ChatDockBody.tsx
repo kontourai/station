@@ -1382,6 +1382,70 @@ export function ChatDockBody({
     ],
   );
 
+  // This browser's outbox: rows in the one pending-message list above the
+  // composer, not a list of its own.
+  const outboundTurns = activeSession.outboundQueuedTurns ?? [];
+  const outboxRows = outboundTurns.length
+    ? {
+        count: outboundTurns.length,
+        needsReview: outboundTurns.some(
+          (turn) =>
+            turn.status === 'failed' ||
+            turn.status === 'may-have-started' ||
+            turn.heldElsewhere === true,
+        ),
+        node: (
+          <LazyBoundary
+            load={loadOutboundQueuedMessages}
+            pending={
+              <SkeletonList
+                count={1}
+                withIcon={false}
+                label="Loading offline messages"
+              />
+            }
+            componentProps={{
+              sessionId: activeSession.id,
+              turns: outboundTurns,
+              messages: renderedSession.messages,
+              onError: (error: string) => surfaceRecoveryFailure(error),
+              // The "x" discards the same queued turn as the notice's Discard;
+              // once none is left, the notice has nothing to explain.
+              onDiscarded: (remaining: number) => {
+                const kept = ephemeralAfterQueueDiscard(
+                  ephemeralMessages,
+                  remaining,
+                );
+                if (!kept) return;
+                if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+                else updateChat(activeSession.id, { ephemeralMessages: kept });
+              },
+              onRetry: async (clientTurnId: string) => {
+                try {
+                  const { outboundDispatch } = await import(
+                    '../../lib/outboundQueue'
+                  );
+                  await outboundDispatch.retry(clientTurnId);
+                } catch (error) {
+                  surfaceRecoveryFailure(
+                    `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              },
+              onStartNewChat:
+                onNewChat ??
+                (() => {
+                  updateChat(activeSession.id, {
+                    status: 'error',
+                    error:
+                      'New chat is unavailable in this view — open the conversation from the dock and try again.',
+                  });
+                }),
+            }}
+          />
+        ),
+      }
+    : undefined;
   return (
     <>
       {showStatsPanel && (
@@ -1589,10 +1653,12 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {/* One pending-message list: this browser's queue and what Station
-          holds for the conversation (#3868). It renders nothing while both
-          are empty, and stays mounted so its rows can animate in and out. */}
-      {activeSession.queuedMessages.length || !activeSession.replay ? (
+      {/* One pending-message list: this browser's queue, its outbox and what
+          Station holds for the conversation (#3868). It renders nothing while
+          all are empty, and stays mounted so its rows can animate in and out. */}
+      {activeSession.queuedMessages.length ||
+      outboxRows ||
+      !activeSession.replay ? (
         <LazyBoundary
           // The chat's own id: a new chat gaining its conversation id is the
           // same list, not a new one to mount (and replay its rows' entry).
@@ -1607,6 +1673,7 @@ export function ChatDockBody({
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
+            outbox: outboxRows,
             // The pill's fact when the server's turn record is here (it
             // survives a reload; the live parts do not), unless the user
             // owes an approval, which the turn waits on instead. The live
@@ -1876,56 +1943,6 @@ export function ChatDockBody({
               }
               return false;
             },
-          }}
-        />
-      ) : null}
-      {activeSession.outboundQueuedTurns?.length ? (
-        <LazyBoundary
-          load={loadOutboundQueuedMessages}
-          pending={
-            <SkeletonList
-              count={1}
-              withIcon={false}
-              label="Loading offline messages"
-            />
-          }
-          componentProps={{
-            sessionId: activeSession.id,
-            turns: activeSession.outboundQueuedTurns,
-            messages: renderedSession.messages,
-            onError: (error: string) => surfaceRecoveryFailure(error),
-            // The "x" discards the same queued turn as the notice's Discard;
-            // once none is left, the notice has nothing to explain.
-            onDiscarded: (remaining: number) => {
-              const kept = ephemeralAfterQueueDiscard(
-                ephemeralMessages,
-                remaining,
-              );
-              if (!kept) return;
-              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
-              else updateChat(activeSession.id, { ephemeralMessages: kept });
-            },
-            onRetry: async (clientTurnId: string) => {
-              try {
-                const { outboundDispatch } = await import(
-                  '../../lib/outboundQueue'
-                );
-                await outboundDispatch.retry(clientTurnId);
-              } catch (error) {
-                surfaceRecoveryFailure(
-                  `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-            },
-            onStartNewChat:
-              onNewChat ??
-              (() => {
-                updateChat(activeSession.id, {
-                  status: 'error',
-                  error:
-                    'New chat is unavailable in this view — open the conversation from the dock and try again.',
-                });
-              }),
           }}
         />
       ) : null}

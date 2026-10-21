@@ -3,7 +3,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 const fetchCapability = vi.hoisted(() => vi.fn());
@@ -94,9 +94,10 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 const queuedMessagesProps = vi.hoisted(() => vi.fn());
 vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: (props: unknown) => {
+  // The outbox's rows render inside this one list.
+  QueuedMessages: (props: { outbox?: { node: ReactNode } }) => {
     queuedMessagesProps(props);
-    return null;
+    return props.outbox?.node ?? null;
   },
 }));
 vi.mock('../components/chat/ChatMessageList', () => ({
