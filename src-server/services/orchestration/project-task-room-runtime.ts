@@ -763,6 +763,41 @@ export class ProjectTaskRoomRuntime {
     }
   }
 
+  /**
+   * #4003 layer 4 (Learning): a person's access to review a Task's lessons,
+   * under the same request authority as their Task memory writes. The
+   * learning routes derive the candidates and write the knowledge record;
+   * `isCurrent` re-checks the Task incarnation and room before a write.
+   */
+  async personTaskLearningAccess(input: {
+    readonly taskId: string;
+    readonly request: Request;
+  }): Promise<
+    | {
+        readonly kind: 'granted';
+        readonly memory: TaskMemoryStore;
+        readonly task: TaskRecord;
+        readonly projectId: string;
+        readonly principalId: string;
+        readonly isCurrent: () => boolean;
+      }
+    | { readonly kind: 'not-found' | 'unavailable' }
+  > {
+    const access = await this.#personMemoryAccess(input.taskId, input.request);
+    if (access.kind !== 'granted') return access;
+    const task = this.#deps.taskGraph.readTaskView(input.taskId);
+    const { author } = access.write;
+    if (!task || author.kind !== 'person') return { kind: 'not-found' };
+    return {
+      kind: 'granted',
+      memory: access.memory,
+      task,
+      projectId: access.write.projectId,
+      principalId: author.principalId,
+      isCurrent: access.write.beforeCommit,
+    };
+  }
+
   #updateSummary(
     access: TaskMemoryAccess,
     input: { readonly text: string; readonly baseRevision: number },

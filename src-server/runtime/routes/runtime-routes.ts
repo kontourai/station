@@ -351,6 +351,7 @@ import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
+import { createTaskLearningRoutes } from '../../routes/orchestration/task-learning.js';
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
@@ -4382,6 +4383,32 @@ export function configureRuntimeRoutes(
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    // #4003 layer 4: a person reviews a done Task's lessons and promotes them
+    // into the Project's knowledge store. Room request authority; no
+    // station-control tool names these routes.
+    context.app.route(
+      '/api/tasks',
+      createTaskLearningRoutes({
+        store: context.knowledgeStoreProvider,
+        access: async (taskId, request) => {
+          const access = await roomRuntime.personTaskLearningAccess({
+            taskId,
+            request,
+          });
+          if (access.kind !== 'granted') return access;
+          const project = context.projectService
+            .listProjects()
+            .find(
+              (p) =>
+                p.id === access.task.projectId ||
+                p.slug === access.task.projectId,
+            );
+          return project
+            ? { ...access, projectSlug: project.slug }
+            : { kind: 'not-found' as const };
+        },
+      }),
+    );
     context.app.route(
       '/api/tasks',
       createProjectTaskRoomRoutes(roomRuntime, {

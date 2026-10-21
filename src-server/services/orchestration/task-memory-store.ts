@@ -12,12 +12,17 @@
  *
  * The read API at the bottom (`listStandingRecords`, `listOpenQuestions`,
  * `countOpenQuestions`) is what other server code reads Task memory through.
+ * It also keeps a person's dismissals of a done Task's promotion candidates
+ * (`task_learning_dismissals`, migration 018; see
+ * `services/projects/task-learning.ts`).
  */
 import {
   checkTaskRecordWrite,
   isLiveTaskRecord,
   TASK_MEMORY_LIMITS,
   TASK_RECORD_DEFAULT_IMPORTANCE,
+  type TaskLearningDismissal,
+  type TaskLearningKind,
   type TaskMemoryAuthor,
   type TaskMemoryRecord,
   type TaskMemoryRefusal,
@@ -95,6 +100,26 @@ export type TaskRecordWriteOutcome =
   | { readonly kind: 'refused'; readonly refusal: TaskMemoryRefusal }
   | TaskMemoryAccessRefusal;
 
+/** A person's persisted dismissal of one promotion candidate version. */
+export interface TaskLearningDismissalRecord extends TaskLearningDismissal {
+  readonly principalId: string;
+  readonly dismissedAt: string;
+}
+
+export type TaskLearningDismissResult =
+  | {
+      readonly kind: 'dismissed';
+      readonly dismissal: TaskLearningDismissalRecord;
+    }
+  /** Already dismissed: the first dismissal stands and nothing is written. */
+  | {
+      readonly kind: 'already-dismissed';
+      readonly dismissal: TaskLearningDismissalRecord;
+    }
+  /** The version is not the key's current active, standing version. */
+  | { readonly kind: 'not-a-candidate' }
+  | { readonly kind: 'stale' };
+
 export interface TaskOpenQuestion {
   readonly record: TaskMemoryRecord;
   /** The Session that asked it; absent when a person asked. */
@@ -134,6 +159,23 @@ export interface TaskMemoryStore {
     decisions: TaskMemoryRecord[];
     deadEnds: TaskMemoryRecord[];
   };
+  /**
+   * #4003 layer 4: persist a person's dismissal of one standing decision or
+   * dead end version, so a done Task stops offering it for promotion. Only
+   * the key's current active, standing version can be dismissed.
+   */
+  dismissLearningCandidate(
+    input: TaskMemoryIncarnation &
+      TaskLearningDismissal & {
+        readonly projectId: string;
+        readonly principalId: string;
+        readonly beforeCommit?: () => boolean;
+      },
+  ): TaskLearningDismissResult;
+  /** Every dismissal of the incarnation, oldest first. */
+  listLearningDismissals(
+    input: TaskMemoryIncarnation,
+  ): TaskLearningDismissalRecord[];
   /** Open questions, oldest first, with the Session that asked each. */
   listOpenQuestions(input: TaskMemoryIncarnation): TaskOpenQuestion[];
   /** Open-question counts per Task incarnation; Tasks with none are absent. */
@@ -165,6 +207,27 @@ interface RecordRow {
   author_kind: 'session' | 'person';
   author_id: string;
   created_at: string;
+}
+
+interface DismissalRow {
+  kind: TaskLearningKind;
+  record_key: string;
+  version: number;
+  principal_id: string;
+  dismissed_at: string;
+}
+
+const DISMISSAL_COLUMNS =
+  'kind, record_key, version, principal_id, dismissed_at';
+
+function dismissalFromRow(row: DismissalRow): TaskLearningDismissalRecord {
+  return {
+    kind: row.kind,
+    key: row.record_key,
+    version: row.version,
+    principalId: row.principal_id,
+    dismissedAt: row.dismissed_at,
+  };
 }
 
 function authorOf(kind: 'session' | 'person', id: string): TaskMemoryAuthor {
@@ -316,6 +379,25 @@ export function createSqliteTaskMemoryStore(
         )
         .all(input.taskId, input.taskCreatedAt) as unknown as RecordRow[]
     ).map(recordFromRow);
+
+  const readDismissal = (
+    input: TaskMemoryIncarnation & TaskLearningDismissal,
+  ) => {
+    const row = db
+      .prepare(
+        `SELECT ${DISMISSAL_COLUMNS} FROM task_learning_dismissals
+          WHERE task_id = ? AND task_created_at = ? AND kind = ?
+            AND record_key = ? AND version = ?`,
+      )
+      .get(
+        input.taskId,
+        input.taskCreatedAt,
+        input.kind,
+        input.key,
+        input.version,
+      ) as DismissalRow | undefined;
+    return row ? dismissalFromRow(row) : undefined;
+  };
 
   return {
     updateSummary(input) {
@@ -525,6 +607,64 @@ export function createSqliteTaskMemoryStore(
         decisions: live.filter((record) => record.kind === 'decision'),
         deadEnds: live.filter((record) => record.kind === 'dead_end'),
       };
+    },
+
+    dismissLearningCandidate(input) {
+      const result = transact<TaskLearningDismissResult>(
+        input.beforeCommit,
+        () => {
+          const existing = readDismissal(input);
+          if (existing)
+            return {
+              commit: false,
+              value: { kind: 'already-dismissed', dismissal: existing },
+            };
+          const current = currentRecord(input, input.kind, input.key);
+          if (
+            !current ||
+            current.version !== input.version ||
+            current.state !== 'active' ||
+            current.importance !== 'standing'
+          )
+            return { commit: false, value: { kind: 'not-a-candidate' } };
+          const dismissal: TaskLearningDismissalRecord = {
+            kind: input.kind,
+            key: input.key,
+            version: input.version,
+            principalId: input.principalId,
+            dismissedAt: now().toISOString(),
+          };
+          db.prepare(
+            `INSERT INTO task_learning_dismissals (project_id, task_id,
+               task_created_at, kind, record_key, version, principal_id,
+               dismissed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(
+            input.projectId,
+            input.taskId,
+            input.taskCreatedAt,
+            dismissal.kind,
+            dismissal.key,
+            dismissal.version,
+            dismissal.principalId,
+            dismissal.dismissedAt,
+          );
+          return { commit: true, value: { kind: 'dismissed', dismissal } };
+        },
+      );
+      return result;
+    },
+
+    listLearningDismissals(input) {
+      return (
+        db
+          .prepare(
+            `SELECT ${DISMISSAL_COLUMNS} FROM task_learning_dismissals
+              WHERE task_id = ? AND task_created_at = ?
+              ORDER BY dismissed_at, kind, record_key, version`,
+          )
+          .all(input.taskId, input.taskCreatedAt) as unknown as DismissalRow[]
+      ).map(dismissalFromRow);
     },
 
     listOpenQuestions(input) {
