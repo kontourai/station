@@ -62,8 +62,10 @@ versioned named members and renders roster-aware briefs; the server loads exact 
 and prepares frozen member options through existing resolution plus mandatory authentication
 receipts. Unsupported option values and ancestor/descriptor substitutions refuse. Forty-six
 focused tests and bounded independent review cover these source boundaries. Actual-context
-credentials, launch/session identity persistence, preset CLI/UI entry points and roster delivery
-still need adoption evidence; this does not complete #600.
+credentials, launch/session identity persistence, preset UI entry points and roster delivery
+still need adoption evidence. A local `station ensemble inspect` CLI now reports bounded exact
+file bytes/hash, parsed declarations and roster without authentication or launch. Its independent
+review and published CLI/contracts availability remain open; this does not complete #600.
 
 The upstream feature branch now has source entry points for v2 authority/grants, ancestor
 allocations and invocation holds, a durable group controller, Flow-owned scheduling, mailbox

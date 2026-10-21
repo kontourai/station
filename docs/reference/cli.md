@@ -1150,6 +1150,32 @@ Accepts the shared target flags (`--api-base`, saved Stations); the exported
 `thread` format is the portable conversation envelope, and the provider
 formats are one-way projections of it.
 
+### `ensemble`
+
+Inspect a local versioned Ensemble preset before preparing or launching any members.
+
+```bash
+station ensemble inspect ./team.json
+station ensemble inspect ./team.json --json
+```
+
+The file must be regular, at most 128 KiB, valid UTF-8 and valid
+`station.ensemble/v1` JSON. Paths containing symbolic links are refused. The loader
+checks file and ancestor identities around the bounded read and reports the SHA-256
+of the exact bytes. A preset describes up to 16 named members, a Stationmaster,
+models, options and prompt additions; these declarations grant no authority.
+
+JSON success output is the inspection object itself, with `kind:
+"station.ensemble.inspection"`, `version: 1`, `path`, `bytes`, `sha256`, `preset`
+and `roster`. Errors use `{success:false,error}` and exit 1. Human-readable output
+includes the roster, options and digest; terminal control characters are escaped.
+Use `--` before a filename beginning with `-`.
+
+This command inspects declarations only. It does not resolve installed engines,
+validate effective adapter option values, authenticate credentials or launch a
+session. The command and `/ensemble` contracts subpath currently exist in this
+checkout; published CLI/contracts availability requires separate release evidence.
+
 ### `delegate`
 
 Hand Station a Task (create) to an Agent, get back a durable Conversation identity, and headlessly supervise
