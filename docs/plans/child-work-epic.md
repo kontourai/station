@@ -133,8 +133,11 @@ attempts and retained per-member ACK receipts. Existing continuation plus a prom
 Source `21de0f40` adds an Agents inspector at `/agents?tab=ensembles`, a separate
 non-probing local-operator inspection route, SDK transport and category table/diagram.
 The implementer reports 384 focused passes, scoped types/lint and a compiling UI
-branch mutation caught before byte-identical restoration. Independent review and
-browser proof are pending. Configuration relations do not establish live group
+branch mutation caught before byte-identical restoration. Independent review passed
+37 selected tests and additional route/hook/parser probes, but found a broken Project
+owner link (P2) and malformed JSON classified as unavailable (P3). Repairs and stronger
+prior-success stale-response tests are underway; fresh review and browser proof remain
+pending. Configuration relations do not establish live group
 edges, shared memory, scheduler/webhook membership, provider entitlement or bounded
 execution; unavailable facts remain visible. This does not complete #453.
 
