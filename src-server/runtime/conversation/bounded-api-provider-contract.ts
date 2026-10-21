@@ -450,15 +450,36 @@ export function resolveBoundedApiProviderContract(
     'invalid_contract',
   );
   const expectedObject = closed(expected, BINDING_KEYS, [], 'binding_mismatch');
-  const binding = Object.fromEntries(
+  const fields = Object.fromEntries(
     BINDING_KEYS.map((key) => [
       key,
       str(bindingObject[key], 'invalid_contract'),
     ]),
-  ) as unknown as BoundedApiProviderBinding;
+  );
   BINDING_KEYS.forEach((key) => {
-    if (binding[key] !== expectedObject[key]) fail('binding_mismatch');
+    if (fields[key] !== expectedObject[key]) fail('binding_mismatch');
   });
+  const provider = fields.provider;
+  if (provider !== 'anthropic' && provider !== 'google')
+    fail('invalid_contract');
+  const binding: BoundedApiProviderBinding = {
+    provider,
+    endpointUrl: fields.endpointUrl,
+    apiVersion: fields.apiVersion,
+    modelId: fields.modelId,
+    modelRevision: fields.modelRevision,
+    connectionId: fields.connectionId,
+    connectionRevision: fields.connectionRevision,
+    credentialRevision: fields.credentialRevision,
+    principalId: fields.principalId,
+    tenantId: fields.tenantId,
+    billingContextId: fields.billingContextId,
+    sourceId: fields.sourceId,
+    sourceRevision: fields.sourceRevision,
+    optionsSha256: fields.optionsSha256,
+    sdkPackage: fields.sdkPackage,
+    sdkVersion: fields.sdkVersion,
+  };
   officialEndpoint(binding);
   digest(binding.optionsSha256, 'invalid_contract');
   const evidence = closed(
