@@ -2591,6 +2591,11 @@ filters human presence lifecycle facts separately from the internal history.
 Shared history pages retain their continuation cursor and human-only filter.
 Room dispatch records a human-authored title separately from the provider prompt
 that includes the brief. Failed runs retain retry and inspection controls.
+The composer retains tab-local drafts and exact uncertain requests through reload,
+partitioned by saved connection/authorization and Task incarnation. Restore and
+retry are explicit; a missing receipt never implies failure. See
+[room request recovery](../design/task-room-agent-requests.md) for storage bounds,
+current-authority checks and the distinction between Discard and stopping work.
 
 `WorkspacePaneHost` remains in Details for Basis, with Kept answers (Answer
 details) directly below it in the same panel. Open Basis and Open Whole Task

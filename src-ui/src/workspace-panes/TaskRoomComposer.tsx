@@ -12,13 +12,19 @@ import {
   useTaskRoomAgentRequestsQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
+import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomMessageInput } from './TaskRoomMessageInput';
+import {
+  readTaskRoomDraft,
+  removeTaskRoomDraft,
+  saveTaskRoomDraft,
+} from './task-room-draft-recovery';
 import './TaskRoomComposer.css';
 
 function startsWithSelectedPerson(value: string, person?: string) {
@@ -28,6 +34,18 @@ function startsWithSelectedPerson(value: string, person?: string) {
   return (
     text.startsWith(mention) && /^(?:\s|$)/.test(text.slice(mention.length))
   );
+}
+
+function recoveryAt(owner?: string) {
+  try {
+    return {
+      owner,
+      saved: owner ? readTaskRoomDraft(owner) : undefined,
+      error: false,
+    };
+  } catch {
+    return { owner, saved: undefined, error: true };
+  }
 }
 
 export function TaskRoomComposer({
@@ -45,6 +63,25 @@ export function TaskRoomComposer({
 }) {
   const scope = useHostRequestAuthorityScope();
   const statusMutation = useUpdateTaskStatusMutation();
+  const recoveryOwner = scope?.draftRecoveryKey
+    ? JSON.stringify([
+        scope.apiBase,
+        scope.draftRecoveryKey,
+        projectSlug,
+        taskId,
+        taskCreatedAt,
+      ])
+    : undefined;
+  const [recovery, setRecovery] = useState(() => recoveryAt(recoveryOwner));
+  const [recoveryError, setRecoveryError] = useState(false);
+  const [showDiscardRecovery, setShowDiscardRecovery] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const room = useProjectTaskRoomContext(taskId);
   const options = useTaskRoomAgentOptionsQuery(projectSlug, scope, writable);
   const requests = useTaskRoomAgentRequestsQuery(
@@ -74,6 +111,11 @@ export function TaskRoomComposer({
   const [active, setActive] = useState(0);
   const [composing, setComposing] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState<TaskRoomWorkInput>();
+  const [unconfirmedMessage, setUnconfirmedMessage] = useState<{
+    proposalId: string;
+    text: string;
+    occurredAt: string;
+  }>();
   const [notice, setNotice] = useState('');
   useEffect(() => {
     if (!notice) return;
@@ -97,11 +139,86 @@ export function TaskRoomComposer({
   const connectionChanged = draftOwner !== undefined && draftOwner !== owner;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const id = useId();
+  const discardRecovery = () => {
+    if (
+      !recoveryOwner ||
+      recovery.owner !== recoveryOwner ||
+      !scope?.isCurrent()
+    )
+      return false;
+    try {
+      removeTaskRoomDraft(recoveryOwner);
+      setRecovery({ owner: recoveryOwner, saved: undefined, error: false });
+      setDraft('');
+      setRecipient(undefined);
+      setLeadingPerson(undefined);
+      setUnconfirmed(undefined);
+      setUnconfirmedMessage(undefined);
+      setDraftOwner(undefined);
+      setBrief(undefined);
+      setIncludeBrief(true);
+      setRecoveryError(false);
+      setShowDiscardRecovery(false);
+      return true;
+    } catch {
+      setRecoveryError(true);
+      return false;
+    }
+  };
   const { DiscardModal } = useUnsavedGuard(
-    !!draft || !!recipient || !!unconfirmed,
+    !!draft || !!recipient || !!unconfirmed || !!unconfirmedMessage,
+    discardRecovery,
   );
+  useLayoutEffect(() => {
+    if (recovery.owner !== recoveryOwner) {
+      if (!draft && !recipient && !unconfirmed && !unconfirmedMessage)
+        setRecovery(recoveryAt(recoveryOwner));
+      return;
+    }
+    if (
+      !recoveryOwner ||
+      recovery.saved ||
+      recovery.error ||
+      !scope?.isCurrent() ||
+      (draftOwner !== undefined && draftOwner !== owner)
+    )
+      return;
+    try {
+      saveTaskRoomDraft({
+        owner: recoveryOwner,
+        draft,
+        recipient,
+        leadingPerson,
+        includeBrief,
+        unconfirmed,
+        unconfirmedMessage,
+      });
+      setRecoveryError(false);
+    } catch {
+      setRecoveryError(true);
+    }
+  }, [
+    recoveryOwner,
+    recovery,
+    draft,
+    recipient,
+    leadingPerson,
+    includeBrief,
+    unconfirmed,
+    unconfirmedMessage,
+    scope,
+    draftOwner,
+    owner,
+  ]);
   const pending = preparing || request.isPending || message.isPending;
-  const locked = pending || !!unconfirmed || connectionChanged;
+  const recoveryHeld =
+    !!recovery.saved || recovery.error || recovery.owner !== recoveryOwner;
+  const locked =
+    pending ||
+    !!unconfirmed ||
+    !!unconfirmedMessage ||
+    connectionChanged ||
+    recoveryHeld;
   const candidates = [
     ...(options.isError ? [] : (options.data?.targets ?? [])).map((target) => ({
       ...target,
@@ -173,6 +290,7 @@ export function TaskRoomComposer({
       pending ||
       !draft.trim() ||
       connectionChanged ||
+      recoveryHeld ||
       !scope?.isCurrent()
     )
       return;
@@ -180,7 +298,7 @@ export function TaskRoomComposer({
     sendInFlight.current = true;
     setPreparing(true);
     try {
-      if (!recipient && draft.trim().startsWith('/')) {
+      if (!recipient && !unconfirmedMessage && draft.trim().startsWith('/')) {
         const statuses: Record<string, TaskStatus> = {
           '/done': 'done',
           '/blocked': 'blocked',
@@ -215,11 +333,18 @@ export function TaskRoomComposer({
         }
         return;
       }
+      if (unconfirmed && (!recipient || recipient.id !== unconfirmed.agentId)) {
+        setNotice(
+          'The saved request recipient could not be verified. No retry was sent.',
+        );
+        return;
+      }
       let selectedRecipient = recipient;
       let selectedDraft = draft;
       if (
         !selectedRecipient &&
         !unconfirmed &&
+        !unconfirmedMessage &&
         !startsWithSelectedPerson(draft, leadingPerson)
       ) {
         const typed = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
@@ -243,6 +368,15 @@ export function TaskRoomComposer({
         }
       }
       if (selectedRecipient) {
+        const currentRecipient = options.data?.targets.find(
+          (target) => target.id === selectedRecipient.id && target.ready,
+        );
+        if (options.isError || !currentRecipient) {
+          setNotice(
+            'This agent is unavailable. The request has been kept; nothing was sent.',
+          );
+          return;
+        }
         if (!requests.data || requests.isError || !scope?.isCurrent()) {
           setNotice(
             'Agent requests are unavailable on this connection. Draft retained.',
@@ -284,9 +418,38 @@ export function TaskRoomComposer({
             : {}),
         };
         if (!unconfirmed) briefSelection.current += 1;
+        if (!recoveryOwner) {
+          setNotice(
+            'Request recovery is unavailable on this connection. Nothing was sent.',
+          );
+          return;
+        }
+        try {
+          saveTaskRoomDraft({
+            owner: recoveryOwner,
+            draft,
+            recipient: selectedRecipient,
+            leadingPerson,
+            includeBrief,
+            unconfirmed: input,
+          });
+        } catch {
+          setRecoveryError(true);
+          setNotice(
+            'Recovery could not be updated. No new attempt was sent; any earlier request remains unconfirmed.',
+          );
+          return;
+        }
+        setRecipient(selectedRecipient);
         setUnconfirmed(input);
         try {
           const outcome = await request.mutateAsync(input);
+          if (
+            !mounted.current ||
+            currentOwner.current !== owner ||
+            !scope.isCurrent()
+          )
+            return;
           if (outcome.kind === 'recorded') {
             setDraft((current) => (current === draft ? '' : current));
             setRecipient(undefined);
@@ -305,6 +468,12 @@ export function TaskRoomComposer({
             );
           }
         } catch (error) {
+          if (
+            !mounted.current ||
+            currentOwner.current !== owner ||
+            !scope.isCurrent()
+          )
+            return;
           if (error instanceof TaskRoomWorkNotSentError) {
             if (!unconfirmed) setUnconfirmed(undefined);
             setNotice(
@@ -320,15 +489,49 @@ export function TaskRoomComposer({
         }
         return;
       }
+      const input = unconfirmedMessage ?? {
+        proposalId: randomCorrelationId(),
+        text: draft.trim(),
+        occurredAt: new Date().toISOString(),
+      };
+      if (!recoveryOwner) {
+        setNotice(
+          'Message recovery is unavailable on this connection. Nothing was sent.',
+        );
+        return;
+      }
       try {
-        const outcome = await message.mutateAsync({
-          proposalId: randomCorrelationId(),
-          text: draft.trim(),
+        saveTaskRoomDraft({
+          owner: recoveryOwner,
+          draft,
+          leadingPerson,
+          includeBrief,
+          unconfirmedMessage: input,
         });
+      } catch {
+        setRecoveryError(true);
+        setNotice(
+          'The message could not be saved for recovery. Nothing was sent.',
+        );
+        return;
+      }
+      setUnconfirmedMessage(input);
+      try {
+        const outcome = await message.mutateAsync(input);
+        if (
+          !mounted.current ||
+          currentOwner.current !== owner ||
+          !scope.isCurrent()
+        )
+          return;
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
           setDraft((current) => (current === draft ? '' : current));
           setLeadingPerson(undefined);
-        } else setNotice('Message rejected. Draft retained.');
+          setUnconfirmedMessage(undefined);
+        } else {
+          setUnconfirmedMessage(undefined);
+          setNotice('Message rejected. Draft retained.');
+        }
       } catch {
         setNotice(
           'Message acknowledgement is unavailable. Check room history before resending.',
@@ -341,6 +544,126 @@ export function TaskRoomComposer({
   };
   return (
     <div className="task-room-composer">
+      {recovery.saved && recovery.owner === recoveryOwner && (
+        <section aria-label="Saved Task draft">
+          <p>
+            {recovery.saved.unconfirmed
+              ? 'A saved agent request has an unknown outcome. Restore it to review or retry the exact same request. It may already be running.'
+              : recovery.saved.unconfirmedMessage
+                ? 'A saved message has an unknown outcome. Restore it to review or retry the exact same message.'
+                : 'A draft was saved in this tab. Restore it to review before sending.'}
+          </p>
+          <Button
+            disabled={!writable || !readable || !scope?.isCurrent()}
+            onClick={() => {
+              const saved = recovery.saved;
+              if (
+                !saved ||
+                recovery.owner !== recoveryOwner ||
+                !scope?.isCurrent()
+              )
+                return;
+              const target = saved.recipient
+                ? options.data?.targets.find(
+                    (target) =>
+                      target.id === saved.recipient?.id && target.ready,
+                  )
+                : undefined;
+              if (saved.recipient && (options.isError || !target)) {
+                setNotice(
+                  'The saved agent is unavailable. Reconnect before restoring this request.',
+                );
+                return;
+              }
+              setDraft(saved.draft);
+              setRecipient(
+                target ? { id: target.id, name: target.name } : undefined,
+              );
+              setLeadingPerson(saved.leadingPerson);
+              setIncludeBrief(saved.includeBrief);
+              setUnconfirmed(saved.unconfirmed);
+              setUnconfirmedMessage(saved.unconfirmedMessage);
+              setDraftOwner(owner);
+              setRecovery({
+                owner: recoveryOwner,
+                saved: undefined,
+                error: false,
+              });
+            }}
+          >
+            Restore saved draft
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setShowDiscardRecovery(true)}
+          >
+            Discard saved draft
+          </Button>
+        </section>
+      )}
+      {(recovery.error || recoveryError) && (
+        <p role="alert">
+          The draft could not be saved or restored. Keep this tab open; request
+          recovery is unavailable.
+        </p>
+      )}
+      {unconfirmed && (
+        <Button
+          variant="secondary"
+          disabled={pending || connectionChanged || !scope?.isCurrent()}
+          onClick={async () => {
+            const capturedOwner = owner;
+            let result: Awaited<ReturnType<typeof requests.refetch>>;
+            try {
+              result = await requests.refetch();
+            } catch {
+              if (
+                mounted.current &&
+                currentOwner.current === capturedOwner &&
+                scope?.isCurrent()
+              )
+                setNotice(
+                  'Request status is unavailable. Its outcome remains unknown.',
+                );
+              return;
+            }
+            if (
+              !mounted.current ||
+              currentOwner.current !== capturedOwner ||
+              !scope?.isCurrent()
+            )
+              return;
+            const recorded =
+              !result.isError &&
+              result.data?.records.find(
+                (record) =>
+                  record.operationId === unconfirmed.operationId &&
+                  record.agentId === unconfirmed.agentId &&
+                  record.prompt === unconfirmed.prompt &&
+                  record.context?.digest === unconfirmed.context?.digest,
+              );
+            setNotice(
+              recorded
+                ? `The saved request is recorded as ${recorded.state}. Review its full run before retrying.`
+                : 'No matching receipt is available. This does not prove the request failed; its outcome remains unknown.',
+            );
+          }}
+        >
+          Check saved request status
+        </Button>
+      )}
+      {unconfirmedMessage && (
+        <p role="status">
+          This message has an unknown outcome. Retry uses the same proposal;
+          discarding only removes your local copy.
+        </p>
+      )}
+      {unconfirmed && (
+        <p role="status">
+          This request has an unknown outcome and may already be running. Retry
+          uses the same operation; discarding only removes your local copy.
+        </p>
+      )}
       <label className="sr-only" htmlFor={`${id}-message`}>
         Message the Task
       </label>
@@ -458,16 +781,19 @@ export function TaskRoomComposer({
           aria-label={
             pending
               ? 'Sending…'
-              : unconfirmed
-                ? 'Retry same agent request'
-                : recipient
-                  ? `Ask ${recipient.name}`
-                  : 'Send to task room'
+              : unconfirmedMessage
+                ? 'Retry same room message'
+                : unconfirmed
+                  ? 'Retry same agent request'
+                  : recipient
+                    ? `Ask ${recipient.name}`
+                    : 'Send to task room'
           }
           pending={pending}
           pendingLabel="Sending…"
           disabled={
             !writable ||
+            recoveryHeld ||
             connectionChanged ||
             !scope ||
             !draft.trim() ||
@@ -475,7 +801,11 @@ export function TaskRoomComposer({
           }
           onClick={() => void submit()}
         >
-          {unconfirmed ? 'Retry' : recipient ? `Ask ${recipient.name}` : 'Send'}
+          {unconfirmed || unconfirmedMessage
+            ? 'Retry'
+            : recipient
+              ? `Ask ${recipient.name}`
+              : 'Send'}
         </Button>
       </div>
       {recipient && brief?.text.includes('Brief shortened to fit') && (
@@ -554,6 +884,25 @@ export function TaskRoomComposer({
           Task to resolve it.
         </p>
       ) : null}
+      {(draft || recipient || unconfirmed || unconfirmedMessage) &&
+        !recoveryHeld && (
+          <Button
+            variant="secondary"
+            disabled={pending || connectionChanged}
+            onClick={() => setShowDiscardRecovery(true)}
+          >
+            Discard draft
+          </Button>
+        )}
+      <ConfirmModal
+        isOpen={showDiscardRecovery}
+        title="Discard saved draft?"
+        message="This removes only the saved copy. An unconfirmed request may still be running."
+        confirmLabel="Discard"
+        variant="warning"
+        onConfirm={discardRecovery}
+        onCancel={() => setShowDiscardRecovery(false)}
+      />
       <DiscardModal />
     </div>
   );

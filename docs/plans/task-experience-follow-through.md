@@ -31,10 +31,14 @@ explicit handback. Basis follow-ups
 Basis owner. Their source inclusion, old focused evidence and original-PR
 closure do not qualify the combined product.
 
-The room design also records missing draft/operation recovery across reload.
-Reconcile that behavior with the master owner before moving it into this lane;
-keep the documented limitation until implementation and authority-isolation
-acceptance exist. This plan does not silently convert it into completed work.
+The master owner explicitly handed new draft/uncertain-operation recovery across
+reload to this branch. The local implementation uses a bounded per-tab journal,
+explicit Restore, current recipient/authority checks and exact agent-operation
+or message-proposal replay. Missing receipts remain unknown. Focused tests and
+an isolated paired-browser journey cover reload, lost acknowledgement,
+Cancel/Discard and refusal boundaries; mutation and final review evidence remain
+required. The master-owned original draft/IME/lifecycle and Basis geometry
+acceptance is unchanged by this scoped addition.
 
 ## Completion evidence
 
