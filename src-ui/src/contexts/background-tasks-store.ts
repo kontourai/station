@@ -61,8 +61,6 @@ export interface BackgroundTaskEntry {
   chatThreadId: string;
   title: string;
   delegationTitle?: string;
-  /** Closing the last owning chat drops this cache entry only after settlement. */
-  discardWhenSettled?: true;
   detail?: string;
   latestTool?: string;
   /**
@@ -93,6 +91,8 @@ export interface BackgroundTasksState {
   delegateParents: Record<string, string>;
   /** Some raw tool cards were dropped; counts describe only retained rows. */
   limitedToolChats?: Record<string, true>;
+  /** Present after chat lifecycle tracking begins; retains only open aliases. */
+  openChatThreads?: Record<string, true>;
 }
 
 /** Finished list is bounded per chat, drop-oldest (by end time), per the plan §3. */
@@ -253,7 +253,8 @@ function pruneFinished(
       entry.chatThreadId === chatThreadId &&
       entry.state !== 'running' &&
       entry.state !== 'unresolved' &&
-      entry.discardWhenSettled,
+      state.openChatThreads !== undefined &&
+      !state.openChatThreads[chatThreadId],
   );
   if (retired.length) {
     entries = { ...entries };
@@ -343,13 +344,23 @@ function foldToolProgress(
   event: Extract<OrchestrationEvent, { method: 'tool.progress' }>,
 ): BackgroundTasksState {
   const existing = state.entries[event.toolCallId];
-  if (existing?.state !== 'running') return state;
-  if (existing.detail === event.message) return state;
+  if (
+    existing?.chatThreadId !== event.threadId ||
+    (existing.state !== 'running' && existing.state !== 'unresolved')
+  )
+    return state;
+  if (existing.state === 'running' && existing.detail === event.message)
+    return state;
   return {
     ...state,
     entries: {
       ...state.entries,
-      [existing.id]: { ...existing, detail: event.message },
+      [existing.id]: {
+        ...existing,
+        state: 'running',
+        endedAt: undefined,
+        detail: event.message,
+      },
     },
   };
 }
@@ -528,6 +539,17 @@ function closeDelegate(
   outcome: BackgroundTaskState,
 ): BackgroundTasksState {
   const existing = state.entries[threadId];
+  const parent = state.delegateParents[threadId];
+  if (
+    !existing &&
+    parent &&
+    state.openChatThreads !== undefined &&
+    !state.openChatThreads[parent]
+  ) {
+    const delegateParents = { ...state.delegateParents };
+    delete delegateParents[threadId];
+    return { ...state, delegateParents };
+  }
   if (
     existing?.source !== 'delegate-session' ||
     (existing.state !== 'running' && existing.state !== 'unresolved')
@@ -657,6 +679,19 @@ export function reconcileBackgroundTasksSnapshot(
     const parentTaskId = child?.parent?.taskId;
     if (!child || !parentTaskId) continue;
     const taskId = snapshotSessionDelegateThreadId(session);
+    if (
+      next.openChatThreads !== undefined &&
+      !next.openChatThreads[parentTaskId] &&
+      child.status !== 'running' &&
+      child.status !== 'unresolved'
+    ) {
+      const entries = { ...next.entries };
+      const delegateParents = { ...next.delegateParents };
+      delete entries[session.threadId];
+      delete delegateParents[taskId];
+      next = { ...next, entries, delegateParents };
+      continue;
+    }
 
     const existing = next.entries[session.threadId];
     const isActive = child.status === 'running';
@@ -866,45 +901,32 @@ export class BackgroundTasksStore {
     this.commit(reconcileBackgroundTasksSnapshot(this.state, payload));
   }
 
-  /** Preserve live work when its last chat closes, retiring only presentation history. */
+  /** Preserve live routing; completed history belongs only to open chats. */
   forgetChat(chatThreadId: string) {
+    const openChatThreads = { ...this.state.openChatThreads };
+    delete openChatThreads[chatThreadId];
     const entries = { ...this.state.entries };
     const delegateParents = { ...this.state.delegateParents };
     for (const entry of Object.values(entries)) {
-      if (entry.chatThreadId !== chatThreadId) continue;
-      if (entry.state === 'running' || entry.state === 'unresolved') {
-        if (!entry.discardWhenSettled)
-          entries[entry.id] = { ...entry, discardWhenSettled: true };
-      } else delete entries[entry.id];
+      if (
+        entry.chatThreadId === chatThreadId &&
+        entry.state !== 'running' &&
+        entry.state !== 'unresolved'
+      )
+        delete entries[entry.id];
     }
     for (const [id, parent] of Object.entries(delegateParents)) {
       if (parent === chatThreadId && !entries[id]) delete delegateParents[id];
     }
-    const next = clearLimitedToolChat(this.state, chatThreadId);
-    if (
-      next === this.state &&
-      Object.keys(entries).length === Object.keys(this.state.entries).length &&
-      Object.values(entries).every(
-        (entry) => entry === this.state.entries[entry.id],
-      ) &&
-      Object.keys(delegateParents).length ===
-        Object.keys(this.state.delegateParents).length
-    )
-      return;
-    this.commit({ ...next, entries, delegateParents });
+    this.commit({ ...this.state, openChatThreads, entries, delegateParents });
   }
 
   retainChat(chatThreadId: string) {
-    let entries = this.state.entries;
-    for (const entry of Object.values(entries)) {
-      if (entry.chatThreadId !== chatThreadId || !entry.discardWhenSettled)
-        continue;
-      if (entries === this.state.entries) entries = { ...entries };
-      const retained = { ...entry };
-      delete retained.discardWhenSettled;
-      entries[entry.id] = retained;
-    }
-    if (entries !== this.state.entries) this.commit({ ...this.state, entries });
+    if (this.state.openChatThreads?.[chatThreadId]) return;
+    this.commit({
+      ...this.state,
+      openChatThreads: { ...this.state.openChatThreads, [chatThreadId]: true },
+    });
   }
 
   /** Test-only: clears all tracked entries/bindings between test cases. */

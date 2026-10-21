@@ -127,6 +127,49 @@ test('closing a chat releases settled background history and keeps only live wor
   });
 });
 
+test('replaced execution aliases retire their history and later live settlement', () => {
+  open('alias-chat');
+  activeChatsStore.updateChat('alias-chat', {
+    currentSessionId: 'old-execution',
+  });
+  for (const child of ['old-finished', 'old-live'])
+    backgroundTasksStore.ingest({
+      provider: 'claude',
+      threadId: child,
+      sessionId: child,
+      method: 'session.started',
+      createdAt: '2026-10-21T00:00:00.000Z',
+      metadata: { taskId: child, parentTaskId: 'old-execution' },
+    });
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'old-finished',
+    method: 'turn.completed',
+    turnId: 'done',
+    createdAt: '2026-10-21T00:00:01.000Z',
+  });
+  activeChatsStore.updateChat('alias-chat', {
+    currentSessionId: 'new-execution',
+  });
+  activeChatsStore.removeChat('alias-chat');
+  expect(
+    backgroundTasksStore.getSnapshot().entries['old-finished'],
+  ).toBeUndefined();
+  expect(backgroundTasksStore.getSnapshot().entries['old-live'].state).toBe(
+    'running',
+  );
+  backgroundTasksStore.ingest({
+    provider: 'claude',
+    threadId: 'old-live',
+    method: 'turn.completed',
+    turnId: 'done',
+    createdAt: '2026-10-21T00:00:01.000Z',
+  });
+  expect(
+    backgroundTasksStore.getSnapshot().entries['old-live'],
+  ).toBeUndefined();
+});
+
 test('reopening a chat before its delegate settles retains the newly visible result', () => {
   open('closing');
   backgroundTasksStore.ingest({

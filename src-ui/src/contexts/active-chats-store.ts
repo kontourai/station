@@ -83,6 +83,10 @@ export class ActiveChatsStore {
     this.now = options.now ?? (() => Date.now());
     this.randomId = options.randomId ?? (() => Math.random().toString(36));
     this.loadFromStorage();
+    for (const [key, chat] of Object.entries(this.chats)) {
+      for (const id of [key, chat.conversationId, chat.currentSessionId])
+        if (id) backgroundTasksStore.retainChat(id);
+    }
   }
 
   private loadFromStorage() {
@@ -388,6 +392,10 @@ export class ActiveChatsStore {
     ) {
       for (const id of [next.conversationId, next.currentSessionId]) {
         if (id) backgroundTasksStore.retainChat(id);
+      }
+      for (const id of [current.conversationId, current.currentSessionId]) {
+        if (id && !this.getChatKeyForExecutionSession(id))
+          backgroundTasksStore.forgetChat(id);
       }
     }
     if (

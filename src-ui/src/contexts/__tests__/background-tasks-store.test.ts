@@ -1170,3 +1170,96 @@ test('a burst of unfinished tools retains a bounded recent list and discloses om
   expect(settled.running).toHaveLength(0);
   expect(settled.toolHistoryLimited).toBeUndefined();
 });
+
+test('closed scopes do not resurrect terminal cards from reconnect snapshots', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('parent');
+  store.ingest(
+    event('session.started', {
+      threadId: 'child',
+      sessionId: 'child',
+      metadata: { taskId: 'child', parentTaskId: 'parent' },
+    }),
+  );
+  store.forgetChat('parent');
+  store.ingest(event('turn.completed', { threadId: 'child', turnId: 'done' }));
+  store.reconcileSnapshot({
+    sessions: [
+      {
+        provider: 'claude',
+        threadId: 'child',
+        status: 'idle',
+        hasActiveTurn: false,
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'child',
+            childId: 'child',
+            status: 'completed',
+            parent: { taskId: 'parent' },
+          },
+        },
+      },
+    ],
+  });
+  expect(store.getSnapshot().entries).toEqual({});
+  expect(store.getSnapshot().delegateParents).toEqual({});
+});
+
+test('close and reopen preserves omitted-tool disclosure until authoritative idle evidence', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('chat-1');
+  for (let i = 0; i < 101; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `tool-${i}`, toolName: 'Read' }),
+    );
+  store.forgetChat('chat-1');
+  store.retainChat('chat-1');
+  expect(
+    selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', [])
+      .toolHistoryLimited,
+  ).toBe(true);
+});
+
+test('direct own-tool progress corrects snapshot uncertainty', () => {
+  const store = new BackgroundTasksStore();
+  store.ingest(event('tool.started', { toolCallId: 'tool', toolName: 'Read' }));
+  store.reconcileSnapshot({ sessions: [] });
+  store.ingest(
+    event('tool.progress', { toolCallId: 'tool', message: 'Reading source' }),
+  );
+  expect(store.getSnapshot().entries.tool).toMatchObject({
+    state: 'running',
+    detail: 'Reading source',
+  });
+});
+
+test('a closed scope keeps its retirement policy after unresolved card eviction and resume', () => {
+  const store = new BackgroundTasksStore();
+  store.retainChat('parent');
+  for (let i = 0; i < 51; i++)
+    store.ingest(
+      event('session.started', {
+        threadId: `child-${i}`,
+        sessionId: `child-${i}`,
+        metadata: { taskId: `child-${i}`, parentTaskId: 'parent' },
+      }),
+    );
+  store.forgetChat('parent');
+  store.reconcileSnapshot({ sessions: [] });
+  store.ingest(
+    event('turn.completed', { threadId: 'child-0', turnId: 'done' }),
+  );
+  expect(store.getSnapshot().delegateParents['child-0']).toBeUndefined();
+  store.ingest(
+    event('turn.started', {
+      threadId: 'child-1',
+      turnId: 'resume',
+      prompt: 'Continue',
+    }),
+  );
+  store.ingest(
+    event('turn.completed', { threadId: 'child-1', turnId: 'resume' }),
+  );
+  expect(store.getSnapshot().entries['child-1']).toBeUndefined();
+});
