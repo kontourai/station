@@ -446,3 +446,100 @@ describe('the database holds the shape on its own', () => {
     expect(() => insert({})).not.toThrow();
   });
 });
+
+describe('dismissed learning candidates (#4003 layer 4)', () => {
+  const dismiss = (
+    memory: ReturnType<typeof setup>['memory'],
+    candidate: { kind: 'decision' | 'dead_end'; key: string; version: number },
+  ) =>
+    memory.dismissLearningCandidate({
+      ...TASK,
+      ...candidate,
+      projectId: 'project-1',
+      principalId: 'owner-1',
+    });
+
+  test('a dismissal survives reopening the database, and dismissing again writes nothing', async () => {
+    const s = setup();
+    s.record({ kind: 'decision', key: 'storage-engine', text: 'SQLite.' });
+    s.record({ kind: 'dead_end', key: 'naive-retry', text: 'No backoff.' });
+    expect(
+      dismiss(s.memory, { kind: 'dead_end', key: 'naive-retry', version: 1 }),
+    ).toMatchObject({
+      kind: 'dismissed',
+      dismissal: { key: 'naive-retry', version: 1, principalId: 'owner-1' },
+    });
+
+    // A second EventStore over the same file: what a restart reads.
+    const reopened = new EventStore(s.path);
+    closers.push(() => void reopened.close());
+    expect(
+      reopened.taskMemoryStore().listLearningDismissals(TASK),
+    ).toMatchObject([{ kind: 'dead_end', key: 'naive-retry', version: 1 }]);
+    expect(
+      dismiss(reopened.taskMemoryStore(), {
+        kind: 'dead_end',
+        key: 'naive-retry',
+        version: 1,
+      }).kind,
+    ).toBe('already-dismissed');
+    expect(
+      reopened.taskMemoryStore().listLearningDismissals(TASK),
+    ).toHaveLength(1);
+    // Another incarnation of the Task has no dismissals.
+    expect(
+      reopened.taskMemoryStore().listLearningDismissals({
+        ...TASK,
+        taskCreatedAt: '2026-10-21T00:00:00.000Z',
+      }),
+    ).toEqual([]);
+  });
+
+  test('only the current active, standing version can be dismissed', () => {
+    const s = setup();
+    s.record({ kind: 'decision', key: 'storage-engine', text: 'SQLite.' });
+    s.record({ kind: 'decision', key: 'storage-engine', text: 'SQLite, WAL.' });
+    s.record({
+      kind: 'decision',
+      key: 'log-format',
+      text: 'JSON lines.',
+      importance: 'on_topic',
+    });
+    s.record({ kind: 'dead_end', key: 'naive-retry', text: 'No backoff.' });
+    s.record({
+      kind: 'dead_end',
+      key: 'naive-retry',
+      action: 'retire',
+      reason: 'Fixed upstream.',
+    });
+    for (const candidate of [
+      { kind: 'decision', key: 'storage-engine', version: 1 },
+      { kind: 'decision', key: 'log-format', version: 1 },
+      { kind: 'dead_end', key: 'naive-retry', version: 2 },
+      { kind: 'dead_end', key: 'missing', version: 1 },
+    ] as const)
+      expect([candidate.key, dismiss(s.memory, candidate).kind]).toEqual([
+        candidate.key,
+        'not-a-candidate',
+      ]);
+    expect(s.memory.listLearningDismissals(TASK)).toEqual([]);
+    expect(
+      dismiss(s.memory, { kind: 'decision', key: 'storage-engine', version: 2 })
+        .kind,
+    ).toBe('dismissed');
+  });
+
+  test('the table is append-only at the database', () => {
+    const s = setup();
+    s.record({ kind: 'decision', key: 'storage-engine', text: 'SQLite.' });
+    dismiss(s.memory, { kind: 'decision', key: 'storage-engine', version: 1 });
+    const raw = new DatabaseSync(s.path);
+    closers.push(() => raw.close());
+    expect(() => raw.exec('DELETE FROM task_learning_dismissals')).toThrow(
+      /append-only/,
+    );
+    expect(() =>
+      raw.exec("UPDATE task_learning_dismissals SET principal_id = 'x'"),
+    ).toThrow(/append-only/);
+  });
+});

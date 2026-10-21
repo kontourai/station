@@ -359,3 +359,92 @@ export function taskMemoryRefusalMessage(refusal: TaskMemoryRefusal): string {
       return `This Task already holds ${refusal.limit} ${refusal.recordKind === 'question' ? 'open questions' : `active ${KIND_NOUNS[refusal.recordKind]}s`}, the limit. Nothing was written: supersede or retire one (set an existing key, or retire one that no longer holds)${refusal.recordKind === 'question' ? ', or answer one' : ''}.`;
   }
 }
+
+// ── Learning: promoting a done Task's lessons (#4003, layer 4) ──────────────
+//
+// When a Task is done, its active standing decisions and dead ends are
+// CANDIDATES for the Project's knowledge store. Candidates are derived on
+// read from Task memory; nothing is copied until a person promotes one.
+// Promotion writes one knowledge record through the store's own create path,
+// under an id derived from the record version, so the same version is never
+// written twice. A dismissal is the only state Station keeps of its own.
+
+export const TASK_LEARNING_VERSION = 'station.task-learning/v1' as const;
+
+/** The record kinds a done Task offers for promotion. */
+export const TASK_LEARNING_KINDS = ['decision', 'dead_end'] as const;
+export type TaskLearningKind = (typeof TASK_LEARNING_KINDS)[number];
+
+export const TASK_LEARNING_LIMITS = Object.freeze({
+  /** The promoted knowledge record's title. */
+  titleChars: 200,
+  /** The promoted knowledge record's body: the person's edited text. */
+  bodyChars: 4000,
+});
+
+/**
+ * Where a candidate stands. `promoted` is read back from the Project's
+ * knowledge stores (the record under the candidate's knowledge record id);
+ * `dismissed` is the person's persisted decision not to promote it.
+ */
+export type TaskLearningReview =
+  | { readonly state: 'open' }
+  | {
+      readonly state: 'promoted';
+      readonly rootId: string;
+      readonly knowledgeRecordId: string;
+    }
+  | {
+      readonly state: 'dismissed';
+      readonly dismissedAt: string;
+      readonly dismissedBy: string;
+    };
+
+export interface TaskLearningCandidate {
+  /** The record version on offer: an active, standing decision or dead end. */
+  readonly record: TaskMemoryRecord & { readonly kind: TaskLearningKind };
+  /** The id a promotion of this version writes, in whichever store. */
+  readonly knowledgeRecordId: string;
+  readonly review: TaskLearningReview;
+}
+
+/** A Project knowledge store a candidate can be promoted into. */
+export interface TaskLearningStore {
+  readonly rootId: string;
+  readonly displayName: string;
+}
+
+/** What the Task workspace reads to review a Task's lessons. */
+export interface TaskLearningView {
+  readonly version: typeof TASK_LEARNING_VERSION;
+  readonly taskId: string;
+  /** Only a done Task offers candidates; otherwise `candidates` is empty. */
+  readonly offered: boolean;
+  /** The Task's Project slug: Project knowledge stores are keyed by it. */
+  readonly projectSlug: string;
+  readonly workItemRef?: string;
+  /** Writable Project knowledge stores; empty when the Project has none. */
+  readonly stores: readonly TaskLearningStore[];
+  /** Oldest first: decisions, then dead ends. */
+  readonly candidates: readonly TaskLearningCandidate[];
+  readonly limits: typeof TASK_LEARNING_LIMITS;
+}
+
+/** A person's promotion of one candidate version into one Project store. */
+export interface TaskLearningPromotion {
+  readonly kind: TaskLearningKind;
+  readonly key: string;
+  /** The version the person reviewed; a newer version is refused. */
+  readonly version: number;
+  readonly rootId: string;
+  readonly title: string;
+  /** The person's edited text: the knowledge record's body. */
+  readonly text: string;
+}
+
+/** A person's dismissal of one candidate version. */
+export interface TaskLearningDismissal {
+  readonly kind: TaskLearningKind;
+  readonly key: string;
+  readonly version: number;
+}

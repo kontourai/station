@@ -109,6 +109,7 @@ import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migration
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import { migrateSessionParentMentions } from '../../domain/migrations/016-session-parent-mentions.js';
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/017-task-memory.js';
+import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/018-task-learning-dismissals.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2302,6 +2303,8 @@ export class EventStore {
       // #4003: Task memory (summary revisions and keyed records), apart from
       // the room document.
       this.db.exec(TASK_MEMORY_MIGRATION);
+      // #4003 layer 4: dismissed promotion candidates.
+      this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)

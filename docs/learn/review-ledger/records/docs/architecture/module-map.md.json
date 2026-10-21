@@ -1114,7 +1114,15 @@
 
     "src-ui/src/lib/color-theme-selection.ts",
 
-    "src-ui/src/lib/appearance-cache.ts"
+    "src-ui/src/lib/appearance-cache.ts",
+
+    "src-server/services/projects/task-learning.ts",
+
+    "src-server/routes/orchestration/task-learning.ts",
+
+    "src-server/domain/migrations/018-task-learning-dismissals.ts",
+
+    "src-ui/src/views/task-workspace/TaskLearningPanel.tsx"
   ],
 
   "checks": [

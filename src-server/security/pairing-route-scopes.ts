@@ -2750,6 +2750,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
     { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },
     { method: 'POST', path: '/api/tasks/:taskId/room/memory/records' },
+    // #4003 layer 4: a done Task's promotion candidates, read at the read
+    // tier; promoting one (a single knowledge record in a store of the
+    // Task's own Project, never twice for one record version) or dismissing
+    // one (one append-only row) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/learning' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/promote' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/dismiss' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',

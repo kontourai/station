@@ -1,4 +1,7 @@
 import type {
+  TaskLearningDismissal,
+  TaskLearningPromotion,
+  TaskLearningView,
   TaskMemoryRecord,
   TaskMemoryView,
   TaskRecordWrite,
@@ -17,6 +20,12 @@ import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
 // from the Task workspace under the same bounds and refusals agents get.
 
 export type {
+  TaskLearningCandidate,
+  TaskLearningDismissal,
+  TaskLearningPromotion,
+  TaskLearningReview,
+  TaskLearningStore,
+  TaskLearningView,
   TaskMemoryRecord,
   TaskMemoryView,
   TaskRecordWrite,
@@ -155,5 +164,88 @@ export function useWriteTaskRecordMutation(taskId: string) {
   return useApiMutation(
     (write: TaskRecordWrite) => writeTaskRecord({ taskId, ...write }),
     { invalidateKeys: [[...taskMemoryQueryKey(taskId)], ['tasks']] },
+  );
+}
+
+// ── Learning (#4003, layer 4) ──────────────────────────────────────────────
+//
+// A done Task's standing decisions and dead ends, offered for the Project's
+// knowledge store. A person promotes one (edited) or dismisses it; nothing
+// is promoted on its own.
+
+export const taskLearningQueryKey = (taskId: string) =>
+  [...taskMemoryQueryKey(taskId), 'learning'] as const;
+
+export async function fetchTaskLearning(
+  taskId: string,
+): Promise<TaskLearningView> {
+  const response = await authenticatedFetch(
+    await memoryPath(taskId, '/learning'),
+  );
+  return readResult(response, 'Failed to read the Task lessons');
+}
+
+export interface TaskLearningPromoteResult {
+  /** `already-promoted`: this version was promoted before; nothing new was written. */
+  readonly status: 'promoted' | 'already-promoted';
+  readonly rootId: string;
+  readonly record: { readonly id: string; readonly title: string };
+}
+
+export async function promoteTaskLearning(
+  input: { taskId: string } & TaskLearningPromotion,
+): Promise<TaskLearningPromoteResult> {
+  const { taskId, ...promotion } = input;
+  const response = await authenticatedFetch(
+    await memoryPath(taskId, '/learning/promote'),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(promotion),
+    },
+  );
+  return readResult(response, 'Failed to promote the record');
+}
+
+export async function dismissTaskLearning(
+  input: { taskId: string } & TaskLearningDismissal,
+): Promise<{ status: 'dismissed' | 'already-dismissed' }> {
+  const { taskId, ...dismissal } = input;
+  const response = await authenticatedFetch(
+    await memoryPath(taskId, '/learning/dismiss'),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dismissal),
+    },
+  );
+  return readResult(response, 'Failed to dismiss the record');
+}
+
+export function useTaskLearningQuery(
+  taskId: string,
+  config?: QueryConfig<TaskLearningView>,
+) {
+  return useApiQuery<TaskLearningView>(
+    [...taskLearningQueryKey(taskId)],
+    () => fetchTaskLearning(taskId),
+    { ...config, enabled: taskId.length > 0 && (config?.enabled ?? true) },
+  );
+}
+
+/** A person's promotion; the candidates and the Knowledge views refresh. */
+export function usePromoteTaskLearningMutation(taskId: string) {
+  return useApiMutation(
+    (promotion: TaskLearningPromotion) =>
+      promoteTaskLearning({ taskId, ...promotion }),
+    { invalidateKeys: [[...taskLearningQueryKey(taskId)], ['knowledge']] },
+  );
+}
+
+export function useDismissTaskLearningMutation(taskId: string) {
+  return useApiMutation(
+    (dismissal: TaskLearningDismissal) =>
+      dismissTaskLearning({ taskId, ...dismissal }),
+    { invalidateKeys: [[...taskLearningQueryKey(taskId)]] },
   );
 }

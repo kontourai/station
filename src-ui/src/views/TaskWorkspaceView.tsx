@@ -62,6 +62,7 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
   type TaskOutputPromotion,
@@ -458,6 +459,9 @@ function TaskWorkspaceContent({
           </p>
         </section>
         <TaskMemoryPanel taskId={graph.task.id} />
+        {graph.task.status === 'done' ? (
+          <TaskLearningPanel taskId={graph.task.id} />
+        ) : null}
         {activeExperience.id === 'direct' ? (
           <TaskRoomWorkspaceSection
             task={graph.task}

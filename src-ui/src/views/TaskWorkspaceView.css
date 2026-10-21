@@ -1202,3 +1202,36 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
+
+/* #4003 layer 4: a done Task's lessons, reviewed for the Project store. */
+.task-learning__no-store {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) dashed var(--k-line);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.task-learning__no-store p {
+  margin: 0;
+}
+
+.task-learning__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+
+.task-learning__input:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

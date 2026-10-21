@@ -3203,6 +3203,17 @@ Exported from the SDK root and query barrel; see
 - `writeTaskRecord` and `useWriteTaskRecordMutation` set, answer or retire a
   keyed record; the mutation also refreshes the Tasks list, since an answer can
   take a Task out of Needs you.
+- `fetchTaskLearning` and `useTaskLearningQuery` read a done Task's
+  promotion candidates and the Project's knowledge stores
+  (`GET /api/tasks/:taskId/room/memory/learning`, key
+  `taskLearningQueryKey(taskId)`). `promoteTaskLearning` and
+  `usePromoteTaskLearningMutation` promote one candidate version, as edited,
+  into a Project store and resolve `status: "promoted"` or
+  `"already-promoted"`; `dismissTaskLearning` and
+  `useDismissTaskLearningMutation` dismiss one. Types: `TaskLearningView`,
+  `TaskLearningCandidate`, `TaskLearningReview`, `TaskLearningStore`,
+  `TaskLearningPromotion`, `TaskLearningDismissal`,
+  `TaskLearningPromoteResult`.
 
 ### Answer-assessment producer protocol
 
