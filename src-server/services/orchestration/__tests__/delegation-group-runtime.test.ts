@@ -389,11 +389,15 @@ function invalidateAfterStaging(
   invalidate: () => void,
 ) {
   const open = filesystem.open;
+  const prefix =
+    domain === 'observations'
+      ? `${join(f.privateRoot, domain)}/`
+      : `${recordFile(f, domain)}.`;
   let staged = 0;
   vi.spyOn(filesystem, 'open').mockImplementation(async (...args) => {
     const descriptor = await open(...args);
     if (
-      String(args[0]).startsWith(`${recordFile(f, domain)}.`) &&
+      String(args[0]).startsWith(prefix) &&
       String(args[0]).endsWith('.tmp')
     ) {
       const sync = descriptor.sync.bind(descriptor);
@@ -584,6 +588,114 @@ test.each([
     }
   },
 );
+
+test('run failure retention uses the captured preparation after execution binding awaits', async () => {
+  const f = await fixture();
+  await create(f);
+  const authorityBefore = readFileSync(recordFile(f, authorityDomain), 'utf8');
+  const binding = vi
+    .spyOn(f.owners, 'currentExecutionBinding')
+    .mockImplementationOnce(async () => {
+      await Promise.resolve();
+      f.replacePreparation();
+      return structuredClone(f.prepared.envelopes[0].execution_binding);
+    });
+  await expect(
+    f.runtime.launch(f.hostRequest(), f.principal, 'group-fixture', {
+      operationId: 'run-1',
+      expectedRevision: 1,
+    }),
+  ).rejects.toMatchObject({ code: 'group_authority_required' });
+  expect(binding).toHaveBeenCalledTimes(1);
+  expect(readdirSync(join(f.privateRoot, 'observations'))).toEqual([]);
+  expect(readFileSync(recordFile(f, authorityDomain), 'utf8')).toBe(
+    authorityBefore,
+  );
+  expect(
+    JSON.parse(readFileSync(recordFile(f, groupDomain), 'utf8')).events.map(
+      (event: { kind: string }) => event.kind,
+    ),
+  ).toEqual(['created', 'run_pending', 'member_pending']);
+});
+
+test.each(['abort', 'replacement'] as const)(
+  'run failure refuses %s after observation staging fsync',
+  async (fault) => {
+    const f = await fixture();
+    await create(f);
+    const authorityBefore = readFileSync(
+      recordFile(f, authorityDomain),
+      'utf8',
+    );
+    const abort = new AbortController();
+    const reason = new Error('request-aborted-after-observation-staging');
+    const staged = invalidateAfterStaging(f, 'observations', () => {
+      if (fault === 'abort') abort.abort(reason);
+      else f.replacePreparation();
+    });
+    await expect(
+      f.runtime.launch(
+        f.hostRequest(abort.signal),
+        f.principal,
+        'group-fixture',
+        {
+          operationId: 'run-1',
+          expectedRevision: 1,
+        },
+      ),
+    ).rejects.toMatchObject(
+      fault === 'abort'
+        ? { message: reason.message }
+        : { code: 'group_authority_required' },
+    );
+    expect(staged()).toBe(1);
+    expect(readdirSync(join(f.privateRoot, 'observations'))).toEqual([]);
+    expect(readFileSync(recordFile(f, authorityDomain), 'utf8')).toBe(
+      authorityBefore,
+    );
+    expect(
+      JSON.parse(readFileSync(recordFile(f, authorityDomain), 'utf8'))
+        .invocations,
+    ).toEqual([]);
+  },
+);
+
+test('current run failure retains a private observation with canonical digest and no terminal proof', async () => {
+  const f = await fixture();
+  await create(f);
+  await expect(
+    f.runtime.launch(f.hostRequest(), f.principal, 'group-fixture', {
+      operationId: 'run-1',
+      expectedRevision: 1,
+    }),
+  ).rejects.toThrow('Independent group execution unknown');
+  const names = readdirSync(join(f.privateRoot, 'observations'));
+  expect(names).toHaveLength(1);
+  const path = join(f.privateRoot, 'observations', names[0]);
+  const bytes = readFileSync(path, 'utf8');
+  const observation = JSON.parse(bytes);
+  expect(observation).toEqual({
+    version: 1,
+    groupId: 'group-fixture',
+    observation: { kind: 'run-failure', reason: 'execution_incomplete' },
+  });
+  expect(names[0]).toBe(`${sha(observation)}.json`);
+  expect(lstatSync(path).mode & 0o7777).toBe(0o600);
+  expect(lstatSync(path).nlink).toBe(1);
+  const view = await f.runtime.get(
+    f.hostRequest(),
+    f.principal,
+    'group-fixture',
+  );
+  expect(view).toMatchObject({
+    execution: 'execution_unknown',
+    terminal: 'unproven',
+  });
+  expect(
+    JSON.parse(readFileSync(recordFile(f, authorityDomain), 'utf8'))
+      .invocations,
+  ).toEqual([]);
+});
 
 test.each([authorityDomain, groupDomain])(
   'captures preparation before awaiting the %s lock',

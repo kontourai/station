@@ -443,11 +443,16 @@ export class DelegationGroupRuntime {
       'observations',
       `${digest}.json`,
     );
+    const finalizeCurrent = this.#finalizeCurrent(context, prepared);
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    let reference: DelegationReferenceV2;
     try {
       privateDirectory(join(this.owners.privateRoot, 'observations'));
       this.#authorize(context, prepared);
-      await publishJsonFileWithOwnedLock(path, raw, { maxBytes: 1_048_576 });
+      await publishJsonFileWithOwnedLock(path, raw, {
+        maxBytes: 1_048_576,
+        finalizeCommit: finalizeCurrent,
+      });
       const fd = openSync(
         join(this.owners.privateRoot, 'observations'),
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -457,7 +462,7 @@ export class DelegationGroupRuntime {
       } finally {
         closeSync(fd);
       }
-      return {
+      reference = {
         id: `observation_${digest}`,
         domain: 'station.group-observation',
         digest: `sha256:${digest}`,
@@ -465,6 +470,8 @@ export class DelegationGroupRuntime {
     } finally {
       await release();
     }
+    finalizeCurrent();
+    return reference;
   }
 
   #composition(context: RequestContext, initialPrepared?: Prepared) {
@@ -517,7 +524,7 @@ export class DelegationGroupRuntime {
         throw new DelegationGroupRuntimeRefusal('group_unavailable');
       },
       retainFailure: async (_error, envelope, invocationId) => {
-        await this.#retain(context, this.#load(spec.groupId), {
+        await this.#retain(context, capture(spec.groupId), {
           kind: 'failure',
           envelopeId: envelope.envelope_id,
           invocationId,
@@ -525,16 +532,12 @@ export class DelegationGroupRuntime {
         });
       },
       retainResult: async (result, envelope, invocationId) => {
-        const reference = await this.#retain(
-          context,
-          this.#load(spec.groupId),
-          {
-            kind: 'raw-result',
-            envelopeId: envelope.envelope_id,
-            invocationId,
-            result,
-          },
-        );
+        const reference = await this.#retain(context, capture(spec.groupId), {
+          kind: 'raw-result',
+          envelopeId: envelope.envelope_id,
+          invocationId,
+          result,
+        });
         this.#rawResults.set(
           hash([spec.groupId, envelope.envelope_id]),
           reference,
@@ -548,7 +551,7 @@ export class DelegationGroupRuntime {
         this.owners.flow,
       ),
       prepareRequest: async (claim, envelope) => {
-        const prepared = this.#load(spec.groupId);
+        const prepared = capture(spec.groupId);
         await this.#confirmExecution(context, prepared, envelope);
         const seat = spec.seats.find(
           (s) =>
@@ -598,22 +601,18 @@ export class DelegationGroupRuntime {
         },
         executionHost,
         prepareIndependentRequest: async (spec, seat, envelope) => {
-          const prepared = this.#load(spec.groupId);
+          const prepared = capture(spec.groupId);
           await this.#confirmExecution(context, prepared, envelope);
           return this.#request(context, prepared, seat.seatId);
         },
         retainMemberOutcome: async (spec, seat, outcome) => {
-          const reference = await this.#retain(
-            context,
-            this.#load(spec.groupId),
-            {
-              seatId: seat.seatId,
-              rawResultRef:
-                this.#rawResults.get(hash([spec.groupId, seat.envelope.id])) ??
-                null,
-              outcome,
-            },
-          );
+          const reference = await this.#retain(context, capture(spec.groupId), {
+            seatId: seat.seatId,
+            rawResultRef:
+              this.#rawResults.get(hash([spec.groupId, seat.envelope.id])) ??
+              null,
+            outcome,
+          });
           return {
             outcomeRef: reference,
             dissentRefs: [],
@@ -621,12 +620,12 @@ export class DelegationGroupRuntime {
           };
         },
         retainRunObservation: async (spec, observation) =>
-          this.#retain(context, this.#load(spec.groupId), {
+          this.#retain(context, capture(spec.groupId), {
             kind: 'run-observation',
             observation,
           }),
         retainRunFailure: async (spec) =>
-          this.#retain(context, this.#load(spec.groupId), {
+          this.#retain(context, capture(spec.groupId), {
             kind: 'run-failure',
             reason: 'execution_incomplete',
           }),
