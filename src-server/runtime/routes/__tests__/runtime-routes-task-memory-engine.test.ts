@@ -31,6 +31,7 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { taskQuestionWakeKey } from '../../../services/orchestration/task-question-wake.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -719,5 +720,42 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
       author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
     });
     expect((await listed())?.openQuestionCount).toBeUndefined();
+  });
+
+  test("the production composition wakes the lead's conversation inbox with a person's answer, once", async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask();
+    const call = await e.connect(sessionId);
+    await call('task_record', {
+      kind: 'question',
+      key: 'scope',
+      text: 'CLI too?',
+    });
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const inbox = () => e.store.threadInboxStore().list(conversation);
+    // The lead's own question wakes no one.
+    expect(inbox()).toEqual([]);
+    const answer = () =>
+      e.asOperator('POST', `/api/tasks/${taskId}/room/memory/records`, {
+        kind: 'question',
+        key: 'scope',
+        action: 'answer',
+        text: 'No, only the server.',
+      });
+    expect((await answer()).status).toBe(200);
+    const task = e.taskGraph.readTask(taskId)!;
+    const key = taskQuestionWakeKey(
+      { taskId, taskCreatedAt: task.createdAt },
+      { key: 'scope', version: 2, action: 'answer' },
+    );
+    expect(inbox().map((entry) => entry.key)).toEqual([key]);
+    expect(inbox()[0]!.payload).toContain('No, only the server.');
+    // A second answer is refused (the question is no longer open): no wake.
+    expect((await answer()).status).not.toBe(200);
+    expect(inbox().map((entry) => entry.key)).toEqual([key]);
+    expect(e.stored(taskId).records).toMatchObject([
+      { key: 'scope', version: 2, state: 'answered' },
+    ]);
   });
 });

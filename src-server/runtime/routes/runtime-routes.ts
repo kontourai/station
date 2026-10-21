@@ -580,6 +580,11 @@ import {
 } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import {
+  createTaskLeadReader,
+  TaskQuestionWake,
+  type TaskQuestionWakePorts,
+} from '../../services/orchestration/task-question-wake.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -4199,6 +4204,22 @@ export function configureRuntimeRoutes(
     } catch {
       // Room editing remains available; discovery names revision-link absence.
     }
+    const roomEventStore = context.orchestrationEventStore;
+    const taskQuestionWake = new TaskQuestionWake({
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      conversationOf: (sessionId) =>
+        roomEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      readLead: createTaskLeadReader({
+        eventStore: roomEventStore,
+        service: context.orchestrationService,
+      }),
+      get submit(): TaskQuestionWakePorts['submit'] {
+        const inbox = threadInbox;
+        return inbox ? (input) => inbox.submit(input) : undefined;
+      },
+      logger: context.logger,
+    });
     const roomRuntime = new ProjectTaskRoomRuntime({
       outputFeedbackTargets: {
         validate: (scope, target) =>
@@ -4340,6 +4361,10 @@ export function configureRuntimeRoutes(
           sessionId,
         ),
       memory: context.orchestrationEventStore!.taskMemoryStore(),
+      // #4003 lead wake: after a question version commits, one message into
+      // the lead's conversation through its durable inbox. `threadInbox` is
+      // composed later in this function and read when a record is written.
+      afterTaskRecord: (input) => taskQuestionWake.wake(input),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
