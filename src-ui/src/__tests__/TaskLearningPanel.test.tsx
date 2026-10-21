@@ -11,9 +11,6 @@
  * The person's room authority is granted by a stand-in; that authority, the
  * agent refusal and search are proved in `runtime-routes-task-learning.test.ts`.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
@@ -28,6 +25,7 @@ import {
 } from '@testing-library/react';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/017-task-memory';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../../src-server/domain/migrations/018-task-learning-dismissals';
 import { KnowledgeStoreProvider } from '../../../src-server/knowledge-store/knowledge-store-provider';
@@ -73,6 +71,7 @@ class MemoryRootPersistence {
 }
 
 let db: DatabaseSync;
+const makeTempDir = trackTempDirs();
 let directory: string;
 let knowledge: KnowledgeStoreProvider;
 let requests: Array<{ method: string; path: string; body?: unknown }>;
@@ -103,7 +102,7 @@ beforeEach(() => {
       text: 'Retrying without backoff floods the provider.',
     },
   });
-  directory = mkdtempSync(join(tmpdir(), 'task-learning-panel-'));
+  directory = makeTempDir('task-learning-panel-');
   knowledge = new KnowledgeStoreProvider(new MemoryRootPersistence());
   const app = new Hono().route(
     '/api/tasks',
@@ -145,7 +144,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setProject.mockReset();
   db.close();
-  rmSync(directory, { recursive: true, force: true });
 });
 
 const createStore = () =>
