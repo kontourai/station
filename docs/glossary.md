@@ -458,7 +458,7 @@ release delivery.
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
 | The Chat dock's summary of the open chat's workspace, branch, activity and pull requests | **This chat** (the **session context card**) |
-| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the header bell shows its projected pending-item count) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | The navigable record of what one chat drew on and produced (inputs, execution, sources, outputs, kept results), whole or scoped to one answer | **Chat inventory**, part of **Basis**. An answer's **Basis** chip opens it scoped to that answer; the dock's More menu opens the whole chat. Never "Session inventory" in Station's UI. The developer contract keeps the name: `@kontourai/station-contracts/session-inventory`, the SDK's `useSessionInventoryQuery`, and the portable MCP App's server identity (its visible text says Chat inventory) |
