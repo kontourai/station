@@ -577,8 +577,10 @@ test.describe
           data: { kind: 'duplicate' },
         });
         await expect(
-          owner.getByText('This exact edit was already saved.'),
-        ).toBeVisible();
+          owner
+            .getByRole('region', { name: 'Task room editor' })
+            .getByRole('status'),
+        ).toHaveText('Saved');
 
         // Drop both real browser networks so the existing SSE clients must
         // reconnect. Their reconnect snapshots drive document queries; no
