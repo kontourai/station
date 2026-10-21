@@ -17,6 +17,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { withoutRepeatedRestartNotice } from '../../components/chat/message-bubble/visibleContent';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
@@ -576,7 +577,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
-    const projected = projectRuntimeEventsToMessages(
+    const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
         .filter((event): event is CanonicalRuntimeEvent =>
@@ -654,6 +655,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         turnEndedReason: message.metadata?.turnEndedReason,
         turnStoppedBy: message.metadata?.turnStoppedBy,
       }));
+    // A turn Station's restart cut off says so once, on its own row.
+    const projected = withoutRepeatedRestartNotice(projectedRows);
     // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =
       serverTurnLive({

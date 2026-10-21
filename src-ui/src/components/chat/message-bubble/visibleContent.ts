@@ -163,6 +163,43 @@ export function endedTurnStopDetail(
 }
 
 /**
+ * Drops the restart notice recovery writes after a turn Station's restart
+ * cut off (`[SYSTEM_EVENT] [TURN_INTERRUPTED] …`) when the row just above it
+ * already says so: a row that drew nothing reads "Stopped / Station
+ * restarted mid-turn", and one with content ends with the same sentence. A
+ * notice with no such row above it stays.
+ */
+export function withoutRepeatedRestartNotice<
+  M extends Pick<
+    ChatMessage,
+    | 'role'
+    | 'content'
+    | 'contentParts'
+    | 'turnEnded'
+    | 'turnEndedReason'
+    | 'turnStoppedBy'
+  >,
+>(messages: readonly M[]): M[] {
+  return messages.filter((message, index) => {
+    const notice =
+      message.role === 'user'
+        ? /^\[SYSTEM_EVENT\]\s*\[TURN_INTERRUPTED\]\s*([\s\S]*)$/.exec(
+            message.content ?? '',
+          )?.[1]
+        : undefined;
+    if (notice === undefined) return true;
+    const previous = messages[index - 1];
+    if (previous?.role !== 'assistant') return true;
+    const saysRestart =
+      endedTurnStopDetail(previous)?.text === 'Station restarted mid-turn';
+    const saysNotice = Boolean(
+      notice.trim() && previous.content?.includes(notice.trim()),
+    );
+    return !(saysRestart || saysNotice);
+  });
+}
+
+/**
  * Whether the row has answer text: the server's Basis read answers only a
  * turn whose row has non-empty text other than a runtime error
  * (`answerOnly` in session-query-module.ts), so a row without any gets no

@@ -1167,6 +1167,27 @@ describe('useActiveChatTranscript', () => {
           reason: TURN_INTERRUPTED_MESSAGE,
           recoveryTerminal: true,
         }),
+        // Recovery's notice right after it: the row already says it.
+        event('e13n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // A cut-off turn that drew something ends its row with the same
+        // sentence, so its notice goes too.
+        event('e13x', 'turn.started', { turnId: 'turn-5c', prompt: 'crash 3' }),
+        event('e13y', 'content.text-delta', {
+          turnId: 'turn-5c',
+          delta: 'partial answer',
+        }),
+        event('e13z', 'turn.aborted', {
+          turnId: 'turn-5c',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        event('e13w', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5c' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
         // Recovery's marker decides it, not the reason's wording.
         event('e13a', 'turn.started', { turnId: 'turn-5b', prompt: 'crash 2' }),
         event('e13b', 'turn.aborted', {
@@ -1180,6 +1201,11 @@ describe('useActiveChatTranscript', () => {
           turnId: 'turn-6',
           reason: 'engine-ended-before-start',
         }),
+        // A notice no row above already says stays.
+        event('e15n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-6' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
         // Still open: no row until it draws something.
         event('e16', 'turn.started', { turnId: 'turn-7', prompt: 'open' }),
       ],
@@ -1188,7 +1214,7 @@ describe('useActiveChatTranscript', () => {
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
-    await waitFor(() => expect(result.current.messages).toHaveLength(15));
+    await waitFor(() => expect(result.current.messages).toHaveLength(18));
     const { endedTurnMarker, endedTurnStopDetail } = await import(
       '../components/chat/message-bubble/visibleContent'
     );
@@ -1213,12 +1239,21 @@ describe('useActiveChatTranscript', () => {
         { text: 'No progress for too long', title: stallText },
       ],
       ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-5c', 2, 'Stopped', undefined],
       ['turn-5b', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
       ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
     ]);
     expect(
       result.current.messages.filter((message) => message.role === 'user'),
-    ).toHaveLength(8);
+    ).toHaveLength(10);
+    // The restart is said once per turn: the empty row's line, or the notice.
+    const notices = result.current.messages.filter((message) =>
+      message.content?.includes('[TURN_INTERRUPTED]'),
+    );
+    expect(notices).toHaveLength(1);
+    const after =
+      result.current.messages[result.current.messages.indexOf(notices[0]!) - 1];
+    expect(after?.turnId).toBe('turn-6');
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
