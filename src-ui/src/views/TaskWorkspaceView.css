@@ -966,6 +966,17 @@
   white-space: normal;
 }
 
+/* #4003: in the Brief tab, the linked item heads the Task document and the
+   Task memory and Learning panels follow it, each set apart from its
+   neighbour. */
+.task-room-panel > .task-workspace__work-item {
+  margin-bottom: var(--k-space-4);
+}
+
+.task-room-panel > .task-memory {
+  margin-top: var(--k-space-5);
+}
+
 /* #4003: the Task's linked tracker item, read when the Task opens. */
 .task-workspace__work-item {
   display: flex;
