@@ -201,12 +201,22 @@ verification pass. Separate focused runs pass 245 contract/security/UI cases and
 pass. These are local checks of selected merged paths, not full epic, serving,
 provider, native or hosted acceptance. Documentation freshness remains failing.
 
-The sealed-source SDK owner, explicit Flow rounds/continuation, raw-provider
-stream repair, and exact tariff settlement remain isolated candidates. Their
-source, review and publication work does not activate Station groups. In
-particular, tariff-derived integer micros must retain their cost basis and must
-not be silently converted to provider-reported Relay dollars. A candidate public
-API or a successful synthetic SDK response is not a published serving contract.
+The independently reviewed sealed-source SDK owners are now adopted in
+`delegation-group-source-admission.ts` and
+`delegation-group-sdk-source-wire-owner.ts`. The focused Station selection passes
+38 source/SDK cases with mock HTTP and real authorization owners. Snapshot
+content remains private and memory-only; live-checkout launch still refuses.
+Boot issuance and managed transport composition remain unwired, and the group
+capability remains disabled. These checks establish neither live consent nor
+provider qualification or billing.
+
+Explicit Flow rounds/continuation and the raw-provider stream repair remain
+isolated candidates. Additive exact-tariff accounting is adopted in the Flow
+Agents worktree with its required readiness checks passing, but is unpublished;
+Station still consumes published 9.3.0. Tariff-derived integer micros must retain
+their cost basis and must not be silently converted to provider-reported Relay
+dollars. A candidate public API or a successful synthetic SDK response is not a
+published serving contract.
 
 - Finish independent delta review and meaningful injected/restored checks.
 - Reconcile canonical documentation and generated review evidence.

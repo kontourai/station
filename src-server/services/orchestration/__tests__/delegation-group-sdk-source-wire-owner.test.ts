@@ -1,0 +1,579 @@
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import {
+  createPreparedSdkSourceWireOwner,
+  deliverSdkResponse,
+  disposeSdkSourceWire,
+  enterFinalFetch,
+  inspectSdkSourceWire,
+  SdkSourceRefusal,
+  sdkDisposalPromise,
+  sdkResultPromise,
+  takeResponsePromise,
+} from '../delegation-group-sdk-source-wire-owner.js';
+import { fixture as qualification } from './delegation-source-fixtures/qualification.js';
+import {
+  code,
+  fixture,
+  selection,
+  subject,
+} from './delegation-source-fixtures/source.js';
+
+const fixtureSdkCredential = () => 'synthetic-not-a-credential';
+const sdkCode = (code: string) => (e: unknown) =>
+  e instanceof SdkSourceRefusal && e.code === code;
+function mockResponse(provider: 'anthropic' | 'google') {
+  return new Response(
+    JSON.stringify(
+      provider === 'anthropic'
+        ? {
+            id: 'msg-fixture',
+            type: 'message',
+            role: 'assistant',
+            model: 'fixture-model',
+            content: [{ type: 'text', text: 'OK' }],
+            stop_reason: 'end_turn',
+            stop_sequence: null,
+            usage: { input_tokens: 4, output_tokens: 2 },
+          }
+        : {
+            modelVersion: 'fixture-revision',
+            candidates: [
+              {
+                finishReason: 'STOP',
+                index: 0,
+                content: { role: 'model', parts: [{ text: 'OK' }] },
+              },
+            ],
+            usageMetadata: {
+              promptTokenCount: 4,
+              candidatesTokenCount: 2,
+              totalTokenCount: 6,
+            },
+          },
+    ),
+    { headers: { 'content-type': 'application/json' } },
+  );
+}
+async function sdkFixture(
+  provider: 'anthropic' | 'google' = 'anthropic',
+  path = '/api/orchestration/chat',
+) {
+  const f = await fixture();
+  const request = f.request(path);
+  f.req = request;
+  f.context = () => ({
+    env: undefined,
+    req: {
+      raw: request,
+      header: (name: string) => request.headers.get(name) ?? undefined,
+    },
+  });
+  const q = qualification(provider);
+  let starts = 0;
+  let sentBody = '';
+  const abort = new AbortController();
+  const configuration = {
+    provider,
+    modelId: 'fixture-model',
+    apiKey: fixtureSdkCredential(),
+    brief: 'inspect exactly this source',
+    instructions: 'report only',
+    maxOutputTokens: 10,
+    contract: q.resolve(),
+    remaining: {
+      inputTokens: 1000,
+      outputTokens: 1000,
+      costMicros: 100000,
+      currency: 'USD' as const,
+    },
+    now: () => 1000,
+    signal: abort.signal,
+    rawFetch: (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      starts++;
+      sentBody = String(init?.body);
+      return Promise.resolve(mockResponse(provider));
+    },
+  };
+  const owner = createPreparedSdkSourceWireOwner(configuration);
+  const sealed = await f.owner.captureSnapshot(f.context(), subject, selection);
+  return {
+    ...f,
+    q,
+    sdkOwner: owner,
+    configuration,
+    sealed,
+    abort,
+    get starts() {
+      return starts;
+    },
+    get sentBody() {
+      return sentBody;
+    },
+  };
+}
+for (const provider of ['anthropic', 'google'] as const)
+  test(`SDK ${provider} captures before response, embeds exact bytes, consumes once and resolves actual SDK`, async () => {
+    const f = await sdkFixture(provider);
+    const prepared = await Promise.race([
+      f.owner.prepareSdkSnapshot(
+        f.context(),
+        subject,
+        f.sealed.capability,
+        f.sdkOwner,
+      ),
+      new Promise<never>((_, no) => {
+        const timer = setTimeout(() => no(Error('prepare deadlocked')), 5000);
+        timer.unref();
+      }),
+    ]);
+    assert.equal(f.starts, 0);
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const body = JSON.parse(wire.body);
+    const text =
+      provider === 'anthropic'
+        ? body.messages[0].content[1].text
+        : body.contents[0].parts[1].text;
+    const payload = JSON.parse(text);
+    assert.equal(
+      Buffer.from(payload.files[0].content, 'base64').toString(),
+      'original source\n',
+    );
+    assert.ok(!Object.hasOwn(body, 'tools'));
+    assert.ok(!Object.hasOwn(body, 'cwd'));
+    assert.ok(!Object.hasOwn(body, 'filesystem'));
+    const response = enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+      signal: f.abort.signal,
+    });
+    assert.equal(f.starts, 1);
+    assert.equal(f.sentBody, wire.body);
+    assert.equal(takeResponsePromise(f.sdkOwner, prepared.sdkHandle), response);
+    assert.throws(
+      () => takeResponsePromise(f.sdkOwner, prepared.sdkHandle),
+      sdkCode('sdk_response_unavailable'),
+    );
+    deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await response);
+    assert.equal(
+      (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
+      'OK',
+    );
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+    assert.throws(() =>
+      enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+        method: 'POST',
+        headers: Object.fromEntries(wire.headers),
+        body: wire.body,
+        redirect: 'error',
+      }),
+    );
+  });
+
+import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
+
+for (const provider of ['anthropic', 'google'] as const)
+  test(`public FinalFetchLaunchFence ${provider} starts exact SDK wire only after durable intent`, async () => {
+    const f = await sdkFixture(provider);
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => assert.equal(f.starts, 0),
+    );
+    const result = await driver.run();
+    assert.equal(f.starts, 1);
+    assert.equal(driver.intentCount, 1);
+    assert.equal(f.sentBody, wire.body);
+    assert.equal(
+      (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
+      'OK',
+    );
+    assert.ok(result);
+  });
+
+import {
+  bindRuntimeLocalOperator,
+  isRuntimeRequestPrincipalCurrent,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+
+test.each([
+  'source-block',
+  'body',
+  'headers',
+  'url',
+  'tools',
+  'cwd',
+  'clone-handle',
+  'clone-owner',
+] as const)(
+  'actual SDK final wire rejects changed source block, other bytes, tools, cwd and cloned capabilities before HTTP (%s)',
+  async (variant) => {
+    const f = await sdkFixture();
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const body = JSON.parse(wire.body);
+    let url = wire.url;
+    let headers = Object.fromEntries(wire.headers);
+    if (variant === 'source-block')
+      body.messages[0].content[1].text = 'wrong exact source';
+    if (variant === 'body') body.max_tokens = 9;
+    if (variant === 'tools')
+      body.tools = [{ name: 'shell', input_schema: { type: 'object' } }];
+    if (variant === 'cwd') body.cwd = '/tmp';
+    if (variant === 'headers') headers = { '...': 'wrong' };
+    if (variant === 'url') url += '/wrong';
+    const bytes = ['source-block', 'body', 'tools', 'cwd'].includes(variant)
+      ? JSON.stringify(body)
+      : wire.body;
+    assert.throws(() =>
+      enterFinalFetch(
+        variant === 'clone-owner' ? {} : f.sdkOwner,
+        variant === 'clone-handle' ? {} : prepared.sdkHandle,
+        url,
+        { method: 'POST', headers, body: bytes, redirect: 'error' },
+      ),
+    );
+    assert.equal(f.starts, 0);
+    disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  },
+);
+
+test.each(['prepare', 'disclose', 'consume'] as const)(
+  'actual source operation scope is rechecked at SDK prepare, disclose and final consume despite a current preview request (%s)',
+  async (boundary) => {
+    const f = await sdkFixture(
+      'anthropic',
+      '/api/projects/source/file-preview',
+    );
+    let prepared:
+      | Awaited<ReturnType<typeof f.owner.prepareSdkSnapshot>>
+      | undefined;
+    if (boundary !== 'prepare')
+      prepared = await f.owner.prepareSdkSnapshot(
+        f.context(),
+        subject,
+        f.sealed.capability,
+        f.sdkOwner,
+      );
+    const wire = prepared
+      ? inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle).wire
+      : undefined;
+    f.environment.devicePairing.setDeviceScope(
+      f.paired.device.id,
+      ['orchestration:read'],
+      { kind: 'local-grant' },
+    );
+    assert.equal(isRuntimeRequestPrincipalCurrent(f.req, f.environment), true);
+    if (boundary === 'prepare')
+      await assert.rejects(
+        () =>
+          f.owner.prepareSdkSnapshot(
+            f.context(),
+            subject,
+            f.sealed.capability,
+            f.sdkOwner,
+          ),
+        code('source_grant_action_not_authorized'),
+      );
+    else if (prepared && wire) {
+      if (boundary === 'disclose')
+        assert.throws(
+          () => inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle),
+          code('source_grant_action_not_authorized'),
+        );
+      else
+        assert.throws(
+          () =>
+            enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+              method: 'POST',
+              headers: Object.fromEntries(wire.headers),
+              body: wire.body,
+              redirect: 'error',
+            }),
+          code('source_grant_action_not_authorized'),
+        );
+      disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+    }
+    assert.equal(f.starts, 0);
+  },
+);
+
+test.each([
+  'foreign-principal',
+  'revoked',
+  'key-replaced',
+  'qualification-revoked',
+] as const)(
+  'foreign valid principal cannot disclose another sealed source; revoked credentials cannot start SDK wire (%s)',
+  async (variant) => {
+    const f = await sdkFixture();
+    if (variant === 'foreign-principal') {
+      const offer = f.environment.devicePairing.createOffer({
+        endpoint: 'http://127.0.0.1:43979',
+      });
+      const requested = f.environment.devicePairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'second valid credential',
+        requesterPosition: 'unproven',
+      });
+      f.environment.devicePairing.confirmRequest(requested.requestId, {
+        kind: 'presented-credential',
+      });
+      const paired = f.environment.devicePairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: requested.requestId,
+        locality: 'home-possession',
+        mintKind: 'local-grant',
+      });
+      const req = new Request(f.req.url, { method: 'POST' });
+      setRuntimeAuthenticatedRequestPrincipal(req, {
+        kind: 'credential',
+        authority: 'device-credential',
+        credential: paired.credential,
+        source: 'bearer',
+        locality: 'home-possession',
+        mintKind: 'local-grant',
+      });
+      bindRuntimeLocalOperator(req);
+      assert.equal(isRuntimeRequestPrincipalCurrent(req, f.environment), true);
+      await assert.rejects(
+        () =>
+          f.owner.prepareSdkSnapshot(
+            {
+              env: undefined,
+              req: { raw: req, header: (n) => req.headers.get(n) ?? undefined },
+            },
+            subject,
+            f.sealed.capability,
+            f.sdkOwner,
+          ),
+        code('snapshot_binding_mismatch'),
+      );
+    } else {
+      const prepared = await f.owner.prepareSdkSnapshot(
+        f.context(),
+        subject,
+        f.sealed.capability,
+        f.sdkOwner,
+      );
+      const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+      if (variant === 'revoked')
+        f.environment.devicePairing.revokeDevice(
+          f.paired.device.id,
+          'operator-credential',
+        );
+      if (variant === 'qualification-revoked') f.q.revoke();
+      if (variant === 'key-replaced') {
+        const { writeFileSync } = await import('node:fs');
+        const { randomBytes } = await import('node:crypto');
+        const { join } = await import('node:path');
+        writeFileSync(
+          join(
+            f.home,
+            'security',
+            `revision-evidence-${f.record.environmentId}.key`,
+          ),
+          randomBytes(32).toString('base64url'),
+          { mode: 0o600 },
+        );
+      }
+      assert.throws(() =>
+        enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+          method: 'POST',
+          headers: Object.fromEntries(wire.headers),
+          body: wire.body,
+          redirect: 'error',
+        }),
+      );
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+    }
+    assert.equal(f.starts, 0);
+  },
+);
+
+test('SDK prepare release cannot resurrect capability; started disposal waits for SDK terminal response', async () => {
+  const f = await sdkFixture();
+  const pending = f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  f.owner.releaseSnapshot(f.sealed.capability);
+  f.owner.releaseSnapshot(f.sealed.capability);
+  await assert.rejects(() => pending, code('snapshot_unavailable'));
+  const g = await sdkFixture();
+  const prepared = await g.owner.prepareSdkSnapshot(
+    g.context(),
+    subject,
+    g.sealed.capability,
+    g.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(g.sdkOwner, prepared.sdkHandle);
+  let disposed = false;
+  void sdkDisposalPromise(g.sdkOwner, prepared.sdkHandle).then(() => {
+    disposed = true;
+  });
+  const response = enterFinalFetch(g.sdkOwner, prepared.sdkHandle, wire.url, {
+    method: 'POST',
+    headers: Object.fromEntries(wire.headers),
+    body: wire.body,
+    redirect: 'error',
+  });
+  disposeSdkSourceWire(g.sdkOwner, prepared.sdkHandle);
+  g.owner.releaseSnapshot(g.sealed.capability);
+  assert.equal(disposed, false);
+  deliverSdkResponse(g.sdkOwner, prepared.sdkHandle, await response);
+  assert.equal(
+    (await sdkResultPromise(g.sdkOwner, prepared.sdkHandle)).text,
+    'OK',
+  );
+  await sdkDisposalPromise(g.sdkOwner, prepared.sdkHandle);
+  assert.equal(disposed, true);
+});
+
+test('public final fence revocation during intent wait prevents actual SDK HTTP and retains no replay path', async () => {
+  const f = await sdkFixture('google');
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const driver = await publicFenceFixture(
+    f,
+    prepared.source,
+    f.sdkOwner,
+    prepared.sdkHandle,
+    wire,
+    () =>
+      f.environment.devicePairing.revokeDevice(
+        f.paired.device.id,
+        'operator-credential',
+      ),
+  );
+  await assert.rejects(() => driver.run());
+  assert.equal(driver.intentCount, 1);
+  assert.equal(f.starts, 0);
+  disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+});
+
+test('finished SDK result disclosure still requires the actual source action after preview scope narrows', async () => {
+  const f = await sdkFixture('anthropic', '/api/projects/source/file-preview');
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const response = enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+    method: 'POST',
+    headers: Object.fromEntries(wire.headers),
+    body: wire.body,
+    redirect: 'error',
+  });
+  deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await response);
+  assert.equal(
+    (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
+    'OK',
+  );
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  f.environment.devicePairing.setDeviceScope(
+    f.paired.device.id,
+    ['orchestration:read'],
+    { kind: 'local-grant' },
+  );
+  assert.equal(isRuntimeRequestPrincipalCurrent(f.req, f.environment), true);
+  assert.throws(
+    () => sdkResultPromise(f.sdkOwner, prepared.sdkHandle),
+    code('source_grant_action_not_authorized'),
+  );
+});
+
+test.each(['tools', 'cwd', 'filesystem', 'validate'] as const)(
+  'SDK configuration does not accept caller tools, filesystem, cwd or client validation callbacks (%s)',
+  (key) => {
+    const q = qualification();
+    const options = {
+      provider: 'anthropic' as const,
+      modelId: 'fixture-model',
+      apiKey: fixtureSdkCredential(),
+      brief: 'brief',
+      instructions: 'instructions',
+      maxOutputTokens: 10,
+      contract: q.resolve(),
+      remaining: {
+        inputTokens: 1000,
+        outputTokens: 1000,
+        costMicros: 100000,
+        currency: 'USD' as const,
+      },
+      now: () => 1000,
+      signal: new AbortController().signal,
+      rawFetch: (() => {
+        throw Error('must not fetch');
+      }) satisfies typeof fetch,
+      [key]: key === 'validate' ? () => true : ['shell'],
+    };
+    assert.throws(
+      () => createPreparedSdkSourceWireOwner(options),
+      sdkCode('sdk_configuration_unsupported'),
+    );
+  },
+);
+
+test('SDK brief and instructions are immutable before SDK serialization and checkout drift cannot rewrite source input', async () => {
+  const f = await sdkFixture('google');
+  f.configuration.brief = 'changed caller brief';
+  f.configuration.instructions = 'changed caller instructions';
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  writeFileSync(join(f.repo, 'source.txt'), 'after seal');
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const body = JSON.parse(wire.body);
+  assert.deepEqual(JSON.parse(body.contents[0].parts[0].text), {
+    brief: 'inspect exactly this source',
+    instructions: 'report only',
+  });
+  assert.equal(
+    Buffer.from(
+      JSON.parse(body.contents[0].parts[1].text).files[0].content,
+      'base64',
+    ).toString(),
+    'original source\n',
+  );
+  disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  assert.equal(f.starts, 0);
+});

@@ -1,0 +1,499 @@
+// UNWIRED #91: private source owners still require boot issuance and managed transport composition.
+
+import { isDeepStrictEqual } from 'node:util';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import {
+  type BoundedApiAttemptQuote,
+  type BoundedApiProvider,
+  type BoundedApiRemainingEnvelope,
+  quoteBoundedApiProviderAttempt,
+  type ResolvedBoundedApiProviderContract,
+} from '../../runtime/conversation/bounded-api-provider-contract.js';
+import {
+  type FinalWire,
+  snapshotFinalWire,
+} from './delegation-group-launch-fence.js';
+import {
+  claimSdkSourceLease,
+  type SdkSourceLease,
+} from './delegation-group-source-admission.js';
+import { wireIdentityDigest } from './delegation-group-wire-intent-store.js';
+
+export class SdkSourceRefusal extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'SdkSourceRefusal';
+    this.stack = `SdkSourceRefusal: ${code}`;
+  }
+}
+function fail(code: string): never {
+  throw new SdkSourceRefusal(code);
+}
+function deferred<T>() {
+  let resolve!: (v: T) => void, reject!: (e: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  void promise.catch(() => {});
+  return { promise, resolve, reject };
+}
+type Options = Readonly<{
+  provider: BoundedApiProvider;
+  modelId: string;
+  apiKey: string;
+  brief: string;
+  instructions: string;
+  maxOutputTokens: number;
+  contract: ResolvedBoundedApiProviderContract;
+  remaining: BoundedApiRemainingEnvelope;
+  now(): number;
+  rawFetch: typeof fetch;
+  signal: AbortSignal;
+}>;
+type SdkResult = Readonly<{
+  text: string;
+  usage: unknown;
+  finishReason: unknown;
+}>;
+type State = {
+  owner: object;
+  lease: object;
+  authorization: SdkSourceLease;
+  captured: ReturnType<typeof deferred<void>>;
+  response: ReturnType<typeof deferred<Response>> | undefined;
+  disposed: ReturnType<typeof deferred<void>>;
+  controller: AbortController;
+  wire?: Readonly<FinalWire>;
+  quote?: BoundedApiAttemptQuote;
+  result: Promise<SdkResult>;
+  rawResponse?: Promise<Response>;
+  taken: boolean;
+  delivered: boolean;
+  started: boolean;
+  rawSettled: boolean;
+  abandoned: boolean;
+  settled: boolean;
+  release: boolean;
+  deadline: ReturnType<typeof setTimeout>;
+  abortListener?: () => void;
+};
+const owners = new WeakMap<object, Options>();
+const handles = new WeakMap<object, State>();
+const usedOwners = new WeakSet<object>();
+function stateFor(owner: object, handle: object) {
+  const s = handles.get(handle);
+  if (!owners.has(owner) || !s || s.owner !== owner)
+    fail('sdk_owner_or_handle_unavailable');
+  return s;
+}
+function optionsFor(owner: object) {
+  const options = owners.get(owner);
+  if (!options) fail('sdk_owner_unavailable');
+  return options;
+}
+function finishDisposal(s: State) {
+  if (!s.settled || !s.release || (s.started && !s.rawSettled)) return;
+  s.wire = undefined;
+  s.quote = undefined;
+  s.response = undefined;
+  s.rawResponse = undefined;
+  clearTimeout(s.deadline);
+  s.disposed.resolve();
+}
+/** Boot-only raw fetch and qualified contract dependencies. No route DTO, source grant issuer,
+ * caller validation callback, provider options object, or global fetch/config mutation. */
+export function createPreparedSdkSourceWireOwner(input: Options): object {
+  const expected = [
+    'apiKey',
+    'brief',
+    'contract',
+    'instructions',
+    'maxOutputTokens',
+    'modelId',
+    'now',
+    'provider',
+    'rawFetch',
+    'remaining',
+    'signal',
+  ];
+  if (
+    Object.keys(input).sort().join(',') !== expected.join(',') ||
+    !['anthropic', 'google'].includes(input.provider) ||
+    typeof input.apiKey !== 'string' ||
+    !input.apiKey ||
+    typeof input.modelId !== 'string' ||
+    !input.modelId ||
+    typeof input.rawFetch !== 'function' ||
+    typeof input.now !== 'function' ||
+    typeof input.brief !== 'string' ||
+    typeof input.instructions !== 'string' ||
+    Buffer.byteLength(input.brief) + Buffer.byteLength(input.instructions) >
+      65536 ||
+    !Number.isSafeInteger(input.maxOutputTokens) ||
+    input.maxOutputTokens < 1
+  )
+    fail('sdk_configuration_unsupported');
+  const owner = Object.freeze({});
+  owners.set(
+    owner,
+    Object.freeze({
+      ...input,
+      remaining: Object.freeze({ ...input.remaining }),
+    }),
+  );
+  return owner;
+}
+function boundedWire(wire: FinalWire) {
+  return {
+    ...wire,
+    headers: Object.fromEntries(wire.headers),
+    redirect: 'error' as const,
+    requestOrdinal: 1,
+  };
+}
+function validateEmbedding(o: Options, s: State, wire: FinalWire) {
+  const lease = claimSdkSourceLease(s.lease);
+  const body = JSON.parse(wire.body);
+  const instruction = JSON.stringify({
+    brief: o.brief,
+    instructions: o.instructions,
+  });
+  const expected =
+    o.provider === 'anthropic'
+      ? [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: instruction },
+              { type: 'text', text: lease.serialization },
+            ],
+          },
+        ]
+      : [
+          {
+            role: 'user',
+            parts: [{ text: instruction }, { text: lease.serialization }],
+          },
+        ];
+  if (
+    !isDeepStrictEqual(
+      o.provider === 'anthropic' ? body.messages : body.contents,
+      expected,
+    )
+  )
+    fail('sdk_source_block_mismatch');
+}
+export function beginSdkSourceWire(owner: object, leaseToken: object): object {
+  const o = optionsFor(owner),
+    lease = claimSdkSourceLease(leaseToken);
+  lease.assertCurrentSync();
+  o.signal.throwIfAborted();
+  if (usedOwners.has(owner)) fail('sdk_owner_already_used');
+  usedOwners.add(owner);
+  const handle = Object.freeze({}),
+    captured = deferred<void>(),
+    response = deferred<Response>(),
+    disposed = deferred<void>(),
+    controller = new AbortController();
+  const s: State = {
+    owner,
+    lease: leaseToken,
+    authorization: lease,
+    captured,
+    response,
+    disposed,
+    controller,
+    result: Promise.reject(new Error('sdk_not_started')),
+    taken: false,
+    delivered: false,
+    started: false,
+    rawSettled: false,
+    abandoned: false,
+    settled: false,
+    release: false,
+    deadline: setTimeout(() => disposeSdkSourceWire(owner, handle), 10000),
+  };
+  void s.result.catch(() => {});
+  handles.set(handle, s);
+  s.abortListener = () => disposeSdkSourceWire(owner, handle);
+  o.signal.addEventListener('abort', s.abortListener, { once: true });
+  const signal = AbortSignal.any([o.signal, controller.signal]);
+  const interceptor: typeof fetch = async (input, init) => {
+    try {
+      signal.throwIfAborted();
+      if (
+        s.abandoned ||
+        s.wire ||
+        input instanceof Request ||
+        init?.method !== 'POST' ||
+        typeof init.body !== 'string'
+      )
+        fail('sdk_capture_unsupported');
+      const body = JSON.parse(init.body);
+      // Fixed permitted provider defaults are applied before the sole final wire capture.
+      if (o.provider === 'anthropic') {
+        body.inference_geo = 'global';
+        body.service_tier = 'standard_only';
+      } else body.serviceTier = 'standard';
+      const wire = snapshotFinalWire({
+        url: String(input),
+        method: 'POST',
+        headers: [...new Headers(init.headers).entries()],
+        body: JSON.stringify(body),
+      });
+      s.quote = quoteBoundedApiProviderAttempt(
+        o.contract,
+        boundedWire(wire),
+        o.remaining,
+        o.now(),
+      );
+      validateEmbedding(o, s, wire);
+      lease.assertCurrentSync();
+      s.wire = Object.freeze({
+        ...wire,
+        headers: Object.freeze(
+          wire.headers.map((pair) =>
+            Object.freeze([pair[0], pair[1]] as const),
+          ),
+        ),
+      });
+      clearTimeout(s.deadline);
+      captured.resolve();
+      return await response.promise;
+    } catch {
+      const error = new SdkSourceRefusal('sdk_prepare_failed');
+      captured.reject(error);
+      throw error;
+    }
+  };
+  const provider =
+    o.provider === 'anthropic'
+      ? createAnthropic({
+          apiKey: o.apiKey,
+          baseURL: 'https://api.anthropic.com/v1',
+          fetch: interceptor,
+        })
+      : createGoogleGenerativeAI({
+          apiKey: o.apiKey,
+          baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+          fetch: interceptor,
+        });
+  const sdk = provider(o.modelId).doGenerate({
+    prompt: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              brief: o.brief,
+              instructions: o.instructions,
+            }),
+          },
+          { type: 'text', text: lease.serialization },
+        ],
+      },
+    ],
+    maxOutputTokens: o.maxOutputTokens,
+    abortSignal: signal,
+  });
+  s.result = Promise.resolve(sdk)
+    .then(
+      (result) => {
+        if (result.content.some((part) => part.type !== 'text'))
+          fail('sdk_non_text_output');
+        lease.assertCurrentSync();
+        return Object.freeze({
+          text: result.content
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join(''),
+          usage: result.usage,
+          finishReason: result.finishReason,
+        });
+      },
+      () => {
+        try {
+          lease.assertDisclosureCurrentSync();
+        } catch {
+          throw new SdkSourceRefusal('sdk_disclosure_unavailable');
+        }
+        throw new SdkSourceRefusal('sdk_attempt_failed');
+      },
+    )
+    .catch(() => {
+      try {
+        lease.assertDisclosureCurrentSync();
+      } catch {
+        throw new SdkSourceRefusal('sdk_disclosure_unavailable');
+      }
+      throw new SdkSourceRefusal('sdk_attempt_failed');
+    })
+    .finally(() => {
+      s.settled = true;
+      if (s.abortListener)
+        o.signal.removeEventListener('abort', s.abortListener);
+      finishDisposal(s);
+    });
+  void s.result.catch((error) => {
+    captured.reject(error);
+  });
+  return handle;
+}
+export async function capturedSdkSourceWire(owner: object, handle: object) {
+  const s = stateFor(owner, handle);
+  await s.captured.promise;
+  return inspectSdkSourceWire(owner, handle);
+}
+export function inspectSdkSourceWire(owner: object, handle: object) {
+  const s = stateFor(owner, handle);
+  if (s.abandoned || !s.wire || !s.quote) fail('sdk_wire_unavailable');
+  claimSdkSourceLease(s.lease).assertCurrentSync();
+  return Object.freeze({
+    wire: s.wire,
+    wireDigest: wireIdentityDigest(s.wire),
+    quote: s.quote,
+  });
+}
+export function assertSdkSourceWireCurrentSync(owner: object, handle: object) {
+  const s = stateFor(owner, handle),
+    o = optionsFor(owner);
+  if (s.abandoned || s.started || !s.wire || !s.quote)
+    fail('sdk_wire_unavailable');
+  const current = quoteBoundedApiProviderAttempt(
+    o.contract,
+    boundedWire(s.wire),
+    o.remaining,
+    o.now(),
+  );
+  if (!isDeepStrictEqual(current, s.quote)) fail('sdk_quote_changed');
+  validateEmbedding(o, s, s.wire);
+  claimSdkSourceLease(s.lease).assertCurrentSync();
+  return undefined;
+}
+/** Called ONLY as the public FinalFetchLaunchFence's innermost fetch. Source consumption
+ * is the last authorization operation, followed immediately by this owner's boot raw fetch. */
+export function enterFinalFetch(
+  owner: object,
+  handle: object,
+  input: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+): Promise<Response> {
+  const s = stateFor(owner, handle),
+    o = optionsFor(owner);
+  if (s.started) fail('sdk_wire_unavailable');
+  let ownsStart = false;
+  try {
+    assertSdkSourceWireCurrentSync(owner, handle);
+    o.signal.throwIfAborted();
+    init?.signal?.throwIfAborted();
+    if (
+      input instanceof Request ||
+      init?.method !== 'POST' ||
+      typeof init.body !== 'string' ||
+      init.redirect !== 'error'
+    )
+      fail('sdk_final_wire_unsupported');
+    const wire = snapshotFinalWire({
+      url: String(input),
+      method: 'POST',
+      headers: [...new Headers(init.headers).entries()],
+      body: init.body,
+    });
+    if (
+      !s.wire ||
+      wireIdentityDigest(wire) !== wireIdentityDigest(s.wire) ||
+      !isDeepStrictEqual(wire, s.wire)
+    )
+      fail('sdk_final_wire_changed');
+    const lease = claimSdkSourceLease(s.lease),
+      digest = wireIdentityDigest(wire);
+    const rawFetch = o.rawFetch,
+      url = wire.url;
+    const requestInit: RequestInit = {
+      method: wire.method,
+      headers: wire.headers.map(([k, v]) => [k, v]),
+      body: wire.body,
+      redirect: 'error',
+      signal: init.signal,
+    };
+    s.started = true;
+    ownsStart = true;
+    lease.consumeExactSync(owner, handle, digest);
+    const response = rawFetch(url, requestInit);
+    s.rawResponse = Promise.resolve(response).then(
+      (value) => {
+        s.rawSettled = true;
+        finishDisposal(s);
+        return value;
+      },
+      () => {
+        const error = new SdkSourceRefusal('sdk_http_failed');
+        s.rawSettled = true;
+        s.response?.reject(error);
+        finishDisposal(s);
+        throw error;
+      },
+    );
+    void s.rawResponse.catch(() => {});
+    s.release = true;
+    finishDisposal(s);
+    return s.rawResponse;
+  } catch (error) {
+    if (ownsStart) {
+      s.rawSettled = true;
+      s.response?.reject(new SdkSourceRefusal('sdk_attempt_failed'));
+      s.release = true;
+      finishDisposal(s);
+    } else disposeSdkSourceWire(owner, handle);
+    if (!ownsStart) throw error;
+    throw new SdkSourceRefusal('sdk_attempt_failed');
+  }
+}
+export function takeResponsePromise(owner: object, handle: object) {
+  const s = stateFor(owner, handle);
+  s.authorization.assertDisclosureCurrentSync();
+  if (!s.started || !s.rawResponse || s.taken) fail('sdk_response_unavailable');
+  s.taken = true;
+  return s.rawResponse;
+}
+/** The parent response observer delivers its bounded forwarding Response here. */
+export function deliverSdkResponse(
+  owner: object,
+  handle: object,
+  response: Response,
+) {
+  const s = stateFor(owner, handle);
+  s.authorization.assertDisclosureCurrentSync();
+  if (
+    !s.started ||
+    s.abandoned ||
+    s.delivered ||
+    !s.response ||
+    !(response instanceof Response)
+  )
+    fail('sdk_response_unavailable');
+  s.delivered = true;
+  s.response.resolve(response);
+}
+export function sdkResultPromise(owner: object, handle: object) {
+  const s = stateFor(owner, handle);
+  s.authorization.assertDisclosureCurrentSync();
+  return s.result;
+}
+export function sdkDisposalPromise(owner: object, handle: object) {
+  return stateFor(owner, handle).disposed.promise;
+}
+export function disposeSdkSourceWire(owner: object, handle: object) {
+  const s = stateFor(owner, handle);
+  s.release = true;
+  if (!s.started && !s.abandoned) {
+    s.abandoned = true;
+    s.controller.abort(new SdkSourceRefusal('sdk_abandoned'));
+    s.captured.reject(new SdkSourceRefusal('sdk_abandoned'));
+    s.response?.reject(new SdkSourceRefusal('sdk_abandoned'));
+  }
+  finishDisposal(s);
+}
