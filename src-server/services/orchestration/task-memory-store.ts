@@ -364,7 +364,7 @@ export function createSqliteTaskMemoryStore(
                          AND f.task_created_at = v.task_created_at
                          AND f.kind = v.kind AND f.record_key = v.record_key)`,
         )
-        .all(input.taskId, input.taskCreatedAt) as unknown as RecordRow[]
+        .all(input.taskId, input.taskCreatedAt) as RecordRow[]
     ).map(recordFromRow);
 
   /** Live records ordered by when their current version was written. */
@@ -377,7 +377,7 @@ export function createSqliteTaskMemoryStore(
               AND v.state IN ('active', 'open') AND ${IS_CURRENT_VERSION}
             ORDER BY v.ordinal`,
         )
-        .all(input.taskId, input.taskCreatedAt) as unknown as RecordRow[]
+        .all(input.taskId, input.taskCreatedAt) as RecordRow[]
     ).map(recordFromRow);
 
   const readDismissal = (
@@ -452,11 +452,7 @@ export function createSqliteTaskMemoryStore(
             WHERE task_id = ? AND task_created_at = ?
             ORDER BY revision DESC LIMIT ?`,
         )
-        .all(
-          input.taskId,
-          input.taskCreatedAt,
-          limit,
-        ) as unknown as SummaryRow[];
+        .all(input.taskId, input.taskCreatedAt, limit) as SummaryRow[];
       const total = Number(
         (
           db
@@ -595,7 +591,7 @@ export function createSqliteTaskMemoryStore(
             input.taskCreatedAt,
             input.kind,
             input.key,
-          ) as unknown as RecordRow[]
+          ) as RecordRow[]
       ).map(recordFromRow);
     },
 
@@ -663,7 +659,7 @@ export function createSqliteTaskMemoryStore(
               WHERE task_id = ? AND task_created_at = ?
               ORDER BY dismissed_at, kind, record_key, version`,
           )
-          .all(input.taskId, input.taskCreatedAt) as unknown as DismissalRow[]
+          .all(input.taskId, input.taskCreatedAt) as DismissalRow[]
       ).map(dismissalFromRow);
     },
 
@@ -695,7 +691,7 @@ export function createSqliteTaskMemoryStore(
                 AND ${IS_CURRENT_VERSION}
               GROUP BY v.task_id, v.task_created_at`,
           )
-          .all(...chunk) as unknown as Array<{
+          .all(...chunk) as Array<{
           task_id: string;
           task_created_at: string;
           count: number;
