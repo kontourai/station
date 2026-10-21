@@ -398,6 +398,25 @@ describe('cursor/create_plan is a plan review', () => {
     await session.stop();
   });
 
+  test('a plan past the payload bound is refused, not shown cut', async () => {
+    // The plan text has no bound of its own: only the payload bound holds it.
+    const session = await startCursorSession();
+    const oversized = {
+      ...CREATE_PLAN,
+      plan: 'x'.repeat(CURSOR_PAYLOAD_MAX_JSON_CHARS),
+    };
+    await expect(
+      within(session.agent.extMethod('cursor/create_plan', oversized)),
+    ).resolves.toEqual({
+      outcome: {
+        outcome: 'rejected',
+        reason: 'The client could not show this plan.',
+      },
+    });
+    expect(session.events.filter(isRequestOpened)).toHaveLength(0);
+    await session.stop();
+  });
+
   test('a plan past the todo bound is refused', async () => {
     const session = await startCursorSession();
     const tooMany = {
