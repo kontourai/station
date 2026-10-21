@@ -170,6 +170,8 @@ export type ChatMessage = {
   timestamp?: number;
   /** See `ChatMessage.steerInterruptedRun` in types.ts. */
   steerInterruptedRun?: boolean;
+  /** See `ChatMessage.stationCheckBack` in types.ts. */
+  stationCheckBack?: boolean;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**

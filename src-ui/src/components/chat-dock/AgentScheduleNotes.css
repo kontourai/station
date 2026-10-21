@@ -21,8 +21,15 @@
     opacity var(--motion-base) var(--ease-standard);
 }
 
-@starting-style {
-  .agent-schedule-notes__item {
+/* Only an item that arrived after the list first rendered grows in
+   (`usePresenceList` marks it `entering`); what is there when the chat
+   opens or switches is simply shown. */
+.agent-schedule-notes__item[data-phase="entering"] {
+  animation: agent-schedule-notes-enter var(--motion-base) var(--ease-standard);
+}
+
+@keyframes agent-schedule-notes-enter {
+  from {
     grid-template-rows: 0fr;
     opacity: 0;
   }
@@ -35,6 +42,7 @@
 
 :root[data-page-hidden] .agent-schedule-notes__item {
   transition: none;
+  animation: none;
 }
 
 .agent-schedule-notes__clip {
@@ -113,12 +121,30 @@
   font-family: var(--k-font-mono);
 }
 
-.agent-schedule-card__prompt {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+/* The whole text an approval is for, never clamped: long text scrolls in
+   place (touch and keyboard), so nothing is approved unseen. */
+.agent-schedule-card__prompt,
+.agent-schedule-card__note {
+  max-height: 12rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-schedule-card__prompt:focus-visible,
+.agent-schedule-card__note:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset, 2px);
+}
+
+.agent-schedule-card__note {
+  margin: 0;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
 }
 
 .agent-schedule-card__why {

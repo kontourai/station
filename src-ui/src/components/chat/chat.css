@@ -891,6 +891,27 @@
     background-color var(--motion-base) var(--ease-standard),
     outline-color var(--motion-base) var(--ease-standard);
 }
+/* A check-back Station sent: sent as the person, written by nobody. A
+   quiet panel with Station's label instead of the person's filled bubble. */
+.message.user.message--station-check-back {
+  background: var(--k-panel);
+  color: var(--k-text);
+  outline: 1px solid var(--k-line);
+  outline-offset: -1px;
+}
+.message__station-label {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-bottom: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.message__station-glyph {
+  width: 14px;
+  height: 14px;
+  color: var(--k-text-muted);
+}
 .message.user.message--undelivered {
   background: transparent;
   color: var(--text-primary);
@@ -993,12 +1014,9 @@
   grid-template-rows: 1fr;
   opacity: 1;
 }
-@starting-style {
-  .message-delivery__reveal[data-open] {
-    grid-template-rows: 0fr;
-    opacity: 0;
-  }
-}
+/* No @starting-style: a note that mounts already open (history, opening a
+   chat) shows its line at rest; only a line that opens after mount, from
+   the closed rows above, animates. */
 .message-delivery__reveal-inner {
   min-height: 0;
   overflow: hidden;

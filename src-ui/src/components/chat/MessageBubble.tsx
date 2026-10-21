@@ -13,7 +13,7 @@ import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CopyGlyph, PauseGlyph } from '../icons/Glyph';
+import { CopyGlyph, PauseGlyph, TimeGlyph } from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -423,8 +423,12 @@ function MessageBubbleComponent({
     resolvedRowAgent && turnEngineId
       ? { ...resolvedRowAgent, engineId: turnEngineId }
       : resolvedRowAgent;
+  // A check-back Station sent is nobody's words: not the person's avatar.
+  const stationCheckBack = msg.role === 'user' && msg.stationCheckBack === true;
   const avatarContent = isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
+  ) : stationCheckBack ? (
+    <TimeGlyph className="message__station-glyph" />
   ) : (
     <UserIcon size={20} />
   );
@@ -986,7 +990,7 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${
+        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -995,6 +999,12 @@ function MessageBubbleComponent({
       >
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
+        {stationCheckBack ? (
+          <div className="message__station-label">
+            {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}
+            Scheduled check-back
+          </div>
+        ) : null}
         <div
           data-quote-source-message={
             msg.role === 'assistant' &&

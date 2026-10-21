@@ -145,6 +145,11 @@ export interface ConversationMessage {
     inputKind?: 'steer';
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    /**
+     * A check-back Station sent (`isStationCheckBackTurn`): sent as the
+     * person, written by nobody. Shown as Station's, not the person's.
+     */
+    stationCheckBack?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */

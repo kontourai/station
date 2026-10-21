@@ -109,6 +109,29 @@ export function useAgentSchedule(
       ),
     onSettled: settle,
   });
+  /** A check-back an unconfined session's agent asked for. */
+  const approveWakeUp = useMutation({
+    mutationFn: async (wakeUpId: string) =>
+      readData(
+        await mutateJson(
+          `${base}/wake-ups/${encodeURIComponent(wakeUpId)}/approve`,
+          'POST',
+          options(),
+        ),
+      ),
+    onSettled: settle,
+  });
+  const declineWakeUp = useMutation({
+    mutationFn: async (wakeUpId: string) =>
+      readData(
+        await mutateJson(
+          `${base}/wake-ups/${encodeURIComponent(wakeUpId)}/decline`,
+          'POST',
+          options(),
+        ),
+      ),
+    onSettled: settle,
+  });
   const declineProposal = useMutation({
     mutationFn: async (proposalId: string) =>
       readData(
@@ -153,8 +176,11 @@ export function useAgentSchedule(
   });
   return {
     schedule: data,
+    /** The server's list has been read (what is shown is not a placeholder). */
     loaded: query.isSuccess,
     cancelWakeUp,
+    approveWakeUp,
+    declineWakeUp,
     declineProposal,
     approveProposal,
     holdResume,

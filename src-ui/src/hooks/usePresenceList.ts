@@ -32,12 +32,18 @@ export function usePresenceList<T>(
   items: readonly T[],
   keyOf: (item: T) => string,
   fallbackMs: number,
+  /**
+   * False while `items` is not yet the real list (a remote read still
+   * loading): nothing is recorded, so the first real list counts as the
+   * one present at mount and does not animate in.
+   */
+  ready = true,
 ): { list: PresentItem<T>[]; settle: (key: string) => void } {
   const previous = useRef<PresentItem<T>[] | null>(null);
   const settled = useRef(new Set<string>());
   const [, rerender] = useState(0);
 
-  const prior = previous.current;
+  const prior = ready ? previous.current : null;
   const priorByKey = new Map(prior?.map((entry) => [entry.key, entry]));
   const currentKeys = new Set<string>();
   const list: PresentItem<T>[] = items.map((item) => {
@@ -72,7 +78,7 @@ export function usePresenceList<T>(
     }
     list.splice(at, 0, { ...entry, phase: 'exiting' });
   });
-  previous.current = list;
+  if (ready) previous.current = list;
 
   const moving = list
     .filter((entry) => entry.phase !== 'present')

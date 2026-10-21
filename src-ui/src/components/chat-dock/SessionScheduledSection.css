@@ -42,8 +42,15 @@
     opacity var(--motion-base) var(--ease-standard);
 }
 
-@starting-style {
-  .session-scheduled__item {
+/* Only an item that arrived after the list first rendered grows in
+   (`usePresenceList` marks it `entering`); what is there when the chat
+   opens or switches is simply shown. */
+.session-scheduled__item[data-phase="entering"] {
+  animation: session-scheduled-enter var(--motion-base) var(--ease-standard);
+}
+
+@keyframes session-scheduled-enter {
+  from {
     grid-template-rows: 0fr;
     opacity: 0;
   }
@@ -56,6 +63,7 @@
 
 :root[data-page-hidden] .session-scheduled__item {
   transition: none;
+  animation: none;
 }
 
 .session-scheduled__clip {

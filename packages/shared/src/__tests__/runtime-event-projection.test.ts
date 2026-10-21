@@ -3087,3 +3087,52 @@ describe('projectRuntimeEventsToMessages — calls in a live open turn', () => {
     expect(callState(messages, 'busy')?.state).toBe('call');
   });
 });
+
+describe('a check-back Station sent', () => {
+  const WAKE_UP = 'wake-up:0f8fad5b-d9cb-469f-a165-70867728950e';
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'nudge',
+        prompt: '[Station] The check-back you scheduled is due.',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('is marked as Station’s: its own origin and a wake-up send key', () => {
+    expect(
+      userRow({
+        clientTurnId: WAKE_UP,
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { surface: 'unknown' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBe(true);
+  });
+
+  it('is not marked from a person’s origin, or a key that does not parse', () => {
+    expect(
+      userRow({
+        clientTurnId: WAKE_UP,
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'operator' },
+          reported: { surface: 'web' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientTurnId: 'wake-up:not-an-id',
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { surface: 'unknown' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBeUndefined();
+  });
+});

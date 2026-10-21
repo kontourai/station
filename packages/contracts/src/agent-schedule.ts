@@ -220,3 +220,19 @@ function canonical(value: unknown): string {
       .join(',')}}`;
   return JSON.stringify(value ?? null);
 }
+
+/**
+ * Whether a turn is a check-back Station sent: Station's own origin and a
+ * send key that parses as a wake-up's. Such a turn is sent as the person
+ * (the conversation's own permissions), but nobody wrote it: a transcript
+ * shows it as Station's.
+ */
+export function isStationCheckBackTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    parseWakeUpClientTurnId(turn.clientTurnId) !== undefined
+  );
+}

@@ -641,6 +641,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(message.metadata?.steerInterruptedRun
           ? { steerInterruptedRun: true }
           : {}),
+        ...(message.metadata?.stationCheckBack
+          ? { stationCheckBack: true }
+          : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
       }));

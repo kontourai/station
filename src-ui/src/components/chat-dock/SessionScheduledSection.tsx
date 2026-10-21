@@ -47,7 +47,7 @@ export function SessionScheduledSection({
   /** The sheet closes itself before a navigation. */
   wrap: (action: () => void) => void;
 }) {
-  const { schedule, cancelWakeUp, holdResume } =
+  const { schedule, loaded, cancelWakeUp, holdResume } =
     useAgentSchedule(conversationId);
   const { navigate } = useNavigation();
   const rows: ScheduledRow[] = [
@@ -77,7 +77,7 @@ export function SessionScheduledSection({
       job,
     })),
   ];
-  const shown = usePresenceList(rows, rowKey, PRESENCE_FALLBACK_MS);
+  const shown = usePresenceList(rows, rowKey, PRESENCE_FALLBACK_MS, loaded);
   if (shown.list.length === 0) return null;
   const now = Date.now();
   return (
@@ -104,6 +104,9 @@ export function SessionScheduledSection({
             className="session-scheduled__item"
             data-phase={phase}
             inert={phase === 'exiting' || undefined}
+            onAnimationEnd={(event) => {
+              if (event.target === event.currentTarget) shown.settle(key);
+            }}
             onTransitionEnd={(event) => {
               if (
                 event.target === event.currentTarget &&
@@ -117,16 +120,22 @@ export function SessionScheduledSection({
                 <Row
                   glyph={<TimeGlyph className="session-scheduled__glyph" />}
                   name={item.wakeUp.note}
-                  when={`Check-back at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`}
+                  when={
+                    item.wakeUp.state === 'needs_approval'
+                      ? 'Needs your approval'
+                      : `Check-back at ${clockTime(Date.parse(item.wakeUp.dueAt), now)}`
+                  }
                   actions={
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={cancelWakeUp.isPending}
-                      onClick={() => cancelWakeUp.mutate(item.wakeUp.id)}
-                    >
-                      Cancel
-                    </Button>
+                    item.wakeUp.state === 'needs_approval' ? undefined : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={cancelWakeUp.isPending}
+                        onClick={() => cancelWakeUp.mutate(item.wakeUp.id)}
+                      >
+                        Cancel
+                      </Button>
+                    )
                   }
                 />
               ) : item.kind === 'resume' ? (

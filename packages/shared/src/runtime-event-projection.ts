@@ -1,3 +1,4 @@
+import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -700,6 +701,10 @@ export function projectRuntimeEventsToMessages(
         }
         if (userParts.length > 0) {
           pushMessage('user', userParts, ev.inputKind);
+          if (isStationCheckBackTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationCheckBack: true };
+          }
         }
         break;
       }

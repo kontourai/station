@@ -68,6 +68,14 @@ const wakeUp: AgentWakeUp = {
   createdAt: '2026-10-20T14:00:00.000Z',
   updatedAt: '2026-10-20T14:00:00.000Z',
 };
+/** A check-back an unconfined session's agent asked for. */
+const waiting: AgentWakeUp = {
+  ...wakeUp,
+  id: 'w2',
+  dueAt: '2026-10-20T15:30:00.000Z',
+  note: 'Re-run the migration dry run and compare row counts.\nThen post the diff.',
+  state: 'needs_approval',
+};
 const proposal: AgentJobProposal = {
   id: 'p1',
   conversationId: CONVERSATION,
@@ -115,6 +123,24 @@ beforeEach(() => {
           schedule = { ...schedule, wakeUps: [] };
           return Response.json({ success: true, data: { canceled: true } });
         }
+        if (url.endsWith('/wake-ups/w2/approve')) {
+          schedule = {
+            ...schedule,
+            wakeUps: schedule.wakeUps.map((item) =>
+              item.id === 'w2'
+                ? { ...item, state: 'pending', approved: true }
+                : item,
+            ),
+          };
+          return Response.json({ success: true, data: schedule.wakeUps[0] });
+        }
+        if (url.endsWith('/wake-ups/w2/decline')) {
+          schedule = {
+            ...schedule,
+            wakeUps: schedule.wakeUps.filter((item) => item.id !== 'w2'),
+          };
+          return Response.json({ success: true, data: { canceled: true } });
+        }
         if (url.endsWith('/job-proposals/p1/decline')) {
           schedule = { ...schedule, jobProposals: [] };
           return Response.json({ success: true, data: { declined: true } });
@@ -154,6 +180,14 @@ function mount(node: ReactNode) {
 }
 
 const posts = () => calls.filter((call) => call.method === 'POST');
+
+/**
+ * A row's own grow-in finishing. jsdom has no `AnimationEvent`, so React
+ * listens for the prefixed name there (a browser fires `animationend`).
+ */
+function finishAnimation(node: Element) {
+  node.dispatchEvent(new Event('webkitAnimationEnd', { bubbles: true }));
+}
 
 /** The row's own collapse finishing (React reads `propertyName` natively). */
 function finishTransition(node: Element, propertyName: string) {
@@ -258,6 +292,98 @@ describe('in-chat notes', () => {
     ).toBeTruthy();
   });
 
+  test('a check-back waiting for the person is a card with its time and its whole note; Approve and Decline go to its own routes', async () => {
+    schedule = { wakeUps: [waiting], jobProposals: [], jobs: [] };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    const card = await screen.findByRole('region', {
+      name: 'Check back at 3:30 PM?',
+    });
+    expect(card.querySelector('.agent-schedule-card__title')?.textContent).toBe(
+      'Check back at 3:30 PM?',
+    );
+    // The note, whole: what the agent will be sent back.
+    expect(screen.getByRole('region', { name: 'Note' }).textContent).toBe(
+      waiting.note,
+    );
+    // Not the quiet armed line.
+    expect(screen.queryByText(/Checking back at/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(posts()).toEqual([
+        {
+          method: 'POST',
+          url: `${API}/api/orchestration/agent-schedule/${CONVERSATION}/wake-ups/w2/approve`,
+        },
+      ]),
+    );
+    // Approved: it becomes the armed line.
+    expect((await screen.findByText(/Checking back at/)).textContent).toBe(
+      'Checking back at 3:30 PM',
+    );
+  });
+
+  test('Decline on a waiting check-back declines it on the server', async () => {
+    schedule = { wakeUps: [waiting], jobProposals: [], jobs: [] };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Decline' }));
+    await waitFor(() =>
+      expect(posts()).toEqual([
+        {
+          method: 'POST',
+          url: `${API}/api/orchestration/agent-schedule/${CONVERSATION}/wake-ups/w2/decline`,
+        },
+      ]),
+    );
+  });
+
+  test('the proposal’s instructions are shown whole, in a region the keyboard can scroll', async () => {
+    const long = Array.from({ length: 30 }, (_, i) => `Step ${i + 1}.`).join(
+      '\n',
+    );
+    schedule = {
+      wakeUps: [],
+      jobProposals: [{ ...proposal, job: { ...proposal.job, prompt: long } }],
+      jobs: [],
+    };
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    const card = await screen.findByRole('region', {
+      name: 'Proposed job hourly-digest',
+    });
+    const prompt = card.querySelector('.agent-schedule-card__prompt')!;
+    expect(prompt.textContent).toBe(long);
+    expect(prompt.getAttribute('tabindex')).toBe('0');
+  });
+
+  test('rows already there when the chat opens are shown at rest; only a later arrival grows in', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />
+      </QueryClientProvider>,
+    );
+    const first = (await screen.findByText(/Checking back at/)).closest(
+      '.agent-schedule-notes__item',
+    )!;
+    expect(first.getAttribute('data-phase')).toBe('present');
+    schedule = { ...schedule, wakeUps: [wakeUp, waiting] };
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <AgentScheduleNotes conversationId={CONVERSATION} refreshKey="2" />
+      </QueryClientProvider>,
+    );
+    const arrived = await waitFor(() => {
+      const item = screen
+        .getByRole('region', { name: 'Check back at 3:30 PM?' })
+        .closest('.agent-schedule-notes__item');
+      expect(item?.getAttribute('data-phase')).toBe('entering');
+      return item!;
+    });
+    await act(async () => finishAnimation(arrived));
+    expect(arrived.getAttribute('data-phase')).toBe('present');
+  });
+
   test('nothing scheduled renders nothing', async () => {
     schedule = { wakeUps: [], jobProposals: [], jobs: [] };
     const view = mount(
@@ -353,6 +479,21 @@ describe('the "This chat" card’s Scheduled section', () => {
     expect(row.hasAttribute('inert')).toBe(true);
     await act(async () => finishTransition(row, 'opacity'));
     expect(screen.queryByRole('region', { name: 'Scheduled' })).toBeNull();
+  });
+
+  test('a check-back waiting for the person reads “Needs your approval”, with no Cancel', async () => {
+    schedule = { wakeUps: [waiting], jobProposals: [], jobs: [] };
+    mount(
+      <SessionScheduledSection
+        conversationId={CONVERSATION}
+        wrap={(a) => a()}
+      />,
+    );
+    expect(await screen.findByText('Needs your approval')).toBeTruthy();
+    expect(
+      screen.getByText(waiting.note.split('\n')[0]!, { exact: false }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
   test('is hidden when nothing is scheduled', async () => {
