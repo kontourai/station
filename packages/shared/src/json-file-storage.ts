@@ -5,6 +5,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  renameSync,
 } from 'node:fs';
 import {
   mkdir as mkdirAsync,
@@ -123,8 +124,10 @@ interface JsonFileWriteOptions extends JsonSerializationOptions {
   expectedFingerprint?: string | null;
   maxBytes?: number;
   label?: string;
-  /** Revalidate an owning root/capability immediately before rename commit. */
+  /** Revalidate the directory before creating the staged file. */
   beforeCommit?: () => void | Promise<void>;
+  /** Check current effect authority after staging, without yielding before publication. */
+  finalizeCommit?: () => undefined;
 }
 
 function serializeJsonFile(
@@ -162,7 +165,12 @@ export async function publishJsonFileWithOwnedLock(
   value: unknown,
   options?: Pick<
     JsonFileWriteOptions,
-    'maxBytes' | 'label' | 'beforeCommit' | 'indent' | 'trailingNewline'
+    | 'maxBytes'
+    | 'label'
+    | 'beforeCommit'
+    | 'finalizeCommit'
+    | 'indent'
+    | 'trailingNewline'
   >,
 ): Promise<void> {
   await mkdirAsync(dirname(path), { recursive: true, mode: 0o700 });
@@ -181,7 +189,13 @@ export async function publishJsonFileWithOwnedLock(
     } finally {
       await descriptor.close();
     }
-    await renameAsync(temporaryPath, path);
+    if (options?.finalizeCommit) {
+      if (options.finalizeCommit() !== undefined)
+        throw new Error('JSON publication finalizer must be synchronous.');
+      renameSync(temporaryPath, path);
+    } else {
+      await renameAsync(temporaryPath, path);
+    }
     committed = true;
     // The rename is the commit point. POSIX directory fsync makes its entry
     // durable across a crash; Windows has no equivalent and the shared helper

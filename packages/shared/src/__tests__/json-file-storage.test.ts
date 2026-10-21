@@ -28,6 +28,50 @@ function root(): string {
 }
 
 describe('publishJsonFileWithOwnedLock serialization', () => {
+  test('revoked effect authority after staging preserves the retained document and removes staging', async () => {
+    const directory = root();
+    const path = join(directory, 'state.json');
+    writeFileSync(path, '{"retained":true}');
+    let current = true;
+    await expect(
+      publishJsonFileWithOwnedLock(
+        path,
+        { replacement: true },
+        {
+          beforeCommit() {
+            queueMicrotask(() => {
+              current = false;
+            });
+          },
+          finalizeCommit() {
+            if (!current) throw new Error('authority revoked');
+          },
+        },
+      ),
+    ).rejects.toThrow('authority revoked');
+    expect(readFileSync(path, 'utf8')).toBe('{"retained":true}');
+    expect(readdirSync(directory)).toEqual(['state.json']);
+    current = true;
+    let observedAtRevocation: unknown;
+    await publishJsonFileWithOwnedLock(
+      path,
+      { replacement: true },
+      {
+        finalizeCommit() {
+          if (!current) throw new Error('authority revoked');
+          queueMicrotask(() => {
+            current = false;
+            observedAtRevocation = JSON.parse(readFileSync(path, 'utf8'));
+          });
+        },
+      },
+    );
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      replacement: true,
+    });
+    expect(current).toBe(false);
+    expect(observedAtRevocation).toEqual({ replacement: true });
+  });
   // This seam's historical bytes differ from writeJsonDurably's: two-space
   // JSON with NO trailing newline. Pinned as exact text so a caller that
   // passes no options keeps what it had before options existed.
