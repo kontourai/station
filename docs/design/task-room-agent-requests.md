@@ -28,9 +28,20 @@ client: an older server can strip unknown delegation fields, so a client
 must not assume durable request support without this versioned response.
 This path is mounted in the personal runtime. GET retains the existing
 orchestration read grant and POST the existing operate/admission gates. The
-request cards poll the journal read every five seconds and offer refresh;
-request changes are not yet room-SSE events. Existing document/history updates
-continue using SSE and HTTP; no WebSocket is added.
+composer refreshes the journal before a fresh request and after its
+acknowledgement. Room SSE refreshes history and Task status; there is no
+five-second polling card. Reconciliation is coalesced. Completed-answer
+reconciliation is scheduled after request responses and runs from canonical turn
+events. Human message/status recording
+retains its confirmed write boundary, with failures isolated from dispatch
+acknowledgement; duplicate proposals make no history writes or history
+notifications. A private publication hold preserves human prompt before answer
+order even when a completion arrives before the human history write. Refusal and
+failure release the hold. A hold expires after 30 seconds so an abandoned request
+cannot block later publication indefinitely; it does not confer execution authority. A bounded
+in-memory set avoids repeated lookups, and durable proposal lookup covers restart
+and cache eviction.
+Existing document/history updates continue using SSE and HTTP.
 
 ## Independent room contributions
 
@@ -44,7 +55,8 @@ agent principal. The Task's lead agent and current session remain unchanged.
 Startup recovery and an authorized request-list read reconcile start/finish facts
 from the canonical Session projection. A journal row without the durable execution
 binding publishes nothing. The request view rechecks its original Project, Task
-incarnation and requester after reconciliation before delivery. Session exit also
+incarnation and requester after its context read and before delivery; its
+best-effort reconciliation is scheduled after the response. Session exit also
 uses the immutable room binding to find independently requested work. Recovery
 reconciles lifecycle history and agent presence; it never retries provider execution.
 
@@ -58,7 +70,58 @@ only the final canonical Project check committed a stale agent record. Restoring
 the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
-This publishes lifecycle facts and agent presence, not an accepted result. Agent
+Only the initial room-request turn and in-thread reply turns publish their answer text;
+private dock follow-ups on a room-bound Session stay private. Their origin survives
+restart through the canonical turn client identity and the private journal's admitted
+reply operation IDs. Each admission stores a server-generated client turn ID scoped
+to the request's Session; a client-supplied `room-reply:` prefix alone grants no
+publication. The bounded admission list is omitted from browser request views. Each room agent request holds at most 256 reply admissions; once it is full,
+further replies in that thread are refused.
+Older binaries reject journal rows carrying this additive private field. These completed turns publish
+their answer text through the existing agent-publish append path. The private principal binds the exact Session; the
+envelope retains the turn ID. Browser history exposes that tuple and the
+canonical run identity when available. Answer text over the room body limit is
+shortened at a code-point boundary to the largest prefix fitting the UTF-8 string
+and serialized body limits, with an explicit notice and an Open full run action.
+One publication pass opens history at most once for all its pending answers. Publication
+rechecks the immutable request binding, Task incarnation, Project and owner;
+reconciliation repeats publication idempotently, never provider execution.
+
+Chat hides brief revision links and presence events; Details retains the raw
+history. Owner history rebuilds display names and run identities from durable
+principal, agent and Session sources. Guest history retains its anonymized
+Participant/Agent labels and filters owner status and thread fragments.
+Answers are clamped with Show more, and Keep remains disabled after confirmation.
+The Chat view groups replies to an agent answer by its Session. The thread replaces
+the desktop rail and fills the room on narrow screens. A reply uses
+`POST /api/orchestration/delegations/:sessionId/continue` with `taskRoomReply`
+(Task identity, creation time and operation ID). The server verifies the exact
+journal and execution binding before invoking the continuation. The human reply
+is appended only after a successful continuation; a refused or failed send remains visibly Not delivered
+in the thread with its draft retained. Existing continuation authority owns
+provider effects. Unknown acknowledgements require full-run inspection instead
+of an automatic resend. The operation ID remains stable for the same send.
+The latest saved brief is attached by default; the thread checkbox can opt out.
+
+The shared Task document is the canonical brief. The Chat rail parses the saved
+document, or the Task description when the document is empty. Goal uses its named
+section or prose before the first heading; later sections never become Goal.
+Done when accepts plain bullets and numbered items as neutral criteria, alongside
+checked and unchecked Markdown checkboxes. The Brief display renders Markdown and explicitly enters the same
+live editor; edits autosave through the existing CRDT plan/batch protocol.
+
+Current canonical lifecycle ends an agent's live presence after each completed
+turn, including a follow-up on a Session with an older finish receipt. Terminal
+turn errors also trigger room publication, so a failed stream produces a failure
+line without another request. Codex's deferred retry errors remain in flight. The
+private agent answer retains the exact Session, turn and canonical run identity.
+
+The first recorded room request starts a todo/ready Task through an atomic
+TaskGraph transition. Header and slash-command status changes use the existing
+status route and its allowed transitions. Confirmed changes append quiet room
+lines. Engine completion does not mark the Task done.
+
+These publications are conversation contributions, not accepted results. Agent
 document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below. Personal
 output previews and human review statements are implemented in the
 [Task-room history contract](project-task-room-history.md); these local slices do
@@ -69,6 +132,12 @@ this history is not a public publication projection.
 
 ## Selected Task brief
 
+Room dispatch captures the person's message separately from the composed model input.
+Session and conversation headers, history lists, and new durable title indexes
+use that captured label; the Station-agent chat store receives the same label.
+Canonical prompts and the full Brief sent to the model remain intact. Existing
+conversation reads prefer captured labels when available without rewriting history.
+
 The request-list response advertises `station.task-room-context/v1` and returns
 an authorized snapshot or `null` when a complete brief cannot be obtained.
 The snapshot contains the Task title/description and shared document text/revision.
@@ -76,11 +145,16 @@ Its digest binds those values to canonical Project identity, Task identity and
 Task incarnation. Capture rechecks authority, scope and Task metadata after
 worker I/O; incomplete projections and metadata changes do not become a brief.
 
-The composer pins the preview when choosing an agent. Background edits do not
-replace it. **Use latest brief** is an explicit refresh; late responses cannot
-replace a newer recipient/mode selection or a frozen request. Unchecking
-**Include Task brief** explicitly sends the request text alone. Saved request
-details show the retained brief rather than the current document.
+The composer refreshes the latest saved brief immediately before a fresh Send.
+The attachment checkbox explicitly opts out. Connection or recipient changes
+retire an in-flight preflight; unknown acknowledgements retain the exact saved
+operation and context for retry. The agent receives readable markdown rather
+than serialized snapshot JSON. The Brief tab autosaves through the existing
+server edit-plan/batch protocol, keeps its draft mounted across tabs and retains
+new typing while an older commit settles. In-app navigation flushes pending autosaves before committing its destination.
+Failed or uncertain saves retain the draft in place. Co-editing plan rejection
+refreshes and retries automatically at most three times; explicit retry remains
+available after that bound. Browser close/reload retains beforeunload protection.
 
 A context-bearing create sends only `{ version, digest }` beside its operation.
 The server resolves that reference under the journal's mutation lock before
@@ -102,14 +176,17 @@ model or canonical options digest conflicts rather than reusing an old result.
 Options are represented by their digest, not persisted raw values. New servers
 read prior v1/v2 journals; old readers refuse v3 rather than dropping its intent.
 
-No text is silently truncated to fit; the existing four-MiB/256-request journal
-bound remains. Context is not provider authority or an accepted result.
+A document over 16,000 characters produces a shortened snapshot with an explicit
+notice in its markdown and composer preview. Room answers honor the existing
+8,192-code-unit string bound and 16 KiB encoded-body bound, with a shortening
+notice and a full-run action when needed. The four-MiB/256-request journal bound remains. Context is not provider authority or an accepted result.
 
 Controlled transport, storage and mounted/UI tests cover retained context,
 stale references, substituted snapshots, metadata edits and late refreshes.
-Missing-check controls failed before their fixes. Browser layout, a live model
-consuming the selected brief and the complete invited/public journey remain
-unverified. SDK/composer integration does not complete those acceptance tracks.
+Missing-check controls failed before their fixes. These transport checks do not
+qualify browser geometry, a live model consuming the brief or the complete
+invited/public journey. The local #3704 diagnostics below are a separate,
+explicitly bounded evidence layer.
 
 ## Durable identity and uncertainty
 
@@ -172,8 +249,10 @@ the history grant rereads that incarnation and scope after principal resolution,
 immediately before returning commit admission. A late response
 cannot clear the draft after its captured authority expires. Unsaved navigation and
 close guards protect local drafts. Draft/operation recovery across a tab reload
-is not implemented yet. The cards display acknowledged request state and link
-to existing execution inspection; they do not invent live progress or results.
+is not implemented yet. The room shows one inline status for each published running agent, with Watch
+and Stop through the existing dock and interruption commands. Completed answers
+and same-session thread replies remain in the room; no tool-step progress is
+inferred from narration.
 
 ## Current evidence and remaining proof
 
@@ -215,3 +294,160 @@ runtime-composition authorization and browser proof; durable draft recovery;
 actual-provider consumption of the selected brief and broader thread/reference context;
 result artifacts and acceptance; multiple human principals, workspace conflict handling, remote
 execution, public publication and actual provider/device acceptance.
+
+## Local #3704 diagnostics (2026-10-15)
+
+The room/session integration fixture uses the real EventStore, Session writer,
+Task graph, room append path and delegation/continue commands. Its controlled
+adapter advances Session timestamps like the real writer. The checks cover
+canonical answer attribution to an exact Session/turn/run, bounded summaries,
+same-Session continuation, thread records, status transition and revocation
+before effects. Source mutations that remove those behaviors fail; restoring
+the committed bytes restores green. These are local diagnostic checks.
+
+The isolated `cd0080e2ac8` browser build used an explicitly labeled local ACP
+process because the empty home had no authenticated live provider. Initial
+answers, cold run opening in the dock, latest-brief attachment, Keep/Results,
+Brief autosave, cancellation, title/status edits and dark/light/narrow layouts
+were exercised. Cancellation produced a canonical `turn.aborted` event, a
+`cancelled` room record and removal of the live agent. A prior `d894c593ddd`
+walk returned a follow-up into the same thread.
+
+The repeated latest-build follow-up completed its canonical turn but did not
+publish the second answer: an approximately 5.2-second event-loop stall was
+followed by HTTP 503 `Room unavailable` from history. A fresh home did not
+eliminate this write-time failure. Latest-build end-to-end thread publication
+is therefore **NOT_VERIFIED** pending investigation/integration with #3701's
+storage lane. No history storage or worker internals were changed here. Live
+provider, complete invited/public and native acceptance remain unverified.
+
+## Fix-round implementation boundaries
+
+Authorized history resolves human labels from the durable pairing registry and
+Agent names and run identities from the Agent/Session owners. Shared guest history
+keeps the pre-room anonymized Participant labels and excludes standalone status
+and thread-reply fragments. Publication side-effect failures are logged and do
+not turn an acknowledged dispatch or saved status into a client error. An answer
+that cannot be published retains a blocked room line with Open full run. These
+are local implementation contracts; rendered, live-provider and hosted evidence
+remain separate receipts.
+
+Details keeps identity and workspace fields in a disclosure. Basis opens on demand
+from the kept-answer controls; it does not fetch or show a whole-Task error pane
+before that action. Chromeless Basis omits the portable MCP App control. Keeping
+a local file confirms it in Details; the Results count updates without changing
+the active tab.
+
+## Room polish behavior
+
+The room and thread share Enter-to-send behavior with Shift+Enter for newlines
+and IME composition preserved. Only the message scroller follows new messages;
+readers above the newest message can jump back. Hidden presence facts do not
+suppress the empty state. Failed run facts retain the original request and
+same-Session retry, with the server's normal admission checks. Joining and
+announcing are serialized with departure, including StrictMode remounts. The
+server refreshes a viewer who is already published instead of refusing a repeat
+announcement. Room dispatch carries the person's message as its display title;
+the appended brief remains provider context. Guest history uses bounded pages
+and continuation cursors instead of treating a second page as unavailable.
+These are implementation claims; local checks, rendered fixtures, live-provider
+acceptance and hosted qualification remain distinct evidence.
+
+Expired viewer renewal settles the prior departure before minting replacement
+presence handles. A legacy checkpoint with a retired departure handle may be
+repaired only when an existing captured principal matches the original
+announcement's retained history receipt, actor, Session and policy. Missing
+history or a mismatched policy remains unavailable. Failed recovery is retryable
+after its backing state changes; recovery never infers authority from a label.
+
+## Draft acceptance diagnostics (2026-10-16)
+
+The `eaabb0c266b` isolated production build fixes caller attribution on a room
+follow-up: `continueDelegatedTask` retains the route's authenticated principal
+and client origin. The existing route-to-runtime fixture fails without that
+handoff. A rendered same-process follow-up on the Station-agent path now records
+its admitted `room-reply` client turn ID and principal, then publishes the
+subsequent agent answer into the same room thread. The deterministic upstream
+is a local scripted model, not a real-provider qualification.
+
+The acceptance run reproduced two blockers; green CI did not close them:
+
+- Multi-chunk streaming can lose durable deltas during SQLite contention. A
+  1,356-character response emitted in 32-character chunks produced only 1,292
+  characters in canonical deltas and the room answer, alongside `Content delta
+  could not be published: database is locked`. The terminal event retained all
+  1,356 characters. An earlier complete run does not qualify this failure. The
+  timer flush in `DeltaCoalescer` currently warns and drops failed text; unlike
+  synchronous offer flushes, it does not retain retryable uncommitted content.
+- Continuing the existing Session after a server restart is still refused with
+  `Portable execution authority changed before forwarding.` The reply draft
+  remains visible as Not delivered and no new turn is observed. The refusal came from shutdown closing the raw Session and continuation
+  reserving a successor; the room correctly rejects that replacement.
+
+These are local runtime observations, with raw event/history and build receipts
+retained by the owning acceptance run. They establish neither native-device nor
+public-sharing/provider acceptance. These observations kept the redesign in
+draft until the corrections below were exercised through the rendered room.
+
+
+## Acceptance corrections (2026-10-17)
+
+`DeltaCoalescer` now retains timer-flushed text only when the runtime confirms a
+retryable, uncommitted publication failure. It retries with the same event identity
+and delivers that text before later events. Final disposal cancels all timers and
+reports any remaining unpublished text as a shutdown failure; committed events
+are not replayed. The regression suite covers timer recovery and turn-boundary
+ordering, and a deliberate loss of rearming fails the timer case.
+
+Shutdown parks idle, resumable room-bound Sessions through the existing lifecycle
+lock before stopping their engines. Private native-output authority is revoked
+first. Binding-read and recovery-disposal failures are collected while provider
+cleanup and final delta disposal still run. A parked Session remains the exact
+Session admitted by the room; active work, ended/replaced Sessions and engines
+without a resume cursor keep their existing semantics. The restart regression
+also refuses a reply when authority is revoked.
+
+History paging waits for an in-progress query refresh to settle and never cancels
+it to fetch the next page. This lets a reloaded room reach its newest checkpoint
+before older messages are revealed locally.
+
+The isolated production fixture used a local scripted model emitting 1,356
+characters in 32-character chunks. A synchronized 6.3-second SQLite write lock
+exceeded the five-second busy bound and produced the expected publication
+warning. After recovery, canonical deltas and terminal output retained identical
+text (SHA-256 `6f9c55a052401a16999a8a54a8c22a71deceaefb6a3893a7f868e388d81a9897`).
+A real server shutdown and restart preserved the same raw room Session; its
+rendered follow-up retained the same complete answer, authenticated principal,
+and admitted client-turn identity. The final shutdown-review corrections are
+verified separately against their new regression controls.
+
+Desktop and 390px phone layouts were inspected in both themes, including Chat,
+thread reply, Brief and kept Results. The fixture home uses its canonical path:
+its earlier symlinked path correctly failed the answer-support ownership guard.
+These results qualify the controlled local room journey. They do not establish
+real-provider, native-device, public-sharing or installed-release behavior.
+
+
+## Room action hierarchy and draft ownership
+
+Chat remains the primary Task surface; Brief and Results hold the shared plan
+and kept work, with identity and execution inspection in Details. Opening an
+agent thread replaces its navigation button with answer-local Keep and run
+inspection actions. Every answer in that thread can be kept, including its first
+answer. The composer keeps one visible message prompt and an accessible label.
+
+A selected person mention remains an ordinary room message, including full names,
+agent-name collisions and newlines after the mention. Selecting an agent remains
+an explicit execution request. Removing or editing the selected human prefix
+returns subsequent input to the ordinary typed-mention rules.
+
+Cancel preserves a thread draft. Confirmed Discard clears its text, operation
+identity and delivery notice before another thread can open. A pending reply
+holds its thread until acknowledgement settles, so its result cannot clear or
+report status in another agent's thread. Results exposes Retry for failed reads
+without removing results that are still available.
+
+Focused regressions cover these boundaries with the real discard guard and
+controlled request settlement; reverting the owners reproduces the failures.
+Browser verification uses the isolated local scripted-provider fixture. These
+claims do not extend provider, native-device or release qualification.

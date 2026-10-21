@@ -206,7 +206,7 @@ function ActivityRowMeta({
     : origin;
   const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];
-  if (session.delegation)
+  if (session.delegation && !agentName)
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
   if (agentName) segments.push({ key: 'agent', text: agentName });
   if (project) segments.push({ key: 'project', text: project });
@@ -246,9 +246,11 @@ function ActivityRowMeta({
             <WorkStatusLineText status={status} />
           )}
         </span>
-        {status.reason && status.rung !== 'stopped' && (
-          <span className="sr-only">{` · ${status.reason}`}</span>
-        )}
+        {status.reason &&
+          status.rung !== 'stopped' &&
+          status.reason !== status.detail && (
+            <span className="sr-only">{` · ${status.reason}`}</span>
+          )}
       </span>
       {terminalAttribution && !attributedInLine && (
         <>

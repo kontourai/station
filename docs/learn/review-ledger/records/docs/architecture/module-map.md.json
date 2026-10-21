@@ -1164,7 +1164,13 @@
 
     "src-server/services/plugin-telemetry-transport.ts",
 
-    "src-server/security/plugin-pane-context.ts"
+    "src-server/security/plugin-pane-context.ts",
+
+    "src-server/services/projects/task-room-conversation-module.ts",
+
+    "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
+
+    "packages/contracts/src/project-task-room-browser.ts"
   ],
 
   "checks": [

@@ -606,6 +606,7 @@ export function buildOrchestrationSessionSummary(options: {
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
+    (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
     (options.conversationFirstPromptedTurn
       ? extractDisplayTitle([options.conversationFirstPromptedTurn])
       : undefined) ??
@@ -908,19 +909,24 @@ function extractDisplayTitle(
     if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
       continue;
     }
-    const normalized = event.prompt
-      .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!normalized) continue;
-    const codePoints = Array.from(normalized);
-    if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
-    return `${codePoints
-      .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
-      .join('')
-      .trimEnd()}…`;
+    const title = displayPromptTitle(event.prompt);
+    if (title) return title;
   }
   return undefined;
+}
+
+function displayPromptTitle(prompt: string): string | undefined {
+  const normalized = prompt
+    .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return undefined;
+  const codePoints = Array.from(normalized);
+  if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
+  return `${codePoints
+    .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
+    .join('')
+    .trimEnd()}…`;
 }
 
 function effectiveModelBoundary(event: CanonicalRuntimeEvent): {

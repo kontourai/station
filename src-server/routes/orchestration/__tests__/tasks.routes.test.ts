@@ -2640,3 +2640,29 @@ describe('Task routes', () => {
     expect(readUserInput).not.toHaveBeenCalled();
   });
 });
+
+test('a saved Task status still succeeds and logs when its room publication fails', async () => {
+  const service = createRouteService();
+  const task = await service.createTask({
+    projectId: 'project-alpha',
+    title: 'Status publication',
+  });
+  const warn = vi.fn();
+  const app = createTaskRoutes(service, {
+    taskDispatcher: inertTaskDispatcher,
+    logger: { warn },
+    onStatusChanged: async () => {
+      throw new Error('Controlled room failure');
+    },
+  });
+  const response = await app.request(`/${task.id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready' }),
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(service.readTaskView(task.id)?.status).toBe('ready');
+  expect(warn).toHaveBeenCalledWith('Task status publication failed', {
+    error: 'Controlled room failure',
+  });
+});

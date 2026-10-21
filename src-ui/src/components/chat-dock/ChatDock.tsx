@@ -116,7 +116,6 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
-import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
@@ -963,6 +962,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus,
     orchestrationSessionsFetching,
   });
+  useEffect(() => {
+    if (!isFullscreenPlacement && activeSession?.taskShaping)
+      setDockState(true, true);
+  }, [activeSession?.taskShaping, isFullscreenPlacement, setDockState]);
   const handleReplayConversation = useCallback(() => {
     const sourceThreadId =
       activeSession?.currentSessionId ??
@@ -1429,22 +1432,26 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const turnIntoTask =
     activeSession && !activeSession.replay && !importedSessionId
       ? () =>
-          requestTaskShaping({
-            projectSlug: activeSession.projectSlug,
-            source: {
-              sessionId: activeSession.currentSessionId ?? activeSession.id,
-              conversationId: activeSession.conversationId,
-              agentSlug: activeSession.agentSlug,
-              agentName: activeSession.agentName,
-            },
-          })
+          activeSession.taskShaping
+            ? updateChat(activeSessionId!, { taskShaping: false })
+            : requestTaskShaping({
+                projectSlug: activeSession.projectSlug,
+                source: {
+                  sessionId: activeSession.currentSessionId ?? activeSession.id,
+                  conversationId: activeSession.conversationId,
+                  agentSlug: activeSession.agentSlug,
+                  agentName: activeSession.agentName,
+                },
+              })
       : undefined;
   const dockMoreActions: DockMoreAction[] = [
     ...(turnIntoTask
       ? [
           {
             key: 'turn-into-task',
-            label: 'Turn into Task',
+            label: activeSession?.taskShaping
+              ? 'Stop shaping this Task'
+              : 'New Task from this',
             onSelect: turnIntoTask,
           },
         ]
@@ -2718,6 +2725,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onNewChat={openNewChatDirect}
               overflow={{
                 onTurnIntoTask: turnIntoTask,
+                turnIntoTaskLabel: activeSession?.taskShaping
+                  ? 'Stop shaping this Task'
+                  : 'New Task from this',
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,
@@ -2974,18 +2984,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 ) : null
               }
             />
-          )}
-          {activeSession?.taskShaping && isPaneOpen && (
-            <Button
-              className="task-chat-start__chip"
-              size="sm"
-              aria-label="Remove Shaping a Task mode"
-              onClick={() =>
-                updateChat(activeSessionId!, { taskShaping: false })
-              }
-            >
-              Shaping a Task ×
-            </Button>
           )}
 
           {(isPaneOpen || isCollapsedDragPreview) && (

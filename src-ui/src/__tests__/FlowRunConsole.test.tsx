@@ -415,7 +415,7 @@ describe('FlowRunConsole', () => {
   test('inspects and keeps only the captured public evaluation reference', async () => {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     evaluationState.data = {
       originalVerdict: 'route-back',
       currentStanding: 'current',
@@ -479,7 +479,7 @@ describe('FlowRunConsole', () => {
   test('closes a captured Task picker before a replacement authority can use it', async () => {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     const view = render(<FlowRunConsole />);
 
     fireEvent.click(
@@ -505,7 +505,7 @@ describe('FlowRunConsole', () => {
   function startDeferredKeep() {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     let release: (() => void) | undefined;
     attachMutation.mutateAsync.mockImplementation(
       () => new Promise<void>((resolve) => (release = resolve)),

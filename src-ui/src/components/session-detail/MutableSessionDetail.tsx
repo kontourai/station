@@ -340,7 +340,7 @@ export function MutableSessionDetail({
       ? [
           {
             key: 'turn-into-task',
-            label: 'Turn into Task',
+            label: 'New Task from this',
             onSelect: () =>
               requestTaskShaping({
                 projectSlug: session.projectSlug,

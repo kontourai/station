@@ -2587,6 +2587,9 @@ export class OrchestrationService {
           : undefined;
         return {
           assignedAgentSlug: session.assignedAgentSlug,
+          ...(session.delegation?.title
+            ? { delegationTitle: session.delegation.title }
+            : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
             ? { environmentId: session.environmentId }
@@ -3788,6 +3791,21 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    // Preserve only resumable idle room Sessions, under their lifecycle lock.
+    // An unavailable binding is a parking failure; all other teardown still runs.
+    const roomParkingResults = await Promise.allSettled(
+      [...this.sessionAdapters].map(([threadId, adapter]) =>
+        this.adapterRetirement.runCleanupWithinDeadline(async () => {
+          if (
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              threadId,
+            ) &&
+            this.isParkableIdleSession(threadId, Date.now(), 0)
+          )
+            await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+        }, `${adapter.provider} room session parking`),
+      ),
+    );
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -3802,7 +3820,9 @@ export class OrchestrationService {
     // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
     this.conversationActivity?.dispose();
-    await this.recoveryCoordinator?.dispose();
+    const recoveryResults = await Promise.allSettled(
+      this.recoveryCoordinator ? [this.recoveryCoordinator.dispose()] : [],
+    );
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     const currentAdapters = this.options.adapterRegistry.list();
@@ -3846,9 +3866,18 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    const failures = cleanupResults.flatMap((result) =>
+    const failures = [
+      ...roomParkingResults,
+      ...recoveryResults,
+      ...cleanupResults,
+    ].flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     );
+    try {
+      this.deltaCoalescer.dispose();
+    } catch (error) {
+      failures.push(error);
+    }
     if (failures.length > 0) {
       throw new AggregateError(failures, 'Provider adapter shutdown failed.');
     }

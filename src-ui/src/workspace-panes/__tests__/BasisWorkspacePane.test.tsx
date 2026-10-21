@@ -54,6 +54,22 @@ describe('BasisWorkspacePane', () => {
     );
   });
 
+  test('chromeless presentation shows the exact Basis without portable host controls', () => {
+    render(
+      <BasisWorkspacePane
+        descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
+        instance={createWholeTaskBasisPaneInstance('project', 'task')!}
+        presentation="chromeless"
+      />,
+    );
+    expect(screen.getByTestId('basis-scope').textContent).toContain(
+      '"kind":"whole-task"',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Open portable MCP App' }),
+    ).toBeNull();
+  });
+
   test('routes the exact Session occurrence to native inventory without portable MCP', async () => {
     render(
       <BasisWorkspacePane

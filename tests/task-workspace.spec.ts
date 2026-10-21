@@ -195,16 +195,17 @@ test.describe
       expect(dispatch.success).toBe(true);
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
-      // #3037 moved the binding into a collapsed disclosure; open it the way
-      // a person would before reading the branch.
-      await page
-        .locator('summary', { hasText: 'Task and workspace details' })
-        .click();
       await expect(
-        page.getByText('task-primary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-primary', { exact: true }),
       ).toBeVisible();
       await page.getByRole('button', { name: /artifact.md/ }).click();
       await expect(page.getByText('artifact evidence')).toBeVisible();
@@ -287,16 +288,17 @@ test.describe
         secondaryRepo,
         'task-secondary',
       );
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
+      await page
+        .getByText('Task identity and workspace', { exact: true })
+        .click();
       await expect(
         page.getByText(secondaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
-      // #3037 moved the binding into a collapsed disclosure; open it the way
-      // a person would before reading the branch.
-      await page
-        .locator('summary', { hasText: 'Task and workspace details' })
-        .click();
       await expect(
-        page.getByText('task-secondary', { exact: true }),
+        page
+          .getByRole('tabpanel', { name: 'Details', exact: true })
+          .getByText('task-secondary', { exact: true }),
       ).toBeVisible();
       await expect(page.getByText('Unavailable', { exact: true })).toHaveCount(
         2,
@@ -316,6 +318,7 @@ test.describe
       );
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
@@ -329,6 +332,7 @@ test.describe
       await stopStation(live);
       await startStation(live, false);
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(primaryTaskId)}`);
+      await page.getByRole('tab', { name: 'Details', exact: true }).click();
       await expect(
         page.getByText(primaryGitTopLevel, { exact: true }),
       ).toHaveCount(3);
@@ -476,22 +480,23 @@ test.describe
       await expect(startDialog).toHaveCount(0);
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
-      const moreAnswerActions = page.getByRole('button', {
+      const answerRow = page
+        .locator('[data-chat-role="assistant"][data-chat-turn-id]')
+        .filter({ has: page.getByText(answer, { exact: true }) });
+      await expect(answerRow).toHaveCount(1);
+      const turnId = await answerRow.getAttribute('data-chat-turn-id');
+      expect(turnId).toBeTruthy();
+      const moreAnswerActions = answerRow.getByRole('button', {
         name: 'More answer actions',
       });
-      await page
-        .locator('.turn-footer')
-        .filter({ has: moreAnswerActions })
-        .hover();
+      await answerRow.locator('.turn-footer').hover();
       await moreAnswerActions.click();
       const addToTask = page.getByRole('menuitem', {
-        name: /Add this answer to a Task/,
+        name: 'Add to Task: answer',
+        exact: true,
       });
       await expect(addToTask).toBeVisible();
-      const addLabel = await addToTask.getAttribute('aria-label');
       await addToTask.press('Escape');
-      const turnId = addLabel?.match(/\(turn (.+)\)$/)?.[1];
-      expect(turnId).toBeTruthy();
       const sessions = await apiJson<{
         success: boolean;
         data: Array<{ threadId?: string; id?: string }>;
@@ -580,7 +585,8 @@ test.describe
       await moreAnswerActions.press('Enter');
       await addToTask.click();
       const attachDialog = page.getByRole('dialog', {
-        name: 'Add answer to Task',
+        name: 'Add to Task',
+        exact: true,
       });
       const search = attachDialog.getByRole('searchbox', {
         name: 'Find a Task',
@@ -672,10 +678,19 @@ test.describe
       });
 
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await page.getByRole('tab', { name: /^Results/ }).click();
+      await page
+        .getByRole('tabpanel', { name: /^Results/ })
+        .locator('summary', { hasText: 'Answer details' })
+        .click();
       await expect(
         page.getByRole('heading', { name: 'Kept answers', exact: true }),
       ).toBeVisible();
-      await expect(page.getByText(answer, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .locator('.task-workspace__answer-basis')
+          .getByText(answer, { exact: true }),
+      ).toBeVisible();
       await expect(
         page.getByText(
           /semantic support is separate and has not been assessed/i,
@@ -697,7 +712,16 @@ test.describe
         uiOrigin: live.ui,
       });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await expect(page.getByText(answer, { exact: true })).toBeVisible({
+      await page.getByRole('tab', { name: /^Results/ }).click();
+      await page
+        .getByRole('tabpanel', { name: /^Results/ })
+        .locator('summary', { hasText: 'Answer details' })
+        .click();
+      await expect(
+        page
+          .locator('.task-workspace__answer-basis')
+          .getByText(answer, { exact: true }),
+      ).toBeVisible({
         timeout: 30_000,
       });
 

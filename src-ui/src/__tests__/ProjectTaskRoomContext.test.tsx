@@ -2,7 +2,7 @@
 
 import type { ProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { useLayoutEffect, useState } from 'react';
+import { StrictMode, useLayoutEffect, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -83,6 +83,7 @@ function Consumer() {
   return (
     <div>
       <span>{room?.stream}</span>
+      {room?.presenceError && <p role="alert">{room.presenceError}</p>}
       <span>{room?.ownActorId}</span>
       <span>{room?.live?.participants[0]?.actor.label ?? 'no-live'}</span>
       <button
@@ -118,7 +119,13 @@ function ThrowingDocumentConsumer() {
 }
 
 beforeEach(() => {
-  mocks.command.mockReset();
+  mocks.command.mockReset().mockImplementation(async (command) => ({
+    kind: 'available',
+    snapshot: {
+      ...snapshot('Alice'),
+      result: { outcome: command.command === 'join' ? 'joined' : 'updated' },
+    },
+  }));
   mocks.restart.mockReset();
   mocks.stream = undefined;
   mocks.streamGeneration = 0;
@@ -219,7 +226,11 @@ test('heartbeats a joined viewer beyond the production live TTL', async () => {
   );
   act(() => mocks.stream?.onRoom?.(snapshot('self')));
   await act(() => vi.advanceTimersByTimeAsync(31_000));
-  expect(mocks.command.mock.calls).toEqual([
+  expect(
+    mocks.command.mock.calls.filter(
+      ([command]) => command.command === 'heartbeat',
+    ),
+  ).toEqual([
     [{ command: 'heartbeat' }],
     [{ command: 'heartbeat' }],
     [{ command: 'heartbeat' }],
@@ -240,7 +251,11 @@ test('does not heartbeat when the viewer has no joined participant', async () =>
   );
   act(() => mocks.stream?.onRoom?.(snapshot('peer')));
   await act(() => vi.advanceTimersByTimeAsync(31_000));
-  expect(mocks.command).not.toHaveBeenCalled();
+  expect(
+    mocks.command.mock.calls.filter(
+      ([command]) => command.command === 'heartbeat',
+    ),
+  ).toEqual([]);
   expect(mocks.streamGeneration).toBe(0);
 });
 
@@ -336,4 +351,95 @@ test('keeps SSE authoritative over delayed commands and makes terminal absorbing
   expect(screen.getByText('no-live')).toBeTruthy();
   expect(screen.queryByText('resurrected')).toBeNull();
   expect(screen.queryByText('queued-same-generation')).toBeNull();
+});
+
+test('opening the Task joins and publishes presence; pagehide and unmount depart', async () => {
+  const view = render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+    'announce',
+  ]);
+  fireEvent(window, new Event('pagehide'));
+  await act(async () => {});
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
+  mocks.command.mockClear();
+  view.unmount();
+  await act(async () => {});
+  expect(mocks.command).toHaveBeenCalledTimes(1);
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
+});
+
+test('a refused implicit join remains visible and cannot announce membership it did not obtain', async () => {
+  mocks.command.mockResolvedValueOnce({
+    kind: 'available',
+    snapshot: { ...snapshot('Alice'), result: { outcome: 'forbidden' } },
+  });
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Presence could not join',
+  );
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+  ]);
+});
+
+test('restoring the Task from bfcache rejoins and republishes presence', async () => {
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  fireEvent(window, new Event('pagehide'));
+  await act(async () => {});
+  mocks.command.mockClear();
+  fireEvent(window, new PageTransitionEvent('pageshow', { persisted: true }));
+  await act(async () => {});
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+    'announce',
+  ]);
+});
+
+test('StrictMode teardown cannot depart a replacement viewer before its announce', async () => {
+  let joined = false;
+  mocks.command.mockImplementation(async ({ command }) => {
+    if (command === 'join') joined = true;
+    if (command === 'depart') joined = false;
+    return {
+      kind: 'available',
+      snapshot: {
+        ...snapshot('Alice'),
+        result: {
+          outcome:
+            command === 'join'
+              ? 'joined'
+              : command === 'announce' && !joined
+                ? 'forbidden'
+                : 'updated',
+        },
+      },
+    };
+  });
+  render(
+    <StrictMode>
+      <ProjectTaskRoomProvider taskId="task-1">
+        <Consumer />
+      </ProjectTaskRoomProvider>
+    </StrictMode>,
+  );
+  await act(async () => {});
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'announce' });
+  expect(joined).toBe(true);
+  expect(screen.queryByRole('alert')).toBeNull();
 });

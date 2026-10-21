@@ -221,10 +221,10 @@ export const readProjectSharedTaskHistory = (
   apiBase: string,
   slug: string,
   taskId: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { cursor?: string },
 ): Promise<ProjectSharedTaskHistory> =>
   read(
-    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history`,
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history${options?.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : ''}`,
     history,
     options,
   );

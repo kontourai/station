@@ -2545,15 +2545,25 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
-mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
-and `ProjectTaskRoomConversation` through `WorkspacePaneHost`. The page's
-Kept answers section opens Basis panes into that host (Open Basis, Open Whole
-Task Basis); the room section wraps the host's open action it publishes to
-the page (panes opened inside the room use the host's own) so the pane is
-selected and its tab takes focus. Unless the room's tab strips were already
-in view, the tab's pane group is then scrolled to the top of the viewport,
-just below the page's sticky header so the focused tab is not covered
-(#3883).
+mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
+`ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
+`TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
+`ProjectTaskRoomConversation` shows named, timed messages and agent threads.
+The provider serializes join, announce and departure across mount replacement;
+reannouncing an already-published viewer refreshes it. Expired departures settle before a renewed join replaces their handles. Legacy checkpoints can recover a retired handle only from a retained principal whose original announcement receipt matches; a different policy remains unavailable. Browser message history
+filters human presence lifecycle facts separately from the internal history.
+Shared history pages retain their continuation cursor and human-only filter.
+Room dispatch records a human-authored title separately from the provider prompt
+that includes the brief. Failed runs retain retry and inspection controls.
+
+`WorkspacePaneHost` remains in Details for Basis. Open Basis and Open Whole Task
+Basis from Results reveal Details and the pane, select the pane and focus its
+host tab. The page-published open action retains the #3883 reveal behavior:
+unless the visible room's tab strips were already in view, it scrolls the tab's
+pane group into view below the applicable page header. An already-visible strip
+and focused tab cause no extra reveal scroll. The host retains its tabbed
+presentation; the Basis renderer uses chromeless presentation to omit duplicate
+portable MCP App controls. Identity and workspace fields are collapsed by default.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -2574,10 +2584,32 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 [composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
-Task incarnation that the history grant rechecks before commit. Request cards
-currently poll the journal read and link to existing execution
-inspection; they are not room-SSE lifecycle events. Invited/public result
-projection and actual-provider acceptance remain unfinished.
+Task incarnation that the history grant rechecks before commit.
+[TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
+composes request publication, todo/ready to in_progress transitions, exact-session
+thread replies, and canonical completed-answer reads. Turn events and startup
+reconcile the existing agent-publish text append path; no new history body or
+storage worker is needed. Browser records add optional timestamps, opaque actor
+identity and execution/thread correlation. Older records remain readable;
+older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
+under the lifecycle lock at shutdown so replies retain their raw Session identity
+after restart; authority is revoked before cleanup and rechecked before a new
+turn. Retryable, uncommitted timer-flush failures retain text and event identity.
+Final coalescer disposal cancels retry timers and reports undelivered text;
+parking or recovery failures do not skip provider cleanup. History paging waits
+for query refreshes rather than canceling them to fetch another page.
+The request journal refreshes before fresh submissions and after acknowledgements.
+Live presence and history use room SSE. Publication reconciliation is coalesced
+and scheduled after HTTP responses. A bounded proposal cache and durable lookup
+skip duplicate writes and history notifications, including after restart. Only
+room-origin turns publish answers; private dock follow-ups stay private. Reply
+origin requires a server-recorded admission in the private request journal;
+a client turn prefix alone is insufficient. Abandoned publication holds expire
+after 30 seconds. Each answer pass opens history once and truncates oversized
+text precisely at a code-point boundary within both string and body byte limits.
+Shared Task projection continues to publish human messages and the document;
+it excludes agent answers and private execution metadata. Invited/public agent
+results and actual-provider acceptance remain separate qualification scopes.
 
 Immutable output review uses the same room history, rather than a second
 feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
@@ -2593,8 +2625,9 @@ The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
 normalization. The [editor](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
-keeps unsaved text and an exact possible-effect receipt locally. It uses host
-and navigation close guards, rechecks Task/authority generations after awaits,
+keeps unsaved text and an exact possible-effect receipt locally. It flushes pending saves before in-app navigation and retains failed or uncertain
+drafts in place. Co-editing plan rejection refreshes and retries at most three
+times. It uses host and browser-close guards, rechecks Task/authority generations after awaits,
 and recovers from authoritative reads. A query gap or unavailable/error state
 revokes edit authority even when previously applied text remains visible.
 Terminal streams clear live presence; reconnect, duplicate/gap handling and
@@ -3711,7 +3744,7 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and

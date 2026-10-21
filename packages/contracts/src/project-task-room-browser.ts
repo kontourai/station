@@ -48,8 +48,20 @@ export type ProjectTaskRoomBrowserBody =
       readonly link: ProjectTaskRoomBrowserLink;
     };
 export interface ProjectTaskRoomBrowserRecord {
-  readonly actor: { readonly kind: 'human' | 'agent'; readonly label: string };
+  readonly actor: {
+    readonly kind: 'human' | 'agent';
+    readonly label: string;
+    readonly id?: string;
+  };
   readonly sequence: number;
+  readonly occurredAt?: string;
+  readonly execution?: {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly runId?: string;
+  };
+  readonly threadSessionId?: string;
+  readonly system?: boolean;
   readonly body: ProjectTaskRoomBrowserBody;
   readonly digests: { readonly proposal: string; readonly checkpoint: string };
   readonly integrity: 'L0';
@@ -168,6 +180,7 @@ type RecordValue = Record<string, unknown>;
 const own = (
   value: unknown,
   fields: readonly string[],
+  optional: readonly string[] = [],
 ): value is RecordValue => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   try {
@@ -175,7 +188,15 @@ const own = (
     if (prototype !== Object.prototype && prototype !== null) return false;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     return (
-      Object.keys(descriptors).length === fields.length &&
+      Object.keys(descriptors).every(
+        (key) => fields.includes(key) || optional.includes(key),
+      ) &&
+      optional.every(
+        (key) =>
+          !descriptors[key] ||
+          (descriptors[key].get === undefined &&
+            descriptors[key].set === undefined),
+      ) &&
       fields.every((field) => {
         const descriptor = descriptors[field];
         return (
@@ -374,11 +395,28 @@ function checkpoint(
   };
 }
 function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
+  if (!value || typeof value !== 'object') return undefined;
   if (
-    !own(value, ['actor', 'sequence', 'body', 'digests', 'integrity']) ||
-    !own(value.actor, ['kind', 'label']) ||
+    !own(
+      value,
+      ['actor', 'sequence', 'body', 'digests', 'integrity'],
+      ['occurredAt', 'execution', 'threadSessionId', 'system'],
+    ) ||
+    !own(value.actor, ['kind', 'label'], ['id']) ||
     !['human', 'agent'].includes(String(value.actor.kind)) ||
     !text(value.actor.label) ||
+    (value.actor.id !== undefined && !id(value.actor.id)) ||
+    (value.occurredAt !== undefined &&
+      (typeof value.occurredAt !== 'string' ||
+        !Number.isFinite(Date.parse(value.occurredAt)))) ||
+    (value.execution !== undefined &&
+      (!own(value.execution, ['sessionId', 'turnId'], ['runId']) ||
+        !id(value.execution.sessionId) ||
+        !id(value.execution.turnId) ||
+        (value.execution.runId !== undefined && !id(value.execution.runId)) ||
+        value.actor.kind !== 'agent')) ||
+    (value.threadSessionId !== undefined && !id(value.threadSessionId)) ||
+    (value.system !== undefined && typeof value.system !== 'boolean') ||
     !integer(value.sequence) ||
     value.integrity !== 'L0' ||
     !own(value.digests, ['proposal', 'checkpoint']) ||
@@ -393,8 +431,22 @@ function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
         actor: {
           kind: value.actor.kind as 'human' | 'agent',
           label: value.actor.label,
+          ...(typeof value.actor.id === 'string' ? { id: value.actor.id } : {}),
         },
         sequence: value.sequence,
+        ...(typeof value.occurredAt === 'string'
+          ? { occurredAt: value.occurredAt }
+          : {}),
+        ...(value.execution
+          ? {
+              execution:
+                value.execution as ProjectTaskRoomBrowserRecord['execution'],
+            }
+          : {}),
+        ...(typeof value.threadSessionId === 'string'
+          ? { threadSessionId: value.threadSessionId }
+          : {}),
+        ...(value.system === true ? { system: true } : {}),
         body: parsed,
         digests: {
           proposal: value.digests.proposal,

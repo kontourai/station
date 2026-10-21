@@ -19,6 +19,7 @@ import {
 } from '../lib/startup-presentation';
 import { activatable } from '../utils/activatable';
 import { Button } from './Button';
+import { Dialog } from './Dialog';
 import { DetailPaneContext } from './detail-pane-context';
 import { DocumentGlyph } from './icons/Glyph';
 import {
@@ -1606,6 +1607,42 @@ export function SplitPaneLayout({
             ? createPortal(detailContents, detailPortalRootRef.current)
             : null}
       </div>
+    </div>
+  );
+}
+
+/** A supporting rail on desktop, or a focused detail sheet on a phone. */
+export function SplitPaneCompanion({
+  children,
+  companion,
+  sheet,
+}: {
+  children: React.ReactNode;
+  companion?: React.ReactNode;
+  sheet?: { label: string; onDismiss(): void };
+}) {
+  const mobile = useIsMobile();
+  return (
+    <div
+      className={`split-pane-companion${sheet ? ' split-pane-companion--detail' : ''}`}
+    >
+      <div className="split-pane-companion__main">{children}</div>
+      {companion &&
+        (mobile ? (
+          sheet ? (
+            <Dialog
+              title={sheet.label}
+              closeLabel={`Close ${sheet.label.toLowerCase()}`}
+              onClose={sheet.onDismiss}
+              size="lg"
+              panelClassName="split-pane-companion__sheet"
+            >
+              {companion}
+            </Dialog>
+          ) : null
+        ) : (
+          <div className="split-pane-companion__aside">{companion}</div>
+        ))}
     </div>
   );
 }

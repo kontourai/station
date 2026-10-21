@@ -13565,9 +13565,12 @@ export class EventStore {
           if (typeof projectMetadata?.projectSlug === 'string') {
             projectSlug = projectMetadata.projectSlug;
           }
-          const title = titleEvent
-            ? parseHistoryEvent(titleEvent.payload)?.prompt
-            : undefined;
+          const title =
+            typeof agentMetadata?.delegationTitle === 'string'
+              ? agentMetadata.delegationTitle
+              : titleEvent
+                ? parseHistoryEvent(titleEvent.payload)?.prompt
+                : undefined;
           const tenant = parsePersistedTenantExecutionContext(
             session.tenant_execution_context,
           );
@@ -13729,6 +13732,9 @@ export class EventStore {
         agentSlug ?? null,
         projectSlug ?? null,
         inheritedTitle ??
+          (typeof metadata?.delegationTitle === 'string'
+            ? derivedConversationTitle(metadata.delegationTitle)
+            : undefined) ??
           (typeof prompt === 'string'
             ? derivedConversationTitle(prompt)
             : undefined) ??

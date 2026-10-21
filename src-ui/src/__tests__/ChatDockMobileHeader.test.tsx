@@ -530,13 +530,15 @@ describe('the ⋯ sheet’s copy rows (mobile parity)', () => {
   });
 });
 
-test('the phone chat actions offer Turn into Task and dismiss the sheet before shaping', async () => {
+test('the phone chat actions offer New Task from this and dismiss the sheet before shaping', async () => {
   const turnIntoTask = vi.fn();
   renderHeader({ onTurnIntoTask: turnIntoTask });
   await openActions();
   fireEvent.click(
-    await screen.findByRole('menuitem', { name: 'Turn into Task' }),
+    await screen.findByRole('menuitem', { name: 'New Task from this' }),
   );
   expect(turnIntoTask).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('menuitem', { name: 'Turn into Task' })).toBeNull();
+  expect(
+    screen.queryByRole('menuitem', { name: 'New Task from this' }),
+  ).toBeNull();
 });

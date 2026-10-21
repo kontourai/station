@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
@@ -126,6 +127,7 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
+import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -1340,6 +1342,25 @@ export function configureRuntimeRoutes(
         }
       : undefined;
   };
+  const roomConversation = new TaskRoomConversationModule({
+    graph: context.taskGraphService,
+    work: taskRoomWork,
+    readAgentLabel: async (id) => {
+      try {
+        return (await context.agentService.getAgent(id)).name;
+      } catch {
+        return undefined;
+      }
+    },
+    room: () => projectTaskRoomRuntime,
+    authorize: (...args) => authorizeTaskRoomWork(...args),
+    sessions: context.orchestrationService,
+    readBinding: (sessionId) =>
+      context.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+        sessionId,
+      ),
+    authorityForOwner: (id) => readAuthorityForExecution(id),
+  });
   const resolveTaskRoomContext = async (
     taskId: string,
     request: Request,
@@ -4042,9 +4063,51 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      logger: context.logger,
+      onRoomSystemLine: async ({
+        task,
+        request,
+        proposalId,
+        text,
+        occurredAt,
+      }) => {
+        try {
+          const result = await projectTaskRoomRuntime?.message({
+            taskId: task.id,
+            request,
+            expectedTaskCreatedAt: task.createdAt,
+            proposalId,
+            correlationId: 'room-system',
+            text,
+            occurredAt,
+          });
+          if (result?.kind !== 'committed' && result?.kind !== 'duplicate')
+            context.logger.warn('Task system line could not be published', {
+              taskId: task.id,
+              proposalId,
+            });
+        } catch (error) {
+          context.logger.warn('Task system line publication failed', {
+            taskId: task.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+      onStatusChanged: async (task, request) => {
+        await projectTaskRoomRuntime?.message({
+          taskId: task.id,
+          request,
+          expectedTaskCreatedAt: task.createdAt,
+          proposalId: `room-status:${task.id}:${task.updatedAt}`,
+          occurredAt: task.updatedAt,
+          correlationId: 'room-status',
+          text: `Status → ${taskStatusLabel(task.status)}`,
+        });
+      },
       taskDispatcher: context.taskDispatcher,
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
@@ -4240,6 +4303,7 @@ export function configureRuntimeRoutes(
             return {
               kind: 'granted' as const,
               operatorId: principal.id,
+              displayName: principal.display,
               deviceId: device.id,
               policyRevision: device.scope,
             };
@@ -4249,6 +4313,7 @@ export function configureRuntimeRoutes(
             ? {
                 kind: 'granted' as const,
                 operatorId: principal.id,
+                displayName: principal.display,
                 deviceId: `operator:${principal.id}`,
                 policyRevision: 'operator',
               }
@@ -4310,6 +4375,21 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readDisplayName: async (id) =>
+        context.environmentSecurityService.devicePairing
+          .listKnownPrincipals()
+          .find((principal) => principal.id === id)?.display ??
+        (id === LOCAL_OPERATOR_PRINCIPAL_ID
+          ? getCachedUser().alias
+          : undefined),
+      readAgentLabel: async (agentId) => {
+        try {
+          return (await context.agentService.getAgent(agentId)).name;
+        } catch {
+          return undefined;
+        }
+      },
+      readAgentAnswers: (input) => roomConversation.answers(input),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -4330,6 +4410,19 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    context.eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const event = frame.data?.event as
+        | import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent
+        | undefined;
+      if (event)
+        void roomConversation.observe(event).catch((error) =>
+          context.logger.warn('Task room answer publication failed', {
+            sessionId: event.threadId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    });
     // A provider start is never retried from this rail. Only the idempotent
     // room-publication receipt is replayed after a prior process died between
     // Task association and history append.
@@ -4348,10 +4441,7 @@ export function configureRuntimeRoutes(
         ]),
       )
       .then(() => undefined);
-    // Room and live-activity reads/writes share the principal owner used by
-    // proposal acceptance at the earlier POST /api/tasks mount. Keep every
-    // Request-only consumer behind this Hono-context resolution boundary.
-    context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+    // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route(
@@ -4378,17 +4468,24 @@ export function configureRuntimeRoutes(
           };
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
-          await roomRuntime.reconcileAgentLifecycles([taskId]);
           const contextSnapshot = principal
             ? await resolveTaskRoomContext(taskId, request, principal)
             : undefined;
-          return (await authorize())
-            ? {
-                ...result,
-                contextVersion: TASK_ROOM_CONTEXT_VERSION,
-                context: contextSnapshot ?? null,
-              }
-            : { kind: 'refused' as const };
+          if (!(await authorize())) return { kind: 'refused' as const };
+          setTimeout(
+            () =>
+              void roomConversation.reconcile(taskId).catch((error) =>
+                context.logger.warn('Task room reconciliation failed', {
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            0,
+          );
+          return {
+            ...result,
+            contextVersion: TASK_ROOM_CONTEXT_VERSION,
+            context: contextSnapshot ?? null,
+          };
         },
       }),
     );
@@ -4871,7 +4968,17 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        holdPublication: (taskId) => roomConversation.holdPublication(taskId),
+        beforeInvocation: (taskId) =>
+          roomConversation.waitForPublication(taskId),
+        continued: (taskId) => roomConversation.reconcile(taskId),
         module: taskRoomWork,
+        onRecorded: (record, request, principal) =>
+          roomConversation.recorded(record, request, principal),
+        admitReply: (input, request, principal) =>
+          roomConversation.admission(input, request, principal),
+        onReply: (input, request, principal) =>
+          roomConversation.reply(input, request, principal),
         authorize: authorizeTaskRoomWork,
         resolveContext: resolveTaskRoomContext,
       },

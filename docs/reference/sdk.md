@@ -267,8 +267,11 @@ The server also checks the expected Task incarnation.
 The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
 or stale scope never falls back to the ambient connection. Request caches
 include connection authority, Task identity and incarnation. Request cards
-poll every five seconds and can be refreshed explicitly; journal changes are
-not currently published through room SSE. Mutation retries are disabled.
+refresh before fresh submission and after request acknowledgement. Live presence
+and history use room SSE rather than polling request cards. Mutation retries
+are disabled. The composer uses the latest saved brief by default; uncertain
+retries retain their original context. Briefs over 16,000 characters include an
+explicit shortening notice in the snapshot markdown.
 Send refreshes Project-scoped delegation options and requires the selected
 agent to be ready before the version negotiation and create.
 
@@ -1965,17 +1968,17 @@ not imply edit, execution or administration support.
 `@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
-`readProjectSharedTaskHistory(...)` returns bounded `human-message` bodies with
-human or agent attribution; this body-kind filter does not mean every author is
-human. Structured tool events, attachment metadata and room
-write authority are excluded. Human messages and shared documents are returned
-verbatim without redaction and may themselves contain paths, secrets, or other
-private text. `readProjectSharedTaskDocument(...)` returns the current text
-snapshot. Each response is limited to one MiB and validated without extra
-fields. The current server reports an incomplete history page as `unavailable`.
-Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
-unavailable and too-large results retain their named states. None is an empty
-complete history, and none permits inferring private records.
+`readProjectSharedTaskHistory(apiBase, slug, taskId, options?)` returns bounded
+human-authored room messages. It excludes agent answers, structured tool events,
+attachment metadata, private thread fragments and room write authority. Human
+messages and shared documents are returned verbatim without redaction and may
+contain private text. `readProjectSharedTaskDocument(...)` returns the current
+text snapshot. Each response is limited to one MiB and validated without extra
+fields. When history returns `hasMore: true`, pass `nextCursor` as
+`options.cursor` to read the next page. Keep the pages in sequence; an empty
+filtered page does not mean the room is empty. Gap, stale, invalid-cursor,
+unavailable and too-large results retain their named states and never imply a
+complete history or permission to infer private records.
 `getProjectSharedTaskPublication(...)` gives a member
 `{ kind: 'shared', publication }`, where `publication` is the same summary the
 list returns for that Task. An unshared, stale, unknown or other-scope Task
@@ -4651,6 +4654,11 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
+'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
+Keep the human draft visible and inspect the full run before resending; the field
+does not grant retry or execution authority.
 
 ### Queued foreground retries
 

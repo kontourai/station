@@ -149,6 +149,30 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+Completed room-requested turns append agent-published text with exact Session,
+turn and (when available) run correlation in the closed browser history DTO.
+Optional `actor.id` is an opaque grouping identity; `actor.label` is display
+text. Records can include `occurredAt`, `execution`, `threadSessionId` and
+`system`. Older records remain readable. These are room messages, not an
+implicit publication of private tool events or transcripts.
+
+`POST /api/orchestration/delegations/:sessionId/continue` can include
+`taskRoomReply: {taskId, taskCreatedAt, operationId, attachBrief?}`. It retains the
+existing continuation owner and defaults to attaching the latest saved brief
+as readable markdown. The server rechecks the request journal, immutable room
+binding, Task incarnation and current caller at the provider effect. A room
+reply cannot select another environment/model or replace its Session.
+An unavailable brief is a pre-invocation `409` with
+`code: task_room_context_unavailable`; it can be retried or explicitly omitted.
+Unknown execution errors must not be retried automatically.
+
+`PATCH /api/tasks/:taskId/title` accepts `{title, expectedCreatedAt}` (1–512
+trimmed characters), refusing another Task incarnation. The existing status
+route continues to enforce `canTransitionTaskStatus`; confirmed changes append
+quiet room messages. A first room request atomically starts only todo/ready
+Tasks. `GET /api/tasks/:taskId/kept-pull-requests` lists Task-curated identities
+only for Sessions the caller may read; it does not assert live provider status.
+
 ### Keep a declared output
 
 `POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts

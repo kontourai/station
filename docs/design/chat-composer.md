@@ -777,12 +777,12 @@ names the project. This revises the earlier independent-sidebar/default behavior
 
 **New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
 
-Chat actions offers **Turn into Task** for a writable Station conversation,
+Chat actions offers **New Task from this** for a writable Station conversation,
 sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
 agent shapes a proposal; only **Create Task** on its card accepts the brief
 and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one. A seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
 the person's idea as the visible message. The answer/input **Add to Task**
-picker offers **New Task from this…** even with an empty Task catalog.
+picker offers **New Task from this** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

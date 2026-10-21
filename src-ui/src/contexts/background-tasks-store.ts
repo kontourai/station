@@ -60,6 +60,7 @@ export interface BackgroundTaskEntry {
   source: BackgroundTaskSource;
   chatThreadId: string;
   title: string;
+  delegationTitle?: string;
   detail?: string;
   latestTool?: string;
   /**
@@ -382,12 +383,21 @@ function foldSessionLifecycle(
     {
       chatThreadId: parentTaskId,
       startedAt: parseTime(event.createdAt, Date.now()),
+      title: metaString(event.metadata, 'delegationTitle'),
     },
   );
   return {
     ...state,
     delegateParents,
-    entries: { ...state.entries, [taskId]: entry },
+    entries: {
+      ...state.entries,
+      [taskId]: {
+        ...entry,
+        ...(metaString(metadata, 'delegationTitle')
+          ? { delegationTitle: metaString(metadata, 'delegationTitle') }
+          : {}),
+      },
+    },
   };
 }
 
@@ -401,7 +411,11 @@ function foldDelegateTurnStarted(
     Boolean(parentTaskId) || existing?.source === 'delegate-session';
   if (!isKnownDelegate) return state;
 
-  const title = firstLine(event.prompt) ?? existing?.title ?? 'Delegated task';
+  const title =
+    existing?.delegationTitle ??
+    firstLine(event.prompt) ??
+    existing?.title ??
+    'Delegated task';
   if (existing) {
     if (existing.state === 'running' && existing.title === title) return state;
     const reopened = existing.state !== 'running';
@@ -593,11 +607,14 @@ export function reconcileBackgroundTasksSnapshot(
         // The sheet replaces this reconnect fallback with the persisted first
         // turn prompt once its bounded session-detail query resolves.
         title:
+          session.delegation?.title ??
           session.displayTitle ??
           (child.kindLabel
             ? `Delegated task — ${child.kindLabel}`
             : 'Delegated task'),
       });
+      if (session.delegation?.title)
+        entry.delegationTitle = session.delegation.title;
       const settled =
         !isActive && child.endedAt
           ? { ...entry, endedAt: parseTime(child.endedAt, Date.now()) }

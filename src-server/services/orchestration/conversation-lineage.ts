@@ -35,6 +35,7 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   buildTranscriptSeed,
   transcriptSeedSource,
@@ -1181,7 +1182,9 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
-      title: conversationTitle(messages),
+      title:
+        derivedConversationTitle(detail.session.delegation?.title) ??
+        conversationTitle(messages),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)
