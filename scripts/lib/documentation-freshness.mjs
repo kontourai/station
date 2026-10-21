@@ -400,6 +400,30 @@ export function resolveDocumentationFreshness({
       .filter(Boolean),
   );
   const noteIntroductions = new Map();
+  let noteIntroductionsLoaded = false;
+  const noteIntroduction = (file) => {
+    if (!noteIntroductionsLoaded) {
+      let commit;
+      for (const token of git(root, [
+        'log',
+        '--diff-merges=first-parent',
+        '--diff-filter=A',
+        '-z',
+        '--format=\u0001%H',
+        '--name-only',
+        `${selection.mergeBase}..HEAD`,
+        '--',
+        NOTES_DIR,
+      ]).split('\0')) {
+        const line = token.startsWith('\n') ? token.slice(1) : token;
+        if (line.startsWith('\u0001')) commit = line.slice(1);
+        else if (line && commit && !noteIntroductions.has(line))
+          noteIntroductions.set(line, commit);
+      }
+      noteIntroductionsLoaded = true;
+    }
+    return noteIntroductions.get(file) ?? '';
+  };
   const rangeCommits = new Set(
     git(root, ['rev-list', `${selection.mergeBase}..HEAD`])
       .trim()
@@ -505,22 +529,7 @@ export function resolveDocumentationFreshness({
                 return false;
               // Do not let an old note approve a later edit on this PR. Excluding
               // the base branch keeps another landed PR from invalidating this note.
-              if (!noteIntroductions.has(note.file))
-                noteIntroductions.set(
-                  note.file,
-                  git(root, [
-                    'log',
-                    '--diff-merges=first-parent',
-                    '--no-patch',
-                    '--diff-filter=A',
-                    '--format=%H',
-                    '-1',
-                    `${selection.mergeBase}..HEAD`,
-                    '--',
-                    note.file,
-                  ]).trim(),
-                );
-              const introduced = noteIntroductions.get(note.file);
+              const introduced = noteIntroduction(note.file);
               const validRevision = introduced
                 ? rangeCommits.has(note.revision)
                 : note.revision === head;
