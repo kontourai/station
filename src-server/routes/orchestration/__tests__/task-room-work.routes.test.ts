@@ -291,6 +291,8 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     readOnly: true,
   });
   let revokedThread: string | undefined;
+  let claimedThread: string | undefined;
+  let observedReserved: { thread_id: string; state: string } | undefined;
   let revokeDuringTurn = false;
   let allowed = true;
   const failures: unknown[] = [];
@@ -346,6 +348,10 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
     delegateTask: async (input) => {
+      if (revokeDuringTurn) {
+        expect(input.sessionId).toBeDefined();
+        claimedThread = input.sessionId;
+      }
       try {
         return await delegateTask(input, service);
       } catch (error) {
@@ -359,10 +365,14 @@ test('real delegation refuses revoked Task authority at provider effects and lea
         if (revokeDuringTurn) {
           const row = inspector
             .prepare(
-              "SELECT thread_id FROM orchestration_turn_boundaries WHERE purpose = 'turn' AND state = 'invoking'",
+              "SELECT thread_id,state FROM orchestration_turn_boundaries WHERE thread_id = ? AND purpose = 'turn' AND state = 'reserved'",
             )
-            .get();
+            .get(claimedThread ?? '');
           if (row && typeof row.thread_id === 'string') {
+            observedReserved = {
+              thread_id: row.thread_id,
+              state: String(row.state),
+            };
             revokedThread = row.thread_id;
             allowed = false;
           }
@@ -444,6 +454,10 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     const innerRefused = await send('revoked-inside-turn');
     expect(innerRefused.status).toBe(403);
     expect(revokedThread).toBeDefined();
+    expect(observedReserved).toEqual({
+      thread_id: claimedThread,
+      state: 'reserved',
+    });
     expect(started).toHaveBeenCalledTimes(3);
     expect(turned).toHaveBeenCalledOnce();
     expect(
