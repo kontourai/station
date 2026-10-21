@@ -1,0 +1,123 @@
+// UNWIRED(#91): not mounted or issued by production; actual caller/runtime composition remains pending.
+import { timingSafeEqual } from 'node:crypto';
+import {
+  type CurrentRuntimeRequestPrincipalSecurity,
+  getRuntimeAuthenticatedRequestPrincipal,
+  isBoundLocalGrantMintedOperator,
+  isRuntimeRequestPrincipalCurrent,
+} from '../../security/runtime-request-security.js';
+import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type CurrentLocalGrantObservationOwner,
+  ProviderCredentialObservationError,
+} from './provider-credential-observation.js';
+
+type ExistingLease = ReturnType<
+  CurrentLocalGrantObservationOwner['requireCurrentLocalGrant']
+>;
+export interface EnvironmentLocalGrantObservationOwner
+  extends CurrentLocalGrantObservationOwner {
+  requireCurrentLocalGrant(request: Request): ExistingLease &
+    Readonly<{
+      /** PRIVATE comparison witness. Never a grant, credential identity or DTO.
+       * Persist/compare it privately to detect authority-key changes on restart. */
+      privateHostContextWitness: string;
+    }>;
+}
+function refuse(): never {
+  throw new ProviderCredentialObservationError('authorization_unavailable');
+}
+function sameSignature(a: string, b: string): boolean {
+  return (
+    /^[A-Za-z0-9_-]{43}$/u.test(a) &&
+    /^[A-Za-z0-9_-]{43}$/u.test(b) &&
+    timingSafeEqual(Buffer.from(a, 'base64url'), Buffer.from(b, 'base64url'))
+  );
+}
+
+/** Captures already-existing owners only; never initializes a home or mints a
+ * credential/grant. This capability is private, bound to THIS authenticated
+ * Request, and cannot be reused for another Request with identical headers.
+ * Host signing proves current host custody only, not authorization/entitlement.
+ */
+export async function captureEnvironmentLocalGrantObservationOwner(
+  boundRequest: Request,
+  environment: EnvironmentSecurityService,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+): Promise<EnvironmentLocalGrantObservationOwner> {
+  try {
+    if (
+      !(environment instanceof EnvironmentSecurityService) ||
+      boundRequest.method !== 'POST'
+    )
+      refuse();
+    const principal = getRuntimeAuthenticatedRequestPrincipal(boundRequest);
+    if (!principal || principal.kind === 'internal') refuse();
+    const credential = principal.credential;
+    const requirePrincipal = () => {
+      if (
+        getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
+        !isBoundLocalGrantMintedOperator(boundRequest) ||
+        principal.locality !== 'home-possession' ||
+        principal.mintKind !== 'local-grant' ||
+        environment.credentialLocality(credential) !== 'home-possession' ||
+        environment.credentialMintKind(credential) !== 'local-grant' ||
+        !isRuntimeRequestPrincipalCurrent(boundRequest, security)
+      )
+        refuse();
+    };
+    requirePrincipal();
+    const before = await environment.readExistingRecord();
+    requirePrincipal();
+    const environmentId = before.environmentId;
+    const binding = JSON.stringify([
+      'station.provider-credential-observation.host-context.v1',
+      environmentId,
+    ]);
+    const witness = environment.signRevisionEvidenceAuthorityBinding(binding);
+    // The signer rechecks its own current ID but does not return that ID.
+    // A reset between the async read and first sign could otherwise sign an
+    // OLD captured ID with the NEW key and appear stable to a closure.
+    const after = await environment.readExistingRecord();
+    if (after.environmentId !== environmentId) refuse();
+    const assertCurrent = () => {
+      try {
+        requirePrincipal();
+        if (
+          !sameSignature(
+            witness,
+            environment.signRevisionEvidenceAuthorityBinding(binding),
+          )
+        )
+          refuse();
+        requirePrincipal();
+      } catch {
+        refuse();
+      }
+    };
+    assertCurrent();
+    return Object.freeze({
+      requireCurrentLocalGrant(request: Request) {
+        if (request !== boundRequest) refuse();
+        assertCurrent();
+        const lease = {
+          principalCredential: credential,
+          hostContextId: environmentId,
+          privateHostContextWitness: witness,
+          assertCurrent,
+        };
+        // Both values remain accessible to the private observation store, but
+        // accidental serialization of the lease must not disclose them.
+        Object.defineProperty(lease, 'principalCredential', {
+          enumerable: false,
+        });
+        Object.defineProperty(lease, 'privateHostContextWitness', {
+          enumerable: false,
+        });
+        return Object.freeze(lease);
+      },
+    });
+  } catch {
+    return refuse();
+  }
+}

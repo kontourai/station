@@ -1,0 +1,271 @@
+import assert from 'node:assert/strict';
+import fs, {
+  chmodSync,
+  linkSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { join } from 'node:path';
+import { test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import {
+  bindRuntimeLocalOperator,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-observation-owner.js';
+import {
+  type ObservationFailure,
+  ProviderCredentialObservationError,
+  type ProviderCredentialObservationSources,
+  ProviderCredentialObservationStore,
+} from '../provider-credential-observation.js';
+
+const makeTempDir = trackTempDirs();
+// Filesystem/durability cases only; actual-owner authorization cases live in
+// local-grant-observation-owner.test.ts. Mint stamps are owned fixture setup.
+async function setup() {
+  const home = realpathSync(makeTempDir('credential-observation-test-'));
+  chmodSync(home, 0o700);
+  const loader = new ConfigLoader({
+    projectHomeDir: home,
+    enforceHomeSchema: true,
+  });
+  await loader.ensureHomeSchema();
+  const environment = new EnvironmentSecurityService({ homeDir: home });
+  await environment.initialize();
+  const offer = environment.devicePairing.createOffer({
+    endpoint: 'http://127.0.0.1:43979',
+  });
+  const pairing = environment.devicePairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'observation-filesystem-fixture',
+    requesterPosition: 'unproven',
+  });
+  environment.devicePairing.confirmRequest(pairing.requestId, {
+    kind: 'presented-credential',
+  });
+  const paired = environment.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: pairing.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const request = new Request('http://127.0.0.1:43979/api/orchestration/chat', {
+    method: 'POST',
+  });
+  setRuntimeAuthenticatedRequestPrincipal(request, {
+    kind: 'credential',
+    authority: 'device-credential',
+    credential: paired.credential,
+    source: 'bearer',
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  bindRuntimeLocalOperator(request);
+  const authority = await captureEnvironmentLocalGrantObservationOwner(
+    request,
+    environment,
+    environment,
+  );
+  const adapter = new FileStorageAdapter(home);
+  for (const id of ['selected', 'other'])
+    await adapter.saveProviderConnection({
+      id,
+      name: id,
+      type: 'anthropic',
+      enabled: true,
+      capabilities: ['llm'],
+      config: {
+        apiKey: `synthetic-${id}-key`,
+        baseUrl: 'https://api.anthropic.com/v1',
+      },
+    });
+  const sources: ProviderCredentialObservationSources = {
+    adapter,
+    authority,
+    captureConfigurationFence: () =>
+      loader.capturePreparationConfigurationFence(['worker']),
+    // UNWIRED(#91): fixture configuration stability only, not a production runtime/projection fence.
+    captureRuntimeFence: () =>
+      loader.capturePreparationConfigurationFence(['worker']),
+  };
+  const store = new ProviderCredentialObservationStore(home, sources);
+  return {
+    home,
+    adapter,
+    request,
+    store,
+    sources,
+    reopen: () => new ProviderCredentialObservationStore(home, sources),
+    path: join(home, 'config', 'providers.json'),
+    directory: join(home, 'security', 'provider-credential-observations-v1'),
+  };
+}
+function refuses(operation: () => unknown, code?: ObservationFailure) {
+  assert.throws(
+    operation,
+    (error: unknown) =>
+      error instanceof ProviderCredentialObservationError &&
+      (code === undefined || error.code === code),
+  );
+}
+test('real adapter unrelated provider edits invalidate ALL observations; new local prepare creates a distinct observation', async () => {
+  const h = await setup();
+  {
+    const selected = h.store.capture(h.request, 'selected');
+    const other = h.store.capture(h.request, 'other');
+    const row = h.adapter.getProviderConnection('other');
+    await h.adapter.saveProviderConnection({
+      ...row,
+      config: { ...row.config, apiKey: 'changed-other-key' },
+    });
+    for (const observation of [selected, other])
+      refuses(
+        () => h.reopen().revalidate(h.request, observation.observationId),
+        'observation_obsolete',
+      );
+    const next = h.store.capture(h.request, 'selected');
+    assert.notEqual(next.observationId, selected.observationId);
+    assert.equal(
+      h.reopen().revalidate(h.request, next.observationId).observationId,
+      next.observationId,
+    );
+    const bytes = readFileSync(h.path);
+    const replacement = `${h.path}.replacement`;
+    writeFileSync(replacement, bytes, { mode: 0o600 });
+    renameSync(replacement, h.path);
+    refuses(
+      () => h.reopen().revalidate(h.request, next.observationId),
+      'observation_obsolete',
+    );
+  }
+});
+test('nofollow bounded source witness rejects symlinks, hardlinks, oversized files and a replaced private store', async () => {
+  for (const kind of [
+    'symlink',
+    'hardlink',
+    'oversized',
+    'store-symlink',
+    'unsafe-ancestor',
+  ] as const) {
+    const h = await setup();
+    if (kind === 'symlink') {
+      renameSync(h.path, `${h.path}.original`);
+      symlinkSync(`${h.path}.original`, h.path);
+    }
+    if (kind === 'hardlink') linkSync(h.path, `${h.path}.link`);
+    if (kind === 'oversized')
+      writeFileSync(h.path, ' '.repeat(2 * 1024 * 1024 + 1));
+    if (kind === 'store-symlink') {
+      mkdirSync(join(h.home, 'security'), { mode: 0o700 });
+      mkdirSync(join(h.home, 'elsewhere'), { mode: 0o700 });
+      symlinkSync(join(h.home, 'elsewhere'), h.directory);
+    }
+    if (kind === 'unsafe-ancestor') {
+      const parent = join(h.home, 'unsafe-parent');
+      mkdirSync(parent);
+      chmodSync(parent, 0o777);
+      const nested = join(parent, 'nested-home');
+      mkdirSync(nested, { mode: 0o700 });
+      mkdirSync(join(nested, 'config'), { mode: 0o700 });
+      writeFileSync(
+        join(nested, 'config', 'providers.json'),
+        readFileSync(h.path),
+        { mode: 0o600 },
+      );
+      const unsafe = new ProviderCredentialObservationStore(nested, {
+        ...h.sources,
+        adapter: new FileStorageAdapter(nested),
+      });
+      refuses(
+        () => unsafe.capture(h.request, 'selected'),
+        'unsupported_source',
+      );
+    } else refuses(() => h.store.capture(h.request, 'selected'));
+  }
+});
+test('corrupt, hardlinked or permissive private records never replay as observed credentials', async () => {
+  for (const kind of [
+    'truncated',
+    'private-key-compare',
+    'hardlink',
+    'mode',
+  ] as const) {
+    const h = await setup();
+    {
+      const observation = h.store.capture(h.request, 'selected');
+      const path = join(h.directory, `${observation.observationId}.json`);
+      if (kind === 'truncated') writeFileSync(path, '{');
+      if (kind === 'private-key-compare') {
+        const record = JSON.parse(readFileSync(path, 'utf8'));
+        record.source.staticKeySha256 = 'a'.repeat(64);
+        writeFileSync(path, JSON.stringify(record));
+      }
+      if (kind === 'hardlink') linkSync(path, `${path}.link`);
+      if (kind === 'mode') chmodSync(path, 0o644);
+      refuses(() =>
+        h.reopen().revalidate(h.request, observation.observationId),
+      );
+    }
+  }
+});
+test('directory fsync failure after publication never returns a confirmed observation; incomplete temp files do not replay', async () => {
+  const h = await setup();
+  const original = fs.fsyncSync;
+  try {
+    const confirmed = h.store.capture(h.request, 'selected'); // Private directories already exist.
+    let count = 0;
+    fs.fsyncSync = (fd: number) => {
+      count++;
+      if (count === 3) throw new Error('synthetic-directory-sync-failure');
+      original(fd);
+    };
+    syncBuiltinESMExports();
+    refuses(
+      () => h.store.capture(h.request, 'selected'),
+      'durability_unconfirmed',
+    );
+    assert.equal(count, 3);
+    fs.fsyncSync = original;
+    syncBuiltinESMExports();
+    const orphan = readdirSync(h.directory).find(
+      (name) =>
+        name.endsWith('.json') && name !== `${confirmed.observationId}.json`,
+    )!;
+    assert.ok(orphan);
+    fs.fsyncSync = () => {
+      throw new Error('synthetic-replay-sync-failure');
+    };
+    syncBuiltinESMExports();
+    refuses(
+      () => h.reopen().revalidate(h.request, orphan.slice(0, -5)),
+      'durability_unconfirmed',
+    );
+    fs.fsyncSync = original;
+    syncBuiltinESMExports();
+    assert.equal(
+      h.reopen().revalidate(h.request, orphan.slice(0, -5)).kind,
+      'credential-source-observation',
+    );
+    writeFileSync(join(h.directory, 'incomplete.tmp'), '{', { mode: 0o600 });
+    refuses(
+      () => h.reopen().revalidate(h.request, 'incomplete.tmp'),
+      'observation_unavailable',
+    );
+    assert.ok(readdirSync(h.directory).includes('incomplete.tmp'));
+  } finally {
+    fs.fsyncSync = original;
+    syncBuiltinESMExports();
+  }
+});
