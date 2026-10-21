@@ -7,8 +7,9 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Implemented locally, acceptance still open
 
-- **#88:** bounded tool cards and recent resume bindings; explicit omitted-row
-  counts; snapshot absence remains unresolved; active/terminal evidence can
+- **#88:** bounded tool cards and recent resume bindings; raw-tool omission is
+  disclosed by a flag and retained-row count, not an exact omitted count;
+  snapshot absence remains unresolved; active/terminal evidence can
   correct uncertainty; open chat aliases own presentation-history retention.
 - **#1879:** result reports retain provider-summary, child-message, or
   provider-error provenance. Older reports remain unknown. Truncated prefixes
