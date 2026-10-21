@@ -5085,3 +5085,36 @@ capabilities are not readiness or permission to launch. See the
 [API contract](api.md#ensemble-configuration-inspection). The increment at
 `21de0f40` awaits independent review, browser qualification and package publication;
 checkout exports do not establish registry availability.
+
+## Delegation group transport
+
+The local `@kontourai/station-sdk/client` exports `createDelegationGroup`,
+`getDelegationGroup`, `listDelegationGroups`, `readDelegationGroupEvents`,
+`launchDelegationGroup`, `cancelDelegationGroup`,
+`readDelegationGroupMemberEvents`, and `readDelegationGroupMemberOutput`.
+Their public data types live in `@kontourai/station-contracts/delegation-group`.
+These are transport clients: corresponding server routes are not mounted in
+this increment, paid execution is unavailable, and package publication remains
+unverified. The clients do not issue preparation, grants, budgets or acceptance.
+
+Every operation takes `apiBase` first and optional `ClientRequestOptions` last.
+Create accepts `{preparationId, operationId}`. Run/cancel accept a group ID and
+`{operationId, expectedRevision}`. Read operations use group and optional seat
+identities; list accepts `{afterGroupId}`, group events `{afterRevision}`, and
+member events `{afterSequence}`. Create/run return `{replayed, group}`; output
+returns the authorized raw JSON observation separately from group metadata.
+Requests and responses use the contract byte limits. Refusal codes propagate
+through the shared HTTP owner; mutation timeouts never imply a safe resend.
+
+`subscribeDelegationGroupEvents(apiBase, groupId, afterRevision, callbacks, options?)`
+and `subscribeDelegationGroupMemberEvents(apiBase, groupId, seatId, afterSequence, callbacks, options?)`
+return the existing `FetchSseConnection`. Supply `onPage` and optional `onError`
+and `onOpen`. Pages must match the group/seat and qualified SSE cursor identity;
+checkpoints advance after caller delivery. Reconnect uses `Last-Event-ID` with
+separate group/member cursor domains. Close the handle or abort its signal to
+stop local observation; neither action cancels execution.
+
+Owners: `packages/sdk/src/client/delegation-groups.ts` and
+`packages/sdk/src/__tests__/delegation-groups.test.ts`. Mock-transport tests cover
+request projection, authority refusal, byte bounds, page delivery, reader cleanup
+and reconnect checkpoints. They do not prove mounted routes or live providers.

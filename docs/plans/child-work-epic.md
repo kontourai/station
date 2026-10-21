@@ -148,6 +148,15 @@ execution; unavailable facts remain visible. This does not complete #453.
 
 ## Remaining qualification
 
+Local group transport now includes the shared Station contract, SDK HTTP/SSE
+clients and registered CLI commands. The provider quote/raw-usage validator has
+independently reviewed per-attempt thinking and supplied-count checks, but no
+production qualification registry or paid issuer. Binding mutations consume a
+mandatory synchronous authority finalizer at publication; combined publisher and
+binding review is pending. The group runtime/controller adapter remains an owned
+draft, with a stale member-preparation finding under repair. Server routes are
+not mounted. These increments do not establish supported group execution.
+
 - Finish independent delta review and meaningful injected/restored checks.
 - Reconcile canonical documentation and generated review evidence.
 - Verify desktop/phone, both themes, focus, hit geometry, and actual animation.

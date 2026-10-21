@@ -1176,6 +1176,36 @@ validate effective adapter option values, authenticate credentials or launch a
 session. The command and `/ensemble` contracts subpath currently exist in this
 checkout; published CLI/contracts availability requires separate release evidence.
 
+### `group`
+
+The local CLI has group transport commands. They require a serving Station with
+the corresponding group routes; this checkout has not mounted those routes or
+enabled bounded paid execution. A client command is not a capability probe or
+permission to launch. Group preparation IDs must come from a server owner.
+
+```bash
+station group get <group-id> --json
+station group list --after-group=<cursor> --json
+station group events <group-id> --after-revision=0 --follow --json
+station group member-events <group-id> <seat-id> --after-sequence=0 --follow --json
+station group member-output <group-id> <seat-id> --json
+station group create --preparation=<id> --operation=<id> --json
+station group run <group-id> --operation=<id> --revision=<expected-revision> --json
+station group cancel <group-id> --operation=<id> --revision=<expected-revision> --json
+```
+
+Use the standard Station target and credential flags. Commands print terminal-safe
+JSON. Writes require explicit operation IDs, and run/cancel require an expected
+group revision. A lost response does not authorize another operation or an
+automatic resend. Group-event revisions and member-event sequence numbers are
+different cursor domains. Follow mode uses the SDK's authenticated SSE transport;
+Ctrl-C closes local observation and does not cancel the group. A transport failure
+remains an error. Server refusal, unknown usage, completion, and Flow acceptance
+must remain distinct. Package publication and real group execution are unverified.
+
+Source: `packages/cli/src/commands/group.ts`; focused caller evidence:
+`packages/cli/src/__tests__/group.test.ts`.
+
 ### `delegate`
 
 Hand Station a Task (create) to an Agent, get back a durable Conversation identity, and headlessly supervise
