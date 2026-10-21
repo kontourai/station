@@ -907,6 +907,8 @@ export interface ConfigureRuntimeRoutesContext {
    * without one gets a route-local GitHub observer.
    */
   workItemObserver?: WorkItemObserver;
+  /** The Project board aggregate; composed here when absent. */
+  workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -3944,8 +3946,12 @@ export function configureRuntimeRoutes(
   );
   // Proposal acceptance writes the Task document before returning from POST /api/tasks.
   // Prime the same room principal before that route can consume the request.
-  if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
+  // Start Task from a work item (#4003) seeds the document the same way, and
+  // is served by the same early mount, before the later `/api/tasks/*` prime.
+  if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore) {
     context.app.use('/api/tasks', primeRoomRequestPrincipal);
+    context.app.use('/api/tasks/from-work-item', primeRoomRequestPrincipal);
+  }
   context.app.route(
     '/api/tasks',
     createTaskOutputRoutes(taskOutputs, {
@@ -3960,13 +3966,15 @@ export function configureRuntimeRoutes(
   );
   // One board aggregate for the Tasks board route and for Start Task, which
   // accepts only a ref the Project's board lists (#4003).
-  const workItemProviderService = new WorkItemProviderService(
-    [
-      new LocalWorkItemProvider(context.taskGraphService),
-      new FlowAgentsWorkItemProvider({ logger: context.logger }),
-    ],
-    context.logger,
-  );
+  const workItemProviderService =
+    context.workItemProviderService ??
+    new WorkItemProviderService(
+      [
+        new LocalWorkItemProvider(context.taskGraphService),
+        new FlowAgentsWorkItemProvider({ logger: context.logger }),
+      ],
+      context.logger,
+    );
   const workItemObserver =
     context.workItemObserver ?? new GitHubWorkItemObserver();
   context.app.route(

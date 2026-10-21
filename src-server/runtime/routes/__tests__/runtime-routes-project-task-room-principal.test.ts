@@ -160,6 +160,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     deviceScope = 'pairing-v7',
     beforeCompose?: (store: EventStore) => void,
     withEventStore = true,
+    prepareContext?: (context: object, directory: string) => void,
   ) {
     const directory = mkdtempSync(join(tmpdir(), 'station-room-principal-'));
     directories.push(directory);
@@ -255,6 +256,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     // `runtime-system-route-deps-live-config.test.ts` does — upstream growth
     // of ConfigureRuntimeRoutesContext must not force this test to stub
     // members the room wiring never reads.
+    prepareContext?.(context, directory);
     const result = await configureRuntimeRoutes(
       context as unknown as Parameters<
         typeof configureRuntimeRoutesProduction
@@ -416,6 +418,106 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
             },
           }),
         ]),
+      });
+    } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('Start Task from a work item primes the starting principal before seeding the Task document (#4003)', async () => {
+    const ref = 'github:acme/widgets#42';
+    const { app, store, roomRuntime, taskRecord, setCaller } = await setup(
+      'work-item-device',
+      undefined,
+      undefined,
+      true,
+      (context, directory) => {
+        Reflect.set(
+          Reflect.get(context, 'projectService'),
+          'getProject',
+          () => ({ workingDirectory: directory }),
+        );
+        Reflect.set(context, 'workItemProviderService', {
+          listWorkItems: async () => ({
+            providers: [
+              {
+                identity: {
+                  kind: 'flow-agents-github',
+                  id: 'flow-agents-github:acme/widgets',
+                  label: 'GitHub (acme/widgets)',
+                },
+                capabilities: {
+                  readOnly: true,
+                  supportsDispatch: false,
+                  supportsStatusWrite: false,
+                },
+                available: true,
+                items: [
+                  {
+                    id: ref,
+                    title: 'Widgets jam',
+                    status: 'ready',
+                    provider: {
+                      kind: 'flow-agents-github',
+                      id: 'flow-agents-github:acme/widgets',
+                      label: 'GitHub (acme/widgets)',
+                    },
+                    workItemRef: ref,
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+        Reflect.set(context, 'workItemObserver', {
+          observeWorkItem: async () => ({
+            status: 'observed',
+            observation: {
+              workItemRef: ref,
+              url: 'https://github.com/acme/widgets/issues/42',
+              title: 'Widgets jam',
+              state: 'open',
+              labels: [],
+              updatedAt: '2026-10-20T00:00:00Z',
+              observedAt: '2026-10-21T00:00:00.000Z',
+              body: 'The widgets jam.',
+            },
+          }),
+        });
+        const graph = Reflect.get(context, 'taskGraphService');
+        Reflect.set(graph, 'findOpenTaskForWorkItem', () => null);
+        Reflect.set(graph, 'createTaskForWorkItem', async () => ({
+          task: { ...task },
+          existing: false,
+        }));
+      },
+    );
+    setCaller({
+      credential: 'work-item-device',
+      authority: 'device-credential',
+      source: 'bearer',
+      locality: 'home-possession',
+    });
+    const request = new Request('http://station/api/tasks/from-work-item', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: taskRecord.projectId,
+        workItemRef: ref,
+      }),
+    });
+    try {
+      const response = await app.fetch(request, loopbackEnv());
+      expect(response.status, await response.clone().text()).toBe(201);
+      expect(((await response.json()) as { data: unknown }).data).toMatchObject(
+        { existing: false, briefSaved: true },
+      );
+      expect(
+        await roomRuntime.document({ taskId: taskRecord.id, request }),
+      ).toMatchObject({
+        kind: 'snapshot',
+        text: expect.stringContaining('> The widgets jam.'),
       });
     } finally {
       await roomRuntime.close();

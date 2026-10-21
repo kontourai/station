@@ -11,6 +11,17 @@ import type { WorkItemObservation } from '@kontourai/station-contracts/work-item
 
 /** How many of the item's newest comments the brief carries. */
 export const WORK_ITEM_BRIEF_COMMENTS = 3;
+/**
+ * The whole seeded brief, in UTF-16 code units. The Task room commits a new
+ * document in one batch, and on 2026-10-21 a batch of about 3,650 or more
+ * characters failed with "Room unavailable" (probed through
+ * `POST /api/tasks/:taskId/room/batches` on an isolated Station). The brief
+ * stays well under that, leaving room for the memory headings.
+ */
+export const WORK_ITEM_BRIEF_MAX_CHARS = 3000;
+/** Each comment's share of the brief. */
+const BRIEF_COMMENT_CHARS = 400;
+const BODY_CUT_MARKER = '…\n\n[Cut here: the full description is on the item.]';
 
 const quote = (text: string) =>
   text
@@ -22,28 +33,44 @@ const quote = (text: string) =>
 /** Link text is the ref; strip the characters that would end it early. */
 const linkText = (text: string) => text.replace(/[[\]\\]/g, '');
 
+/** Cut `text` to `limit` code units without splitting a surrogate pair. */
+function cut(text: string, limit: number, marker: string): string {
+  if (text.length <= limit) return text;
+  let end = Math.max(0, limit);
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${text.slice(0, end).trimEnd()}${marker}`;
+}
+
 export function workItemTaskBrief(observation: WorkItemObservation): string {
   const link = `[${linkText(observation.workItemRef)}](<${observation.url}>)`;
-  const parts = [
-    `Started from ${link}.`,
-    observation.body
-      ? quote(observation.body)
-      : '_The item has no description._',
-  ];
   const comments = (observation.comments ?? []).slice(
     -WORK_ITEM_BRIEF_COMMENTS,
   );
-  if (comments.length > 0) {
-    parts.push(
-      `Latest ${comments.length === 1 ? 'comment' : `${comments.length} comments`} on the item:`,
-      ...comments.map(
-        (comment) =>
-          `**@${linkText(comment.author)}**, ${comment.createdAt}:\n${quote(comment.excerpt || '(empty)')}`,
-      ),
-    );
+  const head = `Started from ${link}.`;
+  const tail = [
+    ...(comments.length > 0
+      ? [
+          `Latest ${comments.length === 1 ? 'comment' : `${comments.length} comments`} on the item:`,
+          ...comments.map(
+            (comment) =>
+              `**@${linkText(comment.author)}**, ${comment.createdAt}:\n${quote(cut(comment.excerpt, BRIEF_COMMENT_CHARS, '…') || '(empty)')}`,
+          ),
+        ]
+      : []),
+    `Read the whole item, with every comment, at ${link}.`,
+  ];
+  const compose = (body: string) => [head, body, ...tail].join('\n\n');
+  if (!observation.body) return compose('_The item has no description._');
+  // Quoting adds two characters a line, so cut the raw body until the quoted
+  // brief fits the budget.
+  let budget = WORK_ITEM_BRIEF_MAX_CHARS - compose('').length;
+  let brief = compose(quote(cut(observation.body, budget, BODY_CUT_MARKER)));
+  while (brief.length > WORK_ITEM_BRIEF_MAX_CHARS && budget > 0) {
+    budget -= brief.length - WORK_ITEM_BRIEF_MAX_CHARS;
+    brief = compose(quote(cut(observation.body, budget, BODY_CUT_MARKER)));
   }
-  parts.push(`Read the whole item, with every comment, at ${link}.`);
-  return parts.join('\n\n');
+  return brief;
 }
 
 /**

@@ -638,8 +638,9 @@ export function ProjectTasksSection({
                     )}
                 </div>
                 {selectedProviderItem.workItemRef ? (
-                  <div className="project-page__task-detail-actions">
+                  <div className="project-page__task-detail-actions project-page__task-detail-actions--start">
                     <Button
+                      className="project-page__start-task"
                       variant="primary"
                       pending={startFromWorkItemMutation.isPending}
                       pendingLabel="Starting…"
