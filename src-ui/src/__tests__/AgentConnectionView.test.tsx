@@ -810,6 +810,16 @@ describe('AgentConnectionView', () => {
     expect(
       within(goose).getByText('brew install block-goose-cli'),
     ).toBeTruthy();
+    // HostAction's guidance replaces the host-side affordance, so the host's
+    // own "this computer" wording is not on a paired screen.
+    expect(
+      goose.querySelector('[data-host-action="engine-install-command"]'),
+    ).not.toBeNull();
+    expect(
+      within(goose).queryByText(
+        hostActionCopy('engine-install-command', undefined),
+      ),
+    ).toBeNull();
   });
 
   test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', async () => {
