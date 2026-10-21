@@ -1,0 +1,7 @@
+{
+  "revision": "11c7acac13ad24eb73af7740c0ec969739ec0653",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Fix round: toolRequestNeedsPerson now lists both cursor/ask_question and cursor/create_plan; denyApprovals children get skipped/rejected; checked against tool-request-preview and adapter.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/tool-request-preview.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}

@@ -195,7 +195,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Plan Rendering
 
-`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A later `content.text-delta`/`content.reasoning-delta` event does not clobber a typed plan artifact with plain prose; the heuristic parser used by other providers only fills in when no typed artifact is already present.
+`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). Plain prose does not clobber a typed plan artifact, and neither does the turn completing (a plan sent mid-turn, before the answer is committed, stays on the surface). Prose that itself reads as a plan (for example a numbered list in the answer) does replace it, while streaming or when its turn completes, the same rule the heuristic parser applies to every provider; a later turn without a plan leaves the typed plan in place.
 
 ### Extension Rendering
 
@@ -203,6 +203,8 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
+
+Cursor's `cursor/update_todos` notification is not rendered as a message: the adapter folds its todo list (`merge: true` updates entries by id, `merge: false` replaces the list) into the same typed Plan surface as `plan.updated`. Station's plan has no cancelled state, so a cancelled todo is left off the plan. A malformed or oversized update (over 200 todos, or 256 KiB of JSON) leaves the plan as it was. The binding's evidence is Cursor's published ACP contract (cursor.com/docs/cli/acp), not a live observation.
 
 Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
@@ -227,6 +229,7 @@ mechanism. Station's answer is a spec-conformant refusal:
 
 | Inbound | Station's response |
 |---|---|
+| `cursor/ask_question`, `cursor/create_plan` (chat sessions only) | Answered with what a person decided; see [Cursor's blocking requests](#cursors-blocking-requests) |
 | Unrecognized extension **request** | JSON-RPC `-32601` (Method not found), plus a `warn` log naming the method and a `station.acp.inbound_extension_requests` increment |
 | Unrecognized extension **notification** | Ignored (per spec) |
 | A request naming a token or credential | `-32601`, always — see below |
@@ -241,8 +244,9 @@ extension request with an empty JSON-RPC *success*, which an agent reads as
 **No-credential-bridging invariant.** Station never answers an agent's
 token/credential request. What enforces it, most load-bearing first:
 
-1. **The allowlist is empty**, and filling it takes a reviewed code change.
-   Nothing is answerable out of the box.
+1. **The allowlist is a reviewed table** (`REVIEWED_INBOUND_EXTENSION_REQUESTS`),
+   and extending it takes a reviewed code change. Its entries are requests
+   addressed to a person, answered with that person's decision.
 2. **Each call site owns a private registry** (one per session, one per
    connection) that no other code holds a reference to, so nothing can add a
    handler at runtime. Pinned by test.
@@ -315,7 +319,39 @@ start a session under this policy; that is disclosed rather than papered
 over, and the probe and the chat path now agree — both fail, which is true.
 
 Answering any inbound extension method at all requires a reviewed registry
-entry. The registry is empty today.
+entry. The only entries are Cursor's two blocking requests, below.
+
+### Cursor's blocking requests
+
+Cursor sends `cursor/ask_question` and `cursor/create_plan` to the client and
+waits for the answer (cursor.com/docs/cli/acp). Cursor does not declare them at
+`initialize` (checked against `cursor-agent` 2026.05.01), so the reviewed
+table keys them by exact method name. Only the chat adapter registers them;
+the availability probe has no person to ask and refuses them like any other
+request. Any ACP engine may send them, so every label names the connection
+that did (its display name), never Cursor. Every answer uses Cursor's
+documented nested `outcome` shape.
+
+| Request | What the person sees | Answers |
+|---|---|---|
+| `cursor/ask_question` | The harness-question form (`station.input-request/v1`, source `harness:cursor`), one choice or multi-choice field per question | `answered` with the chosen option ids; `skipped` when declined; `cancelled` when the prompt ends, the turn is interrupted, the engine exits or the session stops |
+| `cursor/create_plan` | A plan-review form: the plan's name, overview, Markdown and todos (each phase's todos listed under the phase name) as its message, rendered as Markdown without raw HTML, and one Approve/Reject choice. When that is longer than one form message (8000 characters), the todo list becomes a count; only if the plan text alone is still too long is it cut, with a note saying how many characters were left out | `accepted` on Approve, then the todos replace the Session's plan; `rejected` on Reject or decline, with the plan left as it was; `cancelled` as above |
+
+Both forms are published under their method name, so no surface offers a
+session grant, and the approval inbox card offers no Allow/Deny decision: a
+form is answered on its own card, from the Session.
+
+A session with nobody to ask (a delegated child that may not ask a person) is
+answered at once, never left waiting: the question `skipped`, the plan
+`rejected`. A request Station cannot show (malformed, over 256 KiB of JSON,
+over 16 questions or 32 options per question, an option id that is blank or
+repeated, over 200 todos including phases) gets the same refusal outcome, a `warn` log and a
+`runtime.warning` (`acp.extension-request-unreadable`). Accepting a plan
+answers the request only: Station does not switch the engine out of plan mode
+or send a follow-up prompt, so the Approve option says "Station doesn't resume
+<engine> after approval; send a message to continue." Notifications name the
+connection: "<engine> asked a question." or "<engine> wants you to review a
+plan: <name>".
 
 **Error codes are emitted, never inferred.** Station emits `-32601` because
 the spec says so, and derives nothing from the codes it *receives*: the

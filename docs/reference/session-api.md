@@ -623,7 +623,9 @@ this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
 ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
-call or `ExitPlanMode`), which mints no Station session grant (#2933).
+call or `ExitPlanMode`), which mints no Station session grant (#2933). A
+`cursor/create_plan` plan review is a form, so `acceptForSession` is refused
+for it like any form.
 The ACP response mapper prefers the agent's `allow_once` option. If the
 agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the
