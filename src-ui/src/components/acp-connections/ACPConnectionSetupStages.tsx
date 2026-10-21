@@ -49,6 +49,7 @@ export function ACPConnectionSetupActions({
   canSubmit,
   ready,
   canRetryCheck,
+  firstContact = false,
   errorKind,
   confirmLabel,
   onCatalog,
@@ -66,6 +67,8 @@ export function ACPConnectionSetupActions({
   ready: boolean;
   /** The result failed its probe; re-running the add re-probes it. */
   canRetryCheck: boolean;
+  /** The engine's first start continues on the server after closing. */
+  firstContact?: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   confirmLabel: string;
   onCatalog: () => void;
@@ -78,6 +81,17 @@ export function ACPConnectionSetupActions({
 }) {
   return (
     <ResponsiveSurfaceActions className="acp-add-dialog__actions">
+      {stage === 'checking' && (
+        // Closing does not cancel anything: the add's request finishes, and
+        // a first start keeps running on the server while Station runs.
+        <button
+          type="button"
+          className="button button--secondary"
+          onClick={onClose}
+        >
+          {firstContact ? 'Keep checking in background' : 'Close'}
+        </button>
+      )}
       <ACPConnectionSetupEntryActions
         stage={stage}
         hasRegistryEntries={hasRegistryEntries}

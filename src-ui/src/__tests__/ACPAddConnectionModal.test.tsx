@@ -410,6 +410,39 @@ describe('ACPAddConnectionModal', () => {
       expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
     });
 
+    // The dialog is not a trap while a first start runs: it can be closed,
+    // and saying what happens next is the action's own label.
+    test('a first start can be left to finish in the background', async () => {
+      const onCancel = vi.fn();
+      renderProbing({ onCancel });
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first time'),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Keep checking in background' }),
+      );
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    test('the short check before an answer can be closed too', async () => {
+      const onCancel = vi.fn();
+      render(
+        <ACPAddConnectionModal
+          registryEntries={[kiro]}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={() => new Promise(() => {})}
+          onCancel={onCancel}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
     // Retry check after a Setup needed result: the section still holds the
     // last poll, which says `unavailable` for this id. That answer is about
     // the previous attempt and must not end the new wait.

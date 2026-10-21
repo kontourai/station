@@ -163,6 +163,7 @@ export function ACPAddConnectionModal({
         isCustom={isCustom}
         canSubmit={Boolean(state.draft.name && state.draft.command)}
         ready={readiness?.statusLabel === 'Ready'}
+        firstContact={awaitingFirstContact}
         canRetryCheck={
           readiness?.statusLabel === 'Setup needed' ||
           readiness?.statusLabel === 'Unavailable'
