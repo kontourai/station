@@ -291,6 +291,7 @@ export function CodingWorkbench({
   // ── Wide: the URL's pane is the side panel, the Terminal is the lower one.
   const terminalId = terminal?.instance.instanceId ?? null;
   const sessionKey = activeChat ?? NO_SESSION_PANELS_KEY;
+  const panelStateIdentity = JSON.stringify([scopeKey, sessionKey]);
   const { panels, update: updatePanels } = useLayoutSessionPanels(
     scopeKey,
     sessionKey,
@@ -604,7 +605,7 @@ export function CodingWorkbench({
     }
     const remembered = holds(panels.side) ? panels.side : null;
     if (appliedSession.current === null) {
-      appliedSession.current = sessionKey;
+      appliedSession.current = panelStateIdentity;
       if (sidePaneId) {
         if (sidePaneId !== panels.side) updatePanels({ side: sidePaneId });
       } else if (remembered && location.page === 'chat') {
@@ -612,8 +613,8 @@ export function CodingWorkbench({
       }
       return;
     }
-    if (appliedSession.current === sessionKey) return;
-    appliedSession.current = sessionKey;
+    if (appliedSession.current === panelStateIdentity) return;
+    appliedSession.current = panelStateIdentity;
     if (remembered !== sidePaneId) replaceSide(remembered);
   }, [
     holds,
@@ -621,7 +622,7 @@ export function CodingWorkbench({
     panels.side,
     provisional,
     replaceSide,
-    sessionKey,
+    panelStateIdentity,
     sidePaneId,
     updatePanels,
     wide,
@@ -994,11 +995,18 @@ export function CodingWorkbench({
       choiceAppliedFor.current = null;
       return;
     }
-    if (choiceAppliedFor.current === sessionKey) return;
-    choiceAppliedFor.current = sessionKey;
+    if (choiceAppliedFor.current === panelStateIdentity) return;
+    choiceAppliedFor.current = panelStateIdentity;
     if (readerChoice !== null && readerChoice !== inboxOpen)
       writeInbox(readerChoice);
-  }, [inboxOpen, provisional, readerChoice, sessionKey, wide, writeInbox]);
+  }, [
+    inboxOpen,
+    panelStateIdentity,
+    provisional,
+    readerChoice,
+    wide,
+    writeInbox,
+  ]);
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the

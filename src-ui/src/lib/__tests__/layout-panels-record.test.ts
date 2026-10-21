@@ -79,36 +79,78 @@ test('the parser drops malformed sessions and prototype names remain ordinary id
   expect(parseLayoutPanelsRecord({ version: 7, layouts: {} })).toBeNull();
 });
 
-test('bounded retention evicts the least recently touched session and layout', () => {
+test('bounded retention follows touch time rather than insertion order for sessions and layouts', () => {
   let record = DEFAULT_LAYOUT_PANELS_RECORD;
-  for (let index = 0; index <= LAYOUT_PANELS_SESSION_BOUND; index++) {
+  for (let index = 0; index < LAYOUT_PANELS_SESSION_BOUND; index++) {
     record = writeLayoutSessionPanels(
       record,
       'research',
       `session-${index}`,
       { lowerOpen: true },
-      index + 1,
+      index === 5 ? 1 : 100 + index,
     );
   }
+  record = writeLayoutSessionPanels(
+    record,
+    'research',
+    'session-0',
+    { side: 'retouched' },
+    1000,
+  );
+  record = writeLayoutSessionPanels(
+    record,
+    'research',
+    'session-32',
+    { side: 'new' },
+    1001,
+  );
   expect(Object.keys(record.layouts.research!.sessions)).toHaveLength(32);
-  expect(readLayoutSessionPanels(record, 'research', 'session-0')).toBe(
+  expect(readLayoutSessionPanels(record, 'research', 'session-5')).toBe(
     CLOSED_LAYOUT_SESSION_PANELS,
   );
-  expect(
-    readLayoutSessionPanels(record, 'research', 'session-32').lowerOpen,
-  ).toBe(true);
+  expect(readLayoutSessionPanels(record, 'research', 'session-0').side).toBe(
+    'retouched',
+  );
+  record = writeLayoutSessionPanels(
+    record,
+    'research',
+    'session-33',
+    { lowerOpen: true },
+    1002,
+  );
+  expect(readLayoutSessionPanels(record, 'research', 'session-1')).toBe(
+    CLOSED_LAYOUT_SESSION_PANELS,
+  );
+  expect(readLayoutSessionPanels(record, 'research', 'session-0').side).toBe(
+    'retouched',
+  );
+  let layouts = DEFAULT_LAYOUT_PANELS_RECORD;
   for (let index = 0; index < LAYOUT_PANELS_LAYOUT_BOUND; index++) {
-    record = writeLayoutSessionPanels(
-      record,
+    layouts = writeLayoutSessionPanels(
+      layouts,
       `layout-${index}`,
       'session',
       { side: 'notes' },
-      100 + index,
+      index === 7 ? 1 : 100 + index,
     );
   }
-  expect(Object.keys(record.layouts)).toHaveLength(32);
-  expect(Object.hasOwn(record.layouts, 'research')).toBe(false);
-  expect(readLayoutSessionPanels(record, 'layout-31', 'session').side).toBe(
-    'notes',
+  layouts = writeLayoutSessionPanels(
+    layouts,
+    'layout-0',
+    'session',
+    { side: 'retouched' },
+    1000,
+  );
+  layouts = writeLayoutSessionPanels(
+    layouts,
+    'layout-32',
+    'session',
+    { side: 'new' },
+    1001,
+  );
+  expect(Object.keys(layouts.layouts)).toHaveLength(32);
+  expect(Object.hasOwn(layouts.layouts, 'layout-7')).toBe(false);
+  expect(readLayoutSessionPanels(layouts, 'layout-0', 'session').side).toBe(
+    'retouched',
   );
 });

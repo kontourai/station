@@ -148,6 +148,7 @@ const label = (instance: WorkspacePaneInstance) =>
       : 'Diff';
 
 interface StackProps {
+  hostScope?: typeof scope;
   centerChat?: boolean;
   hostOpen?: WorkspacePaneHostOpenAction | null;
   /** Past the wide fold: panels beside and below Chat (#3040). */
@@ -162,6 +163,7 @@ interface StackProps {
 }
 
 function Stack({
+  hostScope = scope,
   centerChat = true,
   hostOpen = null,
   wide = false,
@@ -173,7 +175,7 @@ function Stack({
   const selection = useCodingStackSelection();
   const held = terminal ? [...instances, terminal] : instances;
   const location = resolveCodingStackLocation(
-    scope,
+    hostScope,
     held,
     selection.pane,
     selection.paneScope,
@@ -185,7 +187,7 @@ function Stack({
       centerChat={centerChat}
       wide={wide}
       location={location}
-      scope={scope}
+      scope={hostScope}
       instances={held}
       hostDocument={() => document}
       terminal={
@@ -1930,3 +1932,44 @@ describe('CodingWorkbench — delta review: one ⋯ per head, Escape’s reach, 
     }
   });
 });
+
+test.each([null, 'same-conversation'])(
+  'a retained workbench restores the new Layout for shared conversation %s',
+  async (conversation) => {
+    const otherScope = { ...scope, layoutId: 'layout:research' };
+    const otherKey = workspacePaneHostScopeKey(otherScope);
+    const session = conversation ?? '~';
+    navigationStore.navigate(ROUTE, { chat: conversation });
+    deviceSettingsStore.set(
+      'layoutPanels',
+      writeLayoutSessionPanels(
+        writeLayoutSessionPanels(
+          deviceSettingsStore.get('layoutPanels'),
+          scopeKey,
+          session,
+          { side: diff.instanceId, inbox: false },
+          1,
+        ),
+        otherKey,
+        session,
+        { side: files.instanceId, inbox: true },
+        2,
+      ),
+    );
+    const view = renderStack({ wide: true });
+    await act(async () => undefined);
+    expect(urlPane()).toBe(diff.instanceId);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    view.rerender(
+      <NavigationProvider>
+        <Stack hostScope={otherScope} wide />
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(urlPane()).toBe(files.instanceId);
+    expect(new URLSearchParams(window.location.search).get('paneScope')).toBe(
+      otherKey,
+    );
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  },
+);
