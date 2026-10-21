@@ -91,9 +91,9 @@ conversation or **Refresh inbox** to request fresh observations.
 
 The pending-message list above the composer also shows follow-ups Station
 holds in the open conversation's server inbox, marked **Held by Station**,
-including those submitted from another client. Its count covers waiting and
-sending messages; a message with an unknown delivery outcome stays visible
-without being counted. If the list can't be read after showing held messages,
+including those submitted from another client. Its count covers every message
+it lists, including one whose delivery outcome is unknown, and the chat's
+context card shows the same count. If the list can't be read after showing held messages,
 it says so and offers **Retry**; that does not mean nothing is held.
 **Remove** withdraws a waiting held message when your identity is allowed to do
 so; a message already being sent cannot be removed. The composer's ordinary

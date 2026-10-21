@@ -1899,7 +1899,8 @@ server read beyond the pull request links Chat details already reads.
   count, ahead/behind; opens the Active work Changed files panel), Activity
   (the inbox row's status-ladder line for this chat from
   `useOptionalObservedWorkStatus`, the Background tasks count and the
-  composer queue's pending count; opens Background tasks through the dock's
+  pending-message list's own count, from the same rule as the list
+  (`pendingMessageCount`); opens Background tasks through the dock's
   own router, so a desktop dock reveals the Agents pane), Pull requests
   (only when links exist or the read failed; opens Chat details). The footer
   presses the dock's one Chat inventory host and appears only once that host
