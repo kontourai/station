@@ -3518,6 +3518,12 @@ The current producer module rejects hosted authority and requires a readable
 answer bound to a Project in personal mode. Authentication alone does not make
 every answer an eligible assessment target.
 
+Basis reads report hosted assessments as `not-captured`, without reading the
+personal assessment store. A malformed assessment index or one larger than
+1 MiB reports `corrupt` ("Cannot be read"). Guarded filesystem read failures
+remain `unavailable` so a later read can recover. Mutation endpoints still
+refuse an unreadable index with `503`; they never replace it with an empty one.
+
 - `GET /api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target`
   returns `{ expectedAnswer, profile, revision, active }`. The producer must
   copy that exact binding and profile target into its claim; do not infer either
