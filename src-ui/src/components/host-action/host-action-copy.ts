@@ -129,7 +129,7 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     // The CLI has to land on the host's PATH; running it on a phone or a
     // laptop that only pairs with Station installs nothing Station can use.
     reach: 'host-hands',
-    host: 'Install it on this computer:',
+    host: 'Install it on this machine:',
     paired: (hostName) =>
       `Install it on ${hostName}, the computer Station runs on. Engines run there, so installing it on this device does not help.`,
   },
