@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -22,8 +23,11 @@ import {
   type AgentMetadata,
   AgentService,
 } from '../../../services/agents/agent-service.js';
+import { ProviderService } from '../../../services/connections/provider-service.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
+import { StationRuntime } from '../../bootstrap/station-runtime.js';
 import {
   RuntimeCredentialObservationUnavailable,
   type RuntimeFencedCredentialObservationInput,
@@ -603,6 +607,80 @@ test('unchanged live capture and revalidation retain the exact original timestam
     assert.deepEqual(replay, capture);
     assert.ok(Date.now() < replay.expiresAtMs);
   } finally {
+    h.cleanup();
+  }
+});
+
+test('actual StationRuntime read queue refuses an aborted queued observation and admits a later current request', async () => {
+  const h = await setup();
+  const events = new EventStore(join(h.home, 'lease-events.db'));
+  const providers = new ProviderService(h.adapter, () =>
+    h.loader.loadAppConfig(),
+  );
+  const station: StationRuntime = Object.create(StationRuntime.prototype);
+  Object.assign(station, {
+    agentConfigurationRevision: 2,
+    agentConfigurationMutationQueue: Promise.resolve(),
+    agentConfigurationPersistenceQueue: Promise.resolve(),
+    agentConfigurationMutationsClosed: false,
+    configLoader: h.loader,
+    providerService: providers,
+    orchestrationEventStore: events,
+    loadedProviderLaunchabilityRevision: providers.getLaunchabilityRevision(),
+    loadedAppConfigLaunchabilityRevision: h.loader.getLaunchabilityRevision(),
+    loadedSelectedPackageFingerprint: createHash('sha256')
+      .update('[]')
+      .digest('hex'),
+  });
+  let release!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const holding = station.commitAgentConfigurationRead(2, async () => {
+    entered();
+    await blocked;
+  });
+  let queued!: () => void;
+  const queueEntered = new Promise<void>((resolve) => {
+    queued = resolve;
+  });
+  const owner = new RuntimeFencedCredentialObservationOwner({
+    ...h.owners,
+    runtime: {
+      getAgentConfigurationRevision: () => 2,
+      commitAgentConfigurationRead(expected, operation) {
+        queued();
+        return station.commitAgentConfigurationRead(expected, operation);
+      },
+    },
+  });
+  try {
+    await started;
+    const denied = refused(() => owner.observe(h.request, h.input));
+    await queueEntered;
+    assert.equal(h.records().length, 0);
+    h.controller.abort();
+    release();
+    await holding;
+    await denied;
+    assert.equal(h.records().length, 0);
+    const current = new Request(h.request.url, { method: 'POST' });
+    setRuntimeAuthenticatedRequestPrincipal(
+      current,
+      getRuntimeAuthenticatedRequestPrincipal(h.request)!,
+    );
+    bindRuntimeLocalOperator(current);
+    const receipt = await owner.observe(current, h.input);
+    assert.equal(receipt.kind, 'credential-source-observation');
+    assert.equal(h.records().length, 1);
+  } finally {
+    release();
+    await holding;
+    events.close();
     h.cleanup();
   }
 });
