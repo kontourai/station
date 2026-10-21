@@ -190,8 +190,22 @@ reads it through the Session API's
 for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
 `ConversationAgentSchedule`, their bounds (`AGENT_WAKE_UP_MAX_HORIZON_MS`,
 `AGENT_WAKE_UP_MIN_DELAY_MS`, `AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION`,
-`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`)
-and `jobMatchesProposal`, the comparison the scheduler's approval uses.
+`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`,
+and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
+`AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW` over
+`AGENT_SCHEDULE_RATE_WINDOW_MS`), `jobMatchesProposal`, the comparison the
+scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
+transcript that a turn is a check-back Station sent (its internal origin and
+a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
+person's approval is in state `needs_approval`.
+
+`@kontourai/station-contracts/station-control-refusal` owns the refusal view
+a transcript shows for a station-control tool (`StationControlRefusalView`:
+code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
+reads it only from a station-control tool's whole result, and
+`stationControlToolName`. A history window carries it whole on
+`ToolCompletedEvent.stationControlRefusal`, read before the window cut the
+output to an excerpt; a sentence over its bound is not carried.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It

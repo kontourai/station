@@ -538,8 +538,12 @@ follow-up turn into its own conversation:
 { "minutes": 20, "note": "Check whether CI on the release branch passed." }
 ```
 
-`schedule_wake_up` sends the agent `Scheduled check-back: <note>` after
-`minutes`, in the same conversation. The conversation is the verified
+`schedule_wake_up` sends the agent one turn after `minutes`, in the same
+conversation. The turn's text is Station's own: it says the check-back is
+due and that the message is from Station, not the person, then quotes the
+agent's note. The transcript shows that turn as Station's ("Scheduled
+check-back"), not as a message the person wrote, from the turn's Station
+origin and its wake-up send key. The conversation is the verified
 caller's own: the request never names it. A body that names another
 conversation, or a `cancel_wake_up` of another conversation's check-back, is
 refused at the server guard with `station_control_out_of_scope` and reason
@@ -562,13 +566,30 @@ Bounds, each refused rather than adjusted:
 | Soonest | 1 minute ahead | `wake_up_too_soon` |
 | Latest | 24 hours ahead | `wake_up_too_far` |
 | Waiting at once, per conversation | 3 | `wake_up_limit_reached` |
+| Created per hour, per conversation, canceled ones included | 20 | `wake_up_rate_limited` |
 | Note length | 1000 characters | `wake_up_note_too_long` |
 
 The 24-hour horizon keeps a check-back about the work in hand; work that
 should repeat or run later is a scheduled job. The one-minute floor and the
 cap keep an agent that reschedules itself each time it wakes from running
-turns back to back. A caller that is not bound cannot schedule into a Session
-that runs unconfined (`host`), as for a send.
+turns back to back, and the hourly limit keeps it from scheduling and
+canceling in a loop. Settled check-backs older than an hour are pruned.
+
+A caller that is not bound, in a Session that runs unconfined (`host`), is
+not refused: the check-back is recorded `needs_approval` and the result says
+so. The person sees a card above the composer ("Check back at 4:12 PM?", with
+the agent's whole note) and approves or declines it with one click; the
+chat's Scheduled section lists it as "Needs your approval". Only a person may
+answer it, under the same gate as a job proposal: a request that may be an
+agent's is refused, and one from a person who may not send to the
+conversation reads as not found. One not approved before it is due is never
+sent (`not_approved`). Every other scope refusal stands, as for a send.
+
+When a check-back comes due, Station decides the scope rule again for the
+caller that scheduled it, against the conversation as it is then. A
+conversation that has started running unconfined since, or one the caller
+may no longer reach, gets nothing (`not_permitted`); a person's approval
+answers only the unconfined case it was given for.
 
 Check-backs are stored durably. A restart re-arms every waiting one and sends
 any that came due while Station was down, unless it is more than a day late.
@@ -608,6 +629,15 @@ job only when the body is exactly the proposed job, under the person's own
 credential, and then records the proposal approved. A request that may be an
 agent's cannot approve (`person-approval-required`). Decline records the
 proposal declined and creates nothing.
+
+Approve claims the proposal before the job is created and records it
+approved after, or gives it back if creating the job failed, so a Decline
+that races an Approve never leaves a job behind a declined proposal. A
+proposal's `agent` must be in the chat's own scope, as for a dispatch
+(`job_proposal_agent_out_of_scope`); a conversation may create at most 10
+proposals an hour (`job_proposal_rate_limited`); and a hosted Station, which
+has no scheduler to approve with, refuses proposals
+(`job_proposal_unavailable`).
 
 The refusal an agent gets from `add_job` names both tools.
 
@@ -651,6 +681,11 @@ OpenCode and other ACP engines do not get an automatic resume. An OpenCode
 plan-quota error can report a reset only as display text with no time zone
 (`provider-plan-quota.ts`), which Station shows but does not parse into a
 time, and the ACP adapter declares no same-session recovery.
+
+No budget limit offers this choice either: none that stops a conversation
+turn has a reset time Station knows. A Codex workspace credit limit does not
+lift at a window reset; a Dispatch routing budget is per run; an external
+monitor's budget holds until it is restarted.
 
 ## Delegate from chat
 

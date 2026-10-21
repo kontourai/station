@@ -1558,11 +1558,16 @@ derived from its id, so it waits for a running turn and is placed as its
 recorded sender with the conversation's existing permissions; a hand-over
 repeated after a restart is accepted once. A proposal creates nothing: the
 scheduler's `POST /scheduler/jobs`, from a person's own request naming the
-proposal with exactly its job, creates the job and records it approved.
-Hosted Stations have no inbox and so no check-backs. The
+proposal with exactly its job, claims it, creates the job and records it
+approved. A check-back from an unconfined Session's unbound caller waits for
+a person's approval (`needs_approval`), and every due check-back has the scope
+rule decided again for its recorded caller before it is handed over.
+Hosted Stations have no inbox and so no check-backs, and refuse proposals.
+[The composition](../../src-server/runtime/routes/agent-schedule-composition.ts)
+builds the person gate, the delivery and the routes' ports; the
 [authority test](../../src-server/security/__tests__/agent-schedule-authority.routes.test.ts)
-drives both through the real boundary, guard and routes per credential
-channel.
+drives that composition through the real boundary, guard and routes per
+credential channel, with a real thread inbox.
 
 ## SessionDigest
 
