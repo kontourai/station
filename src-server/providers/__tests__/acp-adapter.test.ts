@@ -27,6 +27,7 @@ import {
   builtinStationControlServerPath,
   builtinStationDocsServerPath,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 
 // The genuine built-in station-control server as it appears in a resolved
@@ -314,7 +315,7 @@ describe('AcpAdapter', () => {
       connectionId: 'kiro',
     });
     expect(selected).not.toHaveLength(0);
-    expect(selected.every((item) => item.status === 'installed')).toBe(true);
+    expect(requiredMissingPrerequisites(selected)).toEqual([]);
     expect(selected.every((item) => item.name.includes('OpenCode'))).toBe(true);
 
     const aggregate = await adapter.getPrerequisites();
@@ -323,6 +324,28 @@ describe('AcpAdapter', () => {
         (item) => item.name.includes('Cursor') && item.status !== 'installed',
       ),
     ).toBe(true);
+  });
+
+  // #1940: `node --version` exits 0, which is all the old auth check read, so
+  // every installed engine claimed its credentials were present. Nothing a
+  // generic engine exposes proves sign-in; the row must say so and not gate.
+  test('#1940: an installed engine reports sign-in as unverified, never signed in, and does not block', async () => {
+    const { adapter } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', name: 'OpenCode', command: 'node' }],
+    });
+
+    const prerequisites = await adapter.getPrerequisites({
+      connectionId: 'kiro',
+    });
+
+    expect(prerequisites).toContainEqual(
+      expect.objectContaining({ id: 'node-cli', status: 'installed' }),
+    );
+    const auth = prerequisites.find((item) => item.id === 'node-auth');
+    expect(auth).toMatchObject({ status: 'error', category: 'optional' });
+    expect(auth?.description).toContain('does not check whether OpenCode');
+    expect(auth?.description).not.toMatch(/credentials are present/i);
+    expect(requiredMissingPrerequisites(prerequisites)).toEqual([]);
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {

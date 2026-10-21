@@ -2540,9 +2540,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
-          authArgs: ['--version'],
+          // #1940: no generic engine command proves sign-in (a `--version`
+          // exit 0 used to read as signed in), and a handshake does not
+          // either: some engines refuse only at the first prompt.
+          // `detectAuthState` is where a per-engine sign-in check plugs in.
+          detectAuthState: async () => 'unknown',
+          unverifiedAuthDescription: `Station does not check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in with ${config.name} itself.`,
           installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
-          authStep: `Verify ${config.name} is configured and reachable via \`${config.command}\`.`,
+          authStep: `Sign in with ${config.name} itself if it asks you to.`,
         }),
       ),
     );

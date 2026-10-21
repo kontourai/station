@@ -561,6 +561,16 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 A connection surfaces as an External agent with the same clean ID once its probe has handshaked at least once. Adding or installing a connection saves its config first and registers the engine and its Agent only when that probe succeeds; a failed first add keeps the config, answers with the probe's `status` and `lastError`, and stays out of `GET /api/acp/connections`. Repeat the same add (the setup dialog's **Retry check**) after fixing the cause: it re-probes and registers on success. Once registered, probe state changes availability, never Agent existence. If a connection that has handshaked is missing, inspect `config/agent-registry.json` and the connection lifecycle error.
 
+### Sign-in shows as not checked
+
+Station has no sign-in check for a command-backed engine, so its login
+prerequisite reports that sign-in is not checked. That row is optional and
+never blocks a chat. A successful probe proves the engine started a session,
+not that it is signed in: some engines refuse only at the first prompt. The
+check plugs in through `buildCliRuntimePrerequisites`' `detectAuthState`
+(`src-server/providers/auth/cli-auth.ts`), which the engine adapter supplies
+(`src-server/providers/adapters/acp-adapter.ts`).
+
 ### A previous ACP session cannot be restored
 
 Fresh starts use `newSession`; restoration uses the persisted ACP session ID
