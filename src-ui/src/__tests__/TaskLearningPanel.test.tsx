@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/020-task-memory';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../../src-server/domain/migrations/021-task-learning-dismissals';
+import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../../src-server/domain/migrations/022-task-learning-promotions';
 import { KnowledgeStoreProvider } from '../../../src-server/knowledge-store/knowledge-store-provider';
 import { createTaskLearningRoutes } from '../../../src-server/routes/orchestration/task-learning';
 import { createSqliteTaskMemoryStore } from '../../../src-server/services/orchestration/task-memory-store';
@@ -80,6 +81,8 @@ beforeEach(() => {
   db = new DatabaseSync(':memory:');
   db.exec(TASK_MEMORY_MIGRATION);
   db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
+  // As EventStore's constructor: the promotion row (migration 022).
+  db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
   const memory = createSqliteTaskMemoryStore(db);
   const write = {
     projectId: TASK.projectId,
