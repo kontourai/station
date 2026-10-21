@@ -30,18 +30,16 @@ work. Source containment is not final runtime/native/provider acceptance.
 
 ## #91 and folded work
 
-Flow Agents #1113 was refreshed through GitHub on 2026-10-21 and remains open.
-Installed `@kontourai/flow-agents` 6.5.1 publicly exports
-`DelegationEnvelope` validators and `orchestrateFlowMultiCursor`. The latter
-dispatches Flow-ready work under durable claims; it is not a delegation-group
-envelope, group-budget service, or Station group API.
+Flow Agents 9.3.0 is published. Upstream PRs #1535 and #1536 merged, and the
+release artifact identifies `ab2b320aeec4bf1ec98e1ff4ae456877863bd5b7`.
+Station's four workspace pins and managed lockfile now select 9.3.0. The existing
+installed tree remains at 6.5.1; recovery of a failed managed installer receipt
+awaits authorization. Published artifact integrity and export checks do not
+establish managed installation or Station runtime acceptance.
 
-Brian authorized including upstream Flow Agents work. Its ongoing branch is
-also `feat/child-work-epic-20261021`, in its own repository, based on
-`350afa66ce1837c40468d7f4fc6c60ef31207f5f` (published 9.2.0). That source is
-owned upstream; Station must consume a subsequent published contract rather
-than import sibling internals. The upstream prerequisite and the single
-Station epic PR have separate release and acceptance evidence.
+Brian authorized the upstream Flow Agents work. Station consumes the published
+contract rather than sibling internals. The upstream release and the single
+Station epic PR have separate acceptance evidence.
 
 Before implementing group execution, bind the published authority and
 persistence contracts for create/get/list/events/cancel, ready seats, aggregate
@@ -70,11 +68,13 @@ review passed bounded caller probes. Source-launcher and local bundled-command i
 on exact bytes/hash and roster at `a9acb0625863aa83674fafc023e3e39c5b6ca843`. Published CLI/contracts
 availability remains open; this does not complete #600.
 
-The upstream feature branch now has source entry points for v2 authority/grants, ancestor
-allocations and invocation holds, a durable group controller, Flow-owned scheduling, mailbox
-admission and bounded no-tools context acknowledgement. These are unpublished source APIs.
-Local controlled-runtime and filesystem evidence does not establish production host fencing,
-provider metering, isolated writers or Station adoption. Flow itself stays at the lifecycle
+Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
+invocation holds, a durable group controller, Flow-owned scheduling, mailbox
+admission and bounded no-tools context acknowledgement. Station now composes the
+public controller with its host-fenced persistence owner. Diagnostic probes
+against the verified artifact exercise metadata operations and staged-write
+revocation; managed tests and serving composition remain unverified. These
+checks do not establish provider metering or supported group execution. Flow itself stays at the lifecycle
 coordinator's canonical 5.2.0 pin; Dispatch/Relay 0.7.1 supply physical reservation APIs.
 
 Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
@@ -122,7 +122,7 @@ integration seam, but input bounds, final wire output/thinking limits, worst-cas
 actual usage and cancellation reconciliation still require executable enforcement. An unsupported
 member must refuse before launch; that refusal does not complete group or Ensemble acceptance.
 
-After the upstream APIs are published, compose their durable controller with Station-owned
+Complete serving composition of the published durable controller with Station-owned
 membership/event joins and full API/SDK/CLI callers. Bind Ensemble identities and roster-aware
 briefs to the resulting sessions. Derive the read-only topology and accessible list from the same
 prepared/live records, including authored/default/runtime provenance and missing dependencies.
@@ -149,14 +149,22 @@ execution; unavailable facts remain visible. This does not complete #453.
 
 ## Remaining qualification
 
-Local group transport now includes the shared Station contract, SDK HTTP/SSE
-clients and registered CLI commands. The provider quote/raw-usage validator has
+Local group transport includes the shared Station contract, SDK HTTP/SSE
+clients and registered CLI commands. Independent reviews closed the original
+nine transport findings, retained event-identity reuse, and the additional
+UTF-8 identity-history byte bound. The provider quote/raw-usage validator has
 independently reviewed per-attempt thinking and supplied-count checks, but no
-production qualification registry or paid issuer. Binding mutations consume a
-mandatory synchronous authority finalizer at publication; combined publisher and
-binding review is pending. The group runtime/controller adapter remains an owned
-draft, with a stale member-preparation finding under repair. Server routes are
-not mounted. These increments do not establish supported group execution.
+production qualification registry or paid issuer. Binding and shared-publisher
+mutations consume mandatory synchronous authority finalizers; the invalid-async
+finalizer rejection repair passed independent subprocess and filesystem checks.
+
+At `fedcf0ee664e47508dd7b27b53742dce0e64c539`, the runtime composes public Flow
+controllers with Station persistence and captures preparation through mutation
+and disclosure waits. Independent review of that composition is in progress.
+Routes remain unmounted. Current host preparation, physical reservations and
+launch fencing, raw response settlement, context ACKs and supported execution
+still require integration and acceptance evidence. Isolated drafts and safe
+refusals do not establish supported group execution.
 
 - Finish independent delta review and meaningful injected/restored checks.
 - Reconcile canonical documentation and generated review evidence.
