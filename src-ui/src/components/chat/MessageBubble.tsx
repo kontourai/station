@@ -1033,7 +1033,7 @@ function MessageBubbleComponent({
           }
         >
           {endedEmpty ? (
-            <p className="message__empty-turn">{endedEmpty}</p>
+            <p className="message__turn-outcome">{endedEmpty}</p>
           ) : null}
           <MessageContent
             contentParts={

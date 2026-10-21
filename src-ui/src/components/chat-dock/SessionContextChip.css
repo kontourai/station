@@ -64,12 +64,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .session-context-chip,
-  .session-context-chip--exiting {
-    animation: none;
-  }
-}
 
 .session-context-chip:hover,
 .session-context-chip[aria-expanded="true"] {

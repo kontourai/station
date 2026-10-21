@@ -1092,7 +1092,7 @@
 /* A steer that stopped the running step says so inside its own bubble, on
    the bubble's accent background. */
 /* A turn that ended with nothing to show: its row's one line. */
-.message__empty-turn {
+.message__turn-outcome {
   margin: 0;
   color: var(--k-text-muted);
   font-size: var(--text-xs);

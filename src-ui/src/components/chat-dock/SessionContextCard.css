@@ -61,12 +61,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .session-context-card:not(.session-context-card--sheet),
-  .session-context-card--exiting:not(.session-context-card--sheet) {
-    animation: none;
-  }
-}
 
 .session-context-card--sheet {
   width: auto;
