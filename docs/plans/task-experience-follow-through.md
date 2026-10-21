@@ -1,6 +1,6 @@
 # Task experience follow-through
 
-Status: active implementation on one continuing branch,
+Status: local cache and reload-recovery implementation is complete on one continuing branch,
 `feat/task-epic-follow-through`. Open one pull request after the owned work is
 complete. The branch starts from published consolidation revision
 `d96f54887837be058c5e5119b8028daab0befea1`; it does not reopen the frozen
@@ -36,8 +36,12 @@ reload to this branch. The local implementation uses a bounded per-tab journal,
 explicit Restore, current recipient/authority checks and exact agent-operation
 or message-proposal replay. Missing receipts remain unknown. Focused tests and
 an isolated paired-browser journey cover reload, lost acknowledgement,
-Cancel/Discard and refusal boundaries; mutation and final review evidence remain
-required. The master-owned original draft/IME/lifecycle and Basis geometry
+Cancel/Discard and refusal boundaries. Four mutation controls failed as intended,
+and restoring the committed source passed 49 focused tests. UI/E2E typechecks
+and both real-browser journeys passed. The existing Basis owner completed a
+bounded report-only source review of `3d354c4e71e..2e95157e847` with PASS and no
+additional actionable findings. That review supersedes the earlier stale-view
+finding at `60cd`; it did not independently execute the reported tests. The master-owned original draft/IME/lifecycle and Basis geometry
 acceptance is unchanged by this scoped addition.
 
 ## Completion evidence
@@ -54,3 +58,18 @@ opt-out, unmapped statuses, exact-item drift, provider failure, durable result
 records and uncertain restart without replay. Real tracker writes and
 close-on-merge require their own authorized observed evidence. Keep one PR
 until these owned obligations are complete or explicitly dispositioned.
+
+## Delivery holds
+
+- The consolidation PR is not landed. Merge actual final `main` normally into
+  this branch after that landing, resolve any real conflicts, and verify the
+  combined change before opening the one PR.
+- Standard readiness against main retains inherited documentation-truth failure.
+  The branch's own documentation freshness against its actual starting revision
+  passes; that scoped result does not replace the standard gate.
+- Tracker sync remains an upstream API dependency. The local recovery and cache
+  changes do not complete or close #3703.
+
+There is no additional unowned Task feature implementation identified in this
+lane's inventory. Original Task-room acceptance remains with the master owner;
+source readiness here is not delivery or qualification of that epic.
