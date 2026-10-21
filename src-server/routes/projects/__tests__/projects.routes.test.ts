@@ -1772,7 +1772,9 @@ describe('Project Routes', () => {
     );
     expect(
       acceptedBody.data.descriptors.map((descriptor: any) => descriptor.id),
-    ).toEqual(expect.arrayContaining(FIXED_PROJECT_PANE_DESCRIPTOR_IDS));
+    ).toEqual(
+      expect.arrayContaining(FIXED_PROJECT_PANE_DESCRIPTOR_IDS_DECLARED),
+    );
     expectProjectEvidencePaneInstances(acceptedBody.data.instances, 'test');
 
     const rejected = await appAtDepth(33).request('/test/panes');
