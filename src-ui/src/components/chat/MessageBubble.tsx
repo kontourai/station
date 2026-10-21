@@ -10,6 +10,7 @@ import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
+import type { PermissionPosture } from '../../utils/sessionDisplay';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -88,6 +89,8 @@ const loadShareAnswerButton = () =>
  */
 export interface MessageBubbleSession {
   id: string;
+  permissionPosture?: PermissionPosture | null;
+  permissionPostureThreadId?: string;
   agentSlug: string;
   /**
    * archive#1424: the session's own threaded
@@ -631,6 +634,12 @@ function MessageBubbleComponent({
           agent={attributionAgentName ? { name: attributionAgentName } : null}
           engine={engine}
           owner={owner}
+          permissionPosture={
+            answerSessionId &&
+            answerSessionId === activeSession.permissionPostureThreadId
+              ? activeSession.permissionPosture
+              : null
+          }
         />
       )}
 

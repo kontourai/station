@@ -11,6 +11,7 @@ import { retryActivityLabel } from '../../utils/chat-activity';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import type { PermissionPosture } from '../../utils/sessionDisplay';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
@@ -82,6 +83,7 @@ export type StreamingMessageProps = {
    * is suppressed on this row too, not just the persisted one.
    */
   attributionAgent?: { name: string } | null;
+  permissionPosture?: PermissionPosture | null;
   owner?: OwnerAttribution | null;
   /** Lets the owning scroll surface follow streaming text-height growth. */
   onContentChange?: () => void;
@@ -126,6 +128,7 @@ function StreamingMessageWithApps({
   hideProgressSilence,
   statusLabel,
   attributionAgent,
+  permissionPosture,
   owner,
   onContentChange,
   streamingText,
@@ -213,6 +216,7 @@ function StreamingMessageWithApps({
             agent={attributionAgent ?? null}
             engine={null}
             owner={owner}
+            permissionPosture={permissionPosture}
           />
         )}
 

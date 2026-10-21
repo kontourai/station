@@ -1451,6 +1451,7 @@ export function ChatDockBody({
           pending={CHAT_MESSAGE_LIST_PENDING}
           componentProps={{
             activeSession: renderedSession,
+            orchestrationSession: activeOrchestrationSession,
             suppressStreamingRow: transcript.openTurnProjected,
             fontSize: chatFontSize,
             layoutHeight: dockHeight,

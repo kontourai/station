@@ -840,7 +840,11 @@ context unless the chat reopened. Open execution aliases own the cache;
 replaced aliases retire history without cancelling live work. Reconnects do
 not restore terminal history for closed scopes, and closing does not clear
 an omitted-tool disclosure while the turn may still be active. Snapshot absence means **No result**, never
-proof of a requested stop. A later terminal event can correct that uncertainty.
+proof of a requested stop. Delegated-session assistant rows use the shared
+posture badge only when their execution matches the recorded session:
+“Delegated worker” for an isolated-child record, otherwise “Delegated task”.
+This is delegation metadata, not a read-only or sandbox guarantee; read-only
+attachments retain “Read only”. Older execution rows receive no inferred badge. A later terminal event can correct that uncertainty.
 
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
 renders child work — engine subagents and Station delegates — from the
