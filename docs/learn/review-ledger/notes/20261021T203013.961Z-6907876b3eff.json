@@ -1,0 +1,7 @@
+{
+  "revision": "6c9f9994d955bd9a70615d78471953fad154905f",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"L5 merge with #3991: re-read against the merged acp-adapter.ts and engine-capability-matrix.ts. The guide's ACP claims (generic connected-engine protocol cannot deliver per-tool selection; explicit overrides refuse undeliverable profile capabilities) are unchanged by L5's steer selection, declared-handshake facts or models/set_model dialect; no prose change.","inputs":["docs/guides/agent-configuration.md","packages/cli/src/commands/profile-store.ts","scripts/examples-conformance.mjs","src-server/domain/config-loader-agents.ts","src-server/routes/system/system-status-routes.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/agents/skill-service.ts","src-server/services/approvals/approval-guardian.ts","src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

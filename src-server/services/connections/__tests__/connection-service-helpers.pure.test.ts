@@ -133,6 +133,7 @@ describe('acpRuntimeCatalogStatus (#3054)', () => {
       configOptions: [
         { category: 'mode', currentValue: 'plan', options: [] },
         {
+          id: 'model',
           category: 'model',
           currentValue: 'opencode/big-pickle',
           options: [
@@ -170,7 +171,11 @@ describe('acpRuntimeCatalogStatus (#3054)', () => {
       id: 'kiro',
       handshakeObservedAt: '2026-08-17T12:26:10.514Z',
       configOptions: [
-        { category: 'model', options: ['model-a', '', { name: 'nameless' }] },
+        {
+          id: 'model',
+          category: 'model',
+          options: ['model-a', '', { name: 'nameless' }],
+        },
       ],
     } as never);
     expect(status.source).toBe('live');

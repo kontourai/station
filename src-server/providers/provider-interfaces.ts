@@ -183,7 +183,12 @@ export interface NotificationStatusUpdate {
 export interface IACPConnectionRegistryProvider {
   readonly id?: string;
   readonly displayName?: string;
-  listAvailable(): ACPConnectionRegistryEntry[];
+  /**
+   * `detect: false` asks for the descriptors only; a provider may skip its
+   * host lookup and leave `detected` unset. Providers that ignore the option
+   * stay correct, only slower.
+   */
+  listAvailable(options?: { detect?: boolean }): ACPConnectionRegistryEntry[];
 }
 
 export interface IProviderAdapterRegistry {

@@ -60,6 +60,8 @@ export interface ProbeSessionResponse {
     currentModeId?: string;
   } | null;
   configOptions?: any[] | null;
+  /** #352: the session's model list, when the agent uses that dialect. */
+  models?: unknown;
 }
 
 export type ProbeSessionOrigin = 'created' | 'resumed' | 'loaded';

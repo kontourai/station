@@ -124,6 +124,8 @@ A reattached session can answer from its own stored state rather than the agent'
 
 Stored sessions now grow by a few a day per connection instead of one per probe. Reattaching still writes to the agent's store: Grok appends about 670 bytes to the session's update log per resume, roughly 160 KB a day per connection, compared with about 30 MB a day before. An agent that advertises none of these methods still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used, because it frees runtime resources and does not remove the stored session. Station does not delete sessions that leaked before this change; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
+Each successful probe also records what the engine declared about itself at `initialize`: its protocol version, `agentInfo` (name, title and version, when sent), the core session methods named under `sessionCapabilities` (`list`, `resume`, `close`, `fork`, `delete`), its `authMethods` reduced to `id`, `name`, `description` and `type` (a terminal method's `args`, `env` and any `_meta` are not served), and any extension methods listed under an `agentCapabilities._meta.<namespace>.extensionMethods` list (ADR 0013). These are bounded (`ACP_DECLARED_FACT_BOUNDS`: 256 characters per identifier or label, 1024 per description, at most 32 sign-in methods, 256 extension methods and 1024 listed models). A fact beyond a bound is refused whole, never shortened: it is left out, named in `declaredHandshake.refused`, and logged as a warning; the probe itself still succeeds. A `models` list beyond its bound is named `models` in `refused`, offers no catalog, and a start that requests a model from it is refused. These appear as `declaredHandshake` on the connection status and as `capabilityInventory.declaredHandshake`, dated by the handshake. They are the engine's own claims, never proof that a surface works, and are not written into the capability matrix. The inventory's `displayName` is the connection's configured name and its `version` is the declared `agentInfo.version`.
+
 | Status | Meaning |
 |---|---|
 | `available` | Last probe succeeded — command found, handshake completed |
@@ -171,7 +173,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -513,6 +515,51 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
+### Catalogue descriptors
+
+`GET /acp/registry` lists the catalogue engines from every
+`acpConnectionRegistry` provider: the built-in list in
+[builtin-acp-engines.ts](../../src-server/providers/llm/builtin-acp-engines.ts)
+and any a plugin contributes. Besides the launch fields above, an entry
+(`ACPConnectionRegistryEntry` in
+[the ACP contract](../../packages/contracts/src/acp.ts)) may carry:
+
+| Field | Description |
+|---|---|
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`). The environment Station already launches with wins a conflict. |
+| `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
+| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Data only, not yet applied: nothing runs or reads these yet. |
+| `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+
+`validateACPEngineDescriptor` checks these fields and the entry's `name`,
+`description` and `sourceName`. An entry that fails is left out of the
+catalogue and logged rather than shown with some fields dropped: an unknown
+platform, a URL that is not https, an over-long value, text with
+control characters, line breaks or bidi override marks, a `launchEnv` name
+without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
+proxy variable is refused), or one that looks like a credential (a `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
+lists as a credential variable). A plugin entry is also refused when it
+carries `launchEnv`, reuses a built-in entry's id, or has a name that reads as
+a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
+Greek look-alikes), and every entry from a plugin provider registered as
+"Station", "Kontour" or a built-in engine's name is refused; the built-in card
+stays.
+A plugin entry's `sourceName` is always the identity its provider registered
+under, whatever the entry says, and its install recipe is shown with
+"Provided by" and that name.
+
+`POST /acp/registry/recheck` re-reads the login-shell `PATH`, then answers
+like `GET /acp/registry`, so an engine whose installer added its own bin
+directory to the shell rc after Station started can be found. Because it runs
+the host user's shell it needs `orchestration:operate`, while the `GET` never
+re-reads anything. The re-read is bounded by the login-shell timeout, runs at
+most once every 10 seconds, is shared by every request that arrives while one
+is running (including during the startup capture), and a failed re-read keeps
+the `PATH` Station already had. **Check again** uses it; a device without that
+scope is told so and still gets the plain list.
+
 ### Runtime API
 
 Connections are managed at runtime via the REST API — unchanged by this cutover, since it only manages connection lifecycle, not chat turns:
@@ -524,6 +571,8 @@ PUT    /acp/connections/:id            Update connection configuration and its p
 DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
+GET    /acp/registry                   List catalogue engines, with host detection and install recipe
+POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
@@ -609,6 +658,20 @@ initialization with `station acp connections reconnect <connection-id>` after
 addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
+
+An engine offers models in one of two ways (#352). Most send a `session/new`
+config option of category `model` and switch with `session/set_config_option`;
+Station reads the applied value back and refuses a mismatch. Some, such as
+earlier Grok releases, send no model option and instead a `models` list
+(`availableModels`, `currentModelId`) switched with `session/set_model`, a
+method the pinned ACP SDK no longer declares. Station uses the config option
+(category `model` with a non-empty `id`) when one exists, and the `models` list
+otherwise, by one rule (`acpAdvertisedModelCatalog`) for the connection's
+`advertisedModels` and `currentModel`, the model picker's catalog, and a session
+start. The current model falls back to the list's `currentModelId` when the
+option reports none. `session/set_model` answers with no current
+value, so for that dialect the engine's success answer is the only confirmation
+Station gets. Either way the model is chosen at session start only.
 
 A new session on a model the engine's fresh `session/new` options did not offer
 is refused by the adapter with the `model_not_advertised` code

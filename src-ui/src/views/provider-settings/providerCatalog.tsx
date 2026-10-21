@@ -245,6 +245,8 @@ export type ProviderReadiness =
   /** An ambient credential chain, configured outside Station entirely. */
   | 'Credentials required'
   | 'Found, not connected'
+  /** A catalogue engine whose command was not found on the host. */
+  | 'Not installed'
   /**
    * The endpoint answered but exposes no usable model catalogue. Reachability
    * is proven; chat is not. Never Ready, never a refusal.
@@ -311,7 +313,11 @@ type ProviderCatalogInput =
     })
   | (ProviderCatalogInputBase & {
       setup: null;
-      discovery?: 'detected-unconfigured';
+      /**
+       * `not-installed`: a catalogue entry whose command the host lookup did
+       * not find. Only a lookup that ran may say so.
+       */
+      discovery?: 'detected-unconfigured' | 'not-installed';
     });
 
 interface ProviderPresentation {
@@ -562,6 +568,16 @@ export function resolveProviderPresentation(
       tone: 'warn',
       detail: 'Found on the computer Station runs on — not yet connected.',
       actionLabel: 'Connect',
+    };
+  }
+
+  if (input.setup === null && input.discovery === 'not-installed') {
+    return {
+      brand,
+      readiness: 'Not installed',
+      tone: 'warn',
+      detail: input.description ?? 'Not found on the computer Station runs on.',
+      actionLabel: 'Set up',
     };
   }
 

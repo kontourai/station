@@ -291,6 +291,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         },
         capabilityInventory: buildACPCapabilityInventory({
           connection: liveStatus,
+          displayName: config.name || config.id,
           configuredCount: 1,
           connectedCount: liveStatus ? 1 : 0,
           enabled,

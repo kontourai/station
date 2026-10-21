@@ -1,0 +1,7 @@
+{
+  "revision": "b3ed2af5aa4c7c9766aa0f3b5c2348d48c498958",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Re-checked steer section after acp-steer.ts made its undeclared-engine table module-local; no claim depends on the export.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/acp-steer.ts"]}
+  ]
+}

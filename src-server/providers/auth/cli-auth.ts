@@ -154,11 +154,12 @@ export async function resolveLoginShellPath(): Promise<string> {
   }
 }
 
-// Resolved at most once per process lifetime -- this is what makes an
-// otherwise-expensive spawn-a-login-shell operation safe to call from a
-// hot path like findCliBinary.
+// Resolved once per process lifetime on the hot path -- this is what makes an
+// otherwise-expensive spawn-a-login-shell operation safe to call from
+// findCliBinary. Only an explicit `recaptureLoginShellPath` refreshes it.
 let cachedLoginPathPromise: Promise<string> | null = null;
 let cachedLoginPathValue: string | null = null;
+let lastLoginPathCaptureAt = 0;
 
 function ensureLoginPathResolutionStarted(): Promise<string> {
   if (cachedLoginPathValue !== null) {
@@ -171,10 +172,45 @@ function ensureLoginPathResolutionStarted(): Promise<string> {
   if (!cachedLoginPathPromise) {
     cachedLoginPathPromise = resolveLoginShellPath().then((resolved) => {
       cachedLoginPathValue = resolved;
+      lastLoginPathCaptureAt = Date.now();
       return resolved;
     });
   }
   return cachedLoginPathPromise;
+}
+
+// The fewest milliseconds between two login-shell captures. An explicit
+// re-check ("Check again" after installing an engine) can ask for a fresh
+// capture, but each one runs the user's shell rc files, so a burst of
+// requests shares one capture instead of spawning a shell per click.
+const LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS = 10_000;
+let recapturePromise: Promise<void> | null = null;
+
+// Re-runs the login-shell PATH capture so a directory an installer added to
+// the shell rc after Station started (e.g. ~/.opencode/bin) becomes
+// searchable. Bounded by the capture's own timeout, rate-limited, joined while
+// one is in flight, and never throws. A capture that fails or comes back empty
+// keeps the PATH already held rather than dropping its directories.
+//
+// `now` is a test seam for the clock the rate limit compares against; it
+// defaults to the time after any startup capture has settled.
+export function recaptureLoginShellPath(now?: number): Promise<void> {
+  if (isWindows() || isLoginPathResolveDisabled()) return Promise.resolve();
+  // Claimed synchronously, before any await, so every caller that arrives
+  // while one is pending (including during the startup capture) joins it.
+  if (recapturePromise) return recapturePromise;
+  recapturePromise = (async () => {
+    await ensureLoginPathResolutionStarted();
+    const at = now ?? Date.now();
+    if (at - lastLoginPathCaptureAt < LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS)
+      return;
+    const resolved = await resolveLoginShellPath();
+    lastLoginPathCaptureAt = Math.max(at, Date.now());
+    if (resolved) cachedLoginPathValue = resolved;
+  })().finally(() => {
+    recapturePromise = null;
+  });
+  return recapturePromise;
 }
 
 // The combined search-PATH directories: process.env.PATH first (so a

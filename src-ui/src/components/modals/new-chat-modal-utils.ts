@@ -421,7 +421,7 @@ export function resolveNewChatDefaultSelection({
     runtimeCurrentMode: acpConnection?.configOptions?.find(
       (option) => option.category === 'mode',
     )?.currentValue,
-    advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
+    advertisedModels: acpAdvertisedModels(acpConnection),
     projectDefaultModel: newChatProjectDefaultModel(agent, projectDefaultModel),
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });

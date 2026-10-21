@@ -14,6 +14,7 @@ export {
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPConnectionRegistryRecheck,
   type ACPRegistryInstallAgentReceipt,
   type AcpSlashCommandDescriptor,
   connectAndMaterializeACPRegistryEngine,
@@ -24,6 +25,7 @@ export {
   fetchACPConnectionRegistry,
   fetchACPConnections,
   installACPConnectionRegistryEntry,
+  recheckACPConnectionRegistry,
   reconnectACPConnection,
   updateACPConnection,
   useACPConnectionRegistryQuery,

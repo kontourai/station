@@ -57,66 +57,78 @@ describe('resolveProviderManagedAgentConnectionId', () => {
 });
 
 describe('acpCatalogModelOptions (#3028)', () => {
+  // The server picks the catalog (model config option, else the #352
+  // `models` list; acp-handshake-facts.test.ts pins that rule) and serves it
+  // as `advertisedModels`. The picker offers exactly that list.
   const connections = [
     {
+      id: 'opencode',
+      currentModel: 'opencode/big-pickle',
+      configOptions: [
+        {
+          category: 'model',
+          currentValue: 'opencode/big-pickle',
+          options: [{ value: 'not-served', name: 'Not served' }],
+        },
+      ],
+      advertisedModels: [
+        { id: 'zai-coding-plan/glm-4.7', name: 'Z.AI Coding Plan/GLM-4.7' },
+        { id: 'zai-coding-plan/glm-5.2', name: 'Z.AI Coding Plan/GLM-5.2' },
+      ],
+    },
+    { id: 'kiro', currentModel: null, advertisedModels: [] },
+  ];
+
+  test('the served catalog is the selectable list, not a re-read of config options', () => {
+    expect(acpCatalogModelOptions(connections, 'opencode')).toEqual([
+      { id: 'zai-coding-plan/glm-4.7', name: 'Z.AI Coding Plan/GLM-4.7' },
+      { id: 'zai-coding-plan/glm-5.2', name: 'Z.AI Coding Plan/GLM-5.2' },
+    ]);
+  });
+
+  test('an older server without advertisedModels is read from its model config option; an empty served list is not', () => {
+    const olderServer = {
       id: 'opencode',
       currentModel: 'opencode/big-pickle',
       configOptions: [
         { category: 'mode', options: ['build', 'plan'] },
         {
           category: 'model',
-          currentValue: 'opencode/big-pickle',
-          options: ['opencode/big-pickle', 'zai-coding-plan/glm-5.3'],
+          options: [
+            'opencode/big-pickle',
+            { value: 'zai-coding-plan/glm-5.2', name: 'GLM-5.2' },
+          ],
         },
       ],
-    },
-    { id: 'kiro', currentModel: null },
-  ];
-
-  test('an engine advertising models yields selectable models', () => {
-    expect(acpCatalogModelOptions(connections, 'opencode')).toEqual([
+    };
+    expect(acpCatalogModelOptions([olderServer], 'opencode')).toEqual([
       { id: 'opencode/big-pickle', name: 'opencode/big-pickle' },
-      { id: 'zai-coding-plan/glm-5.3', name: 'zai-coding-plan/glm-5.3' },
+      { id: 'zai-coding-plan/glm-5.2', name: 'GLM-5.2' },
     ]);
+    expect(
+      acpCatalogModelOptions(
+        [{ ...olderServer, advertisedModels: [] }],
+        'opencode',
+      ),
+    ).toEqual([]);
   });
 
-  test('the live ACP shape — { value, name } option objects — yields selectable models', () => {
-    // Copied from a real /acp/connections record (OpenCode):
-    // ACP select options are objects, not strings. The original archive#3028 fix
-    // mapped them as strings, so the picker stayed empty in production
-    // while the string-shaped fixture above stayed green.
-    const live = [
-      {
-        id: 'opencode',
-        currentModel: 'opencode/big-pickle',
-        configOptions: [
-          {
-            category: 'model',
-            currentValue: 'opencode/big-pickle',
-            options: [
-              {
-                value: 'zai-coding-plan/glm-4.7',
-                name: 'Z.AI Coding Plan/GLM-4.7',
-              },
-              {
-                value: 'zai-coding-plan/glm-5.2',
-                name: 'Z.AI Coding Plan/GLM-5.2',
-              },
-            ],
-          },
-        ],
-      },
-    ];
-    expect(acpCatalogModelOptions(live, 'opencode')).toEqual([
-      { id: 'zai-coding-plan/glm-4.7', name: 'Z.AI Coding Plan/GLM-4.7' },
-      { id: 'zai-coding-plan/glm-5.2', name: 'Z.AI Coding Plan/GLM-5.2' },
-    ]);
-  });
-
-  test('no catalog, no connection id, or non-model categories yield empty', () => {
+  test('no catalog, no connection id, or an empty id yield nothing', () => {
     expect(acpCatalogModelOptions(connections, 'kiro')).toEqual([]);
     expect(acpCatalogModelOptions(connections, undefined)).toEqual([]);
     expect(acpCatalogModelOptions([], 'opencode')).toEqual([]);
+    expect(
+      acpCatalogModelOptions(
+        [
+          {
+            id: 'x',
+            currentModel: null,
+            advertisedModels: [{ id: '', name: '' }],
+          },
+        ],
+        'x',
+      ),
+    ).toEqual([]);
   });
 });
 

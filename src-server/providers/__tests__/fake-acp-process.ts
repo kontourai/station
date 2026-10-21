@@ -32,7 +32,9 @@ export class FakeAcpProcess {
           loadSession?: boolean;
           mcpCapabilities?: { http?: boolean; sse?: boolean };
           sessionCapabilities?: { resume?: Record<string, never> | null };
+          _meta?: Record<string, unknown>;
         };
+        _meta?: Record<string, unknown>;
       }
     | undefined = {
     protocolVersion: 1,
@@ -108,7 +110,21 @@ export class FakeAcpProcess {
         currentModeId: 'default',
       },
       configOptions: this.newSessionConfigOptions,
+      ...(this.newSessionModels !== undefined
+        ? { models: this.newSessionModels }
+        : {}),
     };
+  }
+
+  /** #352: the `models` field of `session/new`, the set_model dialect. */
+  newSessionModels?: unknown;
+  readonly setModelCalls: string[] = [];
+  setModelError?: unknown;
+
+  async setModel(modelId: string): Promise<unknown> {
+    this.setModelCalls.push(modelId);
+    if (this.setModelError) throw this.setModelError;
+    return {};
   }
 
   loadSessionArgs?: { sessionId: string; cwd: string; mcpServers?: unknown[] };

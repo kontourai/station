@@ -1,3 +1,4 @@
+import type { ACPEngineInstallRecipe } from './acp.js';
 import type { EngineConnectionId, EngineId } from './agent-identity.js';
 
 /** Point-in-time resources on the answering Station host, not the viewing device. */
@@ -32,7 +33,14 @@ export interface ExternalEngineReadinessProjection {
     | 'missing_prerequisites'
     | 'cannot_verify'
     | 'disabled'
-    | 'not_connected';
+    | 'not_connected'
+    /** A catalogue Engine whose command was not found on the host. */
+    | 'not_installed';
+  /**
+   * How to install it on the host's platform. Present only on a
+   * `not_installed` row whose catalogue entry carries a recipe.
+   */
+  install?: ACPEngineInstallRecipe;
 }
 
 /**

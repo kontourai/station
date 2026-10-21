@@ -344,27 +344,34 @@ export function resolveEffectiveModel({
  * sites rather than inside the shared resolver.
  */
 /**
- * The models an ACP engine advertised on its config options (category
- * "model"). ACP select options are `{ value, name }` objects; bare strings
- * are tolerated.
+ * The models an ACP engine advertised, as the server serves them: its model
+ * config option when it has one, else the session's `models` list (#352), by
+ * the same rule a session start applies. A server too old to send
+ * `advertisedModels` (absent, not empty) is read the way it was before:
+ * from its config option of category "model".
  */
 export function acpAdvertisedModels(
-  configOptions:
-    | ReadonlyArray<{
-        category: string;
-        options?: Array<string | { value: string; name?: string }>;
-      }>
+  connection:
+    | {
+        advertisedModels?: ReadonlyArray<{ id: string; name: string }>;
+        configOptions?: ReadonlyArray<{
+          category: string;
+          options?: Array<string | { value: string; name?: string }>;
+        }>;
+      }
     | undefined,
 ): Array<{ id: string; name: string }> {
-  return (configOptions ?? [])
-    .filter((option) => option.category === 'model')
-    .flatMap((option) => option.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string'
-        ? { id: entry, name: entry }
-        : { id: entry.value, name: entry.name ?? entry.value },
-    )
-    .filter((model) => model.id.length > 0);
+  const served =
+    connection?.advertisedModels ??
+    (connection?.configOptions ?? [])
+      .filter((option) => option.category === 'model')
+      .flatMap((option) => option.options ?? [])
+      .map((entry) =>
+        typeof entry === 'string'
+          ? { id: entry, name: entry }
+          : { id: entry.value, name: entry.name ?? entry.value },
+      );
+  return served.filter((model) => model.id.length > 0);
 }
 
 export function guaranteeConcreteModel(model: EffectiveModel): EffectiveModel {

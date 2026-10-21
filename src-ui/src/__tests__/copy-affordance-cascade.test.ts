@@ -132,6 +132,7 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
     // Adding a component to this list is therefore a decision about WHICH
     // pairing covers it: its own class (a row above) or the shared `.button`.
     const sharedButtonAdopters = [
+      'components/engine-install/EngineInstallHint.tsx',
       'components/host-action/HostAction.tsx',
       'views/connections-hub/ComputersSection.tsx',
       'views/connections-hub/SshComputerCreatorDialog.tsx',

@@ -4417,6 +4417,175 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
+  describe('#352 session models dialect', () => {
+    /** The Grok `session/new` shape from #352: models, no model option. */
+    const GROK_SESSION_MODELS = {
+      currentModelId: 'grok-4.6',
+      availableModels: [
+        { modelId: 'grok-4.6', name: 'Grok 4.6', _meta: { contextWindow: 1 } },
+        { modelId: 'grok-4.5', name: 'Grok 4.5' },
+      ],
+    };
+
+    function startWithModels(
+      threadId: string,
+      modelId: string | undefined,
+      options: Parameters<typeof createAdapter>[0],
+    ) {
+      const created = createAdapter(options);
+      const iterator = created.adapter.streamEvents()[Symbol.asyncIterator]();
+      const started = created.adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        ...(modelId ? { modelId } : {}),
+      });
+      return { ...created, iterator, started };
+    }
+
+    test('switches a models-only session through session/set_model', async () => {
+      const { adapter, processes, iterator, started } = startWithModels(
+        'thread-set-model',
+        'grok-4.5',
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = GROK_SESSION_MODELS;
+          },
+        },
+      );
+      await started;
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+
+      expect(processes[0].setModelCalls).toEqual(['grok-4.5']);
+      expect(processes[0].setConfigOptionCalls).toEqual([]);
+      expect(configured).toMatchObject({
+        method: 'session.configured',
+        metadata: {
+          reportedModel: 'grok-4.5',
+          modelSelectionReceipt: {
+            requestedModel: 'grok-4.5',
+            appliedModel: 'grok-4.5',
+          },
+        },
+      });
+      await adapter.stopAll();
+    });
+
+    test('reports the listed current model when none is requested', async () => {
+      const { adapter, processes, iterator, started } = startWithModels(
+        'thread-models-current',
+        undefined,
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = GROK_SESSION_MODELS;
+          },
+        },
+      );
+      await started;
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+
+      expect(processes[0].setModelCalls).toEqual([]);
+      expect(configured).toMatchObject({
+        metadata: { reportedModel: 'grok-4.6' },
+      });
+      await adapter.stopAll();
+    });
+
+    test('refuses a model the list does not name without calling set_model', async () => {
+      const { processes, started } = startWithModels(
+        'thread-set-model-unlisted',
+        'grok-9',
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = GROK_SESSION_MODELS;
+          },
+        },
+      );
+      await expect(started).rejects.toMatchObject({
+        name: 'SessionStartRefusedError',
+        code: 'model_not_advertised',
+        message: expect.stringContaining('ACP model value unsupported'),
+      });
+      expect(processes[0].setModelCalls).toEqual([]);
+    });
+
+    test('a set_model failure fails the start instead of reporting the request applied', async () => {
+      const { processes, started } = startWithModels(
+        'thread-set-model-error',
+        'grok-4.5',
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = GROK_SESSION_MODELS;
+            proc.setModelError = Object.assign(new Error('unknown model id'), {
+              code: -32602,
+            });
+          },
+        },
+      );
+      await expect(started).rejects.toThrow('unknown model id');
+      expect(processes[0].setModelCalls).toEqual(['grok-4.5']);
+    });
+
+    test('a models list beyond the bounds refuses a requested model without calling set_model', async () => {
+      const { processes, started } = startWithModels(
+        'thread-set-model-oversized',
+        'm1',
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = {
+              availableModels: Array.from({ length: 1025 }, (_, index) => ({
+                modelId: `m${index}`,
+              })),
+            };
+          },
+        },
+      );
+      await expect(started).rejects.toMatchObject({
+        name: 'SessionStartRefusedError',
+        code: 'model_not_advertised',
+        message: expect.stringContaining('ACP model list refused'),
+      });
+      expect(processes[0].setModelCalls).toEqual([]);
+    });
+
+    test('a model config option outranks the models list', async () => {
+      const { adapter, processes, iterator, started } = startWithModels(
+        'thread-both-dialects',
+        'grok-4.5',
+        {
+          newSessionConfigOptions: [
+            {
+              id: 'model',
+              category: 'model',
+              currentValue: 'grok-4.6',
+              options: [{ value: 'grok-4.6' }, { value: 'grok-4.5' }],
+            },
+          ],
+          onProcess: (proc) => {
+            proc.newSessionModels = GROK_SESSION_MODELS;
+          },
+        },
+      );
+      await started;
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+
+      expect(processes[0].setConfigOptionCalls).toEqual([
+        { configId: 'model', value: 'grok-4.5' },
+      ]);
+      expect(processes[0].setModelCalls).toEqual([]);
+      await adapter.stopAll();
+    });
+  });
+
   // `session.started` is published before `session/new` answers, so a refusal
   // must end that session in the event stream too: the service binds the
   // thread to the adapter on the first event, and only `session.exited`
@@ -5921,9 +6090,80 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
   });
 });
 
+/** Identity facts recorded from live `initialize` answers (2026-10-21). */
+const KIRO_AGENT_INFO = { name: 'Kiro CLI Agent', version: '2.33.0' };
+const GROK_INITIALIZE_META = { grokShell: true, agentVersion: '1.0.50' };
+
 describe('AcpAdapter.steerTurn', () => {
+  async function startSteerableTurn(
+    threadId: string,
+    options: Parameters<typeof createAdapter>[0],
+  ) {
+    const { adapter, processes } = createAdapter(options);
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId,
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({ threadId, input: 'start' });
+    await nextEvent(iterator, 'turn.started');
+    return { adapter, processes, turn };
+  }
+
+  test('a declared steer method is used for an engine with no identity entry', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-declared-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'Acme Agent', version: '0.1.0' };
+          proc.initResult!.agentCapabilities._meta = {
+            acme: { extensionMethods: ['_acme/other', '_session/steer'] },
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-declared-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_session/steer',
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    await adapter.stopAll();
+  });
+
+  test('a name alone selects no native method', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-named-grok',
+      {
+        connectionOverrides: [
+          { id: 'kiro', command: 'grok', args: ['agent', 'stdio'] },
+        ],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'grok-something' };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-named-grok', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
   test('Kiro injects via _session/steer and keeps the in-flight prompt', async () => {
-    const { adapter, processes } = createAdapter();
+    const { adapter, processes } = createAdapter({
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = KIRO_AGENT_INFO;
+      },
+    });
     expect(adapter.metadata.durability?.steerPlacement.state).toBe('emulated');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
@@ -5976,6 +6216,9 @@ describe('AcpAdapter.steerTurn', () => {
       connectionOverrides: [
         { id: 'kiro', command: 'grok', args: ['agent', 'stdio'] },
       ],
+      onProcess: (proc) => {
+        proc.initResult!._meta = GROK_INITIALIZE_META;
+      },
     });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
@@ -6116,6 +6359,9 @@ describe('AcpAdapter.steerTurn', () => {
   test('Grok falls back to cancel-reprompt when interject is not implemented', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'grok' }],
+      onProcess: (proc) => {
+        proc.initResult!._meta = GROK_INITIALIZE_META;
+      },
     });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({

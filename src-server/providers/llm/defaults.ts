@@ -27,6 +27,7 @@ import type {
   IUserDirectoryProvider,
   IUserIdentityProvider,
 } from '../provider-interfaces.js';
+import { BUILTIN_ACP_ENGINES } from './builtin-acp-engines.js';
 
 // ── Package Registry Defaults ──────────────────────────
 
@@ -38,92 +39,6 @@ const NO_REGISTRY: InstallResult = {
 const MCP_FILESYSTEM_ID = 'filesystem';
 const MCP_FILESYSTEM_SOURCE = 'modelcontextprotocol/servers';
 const MCP_FILESYSTEM_PACKAGE = '@modelcontextprotocol/server-filesystem';
-const KIRO_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'kiro',
-  name: 'Kiro CLI',
-  description: 'Connect the Kiro CLI installed on this machine as an engine.',
-  command: 'kiro-cli',
-  args: ['acp'],
-  icon: 'brand:kiro',
-  tags: ['acp', 'kiro'],
-};
-
-const CURSOR_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'cursor',
-  name: 'Cursor',
-  description:
-    'Connect the Cursor agent CLI installed on this machine as an engine.',
-  command: 'cursor-agent',
-  args: ['acp'],
-  icon: 'C',
-  tags: ['acp', 'cursor'],
-};
-
-const OPENCODE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'opencode',
-  name: 'OpenCode',
-  description:
-    'Connect the OpenCode CLI installed on this machine as an engine.',
-  command: 'opencode',
-  args: ['acp'],
-  icon: 'brand:opencode',
-  tags: ['acp', 'opencode'],
-};
-
-const GOOSE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'goose',
-  name: 'Goose',
-  description: 'Connect the Goose CLI installed on this machine as an engine.',
-  command: 'goose',
-  args: ['acp'],
-  icon: 'G',
-  tags: ['acp', 'goose'],
-};
-
-const QWEN_CODE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'qwen-code',
-  name: 'Qwen Code',
-  description:
-    'Connect the Qwen Code CLI installed on this machine as an engine.',
-  command: 'qwen',
-  args: ['--acp'],
-  icon: 'Q',
-  tags: ['acp', 'qwen'],
-};
-
-const COPILOT_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'copilot',
-  name: 'GitHub Copilot',
-  description:
-    'Connect the GitHub Copilot CLI installed on this machine as an engine.',
-  command: 'copilot',
-  args: ['--acp'],
-  icon: 'GH',
-  tags: ['acp', 'copilot'],
-};
-
-const GROK_BUILD_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'grok-build',
-  name: 'Grok Build',
-  description:
-    'Connect the Grok Build CLI installed on this machine as an engine.',
-  command: 'grok',
-  args: ['agent', 'stdio'],
-  icon: 'GK',
-  tags: ['acp', 'grok'],
-};
-
-const MISTRAL_VIBE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
-  id: 'mistral-vibe',
-  name: 'Mistral Vibe',
-  description:
-    'Connect the Mistral Vibe CLI installed on this machine as an engine.',
-  command: 'vibe-acp',
-  args: [],
-  icon: 'MV',
-  tags: ['acp', 'mistral'],
-};
-
 export class DefaultAgentRegistryProvider implements IAgentRegistryProvider {
   async listAvailable(): Promise<RegistryItem[]> {
     return [];
@@ -241,17 +156,13 @@ export class BuiltinACPConnectionRegistryProvider
       process.env.STATION_E2E_FIRST_RUN === '1',
   ) {}
 
-  listAvailable(): ACPConnectionRegistryEntry[] {
-    const entries = [
-      { ...KIRO_ACP_CONNECTION },
-      { ...CURSOR_ACP_CONNECTION },
-      { ...OPENCODE_ACP_CONNECTION },
-      { ...GOOSE_ACP_CONNECTION },
-      { ...QWEN_CODE_ACP_CONNECTION },
-      { ...COPILOT_ACP_CONNECTION },
-      { ...GROK_BUILD_ACP_CONNECTION },
-      { ...MISTRAL_VIBE_ACP_CONNECTION },
-    ];
+  listAvailable(
+    options: { detect?: boolean } = {},
+  ): ACPConnectionRegistryEntry[] {
+    const entries = BUILTIN_ACP_ENGINES.map(
+      (entry): ACPConnectionRegistryEntry => structuredClone(entry),
+    );
+    if (options.detect === false) return entries;
     const discoveryDisabled = this.discoveryDisabled();
     return entries.map((entry) => ({
       ...entry,
