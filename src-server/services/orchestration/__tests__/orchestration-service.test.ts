@@ -12542,7 +12542,7 @@ describe('OrchestrationService', () => {
   test('BOTH REAL HALVES: a restart whose REPLAY dispatch fails still pushes "needs attention" for the stopped turn (slice 7 I7 guard)', async () => {
     // The sibling test above fails inside startSession (the C6e catch);
     // no test drove a sendTurn rejection AFTER a successful restart, so
-    // deleting restartCredentialProfileRecoverySession's own catch (the
+    // deleting CredentialProfileRecovery.restartRecoverySession's catch (the
     // FIX 1 channel) was invisible (slice-7 plan I7).
     const adapter = new FakeAdapter('codex');
     const notificationsDir = join(tmp, 'internal-stop-notifications-replay');
@@ -12554,7 +12554,7 @@ describe('OrchestrationService', () => {
       999_999,
     );
     const logger = { warn: vi.fn() };
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus: notificationBus,
       eventStore,
@@ -12619,17 +12619,7 @@ describe('OrchestrationService', () => {
     adapter.sendTurn.mockRejectedValueOnce(new Error('replay dispatch failed'));
 
     await expect(
-      (
-        restartService as unknown as {
-          restartCredentialProfileRecoverySession(input: {
-            threadId: string;
-            input: string;
-            recoveryCorrelationId: string;
-            signal: AbortSignal;
-            credentialProfileRef?: string;
-          }): Promise<unknown>;
-        }
-      ).restartCredentialProfileRecoverySession({
+      restartService['credentialProfileRecovery'].restartRecoverySession({
         threadId,
         input: 'replayed prompt',
         recoveryCorrelationId: 'replay-fail-correlation',
@@ -12662,7 +12652,7 @@ describe('OrchestrationService', () => {
     await restartService.shutdown();
   });
 
-  test('independent review HIGH-1: restartCredentialProfileRecoverySession composes ambientContext into the adapter wire input (a pending first-turn instructions receipt riding it must not be silently dropped on a credential-profile recovery replay)', async () => {
+  test('profile recovery dispatch composes pending first-turn instructions into the adapter wire input', async () => {
     // `CredentialProfileRecovery.restartRecoverySession` used to call
     // `adapter.sendTurn({ input: input.input, ... })` directly, bypassing
     // the SAME ambientContext choke point (`composeAmbientSendTurnInput`)
@@ -12673,7 +12663,7 @@ describe('OrchestrationService', () => {
     // delegate-seam receipt still read the prompt 'delivered' (derived from
     // `turn.started` existing, which this call path itself creates).
     const adapter = new FakeAdapter('codex');
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus,
       eventStore,
@@ -12686,25 +12676,22 @@ describe('OrchestrationService', () => {
     });
     adapter.sendTurn.mockClear();
 
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          ambientContext?: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
-      threadId,
-      input: 'Hello',
-      ambientContext: 'Be terse.',
-      recoveryCorrelationId: 'first-turn-restart-correlation',
-      signal: new AbortController().signal,
+    const recovered = await restartService['createRecoveryDispatchAdapter']().dispatch({
+      intent: {
+        fingerprint: 'first-turn-restart-intent', threadId, provider: 'codex',
+        sourceEventId: 'first-turn-source-event', sourceTurnId: 'first-turn-source',
+        failureKind: 'authentication', scope: 'account', decision: 'reconnect',
+        attempts: 0, maxAttempts: 1, outcome: 'armed',
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      },
+      replay: {
+        threadId, input: 'Hello', ambientContext: 'Be terse.',
+        recoveryCorrelationId: 'first-turn-restart-correlation',
+        signal: new AbortController().signal,
+      },
       credentialProfileRef: 'canary',
     });
+    expect(recovered).toEqual({ kind: 'observed', turnId: 'codex-turn' });
 
     expect(adapter.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -12921,7 +12908,7 @@ describe('OrchestrationService', () => {
         agent: resolvedAgent,
       }),
     );
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus,
       eventStore,
@@ -12971,17 +12958,7 @@ describe('OrchestrationService', () => {
       return { threadId: turn.threadId, turnId: 'credential-retry-turn' };
     });
 
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await restartService['credentialProfileRecovery'].restartRecoverySession({
       threadId,
       input: 'replay after credential recovery',
       recoveryCorrelationId: 'credential-retry-2732',
@@ -13033,7 +13010,7 @@ describe('OrchestrationService', () => {
         resolveToolServer: async () => null,
         resolveSkillDir: async () => null,
       });
-      const restartService = new OrchestrationService({
+      const restartService = new RawOrchestrationService({
         adapterRegistry: createRegistry([adapter]),
         eventBus,
         eventStore,
@@ -13061,16 +13038,7 @@ describe('OrchestrationService', () => {
       adapter.sendTurn.mockClear();
 
       await expect(
-        (
-          restartService as unknown as {
-            restartCredentialProfileRecoverySession(input: {
-              threadId: string;
-              input: string;
-              recoveryCorrelationId: string;
-              signal: AbortSignal;
-            }): Promise<unknown>;
-          }
-        ).restartCredentialProfileRecoverySession({
+        restartService['credentialProfileRecovery'].restartRecoverySession({
           threadId,
           input: 'must not replay',
           recoveryCorrelationId: 'credential-retry-resolution-failure',
@@ -13181,16 +13149,7 @@ describe('OrchestrationService', () => {
         userId: 'u1',
       },
     } as CanonicalRuntimeEvent);
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await restartService['credentialProfileRecovery'].restartRecoverySession({
       threadId,
       input: 'replay prompt',
       recoveryCorrelationId: 'recovery-1',

@@ -1703,11 +1703,30 @@ that handoff's seed-bearing turn. A failed or uncertain catch-up refuses ordinar
 continuation before reuse or cursor resume; it does not reopen the accepted-start
 boundary or automatically resend context.
 
+New cursorless continuations and history-preserving context starts also pin
+text and source cutoffs before provider start. The
+[context-start fence](../../src-server/services/orchestration/conversation-start-context.ts)
+uses the [completion witness](../../src-server/services/orchestration/conversation-context-seed-witness.ts)
+for the exact prepared invocation, terminal event and required native identity.
+These private projections remain in the existing EventStore. A consumed start
+boundary is not a delivery acknowledgement; uncertain or failed seed delivery
+refuses ordinary reuse. Deliberate empty context and the framework's native
+memory companion retain their separate contracts.
+
+[Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
+is an owner-scoped immutable copy with an independent Conversation identity.
+Opening it returns `fork-ready` without inventing a provider Session. First send
+creates the actual Session and carries the saved text projection; canonical
+refresh combines copied parent rows with subsequent runtime turns. Deletion
+before first send tombstones the context under the lifecycle guard before file
+cleanup, so failed cleanup cannot reactivate the seed.
+
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
 not the terminal `completed`), and a failed or stopped turn rests it `failed`
-or `canceled`. Either way the next turn runs in that session, with its engine
-still resident, or restarted in place from its resume cursor. A child is
+or `canceled`. Once required context delivery is confirmed, the next turn runs
+in that session, with its engine still resident, or restarted in place from its
+resume cursor. A child is
 reserved only when the current session cannot take the turn:
 - it was explicitly closed (terminal `completed`);
 - its engine binding is `closed`, `dead`, or `error`;

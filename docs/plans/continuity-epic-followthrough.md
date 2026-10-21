@@ -298,3 +298,38 @@ passes twelve tests. The previous failing 684/685 run remains in
 /private/tmp/station-continuity-cold-full-owners-after-20261021.log; the successful
 602-owner result is in
 /private/tmp/station-continuity-pinned-reservation-owner-after-20261021.log.
+
+
+### Published-base reconciliation and recovery owner cleanup
+
+Normal merges consumed published master 0ae3da5ecf5443f8258457c0b310b825eb9997db
+(merge 920abef71ae) and fetched main 5a38729f424d5ea159048101dbfc939062028bb0
+(merge 0b592fae78b). The only conflict was the generated shipped-docs reader,
+resolved by npm run docs:mcp:generate. Upstream generated release changelogs
+were preserved; the feature-only diff against the published master passes
+git diff --check. Dependency verification validates current workspace
+resolution and installed lifecycle artifacts, including a real PTY handshake.
+No install, provider login or provider call was needed. The merged source's
+continuity/API/CLI selection passes 120 tests with one Windows-only skip.
+
+The continuation reservation mutation is sealed at
+/private/tmp/station-continuity-cold-pin-mutation-20261021-vdzzntsh/receipt.json:
+exact cc5820ef2dd baseline 12 PASS, disabled high-water fence 1 intended failure
+and 11 PASS, original source restored byte-identically and clean, restored
+fork/handoff/execution selection 84 PASS. This is local mutation evidence.
+
+Root returned SCOPED NONE for the unused recovery forwarder/test interface at
+its timeline 30395 and authorized repair on this branch. The unused service
+wrapper was removed; tests address the production recovery owner, including a
+positive call through the actual recovery dispatch factory. Its result remains
+observed when the mock provider declares no durable acceptance. Recovery and
+confinement behavior are preserved. UI typechecking and the 649-test
+orchestration/UI selection passed; server-test typechecking passes after using
+raw typed services instead of the aggregate test proxy for these owner tests.
+The raw-owner test rerun passes all 602 cases; both UI and server-test typechecks pass.
+
+Master remains separate and was REST-verified open/unmerged at 0ae3da5. There is
+no feature PR, push, queue or landing claim. Documentation review/readiness and
+independent branch review remain unfinished. Fresh public-client onboarding,
+installed-provider lifecycle and the two-account identity/quota/selection/
+credential-application acceptance remain NOT_VERIFIED. Brian deferred sign-in.
