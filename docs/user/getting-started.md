@@ -517,9 +517,11 @@ views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
 The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
-The compact footer keeps live work, Schedule, Customize and Settings in one
-row, or under Sidebar utilities in the collapsed rail. Conversations and
-composer drafts stay in the chat dock and its inbox (⌘D).
+The footer puts live work beside your initials, which open a summary of your
+access with **My access**, **Profile**, **Ask Station for help** and **Open
+settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+Sidebar utilities. Conversations and composer drafts stay in the chat dock and
+its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
@@ -761,6 +763,30 @@ outcome, inspect that Task rather than creating another to retry it.
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
+
+## Review Activity Without Changing Your Place
+
+Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Quick review** to read it in Related while keeping the selected item, search,
+filters and list position. **Previous** and **Next** follow the rows currently
+visible in that list. When an item leaves the current results, review says so
+and disables those controls rather than choosing from hidden results.
+
+Choose **Open** to keep the reviewed item as durable work. Reopening the same
+kept item focuses it. Typing a reply also protects it; Cancel in the unsaved
+changes dialog leaves the reply and source in place. A review belongs to the
+Station it was opened on and does not read another Station's data.
+
+**Open conversation** uses Chat's normal conversation owner. A review that
+stays visible does not ask you to leave it. If opening Chat hides dirty work,
+that work asks once; Cancel keeps the current view and reply. An attached
+review hands its message to Chat's **Continue here?** confirmation on the same
+Station. Switching Station or closing that reader stops a late result from
+opening or sending in the new view.
+
+On a phone, review opens as a child screen. Back returns through the real
+history entry; **Up to Activity** returns to its captured Activity opener.
+Session properties sheets and cold child links remain separate planned work.
 
 ## See Conversations Started Outside Station
 

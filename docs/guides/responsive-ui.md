@@ -91,9 +91,12 @@ its sheet together. Desktop keeps the feature's inline card.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
-anchored surface-popover, navigation, notification and palette tiers as well as
-sticky/dialog/system. A surface popover stays above the dock but below navigation and notification
-chrome; a modal dialog supersedes notification chrome.
+anchored surface-popover, navigation, notification, toolbar-menu and palette
+tiers as well as sticky/dialog/system. A surface popover stays above the dock
+but below navigation and notification chrome. A menu opened from the toolbar
+(or the sidebar's account control) sits just above notifications, because the
+toolbar's right end opens into their column; its dismiss backdrop stays below
+them. A modal dialog supersedes notification chrome.
 Do not use feature-local large z-index values to compensate for a wrong owner
 or stacking context. A blocking system surface must explicitly choose the
 system layer. Transparent notification wrappers must let pointer events through;

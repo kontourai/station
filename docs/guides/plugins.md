@@ -723,6 +723,10 @@ message; the host answers on the same channel.
 | `pane-host/confirm` `{ id, title, message }` | `confirm` | `pane-host/confirm-result` `{ id, decision }` |
 | `pane-host/facts` | `facts.subscribe` | `pane-host/facts-changed` `{ facts }`, now and on every change |
 | `pane-host/present-unavailable` `{ reason }` | `presentUnavailable` | none |
+| `pane-host/related-open` `{ id, request }` | `relatedPanes.open` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-reveal` `{ id, handle }` | `relatedPanes.reveal` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-close` `{ id, handle }` | `relatedPanes.close` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-target` `{ id }` | `relatedPanes.target` | `pane-host/related-result` `{ id, data }` |
 
 `target` accepts the documented path string above, or a typed target —
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
@@ -741,6 +745,12 @@ Three things are worth knowing before writing against it:
   then one every thirty seconds — the same shape as navigation, for the same
   reason: a full-screen dialog you must answer is the most expensive attention
   a pane can spend, and a pane cannot buy more of it by running in a frame.
+- **Related panes answer every request, with a value.** `relatedPanes` is
+  optional: a placement without it answers each related request
+  `{ status: 'unavailable', reason: 'unsupported' }`, and an older host
+  refuses the method by name. Use `createRelatedPanesPaneHost` (see
+  [Related panes](../reference/sdk.md#related-panes)) rather than the raw
+  messages; the frame tier shares the direct tier's budget and refusals.
 - **An unrecognised or malformed `pane-host/*` message is refused, not
   ignored.** The host replies `pane-host/refused` `{ method, reason, id? }`.
   Silence is how two earlier plugin capabilities stayed broken for months.
@@ -1779,10 +1789,26 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-A remote Station's extensions are off until this device explicitly consents.
-That is a normal trust setting, not a workspace-wide failure banner. The
-Extensions screen explains it and offers Enable remote extensions, with the
-existing warning about app-wide authority before consent is stored.
+Native clients leave a saved Station's extensions off until this device explicitly
+allows them. A blocked pane or layout offers **Review and enable** in place.
+Plugin previews with a client bundle or declared entrypoint explain that installation
+can proceed while custom code stays off; built-in views still work. The staged
+preview reports bundle presence separately from its manifest. The review names
+the Station and its origin. Code loaded into the app has app-wide authority.
+Paired native Stations use separate plugin frames, but their native security
+boundary is not qualified; the review says to treat that code as having access
+to app data, native features and saved credentials. This remains an explicit
+opt-in, not a claim that frame isolation is verified. Dependency-only client code
+may first offer review when its blocked view opens; preview bundle metadata
+currently describes the staged root plugin.
+
+Manage access in **Stations → current Station details → Extensions**, or from
+Registry. **Turn off extensions** removes the stored permission, verifies the
+removal, then reloads the window. Failed persistence stays in the review and
+does not report success. A Station switch while review is open cancels admission;
+permission is never rebound to the newly selected Station. Consent remains bound
+to the saved connection and its exact origin. These controls do not install a
+plugin or grant its server-side permissions.
 
 A failed inventory or bundle load produces a notification linking to Extensions.
 The screen retains the failure message and Retry extensions until the registry
@@ -1791,7 +1817,8 @@ with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
 These presentation changes do not enable bundles or alter consent storage,
 origin binding, plugin permissions or native bridge authority.

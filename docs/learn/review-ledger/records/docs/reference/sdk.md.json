@@ -692,7 +692,23 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-ui/src/regions/pane-relations.ts",
+
+    "src-ui/src/workspace-panes/RelatedPaneStrip.tsx",
+
+    "src-ui/src/workspace-panes/relatedPanesHost.ts",
+
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
+
+    "tests/related-panes.spec.ts",
+
+    "tests/related-panes-frame.spec.ts",
+
+    "src-ui/src/contexts/openRelatedOccurrence.ts",
+
+    "tests/helpers/related-pane-upgrade.ts"
   ],
 
   "checks": [

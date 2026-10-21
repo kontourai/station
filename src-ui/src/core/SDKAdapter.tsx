@@ -1,4 +1,5 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import type { PaneRelatedPanesHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
   _setApiBase,
   _setProviderFunctions,
@@ -63,6 +64,8 @@ interface SDKAdapterProps {
   boundProjectSlug?: string;
   /** Owning installed plugin, distinct from this Pane occurrence/layout id. */
   boundPluginName?: string;
+  /** The occurrence's related-pane capability, when its placement offers one. */
+  relatedPanes?: PaneRelatedPanesHost;
 }
 
 /**
@@ -74,6 +77,7 @@ export function SDKAdapter({
   layout,
   boundProjectSlug,
   boundPluginName,
+  relatedPanes,
 }: SDKAdapterProps) {
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
@@ -197,6 +201,7 @@ export function SDKAdapter({
       ({
         apiBase,
         ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
+        ...(relatedPanes ? { relatedPanes } : {}),
         contexts: {
           agents: { useAgents: () => agents },
           layouts: {
@@ -221,6 +226,7 @@ export function SDKAdapter({
     [
       apiBase,
       pluginApiIdentity,
+      relatedPanes,
       agents,
       layouts,
       activeLayout?.config,

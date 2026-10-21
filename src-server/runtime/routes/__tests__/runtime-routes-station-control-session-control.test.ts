@@ -211,6 +211,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: deepStub({
+        readInputlessTurnDisposition: () => ({ kind: 'inputless' as const }),
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),

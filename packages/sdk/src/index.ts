@@ -47,6 +47,7 @@ export type {
   WorkspacePaneProvenance,
   WorkspacePaneProvenanceOrigin,
   WorkspacePaneRegion,
+  WorkspacePaneRelationRole,
   WorkspacePaneRendererCandidate,
   WorkspacePaneRendererCapability,
   WorkspacePaneRendererId,
@@ -129,6 +130,17 @@ export type {
   AgentId,
   QualifiedPluginAgentId,
 } from '@kontourai/station-contracts/agent-identity';
+export type {
+  PaneRelatedPanesHost,
+  RelatedPaneCloseOutcome,
+  RelatedPaneOpenOutcome,
+  RelatedPaneOpenRequest,
+  RelatedPanePresentation,
+  RelatedPaneRevealOutcome,
+  RelatedPaneTarget,
+  RelatedPaneUnavailable,
+  RelatedPaneUnavailableReason,
+} from '@kontourai/station-contracts/workspace-pane-host-contract';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -1338,6 +1350,12 @@ export {
   orchestrationQueries,
   taskQueries,
 } from './queryFactories';
+// Related panes (docs/design/pane-relationships.md): what a direct plugin
+// pane calls. On the root because the root is the module Station shares with
+// plugin bundles at runtime, so the hook reads the host's own SDK context; a
+// sandboxed frame uses `createRelatedPanesPaneHost` from the Pane subpath.
+export { type RelatedPanes, UNSUPPORTED_RELATED_PANES } from './related-panes';
+export { useRelatedPanes } from './related-panes-hook';
 export {
   type AttentionRequestInspection,
   type AttentionRequestReference,

@@ -10,6 +10,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { type ReactNode, StrictMode } from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -48,6 +49,23 @@ const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));
+// The account control reads the signed-in name for its initials and, once its
+// menu is open, the Settings chord; both providers wrap the real app.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
+}));
+vi.mock('../hooks/useKeyboardShortcut', () => ({
+  useShortcutDisplay: () => '⌘,',
+}));
+// The access panel at the top of the account menu reads the tool library; its
+// own tests own that read, and these pin where the menu's rows go.
+vi.mock('../components/profile/MyAccessPanel', () => ({
+  MyAccessPanel: () => null,
+}));
+vi.mock('../views/agent-editor/ToolLibraryContext', () => ({
+  StationToolLibraryProvider: ({ children }: { children: ReactNode }) =>
+    children,
+}));
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -56,6 +74,7 @@ import {
   parseLiveActivityProjection,
 } from '@kontourai/station-contracts/live-activity';
 import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
+import { subscribeHelpMenuRequests } from '../components/header/helpMenuRequest';
 import { ProjectSidebarFooter } from '../components/project-sidebar/ProjectSidebarFooter';
 import { pointerClick } from './helpers/pointer';
 
@@ -169,7 +188,7 @@ describe('ProjectSidebarFooter', () => {
     showSurfaceStub.mockReset();
   });
 
-  test('groups live activity, Schedule, Customize, and Settings in the footer', () => {
+  test('groups Live work, the account, Schedule, Customize and Settings in the footer', () => {
     renderFooter();
     expect(
       screen
@@ -177,10 +196,15 @@ describe('ProjectSidebarFooter', () => {
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
       'Who is here: nobody is publishing live work',
+      'Profile and settings',
       'Schedule',
       'Customize',
       'Settings',
     ]);
+    // Two controls, not one: the account is not a row of the presence tray.
+    expect(
+      screen.getByRole('button', { name: 'Profile and settings' }).textContent,
+    ).toBe('AL');
     expect(
       screen
         .getByRole('button', { name: 'Customize' })
@@ -685,6 +709,72 @@ describe('ProjectSidebarFooter', () => {
     expect(screen.queryByRole('dialog', { name: 'Customize' })).toBeNull();
   });
 
+  test('the account menu opens above its trigger and its rows navigate through the footer', async () => {
+    const navigate = vi.fn();
+    const onAfterNavigate = vi.fn();
+    renderFooter({ navigate, isMobile: true, onAfterNavigate });
+    const trigger = screen.getByRole('button', {
+      name: 'Profile and settings',
+    });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    const menu = await screen.findByRole('menu', {
+      name: 'Profile and settings',
+    });
+    // Anchored by its bottom edge above the trigger, not at the header's
+    // top-right corner where the old avatar menu opened.
+    expect(menu.style.bottom).not.toBe('');
+    expect(menu.style.top).toBe('auto');
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Profile' }));
+    expect(navigate).toHaveBeenCalledWith('/profile');
+    // The footer's own navigation, so the phone drawer closes after it.
+    expect(onAfterNavigate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Open settings' }),
+    );
+    expect(navigate).toHaveBeenLastCalledWith('/settings');
+  });
+
+  test('the account menu asks the header for help and closes the phone drawer', async () => {
+    const helpRequests = vi.fn();
+    const unsubscribe = subscribeHelpMenuRequests(helpRequests);
+    try {
+      const navigate = vi.fn();
+      const onAfterNavigate = vi.fn();
+      renderFooter({ navigate, isMobile: true, onAfterNavigate });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Ask Station for help' }),
+      );
+      expect(helpRequests).toHaveBeenCalledTimes(1);
+      expect(onAfterNavigate).toHaveBeenCalledTimes(1);
+      expect(navigate).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test('the account control is pressed on the profile route and names Settings as current there', async () => {
+    renderFooter({ activePath: '/settings' });
+    const trigger = screen.getByRole('button', {
+      name: 'Profile and settings',
+    });
+    expect(trigger.className).not.toContain('sidebar__footer-action--active');
+    fireEvent.click(trigger);
+    expect(
+      (
+        await screen.findByRole('menuitem', { name: 'Open settings' })
+      ).getAttribute('aria-current'),
+    ).toBe('page');
+  });
+
   // Keyboard operability of the panel's bottom controls, which the retired
   // status line's controls had. Every one is a real `button` element — which
   // is what carries Enter/Space activation and tab order — rather than a
@@ -720,6 +810,11 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
     const navigate = vi.fn();
     renderFooter({ collapsed: true, navigate });
     expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
+    // Live work and the account stay on the rail, outside the utilities.
+    expect(screen.getByRole('button', { name: /^Who is here:/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Profile and settings' }),
+    ).toBeTruthy();
     const more = screen.getByRole('button', { name: 'Sidebar utilities' });
     more.focus();
     fireEvent.click(more);
@@ -751,4 +846,40 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+/**
+ * The app renders under StrictMode, which replays a component's effects once
+ * when it mounts. The account menu's chunk loads on demand, so it mounts
+ * already open: a replayed focus entry restored focus to the trigger while
+ * its focusout dismissal still listened, and the menu closed in the same task
+ * it opened (found in the running app, phone drawer and desktop alike).
+ */
+describe('the account menu under StrictMode', () => {
+  for (const isMobile of [true, false])
+    test(`${isMobile ? 'phone drawer' : 'desktop rail'}: it opens and stays open`, async () => {
+      render(
+        <StrictMode>
+          <ProjectSidebarFooter
+            activePath="/"
+            isMobile={isMobile}
+            navigate={vi.fn()}
+          />
+        </StrictMode>,
+      );
+      const trigger = screen.getByRole('button', {
+        name: 'Profile and settings',
+      });
+      trigger.focus();
+      fireEvent.click(trigger);
+      const menu = await screen.findByRole('menu', {
+        name: 'Profile and settings',
+      });
+      // Past the chunk load and every replayed effect: still open, and focus
+      // went into the menu rather than back to the trigger.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      expect(menu.isConnected).toBe(true);
+      expect(menu.contains(document.activeElement)).toBe(true);
+    });
 });

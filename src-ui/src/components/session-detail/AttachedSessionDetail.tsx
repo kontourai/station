@@ -15,7 +15,17 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
@@ -90,6 +100,8 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
 }
 
 export function AttachedSessionDetail({
+  draftScope,
+  handoffScope,
   apiBase,
   chatFontSize = 14,
   showHeader = false,
@@ -112,6 +124,8 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
+  draftScope?: string;
+  handoffScope?: string;
   /**
    * #3552: the same chat everywhere. Activity's pane has no surrounding
    * chrome, so it shows the conversation's name and origin above it; the dock
@@ -123,7 +137,9 @@ export function AttachedSessionDetail({
    * its Agent's chat. A host that is not the dock passes this, and Send hands
    * the exact draft to the dock instead of continuing here.
    */
-  onContinueInChat?: (draft: string) => void;
+  onContinueInChat?:
+    | ((draft: string) => void)
+    | ((draft: string) => boolean | Promise<boolean>);
   openingContinuation?: boolean;
   continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;
@@ -221,8 +237,38 @@ export function AttachedSessionDetail({
   );
   const [replyRequested, setReplyRequested] = useState(false);
   const unavailableReasonId = useId();
-  const [draft, setDraft] = useState('');
+  const [localDraft, setLocalDraft] = useState('');
+  const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
+    draftScope !== undefined
+      ? chatDraftsStore.getActivityDraft(draftScope, session.threadId)
+      : '',
+  );
+  const draft = draftScope !== undefined ? savedDraft : localDraft;
+  const setDraft = useCallback(
+    (value: string) => {
+      if (draftScope !== undefined)
+        chatDraftsStore.setActivityDraft(draftScope, session.threadId, value);
+      else setLocalDraft(value);
+    },
+    [draftScope, session.threadId],
+  );
   const confirmedDraft = useRef('');
+  const handoffIdentity = JSON.stringify([
+    apiBase,
+    draftScope,
+    session.threadId,
+  ]);
+  const handoff = useMemo(
+    () => ({ identity: handoffIdentity, alive: false }),
+    [handoffIdentity],
+  );
+  const [handoffPending, setHandoffPending] = useState(false);
+  useLayoutEffect(() => {
+    handoff.alive = true;
+    return () => {
+      handoff.alive = false;
+    };
+  }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -475,12 +521,25 @@ export function AttachedSessionDetail({
     </>
   );
   const composerDisabled =
-    !continuationSupported || adoption.isPending || continued;
-  const requestSend = () => {
+    !continuationSupported || adoption.isPending || continued || handoffPending;
+  const requestSend = async () => {
     if (!draft.trim() || composerDisabled) return;
     if (onContinueInChat) {
-      onContinueInChat(draft);
-      setDraft('');
+      const held = handoff;
+      setHandoffPending(true);
+      try {
+        const result = onContinueInChat(draft);
+        const accepted = result instanceof Promise ? await result : result;
+        if (held.alive && accepted !== false) setDraft('');
+      } catch {
+        if (held.alive)
+          showToast(
+            'Could not open this conversation. Your message is still here.',
+            session.threadId,
+          );
+      } finally {
+        if (held.alive) setHandoffPending(false);
+      }
       return;
     }
     setReplyRequested(true);
@@ -491,7 +550,10 @@ export function AttachedSessionDetail({
   useEffect(() => {
     if (handsOff) return;
     const receive = () => {
-      const handedOver = takeAttachedContinuationHandoff(session.threadId);
+      const handedOver = takeAttachedContinuationHandoff(
+        session.threadId,
+        handoffScope,
+      );
       if (handedOver === null) return;
       setDraft(handedOver);
       // If this reader cannot continue, its reason shows above the composer;
@@ -500,7 +562,13 @@ export function AttachedSessionDetail({
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
-  }, [handsOff, session.threadId, continuationSupported]);
+  }, [
+    handsOff,
+    session.threadId,
+    continuationSupported,
+    setDraft,
+    handoffScope,
+  ]);
 
   return (
     <section

@@ -1003,6 +1003,11 @@ should use `useConnectionCandidates`.
 
 ### `ConnectionManagerModal`
 
+The optional `renderConnectionDetails(connection)` callback renders host-owned
+controls inside an expanded saved Station row. It receives the row's public
+connection metadata and does not select the Station or grant access. Station uses
+it for extension management on the current Station.
+
 Full-featured modal for managing connections. Includes one-time host/device
 pairing, manual endpoint add, and provider-backed connection suggestions.
 

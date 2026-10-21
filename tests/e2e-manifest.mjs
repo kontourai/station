@@ -908,6 +908,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/activity-related-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Exercises Activity quick review through its real caller, Related shell host and SessionDetail: filtered sibling order, source selection/search/scroll preservation, durable Open and kept-target focus, changed results and real phone Back/Up.',
+    exceptions: [],
+  },
+  {
     path: 'tests/device-pane.spec.ts',
     bucket: 'product',
     surface: 'Device',
@@ -955,6 +965,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "Proves remote plugin bundles execute only through the isolated plugin host: hostile storage, DOM, parent-global, network, bridge, and spoofed-message attacks remain contained; mismatched declared exports visibly fail; and a benign bundle raising the pane-host contract's confirm intent is answered by Station's own modal, with the decision reaching the frame back across the boundary on desktop and at 390x844.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, a removed plugin leaving its pane unavailable without running its code, and a same-version reinstall not bringing it back.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes-frame.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the same related-pane capability from a plugin running in the sandboxed plugin frame: on a Station the spec owns, reached under a non-loopback name so every plugin is isolated, the real example list (a frame document) opens, replaces, focuses and closes its own report frames and opens a tool, through the real frame bootstrap, frame server, catalog and pairing, with nothing mocked.',
     exceptions: [],
   },
   {

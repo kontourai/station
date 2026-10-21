@@ -208,13 +208,9 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
   const { container, unmount } = render(
     <HeaderActions
       helpPrompts={[]}
-      settingsShortcut="⌘,"
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
-      showProfileMenu={false}
-      onCloseProfileMenu={vi.fn()}
-      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={() => {}}
       onCloseNotifications={() => {}}
@@ -224,7 +220,6 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
       onOpenProfile={() => {}}
       onOpenHelp={() => {}}
       onOpenNotifications={() => {}}
-      onToggleSettings={() => {}}
       onToggleOverflow={() => {}}
       onViewAllNotifications={() => {}}
     />,
@@ -270,10 +265,10 @@ describe.skipIf(!chromiumAvailable)(
      * The x of the row's TRAILING control — the sibling furthest from the chip,
      * so any width the chip fails to reserve shows up here.
      *
-     * The avatar: the `⋯` overflow is `display: none` at desktop widths and
-     * the phone-only Settings gear that used to trail the avatar is gone
-     * (Settings lives in the sidebar drawer's footer), so on this 1280px
-     * fixture the avatar is the last laid-out control. The contract
+     * Notifications: the `⋯` overflow is `display: none` at desktop widths,
+     * the account menu moved to the sidebar footer and the phone-only Settings
+     * gear is gone (Settings lives in the drawer's footer), so on this 1280px
+     * fixture the bell is the cluster's last laid-out control. The contract
      * station#4474 pinned is about the chip not reflowing its siblings, and
      * it holds for whichever sibling is last.
      */
@@ -285,7 +280,7 @@ describe.skipIf(!chromiumAvailable)(
       try {
         await page.setContent(buildFixtureHtml(markup));
         const box = await page
-          .locator('[aria-label="Profile and settings"]')
+          .locator('[aria-label^="Notifications"]')
           .boundingBox();
         expect(box, 'trailing toolbar control not visible').not.toBe(null);
         return box!.x;
@@ -519,13 +514,13 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     /**
-     * The row's membership, both directions. The desktop row is three named
-     * controls (Layout, the status dot, Notifications, the avatar — of which
-     * `HeaderActions` renders three; Layout is `RegionToolbarControls`, a
-     * sibling in the toolbar, not in this cluster). The phone row is the
-     * connection dot, Notifications, and the `⋯` overflow — no avatar (it is
-     * `--secondary` there) and no Settings gear: Settings lives in the
-     * sidebar drawer's footer, which the hamburger opens.
+     * The row's membership, both directions. The desktop cluster is two named
+     * controls, the status dot and Notifications; the region toggles are
+     * `RegionToolbarControls`, the toolbar's last sibling, and the account
+     * menu is the sidebar footer's. The phone row is the connection dot,
+     * Notifications, and the `⋯` overflow — no account control and no
+     * Settings gear: both live in the sidebar drawer's footer, which the
+     * hamburger opens.
      *
      * Added because a fault injection went green without it, and kept
      * because a `display` rule can fail either way: a regressed gear (or a
@@ -533,7 +528,7 @@ describe.skipIf(!chromiumAvailable)(
      * `tests/toolbar-reachability.spec.ts` measures the same inventory
      * against the running app.
      */
-    test('the fine-pointer row holds three named controls; a phone holds the dot, the bell, and the overflow', async () => {
+    test('the fine-pointer row holds two named controls; a phone holds the dot, the bell, and the overflow', async () => {
       const inventory = async (viewport: {
         width: number;
         height: number;
@@ -568,8 +563,8 @@ describe.skipIf(!chromiumAvailable)(
       expect(desktop).toEqual([
         'Choose Station — Connected · Default',
         'Notifications',
-        'Profile and settings',
       ]);
+      expect(desktop).not.toContain('Profile and settings');
       expect(desktop).not.toContain('Open settings');
 
       // The `connected` fixture renders its active saved Station label in a

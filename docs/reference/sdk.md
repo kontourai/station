@@ -2611,6 +2611,160 @@ qualify before the host transfers code. The frame supplies the nonsecret
 uses it with the SDK helper. This does not establish that arbitrary React
 component bundles can render in the isolated frame.
 
+## Related panes
+
+A plugin pane can open **its own** registered panes as related panes
+(see [Pane relationships](../design/pane-relationships.md)): a report list
+opening each report beside it, for example. The capability is optional,
+versioned and bound to the pane occurrence that receives it. A direct (trusted
+in-process) pane calls `useRelatedPanes()` from the SDK root; a pane running in
+Station's sandboxed plugin frame calls `createRelatedPanesPaneHost(window.parent,
+window.__stationPaneHostOrigin)` from `@kontourai/station-sdk/workspace-pane`,
+whose source the frame runtime also injects as
+`window.__stationCreateRelatedPanesPaneHost`. Both reach one host
+implementation, so admission, budget and refusals are the same in either tier.
+
+```tsx
+import { useRelatedPanes } from '@kontourai/station-sdk';
+
+const related = useRelatedPanes();
+const outcome = await related.open({
+  descriptorId: 'pane:plugin%3Areports:report', // one of THIS plugin's descriptors
+  modeId: 'project',                            // a mode it declares
+  key: report.id,                               // the plugin's own opaque key
+  title: report.title,                          // optional
+});
+if (outcome.status === 'unavailable') showReportHere(outcome.reason);
+else rememberHandle(outcome.handle);
+```
+
+| Member | Answers |
+| --- | --- |
+| `open(request)` | `{ status: 'opened' \| 'focused' \| 'replaced', handle, presentation }`, or `unavailable` |
+| `reveal(handle)` | `{ status: 'focused', presentation }`, or `unavailable` |
+| `close(handle)` | `{ status: 'closed' }`, or `unavailable`; asks the pane's own unsaved-changes guard first |
+| `target()` | the `{ descriptorId, modeId, key }` this occurrence was opened for, or `null` |
+| `supported` | `false` on a host without the capability (hook only) |
+
+**No promise rejects.** Every outcome is a value. On a host without the
+capability (`supported: false`, or a frame host that refuses the method by
+name) every request answers `unavailable: unsupported`; keep showing the
+content in your own pane rather than opening nothing.
+
+What the plugin names and what the host decides:
+
+- `descriptorId` must be one of the calling plugin's own descriptors offered in
+  the caller's Project, and `modeId` a mode it declares whose context
+  requirements the caller's own captured context satisfies. Another plugin's
+  descriptor, a built-in pane or an MCP pane is `unknown-descriptor`.
+- `key` is opaque to Station: it identifies the target for dedupe and for
+  `target()`. It is not a path, URL, Session id or grant. Bounds are refused,
+  never truncated: `descriptorId` and `key` 256 characters, `modeId` 128,
+  `title` 160, no control characters; any other field is `invalid-request`.
+- The host stamps the opener (the calling occurrence), the exact verified
+  Station, the caller's captured context (at most its own Task, Session, run,
+  workspace and source identity) and the plugin's installed generation. A
+  related pane never gets more context than its opener had, and nothing here
+  grants a read.
+- Presentation is the host's choice, reported back: `beside` the opener, as a
+  phone `child` screen, or with the Tools (`tool`) for a descriptor declaring
+  `relationRole: 'tool'`. `sheet` is reserved for a selection-inspector role
+  plugins cannot declare yet.
+- One reusable preview per opening occurrence: opening another target
+  `replaced` it; opening the same target, or a target the user kept,
+  `focused` it. The user's **Keep open**, or unsaved work in the preview,
+  keeps it as an ordinary tab.
+- "The same target" is exact: the same descriptor, mode and key, in the same
+  Project, with the same captured context and the same installed generation.
+  A kept report opened for another Session, run or installation is never the
+  one an open focuses; a new occurrence opens instead.
+- A handle reveals or closes only what this occurrence opened, for its own
+  Project, context, plugin and installed generation; anything else is
+  `unknown-handle`.
+- Before anything changes, the host asks the unsaved-changes guard of every
+  pane the request would take off screen (the preview it replaces, the pane
+  it covers, the pane a `close` removes). It commits only if, when the last
+  guard answers, everything is still as it asked about: the same Station and
+  holder, the plugin still admitted, the same pane in front, and no unsaved
+  work registered meanwhile for a pane it would hide. Otherwise it answers
+  `superseded` (or the admission's own reason) and leaves everything as it
+  was.
+- The capability belongs to the occurrence that received it, on the Station
+  it was received on. When the occurrence unmounts, or another Station is
+  verified, the capability is revoked: it answers `context-mismatch`,
+  including for a request whose guard is still being answered, and the
+  occurrence gets a new one. Call through the latest `useRelatedPanes()`
+  value rather than keeping one from an earlier render. A frame's requests
+  are bound to the frame document that sent them: one from a replaced
+  document changes nothing.
+
+`unavailable` reasons: `unsupported`, `invalid-request`, `unknown-descriptor`,
+`mode-unsatisfiable`, `not-authorized` (the plugin was disabled, removed or
+updated since the caller was mounted, or its renderer is not admitted),
+`context-mismatch` (the caller's Project or Station is no longer the one on
+screen), `station-unverified`, `capacity` (too many related panes; nothing is
+evicted), `contended` (another window was writing at that moment),
+`superseded`, `rate-limited` (four at once, then one every five seconds, per
+plugin, across both tiers; a `close` spends from it only when it would ask the
+pane's unsaved-changes guard), `guard-cancelled`, `unknown-handle` and
+`refused`.
+
+A related occurrence is fenced to the Station it was opened on and renders only
+while its plugin is still the installed generation it was opened under; a
+disabled or updated plugin's related pane stays as a tab with an unavailable
+placeholder and runs no plugin code. The generation includes the catalog
+contribution's server-issued `lifecycleGeneration`, which changes whenever
+the installation is replaced (a same-version reinstall included) or its
+enablement changes and never repeats, so enabling or reinstalling the plugin
+again does not bring an earlier occurrence back. While the Station cannot
+vouch for that history (`lifecycleGeneration: null`), the plugin's panes get
+no related-pane capability (every request answers `unsupported`) and its
+earlier related panes stay unavailable. From a server that issues no
+lifecycle generation, the same installation enabled again is the same
+generation. Declaring `docked` placement does not
+admit a pane to a region, and related panes are opened only through this
+capability; legacy navigation (`useNavigation`, the frame's `navigate`
+message) is unchanged.
+
+For a direct Project-pane opener, Station captures the catalog-issued
+descriptor and instance IDs itself. The related pane's Up action returns to
+that exact pane through the canonical pane route, including after Keep and
+reload. It does not substitute the Project overview or accept a URL from the
+plugin. Cancellation and a changed Station or relation leave the current child
+in place. The phone Back caption names the captured opener; browser evidence
+for these returns is separate from native-shell acceptance.
+An older report gains its missing exact opener reference when that same
+Reports occurrence reopens it on the same verified Station and Project, under
+the same installed generation. The locked focus transaction re-admits the
+caller and checks the unchanged source, target state and fence after guards;
+Cancel or a changed owner writes nothing. Reopening from another occurrence
+does not rewrite the original opener. No ambient route is used to infer it.
+Optional return metadata does not change which unkept preview that caller
+reuses. If the Project descriptor cannot fit the stored reference's bounds,
+Station retains its readable legacy return rather than writing an unreadable
+relation. Up already on its exact route does not add a history entry: on a
+phone it leaves through the guarded layer close; on desktop it is a no-op.
+
+From a frame, each member is a request carrying an `id`, answered by one
+`pane-host/related-result` `{ id, data }`:
+`pane-host/related-open` `{ id, request }`, `pane-host/related-reveal`
+`{ id, handle }`, `pane-host/related-close` `{ id, handle }` and
+`pane-host/related-target` `{ id }`. Use the SDK client rather than the
+messages: it pins the host window and origin, decodes only the shapes above,
+holds at most 16 requests and settles an unanswered request `refused` after
+30 seconds.
+
+The [Related Reports example](../../examples/related-reports/README.md) uses
+both tiers. The hook is on the SDK root only: plugin bundles receive the root
+from their host at runtime, which is what binds the hook to the host's
+provider. The Pane subpath carries the frame client, `UNSUPPORTED_RELATED_PANES`
+and the types. Source: [contract](../../packages/contracts/src/workspace-pane-host-contract.ts),
+[SDK hook](../../packages/sdk/src/related-panes-hook.ts) and
+[frame client](../../packages/sdk/src/related-panes.ts),
+[host](../../src-ui/src/workspace-panes/relatedPanesHost.ts). These exports
+require a published SDK and contracts release before external consumers can
+import them.
+
 ---
 
 ## Context Providers

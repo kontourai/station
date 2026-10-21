@@ -92,7 +92,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates; a catalog contribution's optional, server-issued `lifecycleGeneration` (identity only, never a permission), which a reinstall or an enablement change replaces and which never repeats; `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
@@ -112,6 +112,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
+| `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional

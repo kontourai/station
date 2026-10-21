@@ -695,14 +695,6 @@ function App() {
                 <Header
                   currentView={displayCurrentView}
                   onNavigate={navigateToView}
-                  onToggleSettings={() => {
-                    if (displayCurrentView.type === 'settings') {
-                      // The gear is a toggle: back to the outlet's occupant.
-                      returnToOutlet();
-                    } else {
-                      navigateToView({ type: 'settings' });
-                    }
-                  }}
                 />
                 <ConnectionBannerSource />
                 <BannerHost connectionSlot />

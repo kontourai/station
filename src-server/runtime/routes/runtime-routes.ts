@@ -2394,6 +2394,21 @@ export function configureRuntimeRoutes(
     context.appConfig.distributionProfile,
     context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
+  // A plugin contribution's lifecycle generation exists only under a sealed
+  // epoch: sealed once here, at start, and never during a catalog read.
+  // Unreadable revisions are left as they are, and every plugin generation
+  // stays unissued (`null`) until they are repaired.
+  try {
+    if (layoutCatalog.sealLifecycleHistory() === 'invalid')
+      context.logger.warn?.(
+        'Distribution lifecycle revisions are unreadable; plugin lifecycle generations stay unissued until they are repaired',
+      );
+  } catch (error) {
+    context.logger.warn?.(
+      'Distribution lifecycle history could not be sealed; plugin lifecycle generations stay unissued',
+      { error: error instanceof Error ? error.message : error },
+    );
+  }
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({
       supported_contract_versions: ['1.0'],

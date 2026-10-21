@@ -165,8 +165,138 @@ export interface PaneSkillExperienceHost {
   }): Promise<void>;
 }
 
+/**
+ * What a plugin pane asks its host to open as a related pane
+ * (docs/design/pane-relationships.md): one of the CALLER's own registered
+ * descriptors, a mode that descriptor declares, and the plugin's own opaque
+ * target key. Nothing here names a path, a component, another plugin's
+ * descriptor, a Session or a region. The host decides the rest.
+ *
+ * The host refuses (never truncates) a request past these bounds, or with a
+ * control character in any field: `descriptorId` and `key` at most 256
+ * characters, `modeId` 128, `title` 160.
+ */
+export interface RelatedPaneOpenRequest {
+  descriptorId: string;
+  modeId: string;
+  key: string;
+  /** What the opened pane is called where it is shown. */
+  title?: string;
+}
+
+/**
+ * Where the host showed a related pane, chosen from the descriptor's role
+ * and the device: `beside` its source, as a `child` screen with a way back
+ * (a phone), or with the Tools (`tool`). `sheet` is reserved for the
+ * inspector role, which plugins cannot declare yet. A report, never the
+ * caller's instruction.
+ */
+export type RelatedPanePresentation = 'beside' | 'child' | 'sheet' | 'tool';
+
+/**
+ * Why a related-pane request did nothing. A refusal never opens an empty
+ * pane and never changes the source.
+ *
+ * - `unsupported`: this host has no related-pane capability for the caller
+ *   (an older host, or a placement that cannot hold related panes).
+ * - `invalid-request`: the request is malformed or past its bounds.
+ * - `unknown-descriptor`: the caller's plugin offers no such descriptor in
+ *   this Project.
+ * - `mode-unsatisfiable`: the mode is not declared, or the caller's own
+ *   context cannot supply what it requires.
+ * - `not-authorized`: the plugin is disabled, removed or updated since the
+ *   caller or the target was admitted.
+ * - `context-mismatch`: the caller's Project or Station is no longer the
+ *   one on screen.
+ * - `station-unverified`: the host cannot yet confirm which Station it is
+ *   connected to, so it cannot fence a new pane to one.
+ * - `capacity`: too many related panes are open; nothing is evicted.
+ * - `contended`: another window was writing related panes at that moment.
+ * - `superseded`: what the request was answered for changed before it
+ *   could commit.
+ * - `rate-limited`: the host's budget for this plugin is spent.
+ * - `guard-cancelled`: an unsaved-changes guard was answered with Cancel.
+ * - `unknown-handle`: the handle is not an open pane this caller opened.
+ * - `refused`: the host could not store or place the pane.
+ */
+export type RelatedPaneUnavailableReason =
+  | 'unsupported'
+  | 'invalid-request'
+  | 'unknown-descriptor'
+  | 'mode-unsatisfiable'
+  | 'not-authorized'
+  | 'context-mismatch'
+  | 'station-unverified'
+  | 'capacity'
+  | 'contended'
+  | 'superseded'
+  | 'rate-limited'
+  | 'guard-cancelled'
+  | 'unknown-handle'
+  | 'refused';
+
+export interface RelatedPaneUnavailable {
+  status: 'unavailable';
+  reason: RelatedPaneUnavailableReason;
+}
+
+/**
+ * What an open did: `opened` a new pane, `focused` the exact target already
+ * open (a kept pane, or this caller's preview of it), or `replaced` what this
+ * caller's one reusable preview showed. `handle` is host-minted and opaque;
+ * it reveals or closes only for the occurrence that received it.
+ */
+export type RelatedPaneOpenOutcome =
+  | {
+      status: 'opened' | 'focused' | 'replaced';
+      handle: string;
+      presentation: RelatedPanePresentation;
+    }
+  | RelatedPaneUnavailable;
+
+export type RelatedPaneRevealOutcome =
+  | { status: 'focused'; presentation: RelatedPanePresentation }
+  | RelatedPaneUnavailable;
+
+export type RelatedPaneCloseOutcome =
+  | { status: 'closed' }
+  | RelatedPaneUnavailable;
+
+/** The target a related pane was opened for, as that pane reads it. */
+export interface RelatedPaneTarget {
+  descriptorId: string;
+  modeId: string;
+  key: string;
+}
+
+/**
+ * Optional, versioned and OCCURRENCE-BOUND: request/response open, reveal
+ * and close of the caller's own related panes. The host binds it to the pane
+ * occurrence it mounted, so the opener is the host's fact rather than the
+ * caller's claim. The host stamps the exact Station, the caller's captured
+ * context and the plugin's installed generation; the related pane gets at
+ * most the caller's context and nothing here grants a read.
+ *
+ * **None of these promises reject**: every outcome is a value. Feature
+ * negotiation is this member's presence and `version`. Direct (in-process)
+ * and frame callers reach one host implementation, so admission, budget and
+ * refusals agree; the frame is the security boundary, the direct tier is
+ * trusted code.
+ */
+export interface PaneRelatedPanesHost {
+  version: 1;
+  open(request: RelatedPaneOpenRequest): Promise<RelatedPaneOpenOutcome>;
+  reveal(handle: string): Promise<RelatedPaneRevealOutcome>;
+  /** Asks the related pane's unsaved-changes guard before closing it. */
+  close(handle: string): Promise<RelatedPaneCloseOutcome>;
+  /** The target this occurrence was opened for, or null if it was not. */
+  target(): Promise<RelatedPaneTarget | null>;
+}
+
 export interface WorkspacePaneHostContract {
   skillExperience?: PaneSkillExperienceHost;
+  /** Absent on a host or placement without related panes. */
+  relatedPanes?: PaneRelatedPanesHost;
   /** Intent: take the user somewhere the shell itself navigates to. */
   navigate(target: PaneNavigationTarget): void;
   /** Intent: show a transient notice; the shell owns budget and chrome. */

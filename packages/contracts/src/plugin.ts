@@ -317,6 +317,8 @@ export interface PluginPreview {
   valid: boolean;
   error?: string;
   manifest?: PluginManifest;
+  /** Whether the staged source already contains a client bundle; not runtime readiness. */
+  hasBundle?: boolean;
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }

@@ -92,9 +92,13 @@ function harness(path: string): Harness {
           event: stored.payload,
         })),
     headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
-    turnEvents: (threadId, turnId, methods, limit) =>
+    readInputlessTurnDisposition: (threadId) =>
+      store.readInputlessTurnDisposition(threadId),
+    readInvocationTerminal: (threadId, invocationId, turnId) =>
+      store.readInvocationTerminal(threadId, invocationId, turnId),
+    turnEvents: (threadId, turnId, methods, limit, invocationId) =>
       store
-        .listTurnEventsByMethods(threadId, turnId, methods, limit)
+        .listTurnEventsByMethods(threadId, turnId, methods, limit, invocationId)
         .map((stored) => ({
           ...(stored.turnId ? { turnId: stored.turnId } : {}),
           method: stored.method,

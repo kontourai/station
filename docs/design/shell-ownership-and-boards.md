@@ -135,7 +135,8 @@ PERSONAL BOARDS                                      +
   Daily brief
   Research desk
 ─────────────────────────────────────────────────────
-[live work / participants] [Schedule] [Customize] [Settings]
+[live work / participants]                    [account]
+                         [Schedule] [Customize] [Settings]
 ```
 
 [Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
@@ -157,7 +158,10 @@ Retry rather than treating cached data as current. Escape, focus leaving,
 outside pointer input, navigation and changing sidebar presentation dismiss
 the popup. The header's sidebar control toggles the desktop rail or the
 mobile drawer. The header retains breadcrumbs, its Layout picker,
-notifications, account and Station controls, and region controls.
+notifications and Station controls, and ends with its region controls. The
+account control moved to the footer
+([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
+a Profile row while the drawer is closed.
 
 **Personal Boards** follows Projects and remains visible when empty; its
 `+` creates the first Board and focuses its name. Loading and failed reads
@@ -167,8 +171,12 @@ personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
 
-The expanded footer uses one row. The collapsed footer puts live work,
-Schedule, Customize and Settings in **Sidebar utilities**. In the desktop app, an
+The expanded footer gives live work and the account control (the signed-in
+person's initials, opening My access, Profile, Ask Station for help and Open
+settings) a row of their own, so neither runs under the other at 216px, with
+Schedule, Customize and Settings on the row below. The collapsed rail stacks live work
+and the account control above **Sidebar utilities**, which holds Schedule,
+Customize and Settings. In the desktop app, an
 update control sits above that row only while a desktop update is available,
 downloading or ready to install; collapsed, it is icon-only (#3851). The presence tray
 continues to distinguish published participants, live work, pending reads,
@@ -214,8 +222,8 @@ backups retain their stored section values for compatibility.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.
-- **Footer**: live work and joined-room participants, Schedule, Customize, and
-  Settings. Notifications remain in the header, and the command palette keeps
+- **Footer**: live work and joined-room participants, the account control,
+  Schedule, Customize, and Settings. Notifications remain in the header, and the command palette keeps
   its keyboard shortcut. Schedule and Customize do not occupy project-list rows.
   The live-work count reads the authorized session inventory; participant faces
   read task-room publication. A connected browser is not treated as a person.

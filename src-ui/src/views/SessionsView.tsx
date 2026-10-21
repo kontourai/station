@@ -14,6 +14,8 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -42,13 +44,21 @@ import { SessionPullRequestConflictChip } from '../components/session/SessionPul
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { useActivityReview } from '../contexts/ActivityReviewContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
+import { describeRelatedOpenRefusal } from '../contexts/openRelatedFilePreview';
+import {
+  usePaneRelations,
+  usePublishOpenerSelection,
+} from '../contexts/PaneRelationsContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
 import { requestTaskShaping } from '../lib/task-shaping';
+import { openerSelectionKey, type PaneOpener } from '../regions/pane-relations';
 import { relativeTime } from '../utils/relativeTime';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
@@ -76,6 +86,7 @@ import {
   matchesActivityProject,
   NO_ACTIVITY_FILTERS,
 } from './activity/activity-list-model';
+import { openActivityReview } from './activity/openActivityReview';
 import { olderDraftsLabel } from './home/draft-lane';
 import { isTerminalLifecycle } from './home/home-lane-model';
 import {
@@ -286,6 +297,7 @@ function ActivityRowMeta({
 
 export function SessionsView({
   apiBase,
+  quickReview = false,
   sessionId,
   focusHint,
   intentToken,
@@ -293,6 +305,7 @@ export function SessionsView({
   onContinueInChat,
 }: {
   apiBase: string;
+  quickReview?: boolean;
   sessionId?: string;
   /**
    * Region-owned one-shot intent for a selected session's evidence:
@@ -362,6 +375,85 @@ export function SessionsView({
     [openChats],
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const reviewOwner = useId();
+  const reviewReturnFocus = useRef<HTMLElement | null>(null);
+  const review = useActivityReview();
+  const relations = usePaneRelations();
+  const regionModel = useRegionModelOptional();
+  const hasReviewSource =
+    quickReview && regionModel?.regions.main.occupant === 'activity';
+  const regionModelRef = useRef(regionModel);
+  useLayoutEffect(() => {
+    regionModelRef.current = regionModel;
+  });
+  const [visibleReviewIds, setVisibleReviewIds] = useState<readonly string[]>(
+    [],
+  );
+  const updateVisibleReviewIds = useCallback((ids: readonly string[]) => {
+    setVisibleReviewIds((current) =>
+      JSON.stringify(current) === JSON.stringify(ids) ? current : ids,
+    );
+  }, []);
+  const reviewOpener = useMemo<PaneOpener>(
+    () => ({
+      occurrenceId: 'activity',
+      label: 'Activity',
+      source: { kind: 'activity', selectedThreadId: selectedId },
+    }),
+    [selectedId],
+  );
+  usePublishOpenerSelection(
+    hasReviewSource ? 'activity' : null,
+    openerSelectionKey(reviewOpener),
+  );
+  const reviewItems = useMemo(
+    () =>
+      visibleReviewIds.flatMap((id) => {
+        const session = sessions.find((entry) => entry.threadId === id);
+        return session ? [session] : [];
+      }),
+    [sessions, visibleReviewIds],
+  );
+  const openReview = useCallback(
+    (threadId: string) => {
+      const getModel = () => {
+        const current = regionModelRef.current;
+        if (!current) throw new Error('Activity is no longer in a region');
+        return current;
+      };
+      return openActivityReview(
+        getModel,
+        relations,
+        review.readSource,
+        threadId,
+      );
+    },
+    [relations, review.readSource],
+  );
+  useLayoutEffect(() => {
+    if (!hasReviewSource) return;
+    return review.publish({
+      owner: reviewOwner,
+      apiBase,
+      stationId: relations.stationId,
+      opener: reviewOpener,
+      items: reviewItems,
+      review: openReview,
+      restoreFocus: () => {
+        const trigger = reviewReturnFocus.current;
+        if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+      },
+    });
+  }, [
+    apiBase,
+    hasReviewSource,
+    relations.stationId,
+    review.publish,
+    reviewOwner,
+    reviewOpener,
+    reviewItems,
+    openReview,
+  ]);
   const selectedIdRef = useRef<string | null>(null);
   const selectionIntentRef = useRef(0);
   const adoptedSelectionRef = useRef<{
@@ -774,6 +866,18 @@ export function SessionsView({
     showEvidence: boolean,
   ): ActivityRowAction[] => {
     const actions: ActivityRowAction[] = [];
+    if (hasReviewSource)
+      actions.push({
+        id: 'quick-review',
+        label: 'Quick review',
+        onSelect: (trigger) => {
+          reviewReturnFocus.current = trigger;
+          void openReview(s.threadId).then((outcome) => {
+            if (!outcome.ok)
+              toastStore.show(describeRelatedOpenRefusal(outcome.reason));
+          });
+        },
+      });
     if (isReadOnlyAttachedSession(s)) {
       // An attached transcript continues from its detail's composer;
       // "Open" is that detail.
@@ -1132,6 +1236,7 @@ export function SessionsView({
         items={items}
         selectedId={selectedId}
         onSelect={selectWithIntent}
+        onVisibleItemsChange={updateVisibleReviewIds}
         onDeselect={
           lookupFailed || lookupPending
             ? returnToList

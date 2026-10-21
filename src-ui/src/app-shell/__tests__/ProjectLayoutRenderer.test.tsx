@@ -4,6 +4,7 @@
 
 import { createDirectAnswerBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { ConnectionsProvider } from '@kontourai/station-connect';
 import { workspaceBrowserPaneCatalogInstance } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -27,6 +28,10 @@ import {
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
+import {
+  parseWorkspacePaneDescriptor,
+  parseWorkspacePaneInstance,
+} from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -34,6 +39,7 @@ import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../../contexts/navigation-store';
+import { pluginRegistry } from '../../core/PluginRegistry';
 import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
@@ -1073,6 +1079,81 @@ describe('ProjectLayoutRenderer', () => {
       ],
     };
   }
+  test('a blocked plugin pane rendered by Coding reviews access in place and Cancel keeps the host', () => {
+    const catalog = codingCatalog();
+    const descriptor = parseWorkspacePaneDescriptor({
+      version: '1.0',
+      id: 'pane:plugin%3Areview:main',
+      name: 'Review',
+      rendererId: 'renderer:plugin%3Areview:main',
+      renderer: { kind: 'plugin-component', name: 'review.main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    });
+    const instance = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: 'pane:plugin%3Areview:main',
+      instanceId: 'instance:plugin:project-uuid:review',
+      stateKey: 'state:plugin:project-uuid:review',
+      boundContext: { projectId: 'project-uuid' },
+    });
+    if (!descriptor || !instance)
+      throw new Error('Plugin pane fixture was refused');
+    const plugin = { descriptor, instance };
+    catalogMock.mockReturnValue({
+      ...catalog,
+      entries: [
+        ...catalog.entries.slice(0, 2),
+        {
+          ...plugin,
+          rendererGate: 'remote-isolation',
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+          },
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    const loadStatus = vi
+      .spyOn(pluginRegistry, 'getLoadStatus')
+      .mockReturnValue({
+        state: 'degraded',
+        failedPluginNames: [],
+        failure: 'remote-isolation',
+      });
+    const view = render(
+      withQueryClient(
+        <ConnectionsProvider>
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />
+        </ConnectionsProvider>,
+      ),
+    );
+    drillIntoHostPane();
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('Coding host did not mount');
+    render(
+      <ConnectionsProvider>
+        {hostProps.renderPane(plugin.instance)}
+      </ConnectionsProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+    expect(
+      screen.getByRole('dialog', { name: /Allow extensions from/ }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(view.container.textContent).toContain('Hosted project-uuid');
+    expect(screen.getByText('Review unavailable')).toBeTruthy();
+    loadStatus.mockRestore();
+  });
+
   const stackCrumbs = () =>
     within(screen.getByRole('list', { name: 'Breadcrumb' }))
       .getAllByRole('listitem')

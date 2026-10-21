@@ -136,7 +136,29 @@
 
     "src-server/services/plugin-telemetry-transport.ts",
 
-    "src-server/security/plugin-pane-context.ts"
+    "src-server/security/plugin-pane-context.ts",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.tsx",
+
+    "src-ui/src/components/registry/__tests__/StationExtensionsAccess.test.tsx",
+
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
+
+    "src-ui/src/views/plugin-management/PluginModalStack.tsx",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.css",
+
+    "src-ui/src/views/plugin-management/InstallPreviewExtensionAccess.tsx",
+
+    "src-ui/src/core/remotePluginConsentPolicy.ts",
+
+    "src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx",
+
+    "src-ui/src/views/plugin-management/__tests__/PluginModalStack.test.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx",
+
+    "src-ui/src/views/home/HomeRolePane.tsx"
   ],
 
   "checks": [

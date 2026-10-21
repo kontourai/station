@@ -1,15 +1,36 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ConnectionsProvider } from '@kontourai/station-connect';
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render as renderView,
+  screen,
+  within,
+} from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
 import { WorkspacePaneAvailabilityList } from '../WorkspacePaneAvailabilityList';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
 import { builtinWorkspacePaneGlyph } from '../workspacePaneGlyphs';
+
+function render(node: React.ReactNode) {
+  return renderView(node, { wrapper: ConnectionsProvider });
+}
+const extensionLoadStatus = vi.hoisted(() => ({
+  state: 'degraded',
+  failedPluginNames: [],
+  failure: 'remote-isolation',
+}));
+vi.mock('../../core/PluginRegistry', () => ({
+  pluginRegistry: {
+    subscribe: () => () => {},
+    getLoadStatus: () => extensionLoadStatus,
+  },
+}));
 
 function entry(
   name: string,
@@ -457,8 +478,8 @@ describe('WorkspacePaneAvailabilityList', () => {
     });
   });
 
-  test('names the remote-extension gate and routes to Registry only for a renderer absence', () => {
-    const onReviewInRegistry = vi.fn();
+  test('offers in-place access review only for a renderer absence', () => {
+    const onReviewExtensions = vi.fn();
     const rendererMissing = {
       ...entry('Remote review', {
         state: 'temporarily-unavailable' as const,
@@ -474,17 +495,15 @@ describe('WorkspacePaneAvailabilityList', () => {
       <WorkspacePaneAvailabilityList
         entries={[rendererMissing, unavailable]}
         onSelect={vi.fn()}
-        onReviewInRegistry={onReviewInRegistry}
+        onReviewExtensions={onReviewExtensions}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Remote review/ }));
-    expect(
-      screen.getByText('Extensions are disabled for this Station'),
-    ).toBeTruthy();
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
     expect(screen.queryByText('Temporarily unavailable')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Review in Registry' }));
-    expect(onReviewInRegistry).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+    expect(onReviewExtensions).toHaveBeenCalledOnce();
 
     expect(
       presentWorkspacePaneAvailability(rendererMissing.availability)
@@ -492,7 +511,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     ).toBe('The pane renderer is currently unavailable.');
   });
 
-  test('keeps the ordinary renderer action when a gated host cannot review Registry', () => {
+  test('offers access review without a host callback before a competing retry', () => {
     const onAction = vi.fn(() => 'Checking the current pane availability.');
     const gated = {
       ...entry('Remote retry', {
@@ -515,21 +534,65 @@ describe('WorkspacePaneAvailabilityList', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Remote retry/ }));
+    expect(screen.getByText('Extensions are off on this device')).toBeTruthy();
     expect(
-      screen.getByText('Extensions are disabled for this Station'),
+      screen.getByRole('button', { name: 'Review and enable' }),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
     expect(
-      screen.queryByRole('button', { name: 'Review in Registry' }),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(onAction).toHaveBeenCalledWith(gated, gated.availability.action);
+      screen.getByRole('dialog', { name: /Allow extensions from/ }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  test('preserves sibling details and keyboard focus while extension access changes', () => {
+    const remote = entry('Remote', {
+      state: 'temporarily-unavailable',
+      reason: { code: 'renderer-missing', source: 'renderer' },
+    });
+    const onSelect = vi.fn();
+    const list = (blocked: boolean) => (
+      <WorkspacePaneAvailabilityList
+        entries={[
+          unavailable,
+          {
+            ...remote,
+            ...(blocked ? { rendererGate: 'remote-isolation' as const } : {}),
+          },
+        ]}
+        onSelect={onSelect}
+      />
+    );
+    const { rerender } = render(list(false));
+    const details = screen.getByRole('button', {
+      name: 'Preview Setup needed',
+    });
+    fireEvent.click(details);
+    details.focus();
+
+    for (const blocked of [true, false]) {
+      rerender(list(blocked));
+      expect(document.activeElement).toBe(details);
+      expect(
+        screen
+          .getByRole('button', { name: 'Preview Setup needed' })
+          .getAttribute('aria-expanded'),
+      ).toBe('true');
+      expect(
+        screen
+          .getByText('Choose a Project before opening this pane.')
+          .closest('[hidden]'),
+      ).toBeNull();
+    }
   });
 
   test.each([
     [
       'with a remote-extension gate',
       'remote-isolation',
-      'Extensions are disabled for this Station',
+      'Extensions are off on this device',
     ],
     [
       'without a remote-extension gate',

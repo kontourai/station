@@ -249,6 +249,31 @@ describe('WorkspacePane contract', () => {
     });
   });
 
+  // docs/design/pane-relationships.md: the role a related open presents a
+  // pane in. Optional and reader-compatible: a role this version does not
+  // know (a newer host's) is dropped, so the descriptor still parses here as
+  // a destination; a role that is not a string is malformed.
+  test('reads the optional relation role compatibly', () => {
+    expect(
+      parseWorkspacePaneDescriptor({
+        ...pluginDescriptorInput(),
+        relationRole: 'tool',
+      })?.relationRole,
+    ).toBe('tool');
+    const newer = parseWorkspacePaneDescriptor({
+      ...pluginDescriptorInput(),
+      relationRole: 'inspector',
+    });
+    expect(newer).not.toBeNull();
+    expect(newer).not.toHaveProperty('relationRole');
+    expect(
+      parseWorkspacePaneDescriptor({
+        ...pluginDescriptorInput(),
+        relationRole: 3,
+      }),
+    ).toBeNull();
+  });
+
   test('parses a representative sandboxed MCP App descriptor', () => {
     const descriptor = parseWorkspacePaneDescriptor(mcpDescriptorInput());
     expect(descriptor).toEqual({
@@ -587,6 +612,41 @@ describe('WorkspacePane contract', () => {
     ).toEqual({
       supportedRegions: ['primary'],
     });
+  });
+
+  test('carries a contribution’s lifecycle generation, bounded, and reads one without it', () => {
+    const instance = (lifecycleGeneration?: unknown) =>
+      parseWorkspacePaneInstance({
+        version: '1.0',
+        descriptorId: 'pane:review-queue',
+        instanceId: 'review-queue-project-a',
+        stateKey: 'review-queue-state-project-a',
+        boundContext: {
+          contribution: {
+            id: 'plugin:review-queue-plugin:review',
+            version: '1.0.0',
+            ...(lifecycleGeneration === undefined
+              ? {}
+              : { lifecycleGeneration }),
+            sourceIdentity: { id: 'review-queue-plugin', kind: 'local' },
+            provenance: { origin: 'plugin', pluginId: 'review-queue-plugin' },
+          },
+        },
+      });
+    expect(
+      instance('incarnation-1:r2')?.boundContext?.contribution,
+    ).toMatchObject({ lifecycleGeneration: 'incarnation-1:r2' });
+    expect(
+      instance()?.boundContext?.contribution?.lifecycleGeneration,
+    ).toBeUndefined();
+    // `null`: history the server cannot vouch for, carried as such.
+    expect(
+      instance(null)?.boundContext?.contribution?.lifecycleGeneration,
+    ).toBeNull();
+    expect(instance('g'.repeat(256))).not.toBeNull();
+    expect(instance('g'.repeat(257))).toBeNull();
+    expect(instance(7)).toBeNull();
+    expect(instance(' padded ')).toBeNull();
   });
 
   test('keeps application-host details out of the serialized contract', () => {
