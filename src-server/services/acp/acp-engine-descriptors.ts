@@ -80,7 +80,7 @@ export function listValidatedACPRegistryEntries(
 }
 
 /** `/opt/homebrew/bin/goose` and `C:\…\goose.exe` both name `goose`. */
-export function executableName(command: string): string {
+function executableName(command: string): string {
   const base = command.split(/[\\/]/).pop() ?? command;
   return base.replace(/\.(exe|cmd|bat)$/i, '');
 }
