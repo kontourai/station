@@ -493,6 +493,29 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
+### Catalogue descriptors
+
+`GET /acp/registry` lists the catalogue engines from every
+`acpConnectionRegistry` provider: the built-in list in
+[builtin-acp-engines.ts](../../src-server/providers/llm/builtin-acp-engines.ts)
+and any a plugin contributes. Besides the launch fields above, an entry
+(`ACPConnectionRegistryEntry` in
+[the ACP contract](../../packages/contracts/src/acp.ts)) may carry:
+
+| Field | Description |
+|---|---|
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `launchEnv` | Non-secret variables set when Station starts the entry's `command` (matched by command, so a custom connection running the same command gets them). The environment Station already launches with wins a conflict. |
+| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Descriptive only: nothing derives sign-in state from these yet. |
+| `homepageUrl` | An https link to the engine's docs. |
+
+`validateACPEngineDescriptor` checks these fields. An entry that fails is left
+out of the catalogue and logged rather than shown with some fields dropped:
+an unknown platform, a URL that is not https, an over-long value, or a
+`launchEnv` name that looks like a credential (a `KEY`, `TOKEN`, `SECRET`,
+`PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry lists as a
+credential variable).
+
 ### Runtime API
 
 Connections are managed at runtime via the REST API — unchanged by this cutover, since it only manages connection lifecycle, not chat turns:
@@ -504,6 +527,7 @@ PUT    /acp/connections/:id            Update connection configuration and its p
 DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
+GET    /acp/registry                   List catalogue engines, with host detection and install recipe
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a

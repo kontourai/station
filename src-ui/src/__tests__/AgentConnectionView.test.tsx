@@ -10,6 +10,7 @@ import {
   render as renderView,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -333,9 +334,14 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
+const refetchRegistry = vi.fn();
 vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({ data: acpBridgeConnections }),
-  useACPConnectionRegistry: () => ({ data: acpRegistryEntries }),
+  useACPConnectionRegistry: () => ({
+    data: acpRegistryEntries,
+    refetch: refetchRegistry,
+    isFetching: false,
+  }),
 }));
 
 import { AgentConnectionView } from '../views/AgentConnectionView';
@@ -660,8 +666,7 @@ describe('AgentConnectionView', () => {
         id: 'kiro',
         name: 'Kiro CLI',
         command: 'kiro',
-        description:
-          'Connect the Kiro CLI installed on this machine as an engine.',
+        description: "Kiro's coding agent, run from its kiro-cli command.",
         installed: false,
         detected: true,
       },
@@ -669,8 +674,7 @@ describe('AgentConnectionView', () => {
         id: 'opencode',
         name: 'OpenCode',
         command: 'opencode',
-        description:
-          'Connect the OpenCode CLI installed on this machine as an engine.',
+        description: 'The open-source OpenCode coding agent.',
         installed: false,
         detected: false,
       },
@@ -697,7 +701,7 @@ describe('AgentConnectionView', () => {
       0,
     );
     expect(screen.getByText('OpenCode')).toBeTruthy();
-    expect(screen.getByText('Setup required')).toBeTruthy();
+    expect(screen.getByText('Not installed')).toBeTruthy();
     expect(screen.queryByText('Configured CLI')).toBeNull();
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
@@ -715,6 +719,97 @@ describe('AgentConnectionView', () => {
       type: 'connections-engine-new',
       providerId: 'opencode',
     });
+  });
+
+  test('an undetected catalogue engine shows its host install recipe and re-checks on demand; a detected one does not', async () => {
+    refetchRegistry.mockClear();
+    acpRegistryEntries = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        command: 'goose',
+        installed: false,
+        detected: false,
+        install: {
+          darwin: { command: 'brew install block-goose-cli' },
+          linux: { command: 'curl -fsSL https://example.test/goose | bash' },
+        },
+        hostInstall: {
+          command: 'brew install block-goose-cli',
+          docsUrl: 'https://goose-docs.ai/docs/getting-started/installation',
+        },
+      },
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro-cli',
+        installed: false,
+        detected: true,
+        hostInstall: {
+          command: 'curl -fsSL https://cli.kiro.dev/install | bash',
+        },
+      },
+    ];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    const hints = screen.getAllByTestId('engine-install-hint');
+    expect(hints).toHaveLength(1);
+    const goose = screen.getByRole('group', { name: 'How to install Goose' });
+    expect(
+      within(goose).getByText('brew install block-goose-cli'),
+    ).toBeTruthy();
+    // The host's own recipe, not another platform's.
+    expect(within(goose).queryByText(/example\.test/)).toBeNull();
+    expect(
+      within(goose)
+        .getByRole('link', { name: 'Goose install guide' })
+        .getAttribute('href'),
+    ).toBe('https://goose-docs.ai/docs/getting-started/installation');
+    expect(
+      within(goose).getByRole('button', {
+        name: 'Copy the Goose install command',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('group', { name: 'How to install Kiro CLI' }),
+    ).toBeNull();
+    expect(screen.queryByText(/cli\.kiro\.dev/)).toBeNull();
+
+    fireEvent.click(
+      within(goose).getByRole('button', { name: 'Check again for Goose' }),
+    );
+    expect(refetchRegistry).toHaveBeenCalledTimes(1);
+  });
+
+  test('on a paired device the install command names the host it has to run on', async () => {
+    devicePresentation = { deviceClass: 'paired', hostName: 'studio-mac' };
+    acpRegistryEntries = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        command: 'goose',
+        installed: false,
+        detected: false,
+        hostInstall: { command: 'brew install block-goose-cli' },
+      },
+    ];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    const goose = screen.getByRole('group', { name: 'How to install Goose' });
+    expect(
+      within(goose).getByText(
+        hostActionCopy('engine-install-command', devicePresentation),
+      ),
+    ).toBeTruthy();
+    expect(
+      within(goose).getByText('brew install block-goose-cli'),
+    ).toBeTruthy();
   });
 
   test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', async () => {

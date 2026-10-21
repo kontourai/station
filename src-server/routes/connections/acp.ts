@@ -2,7 +2,9 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   type ACPConnectionConfig,
   type ACPConnectionRegistryEntry,
+  type ACPEngineInstallRecipe,
   ACPStatus,
+  installRecipeForPlatform,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
@@ -18,6 +20,7 @@ import { nativeRuntimeConnectionIds } from '../../providers/adapter-identity.js'
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import {
   type IntegrationSecretResolution,
@@ -83,20 +86,34 @@ function mergeACPConnections(
   ];
 }
 
+export interface UnconnectedACPRegistryEntry {
+  id: string;
+  name: string;
+  /** The entry's command was found on the host. */
+  detected: boolean;
+  /** The install recipe for the host's platform, when the descriptor has one. */
+  install?: ACPEngineInstallRecipe;
+}
+
 /**
- * Registry entries whose command Station observed on the host but which have
- * no ACP connection yet (neither user-authored nor plugin-provided). Keyed on
+ * Registry entries with no ACP connection yet (neither user-authored nor
+ * plugin-provided), whether or not their command was found on the host. Keyed on
  * the ACP connection id, because a connected ACP Engine reports the generic
  * `engineId: 'acp'` in `listEngineConnectionStates` and can never be matched
  * against a registry id that way (station#1548). Read-only: nothing here
  * launches the command.
  */
-export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
+export async function listUnconnectedACPRegistryEntries(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
-}): Promise<Array<{ id: string; name: string }>> {
+}): Promise<UnconnectedACPRegistryEntry[]> {
   return getRegistryEntries(await installedACPConnections(configLoader))
-    .filter((entry) => entry.detected === true && !entry.installed)
-    .map((entry) => ({ id: entry.id, name: entry.name }));
+    .filter((entry) => !entry.installed)
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      detected: entry.detected === true,
+      ...(entry.hostInstall ? { install: entry.hostInstall } : {}),
+    }));
 }
 
 /**
@@ -136,18 +153,24 @@ function getRegistryEntries(
   }
 
   const entriesById = new Map<string, ACPConnectionRegistryEntry>();
-  for (const entry of listProviders('acpConnectionRegistry')) {
-    const source = entry.builtin ? 'core' : 'plugin';
-    const available = entry.provider.listAvailable?.() || [];
-    for (const registryEntry of available) {
-      entriesById.set(registryEntry.id, {
-        ...registryEntry,
-        source,
-        sourceName: registryEntry.sourceName ?? entry.source,
-        installed: installedSources.has(registryEntry.id),
-        installedSource: installedSources.get(registryEntry.id),
-      });
-    }
+  for (const {
+    entry: registryEntry,
+    builtin,
+    source: providerSource,
+  } of listValidatedACPRegistryEntries()) {
+    const hostInstall = installRecipeForPlatform(
+      registryEntry.install,
+      process.platform,
+    );
+    entriesById.set(registryEntry.id, {
+      ...registryEntry,
+      source: builtin ? 'core' : 'plugin',
+      sourceName: registryEntry.sourceName ?? providerSource,
+      installed: installedSources.has(registryEntry.id),
+      installedSource: installedSources.get(registryEntry.id),
+      // Always the server's own projection; a provider cannot supply it.
+      hostInstall: hostInstall ? { ...hostInstall } : undefined,
+    });
   }
   return Array.from(entriesById.values()).sort((a, b) =>
     a.name.localeCompare(b.name),

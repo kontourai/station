@@ -3,7 +3,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
-import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
+import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -213,8 +213,8 @@ export function createRuntimeSystemRouteDeps(
     // disagree (station#1194).
     listEngineConnectionStates: () =>
       context.connectionService.listEngineConnectionStates(),
-    listDetectedACPRegistryEntries: () =>
-      listDetectedUnconnectedACPRegistryEntries(context.configLoader),
+    listUnconnectedACPRegistryEntries: () =>
+      listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
     port: context.port,

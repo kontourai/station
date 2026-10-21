@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const acpRegistryState = vi.hoisted(() => ({
   data: [] as Array<Record<string, unknown>>,
+  refetch: vi.fn(),
 }));
 const acpConnectionsState = vi.hoisted(() => ({
   data: [] as Array<Record<string, unknown>>,
@@ -22,7 +23,11 @@ const installRegistryEntry = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', () => ({
   useACPConnectionsQuery: () => acpConnectionsState,
-  useACPConnectionRegistryQuery: () => ({ data: acpRegistryState.data }),
+  useACPConnectionRegistryQuery: () => ({
+    data: acpRegistryState.data,
+    refetch: acpRegistryState.refetch,
+    isFetching: false,
+  }),
   useCreateACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useInstallACPConnectionRegistryEntryMutation: () => ({
     mutateAsync: installRegistryEntry,
@@ -30,6 +35,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useUpdateACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useDeleteACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useReconnectACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
+}));
+
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
 }));
 
 vi.mock('../components/acp-connections/ACPConnectionDetailModal', () => ({
@@ -45,6 +54,7 @@ import { ACPConnectionsView } from '../views/ACPConnectionsView';
 describe('ACPConnectionsView', () => {
   beforeEach(() => {
     acpRegistryState.data = [];
+    acpRegistryState.refetch.mockReset();
     acpConnectionsState.data = [];
     acpConnectionsState.error = null;
     acpConnectionsState.isError = false;
@@ -164,6 +174,38 @@ describe('ACPConnectionsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     await screen.findByText('Station is checking this engine now.');
     expect(installRegistryEntry).toHaveBeenCalledWith('kiro');
+  });
+
+  it('a routed undetected engine shows how to install it, and the hint follows Check again', () => {
+    const goose = {
+      id: 'goose',
+      name: 'Goose',
+      command: 'goose',
+      detected: false,
+      installed: false,
+      hostInstall: { command: 'brew install block-goose-cli' },
+    };
+    acpRegistryState.data = [goose];
+    const view = render(
+      <ACPConnectionsView agents={[]} initialProviderId="goose" />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const hint = within(dialog).getByRole('group', {
+      name: 'How to install Goose',
+    });
+    expect(within(hint).getByText('brew install block-goose-cli')).toBeTruthy();
+    fireEvent.click(
+      within(hint).getByRole('button', { name: 'Check again for Goose' }),
+    );
+    expect(acpRegistryState.refetch).toHaveBeenCalledTimes(1);
+
+    // The re-check found it: the dialog's own copy of the entry is still the
+    // undetected one, but the hint reads the live catalogue.
+    acpRegistryState.data = [{ ...goose, detected: true }];
+    view.rerender(<ACPConnectionsView agents={[]} initialProviderId="goose" />);
+    expect(screen.queryByTestId('engine-install-hint')).toBeNull();
+    expect(installRegistryEntry).not.toHaveBeenCalled();
   });
 
   it('passes a post-mutation connection refresh failure through to recoverable setup', async () => {

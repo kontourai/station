@@ -22,8 +22,9 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     providerEntries.filter((entry) => entry.source.startsWith(type)),
 }));
 
-const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
-  await import('../acp.js');
+const { createACPRoutes, listUnconnectedACPRegistryEntries } = await import(
+  '../acp.js'
+);
 const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
@@ -124,12 +125,12 @@ describe('ACP Routes', () => {
     expect(body.data).toEqual([]);
   });
 
-  // station#1548: the first-run Engines chapter only offers registry entries
-  // that are detected AND have no ACP connection. A connected ACP Engine
-  // reports engineId 'acp' in listEngineConnectionStates, so exclusion must be
-  // keyed on the ACP connection id (user config or plugin-provided), never on
-  // the engine id.
-  test('listDetectedUnconnectedACPRegistryEntries excludes connected and undetected entries', async () => {
+  // station#1548: the first-run Engines chapter offers registry entries that
+  // have no ACP connection, detected ones to connect and undetected ones with
+  // their install recipe. A connected ACP Engine reports engineId 'acp' in
+  // listEngineConnectionStates, so exclusion must be keyed on the ACP
+  // connection id (user config or plugin-provided), never on the engine id.
+  test('listUnconnectedACPRegistryEntries excludes connected entries and marks undetected ones', async () => {
     providerEntries = [
       {
         source: 'acpConnectionRegistry:core',
@@ -148,7 +149,15 @@ describe('ACP Routes', () => {
               command: 'opencode',
               detected: true,
             },
-            { id: 'goose', name: 'Goose', command: 'goose', detected: false },
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              detected: false,
+              install: {
+                [process.platform]: { command: 'install goose' },
+              },
+            },
             { id: 'qwen', name: 'Qwen Code', command: 'qwen' },
           ],
         },
@@ -170,14 +179,27 @@ describe('ACP Routes', () => {
       }),
     };
 
+    const undetected = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        detected: false,
+        install: { command: 'install goose' },
+      },
+      { id: 'qwen', name: 'Qwen Code', detected: false },
+    ];
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual(undetected);
 
     configLoader.loadACPConfig = async () => ({ connections: [] });
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual([
+      undetected[0],
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+      undetected[1],
+    ]);
   });
 
   test('GET /registry returns ACP connection registry entries', async () => {
@@ -212,6 +234,46 @@ describe('ACP Routes', () => {
         installed: false,
       },
     ]);
+  });
+
+  test('GET /registry projects the host platform recipe and refuses an invalid descriptor', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'good',
+              name: 'Good Engine',
+              command: 'good',
+              detected: false,
+              install: {
+                darwin: { command: 'install on darwin' },
+                linux: { command: 'install on linux' },
+                win32: { command: 'install on win32' },
+              },
+              // A provider cannot supply the server's own projection.
+              hostInstall: { command: 'spoofed' },
+            },
+            {
+              id: 'bad',
+              name: 'Bad Engine',
+              command: 'bad',
+              install: { darwin: { docsUrl: 'http://insecure.example' } },
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'good',
+    ]);
+    expect(body.data[0]).toMatchObject({
+      source: 'plugin',
+      hostInstall: { command: `install on ${process.platform}` },
+    });
   });
 
   test('GET /registry marks saved and plugin-provided connections as installed', async () => {
@@ -392,9 +454,9 @@ describe('ACP Routes', () => {
     // The saved config is not an installed Engine until the same registered
     // identity predicate GET /connections uses can prove it. This makes the
     // retryable partial write visible to first run again.
-    expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+    expect(await listUnconnectedACPRegistryEntries(configLoader)).toEqual([
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+    ]);
     // Add engine reads GET /registry and hides installed entries, so the
     // same predicate must keep the stranded entry visible there too.
     expect((await json(await app.request('/registry'))).data).toMatchObject([

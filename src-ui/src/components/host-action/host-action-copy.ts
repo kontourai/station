@@ -41,6 +41,8 @@ export type HostActionId =
   | 'engine-scan-pending'
   /** archive#3843 — an engine the scan did not find. */
   | 'engine-missing'
+  /** An engine's install command, shown where the engine was not found. */
+  | 'engine-install-command'
   /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
   /** archive#3843 — the Developer surface's redacted log read. */
@@ -122,6 +124,14 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: 'Not found on this machine.',
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
+  },
+  'engine-install-command': {
+    // The CLI has to land on the host's PATH; running it on a phone or a
+    // laptop that only pairs with Station installs nothing Station can use.
+    reach: 'host-hands',
+    host: 'Install it on this computer:',
+    paired: (hostName) =>
+      `Install it on ${hostName}, the computer Station runs on. Engines run there, so installing it on this device does not help.`,
   },
   'connection-sign-in': {
     // The engine's own login runs on the host and writes to the credential
