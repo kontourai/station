@@ -1,0 +1,7 @@
+{
+  "revision": "ea0b51ff94db3ed3f450856982ffa2d8f6275ac8",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed ea0b51ff94d raw JSON/SSE adoption and reserved sealed SDK attempt. Five observer files pass 37 cases after four intended Google completeness mutation failures and exact restoration; separate SDK/Google selection passes 41. Actual source/local-grant and durable intent composition retains unknown allocation under legacy accounting, including known physical termination without cost settlement. Duplicate pending entry and rejected response disposal are exercised. AccountingV1 integration, completed independent composition/rounds review, boot issuance, provider/native/billing and epic acceptance remain absent. Generated learning output was reclaimed after ENOSPC and requires rebuild when disk capacity is restored.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
