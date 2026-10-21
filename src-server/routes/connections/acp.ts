@@ -3,6 +3,7 @@ import {
   type ACPConnectionConfig,
   type ACPConnectionRegistryEntry,
   ACPStatus,
+  normalizeACPArgs,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
@@ -199,7 +200,7 @@ function normalizeACPConnection(value: Record<string, any>) {
     id: value.id,
     name: value.name,
     command: value.command,
-    args: value.args ?? [],
+    args: normalizeACPArgs(value.args ?? []),
     icon: value.icon ?? '🔌',
     enabled: value.enabled !== false,
     ...(value.cwd ? { cwd: value.cwd } : {}),
@@ -631,16 +632,34 @@ export function createACPRoutes(ctx: RuntimeContext) {
                 { success: false, error: 'Connection not found' },
                 404,
               );
-            const previous = config.connections[idx];
+            const stored = config.connections[idx];
+            // Both sides without empty-string arguments (an earlier form saved
+            // blank arguments as ['']), so a rename is not read as a command
+            // change.
+            const previous = stored.args
+              ? { ...stored, args: normalizeACPArgs(stored.args) }
+              : stored;
+            const updates = Array.isArray(body.args)
+              ? { ...body, args: normalizeACPArgs(body.args) }
+              : body;
             // Changing what a connection runs, or where, is choosing a
             // command; renaming or toggling it is not.
-            if (changesAny(body, previous, ['command', 'args', 'cwd'])) {
+            if (changesAny(updates, previous, ['command', 'args', 'cwd'])) {
               const commandRefused = refuseUngrantedCommandChoice(c);
               if (commandRefused) return commandRefused;
             }
-            const next = { ...previous, ...body, id };
-            if (isDeepStrictEqual(previous, next)) {
-              return c.json({ success: true, data: previous });
+            // Edit setup sends every field: an empty folder means none, an
+            // empty icon means the default.
+            const next = { ...previous, ...updates, id };
+            if (next.cwd === '') delete next.cwd;
+            if (next.icon === '') next.icon = '🔌';
+            if (isDeepStrictEqual(stored, next)) {
+              // Nothing to save or re-probe; still answer the status the
+              // setup dialog reads.
+              return c.json({
+                success: true,
+                data: connectionStatusView(previous, ctx.acpBridge.getStatus()),
+              });
             }
             config.connections[idx] = next;
             await ctx.configLoader.saveACPConfig(config);

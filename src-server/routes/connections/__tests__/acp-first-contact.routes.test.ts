@@ -450,6 +450,44 @@ describe('first-contact continuation of a cold engine add', () => {
       expect(await registered(configLoader)).toEqual(['stub']);
     });
 
+    // Edit setup saved with nothing changed: no probe runs, but the answer
+    // still carries the status, or the dialog has no result to show.
+    test('an unchanged edit answers the connection status', async () => {
+      const { script, createProbe } = scriptedProbes();
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      const { ctx } = await createContext(createProbe);
+      const app = asOperator(createACPRoutes(ctx));
+      await create(app);
+
+      const body = await json(
+        await app.request('/connections/stub', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Stub Engine', command: 'stub-acp' }),
+        }),
+      );
+
+      expect(body.data).toMatchObject({
+        id: 'stub',
+        status: 'unavailable',
+        lastError: { message: 'spawn stub-acp ENOENT' },
+      });
+    });
+
+    // An earlier custom add stored blank arguments as one empty string.
+    test('a saved empty-string argument reads as no arguments', async () => {
+      const { createProbe } = scriptedProbes();
+      const { ctx, configLoader } = await createContext(createProbe);
+      await configLoader.saveACPConfig({
+        connections: [{ ...custom, args: [''], icon: '🔌', enabled: true }],
+      });
+      const app = asOperator(createACPRoutes(ctx));
+
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toMatchObject([{ id: 'stub', args: [] }]);
+    });
+
     test('a re-check of an id with no saved connection is not found', async () => {
       const { createProbe } = scriptedProbes();
       const { ctx } = await createContext(createProbe);

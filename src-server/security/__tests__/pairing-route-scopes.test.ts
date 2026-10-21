@@ -134,6 +134,17 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     ).toBe('home:transfer');
   });
 
+  // Retry check re-probes and registers an engine: the same operate tier as
+  // reconnecting it, and its unregistered list reads like the installed one.
+  test('the engine re-check needs operate and its unregistered list needs read', () => {
+    expect(requiredPairingScope('POST', '/acp/connections/stub/check')).toBe(
+      'orchestration:operate',
+    );
+    expect(requiredPairingScope('GET', '/acp/connections/unregistered')).toBe(
+      'orchestration:read',
+    );
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');

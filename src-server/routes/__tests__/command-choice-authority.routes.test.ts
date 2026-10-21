@@ -97,6 +97,16 @@ async function fixture() {
         icon: 'x',
         enabled: true,
       },
+      // One empty-string argument, as an earlier custom add stored blank
+      // arguments.
+      {
+        id: 'blank-args',
+        name: 'Blank args',
+        command: 'engine',
+        args: [''],
+        icon: 'x',
+        enabled: true,
+      },
       // No `args` and no `cwd` at all, as an older record is stored.
       {
         id: 'plain',
@@ -551,6 +561,32 @@ describe('what a device may still do without choosing a command', () => {
     expect(
       (await f.send(device, 'DELETE', '/acp/connections/existing')).status,
     ).toBe(200);
+  });
+
+  // Edit setup sends every field; a rename of a connection saved with
+  // blank arguments must not read as choosing a command.
+  test('renames an ACP connection saved with blank arguments', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    const rename = await f.send(device, 'PUT', '/acp/connections/blank-args', {
+      name: 'Renamed',
+      command: 'engine',
+      args: [],
+      icon: 'x',
+      cwd: '',
+    });
+    expect(rename.status).toBe(200);
+  });
+
+  test('re-checks an ACP connection: its saved command, none chosen', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    expect(
+      (await f.send(device, 'POST', '/acp/connections/existing/check')).status,
+    ).toBe(200);
+    expect(f.acpCtx.acpBridge.addConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'existing', command: 'engine' }),
+    );
   });
 
   test('renames an ACP connection or sends its command unchanged', async () => {
