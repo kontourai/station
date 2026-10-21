@@ -1,0 +1,7 @@
+{
+  "revision": "7f54b4cd3858b9bd2b593e9b0f2c81014bb86118",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed adoption sequence against the independent Station host trace and inspected production execution-target resolution, managed-model construction and credential-enrolment owners. Recorded current native output-limit incompatibility, physical-call accounting and authentication gaps without claiming implementation. Actual source-launcher and local bundled inspection matched at a9acb062; remaining publication, groups, launch, topology, sync and final acceptance stay open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
