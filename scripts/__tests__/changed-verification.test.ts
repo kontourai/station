@@ -2791,7 +2791,7 @@ setInterval(() => {}, 1000);`,
         join(root, fixture),
         `import { describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
 describe('primary error fixture', () => {
-  test('preserves the primary message', () => {
+  test('preserves the primary message api_key=secret-query-token', () => {
     const cause = new Error('nested root failure; Authorization: Bearer secret-fixture-token');
     const message = process.env.STATION_FIXTURE_FAILURE_MESSAGE;
     const error = new Error(message, { cause });
@@ -2995,8 +2995,13 @@ describe('primary error fixture', () => {
       } else if (mode !== 'malformed-companion') {
         expect(details).toContain('fixture primary failure');
         expect(details).toContain('nested root failure');
-      } else expect(details).toBe('{invalid-json');
+      } else
+        expect(JSON.parse(details)).toEqual({
+          omitted: 'Vitest report is not valid JSON',
+        });
       expect(details).not.toContain('secret-fixture-token');
+      expect(retained).not.toContain('secret-query-token');
+      expect(details).not.toContain('secret-query-token');
       expect(result.receipt.artifacts).toContainEqual(companion);
       const attached = attachCiFastDiagnostics(
         {
