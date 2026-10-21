@@ -3071,7 +3071,9 @@ by name), and a usage-limit stop waiting for a known reset
 conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
 check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
-person (`needs_approval`; 409 `wake_up_settled` once it is decided or due),
+person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
+503 `wake_up_unavailable` while check-back delivery is stopped, as during
+shutdown; it stays `needs_approval`),
 and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent's request reaches none of them. The agent's own side is the station-control tools in
