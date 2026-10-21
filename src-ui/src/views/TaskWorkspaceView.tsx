@@ -708,9 +708,8 @@ function TaskRoomWorkspaceSection({
       strips.every(inView);
     // After the host's own focus frame, which is scheduled first.
     requestAnimationFrame(() => {
-      const tab = room.contains(document.activeElement)
-        ? document.activeElement
-        : null;
+      const activeElement = room.ownerDocument.activeElement;
+      const tab = room.contains(activeElement) ? activeElement : null;
       if (roomWasInView && tab && inView(tab)) return;
       const target =
         tab?.closest<HTMLElement>('.workspace-pane-host__group') ?? room;
