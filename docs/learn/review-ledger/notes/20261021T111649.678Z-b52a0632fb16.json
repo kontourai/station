@@ -1,0 +1,7 @@
+{
+  "revision": "ef65b1b7988a091de2791de949cbb220ea0f4465",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the new Ensemble preparation section against the consumed runtime registration, route schema/refusal envelopes, local current-operator admission, non-probing inventory/resolver purpose and adapter login observations at 49c27af6. It documents first-member refusal and no launch-ready snapshot; credential/model entitlement and output bounding remain unverified. Existing API sections unchanged.","inputs":["docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/contexts/active-chats-state.ts","src-server/routes/orchestration/ensemble-preparation.ts","src-server/services/orchestration/ensemble-execution-context.ts","src-server/providers/adapter-shape.ts"]}
+  ]
+}
