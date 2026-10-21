@@ -3320,9 +3320,13 @@ button:hover {
   align-items: center;
   justify-content: center;
   padding: 0 4px;
+  border: var(--k-border-thin, 1px) solid currentColor;
   border-radius: var(--radius-pill);
-  background: var(--success-text);
-  color: var(--text-on-accent);
+  /* The status hue as text on the raised panel: a pair the design tokens
+     hold to text contrast in every theme. A filled green with the accent's
+     on-colour was not a pair (an accent override changed one side only). */
+  background: var(--k-panel-raised);
+  color: var(--k-positive);
   font-size: var(--text-2xs);
   font-weight: 600;
   line-height: 1;

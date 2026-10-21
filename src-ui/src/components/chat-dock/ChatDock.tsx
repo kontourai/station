@@ -181,7 +181,10 @@ import { useChatDockViewModel } from './useChatDockViewModel';
 import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
-import { useInboxNeedsYouCount } from './useInboxGroups';
+import {
+  useInboxNeedsYouCount,
+  useInboxWorkingCount,
+} from './useInboxGroups';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1284,6 +1287,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
   const inboxClock = useCoarseNow();
   const inboxNeedsYou = useInboxNeedsYouCount(taskItems, inboxClock);
+  const inboxWorking = useInboxWorkingCount(taskItems, inboxClock, workFacts);
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);
   }, [inboxNeedsYou, onInboxNeedsYouChange]);
@@ -2907,6 +2911,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }),
                       isInboxOpen,
                       inboxNeedsYouCount: inboxNeedsYou,
+                      inboxWorkingCount: inboxWorking,
                       onToggleInbox: toggleInbox,
                       backgroundTasksTriggerRef,
                       backgroundTasksRunningCount: importedSessionId

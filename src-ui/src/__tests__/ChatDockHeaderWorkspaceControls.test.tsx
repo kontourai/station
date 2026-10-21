@@ -546,6 +546,31 @@ describe('working chats ride the inbox toggle and the one More menu', () => {
     expect(focusSession).toHaveBeenCalledWith('b');
   });
 
+  test('the toggle’s number is the inbox’s Running rows when the dock has them, not the open tabs', async () => {
+    renderWorking({ isInboxOpen: true, inboxWorkingCount: 3 });
+    const toggle = await screen.findByRole('button', {
+      name: 'Hide inbox, 3 working',
+    });
+    expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(
+      '3',
+    );
+  });
+
+  test('beside a numbered toggle the background-task count is a dot, not a second number', async () => {
+    renderWorking({ backgroundTasksRunningCount: 1 });
+    const trigger = await screen.findByRole('button', {
+      name: 'More dock actions — 1 background task running',
+    });
+    expect(trigger.querySelector('.chat-dock__more-badge')).toBeNull();
+    expect(
+      trigger.querySelector('.action-overflow__status-dot'),
+    ).not.toBeNull();
+    // The toggle keeps its number.
+    expect(
+      document.querySelector('.chat-dock__inbox-working')?.textContent,
+    ).toBe('2');
+  });
+
   test('without an inbox toggle the More trigger carries the counts', async () => {
     renderWorking({ showInboxToggle: false }, 1);
     await screen.findByTitle('New chat');

@@ -68,6 +68,11 @@ export interface ChatDockWorkspaceControls {
   isInboxOpen: boolean;
   /** The inbox's "Needs you" count, named on the toggle while it is hidden. */
   inboxNeedsYouCount?: number;
+  /**
+   * The inbox's Running rows (`useInboxWorkingCount`): the "N working" the
+   * toggle wears is the count of exactly those rows.
+   */
+  inboxWorkingCount?: number;
   onToggleInbox: () => void;
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -320,7 +325,20 @@ export function ChatDockHeader({
       ? { ...action, separatorBefore: true }
       : action,
   );
-  const workingLabel = workingChatsLabel(activeSessions.length, unreadCount);
+  // The same fact the inbox rows show when the dock has it; the open chat
+  // tabs only without one (a dock with no inbox behind it).
+  const workingCount =
+    workspaceControls?.inboxWorkingCount ?? activeSessions.length;
+  const workingLabel = workingChatsLabel(workingCount, unreadCount);
+  const backgroundTasksCount = backgroundTasksBadgeHidden
+    ? 0
+    : (workspaceControls?.backgroundTasksRunningCount ?? 0);
+  const backgroundTasksLabel =
+    backgroundTasksCount > 0
+      ? `${backgroundTasksCount} background task${backgroundTasksCount === 1 ? '' : 's'} running`
+      : undefined;
+  // The inbox toggle shows the working count as a number.
+  const toggleWearsNumber = showInboxToggle && workingCount > 0;
 
   // No "Chat Dock" label: the dock is the only thing this chrome can belong
   // to, and the row's space is worth more to the project context than to
@@ -364,13 +382,13 @@ export function ChatDockHeader({
           aria-label={inboxToggleLabel(
             workspaceControls.isInboxOpen,
             workspaceControls.inboxNeedsYouCount,
-            activeSessions.length,
+            workingCount,
             unreadCount,
           )}
           title={inboxToggleLabel(
             workspaceControls.isInboxOpen,
             workspaceControls.inboxNeedsYouCount,
-            activeSessions.length,
+            workingCount,
             unreadCount,
           )}
           aria-pressed={workspaceControls.isInboxOpen}
@@ -400,9 +418,9 @@ export function ChatDockHeader({
               stroke="currentColor"
             />
           </svg>
-          {activeSessions.length > 0 ? (
+          {workingCount > 0 ? (
             <span className="chat-dock__inbox-working" aria-hidden="true">
-              {activeSessions.length}
+              {workingCount}
             </span>
           ) : null}
         </button>
@@ -448,28 +466,25 @@ export function ChatDockHeader({
           actions={dockMoreActions}
           // With no inbox toggle on the bar (a side dock, a collapsed bar),
           // the working and unread counts ride this trigger instead, the way
-          // the phone's Chat actions trigger carries them.
-          status={showInboxToggle ? undefined : workingLabel}
+          // the phone's Chat actions trigger carries them. While the toggle
+          // wears its own number, the background-task count rides here as a
+          // dot (still named in the trigger), so the bar never shows two
+          // number badges side by side.
+          status={
+            showInboxToggle
+              ? toggleWearsNumber
+                ? backgroundTasksLabel
+                : undefined
+              : workingLabel
+          }
           // The Background tasks sheet anchors to the control that opened it,
           // and since #1536 F that control is this menu's trigger.
           triggerRef={workspaceControls?.backgroundTasksTriggerRef}
           // Folding Background tasks into the menu took its running-count badge
           // off the bar with it, and a count that only exists inside a closed
           // menu is not a signal. It rides the trigger instead.
-          badgeCount={
-            backgroundTasksBadgeHidden
-              ? 0
-              : (workspaceControls?.backgroundTasksRunningCount ?? 0)
-          }
-          badgeLabel={
-            !backgroundTasksBadgeHidden &&
-            workspaceControls &&
-            workspaceControls.backgroundTasksRunningCount > 0
-              ? `${workspaceControls.backgroundTasksRunningCount} background task${
-                  workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
-                } running`
-              : undefined
-          }
+          badgeCount={toggleWearsNumber ? 0 : backgroundTasksCount}
+          badgeLabel={toggleWearsNumber ? undefined : backgroundTasksLabel}
         />
       </span>
     </>

@@ -11,6 +11,7 @@ import {
   groupMobileActivity,
   type MobileActivityGroup,
 } from './mobile-activity-groups';
+import { useInboxScope } from './InboxScopeFilter';
 import { useHeldLifecycles } from './useHeldLifecycles';
 
 /**
@@ -49,4 +50,21 @@ export function useInboxNeedsYouCount(
   const groups = useInboxGroups(items, now);
   const group = groups.find((group) => group.id === 'needsYou');
   return group ? workAttentionCount(group.items, now, group.childrenById) : 0;
+}
+
+/**
+ * How many rows the inbox shows as Running: its own scope filter, then its
+ * own groups (held lifecycles included), so the toggle's "N working" badge
+ * is a count of exactly the rows that say Running. Not the dock's open chat
+ * tabs, which miss chats running elsewhere and, after a reload, every chat
+ * whose local state has not caught up yet.
+ */
+export function useInboxWorkingCount(
+  items: HomeWorkItem[],
+  now: number,
+  workFacts?: WorkFactsById,
+): number {
+  const scope = useInboxScope(items, now, workFacts);
+  const groups = useInboxGroups(scope.items, now, workFacts);
+  return groups.find((group) => group.id === 'running')?.items.length ?? 0;
 }

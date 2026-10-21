@@ -517,7 +517,25 @@ function renderDock() {
 const card = () =>
   document.querySelector<HTMLElement>('aside.session-context-card');
 const branchBadge = () => document.querySelector('.git-badge');
-const moreBadge = () => document.querySelector('.chat-dock__more-badge');
+/**
+ * The background-task count on the More trigger: a number badge, or — while
+ * the inbox toggle beside it wears the working count — a dot, so the bar
+ * never shows two numbers side by side. Either way the trigger names it.
+ */
+const moreBadge = () =>
+  document.querySelector(
+    '.chat-dock__more .chat-dock__more-badge, .chat-dock__more .action-overflow__status-dot',
+  );
+const expectMoreCarriesRunning = (count: number) => {
+  expect(moreBadge()).not.toBeNull();
+  expect(
+    screen.getByRole('button', {
+      name: new RegExp(
+        `^More dock actions — .*${count} background tasks running`,
+      ),
+    }),
+  ).toBeTruthy();
+};
 // The header no longer repeats the chat's branch or project at all: the card
 // (or, folded, the chip's sheet) is where they live. Kept as a probe so the
 // tests below fail if either comes back to the bar.
@@ -551,7 +569,7 @@ describe('session context card visibility follows the dock body width', () => {
     // The branch is the chip's sheet's, not a header badge.
     expect(branchBadge()).toBeNull();
     expect(mismatchLabel()).toBeNull();
-    expect(moreBadge()?.textContent).toBe('2');
+    expectMoreCarriesRunning(2);
   });
 
   test.each([
@@ -570,7 +588,7 @@ describe('session context card visibility follows the dock body width', () => {
           await new Promise((resolve) => setTimeout(resolve, 50));
         });
       expect(card()).toBeNull();
-      expect(moreBadge()?.textContent).toBe('2');
+      expectMoreCarriesRunning(2);
       expect(branchBadge()).toBeNull();
     },
   );
@@ -583,7 +601,7 @@ describe('session context card visibility follows the dock body width', () => {
     // Shrink: the card folds away (and unmounts).
     await resizeSurface(600);
     await waitFor(() => expect(card()).toBeNull());
-    expect(moreBadge()?.textContent).toBe('2');
+    expectMoreCarriesRunning(2);
     // Grow again while the card's chunk is held back: the card is wanted but
     // not on screen, so the header must still carry the facts.
     fixture.cardChunk = 'loading';
@@ -593,7 +611,7 @@ describe('session context card visibility follows the dock body width', () => {
     });
     expect(chip()).toBeNull();
     expect(card()).toBeNull();
-    expect(moreBadge()?.textContent).toBe('2');
+    expectMoreCarriesRunning(2);
   });
 
   test('the threshold is the transcript floor plus the card column', async () => {

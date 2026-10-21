@@ -328,3 +328,59 @@ test('a hidden inbox’s toggle says how many need you, and a snooze takes the r
     activeChatsStore.removeChat('owed');
   }
 });
+
+/**
+ * The toggle's "N working" badge counts the inbox's own Running rows, not
+ * the dock's open tabs: a chat the inbox shows Running (here, from the
+ * chats store the inbox reads) counts even when the dock's session list has
+ * not caught up (it reads idle, as after a reload).
+ */
+test('the toggle’s working count is the inbox’s Running rows', async () => {
+  for (const [id, title] of [
+    ['one', 'First running'],
+    ['two', 'Second running'],
+    ['rest', 'Idle'],
+  ] as const) {
+    activeChatsStore.initChat(id, {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title,
+      conversationId: `conv-${id}`,
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+    });
+  }
+  for (const id of ['one', 'two'])
+    activeChatsStore.updateChat(id, {
+      orchestrationStatus: 'running',
+      orchestrationTurnOpen: true,
+      status: 'sending',
+    });
+  // The dock's own list has not caught up: every chat reads idle there.
+  dockProbe.sessions = [
+    session({ id: 'one', title: 'First running' }),
+    session({ id: 'two', title: 'Second running' }),
+    session({ id: 'rest', title: 'Idle' }),
+  ];
+  deviceSettingsStore.set('inboxOpen', false);
+  try {
+    renderInProviders(
+      <ChatWorkspacePane
+        placement="fullscreen"
+        projectSlug="pulse"
+        layoutSlug="coding"
+      />,
+    );
+    const toggle = await screen.findByRole(
+      'button',
+      { name: 'Show inbox, 2 working' },
+      { timeout: 15_000 },
+    );
+    expect(
+      toggle.querySelector('.chat-dock__inbox-working')?.textContent,
+    ).toBe('2');
+  } finally {
+    deviceSettingsStore.reset('inboxOpen');
+    for (const id of ['one', 'two', 'rest']) activeChatsStore.removeChat(id);
+  }
+});
