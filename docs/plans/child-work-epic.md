@@ -76,8 +76,10 @@ public controller with its host-fenced persistence owner. Diagnostic probes
 against the verified artifact exercise metadata operations and staged-write
 revocation. Managed focused tests now exercise persistence, runtime metadata and
 observation owners; serving composition remains unverified. These checks do not
-establish provider metering or supported group execution. Flow itself stays at the lifecycle
-coordinator's canonical 5.2.0 pin; Dispatch/Relay 0.7.1 supply physical reservation APIs.
+establish provider metering or supported group execution. After the main merge at
+`98d885a7ad5`, Station's root Flow is 5.2.1; published Flow Agents 9.3.0 retains its
+own declared and resolved Flow 5.2.0 dependency. Dependency-specific findings stay
+bound to that graph. Dispatch/Relay 0.7.1 supply physical reservation APIs.
 
 Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
 acceptance obligations. Closed-as-batched is not implemented. In particular,
@@ -190,6 +192,14 @@ intended zero-publication assertion; byte-identical restoration passed. This
 fixture selects its stable revision and is not a booted route test. The scoped
 server-test type lane passes. Credential-source currency remains distinct from
 model entitlement, provider qualification and paid execution authority.
+
+The actual #3991 main merge `1dd83e0f3051` is integrated normally at
+`98d885a7ad5`. Nineteen conflicts were reconciled without dropping the epic's
+retention/provenance additions or 9.3.0 pins. Dependency checks and real PTY
+verification pass. Separate focused runs pass 245 contract/security/UI cases and
+225 server session/provenance/group-runtime cases; UI and server-test type lanes
+pass. These are local checks of selected merged paths, not full epic, serving,
+provider, native or hosted acceptance. Documentation freshness remains failing.
 
 The sealed-source SDK owner, explicit Flow rounds/continuation, raw-provider
 stream repair, and exact tariff settlement remain isolated candidates. Their
