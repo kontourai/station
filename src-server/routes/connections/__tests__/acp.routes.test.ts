@@ -14,6 +14,10 @@ let providerEntries: Array<{
   provider: any;
 }> = [];
 
+// The registry routes await the login-shell PATH capture before detection;
+// these route cases do not exercise detection, so they skip the shell spawn.
+vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
 }));

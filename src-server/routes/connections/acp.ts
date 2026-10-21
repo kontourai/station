@@ -16,6 +16,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { nativeRuntimeConnectionIds } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { resolveAugmentedPath } from '../../providers/auth/cli-auth.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
@@ -94,7 +95,7 @@ function mergeACPConnections(
 export async function listDetectedUnconnectedACPRegistryEntries(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
 }): Promise<Array<{ id: string; name: string }>> {
-  return getRegistryEntries(await installedACPConnections(configLoader))
+  return (await detectedRegistryEntries(configLoader))
     .filter((entry) => entry.detected === true && !entry.installed)
     .map((entry) => ({ id: entry.id, name: entry.name }));
 }
@@ -120,6 +121,20 @@ async function installedACPConnections(configLoader: {
   ).filter((connection) =>
     isRegisteredRuntimeConnection(connection.id, registeredIds),
   );
+}
+
+/**
+ * Registry entries with `detected` read after the login-shell PATH capture
+ * has landed. Built-in entries detect with the synchronous `findCliBinary`,
+ * which on the first call after start sees only the process PATH and
+ * well-known dirs, so an engine reachable only through the user's shell PATH
+ * read as not found. The capture is resolved once per process.
+ */
+async function detectedRegistryEntries(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<ACPConnectionRegistryEntry[]> {
+  await resolveAugmentedPath();
+  return getRegistryEntries(await installedACPConnections(configLoader));
 }
 
 function getRegistryEntries(
@@ -332,9 +347,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
-    const entries = getRegistryEntries(
-      await installedACPConnections(ctx.configLoader),
-    );
+    const entries = await detectedRegistryEntries(ctx.configLoader);
     return c.json({ success: true, data: entries });
   });
 
