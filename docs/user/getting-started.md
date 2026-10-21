@@ -676,8 +676,8 @@ When something needs your attention instead, the bubble opens one short line:
 
 A message that may have reached the agent, or got no answer, is never discarded
 automatically:
-**Discard…**, on the message, in the queued-message notice or in the outbox
-list, states the risk and removes it only after **I checked, discard it**, in
+**Discard…**, on the message, in the queued-message notice or in the pending
+list above the composer, states the risk and removes it only after **I checked, discard it**, in
 every open window. It does not hold back the messages written after
 it.
 

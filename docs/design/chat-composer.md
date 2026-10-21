@@ -328,7 +328,9 @@ reload. A running batch keeps one summary row ("4 commands · 3 done", where
 "done" counts calls that finished successfully, past tense only once every
 call settled) and shows each running call on its own row beneath it, at most
 two and then "+N more", with its elapsed time after ten seconds; a single
-running call shows it too. The batch fills the answer's column for its whole
+running call shows it too. Such a row shows what is running ("npm run build")
+without the "Running" its highlight already says; the full label is its
+tooltip and what a screen reader hears. The batch fills the answer's column for its whole
 life, so its running calls changing never resize the card, and the elapsed time
 holds its column from the start, so its appearing never widens it. A call is shown running only inside
 the turn the server reports open. Reduced motion disables the highlight and
@@ -608,8 +610,17 @@ A failed read after held rows were shown replaces them with a
 authorization and placement checks; rows without a permitted key are
 read-only. Held rows offer no local edit, reorder, send-now or steer action.
 This view does not transfer ordinary busy-composer submissions from
-browser-local storage into the server inbox. Rows, and the list itself, grow in
-and collapse out (height and opacity) rather than popping.
+browser-local storage into the server inbox. This browser's durable outbox for
+the chat (a send that failed or got no answer, and copies queued in another
+window or one that closed) is the top of the same list, not a second list: its
+rows keep their own Send, Retry, Check and Discard actions, count toward the
+pending total, and a failed, possibly-delivered or held row marks the list
+Needs review. A held copy reads **From another window. Not sent.** with
+**Send**; it has no order number, since it is sent only on Send. Rows, and the
+list itself, grow in and collapse out (height and opacity) rather than popping.
+In a dock too short for the list and the draft, the list yields before the
+draft does, down to its toggle row (and, while open, its first row); the rest
+scrolls inside it.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure

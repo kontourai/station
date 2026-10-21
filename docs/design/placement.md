@@ -1869,7 +1869,7 @@ crowded and that nothing said what belonged in it. The rule:
 
 | In the bar | Where it went instead |
 | --- | --- |
-| Identity, one line: title, then agent and engine, muted. The context gives up its width before the title; model and route are its tooltip. | Model and route: the composer's model picker names them. |
+| Identity, one line: title, then agent and engine, muted. When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
 | Inbox toggle, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | New, as a split button whose second half is the destination project (`ChatDockProjectContext`); switching rebinds only (#4524). | "New chats / <project>" badge, "This chat: <project>", branch badge: the destination joined New; the chat's own project and branch are the session context card's. |
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
@@ -1950,7 +1950,12 @@ server read beyond the pull request links Chat details already reads.
   leave with opacity and transform only and stay mounted for one motion beat
   on the way out (`SESSION_CONTEXT_EXIT_MS`, paired with `--motion-base`).
   The column itself appears and leaves in one step: the fit above is a
-  measurement, and animating the column would feed it mid-flight.
+  measurement, and animating the column would feed it mid-flight. A regrow
+  mounts the card in the same commit that starts the chip's exit (its
+  already-loaded chunk is shared across mounts, so it does not suspend
+  again), so the transcript changes width once and the two crossfade. While
+  it leaves, the composer and the pending list paint over it on the dock's
+  own background: it fades over the transcript's edge only.
 - **One inventory host per dock.** The phone dock now mounts the
   `ChatDockSessionInventoryHost` the desktop header mounts, with the phone
   presentation (`full-fallback`), so Chat inventory is reachable on a phone
