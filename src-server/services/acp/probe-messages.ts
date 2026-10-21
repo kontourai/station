@@ -19,11 +19,12 @@ export function engineFacingProbeMessage(
   if (typeof budgetMs === 'number') {
     return `${engine.name} didn't answer within ${waitPhrase(budgetMs)}.`;
   }
-  if (
-    code === 'EACCES' &&
-    typeof syscall === 'string' &&
-    syscall.startsWith('spawn')
-  ) {
+  const spawnFailed =
+    typeof syscall === 'string' && syscall.startsWith('spawn');
+  if (spawnFailed && code === 'ENOENT') {
+    return new ACPCommandNotFoundError(engine.command).message;
+  }
+  if (spawnFailed && code === 'EACCES') {
     return `Station could not run ${engine.command}: it is not executable on the computer Station runs on. Make it executable, then check the engine again.`;
   }
   const message = error instanceof Error ? error.message : String(error);

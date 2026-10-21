@@ -48,6 +48,18 @@ describe('engineFacingProbeMessage', () => {
     );
   });
 
+  test('an OS spawn ENOENT reads as the missing-command sentence', () => {
+    expect(
+      engineFacingProbeMessage(
+        Object.assign(new Error('spawn kiro-cli ENOENT'), {
+          code: 'ENOENT',
+          syscall: 'spawn kiro-cli',
+        }),
+        engine,
+      ),
+    ).toBe(new ACPCommandNotFoundError('kiro-cli').message);
+  });
+
   test('a missing command keeps its own sentence', () => {
     const error = new ACPCommandNotFoundError('kiro-cli');
     expect(engineFacingProbeMessage(error, engine)).toBe(error.message);
