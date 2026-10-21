@@ -22,6 +22,7 @@ import {
   REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   REVIEW_LEDGER_PATH_BUDGET,
+  readReviewState,
   recordFile,
   serializeLedgerIndex,
   serializeNoteArchive,
@@ -180,6 +181,54 @@ function prWithBaseNote() {
 }
 
 describe('append-only notes (#3036)', () => {
+  it.each(['together', 'deletion-first', 'addition-first'])(
+    'preserves accumulated staleness across redaction (%s)',
+    (commitOrder) => {
+      const f = fixture();
+      f.write('src/a.ts', 'export const a = 2;\n');
+      commit(f.root, 'source changes before review');
+      expect(
+        record(f.root, [
+          'docs/a.md',
+          '--note',
+          'Reviewed proxy.example.internal access.',
+        ]).status,
+      ).toBe(0);
+      commit(f.root, 'record private host');
+      const [original] = noteFiles(f.root);
+      f.write('src/a.ts', 'export const a = 3;\n');
+      commit(f.root, 'source changes after review');
+      const outstanding = () =>
+        readReviewState(f.root).ledger.records.find(
+          (entry: { path: string }) => entry.path === 'docs/a.md',
+        )?.historyChanges;
+      expect(outstanding()).toEqual(['src/a.ts']);
+      const result = run(f.root, 'record-documentation-review.mjs', [
+        '--redact-private-hosts',
+        original,
+        '--json',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(outstanding()).toEqual(['src/a.ts']);
+      if (commitOrder !== 'together') {
+        const added = git(f.root, [
+          'ls-files',
+          '-o',
+          '--exclude-standard',
+          NOTES,
+        ]);
+        git(f.root, [
+          'add',
+          commitOrder === 'deletion-first' ? original : added,
+        ]);
+        git(f.root, ['commit', '-qm', 'partial private note redaction']);
+        expect(outstanding()).toEqual(['src/a.ts']);
+      }
+      commit(f.root, 'redact private host');
+      expect(outstanding()).toEqual(['src/a.ts']);
+    },
+  );
+
   it('permits only an exact private-host redaction while retaining review claims and identity', () => {
     const f = fixture();
     expect(
