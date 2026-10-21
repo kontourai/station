@@ -1,11 +1,17 @@
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import filesystem from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
@@ -20,6 +26,7 @@ import {
 import type { DelegationGroupSpecV2 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import * as lifecycle from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createDelegationGroupRoutes } from '../../../routes/orchestration/delegation-groups.js';
@@ -28,15 +35,20 @@ import {
   bindRuntimeLocalOperator,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
+  resolvePrincipal,
+} from '../../identity/principal-resolver.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { DelegationGroupRuntime } from '../delegation-group-runtime.js';
 import { EventBus } from '../event-bus.js';
 
-// Requires the published candidate artifact AND new route scope declarations.
-// No mocked controller, downloaded source import, skip, or permissive authority callback.
+// Runtime owner tests use a real local-grant Request on an existing scoped ingress.
+// Group HTTP scope/mount acceptance belongs to the serving composition tests.
 const roots: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
+  syncBuiltinESMExports();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
@@ -49,7 +61,9 @@ const ref = (id: string) => ({
 });
 
 async function fixture() {
-  const directory = mkdtempSync(join(tmpdir(), 'station-group-runtime-'));
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), 'station-group-runtime-')),
+  );
   roots.push(directory);
   const privateRoot = join(directory, 'groups');
   mkdirSync(privateRoot, { mode: 0o700 });
@@ -282,6 +296,46 @@ async function fixture() {
     prepared,
     owners,
     readMemberEvents,
+    get runtime() {
+      return runtime;
+    },
+    principal: resolvePrincipal(
+      null,
+      'personal',
+      { locality: 'home-possession' },
+      undefined,
+    ),
+    hostRequest: (signal?: AbortSignal) => {
+      const request = new Request(
+        'http://127.0.0.1/api/orchestration/chat/delegated',
+        { method: 'POST', signal },
+      );
+      expect(
+        security.authorizeCredential(local.credential, {
+          method: request.method,
+          path: new URL(request.url).pathname,
+        }),
+      ).toBe(true);
+      setRuntimeAuthenticatedRequestPrincipal(request, {
+        kind: 'credential',
+        credential: local.credential,
+        authority: 'device-credential',
+        source: 'bearer',
+        deviceId: security.identifyDevice(local.credential)?.id,
+        locality: security.credentialLocality(local.credential),
+        mintKind: security.credentialMintKind(local.credential),
+      });
+      expect(bindRuntimeLocalOperator(request)).toBe(true);
+      return request;
+    },
+    replacePreparation: () => {
+      const replacement = structuredClone(prepared);
+      replacement.slots[0].sessionId = 'replacement-session';
+      writeFileSync(preparationPath, JSON.stringify(replacement));
+    },
+    restorePreparation: () => {
+      writeFileSync(preparationPath, JSON.stringify(prepared));
+    },
     request: (
       path: string,
       method = 'GET',
@@ -307,40 +361,312 @@ async function fixture() {
   };
 }
 
-test('new metadata admission refuses at the authority mutation owner without publishing a ledger', async () => {
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+const createInput = {
+  preparationId: 'group-fixture',
+  operationId: 'create-1',
+};
+const authorityDomain = 'station-delegation-authorities';
+const groupDomain = 'station-delegation-groups';
+const recordFile = (f: Fixture, domain: string) =>
+  join(
+    f.privateRoot,
+    domain,
+    `${createHash('sha256').update('group-fixture').digest('hex')}.json`,
+  );
+const records = (f: Fixture, domain: string) => {
+  const directory = join(f.privateRoot, domain);
+  return existsSync(directory)
+    ? readdirSync(directory).filter((name) => name.endsWith('.json'))
+    : [];
+};
+const create = (f: Fixture, request = f.hostRequest()) =>
+  f.runtime.create(request, f.principal, createInput);
+
+function invalidateAfterStaging(
+  f: Fixture,
+  domain: string,
+  invalidate: () => void,
+) {
+  const open = filesystem.open;
+  let staged = 0;
+  vi.spyOn(filesystem, 'open').mockImplementation(async (...args) => {
+    const descriptor = await open(...args);
+    if (
+      String(args[0]).startsWith(`${recordFile(f, domain)}.`) &&
+      String(args[0]).endsWith('.tmp')
+    ) {
+      const sync = descriptor.sync.bind(descriptor);
+      vi.spyOn(descriptor, 'sync').mockImplementation(async () => {
+        await sync();
+        staged++;
+        invalidate();
+      });
+    }
+    return descriptor;
+  });
+  syncBuiltinESMExports();
+  return () => staged;
+}
+
+test('actual public controller persists create/get/list/events/replay/cancel with private custody', async () => {
   const f = await fixture();
-  const response = await f.request('/', 'POST', {
-    preparationId: 'group-fixture',
-    operationId: 'create-1',
+  const created = await create(f);
+  expect(created).toMatchObject({
+    replayed: false,
+    group: {
+      groupId: 'group-fixture',
+      revision: 1,
+      execution: 'idle',
+      cancellation: 'none',
+      terminal: 'unproven',
+      executionCapability: { status: 'unavailable' },
+      members: [{ sessionId: 'session', providerTurnId: null }],
+    },
   });
-  expect(response.status).toBe(503);
-  expect(await response.json()).toMatchObject({
-    success: false,
-    code: 'group_metadata_fence_unavailable',
+  const authorityBefore = readFileSync(recordFile(f, authorityDomain), 'utf8');
+  const groupBefore = readFileSync(recordFile(f, groupDomain), 'utf8');
+  const bindingsFile = join(
+    f.privateRoot,
+    'delegation-group-bindings',
+    'bindings.json',
+  );
+  const bindingsBefore = readFileSync(bindingsFile, 'utf8');
+  const bindings = JSON.parse(bindingsBefore).records;
+  expect(bindings).toHaveLength(1);
+  expect(bindings[0]).toMatchObject({
+    binding: { groupId: 'group-fixture', sessionId: 'session' },
+    state: 'reserved',
+    revision: 1,
+    providerTurnId: null,
+  });
+  expect(JSON.parse(authorityBefore)).toMatchObject({
+    cancelled: false,
+    envelopes: [{ envelope_id: 'envelope' }],
+    invocations: [],
+  });
+  expect(JSON.parse(groupBefore)).toMatchObject({
+    groupId: 'group-fixture',
+    events: [{ revision: 1, kind: 'created' }],
+  });
+  expect(records(f, authorityDomain)).toHaveLength(1);
+  expect(records(f, groupDomain)).toHaveLength(1);
+  for (const domain of [authorityDomain, groupDomain]) {
+    const directory = lstatSync(join(f.privateRoot, domain));
+    const record = lstatSync(recordFile(f, domain));
+    expect(directory.mode & 0o7777).toBe(0o700);
+    expect(record.mode & 0o7777).toBe(0o600);
+    expect(record.uid).toBe(process.getuid?.());
+    expect(record.nlink).toBe(1);
+  }
+  for (const legacy of ['delegation-authorities', 'delegation-groups-v2'])
+    expect(existsSync(join(f.privateRoot, legacy))).toBe(false);
+  f.reopen();
+  expect(await create(f)).toEqual({ ...created, replayed: true });
+  expect(
+    await f.runtime.get(f.hostRequest(), f.principal, 'group-fixture'),
+  ).toEqual(created.group);
+  expect(await f.runtime.list(f.hostRequest(), f.principal)).toMatchObject({
+    groups: [created.group],
+    hasMore: false,
   });
   expect(
-    readdirSync(join(f.privateRoot, 'delegation-authorities')).filter((name) =>
-      name.endsWith('.json'),
-    ),
-  ).toEqual([]);
+    await f.runtime.events(f.hostRequest(), f.principal, 'group-fixture', 0),
+  ).toMatchObject({
+    events: [{ kind: 'created', revision: 1 }],
+    nextRevision: 1,
+    hasMore: false,
+  });
+  expect(readFileSync(recordFile(f, authorityDomain), 'utf8')).toBe(
+    authorityBefore,
+  );
+  expect(readFileSync(recordFile(f, groupDomain), 'utf8')).toBe(groupBefore);
+  const cancellation = { operationId: 'cancel-1', expectedRevision: 1 };
+  const cancelled = await f.runtime.cancel(
+    f.hostRequest(),
+    f.principal,
+    'group-fixture',
+    cancellation,
+  );
+  expect(cancelled).toMatchObject({
+    disposition: 'pending',
+    group: { revision: 2, cancellation: 'pending', terminal: 'unproven' },
+  });
+  const authorityAfter = readFileSync(recordFile(f, authorityDomain), 'utf8');
+  const groupAfter = readFileSync(recordFile(f, groupDomain), 'utf8');
+  expect(JSON.parse(authorityAfter)).toMatchObject({
+    cancelled: true,
+    invocations: [],
+  });
   expect(
-    readdirSync(join(f.privateRoot, 'delegation-groups-v2')).filter((name) =>
-      name.endsWith('.json'),
-    ),
-  ).toEqual([]);
+    JSON.parse(groupAfter).events.map((event: { kind: string }) => event.kind),
+  ).toEqual(['created', 'cancel_pending']);
   f.reopen();
   expect(
-    (
-      await f.request('/', 'POST', {
-        preparationId: 'group-fixture',
-        operationId: 'create-1',
-      })
-    ).status,
-  ).toBe(503);
-  expect(await (await f.request('/')).json()).toMatchObject({
-    data: { groups: [], hasMore: false },
-  });
+    await f.runtime.cancel(
+      f.hostRequest(),
+      f.principal,
+      'group-fixture',
+      cancellation,
+    ),
+  ).toEqual(cancelled);
+  expect(readFileSync(recordFile(f, authorityDomain), 'utf8')).toBe(
+    authorityAfter,
+  );
+  expect(readFileSync(recordFile(f, groupDomain), 'utf8')).toBe(groupAfter);
+  expect(records(f, authorityDomain)).toHaveLength(1);
+  expect(records(f, groupDomain)).toHaveLength(1);
+  expect(readFileSync(bindingsFile, 'utf8')).toBe(bindingsBefore);
+  expect(readdirSync(join(f.privateRoot, 'observations'))).toEqual([]);
+  expect(f.readMemberEvents).not.toHaveBeenCalled();
 });
+
+test.each([
+  ['create', authorityDomain],
+  ['create', groupDomain],
+  ['cancel', authorityDomain],
+  ['cancel', groupDomain],
+] as const)(
+  '%s refuses stale staged %s writes under the actual request finalizer',
+  async (operation, domain) => {
+    for (const fault of ['abort', 'replacement'] as const) {
+      const f = await fixture();
+      if (operation === 'cancel') await create(f);
+      const baseline = existsSync(recordFile(f, domain))
+        ? readFileSync(recordFile(f, domain), 'utf8')
+        : null;
+      const abort = new AbortController();
+      const reason = new Error('request-aborted-after-staging');
+      const staged = invalidateAfterStaging(f, domain, () => {
+        if (fault === 'abort') abort.abort(reason);
+        else f.replacePreparation();
+      });
+      const request = f.hostRequest(abort.signal);
+      const result =
+        operation === 'create'
+          ? create(f, request)
+          : f.runtime.cancel(request, f.principal, 'group-fixture', {
+              operationId: 'cancel-1',
+              expectedRevision: 1,
+            });
+      await expect(result).rejects.toMatchObject(
+        fault === 'abort'
+          ? { message: reason.message }
+          : { code: 'group_authority_required' },
+      );
+      expect(staged()).toBe(1);
+      expect(
+        existsSync(recordFile(f, domain))
+          ? readFileSync(recordFile(f, domain), 'utf8')
+          : null,
+      ).toBe(baseline);
+      expect(readdirSync(join(f.privateRoot, domain))).toEqual(
+        baseline === null ? [] : [recordFile(f, domain).split('/').at(-1)],
+      );
+      expect(records(f, authorityDomain)).toHaveLength(
+        operation === 'create' && domain === authorityDomain ? 0 : 1,
+      );
+      expect(records(f, groupDomain)).toHaveLength(
+        operation === 'cancel' ? 1 : 0,
+      );
+      expect(readdirSync(join(f.privateRoot, 'observations'))).toEqual([]);
+      vi.restoreAllMocks();
+      syncBuiltinESMExports();
+      f.restorePreparation();
+      f.reopen();
+      if (operation === 'create')
+        expect((await create(f)).group.revision).toBe(1);
+      else
+        expect(
+          (await f.runtime.get(f.hostRequest(), f.principal, 'group-fixture'))
+            .cancellation,
+        ).toBe(domain === authorityDomain ? 'pending' : 'none');
+    }
+  },
+);
+
+test.each([authorityDomain, groupDomain])(
+  'captures preparation before awaiting the %s lock',
+  async (domain) => {
+    const f = await fixture();
+    await create(f);
+    const baseline = readFileSync(recordFile(f, domain), 'utf8');
+    const lock = join(f.privateRoot, `${domain}.mutation`);
+    const acquire = lifecycle.acquireFileMutationLockAsync;
+    const release = await acquire(lock);
+    const reached = new Promise<void>((resolve) => {
+      vi.spyOn(lifecycle, 'acquireFileMutationLockAsync').mockImplementation(
+        (path, options) => {
+          const pending = acquire(path, options);
+          if (path === lock) resolve();
+          return pending;
+        },
+      );
+    });
+    const pending = f.runtime.get(
+      f.hostRequest(),
+      f.principal,
+      'group-fixture',
+    );
+    const refused = expect(pending).rejects.toMatchObject({
+      code: 'group_authority_required',
+    });
+    try {
+      await reached;
+      f.replacePreparation();
+    } finally {
+      await release();
+    }
+    await refused;
+    vi.restoreAllMocks();
+    expect(readFileSync(recordFile(f, domain), 'utf8')).toBe(baseline);
+  },
+);
+
+test.each([
+  ['abort', true],
+  ['replacement', true],
+  ['abort', false],
+] as const)(
+  'list refuses %s after the scan lock releases (populated=%s)',
+  async (fault, populated) => {
+    const f = await fixture();
+    if (populated) await create(f);
+    const baseline = populated
+      ? readFileSync(recordFile(f, groupDomain), 'utf8')
+      : null;
+    const abort = new AbortController();
+    const reason = new Error('request-aborted-after-scan-release');
+    const acquire = lifecycle.acquireFileMutationLockAsync;
+    let released = 0;
+    vi.spyOn(lifecycle, 'acquireFileMutationLockAsync').mockImplementation(
+      async (path, options) => {
+        const release = await acquire(path, options);
+        return async () => {
+          await release();
+          if (path === join(f.privateRoot, `${groupDomain}.mutation`)) {
+            released++;
+            if (fault === 'abort') abort.abort(reason);
+            else f.replacePreparation();
+          }
+        };
+      },
+    );
+    await expect(
+      f.runtime.list(f.hostRequest(abort.signal), f.principal),
+    ).rejects.toMatchObject(
+      fault === 'abort'
+        ? { message: reason.message }
+        : { code: 'group_authority_required' },
+    );
+    expect(released).toBe(1);
+    expect(
+      existsSync(recordFile(f, groupDomain))
+        ? readFileSync(recordFile(f, groupDomain), 'utf8')
+        : null,
+    ).toBe(baseline);
+  },
+);
 
 test('routes reject supplied authority and unapproved operator credentials before storage mutation', async () => {
   const f = await fixture();

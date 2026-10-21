@@ -16,7 +16,6 @@ import {
   type DelegationReferenceV2,
   validateRootAuthorityV2,
 } from '@kontourai/flow-agents/delegation-authority-contract';
-import { createLocalFileDelegationAuthorityStore } from '@kontourai/flow-agents/delegation-authority-local-file';
 import type { DelegationAuthorityStore } from '@kontourai/flow-agents/delegation-authority-service';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
 import {
@@ -34,7 +33,6 @@ import {
   type GroupEventV2,
   validateDelegationGroupSpecV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
-import { createLocalFileDelegationGroupStoreV2 } from '@kontourai/flow-agents/delegation-group-v2-local-file';
 import { canonicalJson, type ModelInvocationRequest } from '@kontourai/relay';
 import {
   DELEGATION_GROUP_LIMITS,
@@ -68,8 +66,8 @@ import {
   delegationGroupBindingKey,
   FileDelegationGroupBindingStore,
 } from './delegation-group-binding-store.js';
+import { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
-  assertGroupMetadataMutationAvailable,
   belongsToAcceptedGroupTurn,
   type GroupPageIterator,
   isActionableGroupRequest,
@@ -220,12 +218,7 @@ export interface DelegationGroupRuntimeOwners {
 export class DelegationGroupRuntime {
   readonly #personal = createPersonalRuntimeRequestGuard();
   readonly #bindings: FileDelegationGroupBindingStore;
-  readonly #groupStore: ReturnType<
-    typeof createLocalFileDelegationGroupStoreV2
-  >;
-  readonly #authorityStore: ReturnType<
-    typeof createLocalFileDelegationAuthorityStore
-  >;
+  readonly #persistence: StationDelegationPersistence;
   readonly #dispatchLedger: FileAuthorizationLedger;
   readonly #bindingOwners = new Map<string, string>();
   readonly #rawResults = new Map<string, DelegationReferenceV2>();
@@ -241,12 +234,7 @@ export class DelegationGroupRuntime {
     }
     privateDirectory(rawRoot);
     this.#bindings = new FileDelegationGroupBindingStore(owners.privateRoot);
-    this.#authorityStore = createLocalFileDelegationAuthorityStore(
-      owners.privateRoot,
-    );
-    this.#groupStore = createLocalFileDelegationGroupStoreV2(
-      owners.privateRoot,
-    );
+    this.#persistence = new StationDelegationPersistence(owners.privateRoot);
     this.#dispatchLedger = new FileAuthorizationLedger({
       root: join(owners.privateRoot, 'dispatch'),
     });
@@ -385,7 +373,7 @@ export class DelegationGroupRuntime {
         throw new DelegationGroupRuntimeRefusal('group_stale');
       visited.add(cursor.envelope_id);
       chain.unshift(cursor);
-      const parentId = cursor.parent?.id;
+      const parentId: string | undefined = cursor.parent?.id;
       cursor = parentId
         ? prepared.envelopes.find((e) => e.envelope_id === parentId)
         : undefined;
@@ -479,29 +467,38 @@ export class DelegationGroupRuntime {
     }
   }
 
-  #composition(context: RequestContext) {
+  #composition(context: RequestContext, initialPrepared?: Prepared) {
     const captures = new Map<string, Prepared>();
+    if (initialPrepared) captures.set(initialPrepared.groupId, initialPrepared);
+    const capture = (id: string): Prepared => {
+      const prepared = captures.get(id) ?? this.#load(id);
+      this.#authorize(context, prepared);
+      captures.set(id, prepared);
+      return prepared;
+    };
+    const finalizeScan = (): undefined => {
+      context.request.signal.throwIfAborted();
+      this.#assertRequest(context.request, context.principal);
+      for (const prepared of captures.values())
+        this.#finalizeCurrent(context, prepared)();
+      return undefined;
+    };
     const authorityStore: DelegationAuthorityStore = {
-      transact: (id, body) =>
-        this.#authorityStore.transact(id, async (current) => {
-          const before = canonicalJson(current);
-          const result = await body(current);
-          if (canonicalJson(result.ledger) !== before)
-            assertGroupMetadataMutationAvailable();
-          return result;
-        }),
+      transact: (id, body) => {
+        const prepared = capture(id);
+        return this.#persistence
+          .authorityStore(this.#finalizeCurrent(context, prepared))
+          .transact(id, body);
+      },
     };
     const service = createDelegationAuthorityService(authorityStore, {
       now: () => new Date().toISOString(),
       authorize: async (_action, root) => {
-        this.#assertRequest(context.request, context.principal);
-        return (
-          root.authenticated_principal_ref.id === context.principal.id &&
-          root.authenticated_subject_ref.id === context.subject
-        );
+        const prepared = capture(root.authority_id);
+        return same(root, prepared.root);
       },
       confirmExecution: async (envelope, root) => {
-        const prepared = this.#load(root.authority_id);
+        const prepared = capture(root.authority_id);
         if (!same(root, prepared.root)) return false;
         await this.#confirmExecution(context, prepared, envelope);
         return true;
@@ -564,16 +561,14 @@ export class DelegationGroupRuntime {
     });
     // Filter ownership before the controller's per-journal list authorization.
     const scopedStore: DelegationGroupStoreV2 = {
-      transact: (id, body) =>
-        this.#groupStore.transact(id, async (current) => {
-          const before = canonicalJson(current);
-          const result = await body(current);
-          if (canonicalJson(result.journal) !== before)
-            assertGroupMetadataMutationAvailable();
-          return result;
-        }),
+      transact: (id, body) => {
+        const prepared = capture(id);
+        return this.#persistence
+          .groupStore(this.#finalizeCurrent(context, prepared))
+          .transact(id, body);
+      },
       scan: (body) =>
-        this.#groupStore.scan(async (journals) => {
+        this.#persistence.groupStore(finalizeScan).scan(async (journals) => {
           const owned = journals.filter((j) => {
             const p = this.#load(j.groupId);
             return (
@@ -592,10 +587,7 @@ export class DelegationGroupRuntime {
         authorize: async (input) => {
           this.#assertRequest(context.request, context.principal);
           if (input.groupId) {
-            const prepared =
-              captures.get(input.groupId) ?? this.#load(input.groupId);
-            this.#authorize(context, prepared);
-            captures.set(input.groupId, prepared);
+            const prepared = capture(input.groupId);
             if (input.spec && !same(input.spec, prepared.spec)) return null;
           }
           return {
@@ -683,7 +675,7 @@ export class DelegationGroupRuntime {
   async #view(
     context: RequestContext,
     projection: DelegationGroupProjectionV2,
-    prepared: Prepared = this.#load(projection.spec.groupId),
+    prepared: Prepared,
   ): Promise<DelegationGroupView> {
     this.#authorize(context, prepared);
     if (!same(projection.spec, prepared.spec))
@@ -754,7 +746,7 @@ export class DelegationGroupRuntime {
     const context = await this.#context(request, principal);
     const prepared = this.#load(input.preparationId);
     this.#authorize(context, prepared);
-    const { service, controller } = this.#composition(context);
+    const { service, controller } = this.#composition(context, prepared);
     this.#authorize(context, prepared);
     await service.issue(prepared.root);
     for (const envelope of [...prepared.envelopes].sort(
@@ -792,7 +784,7 @@ export class DelegationGroupRuntime {
     });
     return {
       replayed: result.replayed,
-      group: await this.#view(context, result.projection),
+      group: await this.#view(context, result.projection, prepared),
     };
   }
 
@@ -800,7 +792,10 @@ export class DelegationGroupRuntime {
     const context = await this.#context(request, principal);
     const prepared = this.#load(groupId);
     this.#authorize(context, prepared);
-    const projection = await this.#composition(context).controller.get(groupId);
+    const projection = await this.#composition(
+      context,
+      prepared,
+    ).controller.get(groupId);
     const result = await this.#view(context, projection, prepared);
     this.#authorize(context, prepared);
     return result;
@@ -859,7 +854,7 @@ export class DelegationGroupRuntime {
     const context = await this.#context(request, principal);
     const prepared = this.#load(groupId);
     this.#authorize(context, prepared);
-    const controller = this.#composition(context).controller;
+    const controller = this.#composition(context, prepared).controller;
     const projection = await controller.get(groupId);
     if (!same(projection.spec, prepared.spec))
       throw new DelegationGroupRuntimeRefusal('group_stale');
@@ -897,7 +892,7 @@ export class DelegationGroupRuntime {
     const context = await this.#context(request, principal);
     const prepared = this.#load(groupId);
     this.#authorize(context, prepared);
-    const controller = this.#composition(context).controller;
+    const controller = this.#composition(context, prepared).controller;
     try {
       const result = await controller.cancel({
         kind: 'cancel',
@@ -911,7 +906,7 @@ export class DelegationGroupRuntime {
           result.projection.cancellation === 'requested'
             ? ('requested' as const)
             : ('pending' as const),
-        group: await this.#view(context, result.projection),
+        group: await this.#view(context, result.projection, prepared),
       };
     } catch (error) {
       if (
@@ -921,7 +916,11 @@ export class DelegationGroupRuntime {
         throw error;
       return {
         disposition: 'pending' as const,
-        group: await this.#view(context, await controller.get(groupId)),
+        group: await this.#view(
+          context,
+          await controller.get(groupId),
+          prepared,
+        ),
       };
     }
   }
@@ -934,7 +933,7 @@ export class DelegationGroupRuntime {
     const context = await this.#context(request, principal);
     const prepared = this.#load(groupId);
     this.#authorize(context, prepared);
-    const result = await this.#composition(context).controller.run(
+    const result = await this.#composition(context, prepared).controller.run(
       {
         kind: 'run',
         groupId,
@@ -946,7 +945,7 @@ export class DelegationGroupRuntime {
     );
     return {
       replayed: result.replayed,
-      group: await this.#view(context, result.projection),
+      group: await this.#view(context, result.projection, prepared),
     };
   }
   async watchGroupEvents(
