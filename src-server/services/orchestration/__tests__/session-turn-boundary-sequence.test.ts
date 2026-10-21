@@ -439,6 +439,36 @@ describe('session-terminal boundary ordering', () => {
       },
     );
   }
+  test.each(['observe', 'read', 'restart'] as const)(
+    'Station’s own shutdown exit keeps an in-flight turn for the next boot’s recovery (%s)',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      invoking(store);
+      const event: CanonicalRuntimeEvent = {
+        ...terminal('session.exited'),
+        reason: 'orchestration_shutdown',
+      };
+      store.appendEvent(event);
+      const current = settle(store, path, event, mode);
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      if (mode === 'restart')
+        expect(
+          current.takeInterruptedTurnBoundaries().map((row) => row.threadId),
+        ).toEqual(['thread']);
+      // Any other exit still ends the turn's possible effect.
+      const crashed = {
+        ...terminal('session.exited'),
+        eventId: 'engine-exit',
+        reason: 'process_exited',
+      };
+      current.appendEvent(crashed);
+      expect(current.sessionTurnBoundaryAuthority().observe(crashed)).toEqual({
+        kind: 'applied',
+      });
+      expect(boundaries(path)).toEqual([]);
+    },
+  );
   test('an engine-opened boundary captures the durable head inside its start append', () => {
     const path = databasePath();
     const store = open(path);

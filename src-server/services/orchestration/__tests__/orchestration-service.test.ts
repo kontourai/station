@@ -20555,6 +20555,55 @@ describe('OrchestrationService', () => {
     ).toMatchObject({ reason: 'orchestration_shutdown' });
   });
 
+  test('a turn in flight at shutdown is closed by the next boot’s recovery, as after a crash', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'shutdown-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'shutdown-turn', input: 'long work' },
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('shutdown-turn'),
+    ).toEqual({ kind: 'available', active: true });
+
+    await service.shutdown();
+    const path = join(tmp, 'orchestration.sqlite');
+    eventStore.close();
+    eventStore = new EventStore(path);
+    const rebooted = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await (
+      rebooted as unknown as {
+        interruptedTurns: { consume(): Promise<void> };
+      }
+    ).interruptedTurns.consume();
+
+    expect(
+      eventStore
+        .listEvents('shutdown-turn')
+        .map((event) => event.payload)
+        .filter((event) => event.method === 'turn.aborted'),
+    ).toEqual([
+      expect.objectContaining({
+        turnId: 'claude-turn',
+        recoveryTerminal: true,
+      }),
+    ]);
+    await rebooted.shutdown();
+  });
+
   test('bounds shutdown when an adapter cleanup never settles', async () => {
     claude.stopAll.mockReturnValueOnce(new Promise(() => {}));
     const boundedService = new OrchestrationService({

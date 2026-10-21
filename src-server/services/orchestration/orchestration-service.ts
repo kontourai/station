@@ -456,6 +456,7 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryTransition,
@@ -3821,7 +3822,7 @@ export class OrchestrationService {
             this.finalizeStoppedAdapterSessions(
               adapter,
               currentSessions.get(adapter) ?? new Map(),
-              'orchestration_shutdown',
+              ORCHESTRATION_SHUTDOWN_EXIT_REASON,
             );
           }, `${adapter.provider} adapter shutdown`),
         ),

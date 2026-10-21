@@ -39,6 +39,14 @@ export interface SessionTurnBoundaryRecord {
 export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
 
 /**
+ * `session.exited.reason` for the sessions Station closes as it shuts down.
+ * That exit does not end a turn still in flight: its boundary row stays for
+ * the next boot, whose interrupted-turn recovery settles the turn exactly as
+ * after a crash. Retiring it here left the turn with no terminal at all.
+ */
+export const ORCHESTRATION_SHUTDOWN_EXIT_REASON = 'orchestration_shutdown';
+
+/**
  * #2324: the boundary id prefix of a turn the ENGINE opened on its own
  * (`isProviderTriggeredTurn`). Such a turn has no send, so no claim ever
  * prepares or invokes it; its row is recorded straight into `accepted` when
@@ -850,6 +858,14 @@ export function createSessionTurnBoundaryAuthority(options: {
         event.method === 'turn.aborted' &&
         'recoveryTerminal' in event &&
         event.recoveryTerminal === true
+      ) {
+        return { kind: 'applied' };
+      }
+      // Station's own shutdown closes the session, not the turn in it: the
+      // next boot's recovery needs the row (see the constant).
+      if (
+        event.method === 'session.exited' &&
+        event.reason === ORCHESTRATION_SHUTDOWN_EXIT_REASON
       ) {
         return { kind: 'applied' };
       }

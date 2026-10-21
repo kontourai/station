@@ -277,6 +277,7 @@ import type {
 } from './session-query-module.js';
 import {
   createSessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   releaseSessionTurnBoundaryOwner,
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
@@ -364,7 +365,11 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND pur
                WHERE event.thread_id = orchestration_turn_boundaries.thread_id
                  AND (
                    (
-                     (event.method = 'session.exited'
+                     ((event.method = 'session.exited'
+                       -- Station's own shutdown leaves an in-flight turn's
+                       -- row for the next boot's recovery (see the constant).
+                       AND COALESCE(json_extract(event.payload, '$.reason'), '')
+                         != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}')
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
                      AND (
