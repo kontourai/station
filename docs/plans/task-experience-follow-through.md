@@ -61,12 +61,16 @@ until these owned obligations are complete or explicitly dispositioned.
 
 ## Delivery holds
 
-- The consolidation PR is not landed. Merge actual final `main` normally into
-  this branch after that landing, resolve any real conflicts, and verify the
-  combined change before opening the one PR.
-- Standard readiness against main retains inherited documentation-truth failure.
-  The branch's own documentation freshness against its actual starting revision
-  passes; that scoped result does not replace the standard gate.
+- The consolidation landed at main `1dd83e0f305149b2d28e2eaff6645358cde5ad7f`.
+  This branch merged it normally at `f7fd9e57c82b3b9d1ee810bd6b6c24613097aa6a`.
+  Actual main was retained outside the owned feature delta, including its Task
+  tab-retention and Basis refresh fixes. The integration does not qualify their
+  original broader product acceptance.
+- Integrated verification and standard readiness must pass before publication.
+  The first owner run exposed one consumer fixture missing the new recovery
+  capability; adding it retained all 63 mounted Task assertions and passed.
+  Earlier pre-merge readiness failures remain historical receipts, not a reason
+  to bypass the current standard gate.
 - Tracker sync remains an upstream API dependency. The local recovery and cache
   changes do not complete or close #3703.
 
