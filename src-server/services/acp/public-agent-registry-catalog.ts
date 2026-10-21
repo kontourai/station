@@ -20,7 +20,7 @@ import type {
   PublicRegistryRefusal,
 } from './public-agent-registry.js';
 
-export const PUBLIC_REGISTRY_SOURCE_NAME = 'Public agent registry';
+const PUBLIC_REGISTRY_SOURCE_NAME = 'Public agent registry';
 
 /**
  * Registry ids that list a built-in engine under another id. Each target is
@@ -62,7 +62,7 @@ const PLATFORM_LABELS: Readonly<Record<string, string>> = {
 };
 
 /** The registry's `os-arch` key for a Node platform and arch, if it has one. */
-export function publicRegistryPlatformKey(
+function publicRegistryPlatformKey(
   platform: string,
   arch: string,
 ): string | undefined {

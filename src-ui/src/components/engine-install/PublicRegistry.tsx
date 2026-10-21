@@ -37,7 +37,7 @@ function ago(iso: string | null, now: number): string | null {
 }
 
 /** One sentence on where the listing below came from. */
-export function publicRegistrySourceSentence(
+function publicRegistrySourceSentence(
   status: ACPPublicRegistrySourceStatus,
   now: number,
 ): string {
