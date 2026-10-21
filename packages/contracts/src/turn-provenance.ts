@@ -185,11 +185,13 @@ export interface TurnProvenanceEngine {
    * The name of the engine connection that ran this turn (for example the
    * "OpenCode" connection behind the generic `acp` provider), as stamped on
    * this turn's own `turn.started`/terminal event under
-   * `TURN_ENGINE_DISPLAY_NAME_METADATA_KEY`. It is the name the chat header
-   * shows for the same connection, recorded when the turn ran, so a later
-   * rename does not relabel history. It is a display label only: `provider`
-   * stays the identity. Absent on older envelopes and on engines whose
-   * provider already names the product.
+   * `TURN_ENGINE_DISPLAY_NAME_METADATA_KEY`. It is the connection's name as
+   * it was when the turn's Session started (the ACP adapter reads it once,
+   * at session start, and stamps it on each of that Session's turns), so a
+   * rename never relabels history, and a rename mid-Session shows from the
+   * next Session on. It is a display label only: `provider` stays the
+   * identity. Absent on older envelopes and on engines whose provider
+   * already names the product.
    */
   displayName?: string;
 }
