@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads a deliberately excluded fixtures/ manifest and temporary installed copies,
+  // not production source. Keep fixture paths outside the source pin inventory.
+  'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
   // Delivery suites read captured CLI data under fixtures/ (excluded from
   // source pins); the scenario suite also reads files it creates in its isolated
   // workspace. Direct scenario/mapper imports provide behavior-selection edges.

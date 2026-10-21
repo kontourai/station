@@ -269,7 +269,7 @@ describe('MessageBubble answer Basis chip', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     const dialog = await screen.findByLabelText(/^Answer provenance/);
     expect(within(dialog).queryByRole('button', { name: /Basis/ })).toBeNull();
   });

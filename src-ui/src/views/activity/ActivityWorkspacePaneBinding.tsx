@@ -1,3 +1,4 @@
+import type { SessionMessageAnchor } from '@kontourai/station-contracts/surface-deep-link';
 import { createContext, type ReactNode, useContext } from 'react';
 
 /**
@@ -29,6 +30,7 @@ export interface ActivityWorkspacePaneBinding {
   quickReview?: boolean;
   /** Deep-linked session id of whichever placement supplied it, if any. */
   sessionId?: string;
+  messageAnchor?: SessionMessageAnchor;
   /** Routed focus target, forwarded to the sessions surface untouched. */
   focusHint?: 'evidence';
   /**

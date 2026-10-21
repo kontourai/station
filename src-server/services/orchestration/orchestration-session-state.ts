@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import {
   type ClientOrigin,
+  clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -49,6 +50,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -902,14 +904,17 @@ function extractModelSelectionReceipt(
  * projecting their full prompts. Only the first meaningful user turn is
  * considered, and injected timezone context is removed before bounding.
  */
-function extractDisplayTitle(
+export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   for (const event of events) {
     if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
       continue;
     }
-    const title = displayPromptTitle(event.prompt);
+    const prompt = clientOriginSender(event.clientOrigin)
+      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
+      : event.prompt;
+    const title = displayPromptTitle(prompt);
     if (title) return title;
   }
   return undefined;

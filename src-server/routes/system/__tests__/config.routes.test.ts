@@ -1032,7 +1032,7 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
             telemetryTier: { 'publisher:writer': 'lite' },
           }),
         });
-        expect(response.status).toBe(403);
+        expect(response.status, JSON.stringify(context)).toBe(403);
       }
       expect((await put(operator, 'lite')).status).toBe(200);
       expect((await put(paired, 'off')).status).toBe(200);

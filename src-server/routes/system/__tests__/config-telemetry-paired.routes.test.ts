@@ -293,7 +293,6 @@ async function authorAdmissionFixture(capability = true) {
       undefined,
       undefined,
       undefined,
-      undefined,
       (config) => {
         void service.reconfigure(config);
       },

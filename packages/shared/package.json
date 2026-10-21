@@ -34,6 +34,7 @@
     "./product-telemetry": "./src/product-telemetry.ts",
     "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
+    "./agent-message-frame": "./src/agent-message-frame.ts",
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",

@@ -1,3 +1,4 @@
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * #3158 fix round 2: the delivery store's retention against a controllable
  * clock, driven through the coordinator's own event subscription, and the
@@ -977,9 +978,10 @@ describe('upgrading a home created at f352640350 (#3158)', () => {
         retryDelaysMs: [],
       });
       await delivery.reconcile();
-      expect(starts).toEqual([
-        { attribution: 'unattributed-agent', text: 'old result' },
-      ]);
+      expect(starts).toHaveLength(1);
+      expect(starts[0]?.attribution).toBe('unattributed-agent');
+      expect(unframeAgentMessage(starts[0]!.text)).toBe('old result');
+      expect(starts[0]?.text).toContain('id "task:old-child"');
       expect(store.listForChild('task:old-child')[0]).toMatchObject({
         state: 'delivered',
         attempts: 0,

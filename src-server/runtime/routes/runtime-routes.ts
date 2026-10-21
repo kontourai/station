@@ -4853,7 +4853,14 @@ export function configureRuntimeRoutes(
       // conversation's ledger first, so it can never land a second time in a
       // successor Session the continuation reserves.
       start: stationServerEntry(
-        ({ parentConversationId, threadId, actor, text, clientTurnId }) =>
+        ({
+          parentConversationId,
+          threadId,
+          actor,
+          sender,
+          text,
+          clientTurnId,
+        }) =>
           startUnlessDelivered({
             conversationId: parentConversationId,
             inspect: () =>
@@ -4871,7 +4878,7 @@ export function configureRuntimeRoutes(
                   userId: actor.userId,
                   principal: actor.principal,
                   ownerAttribution: actor.attribution,
-                  clientOrigin: origin,
+                  clientOrigin: { ...origin, sender },
                 },
                 threadId,
               ),

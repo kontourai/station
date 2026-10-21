@@ -387,7 +387,10 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       ownerAttribution: 'verified-bound',
       fullAccessGrant: null,
-      clientOrigin: { actor: { kind: 'internal' } },
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'delegation-result', sessionId: CHILD },
+      },
     });
     expect(String(support.continued[0]!.message)).toContain(
       '> notes are written',
@@ -411,7 +414,13 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     expect(support.commands[0]).toMatchObject({
       type: 'steerTurn',
       threadId: PARENT,
-      context: { ownerAttribution: 'unattributed-agent' },
+      context: {
+        ownerAttribution: 'unattributed-agent',
+        clientOrigin: {
+          actor: { kind: 'internal' },
+          sender: { kind: 'delegation-result', sessionId: CHILD },
+        },
+      },
     });
     // The engine cannot steer: the result waits for the parent's turn end.
     expect(support.continued).toHaveLength(0);

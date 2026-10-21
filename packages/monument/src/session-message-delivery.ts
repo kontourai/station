@@ -9,7 +9,15 @@
  * The host deduplicates `deliveryId` as the `clientTurnId` of a start and the
  * `clientInputId` of a steer. `decided` pins a prior attempt, so a re-drive
  * never switches from steer to start because the turn ended in between.
+ *
+ * #3419: the text a port receives is never the sender's bare text. The seam
+ * frames it (`frameAgentMessage`) as another agent's message, naming the
+ * sender, so no caller can put an agent's words in front of an engine as if
+ * the person had written them. The ports are handed the framed text; the
+ * caller stamps the same sender on the turn's `clientOrigin` for the record.
  */
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 
 export type SessionSendMode = 'auto' | 'start' | 'steer';
 
@@ -122,7 +130,10 @@ export async function deliverSessionMessage(
   ports: SessionMessageDeliveryPorts,
   input: {
     readonly threadId: string;
+    /** The sender's own text; the seam frames it before any port sees it. */
     readonly text: string;
+    /** Who is sending: named in the frame the receiving engine reads. */
+    readonly sender: ClientOriginSender;
     readonly mode: SessionSendMode;
     /** The id the layers below deduplicate on (see the module note). */
     readonly deliveryId: string;
@@ -138,12 +149,15 @@ export async function deliverSessionMessage(
   if (decision.kind === 'session_busy')
     return { outcome: 'session_busy', reason: decision.reason };
   if (decision.kind === 'no_active_turn') return { outcome: 'no_active_turn' };
+  // Framed before the branch is pinned, so a sender that cannot be framed
+  // leaves no pinned decision behind for an effect that never happened.
+  const text = frameAgentMessage(input.sender, input.text);
   if (!input.decided) input.recordDecision?.(decision.branch);
 
   if (decision.branch === 'start') {
     const started = await ports.start({
       threadId: input.threadId,
-      text: input.text,
+      text,
       clientTurnId: input.deliveryId,
     });
     return started.outcome === 'started'
@@ -153,7 +167,7 @@ export async function deliverSessionMessage(
 
   const steered = await ports.steer({
     threadId: input.threadId,
-    text: input.text,
+    text,
     clientInputId: input.deliveryId,
   });
   switch (steered.outcome) {

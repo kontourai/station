@@ -84,6 +84,7 @@ import {
 import {
   CLIENT_ORIGIN_VERSION,
   type ClientOrigin,
+  type ClientOriginSender,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import {
@@ -1084,6 +1085,7 @@ export interface DelegationResultDeliveryPorts {
     readonly parentConversationId: string;
     readonly threadId: string;
     readonly actor: DelegationResultActor;
+    readonly sender: ClientOriginSender;
     readonly text: string;
     readonly clientTurnId: string;
   }): Promise<SessionStartResult>;
@@ -1091,6 +1093,7 @@ export interface DelegationResultDeliveryPorts {
   steer(input: {
     readonly threadId: string;
     readonly actor: DelegationResultActor;
+    readonly sender: ClientOriginSender;
     readonly text: string;
     readonly clientInputId: string;
   }): Promise<SessionSteerResult>;
@@ -1131,7 +1134,7 @@ export type DelegationResultSteerDispatch = (
 export function createDelegationResultSteerPort(
   dispatch: DelegationResultSteerDispatch,
 ): DelegationResultDeliveryPorts['steer'] {
-  return async ({ threadId, actor, text, clientInputId }) => {
+  return async ({ threadId, actor, sender, text, clientInputId }) => {
     let dispatched: { readonly result?: unknown };
     try {
       dispatched = await dispatch(
@@ -1140,7 +1143,7 @@ export function createDelegationResultSteerPort(
           userId: actor.userId,
           ownerAttribution: actor.attribution,
           ...(actor.principal ? { principal: actor.principal } : {}),
-          clientOrigin: DELEGATION_RESULT_CLIENT_ORIGIN,
+          clientOrigin: { ...DELEGATION_RESULT_CLIENT_ORIGIN, sender },
         },
       );
     } catch {
@@ -1773,6 +1776,11 @@ export class DelegationResultDelivery {
     if (this.ports.sessionOwnerId(threadId) !== owner.actor.userId)
       return store.settle(row, 'refused', 'parent-owner-changed');
 
+    const sender: ClientOriginSender = {
+      kind: 'delegation-result',
+      sessionId: row.childSessionId,
+      requestKey: row.deliveryId,
+    };
     const ports: SessionMessageDeliveryPorts = {
       isBusy: (thread) =>
         !evaluateSessionWait(this.foldPorts(), thread, 'idle', 0).satisfied,
@@ -1785,6 +1793,7 @@ export class DelegationResultDelivery {
           parentConversationId: owner.parentConversationId,
           threadId,
           actor: owner.actor,
+          sender,
           text,
           clientTurnId,
         });
@@ -1793,6 +1802,7 @@ export class DelegationResultDelivery {
         this.ports.steer({
           threadId: thread,
           actor: owner.actor,
+          sender,
           text,
           clientInputId,
         }),
@@ -1802,6 +1812,7 @@ export class DelegationResultDelivery {
       delivery = await deliverSessionMessage(ports, {
         threadId,
         text: row.text,
+        sender,
         mode: 'auto',
         deliveryId: row.deliveryId,
         ...(pinned ? { decided: pinned.branch } : {}),

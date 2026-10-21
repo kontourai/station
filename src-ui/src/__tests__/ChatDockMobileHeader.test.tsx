@@ -87,6 +87,7 @@ function renderHeader(
     onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
+    sessionProjectMismatchLabel?: string | null;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
@@ -109,6 +110,7 @@ function renderHeader(
       showDrawerToggle={false}
       showConnection={overrides.showConnection ?? true}
       sessionTitle="New chat"
+      sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
       projectScope={
         overrides.projectScope === null
           ? undefined

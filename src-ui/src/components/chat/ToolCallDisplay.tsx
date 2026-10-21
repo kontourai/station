@@ -39,6 +39,8 @@ import {
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { useApprovalSheet } from './ApprovalSheetContext';
+import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
+import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
   boundedToolResultText,
   formatWithheldBytes,
@@ -166,7 +168,7 @@ export const KIND_GLYPH: Record<
  *   a flag; success → the past-tense verb alone, with the explicit
  *   "Success" confirmation in the expanded status footer.
  */
-function ToolCallDisplayComponent({
+function ToolCallRow({
   toolCall,
   onApprove,
   showDetails = true,
@@ -1069,6 +1071,25 @@ function ToolCallDetails({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * #3419: a call that sends a message to another Session reads as that
+ * message in the sender's transcript ("Sent to <Session>") rather than as a
+ * generic tool row. A call still waiting on a grant keeps the ordinary row,
+ * because that is where its Allow and Deny live.
+ */
+function ToolCallDisplayComponent(
+  props: ToolCallDisplayProps & { appTools: ReadonlySet<string> },
+) {
+  return hasStationControlCallRow(props.toolCall) &&
+    !isToolCallAwaitingApproval(props.toolCall) &&
+    props.toolCall.approvalStatus !== 'user-denied' &&
+    props.toolCall.approvalStatus !== 'policy-denied' ? (
+    <OutgoingSessionMessage toolCall={props.toolCall} />
+  ) : (
+    <ToolCallRow {...props} />
   );
 }
 

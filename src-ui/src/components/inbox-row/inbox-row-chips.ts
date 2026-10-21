@@ -15,7 +15,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
  *   hover card makes on demand, and the link observation carries no checks
  *   state.
  */
-export type InboxRowChipKind = 'remote' | 'draft' | 'woke';
+export type InboxRowChipKind = 'remote' | 'draft' | 'woke' | 'agent-message';
 
 export interface InboxRowChip {
   kind: InboxRowChipKind;
@@ -23,10 +23,12 @@ export interface InboxRowChip {
 }
 
 export function inboxRowChips(
-  item: Pick<HomeWorkItem, 'environmentLabel'>,
+  item: Pick<HomeWorkItem, 'environmentLabel' | 'receivedAgentMessage'>,
   local: { hasUnsentDraft?: boolean; isWoken?: boolean } = {},
 ): InboxRowChip[] {
   const chips: InboxRowChip[] = [];
+  if (item.receivedAgentMessage)
+    chips.push({ kind: 'agent-message', label: 'Agent message' });
   if (item.environmentLabel) {
     chips.push({ kind: 'remote', label: item.environmentLabel });
   }
