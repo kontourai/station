@@ -8,28 +8,69 @@ platform. Keep compile, native interaction, signing and provider receipts separa
 
 ## Release updates
 
-In the desktop shell, Settings → System → **Desktop app updates** →
-**Check for desktop app updates** checks the updater configuration embedded in
-the installed app. The native updater is registered only when the build carries
-usable endpoint/key configuration; an ordinary development build may have none.
-An available update can be installed with **Install desktop
-app update and restart**. Manual checks expose failures and can be retried; the
-automatic launch check remains quiet on check failure. The desktop package
-includes the built-in Station server, so installing this update replaces the
-app and its embedded server together.
+The desktop shell owns its own updates (`src-desktop/src/desktop_update.rs`).
+The native updater is registered only when the build carries usable
+endpoint/key configuration; an ordinary development build has none and reports
+no update channel. A configured app checks about 20 seconds after it starts and
+then hourly by wall-clock time while it runs, including tray-only (after the
+computer sleeps past a due check, it checks within about 30 seconds of
+waking); there is no OS job.
+
+Updating has three separate steps:
+
+1. **Download.** An available update appears in the sidebar as **Download
+   update** and in Settings → System → **Desktop app updates**. The
+   **Automatic download** setting (Never, After 24 hours, Immediately; default
+   After 24 hours) decides when it downloads without a click; the 24-hour clock
+   starts when that version is first seen and survives restarts. A manual
+   download always works. Downloading shows byte progress and never restarts
+   anything. The download is written to the app's cache directory with its
+   SHA-256 and release manifest; it is not kept in memory while it waits.
+   During the download itself the updater plugin still buffers the whole
+   package in memory.
+2. **Confirm.** A downloaded update offers **Restart to update**, which only
+   opens a confirmation. When the app's built-in server serves this window,
+   the confirmation lists the running agent turns the restart interrupts; an
+   installed service or another server keeps running.
+
+   A downloaded update survives quitting. Shortly after the next start (off
+   the window's startup path; the state reads checking meanwhile, and a Check
+   pressed then is refused) the app offers
+   it again if the release is still newer than the app and the package passes
+   the updater's signature check. That check requires the signature to name
+   the package's version. macOS updater archives are signed that way only
+   from the first release that includes #3851 (`tauri signer sign
+   --app-version`); a package from an earlier macOS release is deleted at the
+   next start and must be downloaded again. Windows and Linux archives are
+   signed by the Tauri bundler, which records the version. After restoring,
+   the app asks the release feed once whether it still offers that version: a
+   withdrawn or superseded release drops the package and shows the feed's
+   current answer, and no answer keeps it. Otherwise a downloaded update is
+   not re-checked against newer releases. A package that is damaged when
+   **Restart now** reads it is deleted, and the state returns to idle with an
+   install error; the next check offers the update again.
+3. **Install and restart.** Only **Restart now** installs the download, after
+   its digest and signature check, and restarts the app. **Restart now** waits
+   until the running agent turns are listed. A failed install leaves the update
+   downloaded and the app running, with the failure shown.
+
+Settings shows check failures with the updater's own text; the sidebar does
+not. The desktop package includes the built-in Station server, so installing
+this update replaces the app and its embedded server together. The webview
+holds no updater or process plugin permission; it reads the native state and
+asks the native shell to act.
 
 **Connected Station server** is a separate server operation. Its source
 checkout/build-stamp provenance does not establish the installed desktop app's
 update channel. A GitHub DMG must not require a local Git checkout or a fabricated
 `station-nightly-source.json` stamp to check its signed release feed.
 
-When changing update controls, test native check failures, retries, installation
-failure without restart, and desktop-only routing alongside server update tests.
-Release native update handles when checks are replaced or their UI unmounts,
-including late check responses. An active installation retains its handle until
-the operation settles.
-An HTTP-successful release feed or mocked plugin test does not prove installation
-and restart of a packaged app; retain that runtime verification separately.
+When changing update controls, test the native state machine's failure paths
+(`cargo test desktop_update`), and the UI against the native-writer fixtures in
+`src-desktop/src/fixtures/desktop-update-states.json`.
+An HTTP-successful release feed or a fixture-driven test does not prove
+download, installation and restart of a packaged app; retain that runtime
+verification separately.
 
 ## Prerequisites
 
@@ -137,7 +178,7 @@ latest upstream releases:
 - Rust `tauri` 2.12.1
 - Rust `tauri-build` 2.7.1
 - npm `@tauri-apps/api` `^2.12.4`
-- npm `@tauri-apps/cli` `^2.12.2`
+- npm `@tauri-apps/cli` `^2.12.3`
 
 Tauri recommends keeping the JS API and Rust core on compatible minor lines;
 Station keeps the resolved pnpm and Cargo graphs in their lockfiles. The

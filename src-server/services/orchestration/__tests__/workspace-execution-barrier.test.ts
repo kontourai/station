@@ -50,12 +50,14 @@ test('blocks a new second-session start for the entire restore transaction', asy
 test('does not resurrect a turn that terminates before start acknowledgement', async () => {
   const barrier = new WorkspaceExecutionBarrier();
   let acknowledge!: () => void;
+  let retained = true;
   const starting = barrier.runTurnStart(
     '/repo',
     'thread-fast',
     () => new Promise<void>((resolve) => (acknowledge = resolve)),
-    () => true,
+    () => retained,
   );
+  retained = false;
   barrier.releaseThread('thread-fast');
   acknowledge();
   await starting;

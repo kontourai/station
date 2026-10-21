@@ -1,0 +1,7 @@
+{
+  "revision": "10e89a03da04ee9e52d24ee2372016ec0ce9c195",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Re-reviewed the notice lifecycle repair at 355d3f502cea58ffdcecf2d9e41df07d30d090d3. A real mounted-route regression failed on cached replay after remount, then passed after caching successful receipts at their captured authority and pinning the current notice controls. Inline Off persists through the real config route. Repeated all three requested faults on repaired source: covered-notice POST, DNT feedback prompt, and dropped JSON each fail at the named assertion; restored suite passes all 7 cases. All six desktop/390px gallery scenes passed again, with Off/Dismiss hit tests and feedback focus. These remain local browser/route facts, with native, live receiver and release limits unchanged.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/TelemetryLiteNotice.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx","src-ui/src/hooks/useTelemetryStatus.ts"]}
+  ]
+}

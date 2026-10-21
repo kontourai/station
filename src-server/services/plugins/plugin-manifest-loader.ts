@@ -13,6 +13,7 @@ import {
   type AgentPluginManifestReport,
   parseAgentPluginManifest,
 } from '@kontourai/station-shared/agent-plugin-manifest';
+import { parsePublisherTelemetryDeclaration } from '@kontourai/station-shared/plugin-telemetry';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import { parsePluginCommandDeclarations } from './plugin-command-declarations.js';
@@ -139,6 +140,12 @@ export function parsePluginManifestDocumentWithFormat(
     profile: 'hidden-only',
     source: `plugin manifest '${dirname(manifestPath)}/${basename(manifestPath)}'`,
   });
+  const document = JSON.parse(raw);
+  const extensionTelemetry = document?.extensions?.['io.kontourai.station'];
+  if (extensionTelemetry && Object.hasOwn(extensionTelemetry, 'telemetry'))
+    parsePublisherTelemetryDeclaration(extensionTelemetry.telemetry);
+  if (document && Object.hasOwn(document, 'telemetry'))
+    parsePublisherTelemetryDeclaration(document.telemetry);
   const agentPlugin = readAgentPluginManifest(raw, manifestPath);
   return agentPlugin
     ? { ...agentPlugin, format: 'agent-plugin-1.0' }
@@ -239,6 +246,7 @@ function readAgentPluginManifest(
     });
     const normalized: Record<string, unknown> = { ...base };
     const fields = [
+      'telemetry',
       'sdkVersion',
       'entrypoint',
       'serverModule',
@@ -603,5 +611,9 @@ function parsePluginManifest(
         };
       });
   }
+  if (candidate.telemetry !== undefined)
+    candidate.telemetry = parsePublisherTelemetryDeclaration(
+      candidate.telemetry,
+    );
   return candidate as unknown as PluginManifest;
 }

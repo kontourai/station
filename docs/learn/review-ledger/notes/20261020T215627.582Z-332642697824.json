@@ -1,0 +1,7 @@
+{
+  "revision": "f54af190c5811067d83261fda5470c089c6d849b",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed final f54af190c58 against shared .tap-target in index.css: transcript/open/stop buttons now use that exact utility, guaranteeing 44px on every device without new local media rules. The earlier temporary touch-target class spelling was corrected in f54af190c58; this note supersedes that intermediate styling claim. Handler targets, expansion, grouping and progress are unchanged. Mobile CSS ratchet passes at its original ceiling; controlled browser layout checks remain separate evidence.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/components/chat/SubagentTranscriptCard.css","src-ui/src/workspace-panes/agents/ChildWorkRow.css"]}
+  ]
+}

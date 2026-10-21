@@ -10,12 +10,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
-import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -871,6 +871,21 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       throw new Error(
         'Staged app bundle identifier does not match the release channel.',
       );
+    // The updater signature binds this version (#3851): the desktop app
+    // restores a cached download only when its signature names the version
+    // it is installing. Both release workflows assert CFBundleShortVersionString
+    // equals the version they write to latest.json.
+    const appVersion = (
+      await command('outer app version', '/usr/libexec/PlistBuddy', [
+        '-c',
+        'Print :CFBundleShortVersionString',
+        join(app, 'Contents/Info.plist'),
+      ])
+    ).stdout.trim();
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(appVersion))
+      throw new Error(
+        `Staged app version ${JSON.stringify(appVersion)} cannot be bound into the updater signature.`,
+      );
     const metadata = (
       await command(
         'outer app signing metadata',
@@ -1129,6 +1144,8 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       'tauri',
       'signer',
       'sign',
+      '--app-version',
+      appVersion,
       updater,
     ]);
     if (!fs.existsSync(`${updater}.sig`))

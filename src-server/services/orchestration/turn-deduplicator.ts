@@ -96,6 +96,53 @@ export interface TurnDeduplicator {
   }): TurnClaimInspection;
 }
 
+/** Host-only factory; activate this capability only after guarded transfer succeeds. */
+export function createPreparedTurnClaim(
+  store: TurnIdempotencyStore,
+  key: string,
+): TurnClaim {
+  let settled = false;
+  let intent:
+    | { kind: 'resolve'; turnId: string }
+    | { kind: 'release' }
+    | undefined;
+  const settle = (
+    nextIntent: { kind: 'resolve'; turnId: string } | { kind: 'release' },
+    operation: () => void,
+  ) => {
+    if (settled) throw new Error('Turn claim has already settled.');
+    if (
+      intent &&
+      (intent.kind !== nextIntent.kind ||
+        (intent.kind === 'resolve' &&
+          nextIntent.kind === 'resolve' &&
+          intent.turnId !== nextIntent.turnId))
+    )
+      throw new Error('Turn claim settlement intent cannot change.');
+    intent = nextIntent;
+    operation();
+    // A SQLite transaction can throw after rollback. Preserve this owner
+    // handle in that case so the caller can safely retry its transition.
+    settled = true;
+  };
+  const owned: TurnClaim = {
+    beginInvocation: () => {
+      if (settled) throw new Error('Turn claim has already settled.');
+      store.beginInvocation(key);
+    },
+    resolve: (turnId) =>
+      settle({ kind: 'resolve', turnId }, () => store.resolve(key, turnId)),
+    release: () => settle({ kind: 'release' }, () => store.release(key)),
+    retain: () => {
+      if (settled) throw new Error('Turn claim has already settled.');
+      settled = true;
+      store.retain(key);
+    },
+  };
+  store.bindPreparedClaim(key, owned);
+  return owned;
+}
+
 export function createTurnDeduplicator(options: {
   store: TurnIdempotencyStore;
   keyFor: (threadId: string, clientTurnId: string) => string;
@@ -114,50 +161,12 @@ export function createTurnDeduplicator(options: {
         if (claim.expired) return { kind: 'expired' };
         return { kind: 'contended', turnId: claim.value };
       }
-      let settled = false;
-      let intent:
-        | { kind: 'resolve'; turnId: string }
-        | { kind: 'release' }
-        | undefined;
-      const key = options.keyFor(threadId, clientTurnId);
-      const settle = (
-        nextIntent: { kind: 'resolve'; turnId: string } | { kind: 'release' },
-        operation: () => void,
-      ) => {
-        if (settled) throw new Error('Turn claim has already settled.');
-        if (
-          intent &&
-          (intent.kind !== nextIntent.kind ||
-            (intent.kind === 'resolve' &&
-              nextIntent.kind === 'resolve' &&
-              intent.turnId !== nextIntent.turnId))
-        )
-          throw new Error('Turn claim settlement intent cannot change.');
-        intent = nextIntent;
-        operation();
-        // A SQLite transaction can throw after rollback. Preserve this owner
-        // handle in that case so the caller can safely retry its transition.
-        settled = true;
-      };
       return {
         kind: 'owner',
-        claim: {
-          beginInvocation: () => {
-            if (settled) throw new Error('Turn claim has already settled.');
-            options.store.beginInvocation(key);
-          },
-          resolve: (turnId) =>
-            settle({ kind: 'resolve', turnId }, () =>
-              options.store.resolve(key, turnId),
-            ),
-          release: () =>
-            settle({ kind: 'release' }, () => options.store.release(key)),
-          retain: () => {
-            if (settled) throw new Error('Turn claim has already settled.');
-            settled = true;
-            options.store.retain(key);
-          },
-        },
+        claim: createPreparedTurnClaim(
+          options.store,
+          options.keyFor(threadId, clientTurnId),
+        ),
       };
     },
     givenUp: ({ threadId, clientTurnId }) =>

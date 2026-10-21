@@ -59,7 +59,10 @@ import {
   createVerificationReceipt,
   createVerificationRequest,
 } from './lib/verification-receipt.mjs';
-import { redactVerificationOutput } from './lib/verification-redaction.mjs';
+import {
+  redactVerificationOutput,
+  redactVerificationValue,
+} from './lib/verification-redaction.mjs';
 import { prepareVerificationExecution } from './lib/verification-request-context.mjs';
 import {
   readVitestErrorReport,
@@ -1099,7 +1102,15 @@ function retainFailedReport(
         ? `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`
         : size > FAILED_REPORT_LIMIT_BYTES
           ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
-          : redactVerificationOutput(readFileSync(reportPath, 'utf8'));
+          : (() => {
+              let report;
+              try {
+                report = JSON.parse(readFileSync(reportPath, 'utf8'));
+              } catch {
+                return `${JSON.stringify({ omitted: 'Vitest report is not valid JSON' })}\n`;
+              }
+              return `${JSON.stringify(redactVerificationValue(report))}\n`;
+            })();
     if (Buffer.byteLength(contents) > FAILED_REPORT_LIMIT_BYTES)
       contents = `${JSON.stringify({ omitted: 'redacted report exceeds byte limit' })}\n`;
     const sha256 = createHash('sha256').update(contents).digest('hex');

@@ -1,8 +1,9 @@
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+import type { TaskStatus } from '@kontourai/station-contracts/task-graph';
 import type {
   TaskRoomContextSnapshot,
   TaskRoomWorkInput,
 } from '@kontourai/station-contracts/task-room-work';
+import { updateTaskStatus } from '@kontourai/station-sdk';
 import {
   TaskRoomWorkNotSentError,
   useAppendProjectTaskRoomHumanMessageMutation,
@@ -11,12 +12,23 @@ import {
   useTaskRoomAgentRequestsQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { Empty, FilteredEmpty, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
+import { TaskRoomMessageInput } from './TaskRoomMessageInput';
 import './TaskRoomComposer.css';
+
+function startsWithSelectedPerson(value: string, person?: string) {
+  if (person === undefined) return false;
+  const text = value.trimStart();
+  const mention = `@${person}`;
+  return (
+    text.startsWith(mention) && /^(?:\s|$)/.test(text.slice(mention.length))
+  );
+}
 
 export function TaskRoomComposer({
   taskId,
@@ -32,6 +44,7 @@ export function TaskRoomComposer({
   readable: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
+  const room = useProjectTaskRoomContext(taskId);
   const options = useTaskRoomAgentOptionsQuery(projectSlug, scope, writable);
   const requests = useTaskRoomAgentRequestsQuery(
     taskId,
@@ -51,6 +64,7 @@ export function TaskRoomComposer({
   });
   const [draft, setDraft] = useState('');
   const [recipient, setRecipient] = useState<{ id: string; name: string }>();
+  const [leadingPerson, setLeadingPerson] = useState<string>();
   const [mention, setMention] = useState<{
     start: number;
     end: number;
@@ -60,6 +74,13 @@ export function TaskRoomComposer({
   const [composing, setComposing] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState<TaskRoomWorkInput>();
   const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+  const [preparing, setPreparing] = useState(false);
+  const sendInFlight = useRef(false);
   const [includeBrief, setIncludeBrief] = useState(true);
   const [brief, setBrief] = useState<TaskRoomContextSnapshot>();
   const briefSelection = useRef(0);
@@ -78,9 +99,28 @@ export function TaskRoomComposer({
   const { DiscardModal } = useUnsavedGuard(
     !!draft || !!recipient || !!unconfirmed,
   );
-  const pending = request.isPending || message.isPending;
+  const pending = preparing || request.isPending || message.isPending;
   const locked = pending || !!unconfirmed || connectionChanged;
-  const candidates = (options.isError ? [] : (options.data?.targets ?? []))
+  const candidates = [
+    ...(options.isError ? [] : (options.data?.targets ?? [])).map((target) => ({
+      ...target,
+      person: false,
+    })),
+    ...(room?.live?.participants ?? [])
+      .filter(
+        (participant) =>
+          participant.publication === 'published' &&
+          participant.actor.kind === 'human',
+      )
+      .map((participant) => ({
+        id: participant.actor.actorId,
+        name: participant.actor.label,
+        description: 'Here now',
+        ready: true,
+        unavailableReason: undefined,
+        person: true,
+      })),
+  ]
     .filter((target) =>
       `${target.name} ${target.id} ${target.description ?? ''}`
         .toLocaleLowerCase()
@@ -93,7 +133,19 @@ export function TaskRoomComposer({
     const agent = candidates[index];
     if (!agent?.ready || !mention) return;
     setDraftOwner(owner);
+    if (agent.person) {
+      if (!draft.slice(0, mention.start).trim()) setLeadingPerson(agent.name);
+      setDraft(
+        draft.slice(0, mention.start) +
+          `@${agent.name} ` +
+          draft.slice(mention.end),
+      );
+      setMention(undefined);
+      textarea.current?.focus();
+      return;
+    }
     briefSelection.current += 1;
+    setLeadingPerson(undefined);
     setRecipient({ id: agent.id, name: agent.name });
     setBrief(
       !requests.isError && scope?.isCurrent()
@@ -116,6 +168,7 @@ export function TaskRoomComposer({
   const submit = async () => {
     if (
       !writable ||
+      sendInFlight.current ||
       pending ||
       !draft.trim() ||
       connectionChanged ||
@@ -123,225 +176,175 @@ export function TaskRoomComposer({
     )
       return;
     setNotice('');
-    if (recipient) {
-      if (!requests.data || requests.isError || !scope?.isCurrent()) {
-        setNotice(
-          'Agent requests are unavailable on this connection. Draft retained.',
-        );
-        return;
-      }
-      if (!unconfirmed && includeBrief && !brief) {
-        setNotice(
-          'Task brief is unavailable. Load it or explicitly send only this request.',
-        );
-        return;
-      }
-      const input = unconfirmed ?? {
-        operationId: randomCorrelationId(),
-        agentId: recipient.id,
-        prompt: draft.trim(),
-        ...(includeBrief && brief
-          ? { context: { version: brief.version, digest: brief.digest } }
-          : {}),
-      };
-      if (!unconfirmed) briefSelection.current += 1;
-      setUnconfirmed(input);
-      try {
-        const outcome = await request.mutateAsync(input);
-        if (outcome.kind === 'recorded') {
-          setDraft('');
-          setRecipient(undefined);
-          setBrief(undefined);
-          setIncludeBrief(true);
-          setUnconfirmed(undefined);
+    sendInFlight.current = true;
+    setPreparing(true);
+    try {
+      if (!recipient && draft.trim().startsWith('/')) {
+        const statuses: Record<string, TaskStatus> = {
+          '/done': 'done',
+          '/blocked': 'blocked',
+          '/review': 'review',
+          '/cancel': 'canceled',
+          '/start': 'in_progress',
+        };
+        const command = draft.trim().toLowerCase();
+        const status = statuses[command];
+        if (!status) {
           setNotice(
-            outcome.record.state === 'dispatched'
-              ? 'Agent request dispatched.'
-              : 'Agent request recorded. Execution is not confirmed.',
-          );
-        } else {
-          setUnconfirmed(undefined);
-          setNotice(
-            `Agent request refused: ${outcome.reason}. Draft retained.`,
-          );
-        }
-      } catch (error) {
-        if (error instanceof TaskRoomWorkNotSentError) {
-          if (!unconfirmed) setUnconfirmed(undefined);
-          setNotice(
-            unconfirmed
-              ? `${error.message} The original request is still unconfirmed.`
-              : error.message,
+            'Commands: /start, /review, /done, /blocked, /cancel. Status changes follow the Task’s allowed transitions.',
           );
           return;
         }
+        try {
+          await updateTaskStatus({ taskId, status, apiBase: scope.apiBase });
+          if (currentOwner.current !== owner || !scope.isCurrent()) return;
+          setDraft((current) => (current === draft ? '' : current));
+          setNotice('');
+        } catch (error) {
+          if (currentOwner.current === owner)
+            setNotice(
+              error instanceof Error
+                ? error.message
+                : 'Status could not be changed. Draft retained.',
+            );
+        }
+        return;
+      }
+      let selectedRecipient = recipient;
+      let selectedDraft = draft;
+      if (
+        !selectedRecipient &&
+        !unconfirmed &&
+        !startsWithSelectedPerson(draft, leadingPerson)
+      ) {
+        const typed = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
+        if (typed) {
+          const matches =
+            options.data?.targets.filter(
+              (target) =>
+                target.ready &&
+                (target.id.toLowerCase() === typed[1].toLowerCase() ||
+                  target.name.toLowerCase() === typed[1].toLowerCase()),
+            ) ?? [];
+          if (matches.length !== 1) {
+            setNotice('Pick an agent from the list to send a request');
+            return;
+          }
+          selectedRecipient = matches[0];
+          selectedDraft = typed[2];
+        } else if (/^@/.test(draft.trim())) {
+          setNotice('Pick an agent from the list to send a request');
+          return;
+        }
+      }
+      if (selectedRecipient) {
+        if (!requests.data || requests.isError || !scope?.isCurrent()) {
+          setNotice(
+            'Agent requests are unavailable on this connection. Draft retained.',
+          );
+          return;
+        }
+        let latestBrief = brief;
+        if (!unconfirmed && includeBrief) {
+          const selection = ++briefSelection.current;
+          const refreshed = await requests.refetch();
+          if (
+            currentOwner.current !== owner ||
+            !scope.isCurrent() ||
+            briefSelection.current !== selection
+          )
+            return;
+          latestBrief = !refreshed.isError
+            ? (refreshed.data?.context ?? undefined)
+            : undefined;
+          setBrief(latestBrief);
+          if (!latestBrief) {
+            setNotice(
+              'Task brief is unavailable. Retry or uncheck Brief attached to send request text only.',
+            );
+            return;
+          }
+        }
+        const input = unconfirmed ?? {
+          operationId: randomCorrelationId(),
+          agentId: selectedRecipient.id,
+          prompt: selectedDraft.trim(),
+          ...(includeBrief && latestBrief
+            ? {
+                context: {
+                  version: latestBrief.version,
+                  digest: latestBrief.digest,
+                },
+              }
+            : {}),
+        };
+        if (!unconfirmed) briefSelection.current += 1;
+        setUnconfirmed(input);
+        try {
+          const outcome = await request.mutateAsync(input);
+          if (outcome.kind === 'recorded') {
+            setDraft((current) => (current === draft ? '' : current));
+            setRecipient(undefined);
+            setBrief(undefined);
+            setIncludeBrief(true);
+            setUnconfirmed(undefined);
+            setNotice(
+              outcome.record.state === 'dispatched'
+                ? 'Agent request dispatched.'
+                : 'Agent request recorded. Execution is not confirmed.',
+            );
+          } else {
+            setUnconfirmed(undefined);
+            setNotice(
+              `Agent request refused: ${outcome.reason}. Draft retained.`,
+            );
+          }
+        } catch (error) {
+          if (error instanceof TaskRoomWorkNotSentError) {
+            if (!unconfirmed) setUnconfirmed(undefined);
+            setNotice(
+              unconfirmed
+                ? `${error.message} The original request is still unconfirmed.`
+                : error.message,
+            );
+            return;
+          }
+          setNotice(
+            'Request acknowledgement is unavailable. Check the request list, or retry this same request.',
+          );
+        }
+        return;
+      }
+      try {
+        const outcome = await message.mutateAsync({
+          proposalId: randomCorrelationId(),
+          text: draft.trim(),
+        });
+        if (outcome.kind === 'committed' || outcome.kind === 'duplicate') {
+          setDraft((current) => (current === draft ? '' : current));
+          setLeadingPerson(undefined);
+        } else setNotice('Message rejected. Draft retained.');
+      } catch {
         setNotice(
-          'Request acknowledgement is unavailable. Check the request list, or retry this same request.',
+          'Message acknowledgement is unavailable. Check room history before resending.',
         );
       }
-      return;
-    }
-    try {
-      const outcome = await message.mutateAsync({
-        proposalId: randomCorrelationId(),
-        text: draft.trim(),
-      });
-      if (outcome.kind === 'committed' || outcome.kind === 'duplicate')
-        setDraft('');
-      else setNotice('Message rejected. Draft retained.');
-    } catch {
-      setNotice(
-        'Message acknowledgement is unavailable. Check room history before resending.',
-      );
+    } finally {
+      sendInFlight.current = false;
+      setPreparing(false);
     }
   };
   return (
     <div className="task-room-composer">
-      <section aria-label="Agent requests">
-        <h3>Agent requests</h3>
-        {requests.isError ? (
-          <p role="alert">Agent requests are unavailable.</p>
-        ) : null}
-        <ol>
-          {!requests.isError && readable && scope?.isCurrent()
-            ? requests.data?.records.map((record) => (
-                <li key={`${record.requesterId}:${record.operationId}`}>
-                  <strong>@{record.agentId}</strong>: {record.prompt}
-                  <p>
-                    {record.state === 'dispatched'
-                      ? 'Dispatched; inspect execution for progress and results'
-                      : record.state === 'refused'
-                        ? 'Refused'
-                        : 'Execution not confirmed'}
-                  </p>
-                  <a href={activityDeepLink({ sessionId: record.sessionId })}>
-                    View agent execution
-                  </a>
-                  <details>
-                    <summary>Request details</summary>
-                    {record.context ? (
-                      <div className="task-room-brief-preview">
-                        <strong>{record.context.title}</strong>
-                        <p>{record.context.description}</p>
-                        <pre>{record.context.text}</pre>
-                        <p>
-                          Saved brief {record.context.digest.slice(0, 12)} ·
-                          document {record.context.documentRevision}
-                        </p>
-                      </div>
-                    ) : (
-                      <p>Request text only; no saved Task brief.</p>
-                    )}
-                    <p>
-                      Requested {record.createdAt} by {record.requesterId}.
-                      Execution {record.sessionId}.
-                    </p>
-                  </details>
-                </li>
-              ))
-            : null}
-        </ol>
-        <Button
-          size="sm"
-          disabled={requests.isFetching}
-          onClick={() => void requests.refetch()}
-        >
-          Refresh requests
-        </Button>
-      </section>
-      {recipient ? (
-        <fieldset aria-label="Agent recipient">
-          Asking <strong>@{recipient.name}</strong>
-          <Button
-            size="sm"
-            disabled={locked}
-            aria-label={`Remove ${recipient.name}`}
-            onClick={() => {
-              briefSelection.current += 1;
-              setRecipient(undefined);
-            }}
-          >
-            Remove
-          </Button>
-        </fieldset>
-      ) : (
-        <Button
-          size="sm"
-          disabled={!writable || locked}
-          onClick={() => {
-            setDraftOwner(owner);
-            setMention({ start: draft.length, end: draft.length, query: '' });
-            setActive(0);
-            textarea.current?.focus();
-          }}
-        >
-          Ask an agent
-        </Button>
-      )}
-      {recipient && !connectionChanged ? (
-        <fieldset aria-label="Request context" disabled={locked}>
-          <label className="task-room-brief-choice">
-            <input
-              type="checkbox"
-              checked={includeBrief}
-              onChange={(event) => {
-                briefSelection.current += 1;
-                setIncludeBrief(event.target.checked);
-                if (event.target.checked)
-                  setBrief(
-                    !requests.isError
-                      ? (requests.data?.context ?? undefined)
-                      : undefined,
-                  );
-              }}
-            />
-            Include Task brief
-          </label>
-          {includeBrief ? (
-            <>
-              {brief ? (
-                <details className="task-room-brief-preview">
-                  <summary>
-                    Preview selected brief · {brief.digest.slice(0, 12)}
-                  </summary>
-                  <strong>{brief.title}</strong>
-                  <p>{brief.description}</p>
-                  <pre>{brief.text}</pre>
-                  <p>Document version {brief.documentRevision}</p>
-                </details>
-              ) : (
-                <p>Task brief is unavailable on this connection.</p>
-              )}
-              <Button
-                size="sm"
-                disabled={locked || requests.isFetching || requests.isError}
-                onClick={async () => {
-                  const selection = ++briefSelection.current;
-                  const result = await requests.refetch();
-                  if (
-                    scope?.isCurrent() &&
-                    currentOwner.current === owner &&
-                    briefSelection.current === selection &&
-                    !result.isError
-                  )
-                    setBrief(result.data?.context ?? undefined);
-                }}
-              >
-                Use latest brief
-              </Button>
-              <p>
-                This exact snapshot goes with the request. Later edits do not
-                change it.
-              </p>
-            </>
-          ) : (
-            <p>Only your request text will be sent.</p>
-          )}
-        </fieldset>
-      ) : null}
-      <label htmlFor={`${id}-message`}>Message</label>
-      <textarea
+      <label className="sr-only" htmlFor={`${id}-message`}>
+        Message the Task
+      </label>
+      <TaskRoomMessageInput
+        onSend={() => {
+          if (!composing && !locked && writable && draft.trim()) void submit();
+        }}
         id={`${id}-message`}
+        placeholder="Message the Task…"
         ref={textarea}
         value={draft}
         disabled={!writable || locked || !scope}
@@ -359,8 +362,13 @@ export function TaskRoomComposer({
           );
         }}
         onChange={(event) => {
+          setNotice('');
           setDraftOwner(owner);
           setDraft(event.currentTarget.value);
+          if (
+            !startsWithSelectedPerson(event.currentTarget.value, leadingPerson)
+          )
+            setLeadingPerson(undefined);
           findMention(
             event.currentTarget.value,
             event.currentTarget.selectionStart,
@@ -373,7 +381,7 @@ export function TaskRoomComposer({
           )
         }
         onKeyDown={(event) => {
-          if (!picker || event.nativeEvent.isComposing) return;
+          if (!picker || composing || event.nativeEvent.isComposing) return;
           if (event.key === 'Escape') {
             event.preventDefault();
             setMention(undefined);
@@ -390,15 +398,90 @@ export function TaskRoomComposer({
               ),
             );
           }
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             select(selected);
           }
         }}
       />
-      <p id={`${id}-help`}>
-        Type @ to choose an agent. Send starts the request; ordinary messages go
-        to the team.
+      <div className="task-room-composer-actions">
+        {recipient ? (
+          <fieldset aria-label="Agent recipient">
+            Asking <strong>@{recipient.name}</strong>
+            <Button
+              size="sm"
+              disabled={locked}
+              aria-label={`Remove ${recipient.name}`}
+              onClick={() => {
+                briefSelection.current += 1;
+                setRecipient(undefined);
+              }}
+            >
+              Remove
+            </Button>
+          </fieldset>
+        ) : (
+          <Button
+            size="sm"
+            className="task-room-agent-action"
+            disabled={!writable || locked}
+            onClick={() => {
+              setDraftOwner(owner);
+              setMention({ start: draft.length, end: draft.length, query: '' });
+              setActive(0);
+              textarea.current?.focus();
+            }}
+          >
+            Ask an agent
+          </Button>
+        )}
+        <label className="task-room-brief-choice">
+          <input
+            type="checkbox"
+            aria-label="Brief attached to agent requests"
+            checked={includeBrief}
+            disabled={locked}
+            onChange={(event) => setIncludeBrief(event.currentTarget.checked)}
+          />
+          <span className="task-room-brief-long">
+            Brief attached to agent requests
+          </span>
+          <span className="task-room-brief-short">Brief attached</span>
+        </label>
+        <Button
+          className="task-room-send"
+          aria-label={
+            pending
+              ? 'Sending…'
+              : unconfirmed
+                ? 'Retry same agent request'
+                : recipient
+                  ? `Ask ${recipient.name}`
+                  : 'Send to task room'
+          }
+          pending={pending}
+          pendingLabel="Sending…"
+          disabled={
+            !writable ||
+            connectionChanged ||
+            !scope ||
+            !draft.trim() ||
+            (recipient && (!requests.data || requests.isError))
+          }
+          onClick={() => void submit()}
+        >
+          {unconfirmed ? 'Retry' : recipient ? `Ask ${recipient.name}` : 'Send'}
+        </Button>
+      </div>
+      {recipient && brief?.text.includes('Brief shortened to fit') && (
+        <p role="status">
+          The brief exceeds 16,000 characters. A shortened version with a notice
+          will be attached.
+        </p>
+      )}
+      <p className="task-room-composer-help" id={`${id}-help`}>
+        Enter to send, Shift+Enter for a new line. Type @ for agents and people,
+        / for commands.
       </p>
       {picker ? (
         <div id={`${id}-agents`} role="listbox" aria-label="Choose an agent">
@@ -443,7 +526,8 @@ export function TaskRoomComposer({
                 disabled={!agent.ready}
                 onClick={() => select(index)}
               >
-                {agent.name} @{agent.id}
+                {agent.name}
+                {agent.person ? '' : ` @${agent.id}`}
               </Button>
               <p>
                 {agent.ready
@@ -454,27 +538,11 @@ export function TaskRoomComposer({
           ))}
         </div>
       ) : null}
-      <Button
-        pending={pending}
-        disabled={
-          !writable ||
-          connectionChanged ||
-          !scope ||
-          !draft.trim() ||
-          (recipient &&
-            (!requests.data ||
-              requests.isError ||
-              (!unconfirmed && includeBrief && !brief)))
-        }
-        onClick={() => void submit()}
-      >
-        {unconfirmed
-          ? 'Retry same agent request'
-          : recipient
-            ? `Ask ${recipient.name}`
-            : 'Send to task room'}
-      </Button>
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? (
+        <p className="task-room-inline-status" role="status">
+          {notice}
+        </p>
+      ) : null}
       {connectionChanged ? (
         <p role="alert">
           This draft belongs to the previous connection or Task. Reopen that

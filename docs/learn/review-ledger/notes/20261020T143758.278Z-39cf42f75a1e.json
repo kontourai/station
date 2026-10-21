@@ -1,0 +1,51 @@
+{
+  "revision": "8a87ca836db1e81c37fb4fdb063c52eb5dc6c3a7",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Fix round 1, transitive via docs/architecture/module-map.md: its Keyboard shortcuts paragraph now states plugin shortcuts use the verified installed-plugin owner (percent-encoded; none is refused unbound) at priority -1 and that text-editing chords are reserved. This document routes to the module map and makes no claim about plugin shortcuts. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Fix round 1: rechecked the shortcut-hint finding; plugin priority -1, editing-chord reservation and owner binding do not change id-derived hints. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round 1: updated the plugin paragraph to the verified owner (percent-encoded, else refused unbound), priority -1 below Station's default 0, and reserved kernel plus text-editing chords; checked against sdkShortcutsHost.ts, kernelReservedShortcuts.ts and the dispatcher.","inputs":["docs/architecture/module-map.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/contexts/KeyboardShortcutsContext.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Fix round 1: KeyboardShortcutsContext adds editing chords to the plugin reservation only; developer.open and the shortcut note are unaffected. No prose change.","inputs":["docs/design/developer-surface.md","src-ui/src/contexts/KeyboardShortcutsContext.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Fix round 1: sdk.md changes (unbound, editing chords, credentials refusal, dialog provenance) are not restated by this routing guide. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Fix round 1: plugin shortcuts now rank below Station's own (only the Escape fallback yields), only installed-plugin panes may register, and text-editing chords are reserved. Each claim is tested in SDKAdapter.hostServices.test.tsx and was fault-injected.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/contexts/KeyboardShortcutsContext.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 1: documented 'unbound', the text-editing reservation, ranking below Station shortcuts, encoded owner, scope throw without identity, normalised/credential-free openExternal, settle-at-once after unmount, and the From <plugin> eyebrow and close button. Checked against hooks/context.ts, host-contexts.ts, SDKAdapter.tsx, sdkShortcutsHost.ts, paneHostShellChrome.tsx and openExternalLink.ts plus tests.","inputs":["docs/reference/sdk.md","packages/sdk/src/hooks/context.ts","packages/sdk/src/host-contexts.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/core/SDKAdapter.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Fix round 1: added the editing-chord reservation and installed-plugin-only registration to the useShortcut line; regenerated station-docs-content.ts (merge conflict resolved by regenerating from merged docs; docs:mcp:check passes).","inputs":["docs/reference/station-docs.md","packages/sdk/src/hooks/context.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"examples/coding-starter/README.md","note":"Fix round 1: SDKAdapter now binds shortcuts to the verified plugin and names dialog requesters; the example's documented hooks are unchanged. No prose change.","inputs":["examples/coding-starter/README.md","src-ui/src/core/SDKAdapter.tsx"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"Fix round 1: SDKAdapter changes do not alter the hooks this README tabulates. No prose change.","inputs":["examples/minimal-layout/README.md","src-ui/src/core/SDKAdapter.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Fix round 1: still routes to sdk.md; no claim affected. No prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Fix round 1: the hooks section's host-adapter statement still holds. No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/hooks/context.ts","src-ui/src/core/SDKAdapter.tsx"]}
+  ]
+}

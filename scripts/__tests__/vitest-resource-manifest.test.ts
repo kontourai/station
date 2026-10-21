@@ -258,16 +258,22 @@ describe('Vitest resource manifest', () => {
     expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
-  it('classifies Play-upload ownership exactly once as process exclusive', () => {
-    const file = 'scripts/__tests__/play-upload-retry.test.ts';
-    const groups = repositoryDiscovery.groups;
-    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
-      file,
-    ]);
-    expect(groups.ordinary).not.toContain(file);
-    expect(groups.processHeavy).not.toContain(file);
-    expect(groups.sharedOutput).not.toContain(file);
-  }, 70_000);
+  it.each([
+    'scripts/__tests__/play-upload-retry.test.ts',
+    'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
+  ])(
+    'classifies deadline-sensitive ownership exactly once as process exclusive: %s',
+    (file) => {
+      const groups = repositoryDiscovery.groups;
+      expect(groups.processExclusive.filter((entry) => entry === file)).toEqual(
+        [file],
+      );
+      expect(groups.ordinary).not.toContain(file);
+      expect(groups.processHeavy).not.toContain(file);
+      expect(groups.sharedOutput).not.toContain(file);
+    },
+    70_000,
+  );
 
   it('classifies the multi-worker remote-home bootstrap exactly once as process exclusive', () => {
     const file =

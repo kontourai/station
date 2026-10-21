@@ -154,6 +154,22 @@ white-label branding, a custom accent and islands. A picker lists
 (load it lazily: it carries the full catalog) and writes the `colorTheme`,
 `colorThemeFlavor` and `colorThemeAccent` device settings.
 
+The picker is the Appearance page (`/appearance`, listed in Customize and the
+command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
+holds the light/dark mode, a gallery of every theme drawn from the catalog
+swatches for the current mode, the family's dark flavors, and its named
+accents (Station's own presets and custom color when Station is selected).
+Choosing a family resets flavor and accent to that family's defaults, and
+choosing a named accent clears a custom `accentColor`, which would otherwise
+win. A different family's sheet loads first, so until the applier names it
+on the root the chosen card reads "Loading…" with no tick. A sheet that fails
+leaves the card reading "Not loaded" under a warning with Try again, which
+applies the selection once more; rapid choices end on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
+and with real delayed sheets in
+[appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).
+Settings keeps its Theme and Accent color rows as links to the page, so
+their search terms and `highlight=` links still land.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by
@@ -184,6 +200,28 @@ localStorage before the first render, re-validating it, and
 replaces it once the branding query answers. A device accent still sets
 `--accent-primary` above the theme's action role. The accepted shape and
 thresholds are in [examples/custom-branding](../../examples/custom-branding/README.md).
+
+## Highlighted code, diffs, terminals and frames
+
+Syntax highlighting does not carry its own palette. Chat code blocks, the File
+Preview and the diff viewer share one Shiki theme,
+[station-syntax-theme.ts](../../src-ui/src/highlight/station-syntax-theme.ts):
+github-dark's scope rules with every colour replaced by a Station variable
+(`--syntax-*` for tokens and the block surface, `--diff-*` for the diff surface
+and its added, removed and modified tones). Highlighted output is therefore the
+same in every mode and follows a mode, accent or branding change through the
+cascade without re-highlighting. The `@pierre/diffs` viewer renders in a shadow
+root, which custom properties cross.
+
+Two consumers cannot read the cascade directly: xterm paints a canvas, and MCP
+App and HTML-reply frames receive resolved token values by message. They re-read
+on [`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
+which reports changes to `data-theme`, the `data-color-theme*` attributes,
+`data-app-channel`, `data-brand-focus`, `class` and the non-geometry inline style
+on `<html>`. The terminal's colours are the `--terminal-*` variables, one set
+per mode in [index.css](../../src-ui/src/index.css); the light mode has a light
+terminal. Monitoring's agent and conversation accents use the `--series-*`
+palette.
 
 ## Components and evidence
 

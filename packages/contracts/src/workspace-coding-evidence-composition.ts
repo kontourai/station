@@ -98,8 +98,10 @@ export function selectCodingEvidenceComposition(input: {
       unavailablePanes: [],
     };
   if (
-    input.panes.length !== 3 ||
-    new Set(input.panes.map((pane) => pane.category)).size !== 3
+    input.panes.length < 1 ||
+    input.panes.length > 3 ||
+    new Set(input.panes.map((pane) => pane.category)).size !==
+      input.panes.length
   )
     return unavailable(input.control, 'invalid-admission');
   const declared = input.panes.map((pane) =>

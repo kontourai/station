@@ -918,9 +918,33 @@ function describeServiceUpdate(
         'unreadable (the launcher state or a request file cannot be read)',
       ];
     case 'queued':
-      return ['requested, not yet picked up'];
+      return [
+        progress.intent === 'stage'
+          ? 'download requested, not yet picked up'
+          : 'requested, not yet picked up',
+      ];
     case 'staging':
-      return ['downloading and verifying the release'];
+      if (progress.intent === 'apply')
+        return ['handing the downloaded release to the launcher'];
+      if (
+        progress.stagePhase === 'downloading' &&
+        progress.downloadedBytes !== undefined &&
+        progress.totalBytes !== undefined
+      )
+        return [
+          `downloading the release (${progress.downloadedBytes} of ${progress.totalBytes} bytes)`,
+        ];
+      return [
+        progress.stagePhase === 'verifying'
+          ? 'verifying the downloaded release'
+          : progress.stagePhase === 'installing'
+            ? 'installing the downloaded release'
+            : 'downloading and verifying the release',
+      ];
+    case 'staged':
+      return [
+        `${progress.version} downloaded and verified at ${progress.stagedAt}; it runs once the update is applied (restart)`,
+      ];
     case 'updating':
       return [
         `${progress.fromVersion} -> ${progress.targetVersion}: ${progress.phase} (trial attempt ${progress.attempts})`,

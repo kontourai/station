@@ -28,7 +28,11 @@
 
     "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
 
-    "src-server/services/orchestration/turn-deduplicator.ts"
+    "src-server/services/orchestration/turn-deduplicator.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts"
   ],
 
   "checks": [

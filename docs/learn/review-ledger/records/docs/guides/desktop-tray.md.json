@@ -86,8 +86,6 @@
 
     "src-desktop/build.rs",
 
-    "src-desktop/capabilities/desktop-updater.json",
-
     "src-desktop/src/lib.rs",
 
     "src-desktop/src/notification_feed.rs",
@@ -115,8 +113,6 @@
     "src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts",
 
     "src-ui/src/__tests__/deliveryFeed.test.ts",
-
-    "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
 
     "src-ui/src/core/PluginRegistry.ts",
 

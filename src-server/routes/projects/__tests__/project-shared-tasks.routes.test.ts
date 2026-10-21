@@ -68,9 +68,17 @@ function fixture() {
           digests: { proposal: 'c'.repeat(64), checkpoint: 'd'.repeat(64) },
           integrity: 'L0',
         },
+        {
+          actor: { kind: 'agent', label: 'Researcher' },
+          sequence: 3,
+          body: { kind: 'human-message', text: 'Private agent answer' },
+          execution: { sessionId: 'private-session', turnId: 'private-turn' },
+          digests: { proposal: 'f'.repeat(64), checkpoint: '1'.repeat(64) },
+          integrity: 'L0',
+        },
       ],
       checkpoint: {
-        throughSeq: 2,
+        throughSeq: 3,
         checkpointDigest: 'b'.repeat(64),
         retainedAnchorSeq: 0,
         retainedAnchorDigest: 'e'.repeat(64),
@@ -140,7 +148,7 @@ describe('project shared Task routes', () => {
     expect(response.status).toBe(404);
     expect(await response.text()).not.toMatch(/public text|upload\.txt/);
   });
-  test('reports an incomplete bounded room page as unavailable', async () => {
+  test('paginates shared human history instead of refusing a multi-page room', async () => {
     const h = fixture();
     h.room.sharedHistory.mockResolvedValueOnce({
       ...(await h.room.sharedHistory()),
@@ -152,8 +160,28 @@ describe('project shared Task routes', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      data: { kind: 'unavailable' },
+      data: {
+        kind: 'available',
+        hasMore: true,
+        nextCursor: 'next-page',
+        records: [
+          expect.objectContaining({
+            body: { kind: 'human-message', text: 'shared note' },
+          }),
+        ],
+      },
     });
+    const cursor = {
+      schemaVersion: 'station.project-task-room-cursor/v1',
+      afterSeq: 3,
+    };
+    await h.app.request(
+      '/api/projects/example/shared-work/task-1/history?cursor=' +
+        Buffer.from(JSON.stringify(cursor)).toString('base64url'),
+    );
+    expect(h.room.sharedHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor }),
+    );
   });
   test('revocation after worker read returns opaque 404 and no content', async () => {
     const h = fixture();

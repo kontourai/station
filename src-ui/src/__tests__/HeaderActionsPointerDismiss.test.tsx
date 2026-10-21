@@ -81,24 +81,19 @@ function Header() {
   return (
     <HeaderActions
       helpPrompts={[]}
-      settingsShortcut="⌘,"
       showHelp={false}
       showNotifications={showNotifications}
       showOverflow={false}
-      showProfileMenu={false}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={() => setShowNotifications(false)}
       onCloseOverflow={vi.fn()}
-      onCloseProfileMenu={vi.fn()}
       onHelpPrompt={vi.fn()}
       onOpenConnections={vi.fn()}
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={() => setShowNotifications(true)}
-      onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
-      onToggleProfileMenu={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />
   );

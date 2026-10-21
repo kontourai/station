@@ -393,17 +393,14 @@ export function configureRuntimeSupportServices(
     notificationService,
     context.logger,
   );
-  // station#1225 (offline slice 3): push-on-completion — schedules a
-  // notification (and, via the notification delivery router's Web Push
-  // channel below, a Web Push send) when a turn completes/fails for a session
-  // whose owning user has no live `/events` stream open.
-  // `context.orchestrationStreamPresence` is the SAME instance
-  // `createOrchestrationRoutes` registers connect/disconnect against
-  // (`runtime-routes.ts`), so this always observes real connection state.
+  // station#1225: turn-completion notifications — schedules a record when a
+  // turn completes/fails for a session with a reader.
+  // Whether it interrupts a surface (Web Push, native alert, desktop feed)
+  // is the delivery router's focus/liveness decision below, not a check on
+  // whether the owner holds any open `/events` stream.
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
-    context.orchestrationStreamPresence,
     notificationService,
     context.logger,
   );
@@ -415,7 +412,6 @@ export function configureRuntimeSupportServices(
   wireInternalStopRedispatchFailureNotifications(
     context.eventBus,
     context.orchestrationService,
-    context.orchestrationStreamPresence,
     notificationService,
     context.logger,
   );
@@ -643,6 +639,10 @@ export function configureRuntimeSupportServices(
     sessionReaderFor: createAgentActivitySessionReader({
       listDevices: () =>
         context.environmentSecurityService.devicePairing.listDevices(),
+      deviceLocality: (deviceId) =>
+        context.environmentSecurityService.devicePairing.deviceLocality(
+          deviceId,
+        ),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {

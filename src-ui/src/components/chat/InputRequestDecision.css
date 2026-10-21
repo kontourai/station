@@ -1,0 +1,10 @@
+/* Keep unavailable decisions legible without suggesting they are still active. */
+.approval-decision-row .button:disabled {
+  background: transparent;
+  color: var(--k-text-faint);
+  border-style: dashed;
+  border-color: var(--k-line);
+  box-shadow: none;
+  opacity: 1;
+  cursor: default;
+}

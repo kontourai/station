@@ -65,10 +65,14 @@ self.addEventListener('notificationclick', (event) => {
 
   event.notification.close();
 
+  // Requests go to this worker's own Station, never to a base the payload
+  // names elsewhere.
+  const stationBase = sameOriginApiBase(apiBase);
+
   // Tool-approval actions
   if (approvalId && (action === 'allow' || action === 'deny')) {
     event.waitUntil(
-      fetch(`${apiBase}/api/tools/approve`, {
+      fetch(`${stationBase}/api/tools/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approvalId, agentSlug, action }),
@@ -80,10 +84,13 @@ self.addEventListener('notificationclick', (event) => {
   // Generic notification actions
   if (notificationId && action) {
     event.waitUntil(
-      fetch(`${apiBase}/notifications/${notificationId}/action/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => {}),
+      fetch(
+        `${stationBase}/notifications/${encodeURIComponent(notificationId)}/action/${encodeURIComponent(action)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ).catch(() => {}),
     );
     return;
   }
@@ -91,7 +98,7 @@ self.addEventListener('notificationclick', (event) => {
   // Default tap — focus an existing tab (navigating it to the deep link) or
   // open a new one. Defaults to the attention inbox (/notifications) since
   // that's the canonical landing surface for an approval-request push.
-  const targetUrl = url || '/notifications';
+  const targetUrl = sameOriginTarget(url);
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
@@ -109,3 +116,52 @@ self.addEventListener('notificationclick', (event) => {
       }),
   );
 });
+
+/**
+ * The tap's destination as an absolute URL on this worker's own origin, or
+ * the inbox. The server already keeps push links on Station; this refuses
+ * anything else (an absolute URL, `//host`, a path whose dot segments
+ * resolve off-origin) in case a payload ever carries one. The absolute,
+ * resolved URL is used as is, so it is never re-parsed as `//host`.
+ */
+function sameOriginTarget(url) {
+  const origin = self.location.origin;
+  if (typeof url === 'string' && url && !url.includes('\\')) {
+    try {
+      const target = new URL(url, `${origin}/`);
+      if (
+        (target.protocol === 'https:' || target.protocol === 'http:') &&
+        target.origin === origin &&
+        !target.pathname.startsWith('//')
+      )
+        return target.href;
+    } catch {
+      // Unparseable: the inbox.
+    }
+  }
+  return new URL('/notifications', `${origin}/`).href;
+}
+
+/**
+ * The API base for a tap's request: the payload's `apiBase` only when it is
+ * on this worker's own origin (an http(s) URL, any path, no trailing slash),
+ * else this origin. A payload can name where its request goes, never a
+ * different host.
+ */
+function sameOriginApiBase(apiBase) {
+  const origin = self.location.origin;
+  if (typeof apiBase === 'string' && apiBase && !apiBase.includes('\\')) {
+    try {
+      const base = new URL(apiBase, `${origin}/`);
+      if (
+        (base.protocol === 'https:' || base.protocol === 'http:') &&
+        base.origin === origin &&
+        !base.pathname.startsWith('//')
+      )
+        return `${base.origin}${base.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      // Unparseable: this origin.
+    }
+  }
+  return origin;
+}

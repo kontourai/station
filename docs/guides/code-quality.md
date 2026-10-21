@@ -43,10 +43,11 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
-Repository-wide Veritas readiness and all typecheck lanes belong to required
-hosted `fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
-`scripts/run-ci-fast.mjs`. The required `fast-checks` aggregate rejects any
-non-success statics result. Local pushes retain cheap lint/governance and
+Repository-wide Veritas readiness and all typecheck lanes belong to hosted
+`fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
+`scripts/run-ci-fast.mjs`. The `fast-checks` aggregate rejects any
+non-success statics result, and the required `Source verification policy`
+context reconciles that aggregate. Local pushes retain cheap lint/governance and
 commit checks plus scoped transfer, static and SDK checks.
 
 Before the first check the hook resolves the bounded host-pressure liveness
@@ -254,7 +255,8 @@ checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, zero to four planned
+In hosted CI, `fast-checks` (reconciled by the required `Source verification
+policy` context; the ruleset lists required contexts) aggregates the affected-test plan, zero to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit
@@ -430,8 +432,10 @@ it. A `catch` that returns a clean zero has decided on evidence it does not have
 
 Push only the branch and remote authorized for the task, after its required
 local checks. A configured remote is not publication permission. Do not bypass
-pre-push checks. Follow [AGENTS.md](../../AGENTS.md) for the merge queue and
-current handoff rules; do not manually merge or arm another lane's pull request.
+pre-push checks. Follow
+[Landing a pull request](development.md#landing-a-pull-request) for the merge
+queue and [AGENTS.md](../../AGENTS.md) for handoff rules; do not manually merge
+or arm another lane's pull request.
 For the merge queue, arm and confirm once, then stop polling it. When checking
 CI, inspect the actual job and failure before deciding what to rerun; silence is
 not success. Follow the task's required verification through its real outcome.

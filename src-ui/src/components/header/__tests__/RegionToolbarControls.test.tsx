@@ -460,13 +460,13 @@ describe('RegionToolbarControls', () => {
     render(<RegionToolbarControls />);
 
     expect(toggleStates()).toEqual([
-      ['Left region', 'false'],
       ['Bottom region', 'true'],
       ['Right region', 'false'],
     ]);
-    // Bottom holds Chat and is pressed. Left and right are EMPTY and hidden,
-    // and since #2155 that is `'false'`, not `null`: they are toggles too,
-    // and pressing one opens its region on the chooser.
+    // Bottom holds Chat and is pressed. Right is EMPTY and hidden, and since
+    // #2155 that is `'false'`, not `null`: it is a toggle too, and pressing
+    // it opens its region on the chooser. Left is an advanced placement with
+    // no default toggle while it is empty and hidden.
     expect(toggleState('Bottom')).toBe('Hide Bottom region: Chat');
     // No visible word: the glyph is the region's own edge, and the name is
     // the tooltip's and the accessible name's.
@@ -477,10 +477,49 @@ describe('RegionToolbarControls', () => {
   });
 
   /**
-   * #2155 D1, as a table over all three regions in one assertion, because
+   * The default shell is the sidebar, Main, Related (Right) and Tools
+   * (Bottom); Left is an advanced placement. Its toggle is absent while Left
+   * is empty and hidden, and returns as soon as Left holds a pane or is open
+   * — a saved arrangement or plugin placement that uses Left keeps a way to
+   * show and hide it. The first assertion fails if the filter is removed; the
+   * second and third fail if it ignores the region's actual state.
+   */
+  test('Left has a toggle only while it is in use', () => {
+    const { rerender } = render(<RegionToolbarControls />);
+    expect(screen.queryByRole('button', { name: 'Left region' })).toBeNull();
+
+    Object.assign(harness.regions.left, {
+      visible: false,
+      panes: ['activity'],
+      occupant: 'activity',
+    });
+    rerender(<RegionToolbarControls />);
+    expect(toggleStates()).toEqual([
+      ['Left region', 'false'],
+      ['Bottom region', 'true'],
+      ['Right region', 'false'],
+    ]);
+    expect(toggleState('Left')).toBe('Show Left region: Activity');
+
+    Object.assign(harness.regions.left, {
+      visible: true,
+      panes: [],
+      occupant: null,
+    });
+    rerender(<RegionToolbarControls />);
+    fireEvent.click(regionToggle('Left'));
+    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+      visible: false,
+      maximized: false,
+    });
+    Object.assign(harness.regions.left, { visible: false });
+  });
+
+  /**
+   * #2155 D1, as a table over the default regions in one assertion, because
    * what it pins is the ABSENCE of a second shape: every toggle reports
    * `aria-pressed`, none announces a popup, and none is disabled or inert —
-   * including `left`, which is empty and hidden, the state #2143 gave a menu
+   * including `right`, which is empty and hidden, the state #2143 gave a menu
    * trigger and #2143's narrowed-registry case gave an `aria-disabled`
    * button. Restoring either branch in `RegionToolbarControls.tsx` reds a
    * row here.
@@ -502,7 +541,6 @@ describe('RegionToolbarControls', () => {
         button.hasAttribute('disabled'),
       ]),
     ).toEqual([
-      ['Left region', 'false', null, null, null, false],
       ['Bottom region', 'true', null, null, null, false],
       ['Right region', 'false', null, null, null, false],
     ]);
@@ -517,17 +555,17 @@ describe('RegionToolbarControls', () => {
    */
   test('a VISIBLE empty region reads as on, and its tooltip names the act and the emptiness', () => {
     const { rerender } = render(<RegionToolbarControls />);
-    expect(toggleState('Left')).toBe('Show Left region (empty)');
-    expect(regionToggle('Left').classList.contains('is-pressed')).toBe(false);
+    expect(toggleState('Right')).toBe('Show Right region (empty)');
+    expect(regionToggle('Right').classList.contains('is-pressed')).toBe(false);
     // Hidden AND empty is the default state, not the holding one.
-    expect(regionToggle('Left').classList.contains('is-holding')).toBe(false);
+    expect(regionToggle('Right').classList.contains('is-holding')).toBe(false);
 
-    harness.regions.left.visible = true;
+    harness.regions.right.visible = true;
     rerender(<RegionToolbarControls />);
-    expect(toggleState('Left')).toBe('Hide Left region (empty)');
-    expect(regionToggle('Left').classList.contains('is-pressed')).toBe(true);
-    expect(regionToggle('Left').getAttribute('aria-pressed')).toBe('true');
-    harness.regions.left.visible = false;
+    expect(toggleState('Right')).toBe('Hide Right region (empty)');
+    expect(regionToggle('Right').classList.contains('is-pressed')).toBe(true);
+    expect(regionToggle('Right').getAttribute('aria-pressed')).toBe('true');
+    harness.regions.right.visible = false;
   });
 
   test('pressing an occupied region’s toggle hides it; pressing a hidden one shows it — the region, not a surface', () => {
@@ -580,7 +618,6 @@ describe('RegionToolbarControls', () => {
     render(<RegionToolbarControls />);
 
     expect(toggleStates()).toEqual([
-      ['Left region', 'false'],
       ['Bottom region', 'false'],
       ['Right region', 'false'],
     ]);
@@ -602,7 +639,6 @@ describe('RegionToolbarControls', () => {
     expect(edgeOf(right)?.getAttribute('stroke')).toBe('currentColor');
     expect(edgeOf(right)?.getAttribute('fill')).toBe('none');
     expect(edgeOf(bottom)?.getAttribute('stroke')).toBe('none');
-    expect(edgeOf(regionToggle('Left'))?.getAttribute('stroke')).toBe('none');
 
     fireEvent.click(right);
     expect(harness.setRegion).toHaveBeenCalledWith('right', {
@@ -809,13 +845,13 @@ describe('RegionToolbarControls', () => {
   test('a contextmenu opens the same chooser, prevented, and toggles nothing', async () => {
     render(<RegionToolbarControls />);
 
-    const trigger = regionToggle('Left');
+    const trigger = regionToggle('Right');
     const contextMenu = createEvent.contextMenu(trigger);
     fireEvent(trigger, contextMenu);
     await settleChooserChunk();
 
     expect(contextMenu.defaultPrevented).toBe(true);
-    expect(chooserPanel('Left')).toBeTruthy();
+    expect(chooserPanel('Right')).toBeTruthy();
     expect(harness.setRegion).not.toHaveBeenCalled();
 
     // And the next activation is not swallowed — asserted with a BARE click,
@@ -826,18 +862,18 @@ describe('RegionToolbarControls', () => {
     // question it asks. Both routes are pinned: the pointer one below, and
     // the mid-press one in its own test.
     fireEvent.keyDown(document, { key: 'Escape' });
-    fireEvent.click(regionToggle('Left'));
+    fireEvent.click(regionToggle('Right'));
     expect(
       harness.setRegion,
       'the keyboard activation after a contextmenu was swallowed',
-    ).toHaveBeenCalledWith('left', { visible: true, maximized: false });
+    ).toHaveBeenCalledWith('right', { visible: true, maximized: false });
 
     // The pointer route to the same place, so neither is proved by the other.
     harness.setRegion.mockClear();
-    harness.regions.left.visible = true;
-    const next = pressToggle('Left');
+    harness.regions.right.visible = true;
+    const next = pressToggle('Right');
     releaseOn(next);
-    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+    expect(harness.setRegion).toHaveBeenCalledWith('right', {
       visible: false,
       maximized: false,
     });
@@ -1009,11 +1045,11 @@ describe('RegionToolbarControls', () => {
   test('only one chooser is open at a time: holding another region’s replaces it', async () => {
     render(<RegionToolbarControls />);
 
-    await holdToggle('Left');
     await holdToggle('Right');
+    await holdToggle('Bottom');
 
     expect(screen.getAllByRole('menu')).toHaveLength(1);
-    expect(chooserPanel('Right')).toBeTruthy();
+    expect(chooserPanel('Bottom')).toBeTruthy();
   });
 
   /**
@@ -1045,20 +1081,23 @@ describe('RegionToolbarControls', () => {
     harness.surfaces = new Map(
       [...REGION_SURFACE_REGISTRY.entries()].map(([id, surface]) => [
         id,
-        surface.regions.includes('left')
-          ? { ...surface, regions: surface.regions.filter((r) => r !== 'left') }
+        surface.regions.includes('right')
+          ? {
+              ...surface,
+              regions: surface.regions.filter((r) => r !== 'right'),
+            }
           : surface,
       ]),
     );
     render(<RegionToolbarControls />);
 
-    const left = regionToggle('Left');
-    expect(left.getAttribute('aria-disabled')).toBeNull();
-    expect(left.hasAttribute('disabled')).toBe(false);
-    expect(left.getAttribute('aria-pressed')).toBe('false');
-    expect(toggleState('Left')).toBe('Show Left region (empty)');
-    fireEvent.click(left);
-    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+    const right = regionToggle('Right');
+    expect(right.getAttribute('aria-disabled')).toBeNull();
+    expect(right.hasAttribute('disabled')).toBe(false);
+    expect(right.getAttribute('aria-pressed')).toBe('false');
+    expect(toggleState('Right')).toBe('Show Right region (empty)');
+    fireEvent.click(right);
+    expect(harness.setRegion).toHaveBeenCalledWith('right', {
       visible: true,
       maximized: false,
     });
@@ -1217,10 +1256,11 @@ describe('RegionToolbarControls', () => {
   /**
    * #917, measured in real Chromium over the cascade-resolved `index.css` and
    * `chat.css` (jsdom does no layout). A phone-width toolbar is over-full: the
-   * brand, the region fieldset and the action cluster cannot all have their
-   * natural width, and the brand is the member that gives. A fieldset that
-   * shrinks with it packs below its fixed-size toggles, and the last toggle
-   * lands under the first connection action.
+   * brand, the action cluster and the region fieldset cannot all have their
+   * natural width, and the brand is the member that gives. The fieldset is the
+   * row's LAST member since the account menu moved to the sidebar footer, so a
+   * fieldset that shrank would pack below its fixed-size toggles, or slide
+   * under the cluster before it.
    */
   describe.skipIf(!chromiumAvailable)('in a real browser', () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
@@ -1233,7 +1273,7 @@ describe('RegionToolbarControls', () => {
       await browser?.close();
     });
 
-    test('the region fieldset holds its controls’ width in an over-full toolbar (#917)', async () => {
+    test('the region fieldset holds its controls’ width at the end of an over-full toolbar (#917)', async () => {
       vi.useRealTimers();
       const { container, unmount } = render(<RegionToolbarControls />);
       const regions = container.innerHTML;
@@ -1252,10 +1292,10 @@ describe('RegionToolbarControls', () => {
     <header class="app-toolbar">
       <span class="app-toolbar__brand">Station on the workshop machine</span>
       <div class="app-toolbar__spacer"></div>
-      ${regions}
       <div class="app-toolbar__actions">
-        <button type="button" data-testid="first-action" style="width:150px">Connection</button>
+        <button type="button" data-testid="last-action" style="width:150px">Connection</button>
       </div>
+      ${regions}
     </header>
   </body>
 </html>`);
@@ -1264,26 +1304,88 @@ describe('RegionToolbarControls', () => {
           const toggles = [
             ...(fieldset?.querySelectorAll('button') ?? []),
           ].filter((button) => button.getBoundingClientRect().width > 0);
+          const first = toggles.at(0)?.getBoundingClientRect();
           const last = toggles.at(-1)?.getBoundingClientRect();
           return {
             toggles: toggles.length,
             fieldsetRight: fieldset?.getBoundingClientRect().right ?? 0,
+            firstToggleLeft: first?.left ?? Number.NEGATIVE_INFINITY,
             lastToggleRight: last?.right ?? Number.POSITIVE_INFINITY,
-            firstActionLeft:
+            lastActionRight:
               document
-                .querySelector('[data-testid="first-action"]')
-                ?.getBoundingClientRect().left ?? 0,
+                .querySelector('[data-testid="last-action"]')
+                ?.getBoundingClientRect().right ?? 0,
           };
         });
-        expect(measured.toggles).toBe(3);
+        // Bottom and Right: Left has no default toggle while it is unused.
+        expect(measured.toggles).toBe(2);
         expect(
           measured.lastToggleRight,
           'the last region toggle overflows its fieldset',
         ).toBeLessThanOrEqual(measured.fieldsetRight + 0.5);
         expect(
-          measured.lastToggleRight,
-          'the last region toggle lands under the first toolbar action',
-        ).toBeLessThanOrEqual(measured.firstActionLeft + 0.5);
+          measured.firstToggleLeft,
+          'the first region toggle lands under the action cluster',
+        ).toBeGreaterThanOrEqual(measured.lastActionRight - 0.5);
+      } finally {
+        await page.close();
+      }
+    });
+
+    /**
+     * The default desktop row: the region glyphs are its far-right members,
+     * after Notifications, inside the toolbar's own right gutter — the slot
+     * the account menu held before it moved to the sidebar footer.
+     */
+    test('the region glyphs end the desktop row, after the action cluster', async () => {
+      vi.useRealTimers();
+      const { container, unmount } = render(<RegionToolbarControls />);
+      const regions = container.innerHTML;
+      unmount();
+      const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(CHAT_CSS_PATH)}`;
+      assertNoImportsSurvive(css);
+      const page = await browser.newPage({
+        viewport: { width: 1280, height: 200 },
+      });
+      try {
+        await page.setContent(`<!doctype html>
+<html>
+  <head><style>${css}</style></head>
+  <body style="margin:0">
+    <header class="app-toolbar">
+      <div class="app-toolbar__breadcrumb"><span>station</span></div>
+      <div class="app-toolbar__spacer"></div>
+      <div class="app-toolbar__actions">
+        <button type="button" data-testid="bell" class="app-toolbar__icon-btn">Notifications</button>
+      </div>
+      ${regions}
+    </header>
+  </body>
+</html>`);
+        const measured = await page.evaluate(() => {
+          const toolbar = document.querySelector('.app-toolbar');
+          const toggles = [
+            ...document.querySelectorAll('.app-toolbar__regions button'),
+          ].map((button) => button.getBoundingClientRect());
+          const padding = Number.parseFloat(
+            getComputedStyle(toolbar as Element).paddingRight,
+          );
+          return {
+            firstToggleLeft: toggles.at(0)?.left ?? 0,
+            lastToggleRight: toggles.at(-1)?.right ?? 0,
+            bellRight:
+              document
+                .querySelector('[data-testid="bell"]')
+                ?.getBoundingClientRect().right ?? 0,
+            contentRight:
+              (toolbar?.getBoundingClientRect().right ?? 0) - padding,
+          };
+        });
+        expect(measured.firstToggleLeft).toBeGreaterThan(measured.bellRight);
+        expect(
+          Math.abs(measured.lastToggleRight - measured.contentRight),
+          'the last region glyph is not the row’s far-right control',
+        ).toBeLessThanOrEqual(0.5);
       } finally {
         await page.close();
       }
@@ -1293,7 +1395,7 @@ describe('RegionToolbarControls', () => {
   test('a wide device gaining a coarse pointer closes the panel instead of re-anchoring it', async () => {
     const { rerender } = render(<RegionToolbarControls />);
 
-    await holdToggle('Left');
+    await holdToggle('Right');
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     // A wide device can change its PRIMARY pointer to coarse without becoming
@@ -1319,7 +1421,7 @@ describe('RegionToolbarControls', () => {
   test('narrowing into the phone layout takes the whole control away and strands no open panel', async () => {
     const { container, rerender } = render(<RegionToolbarControls />);
 
-    await holdToggle('Left');
+    await holdToggle('Right');
     expect(screen.queryByRole('menu')).not.toBeNull();
 
     // `useDockSlotDevice` re-reads on resize, so the coarse branch can take
@@ -1344,7 +1446,7 @@ describe('RegionToolbarControls', () => {
     await settleChooserChunk();
 
     expect(screen.queryByRole('menu')).toBeNull();
-    expect(regionToggle('Left').getAttribute('aria-pressed')).toBe('false');
+    expect(regionToggle('Right').getAttribute('aria-pressed')).toBe('false');
   });
 
   test('a phone renders no region control in the toolbar row at all (#917)', () => {

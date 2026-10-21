@@ -9,9 +9,12 @@ import {
   upsertFreshnessIssue,
 } from '../docs-freshness-sweep.mjs';
 import {
+  assertDocumentationFresh,
   DOCS_FRESHNESS_ENV_KEYS,
   documentationFreshnessMode,
   freshnessBlocks,
+  freshnessRequirement,
+  resolveDocumentationFreshness,
 } from '../lib/documentation-freshness.mjs';
 import {
   captureReviewFile,
@@ -34,6 +37,7 @@ import {
   git,
   gitEnv,
   hash,
+  identity,
   ledgerTexts,
   MEDIA,
   makeTempDir,
@@ -416,6 +420,160 @@ describe('scoped documentation freshness (#2923)', () => {
       changedAt,
     );
   });
+
+  it.each([
+    'valid',
+    'missing',
+    'outside-range',
+    'rewritten',
+    'later-edit',
+    'missing-base',
+  ] as const)(
+    'preserves actual supplied-state capture and source guards: %s',
+    (scenario) => {
+      const f = fixture();
+      expect(
+        run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+      ).toBe(0);
+      commit(f.root, 'migrate guard fixture');
+      const paths = ['docs/a.md', 'docs/learn/media/task.png'];
+      f.write(
+        '.git/review-batch.json',
+        JSON.stringify(
+          paths.map((path) => ({ path, note: 'Reviewed source.' })),
+        ),
+      );
+      if (scenario === 'outside-range') {
+        f.write('src/a.ts', 'export const a = 2;\n');
+        f.write('src/ui.ts', 'export const ui = 2;\n');
+        commit(f.root, 'main source');
+        expect(
+          record_(f.root, ['--batch', '.git/review-batch.json']).status,
+        ).toBe(0);
+        commit(f.root, 'main notes');
+      }
+      const oldNotes = notesFiles(f.root).map((file) => ({
+        file,
+        text: f.read(`${REVIEW_LEDGER_DIR}/notes/${file}`),
+      }));
+      git(f.root, ['switch', '-qc', 'supplied-state']);
+      f.write('src/a.ts', 'export const a = 3;\n');
+      f.write('src/ui.ts', 'export const ui = 3;\n');
+      const sourceRevision = commit(f.root, 'branch source');
+      if (scenario === 'outside-range') {
+        for (const { file, text } of oldNotes)
+          f.write(
+            `${REVIEW_LEDGER_DIR}/notes/${file.replace(/^.{20}/, '20990101T000000.000Z')}`,
+            text,
+          );
+        commit(f.root, 'copied main notes');
+      } else if (scenario !== 'missing' && scenario !== 'missing-base') {
+        expect(
+          record_(f.root, ['--batch', '.git/review-batch.json']).status,
+        ).toBe(0);
+        if (scenario === 'rewritten') {
+          git(f.root, [
+            ...identity,
+            'commit',
+            '--amend',
+            '-qm',
+            'rewritten source',
+          ]);
+          expect(git(f.root, ['rev-parse', 'HEAD'])).not.toBe(sourceRevision);
+        }
+        commit(f.root, 'branch notes');
+        if (scenario === 'later-edit') {
+          f.write('src/a.ts', 'export const a = 4;\n');
+          f.write('src/ui.ts', 'export const ui = 4;\n');
+          commit(f.root, 'later unreviewed source');
+        }
+      }
+      const state = readReviewState(f.root);
+      const media = state.media;
+      if (!media) throw new Error('The fixture has no capture manifest');
+      expect(state.ledger.layoutVersion).toBe(3);
+      const env =
+        scenario === 'missing-base'
+          ? {
+              STATION_DOCS_FRESHNESS_BASE: 'absent-review-base',
+              STATION_CI_FAST_BASE: 'absent-review-base',
+            }
+          : scoped;
+      const direct = resolveDocumentationFreshness({ root: f.root, env });
+      const supplied = resolveDocumentationFreshness({
+        root: f.root,
+        env,
+        ledger: state.ledger,
+        media,
+      });
+      expect(supplied.sourceDrops).toEqual(direct.sourceDrops);
+      expect(supplied.mode).toBe(direct.mode);
+      expect(supplied.appendOnly).toBe(direct.appendOnly);
+      const owners = [
+        ...state.ledger.records.map((entry) => ({ ...entry, kind: 'review' })),
+        ...media.captures.map(
+          (entry: { path: string; sources: { path: string }[] }) => ({
+            ...entry,
+            kind: 'capture',
+          }),
+        ),
+      ];
+      for (const owner of owners) {
+        const entry = {
+          kind: owner.kind,
+          path: owner.path,
+          inputs: [
+            owner.path,
+            ...owner.sources.map((source: { path: string }) => source.path),
+          ],
+        };
+        expect(freshnessBlocks(supplied, entry)).toBe(
+          freshnessBlocks(direct, entry),
+        );
+        expect(freshnessRequirement(supplied, owner.kind)(entry)).toBe(
+          freshnessRequirement(direct, owner.kind)(entry),
+        );
+      }
+      if (scenario === 'valid') {
+        expect(supplied.sourceDrops).toEqual([]);
+        expect(() =>
+          assertDocumentationFresh({
+            policy: supplied,
+            blocking: supplied.sourceDrops,
+          }),
+        ).not.toThrow();
+      } else {
+        if (scenario === 'missing-base') {
+          expect(supplied.mode).toBe('strict');
+          expect(supplied.appendOnly).toBe('NOT_VERIFIED');
+          expect(supplied.sourceDrops).toEqual([
+            expect.objectContaining({ rule: 'append-only-unverified' }),
+          ]);
+        } else {
+          expect(supplied.sourceDrops).toHaveLength(2);
+          expect(supplied.sourceDrops).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining(
+                stale('review', 'docs/a.md', ['src/a.ts']),
+              ),
+              expect.objectContaining(
+                stale('capture', 'docs/learn/media/task.png', ['src/ui.ts']),
+              ),
+            ]),
+          );
+          if (scenario === 'outside-range' || scenario === 'rewritten')
+            for (const problem of supplied.sourceDrops ?? [])
+              expect(problem.problem).toContain('note revision outside');
+        }
+        expect(() =>
+          assertDocumentationFresh({
+            policy: supplied,
+            blocking: supplied.sourceDrops,
+          }),
+        ).toThrow('Documentation review needs refresh');
+      }
+    },
+  );
 
   it('runs with the ambient mode forbidden, and spawned checks scrub every mode variable', () => {
     // The guard is live: an unpinned read of the job's mode throws here.

@@ -1,0 +1,7 @@
+{
+  "revision": "92bcce6ef6f5ebe52cc6e193ee5013bafaa24e3b",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed shared StationRuntime telemetry delta against the Discord gateway guide after integrating main. Added dailyFacts and plugin-event telemetry hooks do not alter Discord config parsing, gateway start before initializeUsageTelemetry, inbound authorization/transcript forwarding, or stop calls during cleanup and shutdown. No Discord token or message content enters the added telemetry observations. Existing guide setup, allowlist, approval and simulated-versus-live evidence limits remain accurate; no prose change. Source inspection only for this unrelated integration boundary; no live Discord traffic.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

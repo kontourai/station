@@ -794,8 +794,8 @@ Recovery replay sends a turn, not a start, so it records nothing new.
 
 **Codex's own sandbox** is the first provider
 ([codex-confinement.ts](../../src-server/providers/adapters/codex-confinement.ts)).
-Its posture comes from the `sandbox` of Codex's `thread/start`, `thread/resume`
-or `thread/fork` response:
+Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
+`thread/start`, `thread/resume` or `thread/fork` response:
 
 - `readOnly` is `confined`. `workspaceWrite` is `confined` only when every
   extra writable root it lists lies inside the resolved workspace or
@@ -803,7 +803,13 @@ or `thread/fork` response:
   or another checkout makes it `configured-but-failed`. Codex's implicit
   roots (the cwd, `TMPDIR` and `/tmp`, governed by its exclude flags) are part
   of what `workspaceWrite` means and are accepted. Network access is not
-  judged. Paths are compared lexically; symlinks are not resolved.
+  judged. Paths are compared lexically; symlinks are not resolved. A session
+  that is not `host` and sent no sandbox mode (it relies on Station's
+  permission profile, below) is `confined` only when Codex also reports
+  `activePermissionProfile.id` `station-workspace`. Without it (a Codex
+  without permission profiles, or one whose configuration replaced it) it is
+  `configured-but-failed`, and a required start is refused with a reason that
+  names the profile.
   - **Intended fail-closed change:** a required `workspace` `never` session
     on a host whose operator configured extra Codex `writable_roots` outside
     the workspace (for example `~/.cargo`) is refused. The refusal lists
@@ -818,25 +824,162 @@ or `thread/fork` response:
   `no-mechanism`, recorded as policy.
 - **Workspace configuration cannot widen it (#3800).** Codex merges every
   `.codex/config.toml` from the project root down to the cwd over the user's
-  configuration and honours `sandbox_workspace_write.writable_roots` from
-  it, so a planted file widened the next session's sandbox. Every session not
-  started as `host` therefore spawns `codex app-server` with
-  `-c sandbox_workspace_write.writable_roots=[]`, after the connection's own
-  arguments. A `-c` override outranks every file layer and applies to every
-  configuration load of that process, so rewriting the file mid-session
-  changes nothing. The user's own extra roots are dropped for these sessions
-  too. Marking the project untrusted would ignore the whole project layer,
-  but Codex then also drops the workspace's `AGENTS.md` and changes its
-  default approval policy, so it is not used. Codex's own sandbox keeps the
-  root `.codex` read-only; the Seatbelt profile does the same for Claude.
-  Other project keys (MCP servers, network access, approval policy) still
-  apply to a workspace Codex session.
+  configuration. Station starts sessions in subdirectories, so a file a
+  confined session wrote (`sub/.codex/config.toml`) configured every later
+  session started in `sub`: its `writable_roots` widened the sandbox and its
+  `mcp_servers` commands ran outside it at thread start. Every session not
+  started as `host` therefore spawns `codex app-server`, after the
+  connection's own arguments, with:
+  - `-c default_permissions="station-workspace"` and a
+    `permissions.station-workspace` profile that extends Codex's `:workspace`
+    (the workspace roots and temp writable, the `.codex` at a root read-only)
+    and denies `**/.codex`, `**/.codex/**`, `**/.claude` and `**/.claude/**`
+    under every workspace root. Codex accepts only `deny` for a glob, so the
+    agent cannot read these directories either; Codex's own configuration
+    loading runs outside the sandbox and is unaffected. The subtree patterns
+    are needed: the bare directory pattern refuses creating a `.codex` but
+    not writing inside a checked-in one. The profile also restates
+    `".git" = "read"` and `".agents" = "read"`: `:workspace` keeps a root's
+    `.git` and `.agents` read-only, but a profile with its own
+    `:workspace_roots` entries loses that (EXECUTED, codex-cli 0.162.1:
+    `.git/hooks`, `refs/remotes` and `packed-refs` became writable).
+  - `-c sandbox_workspace_write.writable_roots=[]`, for a thread not under
+    the profile (a `read-only` review start, or a Codex that does not apply
+    it), whose tightening restores the reported workspace baseline.
+  - `-c approvals_reviewer="user"`: with `auto_review` a model, not a person,
+    would approve a sandbox escalation.
+
+  A `-c` override outranks every file layer and applies to every
+  configuration load of that process (start, resume, fork): a user or
+  project `sandbox_mode = "danger-full-access"` or
+  `default_permissions = ":danger-full-access"` still reports the profile.
+  A thread-level `sandbox` mode or a turn-level `sandboxPolicy` replaces the
+  profile for that and every later turn, so Station sends neither for
+  `workspace-write` outside `host` (`codexThreadSandboxRequest`,
+  `planCodexTurnSandbox`). `read-only` (review isolation) is still sent: it is
+  narrower. Marking the project untrusted would ignore the whole project
+  layer, but Codex then also drops the workspace's `AGENTS.md` and changes
+  its default approval policy, so it is not used. Verified against
+  codex-cli 0.162.1 on macOS with live turns: nested and deeper `.codex`
+  writes, a rename or symlink into `.codex`, writes inside a checked-in
+  nested `.codex`, and a nested `.claude` are refused; project and temp
+  writes are allowed; `AGENTS.md` loads; the approval policy is the one sent.
+  - **Network.** The profile ignores the legacy
+    `sandbox_workspace_write.network_access`; Station does not set network.
+    An operator gives a confined session network with
+    `[permissions.station-workspace.network] enabled = true` in their own
+    Codex configuration (tables merge across layers).
+  - **Planted through temp: refused at start.** The deny rules cover the
+    workspace roots only; Codex refuses glob rules under `/tmp` and
+    `TMPDIR`, which stay writable, and moving an ancestor of a `.codex` is
+    not a write to it. An agent can therefore build
+    `$TMPDIR/x/pkg/.codex/config.toml` and move `pkg` into its workspace,
+    and a later session started in `pkg` would run its `mcp_servers` command
+    outside the sandbox (EXECUTED, codex-cli 0.162.1). Before spawning Codex
+    for any session not started as `host` (start, resume, fork, adoption and
+    respawn all pass through `startReservedSession`), Station checks every
+    directory from the trusted repository's root down to the cwd, on the
+    lexical and the resolved path
+    ([codex-project-config-provenance.ts](../../src-server/providers/adapters/codex-project-config-provenance.ts)).
+    A `.codex` there must be a real directory whose every file is a regular
+    file whose bytes are the blob at the same path in one remote-tracking
+    ref (`refs/remotes/*`) of the trusted repository: content that came
+    from upstream.
+    - **The anchor is server-authorized.** The orchestration service stamps
+      `confinementRoot` into the start metadata (replacing any caller value,
+      and carried to respawns with the stored metadata;
+      `sessionConfinementRoot`): the named Project's directory when it
+      contains the cwd; else the deepest configured Project directory that
+      does (a station-control `send_message` to a plain folder inside the
+      Project names no Project, and an agent may have planted a repository
+      at that folder); else the server-admitted workspace when the cwd is
+      exactly it (a provisioned worktree, or an adopted continuation's
+      verified folder); else nothing, for a folder outside every Project.
+      Only a session that is not `host` is checked, and such a session is
+      never the operator's own, so a folder outside every Project trusts no
+      `.codex`. Native adoption stamps the same value. Every comparison is
+      canonical (`realpathSync.native`: symlinks resolved, on-disk case) and
+      the root is stamped canonical: an adopted place is canonical, so a
+      Project configured through a symlink or in another case would
+      otherwise never match it and leave the place as its own root. The
+      check maps the canonical root back onto a cwd reached through a link.
+      The trusted repository is the innermost one containing the canonical
+      root; a repository that exists only on the lexical path (an
+      agent-built one holding a link into the Project) trusts nothing, and
+      its `.codex` is refused. Anything found
+      from the cwd is no anchor: an agent can build a whole repository,
+      commit and remote-tracking ref included, in temp and move it in
+      (EXECUTED in review). Below the root, a repository is trusted only as
+      a linked worktree the trusted one registered; a root in no repository
+      trusts no `.codex`. A start without the stamp (recorded before it, or a
+      direct adapter call) supplies no trusted root and trusts no project
+      `.codex` configuration. Codex's own subagents
+      run in the parent's process and cwd (`thread/started` reports the
+      parent cwd in the captured 0.155.1 collab traffic), so the start check
+      covers them. Otherwise the start is refused with
+    `confinement_workspace_incompatible`, naming the directory and saying to
+    commit and push `.codex` to its upstream or run as `host`, whether or
+    not the session requires confinement, since the command would run
+    unconfined either way.
+    - **Why upstream, not `HEAD`.** Local commits are no anchor: a confined
+      Claude session holds Seatbelt grants for the object store and its own
+      branch ref, so it can commit `sub/pkg/.codex/config.toml` with git
+      plumbing while a confined Codex session stages the same bytes through
+      temp (EXECUTED in review, in a linked worktree and in a main
+      checkout). Neither engine can write the remote-tracking refs: Seatbelt
+      denies `refs/remotes` and `packed-refs` where `.git` is inside the
+      workspace (a linked worktree never had them), and Station's Codex
+      profile keeps a root's `.git` read-only. The objects those refs name
+      are writable, so every commit and tree on the path is read with
+      `cat-file --batch` (replace objects off) and re-hashed against its id:
+      a forged loose object under an upstream id is refused. A repository
+      with no remote-tracking refs, using the reftable backend, or no
+      repository at all trusts no `.codex`.
+    - An uncommitted or local-only `.codex` at the repository root is refused
+      too. Push it, or run the session as `host`. The user's `~/.codex` and
+      `CODEX_HOME` are user configuration and are skipped.
+    - A `.codex` known only to a nested repository (including a submodule)
+      below the root is refused: only the trusted repository's refs count.
+      The exception is a linked
+      worktree the outermost repository registered (for example a
+      gitignored `.worktrees/lane`): its gitfile names
+      `<common dir>/worktrees/<name>`, whose `gitdir` points back at it, so
+      its paths are judged from its own root against the same shared refs.
+      A staged repository with its own `.git`, or a gitfile borrowing
+      another worktree's entry, is not one.
+    - A start without a cwd checks the server's own directory, where Codex
+      then runs.
+    - A Project inside another repository (a home-directory dotfiles
+      repository, say) anchors to its own, innermost repository.
+    - Content that reaches the upstream (an agent that can push, then an
+      operator fetch) is trusted like any other upstream content.
+  - **Checked-in configuration is still honoured.** A committed `.codex`, at
+    any depth, is repository content with the same trust as the top-level
+    one: its `mcp_servers` still run, and its keys merge into the profile. A
+    writable root it adds outside the workspace still shows in
+    `writableRoots` and is refused above. A checked-in root `.codex` can also
+    grant writes inside the workspace that `:workspace` keeps read-only, such
+    as `.git/hooks`; that is accepted as trusted repository content. What
+    Station closes is the agent planting or changing one.
+  - **Residual: Linux.** Outside macOS, Codex expands a deny glob from a
+    snapshot of existing paths before the sandbox starts. A `.codex` the
+    agent creates later is not denied there, so the nested-write path stays
+    open on Linux (EXECUTED, codex-cli 0.160.0 with bubblewrap: creating
+    `sub/.codex/config.toml` was allowed; writing an existing checked-in
+    file was refused). The live probe runs only on macOS and warns
+    elsewhere.
+  - Every other project key from a checked-in file still applies, including
+    network access, which Station does not judge and the posture does not
+    record (unchanged from before; Seatbelt leaves the network open too). The Seatbelt profile denies every `.codex` (below),
+    so a confined Claude session cannot plant one either.
 - A required start that is not reported `confined` is refused
   (`confinement_not_observed`). The refusal runs before `session.started` is
   published (the `SessionStartRefusedError` contract depends on that), and the
   process is stopped.
 - Codex labels the response `sandbox` field legacy in favour of
-  `activePermissionProfile`; reading the profile is a follow-up.
+  `activePermissionProfile`. Station reads both: the profile says Station's
+  deny rules are in force, the legacy shape says how wide the writable roots
+  are.
 
 **The receipt.** `ExecutionResolutionReceipt` is built before the session
 exists, so it cannot carry the engine's reported posture. Its `confinement`
@@ -935,13 +1078,17 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     work in both layouts; a checkout with `.git` inside the workspace can
     also stash and switch branches. A linked worktree cannot stash, fetch or
     pull, by design: those write shared refs (`refs/stash`, remote-tracking
-    refs, `packed-refs`).
-  - Writes are denied to the engines' project configuration at the
-    workspace root, `.codex` and `.claude`, whole (#3800). The directory
-    itself cannot be created, removed, renamed or replaced, so one prepared
-    elsewhere cannot be moved into place. The engine still reads them. A
-    nested one is not covered; it applies only to a session started in that
-    subdirectory.
+    refs, `packed-refs`). Since #3800 neither can a checkout whose `.git` is
+    inside the workspace fetch or pull, or pack refs: its `refs/remotes` and
+    `packed-refs` are denied, because a Codex start trusts a nested `.codex`
+    only by remote-tracking refs.
+  - Writes are denied to every directory named `.codex` or `.claude`, in
+    any case and at any depth, inside every writable grant (#3800): a
+    session can start in a subdirectory, and Codex loads each `.codex` from
+    the project root down to it. Such a directory cannot be created, written,
+    linked, renamed or replaced, including one prepared in the session's
+    temp directory. The engine still reads them. Names that only share the
+    prefix (`.claude.json`, `.codex-notes`) stay writable.
   - Every path is symlink-resolved before it enters the profile (`/tmp` is
     `/private/tmp`). A path SBPL cannot spell (a quote, a backslash, a
     control character) is refused.
@@ -1009,10 +1156,9 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     and attacks on the operator's other processes through Mach services.
   - The workspace is writable, so confined code can still write files a
     later unconfined session in that folder may load: `.mcp.json` servers,
-    a nested `.codex` or `.claude`, a nested repository's `.git`. Accepted:
-    inside the sandbox they do not widen it, but an unconfined session that
-    loads them runs them unconfined. The root `.codex` and `.claude` are
-    denied (above).
+    a nested repository's `.git`. Accepted: inside the sandbox they do not
+    widen it, but an unconfined session that loads them runs them
+    unconfined. Every `.codex` and `.claude` is denied (above).
   - The macOS `xcrun` git shim cannot write its cache in the per-user system
     temp folder, and a background `pack-refs` cannot write the shared
     `packed-refs`. Git prints warnings and carries on.

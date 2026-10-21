@@ -177,6 +177,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [CLIENT_TURN_IN_FLIGHT_CODE]: 'busy',
   [CLIENT_TURN_INPUT_CONFLICT_CODE]: 'conflict',
   [CLIENT_TURN_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
+  client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
 } as const satisfies Readonly<

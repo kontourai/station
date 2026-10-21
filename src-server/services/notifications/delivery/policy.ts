@@ -19,9 +19,11 @@
  *     re-checks and re-plans with `phase: 'escalation'`). Attention is
  *     never dropped because of focus elsewhere — only delayed. Legacy
  *     records follow the same rules at the urgency their category ranks as:
- *     approvals and pairing requests are `attention`, job/turn failures
- *     `failed` (both escalate if still unread), a completed turn `done`
- *     (skipped on other surfaces while the person is looking at one).
+ *     approvals and pairing requests are `attention`, job failures `failed`
+ *     (both escalate if still unread). Turn completions carry their own
+ *     envelope: `failed` for a failed turn, `done` for a finished or
+ *     stopped one (skipped on other surfaces while the person is looking
+ *     at one).
  *     "Focused" means all three: the report says `focused`, it is within
  *     the lease, and the surface has a live in-app channel (`liveInApp`) —
  *     a tab whose event stream dropped cannot show the toast, so it must

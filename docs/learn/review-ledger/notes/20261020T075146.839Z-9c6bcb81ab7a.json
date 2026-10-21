@@ -1,0 +1,7 @@
+{
+  "revision": "4e2a1f253a316dfbb5e24cb7ed435b0d2b7eb193",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the status-arrival, transform/opacity and reduced-motion claims against live-status.css and the blocked-status screenshot hook at 4e2a1f. Finite entrance/body/details animations use backwards fill, preserving the initial phase without retaining the completed transform; the body base style remains opaque and untransformed. The owning hook waits for finite running animations and natural body completion before asserting transform none/opacity 1 and retaining the document-height invariant. The CSS matches current base bytes, but the branch history change still receives this explicit review. Global reduced-motion behavior and existing delays/tokens are unchanged. The guide preserves its recorded screenshot/measurement scope; this source review is not a new-head capture, pixel determinism, rebaseline, native/device or CI receipt.","inputs":["docs/design/motion.md","src-ui/src/components/status/live-status.css","tests/screenshots.spec.ts"]}
+  ]
+}

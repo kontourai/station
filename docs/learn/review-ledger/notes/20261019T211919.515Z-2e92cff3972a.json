@@ -1,0 +1,17 @@
+{
+  "revision": "d6a46083299639ced31b77b4f7dfd52c15f1075b",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: a cited document now also lists agent, engine and event ids among namespaced producer identities, notes that a re-created token name reuses its namespace, and says which readers get the external-data notice. Nothing here depends on those passages.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/design/automations.md","note":"Dependency delta: a cited document now also lists agent, engine and event ids among namespaced producer identities, notes that a re-created token name reuses its namespace, and says which readers get the external-data notice. Nothing here depends on those passages.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: a cited document now also lists agent, engine and event ids among namespaced producer identities, notes that a re-created token name reuses its namespace, and says which readers get the external-data notice. Nothing here depends on those passages.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 6: namespacing list now includes event ids, agent slug and engine; re-created names share the namespace. Checked against otlp-receiver.ts.","inputs":["docs/guides/monitoring.md","src-server/monitoring/otlp-receiver.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 6: added agent slug, engine and event ids to the namespaced producer identities (otlp-receiver.ts PRODUCER_NAMESPACED_KEYS), so ?agent=/?engine= and Insights agentUsage never count a producer under a Station agent (composition test); notice first per row plus an envelope notice (producer-provenance.ts); CLI/SDK/raw/SSE readers get station.telemetry.producer but no notice; re-created names reuse their namespace.","inputs":["docs/reference/api.md","src-server/monitoring/otlp-receiver.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Fix-round 6: namespacing now explicitly covers the agent slug and engine; checked against otlp-receiver.ts and the composition test.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

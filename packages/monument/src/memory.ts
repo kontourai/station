@@ -1,4 +1,12 @@
 import type { KernelCommand, KernelResult } from './commands.js';
+import {
+  assertAcceptInvocationCommand,
+  assertInvocationTerminalFact,
+  assertInvocationTerminalQuery,
+  assertInvocationTerminalRetirement,
+  findInvocationTerminal,
+  sameTerminalData,
+} from './decisions/invocation-terminal.js';
 import { compareCodePoints } from './decisions/order.js';
 import {
   type CommitParticipant,
@@ -9,6 +17,8 @@ import {
 } from './port.js';
 import type {
   InboxEntryRecord,
+  InvocationTerminalFact,
+  InvocationTerminalRetirement,
   RequestKeyId,
   RequestKeyRecord,
   TurnBoundaryRecord,
@@ -21,7 +31,14 @@ interface MemoryImage {
   /** Evicted keys and when they were evicted. */
   readonly turnDedupExpired: Map<string, number>;
   readonly turnBoundaries: Map<string, TurnBoundaryRecord>;
-  readonly turnTerminals: Map<string, Set<string>>;
+  readonly turnTerminals: Map<
+    string,
+    {
+      legacy: Set<string>;
+      invocations: Map<string, InvocationTerminalFact>;
+      retirements: Map<string, InvocationTerminalRetirement>;
+    }
+  >;
   /** Map insertion order is the request keys' insertion order. */
   readonly requestKeys: Map<string, RequestKeyRecord>;
   readonly inbox: Map<string, InboxEntryRecord>;
@@ -100,6 +117,18 @@ function transactionOver(image: MemoryImage): KernelTransaction {
     [...image.turnBoundaries.values()]
       .filter((row) => row.threadId === threadId)
       .map(copy);
+  const terminals = (thread: string) => {
+    let area = image.turnTerminals.get(thread);
+    if (!area) {
+      area = {
+        legacy: new Set(),
+        invocations: new Map(),
+        retirements: new Map(),
+      };
+      image.turnTerminals.set(thread, area);
+    }
+    return area;
+  };
   return {
     turnDedup: {
       get: (key) => {
@@ -162,14 +191,43 @@ function transactionOver(image: MemoryImage): KernelTransaction {
     },
     turnTerminals: {
       has: (threadId, providerTurnId) =>
-        image.turnTerminals.get(threadId)?.has(providerTurnId) ?? false,
+        image.turnTerminals.get(threadId)?.legacy.has(providerTurnId) ?? false,
       add: (threadId, providerTurnId) => {
-        let turns = image.turnTerminals.get(threadId);
-        if (!turns) {
-          turns = new Set();
-          image.turnTerminals.set(threadId, turns);
-        }
-        turns.add(providerTurnId);
+        terminals(threadId).legacy.add(providerTurnId);
+      },
+      findInvocation: (query) => {
+        assertInvocationTerminalQuery(query);
+        return findInvocationTerminal(
+          [
+            ...(image.turnTerminals.get(query.threadId)?.invocations.values() ??
+              []),
+          ]
+            .filter((fact) => fact.invocationId === query.invocationId)
+            .map(copy),
+          query,
+        );
+      },
+      addInvocation: (fact) => {
+        assertInvocationTerminalFact(fact);
+        const area = terminals(fact.threadId);
+        const previous = area.invocations.get(fact.terminalEventId);
+        if (previous && !sameTerminalData(previous, fact))
+          throw new Error('Conflicting invocation terminal event.');
+        area.invocations.set(fact.terminalEventId, copy(fact));
+      },
+      readRetirement: (thread, boundary) => {
+        const witness = image.turnTerminals
+          .get(thread)
+          ?.retirements.get(boundary);
+        return witness && copy(witness);
+      },
+      recordRetirement: (witness) => {
+        assertInvocationTerminalRetirement(witness);
+        const area = terminals(witness.boundary.threadId);
+        const previous = area.retirements.get(witness.boundary.boundaryId);
+        if (previous && !sameTerminalData(previous, witness))
+          throw new Error('Conflicting invocation terminal retirement.');
+        area.retirements.set(witness.boundary.boundaryId, copy(witness));
       },
       deleteThread: (threadId) => {
         image.turnTerminals.delete(threadId);
@@ -291,6 +349,8 @@ export function openMemoryKernelStorage(
       context: KernelContext,
     ): Promise<KernelResult<C>> {
       if (closed) throw new KernelStorageClosedError();
+      if (command.type === 'turnBoundary.acceptInvocation')
+        assertAcceptInvocationCommand(command);
       const state = stateOf(volume);
       // A participant that issued a command from inside this one would
       // commit first and then be overwritten by the outer commit.

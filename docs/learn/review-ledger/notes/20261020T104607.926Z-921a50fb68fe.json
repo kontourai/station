@@ -1,0 +1,7 @@
+{
+  "revision": "60495923799adb2d42443a8200adebfbcd06037e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Final screenshot fixture target-safety review: beforeGoto now calls the existing resolveE2EApiBase helper instead of reading PW_API_BASE_URL directly. The helper requires an explicit credential-free HTTP(S) origin, checks STATION_PORT and matching UI hostname, then the existing authenticated request helper limits origin/credentials and closes direct connections. Validated config/disclosure/status snapshots and all20poses/assertions remain unchanged. The prior direct-env form was caught by verification:policy:gate during readiness; replacing it passed the complete policy gate including33fixture tests,25target/manifest focused tests, and typecheck:e2e. No policy or guard was weakened. Existing testing guide accurately requires owned target resolution; no prose change needed. Runtime capture/hosted/physical qualification are separate evidence.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

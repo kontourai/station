@@ -64,8 +64,10 @@ import {
   type ClaudeAskReason,
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
+  type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestIsPlainCall,
+  toolRequestServerGrant,
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
@@ -76,6 +78,7 @@ import {
 } from '../../runtime/agents/pre-tool-policy.js';
 import {
   canonicalizeExternalToolName,
+  isAuthenticStationBrowserCall,
   isAutoApprovedExternalTool,
 } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
@@ -255,6 +258,11 @@ type PendingRequest = {
    * whether the approval surfaces offer it.
    */
   sessionGrant: ToolRequestSessionGrant;
+  /**
+   * Whether the request offered the server-wide Station browser grant: the
+   * same `toolRequestServerGrant` computation the surfaces offer from.
+   */
+  serverGrant: ToolRequestServerGrant;
   /** #3390: the form an `AskUserQuestion` opened, answered with content. */
   inputRequest?: InputRequestForm;
   eventId: string;
@@ -745,6 +753,33 @@ type ClaudeSessionRecord = {
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
   approvedTools: Set<string>;
+  /**
+   * Server-wide session grants from an `acceptForSession` answer carrying
+   * `sessionGrantScope: 'server'`: the MCP server ids whose every later
+   * authentic call this session allows without a prompt. Only
+   * `STATION_BROWSER_MCP_SERVER_ID` is ever added, and only for a request that
+   * offered it. Lives and dies with the record, exactly like `approvedTools`
+   * (neither is cleared anywhere else), so a stopped or restarted session
+   * starts with none.
+   */
+  serverGrants: Set<string>;
+  /**
+   * Whether this session was delivered the built-in in-process
+   * `station-browser` server (`resolveStationBrowser`), which replaces any
+   * authored server of that id. The server grant's authenticity needs it.
+   */
+  stationBrowserDelivered: boolean;
+  /**
+   * Set from each `init` report (`stationBrowserVerifiedByInit`): exactly one
+   * server is named `station-browser` and the engine reports its source as
+   * `sdk`, an in-process server only this host can register. Unset until the
+   * first init, so the server grant is neither offered nor honoured before it
+   * (fail closed). With no `strictMcpConfig` for agents that author no tool
+   * servers, Claude's own discovery (`.mcp.json`, user config) can add servers,
+   * and which one wins a shared name lives in the compiled CLI, not in the
+   * installed SDK; the name alone therefore proves nothing.
+   */
+  stationBrowserVerified: boolean;
   /** Model controls confirmed at spawn or by a successful SDK control call. */
   currentModelOptions: ClaudeAppliedModelOptions;
   /**
@@ -780,6 +815,7 @@ type ClaudeSessionRecord = {
    */
   confinementPending?: true;
   nativeOwnershipBindingKey?: string;
+  preparedResumeBindingKey?: string;
   nativeOwnershipClaimed?: true;
 };
 
@@ -1394,6 +1430,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
   }
 
+  preparedTurnBinding(threadId: string) {
+    const record = this.sessions.get(threadId);
+    const nativeIdentity =
+      record && this.nativeSessionIdentity(record.session.resumeCursor);
+    return record?.preparedResumeBindingKey && nativeIdentity
+      ? { bindingKey: record.preparedResumeBindingKey, nativeIdentity }
+      : undefined;
+  }
+
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
@@ -1989,13 +2034,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
       : createClaudeEngineProcess();
     let sdkQuery: ReturnType<typeof query>;
+    // After station-control, so the browser server reuses its credential.
+    let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
       assertExecutionOverrideDelivery(input.metadata, [
         ...(skillsReport?.undelivered ?? []),
         ...(toolServers.report?.undelivered ?? []),
       ]);
       // After station-control, so the browser server reuses its credential.
-      const builtinServers = this.resolveStationBrowser(input);
+      builtinServers = this.resolveStationBrowser(input);
       sdkQuery = query({
         prompt: promptQueue,
         options: this.buildOptions(
@@ -2053,6 +2100,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       query: sdkQuery,
       pendingRequests: new Map(),
       approvedTools: new Set(),
+      serverGrants: new Set(),
+      stationBrowserVerified: false,
+      stationBrowserDelivered:
+        builtinServers?.[STATION_BROWSER_MCP_SERVER_ID] !== undefined,
       lastSessionState: 'idle',
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
@@ -2071,6 +2122,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       engineStderrTail: engineProcess.stderrTail,
       engineProcess,
       nativeOwnershipBindingKey: ownershipBindingKey,
+      preparedResumeBindingKey: resumeBindingKey,
       ...(nativeId && this.options.nativeSessionOwnership
         ? { nativeOwnershipClaimed: true as const }
         : {}),
@@ -2604,6 +2656,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: new Date().toISOString(),
       turnId,
+      ...(input.invocationId === undefined
+        ? {}
+        : { invocationId: input.invocationId }),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
@@ -2674,6 +2729,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       } as const;
     }
     const targetTurnId = turnId ?? record.activeTurnId;
+    const invocationId =
+      record.sdkTurns?.running?.turnId === targetTurnId
+        ? record.sdkTurns.running.startEvent?.invocationId
+        : undefined;
     // Mark before calling the SDK: its async iterator may publish the
     // `is_error` result before `interrupt()` resolves. The mark is on this
     // turn's own ledger entry, so only its result is read as the receipt.
@@ -2710,6 +2769,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: new Date().toISOString(),
       turnId: targetTurnId,
+      ...(invocationId !== undefined ? { invocationId } : {}),
       method: 'turn.aborted',
       reason: 'interrupted',
       ...(terminalMetadata ? { metadata: terminalMetadata } : {}),
@@ -2863,14 +2923,35 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // forwards the engine's acceptEdits mode change alone, and a folder grant
     // its directory suggestions alone (the approved directory is then the
     // engine's state); neither mints anything.
-    if (effectiveDecision === 'acceptForSession' && grant === 'tool') {
+    if (
+      effectiveDecision === 'acceptForSession' &&
+      grant === 'tool' &&
+      context?.sessionGrantScope !== 'server'
+    ) {
       record.approvedTools.add(pending.toolName);
+    }
+    // Owner decision: the typed `sessionGrantScope: 'server'` widens the
+    // answer to the Station browser server, only where the request offered it
+    // (`pending.serverGrant`, computed from an authentic call). Any other
+    // answer, a plain per-tool `acceptForSession` included, mints no server
+    // grant. A server choice mints no independent tool-name grant: every
+    // later browser call must still pass the current authenticity checks.
+    if (
+      effectiveDecision === 'acceptForSession' &&
+      context?.sessionGrantScope === 'server' &&
+      pending.serverGrant === 'server' &&
+      // The offer may predate an init that revoked verification.
+      record.stationBrowserVerified
+    ) {
+      record.serverGrants.add(STATION_BROWSER_MCP_SERVER_ID);
     }
     const result = mapClaudeDecisionToPermissionResult(
       effectiveDecision,
       pending.toolInput,
-      pending.suggestions &&
-        sessionGrantPermissionUpdates(grant, pending.suggestions),
+      context?.sessionGrantScope === 'server'
+        ? undefined
+        : pending.suggestions &&
+            sessionGrantPermissionUpdates(grant, pending.suggestions),
     );
     // #2915: a forwarded mode change is Station's own request and now the
     // engine's mode. Both records follow it, so a turn whose posture differs
@@ -3728,7 +3809,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // matched here and published, so the surfaces compute the same
         // grant. Sanitising leaves the plain-text literals unchanged.
         const decisionReason = claudeRequestDisplayText(options.decisionReason);
+        // The server grant is offered and honoured only for an authentic call
+        // to the in-process Station browser (see `isAuthenticStationBrowserCall`).
+        const authenticStationBrowser = isAuthenticStationBrowserCall(
+          toolName,
+          input.agent?.toolServers,
+          // The Agent SDK generates this name from the actual mcpServers
+          // config key, in Station's own process.
+          'authentic',
+          record.stationBrowserDelivered && record.stationBrowserVerified,
+        );
         const request: ToolRequestGrantInput = {
+          ...(authenticStationBrowser ? { authenticStationBrowser } : {}),
           toolName,
           suggestions: options.suggestions,
           blockedPath: options.blockedPath,
@@ -3828,11 +3920,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // #2932: nor a sandbox network ask, whose grant is 'none': the
         // engine remembers each allowed host itself, so each new host asks.
         const sessionGrant = toolRequestSessionGrant(request);
+        const serverGrant = toolRequestServerGrant(request);
         if (
           !inputRequest &&
           !explicitAsk &&
           record.approvedTools.has(toolName) &&
           sessionGrant === 'tool'
+        ) {
+          return { behavior: 'allow', updatedInput: toolInput };
+        }
+        // The server-wide Station browser grant: this session's person
+        // allowed every authentic Station browser call. It covers only a
+        // request that would offer it (a plain call to an authentic tool of
+        // that server), so an escalation or an impostor still prompts.
+        if (
+          !inputRequest &&
+          !explicitAsk &&
+          serverGrant === 'server' &&
+          record.serverGrants.has(STATION_BROWSER_MCP_SERVER_ID)
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
@@ -3892,6 +3997,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             // #2932: the escalation signals the grant reads besides the
             // input; the sanitised reason text the adapter matched.
             ...(decisionReason !== undefined ? { decisionReason } : {}),
+            // The adapter's own finding that this is an authentic Station
+            // browser call; surfaces offer the server grant from it.
+            ...(authenticStationBrowser ? { stationBrowserServer: true } : {}),
             ...askFlags,
             // The structured reason, or null when its frame was not read.
             claudeAsk,
@@ -3914,6 +4022,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            serverGrant,
             eventId,
             ...(inputRequest ? { inputRequest } : {}),
           });

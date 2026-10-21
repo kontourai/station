@@ -813,6 +813,7 @@ export function registerPluginInstallRoutes(
         return c.json({
           valid: true,
           manifest,
+          hasBundle: existsSync(join(tempDir, 'dist', 'bundle.js')),
           installationRevision,
           registryTrustRevision,
           grantRevision: grantRevisions.revisionFor(manifest.name),

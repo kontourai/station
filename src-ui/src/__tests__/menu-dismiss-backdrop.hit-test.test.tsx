@@ -94,6 +94,9 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
+import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { NavigationProvider } from '../contexts/NavigationContext';
+import { ToastProvider, toastStore } from '../contexts/ToastContext';
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1456, height: 900 };
@@ -222,6 +225,13 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAttentionQuery: () => ({ data: { items: [], pendingCount: 0 } }),
+  // The phone overflow's Live work row reads the session inventory.
+  useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
+}));
+
+// The sidebar footer's account control names the signed-in user's initials.
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Station Tester' } }),
 }));
 
 /**
@@ -234,7 +244,6 @@ const viewModel = vi.hoisted(() => ({
   showHelp: false,
   showNotifications: false,
   showOverflow: false,
-  showProfileMenu: false,
 }));
 
 vi.mock('../components/header/useHeaderViewModel', () => ({
@@ -243,7 +252,6 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     closeHelp: () => {},
     closeNotifications: () => {},
     closeOverflow: () => {},
-    closeProfileMenu: () => {},
     goHome: () => {},
     handleHelpPrompt: () => {},
     helpPrompts: [
@@ -253,20 +261,18 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     openConnectionModal: () => {},
     openProfile: () => {},
     openHelp: () => {},
-    settingsShortcut: '⌘,',
     showHelp: viewModel.showHelp,
     showNotifications: viewModel.showNotifications,
     showOverflow: viewModel.showOverflow,
-    showProfileMenu: viewModel.showProfileMenu,
     toggleNotifications: () => {},
     toggleOverflow: () => {},
-    toggleProfileMenu: () => {},
     userInitials: 'ST',
   }),
 }));
 
 import { ChatDockHeaderMoreMenu } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import { Header } from '../components/header/Header';
+import { SidebarAccountControl } from '../components/project-sidebar/SidebarAccountControl';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { RegionChromeBar } from '../workspace-panes/RegionChromeBar';
 
@@ -331,6 +337,21 @@ const REGION_CHOOSER_CSS_PATH = resolve(
   HERE,
   '../workspace-panes/RegionEmptyChooser.css',
 );
+// The account menu's trigger is the sidebar footer's since it left the header.
+const SIDEBAR_CSS_PATH = resolve(
+  HERE,
+  '../components/project-sidebar/ProjectSidebar.css',
+);
+const SIDEBAR_FOOTER_CSS_PATH = resolve(
+  HERE,
+  '../components/project-sidebar/ProjectSidebarFooter.css',
+);
+// The notification column under the toolbar's right end, where a pending
+// approval's pill sits — the competitor of the menus that end opens.
+const NOTIFICATION_CSS_PATH = resolve(
+  HERE,
+  '../components/notifications/NotificationContainer.css',
+);
 
 type MenuId =
   | 'overflow'
@@ -368,6 +389,8 @@ interface Shape {
    * asserts for every shape.
    */
   readonly openerLabel: string | null;
+  /** Render the real notification column with one pending approval. */
+  readonly pendingApproval?: boolean;
 }
 
 const SHAPES: readonly Shape[] = [
@@ -382,13 +405,14 @@ const SHAPES: readonly Shape[] = [
     openerLabel: 'More actions',
   },
   {
-    name: 'the avatar’s profile menu on a desktop, where its trigger exists',
+    name: 'the sidebar account menu on a desktop, where its trigger exists',
     menu: 'profile',
     viewport: DESKTOP,
     device: 'desktop',
     backdropLabel: 'Close profile menu',
-    // The mirror of the overflow button: `.app-toolbar__action--secondary` is
-    // hidden at the mobile breakpoint, so the avatar is a fine-pointer control.
+    // The account control sits in the sidebar footer beside Live work. On a
+    // phone that footer is inside the closed drawer, so the desktop rail is
+    // where its trigger is chrome a press can land on.
     openerLabel: 'Profile and settings',
   },
   {
@@ -412,12 +436,13 @@ const SHAPES: readonly Shape[] = [
     menu: 'region',
     viewport: DESKTOP,
     device: 'desktop',
-    backdropLabel: 'Close the Add to Left region menu',
+    backdropLabel: 'Close the Add to Right region menu',
     // On a phone `commandsInOverflowMenu` renders no region control at all —
     // the commands move into the ⋯ menu — so this control is desktop-only.
     // Since #2155 every region toggle opens #2154's chooser on a hold or a
-    // right-click, whatever the region holds; the fixture opens `left`'s.
-    openerLabel: 'Left region',
+    // right-click, whatever the region holds; the fixture opens `right`'s
+    // (Left has no default toggle while it is unused).
+    openerLabel: 'Right region',
   },
   {
     // The folded "Regions" menu, and the reason it is a shape of its own
@@ -479,6 +504,9 @@ function buildFixtureCss(): string {
     resolveCssImports(CHAT_CSS_PATH),
     resolveCssImports(HEADER_MENU_CSS_PATH),
     resolveCssImports(REGION_CHOOSER_CSS_PATH),
+    resolveCssImports(SIDEBAR_CSS_PATH),
+    resolveCssImports(SIDEBAR_FOOTER_CSS_PATH),
+    resolveCssImports(NOTIFICATION_CSS_PATH),
   ].join('\n');
   assertNoImportsSurvive(css);
   return css;
@@ -517,8 +545,15 @@ async function renderShellMarkup(
   harness.bottomOnly = shape.device !== 'desktop';
   viewModel.showHelp = geometry !== null && shape.menu === 'help';
   viewModel.showOverflow = geometry !== null && shape.menu === 'overflow';
-  viewModel.showProfileMenu = geometry !== null && shape.menu === 'profile';
   viewModel.showNotifications = false;
+  toastStore.clear();
+  if (shape.pendingApproval)
+    toastStore.showToolApproval({
+      sessionId: 'session-approval',
+      toolName: 'write_file',
+      agentName: 'Builder',
+      actions: [],
+    });
 
   if (geometry) {
     // `RegionToolbarControls` and `ChatDockHeaderMoreMenu` both derive their
@@ -535,8 +570,26 @@ async function renderShellMarkup(
 
   render(
     <div className="app app--with-sidebar">
+      {/* The desktop rail's footer, where the account menu's trigger lives.
+          A phone's sidebar is the closed drawer, so it is not chrome there. */}
+      {shape.device === 'desktop' && (
+        <aside className="sidebar">
+          <div className="sidebar__body" />
+          <div className="sidebar__footer">
+            <div className="sidebar__footer-meta">
+              <div className="sidebar__footer-identity">
+                <SidebarAccountControl
+                  activePath="/"
+                  collapsed={false}
+                  onNavigate={() => {}}
+                />
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
       <div className="app__main">
-        <Header onNavigate={() => {}} onToggleSettings={() => {}} />
+        <Header onNavigate={() => {}} />
         <main className="main-content" id="station-main" tabIndex={-1}>
           <div className="content-view" />
         </main>
@@ -591,6 +644,14 @@ async function renderShellMarkup(
           )}
         </section>
       </div>
+      {/* Mounted after the app, as `main.tsx` mounts it. */}
+      {shape.pendingApproval && (
+        <NavigationProvider>
+          <ToastProvider>
+            <NotificationContainer />
+          </ToastProvider>
+        </NavigationProvider>
+      )}
     </div>,
   );
 
@@ -609,7 +670,8 @@ async function renderShellMarkup(
     } else if (
       shape.menu === 'region' ||
       shape.menu === 'folded-regions' ||
-      shape.menu === 'dock-more'
+      shape.menu === 'dock-more' ||
+      shape.menu === 'profile'
     ) {
       const opener = screen.getByLabelText(shape.openerLabel as string, {
         exact: false,
@@ -625,8 +687,8 @@ async function renderShellMarkup(
       if (shape.menu === 'region') fireEvent.contextMenu(opener);
       else fireEvent.click(opener);
     }
-    // The three header menus are behind `LazyBoundary`, so the portal does not
-    // exist on the render that flips their flag. Awaiting the backdrop by name
+    // The header menus and the account menu are behind `LazyBoundary`, so the
+    // portal does not exist on the render that opens them. Awaiting the backdrop by name
     // is what makes the serialized body contain an OPEN menu rather than a
     // suspended one.
     //
@@ -865,10 +927,11 @@ describe.skipIf(!chromiumAvailable)(
             };
 
             // Every control of the shell chrome a press could land on while
-            // this menu is open: the toolbar's row, and the dock header's.
+            // this menu is open: the toolbar's row, the dock header's, and the
+            // sidebar footer's.
             const controls = [
               ...document.querySelectorAll<HTMLElement>(
-                '.app-toolbar button, .chat-dock__header button',
+                '.app-toolbar button, .chat-dock__header button, .sidebar__footer button',
               ),
             ].filter((control) => {
               const rect = control.getBoundingClientRect();
@@ -1036,6 +1099,85 @@ describe.skipIf(!chromiumAvailable)(
         ).toBe(true);
       },
     );
+
+    /**
+     * The toolbar's region controls end the header row (pane workspace
+     * contract), so the Right region's chooser opens straight into the
+     * notification column, where a pending approval's pill sits. A press
+     * aimed at a chooser row must land on that row: the open menu outranks
+     * the column (`--layer-toolbar-menu`). Hosted pr-smoke found the pill
+     * taking the press (`orchestration-chat-flow.spec.ts`, "Add to Right
+     * region" → Chat).
+     */
+    test('the Right region’s chooser rows take their own press over a pending approval', async () => {
+      const shape: Shape = {
+        name: 'the region chooser over a pending approval',
+        menu: 'region',
+        viewport: DESKTOP,
+        device: 'desktop',
+        backdropLabel: 'Close the Add to Right region menu',
+        openerLabel: 'Right region',
+        pendingApproval: true,
+      };
+      const geometry = await measureTrigger(shape);
+      const markup = await renderShellMarkup(shape, geometry);
+      cleanup();
+      document.body.innerHTML = '';
+      toastStore.clear();
+      const page = await browser.newPage({ viewport: shape.viewport });
+      try {
+        await page.setContent(fixtureHtml(markup));
+        await applyViewportVars(page, shape.viewport);
+        const result = await page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>(
+            '.region-chooser__menu',
+          );
+          const pill = document.querySelector<HTMLElement>(
+            '.notification-approval-queue__trigger',
+          );
+          const rows = [
+            ...(panel?.querySelectorAll<HTMLElement>('[role="menuitem"]') ??
+              []),
+          ];
+          const pillRect = pill?.getBoundingClientRect();
+          const overlaps = (rect: DOMRect) =>
+            Boolean(
+              pillRect &&
+                rect.left < pillRect.right &&
+                pillRect.left < rect.right &&
+                rect.top < pillRect.bottom &&
+                pillRect.top < rect.bottom,
+            );
+          return {
+            panel: Boolean(panel),
+            pill: Boolean(pill && pillRect && pillRect.width > 0),
+            rowsUnderPill: rows.filter((row) =>
+              overlaps(row.getBoundingClientRect()),
+            ).length,
+            stolen: rows
+              .map((row) => {
+                const rect = row.getBoundingClientRect();
+                const x = Math.round(rect.left + rect.width / 2);
+                const y = Math.round(rect.top + rect.height / 2);
+                const hit = document.elementFromPoint(x, y);
+                return row.contains(hit)
+                  ? null
+                  : `"${row.textContent?.trim()}" at (${x}, ${y}) hit ${
+                      hit?.className ?? 'null'
+                    }`;
+              })
+              .filter((entry) => entry !== null),
+          };
+        });
+        expect(result.panel, 'the chooser did not open').toBe(true);
+        expect(result.pill, 'no pending approval pill rendered').toBe(true);
+        // Not vacuous: the pill really lies under the open chooser's rows.
+        expect(result.rowsUnderPill).toBeGreaterThan(0);
+        expect(result.stolen).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    });
   },
 );
 

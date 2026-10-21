@@ -8,6 +8,7 @@
  * can appear exactly as it does against a real server.
  */
 import { expect, test } from '@playwright/test';
+import { routeCoreUpdateCheck } from './helpers/core-update-route';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -119,7 +120,7 @@ test.describe('Core Update Flow', () => {
     await seedRoutes(page);
 
     // Mock the check to return updateAvailable
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,
@@ -172,7 +173,7 @@ test.describe('Core Update Flow', () => {
         body: JSON.stringify({ status: 'pending', ...restart }),
       }),
     );
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         // After update, return up-to-date
         if (postCalled) {
@@ -228,7 +229,7 @@ test.describe('Core Update Flow', () => {
   test('shows the checkout match when no updates', async ({ page }) => {
     await seedRoutes(page);
 
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,
@@ -282,7 +283,7 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
         body: JSON.stringify(progress),
       }),
     );
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,

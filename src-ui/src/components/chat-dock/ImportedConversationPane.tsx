@@ -1,11 +1,21 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
-import { discardAttachedContinuationHandoff } from '../../lib/attached-continuation-handoff';
+import {
+  attachedContinuationScope,
+  discardAttachedContinuationHandoff,
+} from '../../lib/attached-continuation-handoff';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -38,6 +48,15 @@ export default function ImportedConversationPane({
     isCurrent: () => boolean,
   ) => Promise<boolean>;
 }) {
+  const authority = useAuthorityPersistence();
+  const station =
+    authority.status === 'verified'
+      ? (authority.observation?.environmentId ?? null)
+      : null;
+  const scope = attachedContinuationScope(station, apiBase);
+  const sourceIdentity = useRef({ scope, threadId });
+  const intent = useRef(0);
+  const continuedIntent = useRef(-1);
   const sendMessage = useSendMessage(apiBase);
   const { updateChat } = useActiveChatActions();
   const confirmedMessage = useRef('');
@@ -60,12 +79,22 @@ export default function ImportedConversationPane({
   const [unboundEngine, setUnboundEngine] = useState<EngineId | null>(null);
   const attempted = useRef<string | null>(null);
   const mounted = useRef(true);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    sourceIdentity.current = { scope, threadId };
+    intent.current += 1;
     mounted.current = true;
+    confirmedMessage.current = '';
+    dispatched.current = false;
+    attempted.current = null;
+    continuedIntent.current = -1;
+    setContinuedThreadId(null);
+    setOpenFailed(false);
+    setUnboundEngine(null);
     return () => {
       mounted.current = false;
+      intent.current += 1;
     };
-  }, []);
+  }, [scope, threadId]);
   // #3552: a draft handed over from Activity belongs to this visit only. It
   // is dropped once this pane has settled whether it could show the reader
   // that takes it, so a dev-mode effect rehearsal while still loading keeps it.
@@ -73,23 +102,32 @@ export default function ImportedConversationPane({
   settled.current = Boolean(source.data) || source.isError;
   useEffect(
     () => () => {
-      if (settled.current) discardAttachedContinuationHandoff(threadId);
+      if (settled.current) discardAttachedContinuationHandoff(threadId, scope);
     },
-    [threadId],
+    [threadId, scope],
   );
   const openContinued = useCallback(async () => {
     const session = continued.data?.session;
-    if (!session) return;
+    if (
+      !session ||
+      !mounted.current ||
+      station === null ||
+      continuedIntent.current !== intent.current
+    )
+      return;
+    const heldIntent = intent.current;
+    const current = () => mounted.current && intent.current === heldIntent;
     setOpenFailed(false);
     let opened = false;
     try {
       opened = await onContinueInDock(
         session.conversationId ?? session.threadId,
-        () => mounted.current,
+        current,
       );
     } catch {
       /* The original reader remains available for retry. */
     }
+    if (!current()) return;
     if (opened && confirmedMessage.current.trim() && !dispatched.current) {
       const conversationId = session.conversationId ?? session.threadId;
       const target = Object.entries(activeChatsStore.getSnapshot()).find(
@@ -123,7 +161,7 @@ export default function ImportedConversationPane({
       } catch {
         /* Unknown is not unbound: the ordinary retry stays available. */
       }
-      if (!mounted.current) return;
+      if (!current()) return;
       if (fresh?.data?.session && !fresh.data.session.assignedAgentSlug)
         setUnboundEngine(fresh.data.session.provider);
       else setOpenFailed(true);
@@ -134,6 +172,7 @@ export default function ImportedConversationPane({
     onContinueInDock,
     sendMessage,
     updateChat,
+    station,
   ]);
   useEffect(() => {
     if (!continued.data || attempted.current === continuedThreadId) return;
@@ -218,6 +257,8 @@ export default function ImportedConversationPane({
       )}
       {source.data && (
         <SessionDetail
+          key={`${scope}\0${threadId}`}
+          handoffScope={scope}
           presentation="chat"
           chatFontSize={chatFontSize}
           apiBase={apiBase}
@@ -230,8 +271,17 @@ export default function ImportedConversationPane({
             !continued.isError
           }
           onTaskChanged={() => void source.refetch()}
-          getSelectionIntent={() => 0}
-          onAdopted={(child, _intent, message) => {
+          getSelectionIntent={() => intent.current}
+          onAdopted={(child, adoptedIntent, message) => {
+            if (
+              !mounted.current ||
+              station === null ||
+              sourceIdentity.current.scope !== scope ||
+              sourceIdentity.current.threadId !== threadId ||
+              adoptedIntent !== intent.current
+            )
+              return;
+            continuedIntent.current = adoptedIntent;
             confirmedMessage.current = message ?? '';
             setContinuedThreadId(child.threadId);
           }}

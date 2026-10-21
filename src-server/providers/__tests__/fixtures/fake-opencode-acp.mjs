@@ -27,7 +27,20 @@
 // `FAKE_OPENCODE_REFUSE_RESUME=1` in its environment it refuses
 // `session/resume` with a JSON-RPC error, as an engine that advertised
 // resume but cannot resume this session would.
-import { appendFileSync } from 'node:fs';
+//
+// #3924: an `edit: <path>` request carries what OpenCode sends, its
+// permission metadata (`{ filepath, diff }`, `filepath` absolute: an absolute
+// path as written, a relative one joined to the process's directory), and an allowed edit writes the file.
+// `patch: <relative path>` sends apply_patch's metadata (a relative
+// `filepath`, absolute `files`). With `FAKE_OPENCODE_CLIENT_WRITE=1`, an
+// allowed edit or patch is first written through the client
+// (`fs/write_text_file`) and a `{ clientWrite, error }` line recorded (#3957).
+// An `always` answer is remembered for the permission, as OpenCode's edit
+// tool asks with `always: ["*"]`: later requests for it are not sent, and a
+// `{ "always": <permission> }` line is recorded. `debug agent` records a
+// `{ "debugAgent": <name> }` line.
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 
 // `debug agent <name>` prints the agent's resolved rules (#3290), as
 // `opencode debug agent` does; it is not an engine launch.
@@ -36,6 +49,12 @@ const debugAgent =
     ? process.argv[4]
     : undefined;
 
+if (process.env.FAKE_OPENCODE_RECORD && debugAgent !== undefined) {
+  appendFileSync(
+    process.env.FAKE_OPENCODE_RECORD,
+    `${JSON.stringify({ debugAgent })}\n`,
+  );
+}
 if (process.env.FAKE_OPENCODE_RECORD && debugAgent === undefined) {
   appendFileSync(
     process.env.FAKE_OPENCODE_RECORD,
@@ -192,6 +211,22 @@ const waiting = new Map();
 function write(message) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 }
+function record(entry) {
+  if (process.env.FAKE_OPENCODE_RECORD) {
+    appendFileSync(
+      process.env.FAKE_OPENCODE_RECORD,
+      `${JSON.stringify(entry)}\n`,
+    );
+  }
+}
+// Bun's default for an unhandled rejection: report it and keep running.
+process.on('unhandledRejection', (error) => {
+  record({
+    clientWrite: error?.path ?? null,
+    error: String(error?.message ?? error),
+    unhandled: true,
+  });
+});
 function request(method, params) {
   const id = nextOutgoingId++;
   write({ id, method, params });
@@ -207,6 +242,12 @@ function update(sessionId, payload) {
 const ACTIONS = {
   run: { permission: 'bash', kind: 'execute', title: 'bash', key: 'command' },
   edit: { permission: 'edit', kind: 'edit', title: 'edit', key: 'filePath' },
+  patch: {
+    permission: 'edit',
+    kind: 'edit',
+    title: 'apply_patch',
+    key: 'filePath',
+  },
   fetch: {
     permission: 'webfetch',
     kind: 'fetch',
@@ -224,12 +265,13 @@ const ACTIONS = {
 };
 
 let callCounter = 0;
+const alwaysAllowed = new Set();
 async function prompt(sessionId, text) {
   // The action is the last `<verb>: <target>` line: Station may put its own
   // context ahead of the typed text.
-  const match = [...text.matchAll(/^(run|edit|fetch|task|mcp):\s*(.+)$/gm)].at(
-    -1,
-  );
+  const match = [
+    ...text.matchAll(/^(run|edit|patch|fetch|task|mcp):\s*(.+)$/gm),
+  ].at(-1);
   if (!match) return { stopReason: 'end_turn' };
   const target = match[2].trim();
   const action =
@@ -237,7 +279,28 @@ async function prompt(sessionId, text) {
       ? { ...ACTIONS.mcp, permission: target, title: target }
       : ACTIONS[match[1]];
   const toolCallId = `call_fixture_${++callCounter}`;
-  const rawInput = { [action.key]: target };
+  // As OpenCode's edit and write tools do: an absolute path is passed on as
+  // written (the file system then resolves `link/..` through the link), a
+  // relative one is joined to the directory.
+  const editPath =
+    match[1] === 'edit'
+      ? isAbsolute(target)
+        ? target
+        : join(process.cwd(), target)
+      : undefined;
+  // apply_patch's metadata: `filepath` joins worktree-relative paths, and
+  // `files` carries the absolute ones (OpenCode 1.18.18).
+  const patchPath =
+    match[1] === 'patch' ? join(process.cwd(), target) : undefined;
+  const rawInput = editPath
+    ? { filepath: editPath, diff: '@@ -0,0 +1 @@\n+x\n' }
+    : patchPath
+      ? {
+          filepath: target,
+          diff: '@@ -0,0 +1 @@\n+x\n',
+          files: [{ filePath: patchPath, relativePath: target, type: 'add' }],
+        }
+      : { [action.key]: target };
   update(sessionId, {
     sessionUpdate: 'tool_call',
     toolCallId,
@@ -252,13 +315,15 @@ async function prompt(sessionId, text) {
     action.permission,
     match[1] === 'mcp' ? '*' : target,
   );
-  let allowed = verdict === 'allow';
-  if (verdict === 'ask') {
+  let allowed =
+    verdict === 'allow' ||
+    (verdict === 'ask' && alwaysAllowed.has(action.permission));
+  if (verdict === 'ask' && !allowed) {
     const response = await request('session/request_permission', {
       sessionId,
       toolCall: {
         toolCallId,
-        title: target,
+        title: editPath ?? target,
         kind: action.kind,
         status: 'pending',
         locations: [],
@@ -275,6 +340,45 @@ async function prompt(sessionId, text) {
         ? response.outcome.optionId
         : undefined;
     allowed = optionId === 'once' || optionId === 'always';
+    if (optionId === 'always') {
+      alwaysAllowed.add(action.permission);
+      if (process.env.FAKE_OPENCODE_RECORD) {
+        appendFileSync(
+          process.env.FAKE_OPENCODE_RECORD,
+          `${JSON.stringify({ always: action.permission })}\n`,
+        );
+      }
+    }
+  }
+  // #3957: after an allowed edit with a non-empty diff, OpenCode's ACP agent
+  // writes the proposed content through the client (`fs/write_text_file`)
+  // at the metadata's `filepath`, as given, whatever capabilities the client
+  // advertised, and does not wait for it (`acp/permission.ts`
+  // `writeProposedEdit`: `void connection.writeTextFile(...)`). An error
+  // response rejects that promise unhandled; Bun 1.3.13, which OpenCode
+  // 1.18.18 runs on, keeps running (see the handler below). Its own tool then
+  // writes the file.
+  if (
+    allowed &&
+    (editPath || patchPath) &&
+    rawInput.diff &&
+    process.env.FAKE_OPENCODE_CLIENT_WRITE === '1'
+  ) {
+    const path = rawInput.filepath;
+    void request('fs/write_text_file', {
+      sessionId,
+      path,
+      content: 'written through the client\n',
+    }).then((response) => {
+      if (response?.__error)
+        throw Object.assign(new Error(response.__error.message), { path });
+      record({ clientWrite: path, error: null });
+    });
+  }
+  const ownWrite = editPath ?? patchPath;
+  if (allowed && ownWrite) {
+    mkdirSync(dirname(ownWrite), { recursive: true });
+    writeFileSync(ownWrite, 'written by the fixture\n');
   }
   update(sessionId, {
     sessionUpdate: 'tool_call_update',
@@ -309,12 +413,13 @@ async function handle(message) {
   if (message.method === undefined && message.id !== undefined) {
     const resolve = waiting.get(message.id);
     waiting.delete(message.id);
-    resolve?.(message.result);
+    resolve?.(message.error ? { __error: message.error } : message.result);
     return;
   }
   const { id, method, params } = message;
   switch (method) {
     case 'initialize':
+      record({ clientCapabilities: params?.clientCapabilities ?? null });
       write({
         id,
         result: {

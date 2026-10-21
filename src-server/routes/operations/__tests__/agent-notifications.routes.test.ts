@@ -118,6 +118,7 @@ beforeAll(async () => {
     eventBus,
     logger: quietLogger(),
     devicePairing: {
+      deviceLocality: () => undefined,
       listDevices: () => [
         {
           id: 'phone',

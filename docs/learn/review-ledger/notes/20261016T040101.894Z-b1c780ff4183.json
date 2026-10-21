@@ -1,0 +1,7 @@
+{
+  "revision": "0205398e42ad691976fc8d9ca82dcb79b4d2078c",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Scoped the reply admission cap to each room agent request record (MAX_REQUESTS check on record.replyAdmissions).","inputs":["docs/design/task-room-agent-requests.md"]}
+  ]
+}

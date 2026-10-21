@@ -565,6 +565,41 @@ anything if it cannot; it revokes them again once done, which catches a
 token minted while it ran (a mint completing after that second pass is not
 caught, though the person's devices are gone by then).
 
+Telemetry producer tokens (`sti_…`) are a separate, write-only credential for
+programs that report activity, such as Flow Agents' telemetry hooks. The auth
+boundary recognizes one only on the exact leaves `POST /v1/agent-events`,
+`/v1/traces` and `/v1/logs`; anywhere else it is an unknown bearer (`401`, or
+`403` for an undeclared path). A presented producer token never falls through
+to the paired-credential checks, and is refused beside a credential in the
+query string. Only unknown tokens and query-string credentials (even a valid
+token sent as `?token=`) spend the per-address failure budget, and only an
+admitted token resets it, so a stale or misplaced token neither locks
+out the other producers on that address (Tailscale Serve senders share the
+loopback address) nor resets the budget for guessers. It is refused when expired (`403`), and when the sender is not on this
+machine unless the token was created with remote access (`403`). "This
+machine" is the same position test used for raw operator-credential use:
+loopback socket and `Host`, and no forwarding, Tailscale or ingress-identity
+evidence, or Station's attested UI proxy relaying a loopback client that
+addressed loopback. Tailscale Serve dials the UI port from loopback, but the
+proxy's forwarded-Host and forwarding-evidence attestations still mark its
+requests remote (a real-socket test pins this). An
+SSH local forward still looks local, so the default narrows exposure rather
+than proving locality. Only the operator can create, list or revoke these
+tokens (`access:manage` plus an operator check). Secrets are shown once and
+stored as a sha256 hash in `<home>/security/telemetry-producers.json` under
+the same owner-only, locked-write and fail-closed rules as personal access
+tokens, with at most 32 stored. Each token records the
+principal who created it, and the rows it ingests are readable only by that
+principal: the producer-reported session id does not grant or decide
+readership, the owner key is set from the admitted token rather than the body,
+and insights never shares a per-session decision between a producer row and a
+Station row with the same id. Every identity a producer reports, including its agent slug and engine, is
+namespaced (`producer:<name>:<id>`), so a producer cannot attach rows to a
+real Station conversation, agent or engine and so inject text into that conversation's monitoring timeline
+or into what an agent reads about it; the station-control monitoring tool
+also labels producer rows as external, unverified data. Paired credentials with
+`orchestration:operate` keep their existing access to the ingest leaves.
+
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in

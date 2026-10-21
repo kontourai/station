@@ -42,7 +42,7 @@ accept another. `completed` is an explicit terminal close. `failed` and
 maintaining another list of terminal states.
 
 Start with [Agent Runtime](docs/contexts/agent-runtime/CONTEXT.md),
-[Agents](docs/guides/agents.md), and [Session API](docs/reference/session-api.md).
+[Agents](docs/guides/agent-configuration.md), and [Session API](docs/reference/session-api.md).
 
 ## Evidence and governance
 

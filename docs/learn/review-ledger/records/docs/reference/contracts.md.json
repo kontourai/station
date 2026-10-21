@@ -230,7 +230,21 @@
 
     "packages/shared/src/delegation-files.ts",
 
-    "src-server/services/orchestration/attachment-staging-service.ts"
+    "src-server/services/orchestration/attachment-staging-service.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
   ],
 
   "checks": [

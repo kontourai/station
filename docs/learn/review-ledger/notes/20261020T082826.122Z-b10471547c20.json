@@ -1,0 +1,7 @@
+{
+  "revision": "7bd5d55ff2d57ea3aa9fa8c8753f14570e34c3f4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed after two changes: runtime-routes.ts in 1c2471f399a moved the server update coordinator's config:changed listener into the coordinator's own subscription (still the runtime event bus); CoreUpdateCheck.tsx now refetches useServerUpdateStateQuery once a followed restart reaches its outcome. The server update section (requestServerUpdateState/useServerUpdateStateQuery, applyServerUpdateStateEvent, running turns, actions) still holds: no hook name, parameter, key or return shape changed.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts","src-ui/src/views/settings/CoreUpdateCheck.tsx"]}
+  ]
+}

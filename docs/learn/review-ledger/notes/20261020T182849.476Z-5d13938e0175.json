@@ -1,0 +1,7 @@
+{
+  "revision": "99e95f535f11d710d1baab3eda029dd3d996b421",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 round 5 follow-up: orchestration-service.ts and attached-session-adoption.ts now pass the Project list to sessionConfinementRoot unmodified, which expands and resolves stored paths itself; behavior is unchanged from the round-5 review recorded for this document. Searched again for start-metadata, adoption and Project-binding claims: nothing it states changed.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

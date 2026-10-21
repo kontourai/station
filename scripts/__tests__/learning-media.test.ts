@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -325,34 +325,88 @@ it('the real builder publishes immutable media bytes and its strict entry detect
 });
 
 it('checks the actual capture manifest and recorded source bytes in the required documentation lane', async () => {
-  const reader = createLearningSourceReader(process.cwd());
-  const files = new Set(
-    execFileSyncBounded('git', ['ls-files', '-z'], {
-      encoding: 'utf8',
-      env: sanitizedGitEnvironment(),
-      windowsHide: true,
-    })
-      .split('\0')
-      .filter(Boolean),
-  );
-  // media.json metadata joined with each capture's review (#2936).
-  const { media: manifest } = readReviewState(process.cwd());
-  if (!manifest) throw new Error('The repository has no capture manifest');
-  // #2923: the same scoped/advisory/strict decision as the review ledger.
-  const captures = await compileLearningMedia(
-    manifest,
-    files,
-    async (path: string) => reader.read(path),
-    {
-      // The real manifest runs in the job's own mode: scoped on a pull
-      // request, advisory in the merge queue and repo-scans job.
-      requireFresh: freshnessRequirement(
-        resolveDocumentationFreshness({ root: process.cwd(), env: JOB_ENV }),
-        'capture',
-      ),
-      reportMissing: true,
-    },
-  );
-  expect(captures.size).toBeGreaterThan(0);
-  expect(captures.size).toBe(manifest.captures.length);
+  const diagnosticStart = performance.now();
+  let phase = 'reader';
+  let diagnosticRecords = 0;
+  const mark = (event: 'enter' | 'exit' | 'error', error?: unknown) => {
+    if (diagnosticRecords++ >= 13) return;
+    writeSync(
+      1,
+      `@@STATION_LEARNING_MEDIA_PHASE@@${JSON.stringify({
+        phase,
+        event,
+        elapsedMs: performance.now() - diagnosticStart,
+        ...(event === 'error'
+          ? {
+              error:
+                error instanceof Error
+                  ? {
+                      name: error.name.slice(0, 80),
+                      message: error.message.slice(0, 512),
+                      messageTruncated: error.message.length > 512,
+                    }
+                  : { type: typeof error },
+            }
+          : {}),
+      })}@@END_STATION_LEARNING_MEDIA_PHASE@@\n`,
+    );
+  };
+  try {
+    mark('enter');
+    const reader = createLearningSourceReader(process.cwd());
+    mark('exit');
+    phase = 'tracked-git';
+    mark('enter');
+    const files = new Set(
+      execFileSyncBounded('git', ['ls-files', '-z'], {
+        encoding: 'utf8',
+        env: sanitizedGitEnvironment(),
+        windowsHide: true,
+      })
+        .split('\0')
+        .filter(Boolean),
+    );
+    mark('exit');
+    phase = 'read-review-state';
+    mark('enter');
+    // media.json metadata joined with each capture's review (#2936).
+    let state = readReviewState(process.cwd(), { history: false });
+    const policy = resolveDocumentationFreshness({
+      root: process.cwd(),
+      env: JOB_ENV,
+      ledger: state.ledger,
+      media: state.media,
+    });
+    if (policy.mode !== 'scoped') state = readReviewState(process.cwd());
+    const manifest = state.media;
+    if (!manifest) throw new Error('The repository has no capture manifest');
+    mark('exit');
+    // #2923: the same scoped/advisory/strict decision as the review ledger.
+    phase = 'freshness';
+    mark('enter');
+    // The real manifest runs in the job's own mode: scoped on a pull
+    // request, advisory in the merge queue and repo-scans job.
+    const requireFresh = freshnessRequirement(policy, 'capture');
+    mark('exit');
+    phase = 'compile-media';
+    mark('enter');
+    const captures = await compileLearningMedia(
+      manifest,
+      files,
+      async (path: string) => reader.read(path),
+      {
+        requireFresh,
+        reportMissing: true,
+      },
+    );
+    mark('exit');
+    phase = 'assertions';
+    mark('enter');
+    expect(captures.size).toBeGreaterThan(0);
+    expect(captures.size).toBe(manifest.captures.length);
+    mark('exit');
+  } catch (error) {
+    mark('error', error);
+    throw error;
+  }
 });
