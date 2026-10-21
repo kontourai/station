@@ -68,6 +68,8 @@ accounts, purchase allowance, or infer renewal/subscription lifecycle from a
 plan name. Native lifecycle unavailability limits that claim and is not an
 additional prerequisite for the reset-deadline slice. Live sign-in is a human
 prerequisite when the second account's credentials are absent.
+The owner explicitly deferred that sign-in while source work continues. Do not
+start another device authorization or infer distinct-account proof meanwhile.
 
 ### Existing-client adoption: bounded #3274 follow-through
 
@@ -191,6 +193,17 @@ restoration returns ten passes. The receipt is
 This increment does not complete generic context-boundary/fork pinning, a
 per-native-identity aggregate accepted-through view, or reservation-to-start
 restart qualification. No live provider result is implied.
+
+The subsequent scripted reservation-to-start restart case passes: the first
+attempt persists a pin and stops before creating the provider Session; the
+store/service is reopened and the same handoff key resumes with the stored
+digest and matched native identity. The qualification owner now passes eleven
+cases. Ignoring persisted pending native ownership makes only that new case
+fail; exact restoration returns eleven passes. Its local receipt is
+`/private/tmp/station-continuity-reservation-restart-mutation-receipt-20261021.json`.
+The fixture binding reader now handles reserved-but-unmaterialized successors
+from persisted predecessor/target facts, and scripted provider turn IDs retain
+their offset across restart. This is not an installed-provider restart receipt.
 
 The external-client increment's readiness attempt failed documentation truth
 because affected source/document claims still need review. Governance and lint
