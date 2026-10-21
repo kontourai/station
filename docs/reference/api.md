@@ -1626,6 +1626,13 @@ it does not cover the private Station-engine stream ledger. See
 [keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
 
+An authorized delivery lookup for an explicitly settled prepared turn returns
+HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or
+`definitively-refused`; it never invents a provider turn. An ordinary retry of
+that retained key is refused too. A deliberate new request needs a new key;
+clients must not generate one automatically. See
+[settled send identity](session-api.md#find-out-what-became-of-a-send).
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
