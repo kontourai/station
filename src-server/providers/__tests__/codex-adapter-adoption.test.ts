@@ -748,6 +748,8 @@ describe('Codex native attached-session adoption', () => {
   });
 
   test('rejects a malformed affinity-bearing resume cursor instead of starting a fresh thread', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'station-codex-invalid-cursor-'));
+    tempRoots.push(cwd);
     const processFactory = vi.fn(() => new FakeCodexProcess());
     const adapter = new CodexAdapter({
       processFactory,
@@ -755,6 +757,7 @@ describe('Codex native attached-session adoption', () => {
     });
     await expect(
       adapter.startSession({
+        cwd,
         provider: 'codex',
         threadId: TARGET_ID,
         resumeCursor: {

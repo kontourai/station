@@ -11,6 +11,9 @@
  * raw stdio command.
  */
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
@@ -18,7 +21,7 @@ import type {
   SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../telemetry/metrics.js', () => ({
   adapterSessionStartDuration: { record: vi.fn() },
@@ -112,6 +115,19 @@ function toolServersReport(input: ProviderSessionStartInput) {
   )?.toolServers;
 }
 
+const workspaces: string[] = [];
+
+function isolatedWorkspace(): string {
+  const cwd = mkdtempSync(join(tmpdir(), 'station-codex-control-'));
+  workspaces.push(cwd);
+  return cwd;
+}
+
+afterEach(() => {
+  for (const cwd of workspaces.splice(0))
+    rmSync(cwd, { recursive: true, force: true });
+});
+
 describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station-control integration wire-safe', () => {
   test('an explicit engine override refuses a tool that resolved but cannot be delivered by the adapter', async () => {
     const resolver = createSessionAgentResolver({
@@ -121,6 +137,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     });
     const resolved = await resolver({
       threadId: 'override-delivery-refusal',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent', executionAgentId: 'codex' },
     });
@@ -144,6 +161,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
 
     const resolved = await resolver({
       threadId: 'thread-e2e-codex',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent' },
     });
