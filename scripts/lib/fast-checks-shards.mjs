@@ -16,6 +16,9 @@ import { createHash } from 'node:crypto';
  * Maximum adaptive shards; older candidates retain the four-way fallback.
  */
 export const FAST_CHECKS_SHARD_COUNT = 4;
+// Sequential ordinary/heavy/exclusive groups share this completion fence.
+// The queue's measured first two groups consumed 851s before exclusive work.
+export const FAST_CHECKS_SHARD_BUDGET_MS = 20 * 60_000;
 // #3101, 2026-10-01: sampled shards spent 1.4 min setting up for 0.2 min
 // of tests (86% setup) in a 20-job pool. Without duration estimates, use
 // 40 files per runner as an initial proxy; tune from hosted plan/run data.

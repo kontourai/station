@@ -5,7 +5,7 @@
 ### Minor Changes
 
 - 5abbeaa: Add public host services for in-process plugins. `useShortcut` registers a shortcut in Station's shortcut registry, where it is listed in the shortcut list and Settings and suppressed under modals. `useShortcutScope` turns on a plugin-owned scope for `when`. `useHost()` provides `clipboard.writeText`, `openExternal` (http and https only), and Station's `prompt` and `confirm` dialogs. `useHostFacts()` returns the pane host's device facts.
-  
+
   Station refuses plugin shortcuts on the reserved command palette, Settings and shortcut-list chords and on the text-editing chords, registers them only for a verified installed plugin, ranks them below Station's own shortcuts, and namespaces their ids so they cannot replace Station's. Prompt and confirm dialogs name the requesting plugin; `openExternal` refuses URLs with credentials and opens the normalised URL. `useKeyboardShortcut` and `useKeyboardShortcuts` are deprecated in favour of `useShortcut`. `station dev` supplies all four new hooks with the same refusals.
 - 463e2e1: Add telemetry producer tokens for external monitoring producers. The CLI gains `station telemetry producers create|list|revoke` and a `--producer=<name>` filter on `station insights get` and `station insights events`. The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and its Insights response carries `producerActivity` and `applied.producer`, which the `UsageInsights` contract now declares.
 
@@ -13,12 +13,12 @@
 
 - b7d8c21: Environment-only product telemetry opt-in (`STATION_PRODUCT_TELEMETRY_ENABLED=true`, legacy `STATION_TELEMETRY_ENABLED=true`, or `STATION_TELEMETRY_TIER=full`) now supplies at most a Lite default, even with a disclosure receipt. Full delivery stops until the operator explicitly chooses Full in config and acknowledges the current disclosure in Settings. Lite sending is not implemented in this foundation. `station telemetry status` and Settings report the environment reason and migration guidance. Existing explicit stored choices still take precedence; DO_NOT_TRACK still forces Off.
 - b7d8c21: Reset Full telemetry acknowledgements because the earlier disclosure wording overstated anonymity. Full telemetry is pseudonymous, with a monthly installation hash. Disclosure wording revision 2 participates in the Full acknowledgement hash independently of the data inventory revision used by batches and probes, so existing receipts are stale and saved operator Full choices require acknowledgement of the accurate disclosure before sending resumes.
-  
+
   Under DO_NOT_TRACK, the disclosure offers Off, Lite, and Full operator choices without acknowledging. Nothing is sent while DNT is active; saving Full leaves it pending and requires confirmation after DNT is removed. Correct the legacy telemetryEnabled schema description and restrict operator Full migration guidance to the operator CLI status line.
 - 9285574: Send only completed previous-day Lite aggregates, show first-start notices for CLI and unattended services, and classify telemetry write guards as POST routes so startup coverage succeeds. Unknown channel, distribution and layout-customization facts remain explicit unknowns; version fields use the running build.
-  
+
   Scope monthly Full IDs to their publisher. Tier-lowering requests can include one fixed-enum reason before applying the lower choice, including Off; standalone feedback requires a recorded lowering within ten minutes. Inline and standalone reasons share a limit of one per publisher per UTC day. DNT suppresses both paths. Coalesce dropped outbox observations and retain independent age and byte bounds.
-  
+
   Upgrading immediately replaces the permanent `sha256(uuid)` Full `distinct_id` with a per-publisher monthly ID, breaking existing receiver installation continuity without a migration link. Round Full occurrence and admission timestamps down to the minute. Full omits unknown channels and maps beta to preview; Lite retains unknown. Senders validate daily versions as SemVer; receivers retain their configured release lists.
 
 ## 0.10.0
@@ -26,7 +26,7 @@
 ### Minor Changes
 
 - b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
-  
+
   Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
 
 ## 0.9.0

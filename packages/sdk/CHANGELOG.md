@@ -16,13 +16,13 @@
   (`destination` or `tool`), and `LayoutCatalogContribution` an optional,
   server-issued `lifecycleGeneration` that a reinstall or an enablement change
   replaces (identity only; older readers drop it).
-  
+
   Register the dock-only Activity Review descriptor and renderer through the
   shared pane catalog. Reviews remain captured, nonce-keyed occurrences; the
   catalog does not create blank reviews or permit Project placement.
 - db17288: Publish the git and repository domain for plug-ins: `useReposQuery`, `useGitBranchesQuery`, `useGitCheckoutMutation`, `useGitCommitMutation` and `useGitPushMutation`, with the `DiscoveredRepo`, `ReposLocation`, `ReposResult`, `GitBranch`, `GitCheckoutResult`, `GitCommitResult` and `GitPushResult` types. Every hook takes a location object, `{ projectSlug, workingDir }`, like `useGitStatusQuery`; repository discovery's `projectSlug` is optional. Station's Coding toolbar and New Project form now use them. Commit and push stay operator-only on the server, and a refused write rejects with the server's own message.
 - 5abbeaa: Add public host services for in-process plugins. `useShortcut` registers a shortcut in Station's shortcut registry, where it is listed in the shortcut list and Settings and suppressed under modals. `useShortcutScope` turns on a plugin-owned scope for `when`. `useHost()` provides `clipboard.writeText`, `openExternal` (http and https only), and Station's `prompt` and `confirm` dialogs. `useHostFacts()` returns the pane host's device facts.
-  
+
   Station refuses plugin shortcuts on the reserved command palette, Settings and shortcut-list chords and on the text-editing chords, registers them only for a verified installed plugin, ranks them below Station's own shortcuts, and namespaces their ids so they cannot replace Station's. Prompt and confirm dialogs name the requesting plugin; `openExternal` refuses URLs with credentials and opens the normalised URL. `useKeyboardShortcut` and `useKeyboardShortcuts` are deprecated in favour of `useShortcut`. `station dev` supplies all four new hooks with the same refusals.
 - 463e2e1: Add telemetry producer tokens for external monitoring producers. The CLI gains `station telemetry producers create|list|revoke` and a `--producer=<name>` filter on `station insights get` and `station insights events`. The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and its Insights response carries `producerActivity` and `applied.producer`, which the `UsageInsights` contract now declares.
 
@@ -49,13 +49,13 @@
 ### Minor Changes
 
 - b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
-  
+
   Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
 - 8d1d328: Expose the provider-failure contract subpath and optional runtime-error classification for legacy readers. Built-in server writers require engine-neutral kind, computed retryability and effect phase. Preserve existing diagnostic codes and add kind, retryable and failurePhase to SDK HTTP errors.
-  
+
   Distinguish confirmed pre-effect refusal from uncertain invocation and preserve structured insufficient-quota classification across the model-provider SSE relay.
 - f94583e: Remove exports that had no consumer. Import the replacements where one exists.
-  
+
   - Shared: remove the `./guidance-assets`, `./agent-validation` and
     `./mcp-elicitation-form` subpaths and the root re-exports of
     `skillToGuidanceAsset`, `requiresAgentPrompt` and
@@ -78,7 +78,7 @@
 ### Patch Changes
 
 - e880e9c: Stop `useSessionInventoryQuery` and `useSessionInventoryGroupPage` from refetching forever after a failed read. Only lost authority (401, 403, or the route's non-disclosing 404) revokes cached inventory. A 503, a network failure (status 0) or a projection the contract refuses (reported with the response's own status, usually 200) is now an ordinary query error. Once a read made during the current mount has succeeded, a background refetch keeps the loaded projection in `data` instead of reporting it as loading; a mount whose own read failed still shows nothing cached before it. Every mount, and every key a mounted hook switches to, now makes its own read: `refetchOnMount` is forced to `'always'` for these hooks, overriding a caller's `false`.
-  
+
   `clearSessionInventoryCache` now tombstones matching projection and page entries: it leaves `null` in the cache instead of removing them, so a mounted observer no longer re-creates and refetches a revoked query. Callers that tested for `undefined` after clearing should test for `null`.
 - Updated dependencies [9b1c96b]
 - Updated dependencies [9e9d0ff]

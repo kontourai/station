@@ -19,6 +19,7 @@ import {
 } from '../actionlint-gate.mjs';
 import {
   FAST_CHECKS_PLAN_BUDGET_MS,
+  FAST_CHECKS_SHARD_BUDGET_MS,
   FAST_CHECKS_SHARD_COUNT,
 } from '../lib/fast-checks-shards.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
@@ -1892,7 +1893,7 @@ describe('CI verification workflow contracts', () => {
     }
 
     // Every shard stays inside the lane budget: the shard runner enforces
-    // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,
+    // FAST_CHECKS_SHARD_BUDGET_MS itself, so its step has no step timeout below it,
     // and the job fence covers that budget, every bounded step and the
     // unbounded setup allowance.
     const run = shardSteps.find(
@@ -1905,7 +1906,7 @@ describe('CI verification workflow contracts', () => {
       0,
     );
     expect((shard['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
-      CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
+      FAST_CHECKS_SHARD_BUDGET_MS + boundedMs + 3 * 60_000,
     );
 
     // The selection can include tests that exec zsh, which ubuntu-22.04

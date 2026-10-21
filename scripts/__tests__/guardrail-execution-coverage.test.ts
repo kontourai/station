@@ -218,6 +218,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
  */
 const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
   [
+    'agent-runtime-import-boundary-gate.mjs',
+    'agent-runtime-import-boundary-gate.test.ts proves scanner acceptance and Station-coupling refusal in-process; it does not execute the CLI entry point as a child process',
+  ],
+  [
     'actionlint-gate.mjs',
     'shells out to the external `actionlint` binary, which is not a repository dependency; a run without it proves the shim, not the gate',
   ],

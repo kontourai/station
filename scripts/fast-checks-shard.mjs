@@ -28,6 +28,7 @@ import {
   FAST_CHECKS_PLAN_FILE,
   FAST_CHECKS_RECEIPT_FILE,
   FAST_CHECKS_RECEIPT_KIND,
+  FAST_CHECKS_SHARD_BUDGET_MS,
   FAST_CHECKS_SHARD_COUNT,
   fastChecksShardCount,
   isPassingFastChecksStatus,
@@ -271,8 +272,7 @@ async function runCommand(
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort('exceeded its fast-checks shard budget'),
-      deadlineMs ??
-        (await import('./verification-lanes.mjs')).CI_FAST_TIMEOUT_MS,
+      deadlineMs ?? FAST_CHECKS_SHARD_BUDGET_MS,
     );
     timer.unref?.();
     // A cancelled job signals the runner; abort so the owned Vitest trees are
