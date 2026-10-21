@@ -1,0 +1,7 @@
+{
+  "revision": "fd68e15005d3994b0f69e31b5905232bca5ce733",
+
+  "notes": [
+    {"path":"docs/plans/README.md","note":"Reviewed the generated index delta: one sorted relative link and the exact title of continuity-epic-followthrough.md. The linked plan explicitly states active/unfinished status, published d96 initial base, one branch/one final PR, no acceptance loan, retained account and cursor gaps. No other index row, delivery promise or runtime claim changed. docs:index regeneration and check passed; original missing-index and stale-index-review failures retained.","inputs":["docs/plans/README.md"]}
+  ]
+}
