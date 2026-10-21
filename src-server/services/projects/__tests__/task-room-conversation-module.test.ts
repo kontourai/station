@@ -46,6 +46,7 @@ const makeTempDir = trackTempDirs();
 class RoomAdapter extends GateTestAdapter {
   readonly sessions = new Map<string, ProviderSession>();
   readonly turns: ProviderSendTurnInput[] = [];
+  private readonly invocationByTurn = new Map<string, string>();
   override async startSession(input: ProviderSessionStartInput) {
     const session = {
       ...(await super.startSession(input)),
@@ -67,6 +68,11 @@ class RoomAdapter extends GateTestAdapter {
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     const turnId = `turn-${this.turns.length}`;
+    if (input.invocationId !== undefined)
+      this.invocationByTurn.set(
+        JSON.stringify([input.threadId, turnId]),
+        input.invocationId,
+      );
     const createdAt = new Date().toISOString();
     const session = this.sessions.get(input.threadId);
     if (!session) throw new Error('Missing provider session');
@@ -80,6 +86,9 @@ class RoomAdapter extends GateTestAdapter {
       provider: this.provider,
       threadId: input.threadId,
       turnId,
+      ...(input.invocationId !== undefined
+        ? { invocationId: input.invocationId }
+        : {}),
       method: 'turn.started',
       prompt: input.displayInput ?? input.input,
       createdAt,
@@ -92,11 +101,32 @@ class RoomAdapter extends GateTestAdapter {
   override async listSessions() {
     return [...this.sessions.values()];
   }
+  fail(threadId: string, turnId: string) {
+    const invocationId = this.invocationByTurn.get(
+      JSON.stringify([threadId, turnId]),
+    );
+    this.events.push({
+      eventId: randomUUID(),
+      provider: this.provider,
+      threadId,
+      turnId,
+      ...(invocationId !== undefined ? { invocationId } : {}),
+      createdAt: new Date().toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      message: 'The response stream failed.',
+      retriable: true,
+    });
+  }
   answer(threadId: string, turnId: string, text: string) {
+    const invocationId = this.invocationByTurn.get(
+      JSON.stringify([threadId, turnId]),
+    );
     const base = {
       provider: this.provider,
       threadId,
       turnId,
+      ...(invocationId !== undefined ? { invocationId } : {}),
       createdAt: new Date().toISOString(),
     };
     const session = this.sessions.get(threadId);
@@ -512,17 +542,7 @@ test('a terminal runtime error publishes the failed room line without another re
     const sessionId = body.data.record.sessionId;
     await f.started(sessionId, 'turn-1');
     await f.conversation.reconcile(f.task.id);
-    f.adapter.events.push({
-      eventId: randomUUID(),
-      provider: f.adapter.provider,
-      threadId: sessionId,
-      turnId: 'turn-1',
-      createdAt: new Date().toISOString(),
-      method: 'runtime.error',
-      severity: 'error',
-      message: 'The response stream failed.',
-      retriable: true,
-    });
+    f.adapter.fail(sessionId, 'turn-1');
     let failure: CanonicalRuntimeEvent | undefined;
     await vi.waitFor(() => {
       failure = f.store

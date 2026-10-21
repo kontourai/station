@@ -2656,6 +2656,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: new Date().toISOString(),
       turnId,
+      ...(input.invocationId === undefined
+        ? {}
+        : { invocationId: input.invocationId }),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,

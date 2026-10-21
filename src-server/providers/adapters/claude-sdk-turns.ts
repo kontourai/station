@@ -714,6 +714,9 @@ function endQueuedClaudeTurns(context: ClaudeSdkTurnContext): void {
       threadId: context.record.session.threadId,
       createdAt: context.createdAt,
       turnId: turn.turnId,
+      ...(turn.startEvent?.invocationId === undefined
+        ? {}
+        : { invocationId: turn.startEvent.invocationId }),
       method: 'turn.aborted',
       reason: ENGINE_ENDED_BEFORE_START,
     });
