@@ -80,7 +80,7 @@ describe('the header brand link reveals the Home surface', () => {
   });
 
   test('clicking "Station home" calls showSurface(home) and does not navigate', () => {
-    render(<Header onToggleSettings={vi.fn()} onNavigate={vi.fn()} />);
+    render(<Header onNavigate={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('link', { name: 'Station home' }));
 

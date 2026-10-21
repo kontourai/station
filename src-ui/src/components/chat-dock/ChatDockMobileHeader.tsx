@@ -24,6 +24,7 @@ const loadChatDockMobileOverflowSheet = () =>
 
 export interface ChatDockMobileOverflowActions {
   onTurnIntoTask?: () => void;
+  turnIntoTaskLabel?: string;
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
@@ -140,7 +141,6 @@ export function ChatDockMobileHeader({
   const [isProjectOpen, setIsProjectOpen] = useState(false);
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
-  const titleDescriptionId = useId();
   const activityDescriptionId = useId();
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
@@ -196,7 +196,10 @@ export function ChatDockMobileHeader({
             ref={projectTriggerRef}
             type="button"
             className="chat-dock__mobile-project"
-            aria-label={`Switch project — ${projectSwitcher.projectName}`}
+            // The name repeats the words on screen, caption included, so a
+            // spoken command matching the visible label reaches this control
+            // (WCAG 2.5.3); the icon-only width keeps the same name.
+            aria-label={`Switch project — New chats, ${projectSwitcher.projectName}`}
             aria-haspopup="dialog"
             aria-expanded={isProjectOpen}
             data-dock-drag-passthrough=""
@@ -217,7 +220,7 @@ export function ChatDockMobileHeader({
                 aria-hidden="true"
               >
                 New chats
-              </span>
+              </span>{' '}
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
               </span>
@@ -240,22 +243,28 @@ export function ChatDockMobileHeader({
         type="button"
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
-        aria-label={
+        // The name carries the title and eyebrow on screen, in their order,
+        // so a spoken command matching the visible label reaches it (WCAG
+        // 2.5.3).
+        aria-label={`Chats and tasks — ${sessionTitle}${
           agentIdentity
-            ? `Chats and tasks — ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}`
-            : 'Chats and tasks'
-        }
-        aria-describedby={titleDescriptionId}
+            ? `, ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}${
+                sessionProjectMismatchLabel
+                  ? ` · ${sessionProjectMismatchLabel}`
+                  : ''
+              }`
+            : ''
+        }`}
         onClick={onOpenTaskSwitcher}
       >
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            id={titleDescriptionId}
             title={sessionTitle}
           >
             {sessionTitle}
           </span>
+          {agentIdentity && ' '}
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}

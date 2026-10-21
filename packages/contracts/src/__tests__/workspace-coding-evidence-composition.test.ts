@@ -102,6 +102,44 @@ describe('Coding evidence Workspace Composition migration', () => {
     },
   );
 
+  test.each(['compare', 'composition'] as const)(
+    'admits one opted-in category without declarations for disabled siblings (%s)',
+    (control) => {
+      for (const pane of fixtures()) {
+        const result = selectCodingEvidenceComposition({
+          control,
+          projectId: 'p1',
+          layoutId: 'coding',
+          panes: [pane],
+        });
+        expect(
+          result.instances.map((instance) => instance.descriptorId),
+        ).toEqual([pane.descriptor.id]);
+        expect(result.receipts[0]).toMatchObject({
+          outcome: 'composition-selected',
+          fallbackUsed: false,
+        });
+      }
+      expect(
+        selectCodingEvidenceComposition({
+          control,
+          projectId: 'p1',
+          layoutId: 'coding',
+          panes: [],
+        }),
+      ).toMatchObject({ document: null });
+      const [pane] = fixtures();
+      expect(
+        selectCodingEvidenceComposition({
+          control,
+          projectId: 'p1',
+          layoutId: 'coding',
+          panes: [pane!, pane!],
+        }),
+      ).toMatchObject({ document: null });
+    },
+  );
+
   test.each(['plan', 'readiness', 'trust'] as const)(
     'omits only %s when it has no distinct grant and retains healthy siblings',
     (category) => {

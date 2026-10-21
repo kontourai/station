@@ -7,9 +7,11 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlanReview,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
@@ -29,6 +31,7 @@ type InboxTarget =
     }
   | {
       kind: 'orchestration';
+      requestEventId?: string;
       requestId: string;
       requestKey: string;
       threadId: string;
@@ -179,7 +182,14 @@ export class ApprovalInboxNotificationProvider
         type: 'respondToRequest' as const,
         threadId: target.threadId,
         requestId: target.requestId,
+        ...(target.requestEventId
+          ? { expectedRequestEventId: target.requestEventId }
+          : {}),
         decision,
+        // The typed choice, never the label.
+        ...(actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
+          ? { sessionGrantScope: 'server' as const }
+          : {}),
       };
       await (clientOrigin
         ? this.deps.orchestrationService.dispatch(command, { clientOrigin })
@@ -486,6 +496,16 @@ export function wireApprovalInboxNotifications(
                         },
                       ]
                     : []),
+                  ...(toolRequestServerGrantFromPayload(event.payload) ===
+                  'server'
+                    ? [
+                        {
+                          id: ACCEPT_SERVER_FOR_SESSION_ACTION,
+                          label: STATION_BROWSER_SERVER_GRANT_LABEL,
+                          variant: 'secondary' as const,
+                        },
+                      ]
+                    : []),
                   { id: 'decline', label: 'Deny', variant: 'danger' },
                 ],
             dedupeTag: buildOrchestrationRequestKey(event),
@@ -494,6 +514,7 @@ export function wireApprovalInboxNotifications(
               provider: event.provider,
               ...(projectSlug ? { projectSlug } : {}),
               requestId: event.requestId,
+              requestEventId: event.eventId,
               requestKey: buildOrchestrationRequestKey(event),
               requestKind: 'orchestration',
               requestType: event.requestType,
@@ -635,6 +656,9 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
     }
     return {
       kind: 'orchestration',
+      ...(typeof notification.metadata?.requestEventId === 'string'
+        ? { requestEventId: notification.metadata.requestEventId }
+        : {}),
       requestId,
       requestKey,
       threadId,
@@ -656,10 +680,16 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
   return null;
 }
 
+/** The inbox action of the server-wide Station browser session grant. */
+const ACCEPT_SERVER_FOR_SESSION_ACTION = 'acceptForSessionServer';
+
 function mapOrchestrationDecision(
   actionId: string,
 ): 'accept' | 'acceptForSession' | 'decline' {
-  if (actionId === 'acceptForSession') {
+  if (
+    actionId === 'acceptForSession' ||
+    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
+  ) {
     return 'acceptForSession';
   }
   if (actionId === 'accept') {

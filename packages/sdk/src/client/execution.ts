@@ -363,7 +363,13 @@ export type QueuedFollowUpResult =
  * skill start); any other busy send is refused as `sendExecutionMessage`'s
  * is. So is every busy send to a Station that predates the inbox, which
  * ignores `whenBusy`: keep the message on a `provider_turn_in_progress` or
- * `provider_session_starting` refusal, exactly as before.
+ * `provider_session_starting` refusal. For a begun keyed refusal with one of
+ * those busy codes, `client_turn_settled` HTTP409 requires authorized inspection
+ * of the original key proving its retained settlement. Other first definitive
+ * adapter refusals preserve the original actionable error envelope even when
+ * the key has closed; a later authorized lookup or same-key retry reports the
+ * retained closed-key409. Never retry a settled key or generate a replacement
+ * automatically. A deliberate new request requires a new key.
  */
 export async function queueExecutionMessage(
   apiBase: string,

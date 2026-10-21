@@ -63,15 +63,23 @@ function deviceIdentity(
  * The principal a request authenticated by this paired device's own
  * credential resolves to through the resolver below, when that request
  * carries no ingress (WhoIs) identity and no deployment-account session: the
- * device's person binding when it is a tailnet binding, otherwise the device
+ * device's person binding when it is a tailnet binding; else the operator
+ * when the credential was minted with home-possession (`locality`, the
+ * desktop app's local grant and the local browser UI's bootstrap — the
+ * resolver reads the same stamp from the request); otherwise the device
  * itself. Background work acting for a device (the agent-activity publisher
- * reading what that phone may see) uses this so it reads exactly what the
- * device's own requests read, never a process-wide identity.
+ * reading what that phone may see, notification focus and audience) uses
+ * this so it reads exactly what the device's own requests read, never a
+ * process-wide identity. `locality` is required so no caller can forget it
+ * (`DevicePairingService.deviceLocality`).
  */
 export function pairedDevicePrincipal(
   device: Pick<PairedDevice, 'id' | 'name' | 'principalBinding'>,
+  locality: 'home-possession' | undefined,
 ): PrincipalRef {
   const binding = device.principalBinding;
+  const operatorAuthority =
+    locality === 'home-possession' ? { locality } : undefined;
   return resolveStationPrincipal(
     binding && !('kind' in binding)
       ? {
@@ -79,9 +87,11 @@ export function pairedDevicePrincipal(
           subject: binding.subject,
           displayName: binding.subject,
         }
-      : deviceIdentity(device),
+      : operatorAuthority
+        ? null
+        : deviceIdentity(device),
     'personal',
-    undefined,
+    operatorAuthority,
     undefined,
     { resolveOperatorDisplay: () => getCachedUser().alias },
   );

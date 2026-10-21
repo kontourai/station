@@ -18,6 +18,10 @@ import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPrevi
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
 import { writeFilePreviewPaneState } from '../../workspace-panes/filePreviewPaneStateStorage';
 import {
+  createPluginPaneStatePreparation,
+  removePluginPaneState,
+} from '../../workspace-panes/pluginPaneOccurrence';
+import {
   DOCK_REGION_IDS,
   INSTANCE_SURFACE_PREFIXES,
   isInstanceSurface,
@@ -36,6 +40,7 @@ import {
 const NONCE = 'a'.repeat(32);
 const PREVIEW_ID = `file-preview:${NONCE}`;
 const BROWSER_ID = `browser-preview:${NONCE}`;
+const PLUGIN_PANE_ID = `plugin-pane:${NONCE}`;
 const PR_ID = 'pr:github.com/kontourai/station#2049';
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 const LAYOUT_UUID = '1d61ce22-7f4b-4282-86f0-019ef1bc223c';
@@ -51,10 +56,20 @@ const LAYOUT_ID = `layout:${PROJECT_UUID}/${LAYOUT_UUID}`;
  */
 const FAMILIES: readonly {
   prefix: string;
-  descriptorId: string;
+  descriptorId: string | null;
   admitted: readonly string[];
   refused: readonly string[];
 }[] = [
+  {
+    prefix: 'activity-review:',
+    descriptorId: 'pane:builtin:activity-review',
+    admitted: [`activity-review:${NONCE}`],
+    refused: [
+      'activity-review:',
+      'activity-review:abc',
+      `activity-review:${'z'.repeat(32)}`,
+    ],
+  },
   {
     prefix: 'pr:',
     descriptorId: 'pane:builtin:workspace-pull-request',
@@ -118,6 +133,20 @@ const FAMILIES: readonly {
       `layout:${PROJECT_UUID}/`,
       `layout:${PROJECT_UUID}/${LAYOUT_UUID}/extra`,
       `layout:${PROJECT_UUID}/coding`,
+    ],
+  },
+  // A related plugin pane: each occurrence names its plugin's own descriptor
+  // in its record, so the family names none.
+  {
+    prefix: 'plugin-pane:',
+    descriptorId: null,
+    admitted: [PLUGIN_PANE_ID],
+    refused: [
+      'plugin-pane:',
+      'plugin-pane:abc',
+      `plugin-pane:${'z'.repeat(32)}`,
+      `plugin-pane:${'a'.repeat(31)}`,
+      `plugin-pane:${'a'.repeat(33)}`,
     ],
   },
 ];
@@ -438,6 +467,45 @@ describe('instance-keyed dock panes (#2049)', () => {
     expect(
       pane()?.instance({ projectId: 'other-uuid', projectSlug: 'other' }),
     ).toBeNull();
+  });
+
+  test("a plugin pane names its plugin's descriptor, binds only its own Project, and has no occurrence without its record", () => {
+    const pane = () => regionSurfacePane(PLUGIN_PANE_ID);
+    expect(pane()?.surfaceId).toBe(PLUGIN_PANE_ID);
+    expect(pane()?.instance(PROJECT)).toBeNull();
+    expect(
+      createPluginPaneStatePreparation(window.localStorage, PLUGIN_PANE_ID, {
+        version: 1,
+        projectId: PROJECT.projectId,
+        projectSlug: PROJECT.projectSlug,
+        pluginId: 'reports',
+        generation: 'plugin:reports@1.0.0:local:reports:plugins/reports',
+        descriptorId: 'pane:plugin%3Areports:report',
+        modeId: 'project',
+        key: 'weekly',
+        title: 'Weekly report',
+        scope: { taskId: 'task-1' },
+      }).prepare(),
+    ).toBe(true);
+    expect(pane()?.descriptorId).toBe('pane:plugin%3Areports:report');
+    expect(pane()?.title).toBe('Weekly report');
+    const instance = pane()?.instance(PROJECT);
+    if (!instance) throw new Error('the occurrence must mint');
+    expect(String(instance.descriptorId)).toBe('pane:plugin%3Areports:report');
+    expect(String(instance.stateKey)).toBe(PLUGIN_PANE_ID);
+    // The recorded scope, and no catalog authority: what may render it is
+    // attached where it renders.
+    expect(instance.boundContext).toEqual({
+      projectId: 'project-uuid',
+      taskId: 'task-1',
+    });
+    expect(regionSurfaceOfPane(instance)).toBe(PLUGIN_PANE_ID);
+    expect(
+      pane()?.instance({ projectId: 'other-uuid', projectSlug: 'other' }),
+    ).toBeNull();
+    removePluginPaneState(window.localStorage, PLUGIN_PANE_ID);
+    expect(pane()?.instance(PROJECT)).toBeNull();
+    expect(pane()?.isCanonical(instance)).toBe(false);
   });
 
   test('a file preview whose state is gone keeps its tab and has no occurrence', () => {

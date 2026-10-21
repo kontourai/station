@@ -5,7 +5,8 @@ const SUMMARIES: Readonly<Record<string, string>> = {
     'Use a second model to screen approval requests. Adds a model call for each screening.',
   defaultApprovalMode:
     'Permissions for new sessions, including unattended runs. Full access removes the sandbox and approval prompts.',
-  defaultMaxTurns: 'Maximum steps per agent run.',
+  defaultMaxTurns:
+    'Fallback step limit for VoltAgent runs. Strands and native engines do not apply it.',
   defaultMaxOutputTokens:
     'Maximum tokens per response. Leave empty to use the model’s limit.',
   defaultWorkspaceIsolation:

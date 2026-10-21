@@ -1,0 +1,7 @@
+{
+  "revision": "9373b37983ed5cd705f9f5a9e16b6c9e1942369e",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Scoped Lane 6 review: the cited CLI reference adds publisher:writer telemetry choice/outbox examples and widens its publisher wording. Triage collection, consent, redaction, launch flags and its documented installed-agent/provider limits are unchanged. This is a reference-delta review, not a new triage runtime qualification.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md","packages/cli/src/cli.ts"]}
+  ]
+}

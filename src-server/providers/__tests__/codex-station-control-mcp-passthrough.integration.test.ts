@@ -28,6 +28,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
   codexToolServersDelivered: { add: vi.fn() },
 }));
 
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createRuntimeSelfIntegration } from '../../runtime/agents/runtime-default-agent.js';
 import {
   builtinStationControlServerPath,
@@ -112,6 +113,12 @@ function toolServersReport(input: ProviderSessionStartInput) {
   )?.toolServers;
 }
 
+const makeWorkspace = trackTempDirs();
+
+function isolatedWorkspace(): string {
+  return makeWorkspace('station-codex-control-');
+}
+
 describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station-control integration wire-safe', () => {
   test('an explicit engine override refuses a tool that resolved but cannot be delivered by the adapter', async () => {
     const resolver = createSessionAgentResolver({
@@ -121,6 +128,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     });
     const resolved = await resolver({
       threadId: 'override-delivery-refusal',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent', executionAgentId: 'codex' },
     });
@@ -144,6 +152,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
 
     const resolved = await resolver({
       threadId: 'thread-e2e-codex',
+      cwd: isolatedWorkspace(),
       provider: 'codex',
       metadata: { agentSlug: 'ops-agent' },
     });
@@ -199,9 +208,16 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
     expect(capturedArgs).toEqual([
       '-c',
       'mcp_servers.station-control.url="http://127.0.0.1:4321/mcp/station-control?token=minted-for-thread-e2e-codex"',
-      // No confinement given: confined, so its writable roots are pinned (#3800).
+      // No confinement given: confined, so it runs under Station's permission
+      // profile with its writable roots pinned (#3800).
+      '-c',
+      'default_permissions="station-workspace"',
+      '-c',
+      'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
       '-c',
       'sandbox_workspace_write.writable_roots=[]',
+      '-c',
+      'approvals_reviewer="user"',
     ]);
     // The stale persisted port (9999) baked into the resolved record never
     // appears anywhere in the spawn call, and no env var carries it either

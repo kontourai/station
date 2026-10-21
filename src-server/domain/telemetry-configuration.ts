@@ -2,6 +2,7 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   resolveTelemetryTier,
   TELEMETRY_TIERS,
+  type TelemetryPublisherId,
   type TelemetryPublisherStatus,
   type TelemetryTier,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -14,7 +15,7 @@ import { STATION_AUTHOR_TELEMETRY_ENDPOINT } from './telemetry-build-constants.j
 
 export interface ResolvedTelemetryConfiguration {
   publishers: Record<
-    'kontour' | 'operator',
+    TelemetryPublisherId,
     TelemetryPublisherStatus & {
       source: 'config' | 'env' | 'default';
     }
@@ -27,13 +28,14 @@ export interface ResolvedTelemetryConfiguration {
 export function resolveTelemetryConfiguration(
   config: AppConfig,
   environment: NodeJS.ProcessEnv,
-  disclosures: Partial<Record<'kontour' | 'operator', boolean>> = {},
+  disclosures: Partial<Record<TelemetryPublisherId, boolean>> = {},
   policies: Partial<
     Record<
-      'kontour' | 'operator',
+      TelemetryPublisherId,
       { distributionDefault?: TelemetryTier; operatorPolicy?: TelemetryTier }
     >
   > = {},
+  publisherIds: TelemetryPublisherId[] = [],
 ): ResolvedTelemetryConfiguration {
   const tierEnvironment = resolveEnvironmentValue<TelemetryTier>(
     'STATION_TELEMETRY_TIER',
@@ -49,12 +51,13 @@ export function resolveTelemetryConfiguration(
     environment,
   );
   const resolvePublisher = (
-    publisher: 'kontour' | 'operator',
+    publisher: TelemetryPublisherId,
   ): ResolvedTelemetryConfiguration['publishers']['operator'] => {
     const acknowledged = disclosures[publisher] === true;
     const userChoice =
       config.telemetryTier?.[publisher] ??
-      (config.telemetryTier === undefined &&
+      (!publisher.startsWith('publisher:') &&
+      config.telemetryTier === undefined &&
       config.telemetryEnabled !== undefined
         ? config.telemetryEnabled === false
           ? 'off'
@@ -71,8 +74,11 @@ export function resolveTelemetryConfiguration(
           : undefined);
     const resolved = resolveTelemetryTier({
       ...policies[publisher],
+      operatorPolicy:
+        config.telemetryPublisherPolicy?.[publisher] ??
+        policies[publisher]?.operatorPolicy,
       distributionDefault:
-        environmentTier === 'off'
+        publisher.startsWith('publisher:') || environmentTier === 'off'
           ? 'off'
           : policies[publisher]?.distributionDefault,
       userChoice,
@@ -95,7 +101,8 @@ export function resolveTelemetryConfiguration(
       ...(userChoice !== undefined ? { userChoice } : {}),
     };
   };
-  const publishers = {
+  const publishers: ResolvedTelemetryConfiguration['publishers'] = {
+    ...Object.fromEntries(publisherIds.map((id) => [id, resolvePublisher(id)])),
     kontour: resolvePublisher('kontour'),
     operator: resolvePublisher('operator'),
   };

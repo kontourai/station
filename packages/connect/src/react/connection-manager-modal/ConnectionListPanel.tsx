@@ -89,6 +89,8 @@ interface ConnectionListPanelProps {
    */
   discoveryAvailable: boolean;
   listFooterContent?: ReactNode;
+  /** Host-owned controls for the expanded saved Station row. */
+  renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
 }
 
 /**
@@ -118,12 +120,14 @@ function ConnectionRow({
   canRemoveSharedProfiles,
   sharedProfilesVisibleToCli,
   busy,
+  renderConnectionDetails,
 }: {
   connection: SavedConnection;
   canEditSharedProfiles?: boolean;
   canRemoveSharedProfiles?: boolean;
   sharedProfilesVisibleToCli?: boolean;
   busy?: boolean;
+  renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
   activeConnectionId?: string;
   pendingConnectionId?: string;
   onSelect: (connection: SavedConnection) => void;
@@ -290,6 +294,7 @@ function ConnectionRow({
             >
               Edit Station
             </button>
+            {renderConnectionDetails?.(connection)}
           </div>
         )}
         {isLocalServerDown ? (
@@ -602,6 +607,7 @@ export function ConnectionListPanel({
   onDiscover,
   discoveryAvailable,
   listFooterContent,
+  renderConnectionDetails,
 }: ConnectionListPanelProps) {
   const selected = connections.find(
     (connection) => connection.id === activeConnectionId,
@@ -765,6 +771,7 @@ export function ConnectionListPanel({
               canRemoveSharedProfiles={canRemoveSharedProfiles}
               sharedProfilesVisibleToCli={sharedProfilesVisibleToCli}
               busy={editPending}
+              renderConnectionDetails={renderConnectionDetails}
               onRestartInjectedConnection={onRestartInjectedConnection}
               localStationOwnerId={localStationOwnerId}
               getStatus={getStatus}

@@ -6,11 +6,12 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
-import type {
-  Notification,
-  NotificationEnvelopeV1,
-  ScheduleNotificationOpts,
-  SurfaceId,
+import {
+  type Notification,
+  type NotificationEnvelopeV1,
+  type ScheduleNotificationOpts,
+  type SurfaceId,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -162,7 +163,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'approval-inbox',
   'device-pairing',
   'scheduler',
-  'turn-completion',
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 ]);
 
 /**
@@ -176,7 +177,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
  */
 const CARD_MARK_WRITER_SOURCES: ReadonlySet<string> = new Set([
   'approval-inbox',
-  'turn-completion',
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 ]);
 
 /** Provider ids a provider may not register under: they name REST/agent writes. */

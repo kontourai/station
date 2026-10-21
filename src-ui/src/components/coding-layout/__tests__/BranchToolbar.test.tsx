@@ -12,7 +12,8 @@ let branchesLoading = false;
 let branchesError: Error | null = null;
 const refetchBranches = vi.fn();
 
-vi.mock('../../../hooks/useGitActions', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useReposQuery: () => ({
     data: reposData,
     isLoading: reposLoading,

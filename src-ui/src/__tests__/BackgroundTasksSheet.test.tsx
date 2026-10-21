@@ -4,10 +4,15 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../contexts/background-tasks-store';
+import type { SessionIconAgent } from '../utils/sessionDisplay';
+
+const agents: SessionIconAgent[] = [];
+vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => agents }));
 
 const useChatBackgroundTasks = vi.fn();
 const interruptTask = vi.fn();
 const useOrchestrationSessionQuery = vi.fn();
+const useOrchestrationSessionActivityQuery = vi.fn();
 const useInterruptDelegatedTaskMutation = vi.fn();
 // station#1877: the provider card's own task-scoped stop.
 const useStopProviderTaskMutation = vi.fn();
@@ -17,6 +22,8 @@ vi.mock('../hooks/useBackgroundTasks', () => ({
     useChatBackgroundTasks(...args),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) =>
+    useOrchestrationSessionActivityQuery(...args),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
@@ -81,11 +88,25 @@ function renderSheet(view: {
 
 describe('BackgroundTasksSheet', () => {
   beforeEach(() => {
+    agents.length = 0;
     localStorage.clear();
     window.history.replaceState({}, '', '/background-tasks-test');
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-29T00:01:05.000Z'));
     interruptTask.mockReset();
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockImplementation(() => {
+      const detail = useOrchestrationSessionQuery();
+      return {
+        data: detail.data && {
+          session: detail.data.session,
+          events: detail.data.events.map((event: unknown, index: number) => ({
+            sequence: index + 1,
+            event,
+          })),
+        },
+      };
+    });
     useOrchestrationSessionQuery.mockReset();
     useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
     useInterruptDelegatedTaskMutation.mockReset();
@@ -237,8 +258,52 @@ describe('BackgroundTasksSheet', () => {
     expect(onOpenTranscript).toHaveBeenCalledWith('task:delegate-1');
   });
 
+  test.each(['running', 'completed'] as const)(
+    '%s delegate retains its own configured artwork and recorded engine',
+    (state) => {
+      agents.push(
+        { name: 'Owl', slug: 'owl', icon: '/owl.png' },
+        { name: 'Parent', slug: 'parent', icon: '/parent.png' },
+      );
+      useOrchestrationSessionQuery.mockReturnValue({
+        data: {
+          session: {
+            threadId: 'task:owl',
+            provider: 'codex',
+            assignedAgentSlug: 'parent',
+            delegation: { targetId: 'owl' },
+          },
+          events: [],
+        },
+      });
+      const entry = runningEntry({
+        id: 'task:owl',
+        kind: 'agent',
+        source: 'delegate-session',
+        delegateThreadId: 'task:owl',
+        state,
+      });
+      renderSheet({
+        running: state === 'running' ? [entry] : [],
+        finished: state === 'completed' ? [entry] : [],
+      });
+      if (state === 'completed')
+        fireEvent.click(screen.getByText('Finished (1)'));
+      expect(
+        screen
+          .getByRole('img', { name: 'Owl · Codex' })
+          .querySelector('img')
+          ?.getAttribute('src'),
+      ).toBe('/owl.png');
+      expect(document.querySelector('img[src="/parent.png"]')).toBeNull();
+      expect(
+        document.querySelector('.child-work-identity__engine'),
+      ).not.toBeNull();
+    },
+  );
+
   test('delegate usage is derived from the canonical persisted event stream', () => {
-    useOrchestrationSessionQuery.mockReturnValue({
+    const persisted = {
       data: {
         events: [
           {
@@ -248,6 +313,28 @@ describe('BackgroundTasksSheet', () => {
             createdAt: '2026-07-29T00:00:20.000Z',
             turnId: 'turn-1',
             prompt: 'Audit the release workflow',
+          },
+          {
+            method: 'tool.started',
+            provider: 'claude-code',
+            threadId: 'task:delegate-2',
+            createdAt: '2026-07-29T00:00:20.100Z',
+            turnId: 'turn-1',
+            itemId: 'own-tool',
+            toolCallId: 'own-tool',
+            toolName: 'Read',
+            arguments: {},
+          },
+          {
+            method: 'tool.started',
+            provider: 'claude-code',
+            threadId: 'another-child',
+            createdAt: '2026-07-29T00:00:20.200Z',
+            turnId: 'turn-1',
+            itemId: 'other-tool',
+            toolCallId: 'other-tool',
+            toolName: 'WrongChildTool',
+            arguments: {},
           },
           {
             method: 'token-usage.updated',
@@ -269,6 +356,16 @@ describe('BackgroundTasksSheet', () => {
           },
         ],
       },
+    };
+    useOrchestrationSessionQuery.mockReturnValue(persisted);
+    useOrchestrationSessionActivityQuery.mockReturnValue({
+      data: {
+        session: { threadId: 'task:delegate-2', provider: 'claude' },
+        events: persisted.data.events.slice(0, 3).map((event, index) => ({
+          sequence: index + 1,
+          event,
+        })),
+      },
     });
     renderSheet({
       running: [
@@ -282,8 +379,27 @@ describe('BackgroundTasksSheet', () => {
       finished: [],
     });
 
+    expect(
+      screen.getByText('Read', { selector: '.child-work-activity__name' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('WrongChildTool')).toBeNull();
+    expect(screen.queryByText('150 tokens · 1 tool use')).toBeNull();
+    expect(
+      useOrchestrationSessionQuery.mock.calls.some(
+        ([threadId, config]) =>
+          threadId === 'task:delegate-2' && config?.enabled,
+      ),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    expect(
+      useOrchestrationSessionQuery.mock.calls.some(
+        ([threadId, config]) =>
+          threadId === 'task:delegate-2' && config?.enabled,
+      ),
+    ).toBe(true);
     expect(screen.getByText('150 tokens · 1 tool use')).not.toBeNull();
-    expect(screen.getByText('Audit the release workflow')).not.toBeNull();
+    expect(screen.queryByText('Audit the release workflow')).toBeNull();
+    expect(screen.getByText('Run tests')).not.toBeNull();
   });
 
   // archive#4196: "N tokens" must not present a cache-exclusive figure as
@@ -330,6 +446,8 @@ describe('BackgroundTasksSheet', () => {
 
     // 150 + 9,000 + 400 — the pre-fix line said "150 tokens" while the
     // session had put 9,520 prompt-side tokens in front of the model.
+    expect(screen.queryByText('9,550 tokens · 1 tool use')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('9,550 tokens · 1 tool use')).not.toBeNull();
   });
 
@@ -373,6 +491,8 @@ describe('BackgroundTasksSheet', () => {
 
     // Codex's inclusivity is 'unverified': 35 + 4 could double-count, so
     // the provider's own total stands.
+    expect(screen.queryByText('35 tokens · 1 tool use')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('35 tokens · 1 tool use')).not.toBeNull();
   });
 });

@@ -16,6 +16,9 @@ import { createHash } from 'node:crypto';
  * Maximum adaptive shards; older candidates retain the four-way fallback.
  */
 export const FAST_CHECKS_SHARD_COUNT = 4;
+// Sequential ordinary/heavy/exclusive groups share this completion fence.
+// The queue's measured first two groups consumed 851s before exclusive work.
+export const FAST_CHECKS_SHARD_BUDGET_MS = 20 * 60_000;
 // #3101, 2026-10-01: sampled shards spent 1.4 min setting up for 0.2 min
 // of tests (86% setup) in a 20-job pool. Without duration estimates, use
 // 40 files per runner as an initial proxy; tune from hosted plan/run data.
@@ -29,6 +32,16 @@ export function fastChecksShardCount(fileCount) {
   );
 }
 const FAST_CHECKS_MAX_SHARD_COUNT = 16;
+/** The required status context; ruleset 21782867 names it exactly. */
+export const MERGE_QUEUE_REGRESSION_CHECK = 'Merge-queue regression';
+/**
+ * The deferred lanes whose broader obligations require full regression.
+ * Narrower lanes (an E2E or packaging leg) are not re-run there: the owner
+ * chose this scope to keep the queue under the shared runner cap (#3149).
+ * A fast-checks run that defers one of these did not cover the change, so
+ * it is provisional, never complete (#1706).
+ */
+export const FULL_REGRESSION_LANES = Object.freeze(['ci-fast', 'test-full']);
 export const FAST_CHECKS_PLAN_KIND = 'station-fast-checks-plan';
 /**
  * #2855: the plan step's own fence in ci.yml ("Plan the affected-test
@@ -381,6 +394,13 @@ export function verifyFastChecks({
       );
     if (!receipt.passed)
       findings.push(`shard ${shard} reported '${receipt.status}'`);
+    // #1706: a deferred plan cannot produce a complete shard; the runner
+    // derives `provisional` from the plan's deferral, so `completed` here is
+    // a label that contradicts the plan.
+    if (receipt.status === 'completed' && plan.deferredLanes.length)
+      findings.push(
+        `shard ${shard} reported 'completed' for a plan deferred to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}`,
+      );
     covered.push(...receipt.files);
     notes.push(
       `shard ${shard}: ${receipt.status}, ${receipt.files.length} file(s), ${receipt.counts.executed} test(s) executed (attempt ${receipt.runAttempt})`,
@@ -396,5 +416,16 @@ export function verifyFastChecks({
     notes.push(
       `selection deferred to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}; full-regression remains the required completion gate`,
     );
-  return { findings, notes };
+  return { findings, notes, suiteDeferrals: suiteDeferrals(plan) };
+}
+
+/**
+ * The plan's deferred lanes whose suite fast-checks did not run (#1706).
+ * A pass over such a plan is provisional: the merge queue's full regression
+ * keys on the same list, so it owns the deferred work before merge.
+ */
+function suiteDeferrals(plan) {
+  return (plan?.deferredLanes ?? [])
+    .map((lane) => lane.id)
+    .filter((id) => FULL_REGRESSION_LANES.includes(id));
 }

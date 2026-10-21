@@ -8,6 +8,10 @@
   "required": ["schemaVersion"],
   "properties": {
     "schemaVersion": { "const": "1.0" },
+    "telemetry": {
+      "type": "object",
+      "description": "Publisher telemetry, strictly validated by the shared bounded declaration parser."
+    },
     "title": { "type": "string", "minLength": 1, "maxLength": 128 },
     "permissions": {
       "type": "array",

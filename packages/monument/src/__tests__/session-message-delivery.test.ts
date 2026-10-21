@@ -7,16 +7,18 @@ import {
   type SessionSteerResult,
 } from '../index.js';
 
-/** Ports that record every effect the seam asks for. */
+/** Ports that record every effect the seam asks for, and the text each was handed. */
 function harness(options: {
   busy: boolean;
   steer?: SessionSteerResult;
   start?: 'started' | 'indeterminate';
 }) {
   const calls: string[] = [];
+  const handed: string[] = [];
   const ports: SessionMessageDeliveryPorts = {
     isBusy: () => options.busy,
-    start: async ({ clientTurnId }) => {
+    start: async ({ clientTurnId, text }) => {
+      handed.push(text);
       calls.push(`start ${clientTurnId}`);
       return options.start === 'indeterminate'
         ? { outcome: 'indeterminate' }
@@ -27,12 +29,13 @@ function harness(options: {
             turnId: 't',
           };
     },
-    steer: async ({ clientInputId }) => {
+    steer: async ({ clientInputId, text }) => {
+      handed.push(text);
       calls.push(`steer ${clientInputId}`);
       return options.steer ?? { outcome: 'steered', turnId: 'live' };
     },
   };
-  return { calls, ports };
+  return { calls, handed, ports };
 }
 const send = (
   ports: SessionMessageDeliveryPorts,
@@ -197,5 +200,59 @@ describe('session message delivery: which branch a send takes', () => {
       recordDecision: (branch) => again.push(branch),
     });
     expect(again).toEqual([]);
+  });
+});
+
+describe('session message delivery: opaque host-prepared text', () => {
+  test.each(['start', 'steer'] as const)(
+    '%s preserves the host message bytes',
+    async (mode) => {
+      const { handed, ports } = harness({ busy: mode === 'steer' });
+      const text = 'Host header\n> already framed message\r\n\u2028';
+      await send(ports, mode, { text });
+      expect(handed).toEqual([text]);
+    },
+  );
+});
+
+describe('session message delivery: host preparation ordering', () => {
+  test.each(['start', 'steer'] as const)(
+    'prepares %s text before recording or effect',
+    async (mode) => {
+      const { calls, handed, ports } = harness({ busy: mode === 'steer' });
+      ports.prepareText = (text) => {
+        calls.push('prepare');
+        return `prepared:${text}`;
+      };
+      await send(ports, mode, { recordDecision: () => calls.push('record') });
+      expect(calls).toEqual(['prepare', 'record', `${mode} sc-id`]);
+      expect(handed).toEqual(['prepared:hi']);
+    },
+  );
+  test.each(['start', 'steer'] as const)(
+    'a preparation refusal prevents the %s decision and effect',
+    async (mode) => {
+      const { calls, ports } = harness({ busy: mode === 'steer' });
+      ports.prepareText = () => {
+        throw new Error('host preparation refused');
+      };
+      await expect(
+        send(ports, mode, { recordDecision: () => calls.push('record') }),
+      ).rejects.toThrow('host preparation refused');
+      expect(calls).toEqual([]);
+    },
+  );
+  test.each([
+    ['start', true],
+    ['steer', false],
+  ] as const)('does not prepare a refused %s branch', async (mode, busy) => {
+    const { calls, ports } = harness({ busy });
+    ports.prepareText = () => {
+      throw new Error('must not prepare');
+    };
+    await expect(send(ports, mode)).resolves.toMatchObject({
+      outcome: mode === 'start' ? 'session_busy' : 'no_active_turn',
+    });
+    expect(calls).toEqual([]);
   });
 });

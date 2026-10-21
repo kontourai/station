@@ -504,7 +504,13 @@ for (const via of ['execute', 'executeSync'] as const) {
           prepare: (db) => db.exec(schema),
         }),
     },
-    kernelConformanceCasesFor(['turnBoundary']),
+    // This host predates intent columns. Configured layouts run the prepared
+    // protocol conformance in sqlite-prepared-intent.test.ts.
+    kernelConformanceCasesFor(['turnBoundary']).filter(
+      (entry) =>
+        !entry.name.startsWith('prepared ') &&
+        !entry.name.startsWith('invocation terminal:'),
+    ),
   );
 }
 

@@ -19,7 +19,14 @@ test('Customize opens the existing management routes and keeps modified links na
     screen
       .getAllByRole('link')
       .map((link) => link.textContent?.replace('›', '').trim()),
-  ).toEqual(['Agents', 'Skills', 'Connections', 'Plugins']);
+  ).toEqual([
+    'Agents',
+    'Skills',
+    'Connections',
+    'Plugins',
+    'Appearance',
+    'Settings',
+  ]);
   fireEvent.click(screen.getByRole('link', { name: 'Agents' }));
   expect(onNavigate).toHaveBeenCalledWith('/agents');
   fireEvent.click(screen.getByRole('link', { name: 'Connections' }));
@@ -33,6 +40,10 @@ test('Customize opens the existing management routes and keeps modified links na
     screen.getByRole('link', { name: 'Skills' }).getAttribute('href'),
   ).toBe('/guidance');
   expect(screen.queryByRole('link', { name: 'Developer' })).toBeNull();
+  fireEvent.click(screen.getByRole('link', { name: 'Appearance' }));
+  expect(onNavigate).toHaveBeenCalledWith('/appearance');
+  fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+  expect(onNavigate).toHaveBeenCalledWith('/settings');
 });
 
 test('Customize advertises Developer only while enabled on this device', () => {
@@ -41,4 +52,11 @@ test('Customize advertises Developer only while enabled on this device', () => {
   expect(
     screen.getByRole('link', { name: 'Developer' }).getAttribute('href'),
   ).toBe('/developer');
+  // Appearance sits before Developer and Settings closes the list.
+  expect(
+    screen
+      .getAllByRole('link')
+      .slice(-3)
+      .map((link) => link.textContent?.replace('›', '').trim()),
+  ).toEqual(['Appearance', 'Developer', 'Settings']);
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "9373b37983ed5cd705f9f5a9e16b6c9e1942369e",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Scoped Lane 6 review: checked the cited CLI reference additions for publisher telemetry status/set/outbox against runTelemetryCommand and its focused tests. Existing client targeting, install/release guidance and availability claims are unaffected; no registry publication or live-version claim is renewed.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/cli.ts"]}
+  ]
+}

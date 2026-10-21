@@ -1,0 +1,7 @@
+{
+  "revision": "f0f6c97785656614dbef531c229254b9569c92a8",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"desktop_update.rs now refuses checks while a cached package is restored at startup and keeps the package if a check was already running; the guide's restore description (restored shortly after start, state idle meanwhile, then one feed check) still holds and needs no change.","inputs":["docs/guides/desktop-build.md","src-desktop/src/desktop_update.rs"]}
+  ]
+}

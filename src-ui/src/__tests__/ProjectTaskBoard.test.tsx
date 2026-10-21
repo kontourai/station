@@ -36,12 +36,12 @@ test('keeps every recorded work state visible and selects the exact task without
     />,
   );
   expect(
-    within(screen.getByRole('region', { name: 'Backlog' })).getAllByRole(
+    within(screen.getByRole('region', { name: 'To do' })).getAllByRole(
       'button',
     ),
   ).toHaveLength(3);
   expect(
-    within(screen.getByRole('region', { name: 'Review' })).getAllByRole(
+    within(screen.getByRole('region', { name: 'In review' })).getAllByRole(
       'button',
     ),
   ).toHaveLength(2);

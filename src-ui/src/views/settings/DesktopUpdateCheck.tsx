@@ -1,125 +1,275 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import {
+  DESKTOP_UPDATE_DOWNLOAD_POLICIES,
+  type DesktopUpdateDownloadPolicy,
+  type DesktopUpdateState,
+} from '@kontourai/station-contracts/desktop-update';
+import { useId, useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { DesktopUpdateRestartDialog } from '../../components/desktop-update/DesktopUpdateRestartDialog';
+import { downloadPercent } from '../../components/desktop-update/desktopUpdatePresentation';
+import { useDesktopRestartServerImpact } from '../../components/desktop-update/useDesktopRestartServerImpact';
+import { useDesktopUpdateState } from '../../components/desktop-update/useDesktopUpdateState';
+import { SkeletonBlock } from '../../components/state';
 import {
   checkForDesktopUpdate,
-  type DesktopUpdateOutcome,
+  downloadDesktopUpdate,
+  setDesktopUpdatePolicy,
 } from '../../platform/native/desktopUpdate';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { formatBytes } from '../../utils/formatBytes';
 import { TechnicalDetails } from './coreUpdatePresentation';
+import '../../components/desktop-update/DesktopUpdate.css';
 
-/** Explicit checks report failures; the automatic launch check stays quiet. */
+const POLICY_LABELS: Record<DesktopUpdateDownloadPolicy, string> = {
+  never: 'Never',
+  'after-24h': 'After 24 hours',
+  immediately: 'Immediately',
+};
+
+function formatTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString();
+}
+
+function StatusLine({ state }: { state: DesktopUpdateState }) {
+  const { phase, currentVersion } = state;
+  switch (phase.status) {
+    case 'disabled':
+      return (
+        <p role="status">
+          This build of Station {currentVersion} has no desktop update channel,
+          so it does not check for updates.
+        </p>
+      );
+    case 'idle':
+      return (
+        <p role="status">
+          Station {currentVersion}. It checks for updates while it runs.
+        </p>
+      );
+    case 'checking':
+      return (
+        <SkeletonBlock count={1} label="Checking for desktop app updates" />
+      );
+    case 'up-to-date':
+      return (
+        <p role="status">
+          Station {currentVersion} is up to date. Last checked{' '}
+          {formatTime(phase.checkedAt)}.
+        </p>
+      );
+    case 'available':
+      return (
+        <p role="status">
+          Station {phase.version} is available (you have {currentVersion}).{' '}
+          {state.autoDownloadAt === null
+            ? 'It downloads when you choose.'
+            : state.autoDownloadAt <= Date.now()
+              ? 'It downloads automatically at the next check.'
+              : `It downloads automatically after ${formatTime(state.autoDownloadAt)}.`}
+        </p>
+      );
+    case 'downloading': {
+      const percent = downloadPercent(phase.downloadedBytes, phase.totalBytes);
+      return (
+        <div className="desktop-update-settings__progress">
+          <progress
+            aria-label={`Downloading Station ${phase.version}`}
+            max={100}
+            value={percent ?? undefined}
+          />
+          <span role="status">
+            Downloading Station {phase.version}:{' '}
+            {phase.totalBytes === null
+              ? formatBytes(phase.downloadedBytes)
+              : `${formatBytes(phase.downloadedBytes)} of ${formatBytes(phase.totalBytes)}`}
+          </span>
+        </div>
+      );
+    }
+    case 'ready':
+      return (
+        <p role="status">
+          Station {phase.version} is downloaded. Restart Station to install it.
+        </p>
+      );
+    case 'installing':
+      return <p role="status">Installing Station {phase.version}…</p>;
+  }
+}
+
+const ERROR_LEADS = {
+  check: 'Could not check for desktop app updates.',
+  download: 'The download did not complete.',
+  install: 'The update did not install, and Station did not restart.',
+} as const;
+
+/**
+ * The Settings card for the desktop app's own updates (#3851): the native
+ * state, its progress, the automatic-download policy and a manual check.
+ * Unlike the chrome control, check failures are shown here.
+ */
 export function DesktopUpdateCheck() {
-  const { target } = usePlatformProfile();
-  const owned = useRef<Extract<
-    DesktopUpdateOutcome,
-    { status: 'update-available' }
-  > | null>(null);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      void owned.current?.dispose().catch(console.debug);
-      owned.current = null;
-    };
-  }, []);
-  const check = useQuery({
-    queryKey: ['desktop-update', 'manual'],
-    queryFn: async ({ signal }) => {
-      const result = await checkForDesktopUpdate();
-      const available = result.status === 'update-available' ? result : null;
-      if (!mounted.current || signal.aborted) {
-        await available?.dispose();
-      } else {
-        void owned.current?.dispose().catch(console.debug);
-        owned.current = available;
-      }
-      return result;
-    },
-    enabled: false,
-    retry: false,
-    gcTime: 0,
-  });
-  const install = useMutation({
-    mutationFn: async () => {
-      if (check.data?.status === 'update-available') {
-        await check.data.install();
-      }
-    },
-    retry: false,
-  });
+  const { target, isDesktop } = usePlatformProfile();
+  const { state, error: readError, retry } = useDesktopUpdateState(isDesktop);
+  const impact = useDesktopRestartServerImpact();
+  const [confirming, setConfirming] = useState(false);
+  const [requestError, setRequestError] = useState<{
+    lead: string;
+    detail: string;
+  } | null>(null);
+  const policyId = useId();
+  const restartRef = useRef<HTMLButtonElement>(null);
+
+  if (!state && readError) {
+    return (
+      <div className="settings__update-check">
+        <p role="alert">
+          Station could not read the desktop app’s update state.
+        </p>
+        <TechnicalDetails detail={readError} />
+        <Button onClick={retry}>Try again</Button>
+      </div>
+    );
+  }
+
+  if (!state) {
+    return (
+      <div className="settings__update-check">
+        <SkeletonBlock count={1} label="Reading desktop app update state" />
+      </div>
+    );
+  }
+
+  const { phase, error } = state;
+  const request = (lead: string, action: () => Promise<unknown>) => {
+    setRequestError(null);
+    action().catch((cause: unknown) =>
+      setRequestError({
+        lead,
+        detail: cause instanceof Error ? cause.message : String(cause),
+      }),
+    );
+  };
+  const canCheck =
+    phase.status === 'idle' ||
+    phase.status === 'up-to-date' ||
+    phase.status === 'available';
 
   return (
     <div className="settings__update-check">
-      <Button
-        disabled={check.isFetching || install.isPending}
-        onClick={() => {
-          install.reset();
-          void check.refetch();
-        }}
-      >
-        {check.isFetching
-          ? 'Checking for desktop app updates…'
-          : 'Check for desktop app updates'}
-      </Button>
-      {!check.isFetching && check.data?.status === 'update-available' && (
+      <StatusLine state={state} />
+      {phase.status === 'available' && phase.notes && (
+        <details>
+          <summary>What’s new in {phase.version}</summary>
+          <p className="settings__field-hint">{phase.notes}</p>
+        </details>
+      )}
+      {error && (
         <>
-          <p role="status">
-            Desktop app version {check.data.version} is available.
-          </p>
-          <Button disabled={install.isPending} onClick={() => install.mutate()}>
-            {install.isPending
-              ? 'Installing desktop app update…'
-              : 'Install desktop app update and restart'}
-          </Button>
+          {/* The updater's text is disclosed verbatim, never classified. */}
+          <p role="alert">{ERROR_LEADS[error.context]}</p>
+          <TechnicalDetails detail={error.message} />
         </>
       )}
-      {!check.isFetching && check.data?.status === 'no-update' && (
-        <p role="status">
-          No desktop app update was offered by this app’s configured release
-          channel.
-        </p>
-      )}
-      {!check.isFetching &&
-        (check.isError || check.data?.status === 'check-failed') && (
-          <>
-            {/* D6: the failure is disclosed with its real diagnostic text —
-              never classified into offline/no-channel/signature by this UI,
-              which cannot know which one it was. */}
-            <p role="alert">
-              Could not check for desktop app updates. Try again or view
-              technical details.
-            </p>
-            <TechnicalDetails
-              detail={
-                check.data?.status === 'check-failed'
-                  ? (check.data.detail ?? null)
-                  : check.error instanceof Error
-                    ? check.error.message
-                    : null
-              }
-            />
-          </>
-        )}
-      {install.isError && (
+      {requestError && (
         <>
-          {/* D7: a failed install claims neither success nor restart. */}
-          <p role="alert">
-            The desktop update did not complete. View technical details before
-            retrying.
-          </p>
-          <TechnicalDetails
-            detail={
-              install.error instanceof Error ? install.error.message : null
+          <p role="alert">{requestError.lead}</p>
+          <TechnicalDetails detail={requestError.detail} />
+        </>
+      )}
+      {phase.status !== 'disabled' && (
+        <ActionRow
+          overflowLabel="More desktop update actions"
+          primary={
+            phase.status === 'available' ? (
+              <Button
+                variant="primary"
+                onClick={() =>
+                  request(
+                    'Station could not start the download.',
+                    downloadDesktopUpdate,
+                  )
+                }
+              >
+                {error?.context === 'download'
+                  ? 'Retry download'
+                  : 'Download update'}
+              </Button>
+            ) : phase.status === 'ready' || phase.status === 'installing' ? (
+              <Button
+                ref={restartRef}
+                variant="primary"
+                pending={phase.status === 'installing'}
+                aria-haspopup="dialog"
+                onClick={() => setConfirming(true)}
+              >
+                Restart to update…
+              </Button>
+            ) : undefined
+          }
+          secondary={
+            canCheck || phase.status === 'checking' ? (
+              <Button
+                disabled={!canCheck}
+                pending={phase.status === 'checking'}
+                onClick={() =>
+                  request(
+                    'Station could not start a desktop update check.',
+                    checkForDesktopUpdate,
+                  )
+                }
+              >
+                Check for desktop app updates
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+      {phase.status !== 'disabled' && (
+        <div className="settings__field">
+          <label className="settings__field-label" htmlFor={policyId}>
+            Automatic download
+          </label>
+          <select
+            id={policyId}
+            value={state.policy}
+            onChange={(event) =>
+              request(
+                'Station could not save the automatic download setting.',
+                () =>
+                  setDesktopUpdatePolicy(
+                    event.target.value as DesktopUpdateDownloadPolicy,
+                  ),
+              )
             }
-          />
-        </>
+          >
+            {DESKTOP_UPDATE_DOWNLOAD_POLICIES.map((policy) => (
+              <option key={policy} value={policy}>
+                {POLICY_LABELS[policy]}
+              </option>
+            ))}
+          </select>
+          <span className="settings__field-hint">
+            When an available update downloads without a click. Downloading
+            never restarts Station.
+          </span>
+        </div>
       )}
       <span className="settings__field-hint">
-        Updates Station on this {target === 'macos' ? 'Mac' : 'device'},
-        including its built-in server, then restarts the app.
+        Updates Station on this {target === 'macos' ? 'Mac' : 'computer'}
+        {impact === 'sidecar-restarts'
+          ? ', including the built-in server this window uses'
+          : ''}
+        . Station restarts only when you confirm.
       </span>
+      {confirming && (
+        <DesktopUpdateRestartDialog
+          state={state}
+          onClose={() => setConfirming(false)}
+          returnFocusTarget={restartRef.current}
+        />
+      )}
     </div>
   );
 }

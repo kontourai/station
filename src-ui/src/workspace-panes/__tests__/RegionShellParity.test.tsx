@@ -55,6 +55,12 @@ vi.mock('../../components/chat-dock/ChatDock', () => ({
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
 }));
+// The phone overflow's Live work row reads the session inventory; these tests
+// drive its region rows, not that read.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
+}));
 vi.mock('../../contexts/ProjectsContext', () => ({
   useProjects: () => ({
     projects: [],

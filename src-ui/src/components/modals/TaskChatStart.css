@@ -27,3 +27,11 @@
     max-height: calc(100dvh - var(--app-toolbar-total-height));
   }
 }
+
+.task-chat-start .start-composer__box:focus-within {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.task-chat-start .start-composer__box .start-composer__input:focus-visible {
+  outline: none !important;
+}

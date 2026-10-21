@@ -1,0 +1,37 @@
+{
+  "revision": "9547fea6f3c3f17c0183a1919f7d35e9fb1e13ed",
+
+  "notes": [
+    {"path":"README.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/automations.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Fix-round 5 delta: station-control-operations-tools.ts changes only read_monitoring_events, which now marks rows from an external telemetry producer with station.external_producer_notice and says so in its description. This document makes no claim about that tool's output; nothing here changes.","inputs":["docs/guides/agents.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix-round 5 delta: station-control-operations-tools.ts changes only read_monitoring_events, which now marks rows from an external telemetry producer with station.external_producer_notice and says so in its description. This document makes no claim about that tool's output; nothing here changes.","inputs":["docs/guides/connections.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 5: producer_owner row notes readership survives revoke; added the namespacing and external-marking paragraph and the 503 remedy pointer. Checked against otlp-receiver.ts (namespacing; years 0-99 now literal via setUTCFullYear), producer-provenance.ts and EventEntryHeader.tsx.","inputs":["docs/guides/monitoring.md","src-server/monitoring/otlp-receiver.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix-round 5 delta: station-control-operations-tools.ts changes only read_monitoring_events, which now marks rows from an external telemetry producer with station.external_producer_notice and says so in its description. This document makes no claim about that tool's output; nothing here changes.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 5: documented identity namespacing (otlp-receiver.ts attributed(): trace, tool-call and every monitoringSessionIdentity key prefixed producer:<name>:), so producer rows never join a Station conversation in Monitoring, Insights or read_monitoring_events, which marks them via producer-provenance.ts; the Monitoring row's Producer label; owner stamp kept after revoke; 503 remedy (restore 0600 or delete security/telemetry-producers.json, which also recovers an owner-less older file), matching the route's refusal text. Pinned by the route, composition and tool tests.","inputs":["docs/reference/api.md","packages/cli/src/commands/telemetry.ts","src-server/monitoring/otlp-receiver.ts","src-server/routes/telemetry-producers.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Fix-round 5: the lost-reply hint now also covers a proxy 502/503/504 without Station's refusal envelope (telemetry.ts createMayHaveHappened checks for the envelope's code); pinned by the CLI tests for 502/503/504 text and Station's own JSON 503.","inputs":["docs/reference/cli.md","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 5 delta: station-control-operations-tools.ts changes only read_monitoring_events, which now marks rows from an external telemetry producer with station.external_producer_notice and says so in its description. This document makes no claim about that tool's output; nothing here changes.","inputs":["docs/reference/config.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Fix-round 5: telemetry.ts changes stay in the producers subcommand (gateway statuses); tier behavior is unchanged.","inputs":["docs/reference/usage-telemetry.md","packages/cli/src/commands/telemetry.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Fix-round 5: added that producer-reported identities are namespaced so a producer cannot attach rows to a real Station conversation or inject into what agents read about it, and that the station-control monitoring tool labels producer rows. Checked against otlp-receiver.ts and producer-provenance.ts.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Fix-round 5 delta: station-control-operations-tools.ts changes only read_monitoring_events, which now marks rows from an external telemetry producer with station.external_producer_notice and says so in its description. This document makes no claim about that tool's output; nothing here changes.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Dependency delta: a cited document gained telemetry producer wording (identities namespaced as producer:<name>:<id>, external-data marking in the monitoring tool, rows readable by their owner after revoke, old-store recovery, gateway 502/503/504 treated as ambiguous by the CLI). Nothing here depends on those passages.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

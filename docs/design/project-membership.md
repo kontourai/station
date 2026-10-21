@@ -223,7 +223,7 @@ promoting an account merely because its browser also presents an operator
 credential. These authoring leaves are separately admitted for account-bound
 Devices; legacy Agent mutation and member turn gates remain unchanged. Agent
 execution is still unavailable to members. See
-[Shared Projects](../guides/agents.md#shared-projects),
+[Shared Projects](../guides/agent-configuration.md#shared-projects),
 [route authority](../../src-server/runtime/routes/tool-library-runtime.ts) and
 [Project transaction owner](../../src-server/services/projects/project-membership-service.ts).
 

@@ -1,0 +1,15 @@
+{
+  "revision": "638be09abef160924efe4ffe28a5b5cde08c0814",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Re-reviewed Release updates against desktop_update.rs at this revision: restore now runs at the start of the periodic thread (state idle meanwhile), needs a version-bound signature (plugin restore_update sets require_signed_version), and is followed by one feed check that drops a withdrawn or superseded package and keeps it when the feed does not answer; a damaged package at install returns to idle with an install error. The text states macOS archives carry the version only from the #3851 signing change, so earlier macOS packages are discarded at the next start.","inputs":["docs/guides/desktop-build.md","src-desktop/src/desktop_update.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Added the version-binding rule: tauri-updater-manifest.mjs refuses an unversioned or mismatched signature when assembling latest.json, and macos-notarized-artifacts signs with --app-version from CFBundleShortVersionString (both workflows assert it equals the manifest version). The windows-nightly test only gained versioned signature fixtures.","inputs":["docs/guides/native-releases.md","ops/release/macos-notarized-artifacts.mjs","ops/release/macos-notarized-artifacts.test.mjs","scripts/__tests__/windows-nightly.test.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Added that each cohort signature must name the cohort version; checked against createUpdaterManifestForPlatforms, which windows-nightly.mjs and the nightly CLI step both use. The macOS signer change is the --app-version flag; the rest of the macOS flow described here is unchanged.","inputs":["docs/guides/nightly.md","ops/release/macos-notarized-artifacts.mjs","ops/release/macos-notarized-artifacts.test.mjs","scripts/__tests__/windows-nightly.test.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"windows-nightly.test.ts only replaced fake signature strings with version-bound ones; no claim here concerns signature contents.","inputs":["docs/guides/native-shell-verification.md","scripts/__tests__/windows-nightly.test.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"native-platform-boundary.mjs now lexes JSON5/TOML past comments and escapes and reads Tauri configs only at app.security.capabilities; the document's least-privilege claims still hold.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]}
+  ]
+}

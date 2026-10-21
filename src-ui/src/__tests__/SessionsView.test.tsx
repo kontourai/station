@@ -1716,7 +1716,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
-    expect(within(detail).getByText('Delegated worker')).toBeTruthy();
+    expect(within(detail).getByText('Agent')).toBeTruthy();
     expect(within(detail).getByText('Current environment')).toBeTruthy();
     expect(within(detail).getByText('ollama-local')).toBeTruthy();
     expect(within(detail).getByText('parent-chat')).toBeTruthy();

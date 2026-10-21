@@ -1,0 +1,7 @@
+{
+  "revision": "4baf2709cf2502da1f3f168c6bd6938c9216fc30",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the changed SDK reference paragraph against these instructions: current-turn latestTool is a bounded optional response fact, the hook remains SDK-owned and cancellation is tested at caller/cache boundaries. No app internals, public subpath or governance instruction changed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -53,6 +53,10 @@ const FAMILIES: Array<{ token: string; floor: number; renders: string }> = [
   { token: '--syntax-function', floor: TEXT_FLOOR, renders: 'text' },
   { token: '--syntax-tag', floor: TEXT_FLOOR, renders: 'text' },
   { token: '--syntax-variable', floor: TEXT_FLOOR, renders: 'text' },
+  // Shiki's whole palette is these variables now (station-syntax-theme.ts):
+  // ordinary code text and the deletion hue join the measured rungs.
+  { token: '--syntax-foreground', floor: TEXT_FLOOR, renders: 'text' },
+  { token: '--syntax-deleted', floor: TEXT_FLOOR, renders: 'text' },
 ];
 
 const ROOT_MATCHING =
@@ -176,6 +180,19 @@ function mix(a: string, pct: number, b: string): string {
  * than silently re-basing the measurement.
  */
 const SELECTED_LINE_TINT = 14;
+
+/**
+ * The surface highlighted code blocks paint (`--syntax-background`), resolved
+ * through index.css and then the vendored `--k-*` values it may alias.
+ */
+function codeBlockSurface(
+  rungs: Map<string, string>,
+  vendorTokens: Map<string, string>,
+): string | undefined {
+  const value = rungs.get('--syntax-background');
+  if (value === undefined) return undefined;
+  return resolveHex(value, new Map([...vendorTokens, ...rungs])) ?? undefined;
+}
 const themes = [
   {
     name: 'dark',
@@ -189,6 +206,10 @@ const themes = [
           k.get('--k-brand') as string,
           SELECTED_LINE_TINT,
           k.get('--k-bg') as string,
+        ),
+        '--syntax-background': codeBlockSurface(
+          declarations(css, ROOT_MATCHING),
+          k,
         ),
       };
     })(),
@@ -205,6 +226,10 @@ const themes = [
           k.get('--k-brand') as string,
           SELECTED_LINE_TINT,
           k.get('--k-bg') as string,
+        ),
+        '--syntax-background': codeBlockSurface(
+          declarations(css, BARE_LIGHT),
+          k,
         ),
       };
     })(),

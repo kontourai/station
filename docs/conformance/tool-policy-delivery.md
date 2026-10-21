@@ -2,13 +2,13 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.300; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.302; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.300.
+inspected or executed. They are not new provider results for SDK 0.3.302.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -112,18 +112,24 @@ rules below. Selecting it does not make Codex enforce those rules.
 
 Station's Codex Ask mode selects `approvalPolicy: untrusted` and
 `sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
-A `workspace` session with no Station mode sends only `sandbox:
-workspace-write` and no `approvalPolicy`, so Codex's own approval
-configuration governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
+Outside a `host` session that sandbox is Station's `station-workspace`
+permission profile, selected on the app-server spawn, so the thread and turn
+requests carry no sandbox mode (#3800). A `workspace` session with no Station
+mode sends no `approvalPolicy`, so Codex's own approval configuration
+governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 These policies determine when Codex requests approval. They do not select who
-reviews a sandbox escalation. Station leaves Codex's `approvalsReviewer`
-unchanged on thread start, resume, native adoption by fork, and subsequent
-turns. Codex configuration and managed requirements therefore govern that
-reviewer. An untrusted-command prompt and a sandbox escalation can take
-different approval paths.
+reviews a sandbox escalation. For a `host` session Station leaves Codex's
+`approvalsReviewer` unchanged on thread start, resume, native adoption by
+fork, and subsequent turns, so Codex configuration and managed requirements
+govern that reviewer. Every other session's app-server is started with
+`approvals_reviewer="user"`, which outranks every configuration file: a
+confined session's escalation is never approved by a model (#3800). An
+untrusted-command prompt and a sandbox escalation can take different
+approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
-escalations automatically without opening a Station approval card. The Ask
+escalations of a `host` session automatically without opening a Station
+approval card. The Ask
 chip confirms the approval-policy mapping only; Station does not currently
 report the effective reviewer. Its picker and chip disclosure name that gap.
 Ask alone is not evidence that a person must approve every sandbox escalation.
@@ -285,10 +291,11 @@ falls back to its title/tool label. The Ask-mode chip copy says the engine asks 
 do not already allow, rather than claiming a floor Station does not impose.
 
 The standing grant covers calls to the tool, never an escalation beyond the
-call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
-SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
-escalations in several shapes, first read in 2.1.261 and re-checked in
-2.1.278. Read, Glob, Grep and LSP ask for a path outside
+call (#2915; #2911 set the same rule for Codex). The recorded escalation
+inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
+This checkout now resolves SDK 0.3.302 as noted above; the historical
+2.1.261 and 2.1.278 observations below were not freshly rerun against it.
+That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
 drops the reason's type, which Station reads from the engine's request
@@ -305,6 +312,15 @@ its request sheet's overflow item, #3331) and inbox card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
+- An authentic `station-browser` plain call also offers the server-wide choice
+  "Allow the Station browser for this session", computed by
+  `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'server'`. The adapter records it on the session and
+  honours it only for a plain call it found authentic: the engine-generated
+  `mcp__station-browser__` name, the in-process server delivered to that
+  session and no authored server using the id. It is offered beside the
+  per-tool grant, never instead of it, and changes nothing in the #90 N2
+  auto-approval rule.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The
@@ -412,7 +428,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.300 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.302 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
@@ -631,7 +647,9 @@ is already visible, its layout stays in place; otherwise the action opens it. Ac
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 
-The shared answer path coalesces concurrent answers to the same prompt. Its
+While a decision is being sent, the shared answer path coalesces concurrent
+answers to the same prompt only when the decision and session grant scope both
+match. A per-tool choice and a server-wide choice remain distinct. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
@@ -645,6 +663,11 @@ sending and accepted state; an accepted decision also offers Check status while
 waiting for the tool to continue. Desktop controls and delivery feedback follow
 the command preview, with technical details in a disclosure. A failed status
 read keeps the decision locked and does not resend it.
+While delivery is unconfirmed, all further decisions remain locked regardless
+of their decision or grant scope until inspection settles the uncertainty.
+The shared state retains the chosen server scope while delivery is unconfirmed
+and after inspection finds the request settled; that settled result sends no
+additional decision and does not establish which grant the server recorded.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),

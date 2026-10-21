@@ -12,10 +12,7 @@ import {
 import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
-import {
-  SuspendRegionSurfaces,
-  useRegionModelOptional,
-} from '../contexts/RegionModelContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
@@ -24,10 +21,8 @@ import {
   foldedDockRegion,
   resolveRegionSurface,
 } from '../regions/region-model';
-import {
-  CENTER_OWNED_SURFACES,
-  useLayoutChatPlacement,
-} from './chat-placement';
+import { useLayoutChatPlacement } from './chat-placement';
+import { ShellSurfaceSuspension } from './ShellSurfaceSuspension';
 
 interface AmbientChatPaneProps {
   instance: WorkspacePaneInstance;
@@ -230,15 +225,14 @@ export function RegionShells() {
   // The Coding layout's centre renders Chat itself; the region shells then
   // render every OTHER pane where the user put it, and Chat nowhere. App
   // derives the placement at render time from the layout it renders, so the
-  // same frame that mounts the centre's Chat drops the dock's.
+  // same frame that mounts the centre's Chat drops the dock's. Previews a
+  // source change hid are suspended by the same owner
+  // (`ShellSurfaceSuspension`).
   const centerOwnsChat = useLayoutChatPlacement() === 'center';
-  const hosts = <RegionShellHosts centerOwnsChat={centerOwnsChat} />;
-  return centerOwnsChat ? (
-    <SuspendRegionSurfaces surfaces={CENTER_OWNED_SURFACES}>
-      {hosts}
-    </SuspendRegionSurfaces>
-  ) : (
-    hosts
+  return (
+    <ShellSurfaceSuspension>
+      <RegionShellHosts centerOwnsChat={centerOwnsChat} />
+    </ShellSurfaceSuspension>
   );
 }
 

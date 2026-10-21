@@ -117,7 +117,11 @@ mobile storage behavior or a completed collaborator journey.
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
 operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. Application commands registered by the Rust host remain outside
+is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
+updater or process grant in every file under `capabilities/` and
+`permissions/` and in `app.security.capabilities` of every Tauri config, and
+refuses any file there that is not JSON, since the gate parses only JSON.
+Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
 URL from Rust. A separate `open_external_link` command admits user-clicked HTTPS
@@ -435,11 +439,11 @@ exists.
 | Local notifications | Supported across listed Tauri targets. | enabled, but cannot wake a frozen or closed mobile app. |
 | Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | the pinned `tauri-plugin-single-instance` with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; a foreground second launch requests activation of its existing window, while a background launch does not (archive#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); an unisolated `tauri dev` using the installed app’s identifier can activate that app instead of starting a separate one; isolated development configuration uses its own identifier. |
 | Remote push | Platform support requires FCM on Android and APNs on iOS. | Build-dependent enablement as above. See [notification delivery](notification-delivery.md) for payload, opt-in and recorded qualification scope. |
-| Updater | Desktop only; mobile is unsupported. | Rust registers it only when the desktop build has usable updater configuration. This is not proof an update feed or signed release is available. |
+| Updater | Desktop only; mobile is unsupported. | Rust registers it only when the desktop build has usable updater configuration, and the native shell owns check, download, install and restart (`src-desktop/src/desktop_update.rs`, #3851). No capability grants the webview updater permissions; it reads the native state and calls the desktop-update commands. This is not proof an update feed or signed release is available. |
 | Dialog | The original survey recorded partial mobile support. | Enabled for Rust-owned consent dialogs; this does not expose a generic JavaScript file picker. |
 | File system | Mobile is partial/sandboxed. | disabled. |
 | Opener / shell | Platform behavior remains target-specific. | Rust-owned tray and reviewed external-link commands use the opener on desktop/mobile; JavaScript link interception and generic opener permissions remain disabled. |
-| Process | Desktop only. | Registered by the desktop host; JavaScript authority still depends on the applicable capability manifest. |
+| Process | Desktop only. | Registered by the desktop host, but no capability manifest grants the webview its permissions (#3851); the native updater restarts through the Rust app handle. |
 | Credential storage | Platform-specific OS stores. | Host-owned pairing capture, credential persistence and request brokering are implemented. No fallback to a plaintext store is implied; runtime/device qualification remains separate. |
 | Clipboard | Mobile supports plain text only. | disabled. |
 | Autostart | Desktop only. | disabled. |

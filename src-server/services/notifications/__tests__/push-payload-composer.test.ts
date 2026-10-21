@@ -102,7 +102,10 @@ describe('composeWebPushPayload', () => {
 
   test('AC3: falls back to the attention inbox when metadata cannot resolve an exact session or a link', () => {
     const n = notification({ metadata: undefined });
-    expect(composeWebPushPayload(n)?.payload.url).toBe('/notifications');
+    // The tap's link names the record it opens, so the client marks it read.
+    expect(composeWebPushPayload(n)?.payload.url).toBe(
+      '/notifications?openedNotification=n-1',
+    );
   });
 
   test("AC3: link target survives ranking across a mixed pending batch (leads with the ranked item's own link)", () => {
@@ -120,7 +123,7 @@ describe('composeWebPushPayload', () => {
     });
     const composed = composeWebPushPayload(approval, [failed, approval]);
     expect(composed?.payload.url).toBe(
-      activityDeepLink({ sessionId: 'thread-approval' }),
+      `${activityDeepLink({ sessionId: 'thread-approval' })}&openedNotification=approval-1`,
     );
   });
 });

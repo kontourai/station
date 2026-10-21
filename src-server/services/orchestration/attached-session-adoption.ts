@@ -60,7 +60,11 @@ import {
   type SessionOwnerAttribution,
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
-import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from './session-project-identity.js';
+import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
+  SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
+  sessionConfinementRoot,
+} from './session-project-identity.js';
 
 // Attached-session adoption (epic archive#4024, archive#4143): the C14 cluster
 // from the seam map — 25 of its 27 methods, its reservation/intent state,
@@ -786,6 +790,18 @@ export class AttachedSessionAdoption {
         // the folder still resolves there and refuses if it was swapped
         // (`assertDispatchCwdUnmoved`), as for an admitted dispatch.
         [DISPATCH_CANONICAL_CWD_METADATA_KEY]: place.cwd,
+        // #3800: what the Codex adapter trusts a `.codex` by, from the same
+        // Project list the place was verified against; a place outside
+        // every Project folder (a worktree verified by repository, or a
+        // folder the person chose) is admitted as itself.
+        [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: sessionConfinementRoot(
+          place.cwd,
+          this.deps.listProjects?.() ?? [],
+          {
+            ...(place.project ? { projectSlug: place.project.slug } : {}),
+            admittedCwd: place.cwd,
+          },
+        ),
         ...(userId !== undefined ? { userId } : {}),
         ...sessionOwnerAttributionMetadata(context.ownerAttribution),
         // #2493: server-built, so no strip is needed; absent is `workspace`.
