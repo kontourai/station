@@ -65,7 +65,9 @@ focused tests and bounded independent review cover these source boundaries. Actu
 credentials, launch/session identity persistence, preset UI entry points and roster delivery
 still need adoption evidence. A local `station ensemble inspect` CLI now reports bounded exact
 file bytes/hash, parsed declarations and roster without authentication or launch. Its independent
-review and published CLI/contracts availability remain open; this does not complete #600.
+review passed bounded caller probes. Source-launcher and local bundled-command inspections agree
+on exact bytes/hash and roster at `a9acb0625863aa83674fafc023e3e39c5b6ca843`. Published CLI/contracts
+availability remains open; this does not complete #600.
 
 The upstream feature branch now has source entry points for v2 authority/grants, ancestor
 allocations and invocation holds, a durable group controller, Flow-owned scheduling, mailbox
@@ -78,6 +80,34 @@ Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
 acceptance obligations. Closed-as-batched is not implemented. In particular,
 permission posture, envelope authority, context ACKs, team presets, and topology
 inspection need their own real producer and caller evidence.
+
+## Production adoption sequence
+
+Station's existing delegation route owns authenticated caller resolution, execution-target
+placement, session creation and initial-turn delivery. Reuse that path and its persisted events;
+a session/turn is not one physical model invocation. Group identity must durably join seat,
+envelope generation, task/session, client turn, provider turn and actual invocation identities.
+Admission must cover every physical model request, including retries, rather than wrapping an
+entire `delegateTask` call as one Relay invocation.
+
+Actual-context authentication remains a concrete missing host implementation. Preparation must
+bind the exact executable, environment, credential profile, principal, workspace and model/options
+that launch will consume. Catalog readiness or credential-file presence cannot mint a successful
+authentication receipt. A snapshot must be revalidated at launch and at subsequent effects.
+
+Published Relay 0.7.1 Codex and Claude Code runtimes declare output-token limiting unavailable;
+the upstream execution bridge requires a native limit and refuses these bindings. Do not relabel
+the capability or substitute byte/time limits. Station's API-model factory offers a physical-call
+integration seam, but input bounds, final wire output/thinking limits, worst-case cost, complete
+actual usage and cancellation reconciliation still require executable enforcement. An unsupported
+member must refuse before launch; that refusal does not complete group or Ensemble acceptance.
+
+After the upstream APIs are published, compose their durable controller with Station-owned
+membership/event joins and full API/SDK/CLI callers. Bind Ensemble identities and roster-aware
+briefs to the resulting sessions. Derive the read-only topology and accessible list from the same
+prepared/live records, including authored/default/runtime provenance and missing dependencies.
+Context sync must use the actual delegate session with enforced no-tools authority, accounted
+attempts and retained per-member ACK receipts. Existing continuation plus a prompt is insufficient.
 
 ## Remaining qualification
 
