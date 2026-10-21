@@ -111,6 +111,11 @@ type Facts = Readonly<{
   maxInput: number;
   maxOutput: number;
   thinkingModes: readonly string[];
+  /** Approved exact-model semantics; absence does not qualify budget zero. */
+  thinkingBudgetZero:
+    | 'disables-thinking'
+    | 'does-not-disable-thinking'
+    | undefined;
   cacheMode: 'none' | 'anthropic-ephemeral' | 'google-implicit';
   bands: readonly Band[];
   fixedFee: Rational;
@@ -125,7 +130,10 @@ type State = {
 const contracts = new WeakMap<ResolvedBoundedApiProviderContract, State>();
 const quotes = new WeakMap<
   BoundedApiAttemptQuote,
-  ResolvedBoundedApiProviderContract
+  Readonly<{
+    contract: ResolvedBoundedApiProviderContract;
+    thinkingDisabled: boolean;
+  }>
 >();
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 const BINDING_KEYS = [
@@ -479,7 +487,7 @@ export function resolveBoundedApiProviderContract(
   const limits = closed(
     raw.limits,
     ['inputTokens', 'outputTokens', 'thinkingModes'],
-    [],
+    ['thinkingBudgetZero'],
     'invalid_contract',
   );
   const maxInput = integer(limits.inputTokens, 'invalid_contract', 1);
@@ -497,6 +505,15 @@ export function resolveBoundedApiProviderContract(
   if (
     new Set(thinkingModes).size !== thinkingModes.length ||
     thinkingModes.some((v) => !allowedModes.includes(v))
+  )
+    fail('invalid_contract');
+  const thinkingBudgetZero = limits.thinkingBudgetZero;
+  if (
+    thinkingBudgetZero !== undefined &&
+    (binding.provider !== 'google' ||
+      !thinkingModes.includes('budget') ||
+      (thinkingBudgetZero !== 'disables-thinking' &&
+        thinkingBudgetZero !== 'does-not-disable-thinking'))
   )
     fail('invalid_contract');
   const tariff = closed(
@@ -568,6 +585,7 @@ export function resolveBoundedApiProviderContract(
     maxInput,
     maxOutput,
     thinkingModes: Object.freeze(thinkingModes),
+    thinkingBudgetZero,
     cacheMode,
     bands,
     fixedFee: rational(tariff.fixedFee),
@@ -859,6 +877,11 @@ function outputCap(body: Obj, facts: Facts): number {
         thinking.thinkingBudget < -1
       )
         fail('unsupported_wire');
+      if (
+        thinking.thinkingBudget === 0 &&
+        facts.thinkingBudgetZero === undefined
+      )
+        fail('unsupported_wire');
     } else if (thinking.thinkingLevel !== undefined) {
       if (
         !facts.thinkingModes.includes('level') ||
@@ -949,7 +972,17 @@ export function quoteBoundedApiProviderAttempt(
     costMicros: hold,
     currency: 'USD' as const,
   });
-  quotes.set(quote, contract);
+  const thinking =
+    facts.binding.provider === 'anthropic'
+      ? body.thinking
+      : object(body.generationConfig, 'unsupported_wire').thinkingConfig;
+  const thinkingDisabled =
+    thinking !== undefined &&
+    (facts.binding.provider === 'anthropic'
+      ? object(thinking, 'unsupported_wire').type === 'disabled'
+      : object(thinking, 'unsupported_wire').thinkingBudget === 0 &&
+        facts.thinkingBudgetZero === 'disables-thinking');
+  quotes.set(quote, Object.freeze({ contract, thinkingDisabled }));
   return quote;
 }
 
@@ -1017,7 +1050,11 @@ function safetyRatings(value: unknown): void {
     }
   }
 }
-function anthropicResponseScope(response: Obj, facts: Facts): void {
+function anthropicResponseScope(
+  response: Obj,
+  facts: Facts,
+  thinkingDisabled: boolean,
+): void {
   if (
     response.model !== facts.binding.modelId ||
     response.type !== 'message' ||
@@ -1049,16 +1086,22 @@ function anthropicResponseScope(response: Obj, facts: Facts): void {
       if (block.citations !== undefined && block.citations !== null)
         list(block.citations, 'usage_unknown', 0, 0);
     } else if (block.type === 'thinking') {
+      if (thinkingDisabled) fail('usage_unknown');
       closed(block, ['type', 'thinking', 'signature'], [], 'usage_unknown');
       responseString(block.thinking);
       responseString(block.signature);
     } else if (block.type === 'redacted_thinking') {
+      if (thinkingDisabled) fail('usage_unknown');
       closed(block, ['type', 'data'], [], 'usage_unknown');
       responseString(block.data);
     } else fail('usage_unknown');
   }
 }
-function googleResponseScope(response: Obj, facts: Facts): Obj {
+function googleResponseScope(
+  response: Obj,
+  facts: Facts,
+  thinkingDisabled: boolean,
+): Obj {
   if (response.modelVersion !== facts.binding.modelRevision)
     fail('usage_unknown');
   optionalResponseString(response.responseId);
@@ -1169,6 +1212,7 @@ function googleResponseScope(response: Obj, facts: Facts): Obj {
         typeof part.thought !== 'boolean'
       )
         fail('usage_unknown');
+      if (thinkingDisabled && part.thought === true) fail('usage_unknown');
       optionalResponseString(part.thoughtSignature);
     }
   }
@@ -1252,7 +1296,8 @@ export function priceBoundedApiProviderRawUsage(
   costBasis: 'tariff-upper-bound';
 }> {
   try {
-    if (quotes.get(quote) !== contract) fail('usage_unknown');
+    const quoted = quotes.get(quote);
+    if (quoted?.contract !== contract) fail('usage_unknown');
     const facts = current(contract, nowMs);
     const response = closed(
       parse(completeResponseJson, 8 * 1024 * 1024, 'usage_unknown'),
@@ -1282,7 +1327,7 @@ export function priceBoundedApiProviderRawUsage(
     let unknownWriteSplit = 0;
     let unknownCacheSplit = false;
     if (facts.binding.provider === 'anthropic') {
-      anthropicResponseScope(response, facts);
+      anthropicResponseScope(response, facts, quoted.thinkingDisabled);
       const usage = closed(
         response.usage,
         [
@@ -1356,11 +1401,16 @@ export function priceBoundedApiProviderRawUsage(
           [],
           'usage_unknown',
         );
-        if (integer(details.thinking_tokens, 'usage_unknown') > output)
+        const thoughts = integer(details.thinking_tokens, 'usage_unknown');
+        if (thoughts > output || (quoted.thinkingDisabled && thoughts > 0))
           fail('usage_unknown');
       }
     } else {
-      const candidate = googleResponseScope(response, facts);
+      const candidate = googleResponseScope(
+        response,
+        facts,
+        quoted.thinkingDisabled,
+      );
       const usage = closed(
         response.usageMetadata,
         ['promptTokenCount', 'totalTokenCount'],
@@ -1391,6 +1441,8 @@ export function priceBoundedApiProviderRawUsage(
       output = total - input; // Documented total = prompt + tool + thoughts + candidates.
       const text = optionalCount(usage.candidatesTokenCount);
       const thoughts = optionalCount(usage.thoughtsTokenCount);
+      if (quoted.thinkingDisabled && thoughts !== undefined && thoughts > 0)
+        fail('usage_unknown');
       if (
         (text !== undefined && text > output) ||
         (thoughts !== undefined && thoughts > output) ||
@@ -1429,6 +1481,7 @@ export function priceBoundedApiProviderRawUsage(
         candidateDetail,
         candidateCount,
         thoughts === undefined ? undefined : output - thoughts,
+        quoted.thinkingDisabled ? output : undefined,
       ].filter((count): count is number => count !== undefined);
       if (
         candidateCounts.some(

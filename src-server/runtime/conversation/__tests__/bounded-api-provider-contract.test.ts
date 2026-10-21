@@ -1064,3 +1064,159 @@ test('Google candidate/modality counts may be matching or absent while complete 
     8,
   );
 });
+
+function thinkingFixture(
+  provider: BoundedApiProvider,
+  mode: 'disabled' | 'permitted' | 'omitted',
+  googleZeroMeaning?: 'disables-thinking' | 'does-not-disable-thinking',
+) {
+  const f = fixture(provider);
+  const body = JSON.parse(f.wire.body);
+  if (provider === 'anthropic') {
+    if (mode === 'omitted') delete body.thinking;
+    else
+      body.thinking = { type: mode === 'disabled' ? 'disabled' : 'adaptive' };
+  } else {
+    if (mode !== 'omitted')
+      body.generationConfig.thinkingConfig = {
+        thinkingBudget: mode === 'disabled' ? 0 : 10,
+      };
+    if (googleZeroMeaning !== undefined)
+      Object.assign(f.raw.limits, { thinkingBudgetZero: googleZeroMeaning });
+  }
+  f.wire.body = JSON.stringify(body);
+  f.binding.optionsSha256 = boundedApiWireOptionsSha256(provider, f.wire);
+  f.publishFixture();
+  return f;
+}
+
+for (const provider of ['anthropic', 'google'] as const) {
+  test(`${provider} positive reported thinking contradicts the exact disabled-thinking quote`, () => {
+    const f = thinkingFixture(
+      provider,
+      'disabled',
+      provider === 'google' ? 'disables-thinking' : undefined,
+    );
+    const c = f.resolve();
+    const q = quoteBoundedApiProviderAttempt(c, f.wire, remaining, NOW);
+    const raw =
+      provider === 'anthropic' ? anthropicResponse() : googleResponse();
+    refused(
+      () => priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW),
+      'usage_unknown',
+    );
+    // Mutating the caller's wire object after quotation cannot change the
+    // response invariant captured for the original physical attempt.
+    const changed = JSON.parse(f.wire.body);
+    if (provider === 'anthropic') changed.thinking = { type: 'adaptive' };
+    else changed.generationConfig.thinkingConfig = { thinkingBudget: 10 };
+    f.wire.body = JSON.stringify(changed);
+    refused(
+      () => priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW),
+      'usage_unknown',
+    );
+  });
+
+  test(`${provider} quoted permitted and omitted thinking preserves positive usage and disabled omission controls`, () => {
+    for (const mode of ['permitted', 'omitted', 'disabled'] as const) {
+      const f = thinkingFixture(
+        provider,
+        mode,
+        provider === 'google' ? 'disables-thinking' : undefined,
+      );
+      const c = f.resolve();
+      const q = quoteBoundedApiProviderAttempt(c, f.wire, remaining, NOW);
+      const raw =
+        provider === 'anthropic' ? anthropicResponse() : googleResponse();
+      if (mode === 'disabled') {
+        if ('usage' in raw) raw.usage.output_tokens_details.thinking_tokens = 0;
+        else {
+          raw.usageMetadata.thoughtsTokenCount = 0;
+          raw.usageMetadata.candidatesTokenCount = 8;
+        }
+      }
+      assert.equal(
+        priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW)
+          .outputTokens,
+        8,
+      );
+      if ('usage' in raw)
+        delete (raw.usage as Partial<typeof raw.usage>).output_tokens_details;
+      else {
+        delete (raw.usageMetadata as Partial<typeof raw.usageMetadata>)
+          .thoughtsTokenCount;
+        delete (raw.usageMetadata as Partial<typeof raw.usageMetadata>)
+          .candidatesTokenCount;
+      }
+      assert.equal(
+        priceBoundedApiProviderRawUsage(c, q, JSON.stringify(raw), NOW)
+          .outputTokens,
+        8,
+      );
+    }
+  });
+}
+
+test('Google zero budget requires approved model semantics and never implies a universal thinking-off rule', () => {
+  const unqualified = thinkingFixture('google', 'disabled');
+  const c = unqualified.resolve();
+  refused(
+    () => quoteBoundedApiProviderAttempt(c, unqualified.wire, remaining, NOW),
+    'unsupported_wire',
+  );
+  const mapsToThinking = thinkingFixture(
+    'google',
+    'disabled',
+    'does-not-disable-thinking',
+  );
+  const c2 = mapsToThinking.resolve();
+  const q2 = quoteBoundedApiProviderAttempt(
+    c2,
+    mapsToThinking.wire,
+    remaining,
+    NOW,
+  );
+  assert.equal(
+    priceBoundedApiProviderRawUsage(
+      c2,
+      q2,
+      JSON.stringify(googleResponse()),
+      NOW,
+    ).outputTokens,
+    8,
+  );
+});
+
+test('disabled-thinking quotes reject positive residual thoughts and explicit thought content without optional usage details', () => {
+  const g = thinkingFixture('google', 'disabled', 'disables-thinking');
+  const gc = g.resolve();
+  const gq = quoteBoundedApiProviderAttempt(gc, g.wire, remaining, NOW);
+  const rawG = googleResponse();
+  delete (rawG.usageMetadata as Partial<typeof rawG.usageMetadata>)
+    .thoughtsTokenCount;
+  refused(
+    () => priceBoundedApiProviderRawUsage(gc, gq, JSON.stringify(rawG), NOW),
+    'usage_unknown',
+  );
+  delete (rawG.usageMetadata as Partial<typeof rawG.usageMetadata>)
+    .candidatesTokenCount;
+  Object.assign(rawG.candidates[0]!.content, {
+    parts: [{ text: 'reasoning', thought: true }],
+  });
+  refused(
+    () => priceBoundedApiProviderRawUsage(gc, gq, JSON.stringify(rawG), NOW),
+    'usage_unknown',
+  );
+  const a = thinkingFixture('anthropic', 'disabled');
+  const ac = a.resolve();
+  const aq = quoteBoundedApiProviderAttempt(ac, a.wire, remaining, NOW);
+  const rawA = anthropicResponse();
+  delete (rawA.usage as Partial<typeof rawA.usage>).output_tokens_details;
+  Object.assign(rawA, {
+    content: [{ type: 'thinking', thinking: 'reasoning', signature: 'opaque' }],
+  });
+  refused(
+    () => priceBoundedApiProviderRawUsage(ac, aq, JSON.stringify(rawA), NOW),
+    'usage_unknown',
+  );
+});
