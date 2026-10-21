@@ -44,7 +44,7 @@ function publicRegistrySourceSentence(
   const checked = ago(status.checkedAt, now);
   const fetched = ago(status.fetchedAt, now);
   if (status.origin === 'none') {
-    if (status.refreshing) return 'Checking the public registry…';
+    if (status.refreshing) return 'Station is downloading the public registry list now.';
     return status.lastError
       ? `Could not read the public registry: ${status.lastError}`
       : 'The public registry has not been checked yet.';
