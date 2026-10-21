@@ -6,6 +6,9 @@ explicit client subpaths. The [SDK reference](../../docs/reference/sdk.md)
 owns the detailed public API; [package.json](./package.json) owns the available
 entry points.
 
+For reported child results and conditional transcript recovery, see the
+[SDK recovery reference](../../docs/reference/sdk.md#read-a-reported-childs-transcript).
+
 The root entry is a React/host surface. `@kontourai/station-sdk/client` is the
 React-free request surface with explicit API-base arguments; it does not create
 credentials or authorization. Voice, Workspace Pane and protected-query surfaces

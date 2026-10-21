@@ -909,11 +909,18 @@ preserves it. Full-history accounting loads only on expansion. The background sh
 their own catalog Agent and keeps the task title stable. A native child's reporter
 window supplies engine identity only; its prompt, tools and accounting never
 become the child's data.
-Its expansion reveals model provenance and the full result without repeating that
-preview; usage and transcript access share a wrapping footer. The Agents pane keeps
+Its expansion reveals model provenance and the retained result report without repeating that
+preview. Reports are capped at 4,000 UTF-16 code units and marked when truncated;
+transcript recovery is offered only when a persisted supported reference exists.
+Current recovery supports Claude subagents, not Codex child threads. Report text
+and recovery do not establish artifact verification. Usage and available transcript access share a wrapping footer. The Agents pane keeps
 open/stop actions beside each row and reveals usage on expansion.
-The Agents pane remains the complete list and stop surface, including
-children with no loaded spawn anchor. The card and pane share status words
+The Agents pane lists retained reported children and available stop controls,
+including children with no loaded spawn anchor. It is not exhaustive history:
+the global registry retains 50 settled children per Station partition, the All
+view shows at most 50 finished candidates, and the shared reducer bounds running
+and settled children separately to 64 per reporter. Omitted work is not assumed
+stopped. The card and pane share status words
 and time formatting (`utils/child-work-display.ts`).
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured

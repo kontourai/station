@@ -143,6 +143,28 @@ caps omit its start event. An explicit `null` clears activity; only older
 responses without the field fall back to their loaded events. A missing tool
 report remains absent.
 
+### Read a reported child's transcript
+
+A child report's `source` records `provider-summary`, `child-message`, or
+`provider-error`; absent provenance stays unknown. Neither completion nor report
+text establishes artifact verification or semantic acceptance.
+
+When a persisted transcript reference exists,
+`getChildWorkTranscript(apiBase, threadId, childId, page?, options?)` from the
+client entry reads bounded recorded messages. `threadId` is the reporting
+Session and `childId` its child-work identity. `page` accepts message `offset`
+and `limit` (1–50, default 30). The server resolves the reference from authorized
+facts; callers never supply a file path. Unreadable/missing transcripts return
+404; unavailable engine records return 503.
+
+`useChildWorkTranscriptQuery({threadId, childId, enabled?}, apiBase?)` from the
+SDK root loads 30 messages per page and exposes `fetchNextPage` using
+`nextOffset`. It does not poll. Station's transcript component separately
+refreshes on reported child revisions. Current recovery supports Claude
+subagents, not Codex child threads; a report without a supported reference has
+no guaranteed full-text recovery through this API. Source exports do not prove
+package publication or live restart/native acceptance.
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
