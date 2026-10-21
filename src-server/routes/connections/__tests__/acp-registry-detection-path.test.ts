@@ -70,16 +70,18 @@ describe.skipIf(process.platform === 'win32')(
           },
         },
       ];
-      const { listDetectedUnconnectedACPRegistryEntries } = await import(
+      const { listUnconnectedACPRegistryEntries } = await import(
         '../acp.js'
       );
 
-      const detected = await listDetectedUnconnectedACPRegistryEntries({
+      const detected = await listUnconnectedACPRegistryEntries({
         loadACPConfig: async () => ({ connections: [] }),
       });
 
       expect(execFileMock).toHaveBeenCalledTimes(1);
-      expect(detected).toEqual([{ id: 'shell-engine', name: 'Shell Engine' }]);
+      expect(detected).toEqual([
+        { id: 'shell-engine', name: 'Shell Engine', detected: true },
+      ]);
     });
   },
 );
