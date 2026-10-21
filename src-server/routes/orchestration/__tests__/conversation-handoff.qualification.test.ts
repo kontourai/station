@@ -437,6 +437,14 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: false,
       restartBeforeReturnStart: true,
     },
+    {
+      label: 'Codex native return refuses missing seed invocation proof',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      missingSeedInvocation: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
     async ({
@@ -449,6 +457,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       oversizedCatchup = false,
       raceContextReservation = false,
       restartBeforeReturnStart = false,
+      missingSeedInvocation = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -1184,6 +1193,31 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(status?.marker.carried).toContain('nativeSession');
         expect(status?.marker.reset).not.toContain('providerNativeCursor');
         expect(status?.nativeResumeIdentity).toBe('matched');
+        if (missingSeedInvocation) {
+          const missingInvocation = vi
+            .spyOn(store, 'preparedInvocationForClientTurn')
+            .mockReturnValue(undefined);
+          try {
+            const unqualified = await service.readConversationHandoffStatus(
+              conversationId,
+              'return-to-earlier-engine',
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            expect(unqualified?.contextDelivery?.status).toBe('indeterminate');
+            expect(
+              unqualified?.contextDelivery?.acceptedTextThrough,
+            ).toBeUndefined();
+            await expect(
+              execute(source, {
+                conversationId,
+                message: 'Continue without seed invocation proof.',
+              }),
+            ).rejects.toThrow(/native.return.*context|context.*native.return/i);
+            expect(sourceAdapter.turns).toHaveLength(2);
+          } finally {
+            missingInvocation.mockRestore();
+          }
+        }
         firstReturnSeedDigest = createHash('sha256')
           .update(sourceAdapter.turns.at(-1)!.ambientContext!)
           .digest('hex');

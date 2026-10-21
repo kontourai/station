@@ -319,7 +319,11 @@ export class ConversationLineage {
       // An accepted native start does not establish delivery of its catch-up.
       // Ordinary reuse must not turn a failed or uncertain seeded turn into a
       // continuation that silently forgets the intervening conversation.
-      if (delivery?.status !== 'completed') {
+      const completed = handoff.contextSeed
+        ? delivery?.contextDelivery?.status === 'completed' &&
+          delivery.nativeResumeIdentity === 'matched'
+        : delivery?.status === 'completed';
+      if (!completed) {
         throw new Error(
           'Native-return context delivery has not completed. Reconcile the handoff before continuing.',
         );
@@ -1155,13 +1159,17 @@ export class ConversationLineage {
     const terminal =
       disposition && disposition.kind !== 'found'
         ? undefined
-        : turnEvents
-            .filter((event) =>
-              ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
-                event.method,
-              ),
-            )
-            .at(-1)?.method;
+        : disposition?.kind === 'found'
+          ? turnEvents.find(
+              (event) => event.id === disposition.fact.terminalEventId,
+            )?.method
+          : turnEvents
+              .filter((event) =>
+                ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+                  event.method,
+                ),
+              )
+              .at(-1)?.method;
     const status =
       terminal === 'turn.completed'
         ? ('completed' as const)
@@ -1172,6 +1180,10 @@ export class ConversationLineage {
             : store.readSessionByThread(marker.sessionId)
               ? ('indeterminate' as const)
               : ('reserved' as const);
+    const contextDeliveryStatus =
+      providerTurnId && invocationId === undefined
+        ? ('indeterminate' as const)
+        : status;
     let nativeResumeIdentity: NativeResumeIdentityStatus | undefined;
     for (const event of store.listEvents(marker.sessionId)) {
       const payload = event.payload;
@@ -1197,8 +1209,8 @@ export class ConversationLineage {
               seedDigest: marker.contextSeed.seedDigest,
               sourceCutoffs: marker.contextSeed.sourceCutoffs,
               omission: marker.contextSeed.omission,
-              status,
-              ...(status === 'completed' &&
+              status: contextDeliveryStatus,
+              ...(contextDeliveryStatus === 'completed' &&
               nativeResumeIdentity === 'matched' &&
               marker.contextSeed.omission.omittedMessages === 0 &&
               !marker.contextSeed.omission.newestShortened
