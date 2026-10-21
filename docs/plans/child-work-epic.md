@@ -95,7 +95,10 @@ connection/profile environment, receiver-owned Agent profile pin, workspace, pri
 Its inventory does not discover models or invent ready status. Request authority and context are
 rechecked around the probe. At `49c27af63cad55b55e28c26e176b797a77645769`, the implementer
 reports 306 focused passes, focused typechecking and two compiling mutation catches with exact
-restoration; independent review is pending. The caller stops at the first unsupported guarantee
+restoration. Independent review then reproduced five P2 gaps: remote operator admission,
+revocation during adapter awaits, mixed receiver binding/profile, contradictory Claude login
+status and same-path executable substitution. The source is unqualified while these repairs are
+in progress. The caller stops at the first unsupported guarantee
 and returns a refusal, not a complete prepared snapshot. API engines and option/reasoning catalog
 discovery are unsupported. Real credential/model entitlement, launch-time context consumption and
 subsequent effect enforcement still need implementation and evidence.

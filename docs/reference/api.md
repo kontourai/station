@@ -1606,6 +1606,11 @@ normal request authentication runs first. See the
 
 ## Ensemble preparation observations
 
+> This unpublished source increment is not qualified for use. Independent review
+> of `49c27af6` reproduced remote-operator admission, pre-probe revocation and
+> binding races, contradictory Claude status acceptance and executable-identity
+> gaps. Repairs are in progress; the boundaries below remain required contracts.
+
 `POST /api/orchestration/ensembles/prepare` is a local preparation diagnostic, not a
 launch operation. The route belongs to `orchestration:operate` and additionally
 requires the current local operator on a personal Station. Remote, hosted, Agent
