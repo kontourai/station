@@ -31,6 +31,7 @@ import {
   useConfig,
   useConversations,
   useModels,
+  useSlashCommandHandler,
   useToolApproval,
 } from '@kontourai/station-sdk';
 import { type ReactNode, useState } from 'react';
@@ -38,7 +39,10 @@ import {
   ActiveChatsProvider,
   activeChatsStore,
 } from '../../contexts/ActiveChatsContext';
-import { NavigationProvider } from '../../contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from '../../contexts/NavigationContext';
 import { ToastProvider } from '../../contexts/ToastContext';
 import { PluginWorkspacePaneSDKBoundary } from '../../workspace-panes/PluginWorkspacePaneSDKBoundary';
 
@@ -48,9 +52,11 @@ afterEach(() => {
   activeChatsStore.removeChat('sdk-core-test');
   vi.unstubAllGlobals();
   approval.mockReset();
+  navigationStore.setAgent(null);
 });
 
 function mountPlugin(children: ReactNode) {
+  navigationStore.setAgent(null);
   const client = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
   });
@@ -62,6 +68,9 @@ function mountPlugin(children: ReactNode) {
     const responses: Record<string, unknown> = {
       '/config/app': { defaultModel: 'writer-v1' },
       '/api/models': [],
+      '/agents/sales-agent/conversations': [
+        { id: 'sales-conversation', resourceId: 'sales-agent' },
+      ],
       '/agents/research-agent/conversations': [
         { id: 'research-conversation', resourceId: 'research-agent' },
       ],
@@ -218,5 +227,81 @@ test('plugin approval reaches the core handler and keeps server refusal observab
   expect(approval).toHaveBeenCalledWith('approval-1', true);
   fireEvent.click(screen.getByRole('button', { name: 'answered' }));
   await screen.findByRole('button', { name: 'Approval expired' });
+  expect(host.fetch).not.toHaveBeenCalled();
+});
+
+function SelectedAgentConversations() {
+  const conversations = useConversations();
+  return (
+    <output>
+      {conversations.map((item: { id: string }) => item.id).join(',') ||
+        'no Agent'}
+    </output>
+  );
+}
+
+test('omitted Agent follows the selected Agent as navigation changes and does not query a layout slug', async () => {
+  const host = mountPlugin(<SelectedAgentConversations />);
+  expect(screen.getByText('no Agent')).toBeTruthy();
+  expect(host.fetch).not.toHaveBeenCalled();
+  act(() => navigationStore.setAgent('research-agent'));
+  await screen.findByText('research-conversation');
+  act(() => navigationStore.setAgent('sales-agent'));
+  await screen.findByText('sales-conversation');
+  act(() => navigationStore.setAgent(null));
+  await screen.findByText('no Agent');
+  expect(
+    host.fetch.mock.calls.map(([url]) => new URL(String(url)).pathname),
+  ).toEqual([
+    '/agents/research-agent/conversations',
+    '/agents/sales-agent/conversations',
+  ]);
+});
+
+const closeCommands = vi.fn();
+function CommandAction() {
+  const dispatch = useSlashCommandHandler();
+  const [result, setResult] = useState('Dispatch command');
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const handled = await dispatch(
+          'sdk-core-test',
+          "/research 'unterminated",
+          {
+            autocomplete: {
+              openModel() {},
+              openNewChat() {},
+              closeCommand() {},
+              closeAll: closeCommands,
+            },
+          },
+        );
+        setResult(handled ? 'Handled' : 'Not handled');
+      }}
+    >
+      {result}
+    </button>
+  );
+}
+
+test('plugin command dispatch uses the core parse refusal and clears the exact Dock input', async () => {
+  closeCommands.mockClear();
+  const host = mountPlugin(<CommandAction />);
+  act(() => {
+    activeChatsStore.initChat('sdk-core-test');
+    activeChatsStore.updateChat('sdk-core-test', {
+      input: "/research 'unterminated",
+    });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Dispatch command' }));
+  await screen.findByRole('button', { name: 'Handled' });
+  const state = activeChatsStore.getSnapshot()['sdk-core-test'];
+  expect(state.input).toBe('');
+  expect(state.ephemeralMessages.at(-1)?.content).toContain(
+    'Could not read /research',
+  );
+  expect(closeCommands).toHaveBeenCalledOnce();
   expect(host.fetch).not.toHaveBeenCalled();
 });
