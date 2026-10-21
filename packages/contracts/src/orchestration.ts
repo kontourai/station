@@ -1533,6 +1533,9 @@ export interface ConversationContextSeedReceipt {
   };
 }
 
+export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
+  'conversation-context-unavailable';
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;
@@ -1543,10 +1546,12 @@ export interface ConversationHandoffStatusProjection {
   /** A pinned handoff seed, not proof of provider transcript retention. */
   contextDelivery?: ConversationContextSeedReceipt & {
     status: ConversationHandoffEffectStatus;
+    mode?: 'seed-text' | 'native-memory';
+    nativeBinding?: 'matched' | 'changed' | 'unavailable';
     /** Complete text projection only; omitted/shortened history is never acknowledged. */
     acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
   };
-  /** Completed native-return ranges for this matched identity; initial seed identity is not inferred. */
+  /** Completed literal-seed ranges witnessed for this matched native identity. */
   nativeAcceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
 }
 

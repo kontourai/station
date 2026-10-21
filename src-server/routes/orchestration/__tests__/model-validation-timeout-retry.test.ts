@@ -170,6 +170,7 @@ function fixture() {
     }),
     getProject: async () => undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => {
       const detail = await service.readSession(id, INTERNAL_SESSION_READ_SCOPE);
       if (!detail) return null;

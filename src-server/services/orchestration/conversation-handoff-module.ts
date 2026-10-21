@@ -14,6 +14,13 @@ export interface ConversationContextSeedPin
   pinDigest: string;
 }
 
+export function conversationHandoffClientTurnId(
+  conversationId: string,
+  idempotencyKey: string,
+): string {
+  return `handoff:${createHash('sha256').update(`${conversationId}\0${idempotencyKey}`).digest('hex')}`;
+}
+
 function contextSeedPinDigest(
   seed: Omit<ConversationContextSeedPin, 'pinDigest'>,
 ): string {

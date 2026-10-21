@@ -147,6 +147,9 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   parts: MessagePart[];
   metadata?: {
+    /** Immutable copied-context receipt; it is not an execution or read grant. */
+    forkOrigin?: { eventId: string; digest: string };
+    forkSourceMessageId?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';

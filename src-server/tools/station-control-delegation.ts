@@ -6381,6 +6381,12 @@ export async function executeExecutionTargetMessage(
     readAuthority,
     orchestrationService,
   );
+  if (input.conversationId && orchestrationService)
+    orchestrationService.assertConversationForkContextEnvironment(
+      input.conversationId,
+      selectedTarget.kind === 'current' && !selectedTarget.relayEnvironmentId,
+      readAuthority,
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     if (input.resolveAttachments) {
       throw new Error(
@@ -6449,6 +6455,22 @@ export async function executeExecutionTargetMessage(
     );
   }
   const resolverDependencies = {
+    readInitialConversationContext: async (
+      access: EnvironmentAccess,
+      initial: {
+        conversationId: string;
+        agentId: string;
+        projectSlug?: string;
+        userId?: string;
+      },
+    ) => {
+      if (access.kind !== 'current')
+        throw new Error('Saved fork context is local to its owning Station.');
+      return orchestrationService.prepareInitialConversationForkContext(
+        initial,
+        readAuthority,
+      );
+    },
     resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
       const target = selectedTarget;
       return {

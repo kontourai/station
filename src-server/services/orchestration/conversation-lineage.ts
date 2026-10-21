@@ -31,9 +31,15 @@ import type { ConversationMessage } from '@kontourai/station-shared/conversation
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
+import { observeConversationSeedTurn } from './conversation-context-seed-witness.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextModule,
+} from './conversation-fork-context.js';
 import {
   type ConversationContextSeedPin,
   type ConversationHandoffMarker,
+  conversationHandoffClientTurnId,
   createConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
@@ -176,6 +182,11 @@ interface ConversationLineageDeps {
    */
   perTurnModelOverride?: (provider: EngineId) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
+  nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
+  readForkContextDelivery?: (
+    threadId: string,
+    authority: SessionReadScope,
+  ) => ReturnType<ConversationForkContextModule['delivery']>;
   readSessionMessages: (
     threadId: string,
     authority: SessionReadScope,
@@ -322,8 +333,17 @@ export class ConversationLineage {
       );
     }
     const handoff = store.conversationHandoffForSession(current.sessionId);
+    const forkDelivery = await this.deps.readForkContextDelivery?.(
+      current.sessionId,
+      authority,
+    );
+    if (forkDelivery && forkDelivery.contextStatus !== 'completed')
+      throw new ConversationForkContextError(
+        'Fork context delivery has not completed. Reconcile the fork before continuing.',
+      );
     if (
       handoff &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider) &&
       (handoff.contextSeed ||
         store.conversationContextBoundaryForSuccessor(current.sessionId)
           ?.policy !== 'empty-next-cold-start')
@@ -1193,7 +1213,7 @@ export class ConversationLineage {
       const carriers = new Set(
         store.nativeContextDeliverySessions(conversationId, marker.sessionId),
       );
-      if (carriers.has(marker.sessionId)) {
+      if (delivery.contextDelivery?.nativeBinding !== 'changed') {
         accepted = await this.nativeAcceptedTextThrough(
           conversationId,
           marker.sessionId,
@@ -1225,65 +1245,37 @@ export class ConversationLineage {
     marker: Readonly<ConversationHandoffMarker>,
   ): Promise<HandoffDeliveryObservation> {
     const store = this.deps.eventStore!;
-    const clientTurnId = `handoff:${crypto
-      .createHash('sha256')
-      .update(`${marker.conversationId}\0${marker.idempotencyKey}`)
-      .digest('hex')}`;
-    const providerTurnId = await this.deps.turnDeduplicator?.awaitResolution({
+    const clientTurnId = conversationHandoffClientTurnId(
+      marker.conversationId,
+      marker.idempotencyKey,
+    );
+    const {
+      status,
+      providerTurnId,
+      nativeBinding,
+      literalSeedCompleted,
+      contextStatus: contextDeliveryStatus,
+    } = await observeConversationSeedTurn({
+      store,
+      deduplicator: this.deps.turnDeduplicator,
       threadId: marker.sessionId,
       clientTurnId,
-      timeoutMs: 1,
-      intervalMs: 1,
+      ...(marker.contextSeed
+        ? {
+            expected: {
+              kind: 'handoff' as const,
+              contextId: marker.sessionId,
+              contextDigest: marker.contextSeed.pinDigest,
+              seedDigest: marker.contextSeed.seedDigest,
+            },
+          }
+        : {}),
+      requiresNativeIdentity: marker.nativeReturnSourceSessionId !== undefined,
     });
-    const invocationId = providerTurnId
-      ? store.preparedInvocationForClientTurn(marker.sessionId, clientTurnId)
-      : undefined;
-    const turnEvents = providerTurnId
-      ? store
-          .listEvents(marker.sessionId)
-          .filter(
-            (event) =>
-              event.turnId === providerTurnId &&
-              (invocationId === undefined ||
-                event.payload.invocationId === invocationId),
-          )
-      : [];
-    const disposition =
-      invocationId === undefined
-        ? undefined
-        : store.readInvocationTerminal(
-            marker.sessionId,
-            invocationId,
-            providerTurnId,
-          );
-    const terminal =
-      disposition && disposition.kind !== 'found'
-        ? undefined
-        : disposition?.kind === 'found'
-          ? turnEvents.find(
-              (event) => event.id === disposition.fact.terminalEventId,
-            )?.method
-          : turnEvents
-              .filter((event) =>
-                ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
-                  event.method,
-                ),
-              )
-              .at(-1)?.method;
-    const status =
-      terminal === 'turn.completed'
-        ? ('completed' as const)
-        : terminal === 'turn.aborted' || terminal === 'runtime.error'
-          ? ('failed' as const)
-          : providerTurnId
-            ? ('accepted' as const)
-            : store.readSessionByThread(marker.sessionId)
-              ? ('indeterminate' as const)
-              : ('reserved' as const);
-    const contextDeliveryStatus =
-      providerTurnId && invocationId === undefined
-        ? ('indeterminate' as const)
-        : status;
+    const provider = store.readSessionByThread(marker.sessionId)?.provider;
+    const memoryOwned =
+      provider !== undefined &&
+      this.deps.nativeMemoryOwnsTranscriptFor?.(provider) === true;
     let nativeResumeIdentity: NativeResumeIdentityStatus | undefined;
     for (const event of store.listEvents(marker.sessionId)) {
       const payload = event.payload;
@@ -1307,6 +1299,11 @@ export class ConversationLineage {
               sourceCutoffs: marker.contextSeed.sourceCutoffs,
               omission: marker.contextSeed.omission,
               status: contextDeliveryStatus,
+              mode:
+                literalSeedCompleted || !memoryOwned
+                  ? ('seed-text' as const)
+                  : ('native-memory' as const),
+              ...(nativeBinding ? { nativeBinding } : {}),
               ...(contextDeliveryStatus === 'completed' &&
               (!marker.nativeReturnSourceSessionId ||
                 nativeResumeIdentity === 'matched') &&

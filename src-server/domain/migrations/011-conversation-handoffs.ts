@@ -23,6 +23,18 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_handoffs (
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_handoffs_conversation
   ON orchestration_conversation_handoffs(conversation_id, created_at ASC);
+CREATE TABLE IF NOT EXISTS orchestration_context_seed_witnesses (
+  thread_id TEXT NOT NULL,
+  client_turn_id TEXT NOT NULL,
+  context_kind TEXT NOT NULL,
+  context_id TEXT NOT NULL,
+  context_digest TEXT NOT NULL,
+  native_identity_key TEXT,
+  witness_json TEXT NOT NULL,
+  PRIMARY KEY (thread_id, client_turn_id)
+);
+CREATE INDEX IF NOT EXISTS idx_context_seed_witness_native
+  ON orchestration_context_seed_witnesses(native_identity_key, thread_id);
 `;
 
 /** Legacy reservations have no recoverable immutable seed and remain unqualified. */

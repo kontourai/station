@@ -491,6 +491,7 @@ async function experienceRuntime(
     getProject: async (_access, slug) =>
       slug === 'project-one' ? { workingDirectory: fixture.home } : undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => {
       const root = fixture.store.conversationSessions(id)[0]?.sessionId ?? id;
       const event = [...fixture.store.listEvents(root)]

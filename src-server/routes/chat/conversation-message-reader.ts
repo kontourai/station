@@ -16,6 +16,7 @@ import { resolveConversationTranscriptSource } from '../../runtime/conversation/
 import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
+import type { ForkConversationTranscriptRead } from '../../services/orchestration/conversation-fork-context.js';
 import type { Logger } from '../../utils/logger.js';
 
 export interface ConversationMessageReaderDeps {
@@ -27,6 +28,10 @@ export interface ConversationMessageReaderDeps {
       threadId: string,
       authority: SessionReadAuthority,
     ): ConversationMessage[];
+    readForkConversationTranscript?(
+      threadId: string,
+      authority: SessionReadAuthority,
+    ): ForkConversationTranscriptRead | null | undefined;
   };
   logger: Pick<Logger, 'warn'>;
 }
@@ -141,6 +146,11 @@ export function createConversationMessageReader({
     authority: SessionReadAuthority,
     sessionId: string,
   ): Promise<SessionSegmentRead> => {
+    const fork = sessionMessageReader?.readForkConversationTranscript?.(
+      sessionId,
+      authority,
+    );
+    if (fork === null) return { rows: [], source: 'empty' };
     const adapter = getAdapter(runtimeSlug);
     const hosted = isHostedSessionReadAuthority(authority);
 
@@ -157,8 +167,12 @@ export function createConversationMessageReader({
     // answers as if the store held nothing.
     const storeReadable =
       !adapter ||
-      !isPrincipalScopedAgentRequest(request) ||
-      (await adapter.getConversation(sessionId))?.userId === authority.userId;
+      (fork
+        ? (await adapter.getConversation(sessionId))?.userId ===
+          fork.ownerUserId
+        : !isPrincipalScopedAgentRequest(request) ||
+          (await adapter.getConversation(sessionId))?.userId ===
+            authority.userId);
     if (adapter && !hosted && storeReadable) {
       // archive#4080 follow-up: the conventional-userId-then-
       // conversation-lookup fallback is the ONE shared definition of "which
@@ -177,6 +191,37 @@ export function createConversationMessageReader({
         // one exists that nothing was ever said in.
         absence = source.conversationRecordFound ? 'no-messages' : 'not-found';
       }
+    }
+    if (fork) {
+      const copied = fork.messages.filter(
+        (message) => message.metadata?.forkOrigin !== undefined,
+      );
+      const copiedIds = new Set(copied.map((message) => message.id));
+      const canonical = fork.messages.filter(
+        (message) => !copiedIds.has(message.id),
+      );
+      const fileTurns = messages.filter(
+        (message) => !copiedIds.has(message.id),
+      );
+      const canonicalIds = new Set(canonical.map((message) => message.id));
+      const tail = fork.prefersRuntime
+        ? [
+            ...canonical,
+            ...fileTurns.filter((message) => !canonicalIds.has(message.id)),
+          ]
+        : fileTurns.length
+          ? fileTurns
+          : canonical;
+      tail.sort(
+        (left, right) =>
+          (left.metadata?.timestamp ?? Number.MAX_SAFE_INTEGER) -
+          (right.metadata?.timestamp ?? Number.MAX_SAFE_INTEGER),
+      );
+      return {
+        rows: [...copied, ...tail],
+        source:
+          fork.prefersRuntime || !messages.length ? 'orchestration' : 'store',
+      };
     }
     if (messages.length > 0) return { rows: messages, source: 'store' };
 

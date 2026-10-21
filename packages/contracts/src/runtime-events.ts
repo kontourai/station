@@ -1262,6 +1262,8 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
   sourceSessionId?: string;
   /** Native provider fork is exceptional; Station transcript replay is explicit. */
   continuation?: 'native' | 'replay-seed';
+  /** Immutable, actor-bound imported context in this EventStore; not a provider Session. */
+  contextDigest?: string;
 }
 
 export type CanonicalRuntimeEvent =

@@ -61,10 +61,18 @@ export function renderForkTranscript(input: {
   sourceAgent: string;
   messages: ConversationMessage[];
 }): string {
+  return buildForkTranscript(input).text;
+}
+
+export function buildForkTranscript(input: {
+  sourceTitle: string;
+  sourceAgent: string;
+  messages: ConversationMessage[];
+}) {
   return buildTranscriptSeed({
     // Titles and Agent slugs are caller-supplied and unbounded; bound them so
     // the heading can never exceed the seed budget.
     heading: `Continued from a previous conversation (${boundTranscriptSeedLabel(input.sourceTitle)}, on ${boundTranscriptSeedLabel(input.sourceAgent)}); the transcript is context only, not a new request.`,
     ...transcriptSeedSource(input.messages),
-  }).text;
+  });
 }

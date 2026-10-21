@@ -150,6 +150,11 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Derived from the saved fork owner; retains the actual requester for the spawn recheck. */
+  forkContextRequester?: {
+    userId?: string;
+    tenantExecutionContext?: TenantExecutionContext;
+  };
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */

@@ -211,3 +211,35 @@ passed; an optional raw-temp-directory warning from that attempt was repaired
 and checked separately. Readiness is not passing, and no PR or publication is
 authorized by these local results. Two-account identity/quota/selection/applied
 credential evidence and the fresh public onboarding journey remain unverified.
+
+
+### Fork source checkpoint, 2026-10-21
+
+The saved fork context now has an immutable owner-scoped reservation and digest
+in the existing EventStore. First send carries the selected copied context to
+scripted Codex and Claude adapters; canonical reads retain the copied parent
+messages alongside subsequent runtime messages. A completion witness binds the
+literal seed to its prepared invocation, authoritative terminal event and, where
+required, native identity. A failed first seed refuses an ordinary follow-up.
+No provider Session is fabricated for an unstarted fork.
+
+Local evidence: four fork qualification cases pass; the combined fork/handoff/
+execution-target run passed 75 tests before the fourth fork case was added. The
+corrected orchestration owner suite plus all four fork cases passed 606 tests.
+Server-test typechecking passed before final formatting. Governance passes after
+replacing outward fork exception text with a fixed refusal. The lifecycle
+contract owner passed 112 tests. These are scripted local results.
+
+Readiness is not passing: the last full attempt reported lint and documentation
+freshness failures, plus optional connected-agent and policy diagnostics. The
+connected-agent diagnostic included three old handoff fixture expectations now
+corrected and verified in the 606-test run, Codex project-configuration confinement
+refusals, and a large projection timeout. The latter failures remain unresolved;
+no production confinement check or performance bound was relaxed. New source and
+test files still require a committed checkpoint for tracked-file policy checks.
+
+Still unfinished: authorized pre-start fork reopening and deletion, generic
+context-boundary recovery, final source review/docs/readiness and upstream
+integration. Real onboarding and two-account identity/quota/selection/credential
+application remain NOT_VERIFIED. Brian explicitly deferred second-account sign-in;
+no fresh login or provider call was started. The branch remains unpublished.

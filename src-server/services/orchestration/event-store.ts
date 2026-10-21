@@ -122,6 +122,7 @@ import {
   POSITIVE_TURN_START_INDEX,
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
+import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -200,9 +201,21 @@ import {
   createConversationContextBoundaryModule,
 } from './conversation-context-boundary-module.js';
 import {
+  type ConversationSeedWitness,
+  createConversationSeedWitness,
+  readConversationSeedWitness,
+} from './conversation-context-seed-witness.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+  readConversationForkContext,
+} from './conversation-fork-context.js';
+import {
   ConversationHandoffConflictError,
   type ConversationHandoffMarker,
   type ConversationHandoffModule,
+  conversationHandoffClientTurnId,
   createConversationHandoffModule,
   readConversationContextSeedPin,
 } from './conversation-handoff-module.js';
@@ -1272,6 +1285,53 @@ export interface ConversationForkProvenance {
   continuation?: 'native' | 'replay-seed';
 }
 
+interface ForkContextReferenceRow {
+  target_conversation_id: string;
+  fork_event_id: string;
+  source_conversation_id: string;
+  source_agent: string;
+  target_agent: string;
+  owner_user_id: string;
+  tenant_key: string;
+  project_slug: string | null;
+  requested_project_slug: string | null;
+  requested_branch_point_turn_id: string | null;
+  idempotency_key: string | null;
+  context_digest: string;
+  state: ConversationForkContextReference['state'];
+  created_at: string;
+}
+const FORK_CONTEXT_REFERENCE_COLUMNS = `target_conversation_id, fork_event_id, source_conversation_id,
+  source_agent, target_agent, owner_user_id, tenant_key, project_slug, requested_project_slug,
+  requested_branch_point_turn_id, idempotency_key, context_digest, state, created_at`;
+
+function forkContextReference(
+  row: ForkContextReferenceRow,
+): ConversationForkContextReference {
+  return {
+    targetConversationId: row.target_conversation_id,
+    forkEventId: row.fork_event_id,
+    sourceConversationId: row.source_conversation_id,
+    sourceAgent: row.source_agent,
+    targetAgent: row.target_agent,
+    ownerUserId: row.owner_user_id,
+    ...(row.tenant_key ? { tenantId: row.tenant_key } : {}),
+    ...(row.project_slug !== null ? { projectSlug: row.project_slug } : {}),
+    ...(row.requested_project_slug !== null
+      ? { requestedProjectSlug: row.requested_project_slug }
+      : {}),
+    ...(row.requested_branch_point_turn_id !== null
+      ? { requestedBranchPointTurnId: row.requested_branch_point_turn_id }
+      : {}),
+    ...(row.idempotency_key !== null
+      ? { idempotencyKey: row.idempotency_key }
+      : {}),
+    digest: row.context_digest,
+    state: row.state,
+    createdAt: row.created_at,
+  };
+}
+
 const LIFECYCLE_METHODS = [
   'request.resolved',
   'runtime.error',
@@ -2250,6 +2310,7 @@ export class EventStore {
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
+      this.db.exec(CONVERSATION_FORK_CONTEXT_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
@@ -3921,6 +3982,182 @@ export class EventStore {
     const observed = this.sessionTurnBoundaries.observe(event);
     if (observed.kind !== 'applied')
       throw new Error('Invocation terminal observation unavailable.');
+    this.projectConversationSeedWitness(event);
+  }
+
+  private projectConversationSeedWitness(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.completed' ||
+      !event.invocationId ||
+      !event.turnId
+    )
+      return;
+    const handoffKey = this.db
+      .prepare(`SELECT conversation_id, idempotency_key FROM orchestration_conversation_handoffs
+      WHERE session_id = ? AND context_seed_json IS NOT NULL`)
+      .get(event.threadId) as
+      | { conversation_id: string; idempotency_key: string }
+      | undefined;
+    const reference = this.conversationForkContextReference(event.threadId);
+    if (!handoffKey && reference?.state !== 'ready') return;
+    const capturedKey = this.db
+      .prepare(`SELECT client_turn_id FROM orchestration_prepared_turns
+      WHERE thread_id = ? AND invocation_id = ?`)
+      .get(event.threadId, event.invocationId) as
+      | { client_turn_id: string | null }
+      | undefined;
+    const clientTurnId = capturedKey?.client_turn_id;
+    if (!clientTurnId) return;
+    let context:
+      | {
+          kind: ConversationSeedWitness['kind'];
+          contextId: string;
+          contextDigest: string;
+          seed: import('./conversation-handoff-module.js').ConversationContextSeedPin;
+        }
+      | undefined;
+    if (
+      handoffKey &&
+      clientTurnId ===
+        conversationHandoffClientTurnId(
+          handoffKey.conversation_id,
+          handoffKey.idempotency_key,
+        )
+    ) {
+      const handoff = this.conversationHandoffForSession(event.threadId);
+      if (!handoff?.contextSeed) return;
+      context = {
+        kind: 'handoff',
+        contextId: handoff.sessionId,
+        contextDigest: handoff.contextSeed.pinDigest,
+        seed: handoff.contextSeed,
+      };
+    } else {
+      const start = this.latestEventByMethod(event.threadId, 'session.started');
+      const metadata =
+        start?.payload.method === 'session.started'
+          ? start.payload.metadata
+          : undefined;
+      const carrier = metadata?.forkSeedCarrier;
+      if (
+        reference?.state === 'ready' &&
+        carrier &&
+        typeof carrier === 'object' &&
+        'clientTurnId' in carrier &&
+        carrier.clientTurnId === clientTurnId &&
+        'contextDigest' in carrier &&
+        carrier.contextDigest === reference.digest
+      ) {
+        const snapshot = this.conversationForkContextSnapshot(event.threadId);
+        if (!snapshot) return;
+        context = {
+          kind: 'fork',
+          contextId: reference.forkEventId,
+          contextDigest: reference.digest,
+          seed: readConversationContextSeedPin(snapshot.seedPinJson),
+        };
+      }
+    }
+    if (!context) return;
+    const prepared = this.readPreparedTurnIntent(
+      event.threadId,
+      event.invocationId,
+    );
+    if (!prepared || prepared.capture.clientTurnId !== clientTurnId) return;
+    const terminal = this.readInvocationTerminal(
+      event.threadId,
+      event.invocationId,
+      event.turnId,
+    );
+    if (
+      terminal.kind !== 'found' ||
+      terminal.fact.terminalEventId !== event.eventId
+    )
+      return;
+    if (
+      !context ||
+      !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
+    )
+      return;
+    const native = this.db
+      .prepare(
+        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+      )
+      .get(event.threadId) as { identity_key: string } | undefined;
+    const witness = createConversationSeedWitness({
+      kind: context.kind,
+      contextId: context.contextId,
+      contextDigest: context.contextDigest,
+      threadId: event.threadId,
+      clientTurnId,
+      seedDigest: context.seed.seedDigest,
+      invocationId: event.invocationId,
+      providerTurnId: event.turnId,
+      terminalEventId: event.eventId,
+      ...(native ? { nativeIdentityKey: native.identity_key } : {}),
+    });
+    this.db
+      .prepare(`INSERT OR IGNORE INTO orchestration_context_seed_witnesses
+      (thread_id, client_turn_id, context_kind, context_id, context_digest, native_identity_key, witness_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        event.threadId,
+        clientTurnId,
+        witness.kind,
+        witness.contextId,
+        witness.contextDigest,
+        witness.nativeIdentityKey ?? null,
+        JSON.stringify(witness),
+      );
+    if (
+      this.conversationSeedWitness(event.threadId, clientTurnId)?.digest !==
+      witness.digest
+    )
+      throw new Error(
+        'Context delivery evidence conflicts with its completed invocation.',
+      );
+  }
+
+  conversationSeedWitness(
+    threadId: string,
+    clientTurnId: string,
+  ): ConversationSeedWitness | undefined {
+    const row = this.db
+      .prepare(`SELECT context_kind, context_id, context_digest, native_identity_key, witness_json
+      FROM orchestration_context_seed_witnesses WHERE thread_id = ? AND client_turn_id = ?`)
+      .get(threadId, clientTurnId) as
+      | {
+          context_kind: string;
+          context_id: string;
+          context_digest: string;
+          native_identity_key: string | null;
+          witness_json: string;
+        }
+      | undefined;
+    if (!row) return undefined;
+    const witness = readConversationSeedWitness(row.witness_json);
+    if (
+      witness.threadId !== threadId ||
+      witness.clientTurnId !== clientTurnId ||
+      witness.kind !== row.context_kind ||
+      witness.contextId !== row.context_id ||
+      witness.contextDigest !== row.context_digest ||
+      (witness.nativeIdentityKey ?? null) !== row.native_identity_key
+    )
+      throw new Error('Context delivery evidence is unavailable.');
+    return witness;
+  }
+
+  contextSeedWitnessHasCurrentNativeBinding(
+    witness: ConversationSeedWitness,
+  ): boolean {
+    return (
+      witness.nativeIdentityKey !== undefined &&
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings
+      WHERE session_id = ? AND identity_key = ?`)
+        .get(witness.threadId, witness.nativeIdentityKey) !== undefined
+    );
   }
 
   /**
@@ -4355,6 +4592,233 @@ export class EventStore {
    * through any projection ensure/rehydrate path: detail reads must never
    * mutate the event store.
    */
+  conversationForkContextReference(
+    conversationId: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ?`)
+      .get(conversationId) as ForkContextReferenceRow | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextForRequest(
+    sourceConversationId: string,
+    idempotencyKey: string,
+    ownerUserId: string,
+    tenantId?: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context
+      WHERE source_conversation_id = ? AND idempotency_key = ? AND owner_user_id = ? AND tenant_key = ?`)
+      .get(sourceConversationId, idempotencyKey, ownerUserId, tenantId ?? '') as
+      | ForkContextReferenceRow
+      | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextSnapshot(
+    conversationId: string,
+  ): ConversationForkContextSnapshot | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}, snapshot_json
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ? AND state != 'deleted'`)
+      .get(conversationId) as
+      | (ForkContextReferenceRow & { snapshot_json: string | null })
+      | undefined;
+    if (!row) return undefined;
+    if (row.snapshot_json === null)
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    const snapshot = readConversationForkContext(row.snapshot_json);
+    if (
+      snapshot.digest !== row.context_digest ||
+      snapshot.targetConversationId !== row.target_conversation_id ||
+      snapshot.forkEventId !== row.fork_event_id ||
+      snapshot.sourceConversationId !== row.source_conversation_id ||
+      snapshot.sourceAgent !== row.source_agent ||
+      snapshot.targetAgent !== row.target_agent ||
+      snapshot.ownerUserId !== row.owner_user_id ||
+      (snapshot.tenantId ?? '') !== row.tenant_key ||
+      (snapshot.projectSlug ?? null) !== row.project_slug ||
+      (snapshot.requestedProjectSlug ?? null) !== row.requested_project_slug ||
+      (snapshot.requestedBranchPointTurnId ?? null) !==
+        row.requested_branch_point_turn_id ||
+      (snapshot.idempotencyKey ?? null) !== row.idempotency_key ||
+      snapshot.createdAt !== row.created_at
+    )
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    return snapshot;
+  }
+
+  reserveConversationForkContext(
+    input: ConversationForkContextSnapshot,
+  ): ConversationForkContextReference {
+    const snapshot = readConversationForkContext(JSON.stringify(input));
+    this.db.exec('SAVEPOINT reserve_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = snapshot.idempotencyKey
+        ? this.conversationForkContextForRequest(
+            snapshot.sourceConversationId,
+            snapshot.idempotencyKey,
+            snapshot.ownerUserId,
+            snapshot.tenantId,
+          )
+        : this.conversationForkContextReference(snapshot.targetConversationId);
+      if (existing) {
+        if (
+          existing.state === 'deleted' ||
+          existing.sourceAgent !== snapshot.sourceAgent ||
+          existing.targetAgent !== snapshot.targetAgent ||
+          existing.requestedProjectSlug !== snapshot.requestedProjectSlug ||
+          existing.requestedBranchPointTurnId !==
+            snapshot.requestedBranchPointTurnId
+        )
+          throw new ConversationForkContextError(
+            'The fork key already names another request or a deleted fork.',
+          );
+        this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+        return existing;
+      }
+      const effect = this.sessionTurnBoundaries.hasPossibleEffect(
+        snapshot.targetConversationId,
+      );
+      if (
+        this.readSessionByThread(snapshot.targetConversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork identity already has a possible provider start.',
+        );
+      this.db
+        .prepare(`INSERT INTO orchestration_conversation_fork_context (
+        target_conversation_id, fork_event_id, source_conversation_id, source_agent, target_agent,
+        owner_user_id, tenant_key, project_slug, requested_project_slug, requested_branch_point_turn_id,
+        idempotency_key, context_digest, state, snapshot_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`)
+        .run(
+          snapshot.targetConversationId,
+          snapshot.forkEventId,
+          snapshot.sourceConversationId,
+          snapshot.sourceAgent,
+          snapshot.targetAgent,
+          snapshot.ownerUserId,
+          snapshot.tenantId ?? '',
+          snapshot.projectSlug ?? null,
+          snapshot.requestedProjectSlug ?? null,
+          snapshot.requestedBranchPointTurnId ?? null,
+          snapshot.idempotencyKey ?? null,
+          snapshot.digest,
+          JSON.stringify(snapshot),
+          snapshot.createdAt,
+        );
+      const reference = this.conversationForkContextReference(
+        snapshot.targetConversationId,
+      );
+      if (!reference)
+        throw new ConversationForkContextError(
+          'The fork reservation is unavailable.',
+        );
+      this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+      return reference;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_fork_context; RELEASE SAVEPOINT reserve_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+  ): boolean {
+    if (event.method !== 'conversation.forked')
+      throw new ConversationForkContextError('A fork fact is required.');
+    this.db.exec('SAVEPOINT publish_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const reference = this.conversationForkContextReference(
+        event.targetConversationId,
+      );
+      const snapshot = this.conversationForkContextSnapshot(
+        event.targetConversationId,
+      );
+      if (
+        !reference ||
+        reference.state === 'deleted' ||
+        !snapshot ||
+        snapshot.digest !== digest ||
+        event.contextDigest !== digest ||
+        event.eventId !== snapshot.forkEventId ||
+        event.sourceConversationId !== snapshot.sourceConversationId ||
+        event.targetAgent !== snapshot.targetAgent ||
+        event.branchPointTurnId !== snapshot.branchPointTurnId ||
+        event.sourceSessionId !== snapshot.sourceSessionId
+      )
+        throw new ConversationForkContextError(
+          'The fork publication does not match its reserved context.',
+        );
+      if (reference.state === 'ready') {
+        if (!this.hasEventId(event.eventId))
+          throw new ConversationForkContextError(
+            'The fork fact is unavailable.',
+          );
+        this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+        return false;
+      }
+      if (this.hasEventId(event.eventId))
+        throw new ConversationForkContextError(
+          'The fork fact predates its context reservation.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'ready'
+        WHERE target_conversation_id = ? AND state = 'prepared' AND context_digest = ?`)
+        .run(snapshot.targetConversationId, digest);
+      this.appendEvent(event);
+      this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+      return true;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT publish_fork_context; RELEASE SAVEPOINT publish_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  deleteUnstartedConversationForkContext(conversationId: string): void {
+    this.db.exec('SAVEPOINT delete_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const effect =
+        this.sessionTurnBoundaries.hasPossibleEffect(conversationId);
+      if (
+        this.readSessionByThread(conversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork has a possible provider start and cannot be deleted as an unstarted fork.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'deleted', snapshot_json = NULL
+        WHERE target_conversation_id = ?`)
+        .run(conversationId);
+      this.db.exec('RELEASE SAVEPOINT delete_fork_context');
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT delete_fork_context; RELEASE SAVEPOINT delete_fork_context',
+      );
+      throw error;
+    }
+  }
+
   readConversationForkProvenance(conversationId: string): {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
@@ -10251,8 +10715,9 @@ export class EventStore {
   }
 
   /**
-   * A return's retired source anchors its identity; its carrier may later
-   * rebind profiles. Keys stay private and callers authorize the Conversation.
+   * Completion witnesses pin the identity that accepted the literal seed; a
+   * carrier may later rebind profiles. Keys stay private and callers authorize
+   * the Conversation.
    */
   nativeContextDeliverySessions(
     conversationId: string,
@@ -10262,9 +10727,9 @@ export class EventStore {
       .prepare(`SELECT handoff.session_id
       FROM orchestration_native_session_bindings own
       JOIN orchestration_conversation_handoffs handoff ON handoff.conversation_id = ?
-      JOIN orchestration_native_session_bindings source
-        ON source.session_id = handoff.native_return_source_session_id
-        AND source.identity_key = own.identity_key
+      JOIN orchestration_context_seed_witnesses witness
+        ON witness.thread_id = handoff.session_id AND witness.context_kind = 'handoff'
+        AND witness.native_identity_key = own.identity_key
       JOIN orchestration_conversation_sessions lineage ON lineage.session_id = handoff.session_id
       WHERE own.session_id = ? AND lineage.conversation_id = ?
       ORDER BY lineage.ordinal ASC`)

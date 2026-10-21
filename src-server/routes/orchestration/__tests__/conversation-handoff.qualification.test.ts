@@ -12,7 +12,10 @@ import {
   CONVERSATION_HANDOFF_CARRIED_FIELDS,
   CONVERSATION_HANDOFF_RESET_FIELDS,
 } from '@kontourai/station-contracts/orchestration';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -293,6 +296,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         getProject: vi.fn(),
         getProviderAdapter: (provider) => service.getProviderAdapter(provider),
         readSessionBinding: async (_access, id) => continuityBinding(store, id),
+        readInitialConversationContext: async (_access, input) =>
+          service.prepareInitialConversationForkContext(
+            input,
+            sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+          ),
         resolveConversationSession: async (_access, id, requested) =>
           service.resolveConversationContinuation(
             id,

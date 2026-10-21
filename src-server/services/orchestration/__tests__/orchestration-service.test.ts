@@ -4645,6 +4645,7 @@ describe('OrchestrationService', () => {
             input: {
               threadId: first.marker.sessionId,
               input: 'continue',
+              ambientContext: first.transcriptSeed,
               clientTurnId,
             },
           },
@@ -4742,13 +4743,17 @@ describe('OrchestrationService', () => {
         transitionSource: 'runtime',
         createdAt: '2026-08-24T01:01:00.000Z',
       });
-      await expect(
-        handoffService.resolveConversationContinuation(
-          'handoff-conversation',
-          INTERNAL_SESSION_READ_SCOPE,
-          { provider: 'claude', connectionId: 'claude' },
-        ),
-      ).resolves.toMatchObject({ startRequired: true });
+      const continuation = handoffService.resolveConversationContinuation(
+        'handoff-conversation',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude', connectionId: 'claude' },
+      );
+      if (custody === 'captured')
+        await expect(continuation).resolves.toMatchObject({ startRequired: true });
+      else
+        await expect(continuation).rejects.toThrow(
+          'Handoff context delivery has not completed.',
+        );
       await handoffService.shutdown();
     },
   );
