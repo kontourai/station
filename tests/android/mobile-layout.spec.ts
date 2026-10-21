@@ -238,6 +238,11 @@ test.describe('Android — Mobile Layout', () => {
     await expect(sections).toBeVisible();
     await sections.selectOption({ label: 'Advanced' });
 
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Build details$/ })
+      .click();
+
     // #1063 renamed the group and renders the timestamp as `date · age` with
     // a separate screen-reader description that repeats the age, so match the
     // visible line whole rather than the age substring.
