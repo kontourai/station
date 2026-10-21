@@ -169,6 +169,7 @@ export function ACPAddConnectionModal({
           label={readiness?.statusLabel}
           error={state.error}
           reason={resultConnection?.lastError ?? null}
+          connectionId={resultConnection?.id}
           pending={isPending}
           firstContact={awaitingFirstContact}
           attempt={state.attempt}

@@ -39,6 +39,7 @@ import { ConnectionReadinessNotice } from '../components/connections/ConnectionR
 import { DetailHeader } from '../components/DetailHeader';
 import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
+import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -569,6 +570,14 @@ export function AgentConnectionView({
                   engine={form.type}
                 />
               )}
+            {selectedAcpConnectionId && (
+              <EngineSignInPanel
+                connectionId={selectedAcpConnectionId}
+                onSignedIn={() =>
+                  reconnectMutation.mutate(selectedAcpConnectionId)
+                }
+              />
+            )}
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}

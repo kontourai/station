@@ -704,6 +704,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Kimi Code | `kimi acp` | Agent Client Protocol |
 | Kilo | `kilo acp` | Agent Client Protocol |
 | Junie | `junie --acp=true` | Agent Client Protocol |
+| Auggie | `auggie --acp` | Agent Client Protocol; it lists no sign-in methods, so sign in with `auggie login` or save its session JSON as a key (see [Sign an engine in](#sign-an-engine-in)) |
 
 The native engines come from
 [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
@@ -728,7 +729,7 @@ device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
 them, such as `GOOSE_DISABLE_KEYRING=1` for Goose (its keychain lookup can hang
-without a terminal) and the auto-update switches for Factory Droid. A value
+without a terminal) and the auto-update switches for Factory Droid and Auggie. A value
 already set in the environment Station launches with wins. Only Station's own
 catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
@@ -754,9 +755,9 @@ card reads **Not connected yet** and offers **Retry check**, **Remove**, and,
 for a custom engine, **Edit setup**. It is not counted as one of your engines
 until a check succeeds.
 In the Add catalogue, an app that still needs setup offers **Add and set up**: it
-adds the engine and opens it, where setup continues. Station does not check
-whether a command-backed engine is signed in, so its login row says so and does
-not block chats.
+adds the engine and opens it, where setup continues. A **Setup required**
+result also offers **Sign in to** the engine, which opens the sign-in described
+in [Sign an engine in](#sign-an-engine-in).
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
@@ -786,6 +787,73 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
+
+## Sign an engine in
+
+An engine Station runs as a command keeps its own sign-in on the computer
+Station runs on. Its engine page has a **Sign-in** panel, and a chat the engine
+refused because it needs a sign-in offers **Sign in**, which opens that page.
+
+**Status.** The panel reads **Signed in**, **Not signed in** or **Not checked**
+and says where that came from:
+
+- The engine's own status command, for the engines whose vendor documents what
+  it prints: Kiro CLI (`kiro-cli whoami`) and Cursor
+  (`cursor-agent status --format json`). Station runs it without a shell,
+  stops it after 8 seconds or 64 KB of output, and reuses the answer for a
+  minute; **Check again** runs it now. An exit code alone never reads as signed
+  in. With a key for the engine present, a "signed out" answer reads as not
+  checked, because no vendor documents the status command reading the key.
+  Only this check feeds the engine's readiness: signed out is a required
+  prerequisite, and an inconclusive check is optional.
+- What the engine said: a chat or a check it refused with "Authentication
+  required" reads as **Not signed in** until a later chat gets an answer, and a
+  sign-in started here that finished reads as **Signed in**. Neither changes
+  readiness.
+- Otherwise **Not checked**, and the panel says the engine has no check
+  Station can run.
+
+**Ways to sign in.** Station asks the engine which sign-in methods it offers
+(a short-lived start of the engine that tells it Station can run a terminal
+sign-in) and lists them, minus any the catalogue hides (Factory Droid's
+API-key method, which the key field replaces):
+
+- A *terminal* method (for example pi's) runs the engine's own command, with
+  its configured arguments plus the arguments the engine named, in a terminal
+  on the computer Station runs on; the panel shows that terminal. The engine's
+  exit code decides the result. Nothing the browser sends is run: the browser
+  names only the method.
+- Any other method asks the engine to sign itself in. It may open a browser on
+  that computer; links it prints are shown with **Open link**, and Station never
+  opens them itself. Station gives up after five minutes (a terminal sign-in
+  after 15).
+
+**Keys.** For engines that read a key from the environment (for example
+`FACTORY_API_KEY`, `CURSOR_API_KEY`, `WINDSURF_API_KEY`,
+`AUGMENT_SESSION_AUTH`), the panel has a field per variable. Station stores
+the value in its engine credential store (`security/engine-credentials.json`
+under the Station home, readable only by its owner), never in
+`config/acp.json`, never in logs, and never sends it back; the panel shows
+only that it is saved. The value is added to that one connection's engine
+processes, overriding the same variable in Station's own environment.
+Removing the connection removes its keys.
+
+**Who may sign in.** Reading the panel needs read access; **Check again**
+needs permission to operate Station. Starting or cancelling a sign-in and
+saving or removing a key need `engine:login` on a paired device. A terminal
+sign-in runs a command on the computer Station runs on, so a paired device
+also needs `coding:exec` and `terminal:operate`; without them the panel says to
+sign in on that computer. The operator in person needs no grant.
+
+**Subscription logins.** Where a method can use a subscription whose provider
+restricts using it in other tools (pi's and Hermes' setup can use a Claude
+subscription), the panel shows a short note and a link to the provider's
+terms. It does not stop the sign-in. Station never reads, copies or passes on
+an engine's own credentials (see
+[ADR 0013](../adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md)).
+
+Live sign-in against real vendor accounts has not been verified; the flows are
+tested against a stand-in engine that speaks the same protocol.
 
 ---
 

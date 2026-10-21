@@ -27,7 +27,6 @@ import {
   type McpServer,
   type PermissionOption,
   type PromptResponse,
-  RequestError,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
@@ -94,6 +93,14 @@ import {
   ACPProcess,
   type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
+import {
+  clearEngineSignInRefusal,
+  engineSignInStatus,
+  engineStatusCheckable,
+  isAcpAuthRequired,
+  recordEngineSignInRefused,
+} from '../../services/acp/engine-auth-status.js';
+import { engineCredentialEnvFor } from '../../services/acp/engine-credentials.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import {
   type OpenCodeApprovalFloor,
@@ -219,24 +226,6 @@ type AcpLogger = any;
 type AcpDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
 
 /** Stable internal outcome for a user stop or adapter shutdown racing start. */
-/**
- * ACP's `auth_required` error, in the exact shape the ACP SDK's
- * `RequestError.authRequired` builds: code -32000 and a message beginning
- * "Authentication required". The code alone is not enough: -32000 opens
- * JSON-RPC's generic server-error range.
- */
-const ACP_AUTH_REQUIRED = RequestError.authRequired();
-
-function isAcpAuthRequired(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const { code, message } = error as { code?: unknown; message?: unknown };
-  return (
-    code === ACP_AUTH_REQUIRED.code &&
-    typeof message === 'string' &&
-    message.startsWith(ACP_AUTH_REQUIRED.message)
-  );
-}
-
 class AcpSessionStartCancelledError extends Error {
   constructor() {
     super('ACP session start was cancelled before it became ready.');
@@ -1204,6 +1193,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         args: config.args,
         cwd,
         launchEnv,
+        credentialEnv: () => engineCredentialEnvFor(config),
         // #3957: not offered, because OpenCode's own tools already write
         // every edit; its client write would only be a redundant copy. The
         // bridge refuses one it sends anyway (`fileMethodsOffered`).
@@ -1920,6 +1910,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (caught) {
       // The engine's own "not signed in" answer is a refusal with a typed
       // code, so a surface can say "sign in" instead of showing raw text.
+      if (isAcpAuthRequired(caught)) recordEngineSignInRefused(config.id);
       const error = isAcpAuthRequired(caught)
         ? new SessionStartRefusedError(
             `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
@@ -2672,10 +2663,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           versionArgs: ['--version'],
           // #1940: no generic engine command proves sign-in (a `--version`
           // exit 0 used to read as signed in), and a handshake does not
-          // either: some engines refuse only at the first prompt.
-          // `detectAuthState` is where a per-engine sign-in check plugs in.
-          detectAuthState: async () => 'unknown',
-          unverifiedAuthDescription: `Station does not check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in with ${config.name} itself.`,
+          // either: some engines refuse only at the first prompt. Only the
+          // engine's documented status command, or what the engine itself
+          // said, decides it (engine-auth-status.ts).
+          detectAuthState: async () =>
+            (await engineSignInStatus(config, { commandOnly: true })).state,
+          unverifiedAuthDescription: engineStatusCheckable(config)
+            ? `Station could not tell whether ${config.name} is signed in.`
+            : `Station has no way to check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in from this engine's page.`,
           installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
           authStep: `Sign in with ${config.name} itself if it asks you to.`,
         }),
@@ -3746,6 +3741,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         // handler). Must run before the ownsActiveTurn early return below,
         // or a superseded turn's quarantine would never clear.
         record.quarantinedTurnIds?.delete(turnId);
+        // The engine answered, so a sign-in refusal it gave earlier is stale.
+        clearEngineSignInRefusal(record.connectionId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
@@ -3790,6 +3787,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             details: providerQuotaEventDetails(quota),
           } satisfies ProviderRuntimeErrorEvent);
         } else if (isAcpAuthRequired(error)) {
+          recordEngineSignInRefused(record.connectionId);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,

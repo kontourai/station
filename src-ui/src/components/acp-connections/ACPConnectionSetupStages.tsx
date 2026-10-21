@@ -3,6 +3,7 @@ import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
 import { resolveProviderChoicePresentation } from '../../views/provider-settings/providerCatalog';
 import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
+import { EngineSignInDisclosure } from '../engine-sign-in/EngineSignInDisclosure';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveSurfaceActions,
@@ -451,10 +452,13 @@ export function ACPConnectionSetupStatus({
   firstContact = false,
   attempt = 'add',
   engineName,
+  connectionId,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
   error: string | null;
+  /** The saved connection, so "Setup required" can offer its sign-in. */
+  connectionId?: string;
   /**
    * CI-R8: the probe's own most recent failure, when it has one. "This
    * provider needs more setup before it can run work" named nothing and both
@@ -527,6 +531,12 @@ export function ACPConnectionSetupStatus({
               </span>
             ) : null}
           </>
+        )}
+        {label === 'Setup required' && connectionId && (
+          <EngineSignInDisclosure
+            connectionId={connectionId}
+            engineName={engine}
+          />
         )}
       </div>
     );

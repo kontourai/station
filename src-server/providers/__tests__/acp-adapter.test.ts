@@ -346,7 +346,7 @@ describe('AcpAdapter', () => {
     );
     const auth = prerequisites.find((item) => item.id === 'node-auth');
     expect(auth).toMatchObject({ status: 'error', category: 'optional' });
-    expect(auth?.description).toContain('does not check whether OpenCode');
+    expect(auth?.description).toContain('has no way to check whether OpenCode');
     expect(auth?.description).not.toMatch(/credentials are present/i);
     expect(requiredMissingPrerequisites(prerequisites)).toEqual([]);
   });

@@ -32,6 +32,11 @@ import {
   assertACPProviderRouteSupported,
   type InitializeResult,
 } from './acp-process.js';
+import {
+  isAcpAuthRequired,
+  recordEngineSignInRefused,
+} from './engine-auth-status.js';
+import { engineCredentialEnvFor } from './engine-credentials.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
 import { engineFacingProbeMessage } from './probe-messages.js';
 
@@ -454,7 +459,9 @@ function probeErrorMessage(
  * refuses with JSON-RPC `-32601`; none can return a plausible empty/success
  * value if an agent sends an undeclared request during the handshake.
  */
-function createProbeClient(onExtMethod: AcpInboundExtensionHandler): Client {
+export function createProbeClient(
+  onExtMethod: AcpInboundExtensionHandler,
+): Client {
   const unsupported = (method: string): never => {
     throw RequestError.methodNotFound(method);
   };
@@ -874,6 +881,7 @@ export class ACPProbe {
         args: this.config.args,
         cwd,
         launchEnv: registryLaunchEnvFor(this.config),
+        credentialEnv: () => engineCredentialEnvFor(this.config),
         createClient: () => createProbeClient(this.inboundExtensionPolicy),
         clientCapabilities: {},
         logger: this.logger,
@@ -1024,6 +1032,8 @@ export class ACPProbe {
         this.lastSuccess = false;
         return false;
       }
+      // The engine's own "sign in first" answer is sign-in evidence.
+      if (isAcpAuthRequired(err)) recordEngineSignInRefused(this.config.id);
       this.lastError = {
         message: probeErrorMessage(err, this.config),
         // `process.start()` both launches and initializes; a command that
@@ -1258,6 +1268,7 @@ export class ACPProbe {
       args: this.config.args,
       cwd,
       launchEnv: registryLaunchEnvFor(this.config),
+      credentialEnv: () => engineCredentialEnvFor(this.config),
       createClient: () => createProbeClient(this.inboundExtensionPolicy),
       clientCapabilities: {},
       logger: this.logger,

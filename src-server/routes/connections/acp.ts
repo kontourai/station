@@ -28,6 +28,7 @@ import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
+import { engineCredentials } from '../../services/acp/engine-credentials.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
@@ -132,6 +133,19 @@ export async function listUnconnectedACPRegistryEntries(configLoader: {
  * Transport-only contexts (no filesystem loader, test fixtures) carry no
  * identity evidence and keep the legacy reading: every config entry counts.
  */
+/** A saved or plugin-provided connection by id, registered or not. */
+export async function findACPConnection(
+  configLoader: {
+    loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+  },
+  id: string,
+): Promise<ACPConnectionConfig | undefined> {
+  const config = await configLoader.loadACPConfig();
+  return mergeACPConnections(config.connections, getProviderConnections()).find(
+    (connection) => connection.id === id,
+  );
+}
+
 async function installedACPConnections(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
 }): Promise<ACPConnectionConfig[]> {
@@ -773,6 +787,14 @@ export function createACPRoutes(ctx: RuntimeContext) {
           await ctx.configLoader.saveACPConfig(config);
           beginMutation();
           await ctx.acpBridge.removeConnection(id);
+          // A key stored for this connection must not outlive it.
+          await engineCredentials()
+            ?.removeConnection(id)
+            .catch(() =>
+              ctx.logger?.warn?.('Stored engine keys could not be removed', {
+                id,
+              }),
+            );
           acpOps.add(1, { op: 'delete' });
           return c.json({ success: true });
         },
