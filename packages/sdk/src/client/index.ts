@@ -86,6 +86,10 @@ export * from './peer-enrollments';
 export * from './personal-boards';
 export { listPersonalLayouts } from './personal-layouts';
 export { getPluginHeaders } from './plugin-headers';
+export {
+  createPluginTelemetry,
+  mountPluginTelemetryPane,
+} from './plugin-telemetry';
 export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';

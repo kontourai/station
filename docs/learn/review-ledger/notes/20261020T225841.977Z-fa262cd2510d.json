@@ -1,0 +1,7 @@
+{
+  "revision": "4baf2709cf2502da1f3f168c6bd6938c9216fc30",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the new orchestration event-window latestTool wording against Agent/engine, Session/turn and observed-outcome language. The field is bounded tool name plus exact turn identity; it does not declare a tool running, success, control authority or a new product term. Existing glossary definitions remain accurate.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

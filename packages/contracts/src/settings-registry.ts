@@ -220,14 +220,51 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
+    key: 'serverUpdateDownloadPolicy',
+    scope: 'station',
+    // `SERVER_UPDATE_DOWNLOAD_POLICIES` in system-status.ts, restated as a
+    // literal for the schema-parity test (see defaultApprovalMode below).
+    descriptor: {
+      kind: 'enum',
+      values: ['never', 'after-24h', 'immediately'],
+    },
+    label: 'Automatic server download',
+    help: 'A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.',
+    description:
+      'For a Station service installed from a release archive: download an available server update never, once it has been available for 24 hours, or immediately. Downloading verifies the release and keeps the server running; restarting into it always takes an explicit Restart (or Update when idle).',
+    // Confirmed against ServerUpdateCoordinator's policy read: absent falls
+    // through to DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY.
+    defaultValue: 'after-24h',
+  }),
+  defineSetting({
     key: 'telemetryTier',
     scope: 'station',
     descriptor: { kind: 'composite' },
     label: 'Telemetry tiers',
     help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
     description:
-      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite collection is not available yet.',
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite sends only after the current publisher notice is shown.',
     defaultValue: { kontour: 'lite', operator: 'lite' },
+  }),
+  defineSetting({
+    key: 'publicTelemetryRegistries',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Public telemetry registries',
+    help: 'Classify public catalog source keys; signature verification is also required.',
+    description:
+      'Only these public registries may supply publisher telemetry declarations.',
+  }),
+  defineSetting({
+    key: 'telemetryPublisherPolicy',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Telemetry publisher defaults',
+    help: 'Lower a publisher default; user choices take precedence and Full is never a default.',
+    description:
+      'Operator policy for publisher defaults. Distribution manifests will use the same resolver.',
   }),
   defineSetting({
     key: 'telemetryEnabled',
@@ -492,9 +529,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'Station stops an agent run once it has taken this many steps.',
+    help: 'Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.',
     description:
-      'How many steps an agent may take in one run before Station stops it. Raise it for long-running work; lower it to rein in runaway agents.',
+      'Fallback step limit for VoltAgent runs when the Agent has no maxSteps or guardrails.maxSteps override. Strands and native engines do not apply this setting.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10

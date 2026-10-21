@@ -1,0 +1,7 @@
+{
+  "revision": "c3b9a9f64061869cd8a4c0cd940c0420737372dd",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3800 round 5: orchestration-service.ts and attached-session-adoption.ts stamp a server-owned confinementRoot start-metadata key (sessionConfinementRoot: named or deepest containing Project, else admitted workspace, else empty) consumed only by the Codex adapter's pre-start .codex check. Searched this document for start-metadata, adoption, Project-binding, session-start and sandbox claims: none enumerate stamped keys or describe this check; nothing it states changed; no prose or capture change needed.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

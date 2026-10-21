@@ -71,10 +71,11 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
+| `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy, its automatic-download time and a per-run sequence) and its state event name; the native shell computes it, the window and tray read it |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
@@ -91,11 +92,11 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates; a catalog contribution's optional, server-issued `lifecycleGeneration` (identity only, never a permission), which a reinstall or an enablement change replaces and which never repeats; `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
-| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
+| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
@@ -106,12 +107,21 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
-| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
+| `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
+| `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+`ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
+`invocationId`. Station assigns it to requested work, and producers retain it
+only through an actual originating request or stream association. It is
+attribution data, not authorization, a client turn key or replay permission.
+Raw weak-origin observations remain untagged; consumers must not infer an
+invocation from a reused native turn ID or the current thread mapping.
 
 `ProviderContinuityCapabilities.resumeIdentity` is an additive adapter opt-in
 to `require-match`. Foreground native-cursor continuations set
@@ -138,7 +148,9 @@ message fit in context, that a turn completed, or that cross-machine migration
 worked. Private resume-enforcement inputs are excluded from public start inputs.
 
 `ConversationReadPage` retains compact message Session attribution and optional
-model attribution, with `provider-reported` or `selected` provenance. Its
+model attribution, with `provider-reported` or `selected` provenance. A row may
+also carry `sender`, the agent-message provenance Station recorded; it does not
+grant read authority, and absence means that attribution was not reported. Its
 versioned `provenance` reports ordered execution Sessions, provider handoffs and
 optional explicit fork ancestry. Missing provenance on an older server, or
 `status: 'unavailable'`, means unknown. A parent reference grants no read access.
@@ -151,6 +163,18 @@ Session inventory preserves Surface's `not-chosen` reviewed-source state and
 `reviewed-source-review-not-chosen` gap when a review selected another candidate.
 The row remains `contributed-to`; that state does not establish support for the answer.
 
+A current-answer inventory is bound to the scope's exact Session and turn, not
+to an available answer. It parses whatever the Surface answer state is. Consumers
+render that state from the carried `basis`, so a partial Basis outage keeps the
+other resolved groups. An available answer must still equal the bound answer
+exactly. A non-available answer admits no `surface-answer-contribution` row.
+In that scope `contributed-to` is the only support edge. A row without it is
+turn lineage: only `observed-during` or `produced-by`, carrying the scope's
+`turnId` (`output.turnId` for outputs). Decision and delegation rows carry an
+optional `turnId` for this. The Session resource summary has no turn, so it never
+appears in a current-answer inventory. See the
+[parser](../../packages/contracts/src/session-inventory.ts).
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
@@ -158,7 +182,7 @@ loading. The session resolver carries these as `toolServerMode` and
 `toolServerLoading`. A resolved server's `allowedTools` contains exact original
 MCP names (empty means none); `disabledTools` excludes names independently, and
 `toolNames` is catalog metadata for known-tool exclusions. See the
-[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
+[Agent Tools guide](../guides/agent-configuration.md#mcp-tool-configuration) for delivery limits.
 
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
@@ -191,6 +215,11 @@ updates liveness without advancing the event replay cursor.
 `ChildWorkSessionView` may include bounded `settled` items with a reported
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
+
+Claude's early resumed-child replies require an observed matching `SendMessage`
+recipient before they can seed the resumed run. Replay suppression retains the
+latest 64 SDK-frame, tool-call and resume-call identities per category; identities
+evicted from that bounded history are no longer recognized as replays.
 
 ## Engine-neutral failures
 
@@ -267,6 +296,7 @@ No existing diagnostic code is renamed or removed.
 | `client_turn_in_flight` | `busy` | `true` |
 | `client_turn_input_conflict` | `conflict` | `false` |
 | `client_turn_input_unsupported` | `input_unsupported` | `false` |
+| `client_turn_settled` | `conflict` | `false` |
 | `confined_full_access_unavailable` | `permission_denied` | `false` |
 | `confinement_mechanism_unavailable` | `permission_denied` | `false` |
 | `confinement_not_observed` | `permission_denied` | `false` |
@@ -377,7 +407,7 @@ remain separate decisions. Broader retention for newly classified codes is defer
 
 ## Product telemetry observations
 
-`@kontourai/station-contracts/product-telemetry` declares the content-free event
+`@kontourai/station-contracts/product-telemetry` declares the content-free Full event
 inventory and version1 batch, observation and build shapes.
 `TelemetryPublisherStatus` includes the effective tier and reason alongside the
 optional saved `userChoice`; a DNT override does not replace that saved choice. Stable event IDs,
@@ -386,7 +416,28 @@ provenance support reliability comparisons; they do not identify people or
 replace canonical personal usage receipts. Runtime validation and disclosure
 fingerprinting belong to the [shared helper](shared.md#product-telemetry).
 Legacy payloads have no v1 guarantees and the strict parser rejects them.
+The same module owns per-publisher tiers, the identifier-free `station_daily`
+field catalog, fixed feedback reasons and bounded outbox records. Lite bodies
+use the daily catalog; Full uses the version1 observation envelope.
 See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
+
+## Allowance observations and recovery ordering
+
+Codex's nullable `primary` and `secondary` groups represent unavailable windows,
+not malformed data or zero usage. Nullable duration, reset and credit-balance
+metadata remains unknown; an explicitly unavailable reset cannot supply a
+qualified expiry deadline. Non-null malformed groups still refuse projection.
+
+`connection-quota` retains raw provider reset values and adds optional
+`resetDeadlineAt` only when an adapter can normalize a declared wire unit.
+`subscriptionEnd` carries its own observation time and explicit renewal state;
+missing lifecycle data is not inferred from a provider plan string. Sparse
+updates preserve prior lifecycle observations without refreshing their timestamp.
+
+`connection-recovery` owns optional `allowancePreference` (window ID and minimum
+remaining percentage). It ranks existing eligible recovery accounts, grants no
+new enrollment or execution authority, and preserves ordinary ordering when
+expiry facts are unknown. See [account recovery ordering](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
 
 ## Import examples
 
@@ -594,8 +645,8 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and notifies "Your agent replied" when the owner
-is offline. A send while it runs is refused with the retryable code
+`provider_turn_completed`), and records a "Your agent replied" notification
+whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
@@ -1048,7 +1099,16 @@ provenance resolver; consumers render from the code and never re-parse it out
 of prose. `ServiceUpdateProgress` (with its `ServiceUpdatePhase`) is the
 service launcher's update state for a prebuilt-archive install, as
 `GET /api/system/core-update/service-update` reads it from that install's
-runtime files. Runtime parsing of these shapes lives at the route and SDK
+runtime files. Since #3851 it also carries:
+- the `staged` state;
+- an optional request `intent` (`stage`, `apply` or `update`);
+- the staging phase (`ServiceStagePhase`) and its byte counts.
+
+The module also owns the server's own view of its update:
+`ServerUpdateState`, `ServerUpdateRunningTurns` and
+`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+view, and the `runtime-events` `server-update:changed` event carries it.
+Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
 
 The deployment authentication descriptor's optional `externalLogins` lists
@@ -1163,3 +1223,15 @@ stop, excerpt, run, and result shapes. Completed guides name `headSha`,
 `Failed`. Results carry `currentHeadSha` independently of the guide head and
 validated `excerptContents` for rendering. Stale results omit line anchors.
 The [user guide](../user/pull-request-guides.md) describes generation and limits.
+
+
+## Publisher analytics declarations
+
+`@kontourai/station-contracts/plugin-telemetry` owns
+`PublisherTelemetryDeclaration`, `PluginDailyPing`, `PluginTelemetryEvent` and the Full `PluginTelemetryBatch` envelope.
+The declaration is reusable by future distribution manifests. The
+[shared parser](../../packages/shared/src/plugin-telemetry.ts) owns runtime bounds,
+canonical inventory fingerprints and the independent plugin data revision.
+`parsePluginDailyPing(payload, declaration, namespacedPublisher)` requires exact declared event/property
+histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
+See [Publisher analytics](../guides/plugins.md#publisher-analytics).

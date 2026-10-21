@@ -55,6 +55,9 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
 }));
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
+}));
 
 import { ProjectSidebarFooter } from '../components/project-sidebar/ProjectSidebarFooter';
 

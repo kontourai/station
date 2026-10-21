@@ -53,6 +53,46 @@ function releaseAssetNameFromUrl(url, releaseTag) {
   return assetName;
 }
 
+/**
+ * The version a Tauri updater signature is bound to, from its minisign
+ * trusted comment (`version:<v>`, tab-separated), or null when it names none.
+ * This reads the comment without verifying the signature; the app verifies
+ * it cryptographically. It exists so a release cannot publish a signature
+ * the app's cached-package restore would refuse (#3851).
+ */
+export function signedUpdaterVersion(signature) {
+  let text;
+  try {
+    text = Buffer.from(signature.trim(), 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+  const comment = text
+    .split(/\r?\n/)
+    .find((line) => line.startsWith('trusted comment: '));
+  if (!comment) return null;
+  const field = comment
+    .slice('trusted comment: '.length)
+    .split('\t')
+    .find((part) => part.startsWith('version:'));
+  return field ? field.slice('version:'.length) : null;
+}
+
+function assertSignatureBindsVersion(platform, signature, version) {
+  const signed = signedUpdaterVersion(signature);
+  if (signed === null)
+    fail(
+      `platform ${JSON.stringify(platform)} signature names no version; sign the updater archive with \`tauri signer sign --app-version ${version}\``,
+    );
+  // A literal comparison after dropping a leading v. The plugin compares
+  // semver, so this is stricter: it can refuse a spelling the plugin would
+  // accept (e.g. build metadata), never accept one it would refuse.
+  if (signed.replace(/^v/, '') !== version.replace(/^v/, ''))
+    fail(
+      `platform ${JSON.stringify(platform)} signature is bound to version ${JSON.stringify(signed)}, not the manifest version ${JSON.stringify(version)}`,
+    );
+}
+
 export function assertUpdaterAssetMatchesPlatform(platform, assetName) {
   const tokens = PLATFORM_ASSET_TOKENS[platform];
   if (!tokens)
@@ -154,6 +194,7 @@ export function createUpdaterManifestForPlatforms({
       fail('url must be an https URL');
     const assetName = releaseAssetNameFromUrl(url, releaseTag);
     assertUpdaterAssetMatchesPlatform(platform, assetName);
+    assertSignatureBindsVersion(platform, signature, version);
     entries[platform] = { signature: signature.trim(), url };
   }
   return {

@@ -14,9 +14,29 @@ const {
   filterMonitoringEvents,
   getHistoricalAgentSlugs,
   getMonitoringAgentCountLabel,
+  getProducerAgentSlugs,
   getRunningConversations,
   monitoringSessionCounts,
 } = await import('../views/monitoring/view-utils');
+
+describe('external producer agents', () => {
+  test('are kept out of Station historical agents and counted apart', () => {
+    const events = [
+      { [K.AGENT_SLUG]: 'old-agent' },
+      {
+        [K.AGENT_SLUG]: 'producer:flow-agents:default',
+        [K.TELEMETRY_PRODUCER]: 'flow-agents',
+      },
+    ] as unknown as MonitoringEvent[];
+    expect(getHistoricalAgentSlugs(events, [])).toEqual(['old-agent']);
+    expect(getProducerAgentSlugs(events)).toEqual([
+      { slug: 'producer:flow-agents:default', producer: 'flow-agents' },
+    ]);
+    expect(getMonitoringAgentCountLabel({ agents: [] } as never, events)).toBe(
+      '0 Configured • 1 Historical • 1 External',
+    );
+  });
+});
 
 function createEvent(overrides: Partial<MonitoringEvent>): MonitoringEvent {
   return {

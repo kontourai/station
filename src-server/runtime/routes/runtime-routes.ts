@@ -1,8 +1,10 @@
 import { hostname } from 'node:os';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { zodSchema } from 'ai';
+import packageJson from '../../../package.json' with { type: 'json' };
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -125,6 +127,7 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
+import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -132,6 +135,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -170,7 +174,9 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import {
+  CLIENT_ORIGIN_HEADER,
   type ClientOrigin,
+  parseClientReportedOrigin,
   UNKNOWN_CLIENT_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -408,6 +414,8 @@ import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native
 import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
+import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
+import { createTelemetryProducerRoutes } from '../../routes/telemetry-producers.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { launchesCommand } from '../../routes/working-directory-authority.js';
@@ -608,6 +616,7 @@ import { resolveProjectWorkspacePath } from '../../services/projects/project-wor
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
 import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
+import type { StationBasisCompositionInvariantError } from '../../services/projects/task-basis-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -629,6 +638,7 @@ import type {
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
 } from '../../services/secrets/secret-binding-administration.js';
+import { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import { createConversationIntentSummaryEvidenceCatalog } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { ExistingAgentSetupImportModule } from '../../services/setup/existing-agent-setup-import.js';
 import {
@@ -665,6 +675,10 @@ import {
 import { createStarterSessionOwner } from '../../services/starter-work/starter-session-owner.js';
 import { StarterWorkModule } from '../../services/starter-work/starter-work-module.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
+import {
+  admittedTelemetryProducer,
+  TelemetryProducerStore,
+} from '../../services/telemetry-producers/telemetry-producer-store.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
@@ -917,11 +931,10 @@ export interface ConfigureRuntimeRoutesContext {
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
   >;
-  // station#1225: shared per-user live-`/events`-subscriber presence — read
-  // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
-  // `configureRuntimeSupportServices`'s push-on-completion wiring
-  // (`wireTurnCompletionNotifications`), so both sides observe the SAME
-  // connection state instead of two independently-tracked counts.
+  // station#1225: shared per-user live-`/events`-subscriber presence —
+  // written by `createOrchestrationRoutes` (connect/disconnect bookkeeping)
+  // and read back by its `/presence/summary` roster. Notification delivery
+  // reads focus and `clientStreamPresence` instead (#2620).
   orchestrationStreamPresence: OrchestrationStreamPresence;
   /**
    * #2585: focus presence written by `POST /api/presence/focus`. The runtime
@@ -991,6 +1004,8 @@ export interface ConfigureRuntimeRoutesContext {
 }
 
 interface ConfigureRuntimeRoutesResult {
+  /** #3851: the runtime stops it (and its timers) on shutdown. */
+  serverUpdate: ServerUpdateCoordinator;
   schedulerService: SchedulerService;
   notificationService: NotificationService;
   attentionProjection: AttentionProjectionService;
@@ -1328,6 +1343,25 @@ export function configureRuntimeRoutes(
         }
       : undefined;
   };
+  const roomConversation = new TaskRoomConversationModule({
+    graph: context.taskGraphService,
+    work: taskRoomWork,
+    readAgentLabel: async (id) => {
+      try {
+        return (await context.agentService.getAgent(id)).name;
+      } catch {
+        return undefined;
+      }
+    },
+    room: () => projectTaskRoomRuntime,
+    authorize: (...args) => authorizeTaskRoomWork(...args),
+    sessions: context.orchestrationService,
+    readBinding: (sessionId) =>
+      context.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+        sessionId,
+      ),
+    authorityForOwner: (id) => readAuthorityForExecution(id),
+  });
   const resolveTaskRoomContext = async (
     taskId: string,
     request: Request,
@@ -1402,7 +1436,13 @@ export function configureRuntimeRoutes(
         return current ? { device: current.device } : undefined;
       }
     : undefined;
+  // One store for the ingest auth seam and the management routes, so a
+  // revocation through one is seen by the other on its next read.
+  const telemetryProducerStore = new TelemetryProducerStore({
+    securityDir: join(context.configLoader.getProjectHomeDir(), 'security'),
+  });
   const runtimeSecurity = {
+    telemetryProducers: telemetryProducerStore,
     // #2893: native Device proof admission exists only when the pilot was
     // explicitly composed; otherwise proof headers refuse closed.
     ...(nativeDeviceProofAuthority
@@ -2355,6 +2395,21 @@ export function configureRuntimeRoutes(
     context.appConfig.distributionProfile,
     context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
+  // A plugin contribution's lifecycle generation exists only under a sealed
+  // epoch: sealed once here, at start, and never during a catalog read.
+  // Unreadable revisions are left as they are, and every plugin generation
+  // stays unissued (`null`) until they are repaired.
+  try {
+    if (layoutCatalog.sealLifecycleHistory() === 'invalid')
+      context.logger.warn?.(
+        'Distribution lifecycle revisions are unreadable; plugin lifecycle generations stay unissued until they are repaired',
+      );
+  } catch (error) {
+    context.logger.warn?.(
+      'Distribution lifecycle history could not be sealed; plugin lifecycle generations stay unissued',
+      { error: error instanceof Error ? error.message : error },
+    );
+  }
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({
       supported_contract_versions: ['1.0'],
@@ -2538,8 +2593,18 @@ export function configureRuntimeRoutes(
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
+  // Surface rejected input Station itself built: an internal invariant, not an
+  // owner gap. Logged once per read so it cannot hide behind a fallback gap.
+  const reportBasisCompositionInvariant = (
+    error: StationBasisCompositionInvariantError,
+  ) =>
+    context.logger.error('Station Basis composition invariant failed', {
+      surfaceGapCode: error.surfaceGap.code,
+      surfaceGapMessage: error.surfaceGap.message,
+    });
   const exactAnswerBasis = createExactAnswerBasisModule({
     hosted: isHostedTenantExecutionRequired,
+    reportCompositionInvariant: reportBasisCompositionInvariant,
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
     readAnswer: async (sessionId, turnId, authority) =>
@@ -2773,9 +2838,65 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // #3851: the server's own update lifecycle, one per runtime. It checks
+  // once after boot and when a newer client connects (below), never on a
+  // schedule; see the coordinator's header.
+  const serverUpdate = new ServerUpdateCoordinator({
+    provenance: resolveThisServerProvenance,
+    readDownloadPolicy: async () =>
+      (await context.configLoader.loadAppConfig()).serverUpdateDownloadPolicy,
+    // Every session's active-turn state, ephemeral ones included: what the
+    // restart would stop, not what any reader may list.
+    listRunningTurns: async () =>
+      context.orchestrationService
+        .listActiveTurnThreadIds()
+        .map((sessionId) => ({ sessionId })),
+    subscribe: (listener) => context.eventBus.subscribe(listener),
+    publish: (state) =>
+      context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
+    logger: context.logger,
+  });
   context.app.route(
     '/api/system',
-    createSystemRoutes(createRuntimeSystemRouteDeps(context), context.logger),
+    createSystemRoutes(
+      {
+        ...createRuntimeSystemRouteDeps(context),
+        serverUpdate,
+        listRunningTurnsFor: async (c) => {
+          // What the restart would stop: every session with an active turn,
+          // ephemeral ones included, the same set apply-when-idle counts
+          // (review round 2 item 4). The caller sees the titles it may read;
+          // every other one is counted in hiddenCount.
+          const running =
+            context.orchestrationService.listActiveTurnThreadIds();
+          if (running.length === 0) return { turns: [], hiddenCount: 0 };
+          let mine: Awaited<
+            ReturnType<OrchestrationService['listSessionReadModel']>
+          > = [];
+          try {
+            mine = await context.orchestrationService.listSessionReadModel(
+              conversationReadAuthorityForContext(c),
+              { threadIds: running },
+            );
+          } catch {
+            mine = [];
+          }
+          const active = new Set(running);
+          const turns = mine
+            .filter((session) => active.has(session.threadId))
+            .map((session) => ({
+              sessionId: session.threadId,
+              conversationId: session.conversationId ?? null,
+              title: session.displayTitle ?? null,
+              engine: session.provider,
+              startedAt:
+                session.conversationActivity?.openTurn?.startedAt ?? null,
+            }));
+          return { turns, hiddenCount: running.length - turns.length };
+        },
+      },
+      context.logger,
+    ),
   );
   context.app.route(
     '/api/analytics',
@@ -2841,7 +2962,10 @@ export function configureRuntimeRoutes(
       },
     ),
   );
-  context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));
+  context.app.route(
+    '/api/telemetry',
+    createTelemetryRoutes(() => context.getUsageTelemetry?.()),
+  );
   // The UI mounts its disclosure on every shell, but this function runs inside
   // initializeRuntime, BEFORE StationRuntime constructs usageTelemetry — so
   // `context.usageTelemetry` is undefined here by construction (that was the
@@ -2922,6 +3046,11 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       {
+        onTelemetryRemoval: async (publisher, reason) => {
+          return context
+            .getUsageTelemetry?.()
+            ?.pluginUninstalled(publisher, reason);
+        },
         consentChannel: context.consentChannel,
         packageMcpJournal,
         registryTrustPolicyAuthority: context.orchestrationEventStore
@@ -3285,6 +3414,7 @@ export function configureRuntimeRoutes(
             ? { current: () => isRequestPrincipalCurrent(request) }
             : {}),
         }),
+      reportCompositionInvariant: reportBasisCompositionInvariant,
     });
   const taskBasisAppRead = createTaskBasisAppReadModule({
     read: async ({ taskId, authority, request }) => {
@@ -3949,9 +4079,51 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      logger: context.logger,
+      onRoomSystemLine: async ({
+        task,
+        request,
+        proposalId,
+        text,
+        occurredAt,
+      }) => {
+        try {
+          const result = await projectTaskRoomRuntime?.message({
+            taskId: task.id,
+            request,
+            expectedTaskCreatedAt: task.createdAt,
+            proposalId,
+            correlationId: 'room-system',
+            text,
+            occurredAt,
+          });
+          if (result?.kind !== 'committed' && result?.kind !== 'duplicate')
+            context.logger.warn('Task system line could not be published', {
+              taskId: task.id,
+              proposalId,
+            });
+        } catch (error) {
+          context.logger.warn('Task system line publication failed', {
+            taskId: task.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+      onStatusChanged: async (task, request) => {
+        await projectTaskRoomRuntime?.message({
+          taskId: task.id,
+          request,
+          expectedTaskCreatedAt: task.createdAt,
+          proposalId: `room-status:${task.id}:${task.updatedAt}`,
+          occurredAt: task.updatedAt,
+          correlationId: 'room-status',
+          text: `Status → ${taskStatusLabel(task.status)}`,
+        });
+      },
       taskDispatcher: context.taskDispatcher,
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
@@ -4147,6 +4319,7 @@ export function configureRuntimeRoutes(
             return {
               kind: 'granted' as const,
               operatorId: principal.id,
+              displayName: principal.display,
               deviceId: device.id,
               policyRevision: device.scope,
             };
@@ -4156,6 +4329,7 @@ export function configureRuntimeRoutes(
             ? {
                 kind: 'granted' as const,
                 operatorId: principal.id,
+                displayName: principal.display,
                 deviceId: `operator:${principal.id}`,
                 policyRevision: 'operator',
               }
@@ -4217,6 +4391,21 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readDisplayName: async (id) =>
+        context.environmentSecurityService.devicePairing
+          .listKnownPrincipals()
+          .find((principal) => principal.id === id)?.display ??
+        (id === LOCAL_OPERATOR_PRINCIPAL_ID
+          ? getCachedUser().alias
+          : undefined),
+      readAgentLabel: async (agentId) => {
+        try {
+          return (await context.agentService.getAgent(agentId)).name;
+        } catch {
+          return undefined;
+        }
+      },
+      readAgentAnswers: (input) => roomConversation.answers(input),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -4237,6 +4426,19 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    context.eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const event = frame.data?.event as
+        | import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent
+        | undefined;
+      if (event)
+        void roomConversation.observe(event).catch((error) =>
+          context.logger.warn('Task room answer publication failed', {
+            sessionId: event.threadId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    });
     // A provider start is never retried from this rail. Only the idempotent
     // room-publication receipt is replayed after a prior process died between
     // Task association and history append.
@@ -4255,10 +4457,7 @@ export function configureRuntimeRoutes(
         ]),
       )
       .then(() => undefined);
-    // Room and live-activity reads/writes share the principal owner used by
-    // proposal acceptance at the earlier POST /api/tasks mount. Keep every
-    // Request-only consumer behind this Hono-context resolution boundary.
-    context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+    // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route(
@@ -4285,17 +4484,24 @@ export function configureRuntimeRoutes(
           };
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
-          await roomRuntime.reconcileAgentLifecycles([taskId]);
           const contextSnapshot = principal
             ? await resolveTaskRoomContext(taskId, request, principal)
             : undefined;
-          return (await authorize())
-            ? {
-                ...result,
-                contextVersion: TASK_ROOM_CONTEXT_VERSION,
-                context: contextSnapshot ?? null,
-              }
-            : { kind: 'refused' as const };
+          if (!(await authorize())) return { kind: 'refused' as const };
+          setTimeout(
+            () =>
+              void roomConversation.reconcile(taskId).catch((error) =>
+                context.logger.warn('Task room reconciliation failed', {
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            0,
+          );
+          return {
+            ...result,
+            contextVersion: TASK_ROOM_CONTEXT_VERSION,
+            context: contextSnapshot ?? null,
+          };
         },
       }),
     );
@@ -4527,6 +4733,13 @@ export function configureRuntimeRoutes(
         context.orchestrationService.currentConversationSessionId(
           conversationId,
         ),
+      readInputlessTurnDisposition: (threadId: string) =>
+        eventStore.readInputlessTurnDisposition(threadId),
+      readInvocationTerminal: (
+        threadId: string,
+        invocationId: string,
+        turnId?: string,
+      ) => eventStore.readInvocationTerminal(threadId, invocationId, turnId),
       coordinatorBusy: (threadId: string) =>
         context.orchestrationService.hasActiveTurn(threadId),
       sessionOwnerId: (threadId: string) =>
@@ -4559,6 +4772,8 @@ export function configureRuntimeRoutes(
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      hasPossibleEffect: (threadId) =>
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
       // conversation's recorded owner, or a reader a personal Station lets
       // continue it.
@@ -4618,9 +4833,15 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
-      turnEvents: (threadId, turnId, methods, limit) =>
+      turnEvents: (threadId, turnId, methods, limit, invocationId) =>
         eventStore
-          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .listTurnEventsByMethods(
+            threadId,
+            turnId,
+            methods,
+            limit,
+            invocationId,
+          )
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),
             method: stored.method,
@@ -4633,7 +4854,14 @@ export function configureRuntimeRoutes(
       // conversation's ledger first, so it can never land a second time in a
       // successor Session the continuation reserves.
       start: stationServerEntry(
-        ({ parentConversationId, threadId, actor, text, clientTurnId }) =>
+        ({
+          parentConversationId,
+          threadId,
+          actor,
+          sender,
+          text,
+          clientTurnId,
+        }) =>
           startUnlessDelivered({
             conversationId: parentConversationId,
             inspect: () =>
@@ -4651,7 +4879,7 @@ export function configureRuntimeRoutes(
                   userId: actor.userId,
                   principal: actor.principal,
                   ownerAttribution: actor.attribution,
-                  clientOrigin: origin,
+                  clientOrigin: { ...origin, sender },
                 },
                 threadId,
               ),
@@ -4763,7 +4991,17 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        holdPublication: (taskId) => roomConversation.holdPublication(taskId),
+        beforeInvocation: (taskId) =>
+          roomConversation.waitForPublication(taskId),
+        continued: (taskId) => roomConversation.reconcile(taskId),
         module: taskRoomWork,
+        onRecorded: (record, request, principal) =>
+          roomConversation.recorded(record, request, principal),
+        admitReply: (input, request, principal) =>
+          roomConversation.admission(input, request, principal),
+        onReply: (input, request, principal) =>
+          roomConversation.reply(input, request, principal),
         authorize: authorizeTaskRoomWork,
         resolveContext: resolveTaskRoomContext,
       },
@@ -6748,9 +6986,16 @@ export function configureRuntimeRoutes(
         isBoundRuntimeLocalOperator(request) &&
         isRequestPrincipalCurrent(request),
       (config) => {
-        context.getUsageTelemetry?.()?.reconfigure(config);
+        context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
       },
+      async (publisher, reason) => {
+        await context
+          .getUsageTelemetry?.()
+          ?.recordTierLowering(publisher, reason);
+      },
+      async () =>
+        (await context.getUsageTelemetry?.()?.canSaveAuthorFull()) ?? false,
     ),
   );
   context.app.route(
@@ -6878,7 +7123,32 @@ export function configureRuntimeRoutes(
     createOtlpReceiverRoutes(
       (event) => context.monitoringEmitter.emitRaw(event),
       () => getCachedUser().alias,
+      admittedTelemetryProducer,
     ),
+  );
+  context.app.route(
+    '/api/telemetry-producers',
+    createTelemetryProducerRoutes({
+      store: telemetryProducerStore,
+      isOperator: (c) => {
+        try {
+          return (
+            resolveOrchestrationRequestPrincipal(c).id ===
+            LOCAL_OPERATOR_PRINCIPAL_ID
+          );
+        } catch {
+          return false;
+        }
+      },
+      // The same principal id monitoring reads scope by (`authority.userId`).
+      resolvePrincipalId: (c) => {
+        try {
+          return resolveOrchestrationRequestPrincipal(c).id;
+        } catch {
+          return undefined;
+        }
+      },
+    }),
   );
   context.app.route(
     '/agents',
@@ -7297,7 +7567,40 @@ export function configureRuntimeRoutes(
           context.orchestrationService.canUserReadSession(sessionId, authority)
         );
       },
-      connectClientSession: (request) => clientStreamPresence.connect(request),
+      connectClientSession: (request) => {
+        // #3851: a client newer than this server means a newer Station
+        // exists; its build travels on the stream it opens.
+        serverUpdate.noteClientBuild(
+          parseClientReportedOrigin(
+            request.headers.get(CLIENT_ORIGIN_HEADER) ?? undefined,
+          ).build,
+        );
+        const lease = clientStreamPresence.connect(request);
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const native = getRuntimeNativeDeviceProofPrincipal(request);
+        // The header is reported metadata, accepted only on an authenticated connection.
+        // The existing mobile origin does not distinguish iOS from Android.
+        const reported =
+          resolveClientOriginForRequest(request).reported.surface;
+        if (
+          (principal || native) &&
+          (reported === 'desktop' || reported === 'web' || reported === 'cli')
+        ) {
+          void context
+            .getUsageTelemetry?.()
+            ?.track('client_connected', {
+              surface: reported,
+              device_class: reported === 'desktop' ? 'desktop' : 'other',
+              version: packageJson.version,
+            })
+            .catch((error) =>
+              context.logger.warn('Connection telemetry observation failed', {
+                error: errorMessage(error),
+              }),
+            );
+        }
+        return lease;
+      },
       isPairedDeviceConnectionCurrent: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         return (
@@ -7325,6 +7628,10 @@ export function configureRuntimeRoutes(
       getVapidPublicKey: () => webPushService.getPublicKey(),
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       setPushSubscription: (deviceId, subscription) =>
         context.environmentSecurityService.devicePairing.setPushSubscription(
           deviceId,
@@ -7344,6 +7651,10 @@ export function configureRuntimeRoutes(
       logger: context.logger,
       identifyDevice: (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
+      credentialAliasId: (credential) =>
+        context.environmentSecurityService.devicePairing.credentialAliasId(
+          credential,
+        ),
       loadOrCreateStationKey: async () =>
         (await pushSigningKeyStore.loadOrCreate()).thumbprint,
       stationId: () =>
@@ -7521,7 +7832,9 @@ export function configureRuntimeRoutes(
         }),
       );
 
+  serverUpdate.start();
   return {
+    serverUpdate,
     schedulerService,
     notificationService,
     attentionProjection,

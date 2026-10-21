@@ -384,19 +384,45 @@ describe.skipIf(!probe.ok)(
           `mkdir -p "${w}/.CODEX" && echo x > "${w}/.CODEX/config.toml"`,
         '.codex/config.toml',
       ],
+      [
+        'write a Codex config in a subdirectory a later session may start in',
+        (w: string) =>
+          `mkdir -p "${w}/pkg/.codex" && echo x > "${w}/pkg/.codex/config.toml"`,
+        'pkg/.codex/config.toml',
+      ],
+      [
+        'write Claude settings in a subdirectory, in another case',
+        (w: string) =>
+          `mkdir -p "${w}/pkg/.Claude" && echo '{}' > "${w}/pkg/.Claude/settings.json"`,
+        'pkg/.claude/settings.json',
+      ],
+      [
+        'prepare one in its temp directory and move it into the workspace',
+        (w: string) =>
+          // No `mkdir -p`: it would stat the hidden Station root above TMPDIR.
+          `mkdir "$TMPDIR/q" && mkdir "$TMPDIR/q/.codex" && echo x > "$TMPDIR/q/.codex/config.toml" && mv "$TMPDIR/q" "${w}/pkg2"`,
+        'pkg2/.codex/config.toml',
+      ],
     ])(
       'the workspace engine configuration is read-only: a confined process cannot %s (#3800)',
       async (_label, script, planted) => {
         const result = await confined(worktree, script(worktree));
         const leaked = existsSync(join(worktree, planted));
-        rmSync(join(worktree, 'prepared'), { recursive: true, force: true });
+        for (const dir of ['prepared', 'pkg', 'pkg2'])
+          rmSync(join(worktree, dir), { recursive: true, force: true });
         expect(result.status).not.toBe(0);
         expect(leaked).toBe(false);
-        // The rest of the workspace stays writable.
+        // The rest of the workspace stays writable, names that merely share
+        // the prefix included.
         expect(
-          (await confined(worktree, `echo ok > "${worktree}/beside.txt"`))
-            .status,
+          (
+            await confined(
+              worktree,
+              `echo ok > "${worktree}/beside.txt" && mkdir -p "${worktree}/sub/.codex-notes" && echo ok > "${worktree}/sub/.claude.json"`,
+            )
+          ).status,
         ).toBe(0);
+        rmSync(join(worktree, 'sub'), { recursive: true, force: true });
       },
     );
 

@@ -1,0 +1,7 @@
+{
+  "revision": "4603a889674c85e6f35580fe9224dfc9d248f10f",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Inspected retained still: historical Task Brief tab, sample Goal/Done when/Suggested first step and Edit brief control remain the depicted scenario. Current ec170/46d0 Task changes preserve scoped selected tab through catalog loading and refresh authorized Basis reads on explicit reveal; Brief persistence/editor remain existing owners. This image is not new reload, current geometry/native/provider or simultaneous-room proof. Original bytes/digest/revision and historical evidence limits are unchanged; no recapture.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

@@ -9,7 +9,14 @@
  * One pending hand-off at a time, taken once by the reader it names. A reader
  * already open on that conversation is told, since it will not remount.
  */
-type Handoff = { threadId: string; draft: string };
+type Handoff = { threadId: string; draft: string; scope?: string };
+
+export function attachedContinuationScope(
+  stationId: string | null,
+  apiBase: string,
+): string {
+  return JSON.stringify([stationId, apiBase]);
+}
 
 let pending: Handoff | null = null;
 const listeners = new Set<() => void>();
@@ -22,8 +29,14 @@ export function handOffAttachedContinuation(handoff: Handoff): void {
 /** The draft handed to this conversation's reader, consumed on read. */
 export function takeAttachedContinuationHandoff(
   threadId: string,
+  scope?: string,
 ): string | null {
-  if (!pending || pending.threadId !== threadId) return null;
+  if (
+    !pending ||
+    pending.threadId !== threadId ||
+    (pending.scope !== undefined && pending.scope !== scope)
+  )
+    return null;
   const { draft } = pending;
   pending = null;
   return draft;
@@ -34,8 +47,15 @@ export function takeAttachedContinuationHandoff(
  * (it never loaded, or the person closed it): drop it, so it cannot surface
  * later in an unrelated visit.
  */
-export function discardAttachedContinuationHandoff(threadId: string): void {
-  if (pending?.threadId === threadId) pending = null;
+export function discardAttachedContinuationHandoff(
+  threadId: string,
+  scope?: string,
+): void {
+  if (
+    pending?.threadId === threadId &&
+    (pending.scope === undefined || pending.scope === scope)
+  )
+    pending = null;
 }
 
 export function subscribeAttachedContinuationHandoff(

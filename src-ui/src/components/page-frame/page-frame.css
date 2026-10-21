@@ -257,3 +257,26 @@
   border-color: var(--accent-primary);
   background: var(--bg-tertiary);
 }
+
+/* Workspace pages keep the shared heading and slots in compact tool chrome. */
+.page-frame--workspace .page-frame__header {
+  padding: var(--k-space-3) var(--k-space-4);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+.page-frame--workspace .page__header {
+  margin: 0;
+  gap: var(--k-space-3);
+}
+.page-frame--workspace .page__title {
+  font: 600 var(--k-text-lg) / var(--k-leading-normal) var(--k-font-ui);
+}
+.page-frame--workspace .page__actions {
+  gap: var(--k-space-2);
+}
+
+.page-frame--workspace {
+  background: var(--k-panel);
+}
+.page-frame--workspace .page__header-text {
+  min-width: 0;
+}

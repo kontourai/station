@@ -1,0 +1,95 @@
+{
+  "revision": "f69b6bcdeca354dc86ede586e64293427689a243",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/architecture.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"docs/design/entity-hierarchy.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/design/entity-hierarchy.md"]},
+
+    {"path":"docs/design/local-model-tool-calling.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/design/local-model-tool-calling.md"]},
+
+    {"path":"docs/design/project-membership.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/design/project-membership.md"]},
+
+    {"path":"docs/guides/commands.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/guides/commands.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/guides/knowledge.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/config.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/architecture/abstraction-review.md","docs/guides/commands.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/glossary.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/guides/theming.md","src-ui/AGENTS.md"]},
+
+    {"path":"docs/learn/README.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["docs/patterns/frontend.md","src-ui/AGENTS.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["examples/repository-knowledge-graph/README.md","docs/learn/atlas.json"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Dependency change was the docs/guides/agents.md -> agent-configuration.md link rename, plus instruction-file trims that move or delete no rule this document relies on. Re-read the citing passages; no claim affected.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Only change: links to docs/guides/agents.md now point to docs/guides/agent-configuration.md (file renamed, headings and anchors unchanged); docs:links:check passes. No claim changed. Regenerated src-server/tools/station-docs-content.ts with docs:mcp:generate; docs:mcp:check passes.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Renamed from docs/guides/agents.md with byte-identical content; the review record moved with it. Inbound links updated across docs, atlas and generated MCP topics.","inputs":["docs/guides/agent-configuration.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/tool-library.ts","packages/sdk/src/query-domains/catalog.ts","packages/shared/src/mcp-tool-selection.ts","schemas/agent.schema.json","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter-transport.ts","src-server/providers/adapters/codex-adapter.ts","src-server/providers/auth/claude-auth.ts","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/providers/sessions/codex-rollout-session-source.ts","src-server/routes/chat/chat-primary-stream.ts","src-server/routes/orchestration/orchestration.ts","src-server/routes/tool-library.ts","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/runtime/agents/runtime-agent-builder.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/frameworks/strands-adapter.ts","src-server/runtime/frameworks/voltagent-adapter.ts","src-server/runtime/routes/tool-library-runtime.ts","src-server/runtime/tools/tool-approval.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/orchestration/approval-posture.ts","src-server/services/orchestration/attached-session-adoption.ts","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-agent-resolution.ts","src-server/services/orchestration/session-agent-start-policy.ts","src-server/services/orchestration/session-command-module.ts","src-server/services/plugins/integration-origin.ts","src-server/services/plugins/tool-library-catalog.ts","src-server/services/plugins/tool-library-service.ts","src-server/services/projects/attention-projection.ts","src-server/services/projects/project-native-tools.ts","src-server/tools/station-control-delegation.ts","src-server/tools/station-control-mcp-server.ts","src-server/tools/station-control-operations-tools.ts","src-server/tools/station-control-personal-board-tools.ts","src-server/tools/station-control-policy.ts","src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","src-ui/src/components/attention/AttentionCard.css","src-ui/src/components/attention/AttentionCard.tsx","src-ui/src/components/profile/MyAccessPanel.css","src-ui/src/components/profile/MyAccessPanel.tsx","src-ui/src/components/profile/ToolRequestsPanel.css","src-ui/src/components/profile/ToolRequestsPanel.tsx","src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/AgentToolApproval.tsx","src-ui/src/views/agent-editor/AgentToolCatalog.tsx","src-ui/src/views/agent-editor/AgentToolDiscovery.tsx","src-ui/src/views/agent-editor/AgentToolLibrary.tsx","src-ui/src/views/agent-editor/AgentToolPicker.css","src-ui/src/views/agent-editor/AgentToolPicker.tsx","src-ui/src/views/agent-editor/utils.ts","src-ui/src/views/project-page/MemberProjectPage.tsx","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Its cited source docs/guides/agents.md was renamed to agent-configuration.md with identical content; source list updated, no claim affected.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md","docs/guides/agent-configuration.md"]},
+
+    {"path":"AGENTS.md","note":"Slimmed to universal conduct. Landing procedure moved to development.md#landing-a-pull-request; lane/receipt/transfer-gate detail deferred to development.md#verification, which carries each (checked); residual evidence sentences moved to testing.md. Required ROOT_UNIVERSAL_MARKERS and governance block retained; agent-instructions gate and verification-policy gate pass. Removed stale queue counts and check list in favor of the ruleset.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Unchanged exact @AGENTS.md wrapper plus canonical governance block; gate passes against the slimmed root.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/development.md","note":"Added Landing a pull request, moved from root AGENTS.md. Checked against live gh api repos/kontourai/station/rules/branches/main: merge_queue merge_method SQUASH, pull_request allowed_merge_methods [squash, merge], require_extra_approval_for_unattributed_changes true, strict false; main-health.yml exists. Batching values and required checks deliberately not copied. The automation-token section's GraphQL pointer now targets this section.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Push & Monitor now links development.md#landing-a-pull-request for merge-queue procedure and AGENTS.md for handoff rules; same rules, new owner.","inputs":["docs/guides/code-quality.md","AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added one paragraph moved from root AGENTS.md (structural scans, typed fixtures/real actions, profile before abstraction, fix-round deltas, measurement binding). Generated blocks untouched; verification-policy gate passes.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Shortened the generated-schedule sentence; the do-not-copy rule is rejected by agent-instructions-gate with its own error. Remaining paths (vitest-resource-manifest, bounded-capture, owned-process, code-health-gate) exist; windowsHide marker retained.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["scripts/CLAUDE.md","scripts/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Dropped test:focused and deferred-selection lines that root AGENTS.md states; helper paths and npm scripts cited (typecheck:e2e, test:fixtures:check, test:journeys:profile, test:mutation:smoke, rejectUnexpectedFixtureRequest, buildExamplePlugin, pairBrowser) verified to exist.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["tests/CLAUDE.md","tests/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Dropped the gate:for routing sentence that root AGENTS.md states; windowsHide marker retained.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["src-server/CLAUDE.md","src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Dropped the gate:for routing sentence and the stale 'from 1.13.0' DESIGN.md version (repo pins @kontourai/ui ^1.19.0). React Query and setLayout markers retained; cited UI primitives verified to exist.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["src-ui/CLAUDE.md","src-ui/AGENTS.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Replaced the gate:for routing sentence (stated in root) with the SDK-specific part: include affected consumer tests.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["packages/sdk/CLAUDE.md","packages/sdk/AGENTS.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Dropped the gate:for routing sentence stated in root AGENTS.md; native-proof rule retained.","inputs":["src-desktop/AGENTS.md"]},
+
+    {"path":"src-desktop/CLAUDE.md","note":"Exact @AGENTS.md import unchanged.","inputs":["src-desktop/CLAUDE.md","src-desktop/AGENTS.md"]}
+  ]
+}

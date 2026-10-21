@@ -1,0 +1,7 @@
+{
+  "revision": "affa8b40f6fdb895f9971c27fd122e50f14f6b57",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the Basis chip's 150ms on-screen dwell (ConnectedAnswerBasisAffordance useSettledOnScreen; pinned by the fling case in MessageBubble.basisChipStanding.test.tsx) and the narrow-row ellipsis with the full label in the accessible name and tooltip (AnswerBasisAffordance lead/standing spans, chat.css; pinned by MessageBubble.basisChipFit.test.tsx).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

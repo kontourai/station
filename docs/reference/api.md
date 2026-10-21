@@ -150,6 +150,30 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+Completed room-requested turns append agent-published text with exact Session,
+turn and (when available) run correlation in the closed browser history DTO.
+Optional `actor.id` is an opaque grouping identity; `actor.label` is display
+text. Records can include `occurredAt`, `execution`, `threadSessionId` and
+`system`. Older records remain readable. These are room messages, not an
+implicit publication of private tool events or transcripts.
+
+`POST /api/orchestration/delegations/:sessionId/continue` can include
+`taskRoomReply: {taskId, taskCreatedAt, operationId, attachBrief?}`. It retains the
+existing continuation owner and defaults to attaching the latest saved brief
+as readable markdown. The server rechecks the request journal, immutable room
+binding, Task incarnation and current caller at the provider effect. A room
+reply cannot select another environment/model or replace its Session.
+An unavailable brief is a pre-invocation `409` with
+`code: task_room_context_unavailable`; it can be retried or explicitly omitted.
+Unknown execution errors must not be retried automatically.
+
+`PATCH /api/tasks/:taskId/title` accepts `{title, expectedCreatedAt}` (1–512
+trimmed characters), refusing another Task incarnation. The existing status
+route continues to enforce `canTransitionTaskStatus`; confirmed changes append
+quiet room messages. A first room request atomically starts only todo/ready
+Tasks. `GET /api/tasks/:taskId/kept-pull-requests` lists Task-curated identities
+only for Sessions the caller may read; it does not assert live provider status.
+
 ### Keep a declared output
 
 `POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts
@@ -1207,7 +1231,7 @@ queue and requests; saved collector changes require restart activation. See
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
 scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
 with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
-`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) and optional saved `userChoice`. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) optional saved `userChoice`, and `fullAvailable` (true for Kontour when its build destination exists, true for Operator). Older servers may omit availability; clients must not infer Full support from absence. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
 field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
 a service not yet constructed returns 503 `telemetry_not_ready`.
 
@@ -1216,18 +1240,63 @@ Save a choice with `PUT /config/app`, for example
 preserved. Raising a tier requires the operator or `access:manage`; a standard
 paired device may lower or keep it. Agent-originated requests cannot change
 telemetry choices. `telemetryTier` must be an object
-with only `kontour`/`operator` keys and `off`/`lite`/`full` values; malformed maps
-return a validation error with 400 before mutation. Full without a current
-publisher disclosure remains effectively Lite. Agents also receive 403 from
+with `kontour`, `operator` or valid `publisher:<id>` keys and `off`/`lite`/`full` values; malformed maps
+return a validation error with 400 before mutation. A previously saved Full
+preference whose confirmation becomes stale remains effectively Lite. A new
+configured Kontour Full save without its current confirmation returns 400;
+an acknowledgement POST with a stale revision returns 409 instead. Agents also receive 403 from
 `POST /api/usage-telemetry/disclosure/acknowledgements`, even with `access:manage`.
 Handler refusals from `PUT /config/app` log `App config update refused` with a
 stable `reason`, `principalKind`, and `deviceKind`. Telemetry choice refusals
-also include `telemetryChanges` with per-publisher `before`/`after` tier names;
-no credentials, destinations, or other config values are included.
+include `telemetryChanges` with per-publisher `before`/`after` tier names when
+the comparison was computed; agent feedback metadata is refused before validation.
+No credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
-Only the existing operator Full stream has a sender in this foundation. The
-[usage reference](usage-telemetry.md) owns the program and deployment limits.
+A new Kontour Full preference at the mounted config route requires a current
+Kontour acknowledgement when a build destination is configured. DNT and an
+absent author destination permit a pending saved preference, without granting
+permission to send. A route constructed without that runtime consent capability
+retains its default refusal. On builds without an author destination, status
+reports `fullAvailable: false`; a pending preference cannot send to Kontour and
+there is no author confirmation to review. `GET /api/usage-telemetry/disclosure` exposes only
+`additionalHost` for an additional destination, including an environment-derived
+address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
+build destination for its separate, revision-bound acknowledgement.
+The two Lite sinks send independently after notice; the default Full receipt
+covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
+returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
+`PUT /config/app` may include request-only `telemetryFeedbackReason`; it sends once
+for each actual lowering before the lower choice is applied, including Off. DNT
+suppresses feedback, and feedback failure never blocks lowering.
+`POST /api/usage-telemetry/feedback` accepts exactly publisher, action and a fixed
+enum reason; `skip` and malformed payloads return 400. Feedback requires a recorded
+lowering within 10 minutes, no prior reason for that change, and the shared inline
+and standalone budget of one reason per publisher per UTC day; unavailable feedback
+returns 409.
+`POST /api/usage-telemetry/lite-notices` records publisher and the
+shown inventoryRevision after an explicit interaction with a visibly presented
+sharing surface. Save persists the preference before recording, so notices may
+also be recorded for Off or Full without enabling sending or granting Full
+consent. Stale inventory and DNT return 409 without recording a receipt. Both writes require `access:manage` and refuse agent
+principals. See the exact feedback enum and notice behavior in the usage reference.
+Verified plugin publishers use the same map and endpoints. Each publisher entry
+also carries its destination, Lite inventory/revision, Full revision and notice
+status; use its own revision for a shown-notice receipt. Full acknowledgements
+include its displayed destination. `POST /api/telemetry/panes` mints a five-minute token for the host mounting a Pane, bound to the current plugin, namespaced publisher, installation generation and declaration revision. Pane-marked requests cannot mint it. Plugin publishers default Off; notice receipts alone do not enable sending. Capability-bearing or Pane-marked requests cannot raise tiers, acknowledge Full or write notice receipts. Same-origin plugin frames remain a platform-wide trust boundary tracked separately. `POST /api/telemetry/events` accepts at most 100
+bounded `{event, attributes}` records with a kernel-issued `x-station-plugin-capability` token. `x-station-plugin` is ignored for attribution; Agents are refused. The kernel
+rejects undeclared names/properties/values and unverified installations. It counts
+locally at Lite and batches acknowledged Full observations into one `plugin_events` request per flush. Per publisher, 100 count requests and 100 Full observations are admitted per UTC day; drops coalesce by publisher/day/reason;
+raw observations are no longer logged. `DELETE /api/plugins/:name` can carry
+`?telemetryFeedbackReason=<fixed reason>` to submit feedback before removal only while enabled; Off and DNT suppress it.
+The standalone feedback endpoint cannot authorize an uninstall action.
+
+Operator-only `publicTelemetryRegistries` classifies eligible public catalog source
+keys; applied signature trust remains independently required.
+`telemetryPublisherPolicy` can only lower defaults. These inputs never raise a
+user's choice or authorize Full. See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
+The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks
 
@@ -1242,8 +1311,7 @@ defaults or cached success.
 `POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
 Product checks use a separate content-free source/schema probe;
 OTel checks send empty metrics and trace requests. Neither creates product
-disclosure consent or establishes downstream delivery/query acceptance. The
-[usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
+disclosure consent or establishes downstream delivery/query acceptance. The [usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
 owns the protocol, saved authority and failure limits.
 
 ---
@@ -1559,6 +1627,13 @@ it does not cover the private Station-engine stream ledger. See
 [keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
 
+An authorized delivery lookup for an explicitly settled prepared turn returns
+HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or
+`definitively-refused`; it never invents a provider turn. An ordinary retry of
+that retained key is refused too. A deliberate new request needs a new key;
+clients must not generate one automatically. See
+[settled send identity](session-api.md#find-out-what-became-of-a-send).
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
@@ -1839,6 +1914,142 @@ SSE sends GenAI monitoring records, including an initial record with
 not use the old `{type: "message"}` event example. Content is redacted before
 historical or streaming output. See the [monitoring guide](../guides/monitoring.md)
 for event keys and producer limits.
+
+### Telemetry ingest
+
+The [ingest routes](../../src-server/monitoring/otlp-receiver.ts) write rows
+into the same monitoring history the routes above read:
+
+| Route | Body |
+| --- | --- |
+| `POST /v1/agent-events` | One agent telemetry event (schema `0.x`) |
+| `POST /v1/traces` | OTLP/JSON `resourceSpans` |
+| `POST /v1/logs` | OTLP/JSON `resourceLogs` |
+
+Two credentials are accepted, checked in the
+[runtime auth boundary](../../src-server/runtime/bootstrap/runtime-http.ts):
+
+- a **telemetry producer token** (`sti_…`), sent as
+  `Authorization: Bearer <token>`. It is admitted only on these three exact
+  `POST` leaves. Anywhere else it is not a credential, and the request is
+  refused (`401`, or `403` for a path no route declares);
+- a paired credential with the `orchestration:operate` tier, as before.
+
+Responses for a producer token:
+
+| Status | `error.code` | Meaning |
+| --- | --- | --- |
+| `200` | | Accepted. Each row carries `station.telemetry.producer: <token name>` and `station.telemetry.producer_owner: <principal id>` |
+| `400` | `invalid_json`, `unsupported_schema_version`, `invalid_agent_event` | Body refused (agent events); nothing was written |
+| `401` | `authentication_required` | No credential, an unknown or revoked token, or a credential in the query string |
+| `403` | `telemetry_producer_expired` | The token passed its expiry |
+| `403` | `telemetry_producer_remote_not_allowed` | The sender is not on this machine and the token was not created with remote access |
+| `429` | `authentication_rate_limited` | Too many unknown tokens (or query-string credentials) from this address; `Retry-After` says when to try again. A recognized token sent as a bearer is not counted |
+| `413`, `429` | `rate_limited` (429) | The ordinary per-credential body and rate budgets; `429` carries `Retry-After` |
+| `503` | `telemetry_producers_unavailable` | The token file is unsafe or unreadable; no token is admitted. Restore it to an owner-only (`0600`) regular file, or delete `<home>/security/telemetry-producers.json` (all tokens are lost) and create the producers again. A file written by an earlier build of this feature, before tokens recorded an owner, reads as unreadable and needs the same remedy |
+
+`POST /v1/agent-events` validates the body before reading it: `schema_version`
+must be `0.<minor>[.<patch>]`; `timestamp` (epoch milliseconds or ISO 8601),
+`session_id`, `event_id`, `event_type` and `agent.name` are required.
+`timestamp` is epoch milliseconds, as a string of digits or a non-negative JSON
+integer, or an ISO 8601 date-time (`YYYY-MM-DDTHH:MM[:SS[.fraction]]`) with an
+uppercase `Z` or a `±HH:MM` offset, within the JavaScript date range. Impossible
+calendar values (`2026-02-30`, hour 24) are refused rather than rolled over, and
+so are a lowercase `z`, a space separator, a bare date and other date text.
+Earlier Stations read any text `Date` could parse; that looser input now
+answers 400. Unknown top-level fields are ignored. The contents of `context`,
+`enrichment` and `tool.input`/`tool.output` are stored as sent, within the
+body limit (tool content passes the usual monitoring redaction). An `event_type` outside `session.start`, `session.end`,
+`turn.user`, `tool.invoke`, `tool.result` and `agent.delegate` is recorded as
+an `unknown` event. `/v1/traces` and `/v1/logs` answer `400` for a body they
+cannot read.
+
+Rows a producer token delivers are readable, through `/monitoring/events` and
+`/api/insights`, only by the principal who created the token (today always the
+Station operator); other people never see them, and hosted readers never do.
+The session id a producer reports does not decide this: an external agent's
+session is not a Station session. The owner comes from the admitted token,
+never from the body, and stays on each row: revoking a token stops further
+ingest but its earlier rows remain readable by their owner.
+
+Every identity a producer reports (session, conversation, trace, tool-call and
+event ids, the agent slug and the engine) is stored as
+`producer:<token name>:<reported value>`; a row with no agent gets
+`producer:<token name>:(unnamed)`. This prevents joins and de-duplication
+collisions with Station's own rows. The `producer:` prefix is reserved: a request
+without a producer token (a paired credential) whose session, conversation,
+trace, tool-call or event id, agent or engine starts with it is refused with
+`400 reserved_identity`, and nothing in that request is stored. The Monitoring
+view shows a producer's own value only for rows its producer delivered.
+Required text fields are trimmed, so a whitespace-only value is refused.
+
+Separately, readers apply one rule to every row carrying
+`station.telemetry.producer`, whatever agent, model, engine, tool or
+conversation it names:
+
+- `/api/insights` never counts it toward Station's figures (agent, model and
+  tool usage, error totals and rates, chat and tool-call totals, hourly
+  activity). Each producer's activity is reported apart in
+  `producerActivity: {<token name>: {events, chats, toolCalls}}`. Chats are
+  counted by Station's rule: once per distinct trace, each END on the
+  `no-session` trace as one chat, and none for a row with no trace. An `agent`, `tool` or
+  `engine` filter matches no producer row, so a filtered response's
+  `producerActivity` is empty. With
+  `producer=<token name>`, every figure in the response is that producer's
+  alone and `applied.producer` echoes it.
+- `/monitoring/events` (and the station-control `read_monitoring_events`
+  tool) never matches it for `agent`, `engine`, `tool`, `conversation` or
+  `tools=true`, so a Station tool export never includes producer rows.
+  `producer=<token name>` returns only that producer's rows. An unfiltered
+  read lists producer rows alongside Station's. On both routes an empty or
+  invalid `producer` value (outside the token-name grammar) is a `400`.
+
+The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and
+the Monitoring view lists producer agents in a separate "External producers"
+group, outside Station's agent list and count.
+
+The ingest receiver records no tool outcome for producer rows, so a producer
+cannot report tool errors in any case. Re-creating a revoked token under the same name reuses that
+namespace, so the new token's rows group with the old one's.
+
+The station-control `read_monitoring_events` tool puts
+`station.external_producer_notice` first on every producer row and once at
+the top of its result when any are present. The Monitoring view names the
+producer on each such row. Other readers (the CLI, the SDK, raw
+`/monitoring/events` and its SSE stream) receive `station.telemetry.producer`
+on those rows but no notice text.
+
+A request counts as from this machine when it arrives on a loopback socket
+with a loopback `Host`, carries no forwarding or Tailscale headers and has no
+verified ingress identity, or when Station's UI proxy relays a loopback
+client that addressed a loopback host. The UI proxy forwards these `POST`s
+(it does not forward a `GET` to `/v1`), so a producer may use either the API
+port or the UI port; a remote producer reaches Station through Tailscale Serve
+in front of the UI port (`https://<serve-host>/v1/agent-events`).
+Serve connects from loopback, but the proxy reports its forwarding headers and
+the browser-visible host, so its requests are remote. A
+plain SSH local forward is indistinguishable from a local sender.
+
+### Telemetry producer management
+
+[These routes](../../src-server/routes/telemetry-producers.ts) require
+`access:manage` and refuse every caller but the Station operator
+(`403 operator_required`). Responses use `{success, data}`.
+
+| Route | Effect |
+| --- | --- |
+| `GET /api/telemetry-producers` | `{producers: [{name, createdAt, expiresAt, expired, allowRemote, lastUsedAt}]}` |
+| `POST /api/telemetry-producers` | Body `{name, allowRemote?, expiresInDays?}`; `201` with `{producer, token}`. The token is returned only here |
+| `DELETE /api/telemetry-producers/:name` | Revokes the token at once; `404 not_found` for an unknown name |
+
+Names are 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a
+letter or digit. `expiresInDays` is a whole number from 1 to 3650, or absent
+for no expiry. At most 32 producers exist at once; creating another, or reusing
+a name, answers `409` (`producer_limit_reached`, `producer_exists`). Station
+records the creating principal as the token's owner and stores only a SHA-256
+hash of each token in
+`<home>/security/telemetry-producers.json` (mode `0600`). An expired token stays
+listed, as `expired`, until it is revoked.
 
 ---
 
@@ -2191,6 +2402,10 @@ monitoring NDJSON files and returns `{success: true, data}`. `data` contains
   windows return 400.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
+- Rows from external telemetry producers never count toward these figures;
+  they are summarized in `producerActivity`, and `producer=<token name>`
+  scopes the whole response to one producer (see
+  [Telemetry ingest](#telemetry-ingest)).
 - A positive `limit` retains the top buckets (cap 500); it does not cap the
   scanned events or recompute totals from just the displayed buckets.
 - Applied filters/limit are echoed in `data.applied`. Hours use the server's
@@ -2587,8 +2802,14 @@ stages source, validates it, reports components/conflicts/dependencies, and
 cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information. When an open install proposal names the source, preview
-copies a local folder without its `.git` entries, refuses a local Git repository
+consent information. The optional top-level `hasBundle` reports whether the staged
+source already contains `dist/bundle.js`. It is not a manifest field or runtime
+readiness. Installation can build client code from `manifest.entrypoint` even
+when `hasBundle` is false. Where native loading consent is required and remains
+off, install previews use either fact to offer a separate loading-access review;
+a layout declaration alone does not require it,
+because a layout can use built-in views. When an open install proposal names the
+source, preview copies a local folder without its `.git` entries, refuses a local Git repository
 URL, and reports `gitMetadata: "excluded"`. A folder once installed that way
 stays stripped: Station records it in `plugin-source-staging.json`, so later
 previews exclude its git metadata after the proposal resolves or the plugin is
@@ -3182,15 +3403,48 @@ The retained desktop-bundle apply path is macOS-only and requires the recorded
 source checkout, matching origin, and owned installer. It starts that installer
 detached and returns 202 with `updating: true` and a log path. That is initiation,
 not installation or relaunch proof. A launcher-supervised archive writes an
-update request and returns 202 with `serviceUpdate: {requestId}`; the service
-stages, trials, and may roll back the release afterward, so 202 is not update
-proof. It returns 409 when another update is in flight or needs an operator,
+update request and returns 202 with `serviceUpdate: {requestId, intent}`. The
+optional JSON body chooses what the request does:
+- No body, or `{"action":"update"}`: the service downloads and verifies the
+  release, then trials it and may roll it back afterward.
+- `{"action":"stage"}`: it only downloads and verifies, and the running version
+  keeps serving.
+- `{"action":"apply","version":"<staged version>"}`: it trials an
+  already-staged version without downloading, and is refused when that
+  version is not the staged one.
+
+An unknown action, a malformed `version`, or an apply without `version` returns
+400. A 202 is not update proof. It returns 409 when another update is in flight or needs an operator,
 when no newer verified release this host and launcher can run is found, or for
 any other archive. `GET /api/system/core-update/service-update` reads that
 install's progress from its runtime files, or `{state: "unavailable"}` when the
 server is not launcher-supervised. Unknown/ineligible provenance returns 409.
 See the [update owner](../../src-server/routes/system/system-update-routes.ts)
 for exact result branches.
+
+The server's own update routes (#3851):
+- `GET /api/system/core-update/state` returns its update state
+  (`ServerUpdateState`, with `supported: false` when no launcher supervises
+  the server). The same state is pushed to every client as the broadcast
+  `server-update:changed` event. `autoDownloadPausedReason`
+  (`download-failed` or `update-failed`) says why the download policy is not
+  downloading, and `applyWhenIdle.waitingForTurns` says how many running
+  turns Update when idle last waited for. A `{"action":"stage"}` POST while
+  Update when idle waits answers 409.
+- `GET /api/system/core-update/running-turns` lists the agent turns a restart
+  would interrupt. Only sessions the caller may read are listed;
+  `hiddenCount` counts the rest, so a caller learns how many running
+  sessions it cannot read exist, not what they are.
+- `PUT /api/system/core-update/apply-when-idle` (body `{"version": "<staged
+  version>"}`) asks the server to apply the staged version once no agent turn
+  runs (every session's active turn counts, ephemeral ones included);
+  `DELETE` on the same route cancels it, and answers 409 once the restart
+  was already requested.
+- `GET /core-update` and `GET /core-update/service-update` report the `staged`
+  progress state, and a download under way, only when called with
+  `?staged=1`.
+- The `server-update:changed` broadcast reports a failed download's `reason`
+  as `withheld`; the state route returns the text.
 
 ### Get Server Capabilities
 
@@ -3583,6 +3837,17 @@ can carry it without that preflight condition.
 
 ---
 
+
+## Account-recovery allowance preference
+
+`PUT /api/connections/agent/:id/credential-recovery/policy` retains its
+`access:manage` authority and required boolean `automatic`. Optional
+`allowancePreference: {windowId, minimumRemainingPercent}` configures ordering
+within already eligible account recovery. Omit it to preserve the saved
+preference; use `null` to clear it. The minimum is a finite percentage from 1
+through 100. This mutation does not enroll an account or apply a credential.
+See [recovery ordering](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery)
+for freshness, refusal and provider-observation limits.
 
 ## Engine accounts and usage
 

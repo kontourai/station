@@ -6,6 +6,10 @@ import type {
 import type { OwnerLiveness } from './owner.js';
 import type {
   InboxEntryRecord,
+  InvocationTerminalFact,
+  InvocationTerminalQuery,
+  InvocationTerminalRead,
+  InvocationTerminalRetirement,
   RequestKeyId,
   RequestKeyRecord,
   TurnBoundaryRecord,
@@ -69,8 +73,23 @@ export interface KernelContext {
   readonly limits?: Partial<KernelLimits>;
 }
 
+/** Private storage composition: all operations join the same transaction. */
+export interface KernelInvocationTerminalFacts {
+  readObservation(
+    threadId: string,
+    terminalEventId: string,
+  ): InvocationTerminalFact | undefined;
+  find(query: InvocationTerminalQuery): InvocationTerminalRead;
+  readRetirement(
+    threadId: string,
+    boundaryId: string,
+  ): InvocationTerminalRetirement | undefined;
+  recordRetirement(witness: InvocationTerminalRetirement): void;
+}
+
 /** A host terminal authority fixed when its adapter opens storage. */
 export interface KernelTerminalFacts {
+  readonly invocationTerminals?: KernelInvocationTerminalFacts;
   /** Read-only host facts, called synchronously inside the command transaction.
    * When supplied, the host replaces the kernel's terminal table entirely. */
   readonly terminalSeen: (threadId: string, providerTurnId: string) => boolean;
@@ -174,6 +193,13 @@ export interface KernelTransaction {
     delete(boundaryId: string): void;
   };
   readonly turnTerminals: {
+    findInvocation(query: InvocationTerminalQuery): InvocationTerminalRead;
+    addInvocation(fact: InvocationTerminalFact): void;
+    readRetirement(
+      threadId: string,
+      boundaryId: string,
+    ): InvocationTerminalRetirement | undefined;
+    recordRetirement(witness: InvocationTerminalRetirement): void;
     has(threadId: string, providerTurnId: string): boolean;
     add(threadId: string, providerTurnId: string): void;
     deleteThread(threadId: string): void;

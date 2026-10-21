@@ -2,75 +2,22 @@
 
 ## Start here
 
-- GitHub owns live work state. Check `git status -sb` and its relationship to `origin/main`.
-- Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes: never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
+- GitHub owns live work state. Check `git status -sb` against `origin/main`.
+- Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes; never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
-- Run `npm run dependencies:ci` to arm hooks. Before editing, use `npm run gate:for -- <paths...>`; it routes to focused evidence. Run selected tests with `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
-- Managed installs use pinned pnpm; `npm run` is the script interface. Never run raw npm installs in this workspace.
-- Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
-- `npm run test:changed -- --base=origin/main --explain` selects diagnostics; deferral is not completion. Ordinary PRs use focused evidence and normal hooks; hosted PR/queue checks own broad integration. Use local `npm run ci:fast` only for a specific failure or an explicit request. Do not run `npm run full:regression` locally merely because `main` moved.
-- Hosted `fast-checks` owns readiness and full typechecking. Locally use `gate:for` or one `typecheck:<lane>`; never background full `typecheck` or `ci:fast` to poll its sentinel. Lanes share [host-wide tsc slots](docs/guides/testing.md#host-typecheck-slots-and-incremental-compiles).
-- Hosted full-regression owns canonical receipts for scheduled main and tagged preview/stable promotions. Nightly has a separate exact-source usability gate. `PR: CI` manual dispatch is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
+- Run `npm run dependencies:ci` to arm hooks; managed installs use pinned pnpm and `npm run` is the script interface, so never run raw npm installs. Before editing, run `npm run gate:for -- <paths...>`, then `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
+- Never `git push --no-verify`: no required CI check re-runs the pre-push gates. The transfer gate uses `STATION_TRANSFER_BASELINE_ROOT`; slow captures use `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` ([testing](docs/guides/testing.md#pre-push-orchestration-transfer-gate)).
+- Ordinary PRs use focused evidence and normal hooks; hosted checks and the merge queue own broad integration and full typechecking. A selector explanation, deferred selection (`test:changed` exit 3), or rerun is not completion evidence. Run local `ci:fast` only for a specific failure or explicit request, never `full:regression` merely because `main` moved. Never background a full `typecheck` or `ci:fast` to poll its sentinel. [Verification](docs/guides/development.md#verification) owns lane selection and exact-SHA receipts; focused evidence, hosted qualification, and Nightly usability remain distinct.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
 ## Landing a pull request
 
-`main` is governed by the **main requires green checks** ruleset, and a merge
-queue is part of it. What that means in practice:
+Arm auto-merge (`gh pr merge <n> --repo kontourai/station --auto`) with no merge-method flag, confirm once, then stop; never merge by hand or arm another lane's in-flight PR. [Landing a pull request](docs/guides/development.md#landing-a-pull-request) has the confirmation query; the ruleset owns required checks, strategy, and batching (currently 1 build, up to 3 merges, `ALLGREEN`). Use the automation App token and REST for PR/check reads; the guide covers attribution, queue confirmation, and base freshness.
 
-- **Arm auto-merge; do not merge by hand.** `gh pr merge <n> --repo kontourai/station --auto`.
-  Auto-merge is opt-in PER PR — a PR whose checks are green but which nobody
-  armed simply sits forever. That, not a broken gate, is the usual reason a
-  ready PR has not landed.
-- **Pass no merge-method flag.** The queue owns the strategy, and
-  `gh pr merge --squash` is refused with `The merge strategy for main is set
-  by the merge queue`. Do not reach for `allowed_merge_methods` to settle
-  this: the `pull_request` rule lists `["squash","merge"]`, which reads as
-  permission to pass `--squash` and is the wrong conclusion. The binding
-  value is `merge_method: "SQUASH"` on the **`merge_queue`** rule
-  (`gh api repos/kontourai/station/rulesets/<id>`). The queue squashes; you
-  just do not get to say so.
-- **`gh pr merge` warns on success — read the queue, not the exit text.** A
-  refused method flag prints a `!` line that looks like a failure while the
-  PR is queued anyway, and a second attempt then reports `already queued to
-  merge`. `autoMergeRequest` is also `null` for an entry that is already IN
-  the queue, so the obvious check says "not armed" when it is. Confirm
-  against the queue itself:
+## Test evidence
 
-  ```bash
-  gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
-    mergeQueue { entries(first:20) { nodes {
-      position state pullRequest { number } } } } } }'
-  ```
-- **The queue batches** (1 build, up to 3 merges, `ALLGREEN`); a red entry is
-  removed and those behind it rebuild.
-- **Automate with the app token, not your quota**
-  ([setup](docs/guides/development.md#github-automation-token)); read PR and
-  check status over REST (`gh api repos/...`).
-- **Arm, confirm once with the query above, then stop.** Never poll the queue;
-  a red or conflicted dequeue shows only on the PR itself.
-- **Required checks**: the ruleset is authoritative —
-  `gh api repos/kontourai/station/rules/branches/main`.
-  Branches are NOT required
-  to be up to date (`strict: false`), so you do not have to rebase onto every
-  intervening commit — but two independently green PRs can still break `main`
-  in combination. `main-health.yml` files a P1 when that happens.
-- **Attribution matters.** The ruleset sets
-  `require_extra_approval_for_unattributed_changes`, so a commit whose author
-  GitHub cannot attribute needs an extra approval. Keep authorship real and
-  put delegate credit in a `Co-authored-by:` trailer.
-- **Do not arm another lane's in-flight PR.** Coordinate with the owning
-  session first (`ListAgents` / `SendMessage`); a merge is not yours to make
-  because the checks happen to be green.
-
-## Test and performance evidence
-
-Tests must reach the behavior their names claim and fail when it breaks. Structural scans prove structural rules; helper tests do not prove caller integration. Missing prerequisites and caught errors must not become success.
-
-For fixture repair, cleanup, or performance work, follow [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). `npm run gate:for -- <paths>` prints the executable checks. Use typed fixtures and real user actions; profile before adding performance abstractions.
-
-Commit and confirm a clean tree before mutation. Preserve intervening edits and report baseline, injected failure, and restored outcomes. Review the delta of a fix, and bind measurements to their revision and environment.
+Tests must reach the behavior their names claim and fail when it breaks. Helper tests do not prove caller integration; missing prerequisites and caught errors must not become success. For fault injection, commit and confirm a clean tree first, preserve intervening edits, and report baseline, injected failure, and restored outcomes. Fixture, cleanup, and performance work follows [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness).
 
 ## Issue references
 

@@ -186,11 +186,11 @@
   display: none;
 }
 
-/* The help menu (#1552 D4 gave it a class; its geometry was inline before). Same
-   anchor as the avatar menu below it, and the same literal `zIndex: 209/210`
-   pair it carried inline is now the shared `--layer-navigation` tier its two
-   siblings use — the retired literals were one below and one above nothing in
-   particular. */
+/* The help menu (#1552 D4 gave it a class; its geometry was inline before).
+   Anchored at the toolbar's right edge, where the `⋯` overflow that opens it
+   on a phone sits, and the same literal `zIndex: 209/210` pair it carried
+   inline is now the shared `--layer-navigation` tier its siblings use — the
+   retired literals were one below and one above nothing in particular. */
 .app-toolbar__help-menu {
   position: fixed;
   top: calc(
@@ -198,15 +198,15 @@
     var(--app-toolbar-total-height)
   );
   right: var(--space-4);
-  z-index: var(--layer-navigation);
+  /* Over the notification column it opens into (`--layer-toolbar-menu`). */
+  z-index: var(--layer-toolbar-menu);
   margin-top: var(--space-3);
   width: min(280px, calc(100vw - 32px));
 }
 
-/* The avatar's menu (#1552 D1). Same anchor as the `⋯` overflow menu below and
-   the help menu beside it — fixed to the toolbar's occupied height at the row's
-   right edge — because all three belong to controls at that edge. Its visual
-   spec comes from `.menu-surface`. */
+/* The account menu (#1552 D1). Its trigger is the sidebar footer's account
+   control now, and `ProfileMenu` positions it above that trigger inline; this
+   rule keeps its tier and width. Its visual spec comes from `.menu-surface`. */
 .app-toolbar__profile-menu {
   position: fixed;
   top: calc(
@@ -214,7 +214,8 @@
     var(--app-toolbar-total-height)
   );
   right: var(--space-4);
-  z-index: var(--layer-navigation);
+  /* On a phone it grows up from the footer into the notification column. */
+  z-index: var(--layer-toolbar-menu);
   margin-top: var(--space-3);
   min-width: 200px;
 }
@@ -241,8 +242,12 @@
      scale's own rule is that a passive notice yields to an active surface;
      `--layer-navigation` is where this menu belongs, because on mobile it IS
      the app's navigation overflow. `OverflowMenu.tsx` derives its dismiss
-     backdrop from the same token so the two cannot drift apart. */
-  z-index: var(--layer-navigation);
+     backdrop from the same token so the two cannot drift apart.
+
+     And above the notification column it opens into: `--layer-toolbar-menu`,
+     one tier over notifications, while the backdrop stays at navigation - 1
+     so a notification outside this panel is still pressed directly. */
+  z-index: var(--layer-toolbar-menu);
   min-width: 160px;
 }
 
@@ -435,6 +440,14 @@
      `--text-2xs` a first pass reached for, which is the badge-counter size and
      too small for two letters anyone is meant to read (#1552 review L5). */
   font-size: var(--text-xs);
+}
+
+/* The Live work row's state ("2 active"), trailing its label. */
+.app-toolbar__overflow-detail {
+  margin-left: auto;
+  padding-left: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
 
 /* The profile entry's initials chip inside the ⋯ overflow menu. */
@@ -1318,6 +1331,12 @@
     min-width: 44px;
     min-height: 44px;
   }
+
+  /* A related pane's Up and Keep controls (`RelatedPaneStrip`). */
+  .related-pane-strip__up.related-pane-strip__up,
+  .related-pane-strip .button.button {
+    min-height: 44px;
+  }
 }
 
 /* The draft keeps the height `ChatInputArea`'s resize effect gives it (capped
@@ -2179,6 +2198,9 @@
   align-self: flex-end;
   gap: 4px 6px;
   min-width: 0;
+  /* Never wider than the bubble: in a narrow dock the Basis chip shrinks
+     (its standing ellipsizes) instead of the bar overflowing to the left. */
+  max-width: 100%;
 }
 
 /* The answer's Basis chip: the one labelled control in the answer's action
@@ -2201,6 +2223,21 @@
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  /* A notable standing's label may be long ("Basis · Temporarily
+     unavailable"). The chip is the row's one shrinkable control: "Basis · "
+     stays whole, Surface's label ellipsizes, and the full label stays in the
+     chip's accessible name and tooltip. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.answer-basis-chip .station-basis-affordance__lead {
+  flex: none;
+  white-space: pre;
+}
+.answer-basis-chip .station-basis-affordance__standing {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .answer-basis-chip:hover {
   background: var(--bg-hover);
@@ -2354,6 +2391,9 @@
   margin-top: -10px;
 }
 .message-meta__time {
+  /* The timestamp keeps its one line; the Basis chip beside it shrinks. */
+  flex: none;
+  white-space: nowrap;
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
   font-variant-numeric: tabular-nums;
@@ -3239,8 +3279,29 @@
     flex-basis: 100%;
   }
 
-  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+  .chat-input__activity:not(
+    :has(.chat-status-pill, .chat-scroll-to-bottom, .transcript-turn-actions)
+  ) {
     display: none;
+  }
+
+  /* #3862: at the latest message a narrow column keeps Previous turn
+     (TranscriptTurnRail.tsx). Holding only that step, the activity slot
+     does not take a row of its own: it ends the settings row, which gives
+     up the step's width (it already scrolls sideways). */
+  .chat-input__activity:has(> .transcript-turn-actions[data-latest]):not(
+    :has(.chat-status-pill)
+  ) {
+    order: 0;
+    flex-basis: auto;
+    margin-inline-start: 0;
+  }
+
+  .chat-input__meta:has(
+      > .chat-input__activity > .transcript-turn-actions[data-latest]
+    ):not(:has(.chat-status-pill))
+    > .chat-input__settings {
+    flex: 1 1 0;
   }
 
   /* In a dock too short for the transcript the Scroll to bottom button is not

@@ -78,6 +78,10 @@ even complete disposition coverage does not prove that no other defects exist.
 
 ## Fixture fidelity and test effectiveness
 
+Structural scans prove only structural rules. Use typed fixtures and real user
+actions, and profile before adding a performance abstraction. Review the delta
+of every fix round, and bind each measurement to its revision and environment.
+
 Blocking checks must name the failure they prevent. Documentation gates should
 verify runnable commands, links, schemas, generated references, and disclosure
 boundaries; prose wording and line wrapping are editorial, not release criteria.
@@ -202,7 +206,8 @@ then success or failure after live validation. Trusted workflow code validates
 all open main-target PRs sharing that exact head; a truncated inventory fails.
 Publishers serialize by SHA and never wait for source jobs or install dependencies. Source pushes and base retargets still run the
 source checks. On metadata-only events the skipped source aggregate has a
-different name, so it cannot replace a failing required `fast-checks` result.
+different name, so it cannot replace a failing `fast-checks` result, which the
+required `Source verification policy` context reconciles.
 The `PR title policy` status is required before queue admission. Its merge-group
 job acknowledges that admission; it does not revalidate titles after enqueue.
 That merge-group acknowledgment POST retries explicit HTTP 500, 502, 503 and 504
@@ -217,7 +222,7 @@ publication fails; no source job or candidate is rerun by this handling.
 `Repo: Superseded PR checks` runs when `PR: CI` is requested and when a
 same-repository main-target PR closes merged. The merged-close path retires
 qualified optional delivery as described below. On a new CI request, it reads the
-current same-repository PR head and cancels queued or running checks for older
+current same-repository PR head and cancels queued, pending or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. It never cancels merge-group,
 main-push, manual diagnostic or publication runs. Missing PR attribution leaves
@@ -431,7 +436,14 @@ report is removed. That diagnostic is count-bounded, byte-bounded, redacted,
 and digest-bound by the changed-verification receipt. A failing run explicitly
 marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
-rather than leaving a bare `complete: false`.
+rather than leaving a bare `complete: false`. `complete` is derived from the
+recorded deferral: a run that defers `ci-fast` or `test-full`, or selects
+targets and executes no test, is incomplete. Hosted `fast-checks` still passes
+such a plan, since `Merge-queue regression` runs full regression before merge,
+but it reports the pass as provisional with a warning that names the deferred
+lanes, and the required `Source verification policy` status stays success with
+a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
+leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed
@@ -448,8 +460,10 @@ of the retained bytes, so later failures for the same request preserve earlier
 reports. The changed receipt
 and its attached diagnostic bind the retained paths and SHA-256 digests; PR CI
 uploads this failed-report directory separately from canonical text artifacts
-under verification-output. Raw reports exceeding 16 MiB and
-missing reports produce explicit omission files. If retention cannot write,
+under verification-output. Retention parses each raw report as JSON, redacts the structured values, then serializes
+it as JSON. Missing or invalid JSON reports, raw reports exceeding 16 MiB, and redacted
+serialized reports exceeding that limit produce explicit omission files; malformed input
+is not repaired. If retention cannot write,
 `retentionFailure` names the error and private temporary directory, which is
 preserved for recovery. Reporter diagnostics and retention failures never turn
 a failed run into a pass or change test selection or deadlines.
@@ -480,6 +494,11 @@ suites that import that package by name are selected (#3149). A version bump
 changes no source file, and both files escalate, so these explicit targets are
 what such a diff runs. Transitive lockfile changes are not followed, and a
 package imported by more than 16 suites defers them to `test-full`.
+A workspace `package.json` must not reach related discovery: Vitest's default
+`forceRerunTriggers` match every `package.json`, so a hosted checkout selects
+the whole corpus and overruns the shard budget, while a checkout under a
+dot-directory selects nothing. Give a changed manifest explicit readers in the
+impact manifest instead, as the contracts, SDK and Basis pane manifests do.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -552,8 +571,11 @@ locally merely because `main` moved.
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping
-metadata-only suites from replacing it. Missing or incomplete proof remains
-pending; failed or cancelled proof remains non-passing. The required-context
+metadata-only suites from replacing it. A cancelled metadata run is ignored
+only when GitHub's metadata labels, its referenced main policy revision and the
+immutable CI run-name policy agree, the title job is cancelled, and every source
+producer is skipped. Ambiguous metadata remains non-passing. Missing or incomplete
+source proof remains pending; failed or cancelled source proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
 PR source computation has repository-wide FIFO ceilings: at most two statics
@@ -561,8 +583,13 @@ jobs and two affected-test shard jobs run across all PRs. Both families split
 work into two buckets; one-shard PRs can use both shard buckets, and larger
 plans retain every shard. Waiting jobs consume no runner. Different-head
 supersession still cancels obsolete source runs, including native FIFO
-`pending` waiters, after rechecking the live PR head and run attempt; same-head duplicates wait
-rather than cancelling another run's proof. Merge-group, push and manual
+`pending` waiters, after rechecking the live PR head and run attempt. A normal
+cancellation request is followed to its observed state. If the same obsolete
+attempt still waits after a bounded settlement check, the controller may issue
+one force-cancel after revalidating the PR and run identities and confirming
+that no unfinished job has an assigned runner. Missing terminal confirmation
+fails the controller; cancellation never becomes source PASS. Same-head
+duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
 diagnostic jobs use separate source-specific groups. These four PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
@@ -974,8 +1001,9 @@ for the full, occasionally-surprising list — a hidden connection-status chip
 still shifted its siblings until it was switched from `visibility: hidden`
 to `display: none`), waits out shared loading skeletons, and mocks the
 handful of live endpoints (resource posture, sessions, action-operations,
-Connections-hub engine detection) that otherwise raced the fixed settle
-window — so that two captures of the identical build decode to identical
+Connections-hub engine detection, and the server update check, routed by
+path because its URL carries a query that a whole-URL glob misses) that
+otherwise raced the fixed settle window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
@@ -1496,8 +1524,8 @@ as given. The Veritas evidence-check default (600 s) lives in the external
 
 ### Shared Vitest worker policy
 
-Ordinary and focused Vitest invocations inherit the checked-in four-worker
-ceiling. `npm run test:full` discovers the complete corpus, validates exact and
+Ordinary Vitest invocations use the checked-in four-worker ceiling; focused
+runs use one worker with file parallelism disabled. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
 seven resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
@@ -1509,7 +1537,11 @@ files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
 aggregate load below the ordinary pool while independent temp-dir and
 dynamically allocated-port fixtures overlap. A test that owns host-global
-leases, fencing, or coordinator capacity belongs in process-exclusive. New
+leases, fencing, or coordinator capacity belongs in process-exclusive. The
+1,026-part model-runtime outbox keeper also uses that group: it owns a fresh
+one-worker lifecycle for its WAL/FULL transactions and one-at-a-time ACKs,
+with a 120-second liveness guard and complete replay geometry. The keeper
+asserts durable completion and readiness, not a 30-second performance target. New
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.
@@ -2194,7 +2226,9 @@ invariants must state the product decision and replacement behavioral evidence
 in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
-The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
+The `fast-checks` check is an aggregator (#2709); the required `Source
+verification policy` context reconciles it, and the ruleset lists required
+contexts. `fast-checks-plan`
 computes the affected-test selection once; `fast-checks-shard` runs it as one
 to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
 `scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
@@ -2211,7 +2245,7 @@ only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
 workflow. Older candidates that emit no adaptive outputs also retain four shards.
-Each allocated slice runs inside the fifteen-minute budget and
+Each allocated slice runs inside its twenty-minute completion budget and
 writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
@@ -2232,8 +2266,9 @@ Transitionally, a pull request branched before the sharded lane (no
 job and `fast-checks-statics`; its statics therefore run twice. That path is
 removed once open pull requests have merged `main`.
 
-The required `fast-checks` check covers critical browser smoke before merge,
-through `fast-checks-statics`.
+The `fast-checks` check, reconciled by the required `Source verification
+policy` context, covers critical browser smoke before merge, through
+`fast-checks-statics`.
 The required repository-governance evidence rejects moving that suite into an
 optional/manual dependency or swallowing its result. Product-law observations
 use named structured results: missing, skipped, or unavailable evidence is not

@@ -142,6 +142,16 @@ export function deriveServerOlderOffer(
         'This app could not confirm which server answered. Check for server updates in Settings.',
       );
     }
+    // #3851: a server that downloads and restarts as separate steps is
+    // updated from Settings, where the restart is confirmed against the
+    // agent turns it would interrupt. The banner never restarts it.
+    if (status.stagedUpdates) {
+      return manual(
+        status.serviceUpdate?.state === 'staged'
+          ? `Station ${status.serviceUpdate.version} is downloaded. Restart the server into it from Settings, which lists the agent turns a restart would interrupt.`
+          : 'Download the update and restart the server from Settings, which lists the agent turns a restart would interrupt.',
+      );
+    }
     return {
       kind: 'update',
       ...versions,

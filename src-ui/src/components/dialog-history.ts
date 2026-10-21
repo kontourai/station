@@ -225,6 +225,15 @@ export function registerDialogHistory(
   id: string,
   close: () => void,
   host: DialogHistoryHost | null = null,
+  options: {
+    /**
+     * Re-attach to the LIVE entry when it already carries `id` instead of
+     * pushing another: a layer a reload restores (the phone layer) is still
+     * on the entry its previous page load pushed, and a second push would
+     * make Back cost two presses.
+     */
+    adoptLiveEntry?: boolean;
+  } = {},
 ) {
   ensureListener();
   const existing = entries.find((entry) => entry.id === id);
@@ -240,7 +249,11 @@ export function registerDialogHistory(
 
   if (!existing) {
     entries.push(entry);
-    if (!adoptStrandedLayer(id)) pushDialogEntry(id);
+    const onLiveEntry =
+      options.adoptLiveEntry === true &&
+      markerFromState(window.history.state) === id;
+    if (onLiveEntry) orphanedMarkers.delete(id);
+    else if (!adoptStrandedLayer(id)) pushDialogEntry(id);
   }
 
   return () => {

@@ -1,0 +1,87 @@
+.desktop-update-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  width: 100%;
+  min-height: var(--k-space-6);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  padding: 0 var(--k-space-2);
+  background: var(--k-panel);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-align: left;
+}
+button.desktop-update-control {
+  cursor: pointer;
+}
+button.desktop-update-control:hover {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+button.desktop-update-control:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.desktop-update-control--ready {
+  border-color: var(--k-action);
+  color: var(--k-text);
+}
+.desktop-update-control--failed {
+  border-color: var(--k-caution);
+}
+.desktop-update-control--failed svg {
+  color: var(--k-caution);
+}
+.desktop-update-control--collapsed {
+  justify-content: center;
+  width: var(--k-space-6);
+  padding: 0;
+}
+.desktop-update-control svg {
+  flex-shrink: 0;
+}
+.desktop-update-ring__track,
+.desktop-update-ring__value {
+  fill: none;
+  stroke-width: 2;
+}
+.desktop-update-ring__track {
+  stroke: var(--k-line);
+}
+.desktop-update-ring__value {
+  stroke: var(--k-action);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset var(--motion-fast) var(--ease-linear);
+}
+.desktop-update-ring--indeterminate .desktop-update-ring__value {
+  animation: desktop-update-spin var(--motion-status-spin) var(--ease-linear)
+    infinite;
+}
+@keyframes desktop-update-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.desktop-update-dialog p {
+  margin: 0 0 var(--k-space-3);
+}
+.desktop-update-dialog__turns {
+  margin: 0 0 var(--k-space-3);
+  padding-left: var(--k-space-5);
+}
+.desktop-update-settings__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.desktop-update-settings__progress progress {
+  flex: 1;
+  accent-color: var(--k-action);
+  max-width: 20rem;
+}

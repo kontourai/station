@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed the touched telemetry gallery routes and afterGoto actions. Named-region lookup and collapsed outbox opening now match the UI. Added Settings-feedback scenes and real bounding-box checks below the select at desktop and 390px. The guide already routes focused captures and separates controlled gallery evidence from hosted/native proof; final-head screenshots are pending at this review.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

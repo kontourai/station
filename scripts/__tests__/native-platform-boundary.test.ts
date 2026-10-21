@@ -3,21 +3,20 @@ import { describe, expect, test } from 'vitest';
 import {
   EXPECTED_APPIMAGE_REMOVED_RESOURCES,
   EXPECTED_APPIMAGE_RUNTIME_FILES,
-  EXPECTED_DESKTOP_UPDATER_PERMISSIONS,
-  EXPECTED_DESKTOP_UPDATER_PLATFORMS,
   EXPECTED_TAURI_CSP,
   EXPECTED_TAURI_PERMISSIONS,
   findCapabilityManifestViolations,
-  findDesktopUpdaterCapabilityViolations,
   findNativeBoundaryViolations,
+  findNativeOnlyPermissionGrants,
   findTauriCspViolations,
   findTauriNonceMarkerViolations,
   findTauriResourceBoundaryViolations,
+  listTauriAclSources,
   NATIVE_GLOBAL_PATTERN,
+  RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_APPIMAGE_CONFIG,
   TAURI_BASE_CONFIG,
   TAURI_DESKTOP_CONFIGS,
-  TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST,
   TAURI_IMPORT_PATTERN,
   TAURI_MOBILE_CONFIGS,
 } from '../native-platform-boundary.mjs';
@@ -58,6 +57,29 @@ describe('native-platform-boundary', () => {
     ]);
   });
 
+  test('refuses updater and process plugin imports even in adapter files (#3851)', () => {
+    const files = {
+      'src-ui/src/platform/native/tauri.ts':
+        "const { relaunch } = await import('@tauri-apps/plugin-process');",
+      'src-ui/src/platform/native/desktopUpdate.ts':
+        "import { check } from '@tauri-apps/plugin-updater';",
+      'src-ui/src/platform/native/notifier.ts':
+        "import { sendNotification } from '@tauri-apps/plugin-notification';",
+    };
+    expect(
+      findNativeBoundaryViolations(Object.keys(files), readFileFromMap(files)),
+    ).toEqual([
+      expect.objectContaining({
+        file: 'src-ui/src/platform/native/tauri.ts',
+        kind: 'native-only plugin import',
+      }),
+      expect.objectContaining({
+        file: 'src-ui/src/platform/native/desktopUpdate.ts',
+        kind: 'native-only plugin import',
+      }),
+    ]);
+  });
+
   test('names trayNavigation.ts when a direct Tauri import is fault-injected', () => {
     const files = {
       'src-ui/src/lib/trayNavigation.ts':
@@ -86,37 +108,48 @@ describe('native-platform-boundary', () => {
     ).toEqual([expect.stringContaining('core:event:allow-listen')]);
   });
 
-  test('scopes the desktop-updater permissions to platforms where the plugins are actually dependencies', () => {
-    const manifest = JSON.parse(
-      readFileSync(TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST, 'utf8'),
+  test('grants the webview no updater or process authority (#3851)', () => {
+    const sources = listTauriAclSources();
+    // The real tree is read: capabilities and every Tauri config.
+    expect(sources.map(([file]) => file)).toEqual(
+      expect.arrayContaining([
+        'src-desktop/capabilities/default.json',
+        'src-desktop/tauri.conf.json',
+        'src-desktop/tauri.macos.conf.json',
+      ]),
     );
+    expect(existsSync(RETIRED_DESKTOP_UPDATER_CAPABILITY_MANIFEST)).toBe(false);
+    expect(findNativeOnlyPermissionGrants(sources)).toEqual([]);
     expect(
-      findDesktopUpdaterCapabilityViolations(JSON.stringify(manifest)),
+      findNativeOnlyPermissionGrants([
+        ['src-desktop/capabilities/broken.json', '{ not json'],
+        ['src-desktop/capabilities/benign.toml', 'identifier = "x"'],
+        ['src-desktop/permissions/sets.json5', '{}'],
+      ]),
+    ).toEqual([
+      'src-desktop/capabilities/broken.json is not valid JSON',
+      expect.stringContaining(
+        'src-desktop/capabilities/benign.toml must be JSON: capabilities, permissions and Tauri configs must be JSON so the boundary gate can parse them',
+      ),
+      expect.stringContaining(
+        'src-desktop/permissions/sets.json5 must be JSON',
+      ),
+    ]);
+    // The real tree holds only JSON there.
+    expect(sources.every(([file]) => file.endsWith('.json'))).toBe(true);
+    // A Tauri config is read only where capabilities are inlined.
+    expect(
+      findNativeOnlyPermissionGrants([
+        [
+          'src-desktop/tauri.conf.json',
+          JSON.stringify({
+            productName: 'process: a description',
+            plugins: { updater: { pubkey: 'updater:not-a-grant' } },
+            app: { security: { capabilities: ['default'] } },
+          }),
+        ],
+      ]),
     ).toEqual([]);
-    expect(manifest.permissions).toEqual(EXPECTED_DESKTOP_UPDATER_PERMISSIONS);
-    expect(manifest.platforms).toEqual(EXPECTED_DESKTOP_UPDATER_PLATFORMS);
-
-    // A dropped `platforms` scope grants the permissions on every target,
-    // which is exactly what fails mobile ACL resolution — the plugins are
-    // not compiled there to define `updater:allow-check` at all.
-    expect(
-      findDesktopUpdaterCapabilityViolations(
-        JSON.stringify({ ...manifest, platforms: undefined }),
-      ),
-    ).toEqual([
-      expect.stringContaining(
-        `${TAURI_DESKTOP_UPDATER_CAPABILITY_MANIFEST} platforms must be exactly`,
-      ),
-    ]);
-    expect(
-      findDesktopUpdaterCapabilityViolations(
-        JSON.stringify({ ...manifest, permissions: ['updater:default'] }),
-      ),
-    ).toEqual([
-      expect.stringContaining(
-        'updater:allow-check, updater:allow-download-and-install',
-      ),
-    ]);
   });
 
   test('requires the exact least-privilege desktop CSP and Tauri CSP mutation', () => {

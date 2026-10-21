@@ -101,7 +101,7 @@ override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
-Use the [Agent guide](../guides/agents.md) and [Session API](session-api.md) for
+Use the [Agent guide](../guides/agent-configuration.md) and [Session API](session-api.md) for
 current setup, capability, turn, idle, terminal, and recovery behavior. A matrix
 entry describes a supported mechanism; it is not proof that a live engine
 accepted a particular request.
@@ -178,10 +178,10 @@ A Task is a durable, user-addressable work identity belonging to a Project. It s
 chat in the normal composer, with a compact, removable **Shaping a Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
 Agent can ask questions or return a proposal with a title, goal, **Done when**
 checklist and suggested first step. Only **Create Task** on that card accepts
-it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session without assigning an Agent or execution Session. Shaping mode persists through clarifying questions until acceptance or mode removal. A reloaded accepted card offers **Open Task**. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
+it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session without assigning an Agent or execution Session. After Start, the conversation keeps the full chat height; **Stop shaping this Task** in More removes the mode. Shaping mode persists through clarifying questions until acceptance or mode removal. A reloaded accepted card offers **Open Task**. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
 
-Choose **Turn into Task** in a chat's More menu to shape that conversation immediately. Add any focus as your next chat message.
-**Add to Task** offers **New Task from this…** even when no Tasks exist;
+Choose **New Task from this** in a chat's More menu to shape that conversation immediately. Add any focus as your next chat message.
+**Add to Task** offers **New Task from this** even when no Tasks exist;
 it shapes the selected answer or input in the same conversation. The chat and
 its existing answers remain available. An unavailable engine or malformed
 proposal remains a chat, without an accepted Task.
@@ -194,7 +194,7 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.
+The task workspace reopens one Task on Chat, with an autosaved Brief and kept Results. Details retains workspace bindings in a disclosure, changed files, on-demand Basis, receipts and exact Session correlation. Keeping a file leaves the confirmation visible in Details and updates the Results count. Opening the Task makes the viewer present; explicit agent requests bring their answers back into that conversation.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
@@ -276,7 +276,7 @@ Claude Code to Station's Project browser; other engines show its unavailability.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.
-The [Agent guide](../guides/agents.md#mcp-tool-configuration) owns setup and limits.
+The [Agent guide](../guides/agent-configuration.md#mcp-tool-configuration) owns setup and limits.
 
 Mutating tools remain subject to their authorization and approval rules.
 Inspect the specific tool result and the approval or execution evidence
@@ -469,6 +469,9 @@ SDK HOOKS A PANE CAN USE (all imported from "@kontourai/station-sdk"):
 - useToast() → `{ showToast }`; call `showToast({ type: "info" | "success" | "warning" | "error", message })`.
 - useAuth() → the signed-in person and auth status.
 - useServerFetch() → a function that fetches a URL through Station's server; it needs the "network.fetch" permission.
+- useHost() → `clipboard.writeText(text)`, `openExternal(url)` (http and https only), and Station's `prompt({ title, label, initial })` and `confirm({ title, message })` dialogs. Each returns a promise that resolves with the outcome and never rejects.
+- useHostFacts() → `{ device: { isMobile } }`, re-rendering when it changes.
+- useShortcut({ id, keys: { key, modifiers }, description, when?, run }) → registers a shortcut in Station's shortcut list and returns `{ ok: true, registryId }` or `{ ok: false, reason, message }`. Station refuses the command palette, Settings and shortcut-list chords (⌘K, ⌘, and ⌘/) and the text-editing chords (⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z, ⌘A, Ctrl+Y), and registers shortcuts only for a verified plugin's pane. useShortcutScope(name, active) turns on a scope that `when` can name.
 Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, and render a loading and an empty state.
 
 PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:

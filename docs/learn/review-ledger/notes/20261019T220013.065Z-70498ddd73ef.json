@@ -1,0 +1,7 @@
+{
+  "revision": "edf79fe334cc5fc2f2afff0d9aa1c67d527d3c24",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Regenerated the tracked design index after adding Settings launch triage; the new link points to its actual title. Index classification remains navigational, not semantic certification.","inputs":["docs/design/README.md"]}
+  ]
+}

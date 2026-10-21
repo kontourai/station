@@ -1,6 +1,13 @@
-import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
+import {
+  PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryFeedback,
+} from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
+import { parseTelemetryFeedback } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   checkOtelTelemetryConnection,
@@ -23,6 +30,118 @@ export function createUsageTelemetryDisclosureRoutes(
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
   const app = new Hono();
+  for (const path of ['/feedback', '/lite-notices']) {
+    app.on('POST', path, async (c, next) => {
+      if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
+        return c.json(
+          { success: false, error: { code: 'telemetry_user_action_required' } },
+          403,
+        );
+      await next();
+    });
+  }
+  app.on('POST', '/feedback', bodyLimit({ maxSize: 1024 }));
+  app.on('POST', '/lite-notices', bodyLimit({ maxSize: 1024 }));
+  app.get('/outbox', async (c) => {
+    const publisher = c.req.query('publisher');
+    if (publisher !== undefined && !isTelemetryPublisherId(publisher))
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
+    const rawLimit = c.req.query('limit');
+    const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+      return c.json(
+        { success: false, error: { code: 'telemetry_outbox_limit_invalid' } },
+        400,
+      );
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({
+      success: true,
+      data: (await service.outbox(publisher)).slice(-limit),
+    });
+  });
+  app.post('/feedback', async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    let feedback: TelemetryFeedback;
+    try {
+      feedback = parseTelemetryFeedback(body);
+      if (!isTelemetryPublisherId(feedback.publisher))
+        throw new Error('Unsupported feedback publisher');
+    } catch {
+      return c.json(
+        { success: false, error: { code: 'telemetry_feedback_invalid' } },
+        400,
+      );
+    }
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    if (!(await service.submitFeedback(feedback)))
+      return c.json(
+        { success: false, error: { code: 'telemetry_feedback_not_available' } },
+        409,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true });
+  });
+  app.post('/lite-notices', async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).sort().join(',') !== 'inventoryRevision,publisher' ||
+      !('publisher' in body) ||
+      !isTelemetryPublisherId(body.publisher) ||
+      !('inventoryRevision' in body) ||
+      typeof body.inventoryRevision !== 'string'
+    )
+      return c.json(
+        { success: false, error: { code: 'telemetry_notice_invalid' } },
+        400,
+      );
+    const service = resolve();
+    if (!service)
+      return c.json(
+        { success: false, error: { code: 'telemetry_not_ready' } },
+        503,
+      );
+    const status = await service.telemetryStatus();
+    const publisherStatus = status.publishers[body.publisher];
+    if (!publisherStatus)
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
+    if (
+      body.inventoryRevision !==
+      (body.publisher === 'kontour' || body.publisher === 'operator'
+        ? status.liteInventoryRevision
+        : publisherStatus.liteInventoryRevision)
+    )
+      return c.json(
+        { success: false, error: { code: 'telemetry_notice_changed' } },
+        409,
+      );
+    if (publisherStatus.reason === 'DNT')
+      return c.json(
+        { success: false, error: { code: 'telemetry_notice_DNT' } },
+        409,
+      );
+    await service.recordLiteNotice(body.publisher, body.inventoryRevision);
+    return c.json({ success: true });
+  });
   app.get('/status', async (c) => {
     const service = resolve();
     if (!service)
@@ -71,16 +190,35 @@ export function createUsageTelemetryDisclosureRoutes(
     return c.json({ success: true, data: result });
   });
   app.get('/disclosure', async (c) => {
+    const publisher = c.req.query('publisher');
+    if (publisher !== undefined && !isTelemetryPublisherId(publisher))
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
     const service = resolve();
     if (!service)
       return c.json(
         { success: false, error: { code: 'telemetry_not_ready' } },
         503,
       );
-    return c.json({ success: true, data: await service.disclosure() });
+    if (
+      publisher === 'kontour' &&
+      !(await service.telemetryStatus()).authorEndpoint
+    )
+      return c.json(
+        { success: false, error: { code: 'telemetry_unconfigured' } },
+        409,
+      );
+    if (publisher && !(await service.telemetryStatus()).publishers[publisher])
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
+    return c.json({ success: true, data: await service.disclosure(publisher) });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
-    if (requestMayBeAnAgent(c.req.raw))
+    if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
       return c.json(
         {
           success: false,
@@ -130,7 +268,34 @@ export function createUsageTelemetryDisclosureRoutes(
         },
         400,
       );
-    const disclosure = await service.disclosure();
+    const publisher = 'publisher' in body ? body.publisher : 'operator';
+    if (!isTelemetryPublisherId(publisher))
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
+    if (
+      publisher === 'kontour' &&
+      !(await service.telemetryStatus()).authorEndpoint
+    )
+      return c.json(
+        { success: false, error: { code: 'telemetry_unconfigured' } },
+        409,
+      );
+    if (!(await service.telemetryStatus()).publishers[publisher])
+      return c.json(
+        { success: false, error: { code: 'telemetry_publisher_invalid' } },
+        400,
+      );
+    const disclosure = await service.disclosure(publisher);
+    if (
+      publisher !== 'operator' &&
+      (!('destination' in body) || body.destination !== disclosure.destination)
+    )
+      return c.json(
+        { success: false, error: { code: 'telemetry_destination_changed' } },
+        409,
+      );
     if (body.inventoryRevision !== disclosure.inventoryRevision)
       return c.json(
         {
@@ -140,7 +305,7 @@ export function createUsageTelemetryDisclosureRoutes(
         },
         409,
       );
-    if (disclosure.publishers.operator.reason === 'DNT')
+    if (disclosure.publishers[publisher].reason === 'DNT')
       return c.json(
         {
           success: false,
@@ -149,8 +314,14 @@ export function createUsageTelemetryDisclosureRoutes(
         },
         409,
       );
-    await service.acknowledgeDisclosure(body.inventoryRevision);
-    return c.json({ success: true, data: await service.disclosure() });
+    if (publisher !== 'operator')
+      await service.acknowledgeDisclosure(
+        body.inventoryRevision,
+        publisher,
+        disclosure.destination,
+      );
+    else await service.acknowledgeDisclosure(body.inventoryRevision);
+    return c.json({ success: true, data: await service.disclosure(publisher) });
   });
   return app;
 }

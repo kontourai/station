@@ -113,6 +113,7 @@ export function ConnectionManagerModalContent({
   checkCompatibility,
   initialPanel = 'list',
   listFooterContent,
+  renderConnectionDetails,
   onConnectStation,
   initialPairingPayload,
   pairingLinkError,
@@ -1025,6 +1026,7 @@ export function ConnectionManagerModalContent({
               setPanel('pair-code');
             }}
             listFooterContent={listFooterContent}
+            renderConnectionDetails={renderConnectionDetails}
             onPairPhone={() => {
               setHostPairingReturnPanel('list');
               setPanel('pair-host');

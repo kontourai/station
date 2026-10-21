@@ -924,17 +924,60 @@ connection's `env` if its tools need them). Without `SSH_AUTH_SOCK` it cannot
 push with your SSH agent. In a linked worktree it can commit to its own
 branch, but `git stash`, `fetch` and `pull` are refused: they write shared
 refs (`refs/stash`, remote-tracking refs, `packed-refs`) that it may not
-change. It also cannot create or change the folder's `.claude` or `.codex`
-directory, which your own unconfined sessions there would load. On Linux and
+change. In a folder whose `.git` is inside it, `fetch`, `pull` and ref
+packing are refused too: its remote-tracking refs are what a later Codex
+session trusts the folder's `.codex` by. It also cannot create or change any `.claude` or `.codex`
+directory in the folder, at any depth, which other sessions there would
+load. On Linux and
 Windows such a session is
 refused, because no confinement exists for it there. See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 A Codex session that does not run as `host` (started by you in person, or
-from a device you granted full access) ignores every
-`sandbox_workspace_write.writable_roots` setting, whether it comes from the
-folder's `.codex/config.toml` or your own Codex configuration, so its sandbox
-lets it write only inside its folder (and its temp directories).
+from a device you granted full access) runs under a Codex permission profile
+Station defines, `station-workspace`. Its sandbox lets it write only inside
+its folder and its temp directories, and on macOS it cannot create, change or
+read any `.codex` or `.claude` directory in the folder, at any depth, which
+other sessions there would load. It ignores every
+`sandbox_workspace_write.writable_roots` setting and every `sandbox_mode` or
+`default_permissions` setting, whether from the folder's configuration or
+your own. It also ignores `sandbox_workspace_write.network_access`: to give
+these sessions network, set `[permissions.station-workspace.network]
+enabled = true` in your own Codex configuration. A `.codex` that came from the
+repository's upstream (its exact bytes are on a remote-tracking branch, such
+as `origin/main` after a fetch) still applies, as the top-level one does. Any
+other `.codex` anywhere from the repository root down to the session's folder
+(uncommitted, committed only locally, changed, inside a nested repository,
+or in a folder with no repository or no remote) stops the session from
+starting, with the directory named. Station checks from the repository that
+contains the session's Project folder (the deepest Project folder around the
+session's folder, even when the start names none) down to the session's
+folder. Cases that refuse a session you meant to allow,
+and the remedy:
+
+- **No remote, or not pushed or not fetched yet.** The repository has no
+  remote-tracking branch, or the `.codex` is committed only locally, or the
+  latest push has not been fetched. Push it and run `git fetch`.
+- **A local change.** An uncommitted edit or an extra untracked file inside
+  a `.codex` (a local override) does not match upstream. Commit and push it,
+  move it to your own Codex configuration, or run the session as `host`.
+- **The reftable ref backend.** Station cannot read its refs safely, so it
+  trusts no `.codex` there. Run the session as `host`.
+- **An unregistered nested repository or submodule below the Project folder.** Its `.codex` is refused even when identical bytes occur on the outer Project repository's remote-tracking branches. A linked worktree must be registered to the trusted repository. Otherwise run the session as `host`, or make the nested repository a Project of its own.
+- **A folder outside every Project.** A session that is not `host` there
+  trusts no `.codex` at all. Add the folder as a Project, or run the session
+  as `host`.
+
+A confined Claude session cannot run `git fetch` or `pull` (or pack refs) in
+a folder whose `.git` is inside it, as in a linked worktree: the
+remote-tracking refs are what a later Codex session trusts. Fetch and pull
+from your own terminal or a `host` session. If Codex does not
+report the profile applied (a Codex version without permission profiles),
+a session that must be confined is refused, and any other is recorded as
+`configured-but-failed`. On Linux, Codex cannot deny a `.codex` the session
+creates later, so that protection is macOS-only. Station also starts these
+sessions with `approvals_reviewer="user"`, whatever your configuration sets,
+so a model never approves their sandbox escalations.
 
 Two boundaries to know: credential-profile login/enrolment children do not
 receive the connection's `env`; they use the selected profile's config home
@@ -1019,6 +1062,51 @@ profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
 a profile by hand, or pinning one on an Agent, is not restricted this way.
 
+### Prefer allowance that expires sooner during account recovery
+
+Automatic recovery keeps enrollment order unless you explicitly add an
+`allowancePreference` to its existing policy. This ranks already-enrolled,
+authorized accounts after an observed account-scoped capacity or rate-limit
+failure; it does not switch a healthy running Session or override an Agent's
+explicit credential choice.
+
+```json
+{
+  "automatic": true,
+  "allowancePreference": {
+    "windowId": "secondary",
+    "minimumRemainingPercent": 20
+  }
+}
+```
+
+Send that body to `PUT /api/connections/agent/<engine>/credential-recovery/policy`.
+Choose the window ID actually reported by your engine. Station compares that
+window's qualified reset deadline, rather than allowing a short rolling reset
+to outweigh the longer window you selected. Fresh provider-reported
+non-renewing subscription ends can also shorten the deadline. Current native
+engines do not report subscription-end/renewal facts through this quota
+contract, so Station does not infer them from a plan name.
+
+The selected window's remaining percentage must meet your threshold, and a
+fresh exhausted window disqualifies the account. Observations older than one
+minute, future-dated observations, unqualified deadlines, global-account
+fallbacks and missing quota data cannot earn expiry priority. Unknown evidence
+retains enrollment order among candidates that are not known to have
+insufficient allowance; if every candidate has insufficient observed allowance,
+no application is staged. Equal deadlines retain enrollment order.
+
+Account probes are limited to four at once. Station rechecks profile routing,
+enrollment and policy after probing; intervening changes refuse staging.
+Existing recovery admission, durable application, cancellation and provider
+acceptance remain authoritative. Choosing a candidate does not prove that an
+engine applied it or that the resumed turn succeeded.
+
+Omitting `allowancePreference` from a policy update preserves the saved
+preference; send `"allowancePreference": null` to clear it. The existing SDK
+`useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
+field. This policy remains opt-in and automatic recovery remains off by default.
+
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to
 anyone who can read this Station's connection settings, not only to holders
@@ -1079,7 +1167,7 @@ Agent can bind its own Model connection through `execution.modelConnectionId`.
 For Station-engine Agents, connection selection uses that explicit binding,
 then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
 connections without a default are ambiguous; readiness does not silently choose
-one. See [Agent configuration](agents.md#agent-configuration).
+one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
 The chat model picker shows the resolved connection and model. Open it to
 search across ready Model connections and Engines, filter by connection or
@@ -1089,8 +1177,7 @@ Connections that still
 need setup remain visible with their status, but cannot create an invalid
 selection.
 
-Favorites, recent choices, hidden models, and model order are saved on this
-device. Manage a connection's model list from its detail page. **Use project
+Favorites, recent choices, hidden models, and model order are saved for your verified person on this Station and follow that person across devices. Without a person-bound preference scope, they remain on this device. If account preferences are unavailable, changes are refused until they can be reloaded. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker
 restores both the default connection and model for a model-only choice.
 An engine override instead offers **Use Agent defaults**; in an existing

@@ -124,7 +124,7 @@ records delivery differences.
 
 - **Project-owned agent** — an agent whose record names an owning project (`AgentSpec.project`; see `agent-engine-unification.md` §3.3 and archive#1004). Appears only inside its owning project (never subject to `ProjectConfig.agents`, never visible elsewhere, including the global/no-project context); deleting the owning project orphans it visibly (a validation state naming the missing project) rather than deleting it. Distinct from `ProjectConfig.agents`, which only opt-in-filters GLOBAL (unowned) agents.
 - **Task** — a durable work identity owned by a Project. A Task can retain an exact workspace binding and typed references and can be reopened after Station restarts.
-- **Task workspace** — the `/tasks/:taskId` surface for one durable Task. It keeps identity, files, diffs, artifacts, receipts, and exact Session correlation in context.
+- **Task workspace** — the `/tasks/:taskId` surface for one durable Task. Chat is the room; Brief is its autosaved shared plan, Results collects kept work, and Details retains workspace, Basis, inspection and raw history.
 - **Task experience** — a working mode inside one Task workspace. **Direct** is Station-owned; **Deliver**, **Learn**, and **Operate** name intended Builder Kit, Knowledge Kit, and Console integrations. Installed, enabled plugin capability declarations make the optional tabs visible. Their current panels describe the integration boundary; visibility does not prove an operational integration. See [the Task experience resolver](../src-ui/src/views/task-experiences.ts) and [Task workspace](../src-ui/src/views/TaskWorkspaceView.tsx).
 - **Session** — one bounded execution episode. A Task may have no Session or correlate an exact Session; a Session is not itself a durable Task.
 - **Draft** (session state) — a Session that nothing has been sent to: no turn has started and no send was attempted anywhere in its conversation's lineage, nothing in that lineage produced output, and it carries no history from elsewhere (attached, adopted, a Station-dispatched delegation, or a fork, which carries copied messages). The server derives it (`OrchestrationSessionSummary.draft`, #2310) so every device computes the same answer from the same read; a Draft is listed under **Drafts**, never under a live lane. A send that was attempted and did not take, with no activity since, is not a Draft either — that Session reads **Failed** with the reason ("Station refused the send before it started", or "The send failed and no activity has been recorded since", since a failed send may still have reached the engine); activity landing later clears it, and a send refused because the caller may not act on the Session changes nothing. The first turn ends a Draft: the sending device re-reads at once, other devices on their next session-list read (live push to other devices depends on #2307 and #2309 Phase B). **Discard draft** (#2312) deletes a Draft on the server — the whole conversation, since the Draft fact is conversation-wide — so every device's next session-list read agrees; the server re-derives the fact and refuses anything that is not a Draft. Drafts created more than 24 hours ago fold under "N older drafts" (creation, because a Draft's other clocks move without anyone touching it — a stop rewrites `updatedAt`) in each Drafts group; nothing is deleted automatically. Not the same thing as a composer draft — unsent text in a chat's input, kept per device; an inbox row whose open chat holds one on this device carries an **Unsent draft** cue.
@@ -167,6 +167,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
 - **Personal access token** — a credential a person makes for a script (`stp_…`): it acts as them, carries Read and optionally Operate, never exceeds their own access, and can expire or be revoked (#3557). It is not a paired device: it cannot manage Station access or a Project's members.
+- **Telemetry producer token** — a credential the operator makes for a program that only reports activity (`sti_…`), such as Flow Agents' telemetry hooks. It is accepted only on `POST /v1/agent-events`, `/v1/traces` and `/v1/logs`, works from this machine unless created with remote access, can expire or be revoked, and names itself on every row it writes (`station.telemetry.producer`). It is not a personal access token or a paired device: it reads nothing.
 - **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
 - **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
@@ -207,8 +208,12 @@ platform credential store (internally `StationProfile`,
 `packages/contracts/src/station-profile.ts`). The entry answers "which
 Station am I talking to, and as whom" — it deliberately does not describe
 where an agent executes (an **Environment**) or how it is executed (an engine
-connection). Trust grants (e.g. remote extension bundles) are stored **per
-Station on this device**, so trusting one Station never extends to another.
+connection). Permission to load remote extension bundles is stored **per
+Station on this device**. That key is not an isolation boundary. Code loaded
+into the app has app-wide authority. Paired native Stations use separate frames,
+but that native boundary is not yet qualified; the review conservatively asks
+the person to treat enabled code as having access to app data and saved
+credentials. The consent dialog explains the applicable loading mode.
 
 - **The user-facing noun is just "Station."** The switcher and manager list
   *Stations*; the affordances are "Connect a Station", "Edit Station", and
@@ -337,8 +342,9 @@ retired names.
   background tasks and pending messages) and any linked pull requests; its
   footer opens Chat inventory. Each row shows a fact the dock already holds
   and opens a surface that already exists; it computes no state of its own.
-  It sits beside the transcript when the dock body has room for it and a
-  640px transcript, and is otherwise one tap away: a header chip on a desktop
+  It sits beside the transcript when the dock body has room for it, a 640px
+  transcript and anything else open beside the transcript (Chat inventory),
+  and is otherwise one tap away: a header chip on a desktop
   dock, a row of the Chat actions sheet on a phone. It is a Panel, not a
   pane, and is not persisted.
 
@@ -452,7 +458,7 @@ release delivery.
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
 | Visual grouping inside a page or pane | **Panel** |
 | The Chat dock's summary of the open chat's workspace, branch, activity and pull requests | **This chat** (the **session context card**) |
-| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the footer bell counts its pending items) |
+| The one place listing what needs a person's decision (tool approvals, device pairing, proposed changes, paused gate reviews) | **Notifications** (the **attention inbox**; the header bell shows its projected pending-item count) |
 | Durable work identity | **Task** |
 | Execution episode | **Session** |
 | The navigable record of what one chat drew on and produced (inputs, execution, sources, outputs, kept results), whole or scoped to one answer | **Chat inventory**, part of **Basis**. An answer's **Basis** chip opens it scoped to that answer; the dock's More menu opens the whole chat. Never "Session inventory" in Station's UI. The developer contract keeps the name: `@kontourai/station-contracts/session-inventory`, the SDK's `useSessionInventoryQuery`, and the portable MCP App's server identity (its visible text says Chat inventory) |

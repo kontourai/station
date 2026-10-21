@@ -1,0 +1,11 @@
+{
+  "revision": "ebcf2967fad1e7c5b48974035fb15da76b6e2de5",
+
+  "notes": [
+    {"path":"README.md","note":"Re-read the product telemetry inventory owner and generated declarations after the consistency-test failure. The owner now states the already-implemented minute-rounded Full timestamps, explicit Lite unknown facts with omitted unknown Full channels, and one shared inline/standalone feedback budget per publisher/day. Regenerated output matches the formerly hand-edited Play declaration; the README privacy scope remains accurate and still limits completeness/publication claims.","inputs":["README.md","docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Re-read the product telemetry inventory owner and generated declarations after the consistency-test failure. The owner now states the already-implemented minute-rounded Full timestamps, explicit Lite unknown facts with omitted unknown Full channels, and one shared inline/standalone feedback budget per publisher/day. Regenerated output matches the formerly hand-edited Play declaration; the README privacy scope remains accurate and still limits completeness/publication claims.","inputs":["docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Re-read the product telemetry inventory owner and generated declarations after the consistency-test failure. The owner now states the already-implemented minute-rounded Full timestamps, explicit Lite unknown facts with omitted unknown Full channels, and one shared inline/standalone feedback budget per publisher/day. Regenerated output matches the formerly hand-edited Play declaration; the README privacy scope remains accurate and still limits completeness/publication claims.","inputs":["docs/reference/play-data-safety.md","src-server/services/privacy-inventory.ts"]}
+  ]
+}

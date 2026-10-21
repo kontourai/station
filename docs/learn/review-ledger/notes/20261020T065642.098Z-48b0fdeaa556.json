@@ -1,0 +1,7 @@
+{
+  "revision": "53820d562663eb8aabe3e240c26fff7931ba99b7",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed 53820d56266 cold-hydration delta through the real ChatWorkspacePane, useChatDockActiveChatSync and useChatDockActions. Hydration now preserves URL dock/maximize instead of borrowing a person-selected reveal; new-chat, selected-conversation, continuation, composer and model paths remain explicit and unchanged. Existing interaction/continuity claims remain accurate; no prose change. Parent caller/recovery tests 25 passed and UI typecheck passed; repaired native run remains unverified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

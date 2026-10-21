@@ -30,9 +30,21 @@ const usageInsightsSchema = z
         agent: z.string().optional(),
         tool: z.string().optional(),
         engine: z.string().optional(),
+        producer: z.string().optional(),
         limit: z.number().int().positive().max(500).optional(),
       })
       .passthrough()
+      .optional(),
+    producerActivity: z
+      .record(
+        z
+          .object({
+            events: insightCount,
+            chats: insightCount,
+            toolCalls: insightCount,
+          })
+          .passthrough(),
+      )
       .optional(),
     coverage: z
       .object({

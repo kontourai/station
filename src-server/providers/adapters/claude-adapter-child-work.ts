@@ -19,6 +19,7 @@ import {
   childWorkForReporter,
   createEmptyChildWorkRegistry,
   isReportableChildWorkModelId,
+  isReportableChildWorkToolName,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -35,8 +36,8 @@ import type { ProviderSession } from '../adapter-shape.js';
  *   (`tool_use_id`), its description, `subagent_type`/`task_type`,
  *   `is_backgrounded` and — for an agent — `spawn_depth`.
  * - `task_progress` carries a status line (`summary`, with
- *   `agentProgressSummaries` on; else `description` plus `last_tool_name`)
- *   and running usage.
+ *   `agentProgressSummaries` on; else `description`), the child's
+ *   `last_tool_name` independently, and running usage.
  * - The terminal arrives TWICE (station#1892): a `task_updated` whose patch
  *   carries the status (`completed`/`failed`/`killed`) and no result, then a
  *   `task_notification` (`completed`/`failed`/`stopped`) carrying the
@@ -89,15 +90,22 @@ export interface ClaudeChildWorkState {
   /** Set once the session has ended; only real terminals are mapped after. */
   closed: boolean;
   /**
-   * #3163: a child's own reply model that arrived before its `task_started`,
-   * keyed by the spawning `tool_use_id`. Consumed by `task_started`; bounded,
-   * oldest first, so a reply whose task never registers can't pin memory.
+   * A child's own reply model/tool that arrived before its `task_started`,
+   * keyed by the spawn or corroborated resume `tool_use_id`. Consumed by
+   * `task_started`; bounded oldest first so unregistered replies can't pin memory.
    */
-  pendingReplyModels: Map<string, ChildWorkModel>;
+  pendingReplies: Map<string, Pick<ChildWorkItem, 'model' | 'latestTool'>>;
+  /** Settled task id → observed top-level SendMessage call awaiting a start. */
+  pendingResumes: Map<string, string>;
+  /** Bounded replay history; API message ids can span multiple SDK frames. */
+  seenReplyFrames: Set<string>;
+  seenReplyTools: Set<string>;
+  seenResumeCalls: Set<string>;
 }
 
-/** Bound on `pendingReplyModels`. */
-const CLAUDE_PENDING_REPLY_MODELS_MAX = 64;
+/** Bound on pending reply facts and corroborated resumes. */
+const CLAUDE_PENDING_REPLIES_MAX = 64;
+const CLAUDE_SEEN_IDENTITIES_MAX = 64;
 
 /** The slice of the adapter's per-session record this module reads. */
 export interface ClaudeChildWorkRecord {
@@ -126,7 +134,11 @@ function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
     stopRequested: new Set(),
     runs: new Map(),
     closed: false,
-    pendingReplyModels: new Map(),
+    pendingReplies: new Map(),
+    pendingResumes: new Map(),
+    seenReplyFrames: new Set(),
+    seenReplyTools: new Set(),
+    seenResumeCalls: new Set(),
   };
   return record.childWork;
 }
@@ -213,6 +225,19 @@ function readTaskUsage(usage: unknown): ChildWorkUsage | undefined {
 
 function nonEmpty(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Admit each SDK frame/tool identity once within the bounded replay window. */
+function rememberNewIdentity(seen: Set<string>, value: unknown): boolean {
+  const id = nonEmpty(value);
+  if (!id) return true;
+  if (seen.has(id)) return false;
+  seen.add(id);
+  if (seen.size > CLAUDE_SEEN_IDENTITIES_MAX) {
+    const oldest = seen.values().next().value;
+    if (oldest !== undefined) seen.delete(oldest);
+  }
+  return true;
 }
 
 function emit(context: ClaudeChildWorkContext, delta: ChildWorkDelta): boolean {
@@ -303,10 +328,13 @@ export function observeClaudeTaskStarted(
   const title = nonEmpty(message.description);
   const kindLabel =
     nonEmpty(message.subagent_type) ?? nonEmpty(message.task_type);
-  // #3163: a reply that beat this task_started already named the model.
-  const model = message.tool_use_id
-    ? takePendingReplyModel(state, message.tool_use_id)
+  const reply = message.tool_use_id
+    ? state.pendingReplies.get(message.tool_use_id)
     : undefined;
+  if (message.tool_use_id) state.pendingReplies.delete(message.tool_use_id);
+  const resumeCall = state.pendingResumes.get(message.task_id);
+  state.pendingResumes.delete(message.task_id);
+  if (resumeCall) state.pendingReplies.delete(resumeCall);
   // #3163: an agent's transcript lives under the parent Claude session by
   // agent id (its task id). Only `local_agent` tasks have one; a shell task's
   // output is not a conversation. The contract drops a malformed ref.
@@ -330,7 +358,7 @@ export function observeClaudeTaskStarted(
     ...(Object.keys(parent).length > 0 ? { parent } : {}),
     ...(title ? { title } : {}),
     ...(kindLabel ? { kindLabel } : {}),
-    ...(model ? { model } : {}),
+    ...reply,
     ...(transcript ? { transcript } : {}),
     ...(typeof message.is_backgrounded === 'boolean'
       ? { backgrounded: message.is_backgrounded }
@@ -352,15 +380,6 @@ export function observeClaudeTaskStarted(
   });
 }
 
-function takePendingReplyModel(
-  state: ClaudeChildWorkState,
-  toolUseId: string,
-): ChildWorkModel | undefined {
-  const model = state.pendingReplyModels.get(toolUseId);
-  state.pendingReplyModels.delete(toolUseId);
-  return model;
-}
-
 /**
  * The model a reply frame names, when it is a real model id. A
  * `<synthetic>` frame (an API error, an interruption) names none, so it can
@@ -379,11 +398,12 @@ function replyModel(message: SDKAssistantMessage): string | undefined {
  * that child's own model, whatever its agent definition or the Agent tool's
  * input chose. It is attributed by the spawning tool call, so a nested
  * subagent's reply sets the nested child's model, never its parent's or the
- * session's. A top-level frame (`parent_tool_use_id` null) is the session's
- * own and is ignored here.
+ * session's. A top-level SendMessage to a settled child identifies a pending
+ * resume; other top-level frames contribute no child model or tool.
  *
- * A reply can beat its `task_started` to the stream: the model is held,
- * bounded, until that task registers.
+ * Its `tool_use` blocks also name the child's own latest tool, independently
+ * of its model and without copying tool inputs. A reply can beat its
+ * `task_started`: these facts are held, bounded, until that task registers.
  */
 export function observeClaudeSubagentReply(
   context: ClaudeChildWorkContext,
@@ -391,10 +411,72 @@ export function observeClaudeSubagentReply(
 ): void {
   const state = stateOf(context.record);
   const toolUseId = message.parent_tool_use_id;
-  if (state.closed || !toolUseId) return;
+  if (state.closed) return;
+  const content = message.message?.content;
+  if (toolUseId === null) {
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (block.type !== 'tool_use' || block.name !== 'SendMessage') continue;
+      if (!rememberNewIdentity(state.seenResumeCalls, block.id)) continue;
+      const input = block.input;
+      if (!input || typeof input !== 'object' || !('recipient' in input))
+        continue;
+      const taskId = nonEmpty(input.recipient);
+      if (!taskId) continue;
+      const existing = itemFor(
+        context.record,
+        childIdFor(context.record, taskId),
+      );
+      if (
+        !existing ||
+        existing.status === 'running' ||
+        itemFor(context.record, `${taskId}:${block.id}`)
+      )
+        continue;
+      const priorCall = state.pendingResumes.get(taskId);
+      if (priorCall === block.id) continue;
+      if (priorCall) state.pendingReplies.delete(priorCall);
+      state.pendingResumes.delete(taskId);
+      state.pendingResumes.set(taskId, block.id);
+      if (state.pendingResumes.size > CLAUDE_PENDING_REPLIES_MAX) {
+        const oldest = state.pendingResumes.keys().next().value;
+        if (oldest !== undefined) {
+          const call = state.pendingResumes.get(oldest);
+          if (call) state.pendingReplies.delete(call);
+          state.pendingResumes.delete(oldest);
+        }
+      }
+    }
+    return;
+  }
+  if (!toolUseId) return;
+  if (!rememberNewIdentity(state.seenReplyFrames, message.uuid)) return;
   const id = replyModel(message);
-  if (!id) return;
-  const model: ChildWorkModel = { id, source: 'subagent-reply' };
+  const model: ChildWorkModel | undefined = id
+    ? { id, source: 'subagent-reply' }
+    : undefined;
+  let latestTool: string | undefined;
+  let hasTools = false;
+  let hasNewTools = false;
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block.type !== 'tool_use') continue;
+      hasTools = true;
+      if (!rememberNewIdentity(state.seenReplyTools, block.id)) continue;
+      hasNewTools = true;
+      if (
+        typeof block.name === 'string' &&
+        isReportableChildWorkToolName(block.name)
+      )
+        latestTool = block.name.trim();
+    }
+  }
+  if (hasTools && !hasNewTools) return;
+  if (!model && !latestTool) return;
+  const reply = {
+    ...(model ? { model } : {}),
+    ...(latestTool ? { latestTool } : {}),
+  };
   const spawned = childWorkForReporter(
     state.registry,
     context.record.session.threadId,
@@ -412,18 +494,23 @@ export function observeClaudeSubagentReply(
         childIdFor(context.record, taskIdOf(context.record, spawned.childId)),
       )
     : undefined;
-  if (!existing) {
-    state.pendingReplyModels.delete(toolUseId);
-    state.pendingReplyModels.set(toolUseId, model);
-    if (state.pendingReplyModels.size > CLAUDE_PENDING_REPLY_MODELS_MAX) {
-      const oldest = state.pendingReplyModels.keys().next().value;
-      if (oldest !== undefined) state.pendingReplyModels.delete(oldest);
+  if (existing?.status !== 'running') {
+    const resumeCall = existing
+      ? state.pendingResumes.get(taskIdOf(context.record, existing.childId))
+      : undefined;
+    // A terminal reply alone is not evidence that the agent resumed.
+    if (existing && !resumeCall) return;
+    const pendingCall = resumeCall ?? toolUseId;
+    const pending = state.pendingReplies.get(pendingCall);
+    state.pendingReplies.delete(pendingCall);
+    state.pendingReplies.set(pendingCall, { ...pending, ...reply });
+    if (state.pendingReplies.size > CLAUDE_PENDING_REPLIES_MAX) {
+      const oldest = state.pendingReplies.keys().next().value;
+      if (oldest !== undefined) state.pendingReplies.delete(oldest);
     }
     return;
   }
-  if (existing.status !== 'running') return;
-  // The contract's reducer publishes nothing when the model is unchanged.
-  emit(context, { kind: 'upsert', item: { ...existing, model } });
+  emit(context, { kind: 'upsert', item: { ...existing, ...reply } });
 }
 
 /** `task_progress`: the latest status line and running usage. */
@@ -438,13 +525,14 @@ export function observeClaudeTaskProgress(
   );
   if (existing?.status !== 'running') return;
   const described = nonEmpty(message.description);
-  const progress =
-    nonEmpty(message.summary) ??
-    (described && message.last_tool_name
-      ? `${described} — ${message.last_tool_name}`
-      : described);
+  const progress = nonEmpty(message.summary) ?? described;
+  const latestTool =
+    typeof message.last_tool_name === 'string' &&
+    isReportableChildWorkToolName(message.last_tool_name)
+      ? message.last_tool_name.trim()
+      : undefined;
   const usage = readTaskUsage(message.usage);
-  if (!progress && !usage) return;
+  if (!progress && !latestTool && !usage) return;
   emit(context, {
     kind: 'upsert',
     // The title is the child's name, not its status: progress never
@@ -452,6 +540,7 @@ export function observeClaudeTaskProgress(
     item: {
       ...existing,
       ...(progress ? { progress } : {}),
+      ...(latestTool ? { latestTool } : {}),
       ...(usage ? { usage: { ...existing.usage, ...usage } } : {}),
     },
   });
@@ -555,6 +644,7 @@ function settle(
     ...(existing?.title ? { title: existing.title } : {}),
     ...(existing?.kindLabel ? { kindLabel: existing.kindLabel } : {}),
     ...(existing?.model ? { model: existing.model } : {}),
+    ...(existing?.latestTool ? { latestTool: existing.latestTool } : {}),
     ...(existing?.transcript ? { transcript: existing.transcript } : {}),
     ...(existing?.backgrounded !== undefined
       ? { backgrounded: existing.backgrounded }
@@ -629,6 +719,10 @@ export function settleOpenClaudeChildren(
   }
   state.closed = true;
   state.stopRequested.clear();
-  state.pendingReplyModels.clear();
+  state.pendingReplies.clear();
+  state.pendingResumes.clear();
+  state.seenReplyFrames.clear();
+  state.seenReplyTools.clear();
+  state.seenResumeCalls.clear();
   return open.map((item) => taskIdOf(context.record, item.childId));
 }

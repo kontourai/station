@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
+import { AuthorityHarness } from '../contexts/__tests__/paneRelationsHarness';
 import {
   handOffAttachedContinuation,
   takeAttachedContinuationHandoff,
@@ -32,19 +33,25 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../components/session-detail/SessionDetail', () => ({
   SessionDetail: ({
     onAdopted,
+    getSelectionIntent,
   }: {
     onAdopted: (
       child: { threadId: string },
       intent: number,
       message: string,
     ) => void;
+    getSelectionIntent: () => number;
   }) => (
     <div>
       <p>Original conversation</p>
       <button
         type="button"
         onClick={() =>
-          onAdopted({ threadId: 'continued' }, 0, 'My exact message')
+          onAdopted(
+            { threadId: 'continued' },
+            getSelectionIntent(),
+            'My exact message',
+          )
         }
       >
         Confirm continuation
@@ -75,11 +82,13 @@ function setup(
     ...(id === 'continued' ? {} : { refetch: vi.fn() }),
   }));
   const view = render(
-    <ImportedConversationPane
-      threadId="source"
-      apiBase=""
-      onContinueInDock={onContinueInDock}
-    />,
+    <AuthorityHarness initial={{ station: 'station-a' }}>
+      <ImportedConversationPane
+        threadId="source"
+        apiBase=""
+        onContinueInDock={onContinueInDock}
+      />
+    </AuthorityHarness>,
   );
   return { ...view, onContinueInDock };
 }
@@ -239,11 +248,13 @@ test('a failed refresh preserves history and explains that updates are unavailab
     refetch: vi.fn(),
   }));
   view.rerender(
-    <ImportedConversationPane
-      threadId="source"
-      apiBase=""
-      onContinueInDock={view.onContinueInDock}
-    />,
+    <AuthorityHarness initial={{ station: 'station-a' }}>
+      <ImportedConversationPane
+        threadId="source"
+        apiBase=""
+        onContinueInDock={view.onContinueInDock}
+      />
+    </AuthorityHarness>,
   );
   expect(screen.getByRole('alert').textContent).toContain(
     'Could not refresh this conversation',

@@ -1,0 +1,7 @@
+{
+  "revision": "0feff2a4f6f204780f3dddd1cc779622b37a7d07",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 delta round: added inner registered-worktree trust against its own HEAD, the no-cwd check of the server directory, and two limits (project inside another repository refused; HEAD-tracked .codex absent on disk accepted once matching bytes appear, reachable by a Claude session with Seatbelt git grants). Traced to registeredWorktreeOf/findOnPath in codex-project-config-provenance.ts and startReservedSession.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

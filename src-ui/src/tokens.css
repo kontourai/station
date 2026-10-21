@@ -132,6 +132,17 @@
   --layer-floating-action: 9300;
   --layer-navigation: 9350;
   --layer-notification: 9400;
+  /* A menu the reader opened from the toolbar — the region controls, their
+     chooser, Help, the `⋯` overflow — or from the sidebar's account control.
+     The toolbar's right end, where the region controls now sit, opens straight
+     into the notification column below it, so these panels must outrank it
+     while they are open: otherwise a pending approval's pill takes the press
+     aimed at a menu row (#1638's click theft). Covering a notification with a
+     menu the reader opened is the user-initiated, dismissible occlusion
+     `--layer-surface-popover` accepts; their dismiss backdrops stay at
+     `--layer-navigation` - 1, BELOW the column, so a notification outside the
+     open panel is still pressed directly. */
+  --layer-toolbar-menu: 9450;
   /* The command palette: transient command chrome. It must beat notices and
      toasts so typing is never occluded, and lose to dialogs so a confirm
      opened FROM the palette is reachable. Its own slot because it is neither

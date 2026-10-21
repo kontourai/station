@@ -124,6 +124,9 @@ export const STATION_HOME_ROOTS: Readonly<
   quarantine: 'live',
   service: 'live',
   tmp: 'live',
+  // #3851: the update restore marker (station-home-restore-marker.ts). Live,
+  // so a backup leaves it out and the restore it triggers leaves it alone.
+  'update-restore.json': 'live',
 });
 
 /**

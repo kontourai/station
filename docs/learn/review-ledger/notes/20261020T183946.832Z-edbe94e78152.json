@@ -1,0 +1,7 @@
+{
+  "revision": "34e98a0f0ea5c47e76c88e6a27fbb50bf0f56835",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final test-only correction at 34e98a0f0ea. The attempted Vitest configuration access was removed after the focused run proved this pinned version has no vi.getConfig API. The final delta changes only the two coordinator process-fixture whole-test liveness caps from 30/45 seconds to a finite 120 seconds. Internal fixture waits, product deadline assertions, FIFO, capacity, custody and receipt checks are unchanged. The clean main baseline reproduced the original 30-second timeout. The VerificationCoordinator architecture text remains accurate; the corrected coordinator rerun is pending, with no runtime or release claim.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}
