@@ -113,7 +113,7 @@ ownership and continuation-eligibility owners pass 28 tests. Server-test types
 pass after building this worktree's required Connect export.
 
 This is a bounded failure-path repair, not completion of #3570. Durable seed
-pinning, accepted-through projection, repeated-cycle/omission/restart coverage,
+pinning, accepted-through projection, omission/reservation-restart coverage,
 fork integration, live account qualification and the external-client recipe
 remain unfinished. No live provider or hosted result is implied.
 
@@ -139,9 +139,36 @@ unrelated undeclared `POST /api/telemetry/panes` leaf. The new lease leaves have
 explicit stronger scope rules; do not edit or waive the inherited master leaf
 in this lane. Merge its owner's subsequent published repair normally.
 
-The external-client issuer authority model is under the existing grant owner's
-source/policy review before a public-readiness claim. Scoped custody clearance
-is not approval. The issuer uses the maintained credential-by-ID scope check
+The existing grant owner's v2 review approves the bounded external-client
+issuer source/policy model with limits; it does not approve live onboarding.
+Scoped custody clearance is not approval. The issuer uses the maintained credential-by-ID scope check
 for revocation/narrowing/account standing, without retaining its bearer, and
 current Project identity is rechecked on each new-client request/call. This
 review does not authorize a live token, login, provider call or deployment.
+
+## Current local evidence and unfinished gates
+
+The external-client HTTP owner passes 22 tests, including issuer authority
+withdrawn while the setup body is pending. Bypassing live issuer checks in a
+finite fault injection produces two intended failures; exact restoration
+returns all 22 to passing. The CLI owner passes 14 tests with one explicit
+Windows-only skip on this POSIX host. Its private files now use the maintained
+temporary-directory tracker, and the raw-temp-directory ratchet passes.
+The documented client launcher carries only explicitly selected environment
+settings and the scoped lease, excluding inherited Station credentials and
+provider API keys. None of these results is a real client onboarding receipt.
+
+The handoff qualification owner now passes eight cases, including a second
+complete A→B→A→B→A cycle and persisted history after restart. Disabling native
+return beyond three lineage Sessions makes only the new case fail on missing
+matched native identity; exact restoration returns all eight to passing.
+This does not cover restart between reservation and dispatch or immutable seed
+pinning. Fork seed delivery/copied-history integration remains under caller
+investigation, not established as repaired.
+
+The external-client increment's readiness attempt failed documentation truth
+because affected source/document claims still need review. Governance and lint
+passed; an optional raw-temp-directory warning from that attempt was repaired
+and checked separately. Readiness is not passing, and no PR or publication is
+authorized by these local results. Two-account identity/quota/selection/applied
+credential evidence and the fresh public onboarding journey remain unverified.
