@@ -1,4 +1,8 @@
-import type { TaskAssignmentClaimActor, TaskStatus } from './task-graph.js';
+import type {
+  TaskAssignmentClaimActor,
+  TaskRecord,
+  TaskStatus,
+} from './task-graph.js';
 
 /**
  * Work-item provider seam (roadmap #583, part of epic #580, S3).
@@ -139,4 +143,170 @@ export interface WorkItemClaimStatus {
   state: WorkItemClaimState;
   actor?: TaskAssignmentClaimActor;
   reason?: string;
+}
+
+/**
+ * Exact-item observation of one tracker work item (epic #4003,
+ * docs/design/tracker-backed-tasks.md "Reading the tracker"). Unlike
+ * `ProviderWorkItem`, which is a row from a backend's filtered ready queue,
+ * an observation is one item read by its exact identity, at a known time.
+ *
+ * Station re-reads the item when a person opens the Task and when a Session
+ * is dispatched; nothing polls. GitHub issues only in this slice: a pull
+ * request is `unsupported`, and so is any host other than github.com.
+ */
+export interface WorkItemObservedComment {
+  /** Tracker login of the comment's author. */
+  author: string;
+  createdAt: string;
+  /** The comment body, cut to {@link WORK_ITEM_OBSERVATION_LIMITS}
+   * `.commentExcerptChars`; a cut excerpt ends with `…`. */
+  excerpt: string;
+}
+
+export interface WorkItemObservation {
+  workItemRef: string;
+  url: string;
+  title: string;
+  state: 'open' | 'closed';
+  /** The tracker's own reason, e.g. GitHub's `completed` or `not_planned`. */
+  stateReason?: string;
+  labels: string[];
+  updatedAt: string;
+  /** When Station read the item. */
+  observedAt: string;
+  /** Cut to {@link WORK_ITEM_OBSERVATION_LIMITS}`.bodyChars`; a cut body ends
+   * with a visible `[truncated]` marker. Absent when the item has none. */
+  body?: string;
+  /** Newest last, at most {@link WORK_ITEM_OBSERVATION_LIMITS}`.comments`.
+   * With `commentsSince`, only comments created after it; a full list means
+   * there may be more ("at least N"). */
+  comments?: WorkItemObservedComment[];
+}
+
+export type WorkItemObservationResult =
+  | { status: 'observed'; observation: WorkItemObservation }
+  | {
+      status: 'not-found' | 'unauthenticated' | 'unavailable' | 'unsupported';
+      reason: string;
+    };
+
+/**
+ * `GET /api/tasks/:taskId/work-item`: the Task's linked item re-read now.
+ * `commentsSince` is the Task's last recorded observation
+ * (`TaskRecord.workItemObservedAt`); the observation's comments are the ones
+ * created after it.
+ */
+export type TaskWorkItemObservationResponse = WorkItemObservationResult & {
+  commentsSince?: string;
+};
+
+/** `POST /api/tasks/from-work-item` result. `existing` means the item already
+ * had an open Task, which is returned unchanged. `briefSaved` is false when
+ * the new Task's document could not be seeded from the item. */
+export interface StartTaskFromWorkItemResult {
+  task: TaskRecord;
+  existing: boolean;
+  briefSaved: boolean;
+}
+
+/** Bounds an observation's free text, so a long issue cannot become an
+ * unbounded Task brief. */
+export const WORK_ITEM_OBSERVATION_LIMITS = {
+  bodyChars: 6000,
+  commentExcerptChars: 1000,
+  comments: 30,
+} as const;
+
+/** A parsed `github:owner/repo#N` work-item reference. */
+export interface GitHubWorkItemIdentity {
+  owner: string;
+  repo: string;
+  number: number;
+}
+
+// GitHub's own rules: an owner is 1-39 alphanumerics or single inner
+// hyphens; a repository name is 1-100 of `[A-Za-z0-9._-]` and never `.` or
+// `..`; an issue number is a positive integer without a leading zero.
+const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
+const GITHUB_ISSUE_NUMBER = /^[1-9][0-9]{0,14}$/;
+const GITHUB_WORK_ITEM_REF = /^github:([^/#\s]+)\/([^/#\s]+)#([^#\s]+)$/;
+
+function gitHubIdentity(
+  owner: string,
+  repo: string,
+  number: string,
+): GitHubWorkItemIdentity | null {
+  if (
+    !GITHUB_OWNER.test(owner) ||
+    !GITHUB_REPO.test(repo) ||
+    repo === '.' ||
+    repo === '..' ||
+    !GITHUB_ISSUE_NUMBER.test(number)
+  )
+    return null;
+  const parsed = Number(number);
+  return Number.isSafeInteger(parsed) ? { owner, repo, number: parsed } : null;
+}
+
+/**
+ * Parses exactly `github:owner/repo#N`. Anything else, including GitHub
+ * Enterprise hosts, surrounding whitespace and a bare `#N`, is `null`, which
+ * a caller reports as `unsupported`. Owner and repository case is kept: the
+ * ref is compared as a string, as `ProviderWorkItem.workItemRef` is.
+ */
+export function parseGitHubWorkItemRef(
+  ref: string,
+): GitHubWorkItemIdentity | null {
+  const match = GITHUB_WORK_ITEM_REF.exec(ref);
+  return match ? gitHubIdentity(match[1], match[2], match[3]) : null;
+}
+
+export function formatGitHubWorkItemRef(
+  identity: GitHubWorkItemIdentity,
+): string {
+  return `github:${identity.owner}/${identity.repo}#${identity.number}`;
+}
+
+/** `github:owner/repo#N` -> `https://github.com/owner/repo/issues/N`, or
+ * `null` for any ref {@link parseGitHubWorkItemRef} refuses. */
+export function gitHubIssueUrlFromWorkItemRef(ref: string): string | null {
+  const identity = parseGitHubWorkItemRef(ref);
+  return identity
+    ? `https://github.com/${identity.owner}/${identity.repo}/issues/${identity.number}`
+    : null;
+}
+
+/**
+ * `https://github.com/owner/repo/issues/N` -> `github:owner/repo#N`. Only
+ * that exact shape on github.com: no credentials, port, query, fragment,
+ * trailing slash or other path (a `/pull/N` URL is refused), and no other
+ * host, including `www.github.com` and GitHub Enterprise.
+ */
+export function workItemRefFromGitHubIssueUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.hostname !== 'github.com' ||
+    parsed.port !== '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    // `new URL` normalizes `/a/../b`; require the input to be the canonical
+    // spelling so a path the parser rewrote is not silently accepted.
+    url !== parsed.href
+  )
+    return null;
+  const segments = parsed.pathname.split('/');
+  if (segments.length !== 5 || segments[0] !== '' || segments[3] !== 'issues')
+    return null;
+  const identity = gitHubIdentity(segments[1], segments[2], segments[4]);
+  return identity ? formatGitHubWorkItemRef(identity) : null;
 }

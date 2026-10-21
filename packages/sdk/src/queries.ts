@@ -789,7 +789,14 @@ export {
   type WorkflowTaskSummaryVM,
 } from './query-domains/workflowTasks';
 export {
+  fetchTaskWorkItem,
   type ProviderWorkItem,
+  type StartTaskFromWorkItemInput,
+  type StartTaskFromWorkItemResult,
+  startTaskFromWorkItem,
+  type TaskWorkItemObservationResponse,
+  useStartTaskFromWorkItemMutation,
+  useTaskWorkItemQuery,
   useWorkItemClaimQuery,
   useWorkItemsQuery,
   type WorkItemClaimStatus,

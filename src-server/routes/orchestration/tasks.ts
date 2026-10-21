@@ -44,6 +44,13 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  type ProviderWorkItem,
+  parseGitHubWorkItemRef,
+  type StartTaskFromWorkItemResult,
+  type TaskWorkItemObservationResponse,
+  type WorkItemObservationResult,
+} from '@kontourai/station-contracts/work-item-provider';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
@@ -79,6 +86,8 @@ import {
   type TaskGateEvaluationReferenceRead,
   type TaskToolResultReferenceRead,
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
+import type { WorkItemObserver } from '../../services/work-item-providers/github-work-item-observer.js';
+import { workItemTaskDocument } from '../../services/work-item-providers/work-item-task-brief.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { refuseUngrantedRuntimeCwd } from '../working-directory-authority.js';
@@ -123,6 +132,26 @@ const taskCreateSchema = z.object({
   sourceProvider: z.string().optional(),
   workItemRef: z.string().optional(),
 });
+
+// Start Task on a tracker item (#4003). The item is named by its ref only;
+// title, brief and provider come from the Project's board and the tracker.
+const taskFromWorkItemSchema = taskCreateSchema
+  .pick({ projectId: true, agentId: true, workspaceBinding: true })
+  .extend({ workItemRef: z.string().min(1).max(512) })
+  .strict();
+
+/** HTTP status for an observation that did not observe the item. A missing
+ * gh login is the Station host's state, not the caller's credential, so it is
+ * not a 401. */
+const observationFailureStatus = {
+  'not-found': 404,
+  unsupported: 422,
+  unauthenticated: 503,
+  unavailable: 503,
+} as const satisfies Record<
+  Exclude<WorkItemObservationResult['status'], 'observed'>,
+  number
+>;
 
 // archive#593: an independently-versioned client may still send the pre-#581
 // status vocabulary. Normalize known removed aliases at the HTTP boundary,
@@ -360,6 +389,17 @@ export function createTaskRoutes(
       request: Request;
       text: string;
     }) => Promise<boolean>;
+    /** Exact-identity tracker reads (#4003). Personal mode only. */
+    workItemObserver?: WorkItemObserver;
+    /**
+     * The Project board's provider item with exactly this ref, if the board
+     * lists it. Start Task observes only an item the board offered, never a
+     * ref a caller typed.
+     */
+    resolveProviderWorkItem?: (input: {
+      projectId: string;
+      workItemRef: string;
+    }) => Promise<ProviderWorkItem | undefined>;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
      * essential: a route singleton must never retain one tenant's authority.
@@ -747,6 +787,158 @@ export function createTaskRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
+  });
+
+  /**
+   * Start Task on a provider work item (#4003). A person's action: Station's
+   * internal agent caller is refused centrally, because no station-control
+   * tool names this route. Hosted requests never reach the host's tracker
+   * login.
+   */
+  app.post('/from-work-item', validate(taskFromWorkItemSchema), async (c) => {
+    if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+    const input: z.infer<typeof taskFromWorkItemSchema> = getBody(c);
+    const workItemRef = input.workItemRef;
+    if (!parseGitHubWorkItemRef(workItemRef))
+      return c.json(
+        {
+          success: false,
+          error:
+            'Only GitHub issues on github.com (github:owner/repo#N) can start a Task.',
+        },
+        422,
+      );
+    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef);
+    if (existing)
+      return c.json({
+        success: true,
+        data: {
+          task: existing,
+          existing: true,
+          briefSaved: false,
+        } satisfies StartTaskFromWorkItemResult,
+      });
+    if (!options.workItemObserver || !options.resolveProviderWorkItem)
+      return c.json(
+        {
+          success: false,
+          error: 'Starting a Task from a work item is unavailable',
+        },
+        503,
+      );
+    const item = await options.resolveProviderWorkItem({
+      projectId: input.projectId,
+      workItemRef,
+    });
+    if (!item)
+      return c.json(
+        {
+          success: false,
+          error: "This work item is not on the Project's board.",
+        },
+        404,
+      );
+    const observed = await options.workItemObserver.observeWorkItem(
+      workItemRef,
+      {},
+    );
+    if (observed.status !== 'observed')
+      return c.json(
+        {
+          success: false,
+          error: observed.reason,
+          observation: observed.status,
+        },
+        observationFailureStatus[observed.status],
+      );
+    const { observation } = observed;
+    let created: { task: TaskRecord; existing: boolean };
+    try {
+      created = await taskGraphService.createTaskForWorkItem(
+        {
+          projectId: input.projectId,
+          title: observation.title,
+          agentId: input.agentId,
+          createdBy: 'user',
+          workspaceBinding: input.workspaceBinding,
+          sourceProvider: 'github',
+          workItemRef,
+        },
+        observation.observedAt,
+        resolveClientOriginForRequest(c.req.raw),
+      );
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+    if (created.existing)
+      return c.json({
+        success: true,
+        data: {
+          task: created.task,
+          existing: true,
+          briefSaved: false,
+        } satisfies StartTaskFromWorkItemResult,
+      });
+    let briefSaved = false;
+    try {
+      briefSaved =
+        (await options.seedProposalBrief?.({
+          taskId: created.task.id,
+          request: c.req.raw,
+          text: workItemTaskDocument(observation),
+        })) ?? false;
+    } catch {
+      briefSaved = false;
+    }
+    return c.json(
+      {
+        success: true,
+        data: {
+          task: created.task,
+          existing: false,
+          briefSaved,
+        } satisfies StartTaskFromWorkItemResult,
+      },
+      201,
+    );
+  });
+
+  /**
+   * The Task's linked tracker item, re-read now (#4003): read when a person
+   * opens the Task, never polled. Comments are those created after the
+   * Task's last recorded observation.
+   */
+  app.get('/:taskId/work-item', async (c) => {
+    noStore(c);
+    if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+    const task = taskGraphService.readTask(param(c, 'taskId'));
+    if (!task) return hostedNotFound(c);
+    if (!task.workItemRef)
+      return c.json(
+        { success: false, error: 'This Task has no linked work item' },
+        404,
+      );
+    if (!options.workItemObserver)
+      return c.json({
+        success: true,
+        data: {
+          status: 'unavailable',
+          reason: 'Reading work items is unavailable',
+        } satisfies TaskWorkItemObservationResponse,
+      });
+    const data = await options.workItemObserver.observeWorkItem(
+      task.workItemRef,
+      task.workItemObservedAt ? { commentsSince: task.workItemObservedAt } : {},
+    );
+    return c.json({
+      success: true,
+      data: {
+        ...data,
+        ...(task.workItemObservedAt
+          ? { commentsSince: task.workItemObservedAt }
+          : {}),
+      } satisfies TaskWorkItemObservationResponse,
+    });
   });
 
   app.get('/sessions/:sessionId/relations', (c) => {

@@ -311,6 +311,21 @@ function normalizeText(value: string | undefined): string {
   return value?.trim() ?? '';
 }
 
+/** Cardinality (#4003): the one Task, not done or canceled, whose primary
+ * work item is `workItemRef`. Refs compare as exact strings, as the Tasks
+ * board's join does. */
+function openTaskForWorkItem(
+  tasks: readonly TaskRecord[],
+  workItemRef: string,
+): TaskRecord | undefined {
+  return tasks.find(
+    (task) =>
+      task.workItemRef === workItemRef &&
+      task.status !== 'done' &&
+      task.status !== 'canceled',
+  );
+}
+
 function metricSourceSurface(value: unknown): string {
   const sourceSurface =
     typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -490,6 +505,7 @@ const TASK_RECORD_KEYS = [
   'workspaceBinding',
   'sourceProvider',
   'workItemRef',
+  'workItemObservedAt',
   'closeOnMerge',
   'dispatchReservation',
 ] as const;
@@ -810,6 +826,12 @@ function validateTaskGraphStoreData(
     validateOptionalText(task.sessionId, `${at}.sessionId`, problems);
     validateOptionalText(task.sourceProvider, `${at}.sourceProvider`, problems);
     validateOptionalText(task.workItemRef, `${at}.workItemRef`, problems);
+    if (task.workItemObservedAt !== undefined)
+      validateCanonicalTimestamp(
+        task.workItemObservedAt,
+        `${at}.workItemObservedAt`,
+        problems,
+      );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
     if (task.workspaceBinding === undefined) {
@@ -1676,6 +1698,46 @@ export class TaskGraphService {
     taskId: string = crypto.randomUUID(),
     authorize?: () => boolean,
   ): Promise<TaskRecord> {
+    return (await this.createTaskRecord(input, clientOrigin, taskId, authorize))
+      .task;
+  }
+
+  /**
+   * Start Task on a tracker item (#4003). A work item is the primary item of
+   * at most one Task that is not done or canceled, in any Project
+   * (docs/design/tracker-backed-tasks.md "Cardinality"): when such a Task
+   * exists it is returned with `existing: true` and nothing is written. The
+   * check runs under the store's mutation lock, so two concurrent starts
+   * create one Task.
+   */
+  async createTaskForWorkItem(
+    input: TaskCreateInput & { workItemRef: string },
+    workItemObservedAt: string,
+    clientOrigin?: ClientOrigin,
+  ): Promise<{ task: TaskRecord; existing: boolean }> {
+    if (!normalizeText(input.workItemRef))
+      throw new Error('workItemRef is required');
+    return this.createTaskRecord(
+      input,
+      clientOrigin,
+      crypto.randomUUID(),
+      undefined,
+      { workItemObservedAt },
+    );
+  }
+
+  /** The open Task whose primary work item is `workItemRef`, if any. */
+  findOpenTaskForWorkItem(workItemRef: string): TaskRecord | null {
+    return openTaskForWorkItem(this.readStore().tasks, workItemRef) ?? null;
+  }
+
+  private async createTaskRecord(
+    input: TaskCreateInput,
+    clientOrigin: ClientOrigin | undefined,
+    taskId: string,
+    authorize: (() => boolean) | undefined,
+    workItem?: { workItemObservedAt: string },
+  ): Promise<{ task: TaskRecord; existing: boolean }> {
     const sourceSurface = metricSourceSurface(
       input.workspaceBinding?.sourceSurface,
     );
@@ -1717,9 +1779,14 @@ export class TaskGraphService {
       workspaceBinding,
       sourceProvider: normalizeText(input.sourceProvider) || undefined,
       workItemRef: normalizeText(input.workItemRef) || undefined,
+      ...(workItem ? { workItemObservedAt: workItem.workItemObservedAt } : {}),
     };
 
     const persisted = await this.mutateStore((data) => {
+      if (workItem) {
+        const open = openTaskForWorkItem(data.tasks, task.workItemRef!);
+        if (open) return { data, result: { task: open, existing: true } };
+      }
       const source = input.shapingSource;
       const acceptedTaskId = source
         ? data.links.find(
@@ -1741,7 +1808,7 @@ export class TaskGraphService {
           throw new Error(
             'This proposal was already accepted in another Project',
           );
-        return { data, result: prior };
+        return { data, result: { task: prior, existing: true } };
       }
       if (prior) {
         throw new Error(`Task '${task.id}' already exists`);
@@ -1769,7 +1836,7 @@ export class TaskGraphService {
               ]
             : data.links,
         },
-        result: task,
+        result: { task, existing: false },
       };
     });
     taskWorkspaceBindingTotal.add(1, {

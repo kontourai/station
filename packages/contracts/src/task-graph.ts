@@ -545,6 +545,13 @@ export interface TaskRecord {
    * issue URL or id). Absent for tasks created directly in Station. */
   workItemRef?: string;
   /**
+   * When Station last read `workItemRef` into this Task (#4003): the
+   * observation that seeded the brief on Start Task. Comments created after
+   * it are the item's "new comments". Absent for a Task that was never
+   * started from a tracker item.
+   */
+  workItemObservedAt?: string;
+  /**
    * A person's opt-in (#3161): move this Task to `done` once every pull
    * request kept on it is merged at its provider. Only a person sets it
    * (`PUT /api/tasks/:taskId/close-on-merge`); no agent tool does, and the

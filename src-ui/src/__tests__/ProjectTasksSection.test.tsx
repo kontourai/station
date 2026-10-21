@@ -24,6 +24,7 @@ const setQueryData = vi.fn();
 const createTask = vi.fn();
 const dispatchTask = vi.fn();
 const launchStarterTask = vi.fn();
+const startTaskFromWorkItem = vi.fn();
 const refetchTasks = vi.fn();
 const starterWorkLock = {
   request: async <T,>(
@@ -41,7 +42,7 @@ let tasks: Array<{
   projectId: string;
   title: string;
   priority: 'normal';
-  status: 'todo' | 'ready';
+  status: 'todo' | 'ready' | 'done';
   createdAt: string;
   updatedAt: string;
   description: string;
@@ -161,6 +162,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutateAsync: launchStarterTask,
   }),
+  useStartTaskFromWorkItemMutation: () => ({
+    isPending: false,
+    mutateAsync: startTaskFromWorkItem,
+  }),
   useWorkflowTasksQuery,
   useWorkItemsQuery,
   useTaskClaimQuery: () => ({ data: taskClaim }),
@@ -176,6 +181,7 @@ describe('ProjectTasksSection', () => {
     createTask.mockReset();
     dispatchTask.mockReset();
     launchStarterTask.mockReset();
+    startTaskFromWorkItem.mockReset();
     window.localStorage.clear();
     Object.defineProperty(window.navigator, 'locks', {
       configurable: true,
@@ -682,10 +688,119 @@ describe('ProjectTasksSection', () => {
     );
     expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
     expect(
-      screen.getByText(
+      screen.queryByText(
         'Linked work item — dispatch is not available for this item yet.',
       ),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start Task' })).toBeTruthy();
+  });
+
+  describe('Start Task on a provider row (#4003)', () => {
+    const ref = 'github:kontourai/station#583';
+    beforeEach(() => {
+      workItemsData = {
+        providers: [
+          {
+            identity: {
+              kind: 'flow-agents-github',
+              id: 'flow-agents-github:kontourai/station',
+              label: 'GitHub (kontourai/station)',
+            },
+            capabilities: {
+              readOnly: true,
+              supportsDispatch: false,
+              supportsStatusWrite: false,
+            },
+            available: true,
+            items: [
+              {
+                id: ref,
+                title: 'Linked work item for the Tasks board',
+                status: 'ready',
+                provider: {
+                  kind: 'flow-agents-github',
+                  id: 'flow-agents-github:kontourai/station',
+                  label: 'GitHub (kontourai/station)',
+                },
+                workItemRef: ref,
+              },
+            ],
+          },
+        ],
+      };
+    });
+
+    test('creates the Task from the item and opens it', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { ...tasks[0], id: 'task-from-issue', workItemRef: ref },
+        existing: false,
+        briefSaved: true,
+      });
+      render(
+        <ProjectTasksSection
+          slug="project-alpha"
+          projectWorkingDirectory="/work/alpha"
+          agents={['agent-one']}
+        />,
+      );
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      await waitFor(() =>
+        expect(navigate).toHaveBeenCalledWith('/tasks/task-from-issue'),
+      );
+      expect(startTaskFromWorkItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'project-alpha',
+          workItemRef: ref,
+          agentId: 'agent-one',
+          workspaceBinding: expect.objectContaining({
+            workingDirectory: '/work/alpha',
+            sourceSurface: 'ui',
+          }),
+        }),
+      );
+      expect(showToast).not.toHaveBeenCalled();
+    });
+
+    test('opens the item’s open Task instead of creating another', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { ...tasks[0], id: 'task-elsewhere', workItemRef: ref },
+        existing: true,
+        briefSaved: false,
+      });
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      await waitFor(() =>
+        expect(navigate).toHaveBeenCalledWith('/tasks/task-elsewhere'),
+      );
+      expect(showToast).toHaveBeenCalledWith(
+        'This item already has an open Task. Opening it.',
+      );
+    });
+
+    test('shows why the Task could not start and stays on the board', async () => {
+      startTaskFromWorkItem.mockRejectedValue(
+        new Error(
+          'The GitHub CLI is not signed in to github.com. Run `gh auth login` on the Station host, then try again.',
+        ),
+      );
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'gh auth login',
+      );
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    test('a done Task no longer hides its item, so a new Task can start', () => {
+      tasks[0] = { ...tasks[0], status: 'done', workItemRef: ref };
+      render(<ProjectTasksSection slug="project-alpha" />);
+      expect(
+        screen.getByText('Linked work item for the Tasks board'),
+      ).toBeTruthy();
+    });
   });
 
   test('omits a provider item once a local task has already joined the same workItemRef', () => {
