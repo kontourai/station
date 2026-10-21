@@ -185,14 +185,6 @@ for (const [slug, name] of [
       canContinue: true,
       turns: () => startedTurns,
     });
-    await page.route(
-      '**/api/orchestration/conversations/draft-send-conversation/inbox',
-      async (route) => {
-        if (route.request().method() !== 'GET')
-          return rejectUnexpectedFixtureRequest(route);
-        await route.fulfill(json({ success: true, data: { entries: [] } }));
-      },
-    );
     await page.goto('/');
     await dismissSetupLauncher(page);
     const draft = page.getByRole('form', { name: 'Start work' });
@@ -1214,13 +1206,15 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
   const textarea = await openComposer(page);
   await textarea.fill('Review the attached notes');
 
-  const attach = page.getByRole('button', { name: 'Attach files' });
+  const attach = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'Attach files' });
   await expect(attach).toBeVisible();
   const attachBox = await attach.boundingBox();
   expect(attachBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   expect(attachBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
-  await page.locator('.attachment-input').setInputFiles([
+  await page.locator('#chat-dock .attachment-input').setInputFiles([
     {
       name: 'mobile-context.md',
       mimeType: 'text/markdown',
@@ -1354,7 +1348,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
 
   const textarea = await openComposer(page);
   await textarea.fill('Send the staged attachment');
-  await page.locator('.attachment-input').setInputFiles({
+  await page.locator('#chat-dock .attachment-input').setInputFiles({
     name: 'staged-notes.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('stage me'),
@@ -3255,7 +3249,9 @@ for (const viewport of [
       'Claude',
     );
     await expect(agentButton.locator('svg[aria-hidden="true"]')).toHaveCount(1);
-    const attach = page.getByRole('button', { name: 'Attach files' });
+    const attach = page
+      .locator('#chat-dock')
+      .getByRole('button', { name: 'Attach files' });
     const attachBox = await attach.boundingBox();
     expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(viewport.width);
 
@@ -4400,7 +4396,7 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+Q5q9WQAAAABJRU5ErkJggg==',
     'base64',
   );
-  await page.locator('.attachment-input').setInputFiles([
+  await page.locator('#chat-dock .attachment-input').setInputFiles([
     { name: 'shot-one.png', mimeType: 'image/png', buffer: png },
     { name: 'shot-two.png', mimeType: 'image/png', buffer: png },
   ]);
