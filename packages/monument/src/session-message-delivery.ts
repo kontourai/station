@@ -128,7 +128,7 @@ export async function deliverSessionMessage(
   ports: SessionMessageDeliveryPorts,
   input: {
     readonly threadId: string;
-    /** Host-prepared message text, passed through unchanged. */
+    /** Opaque host text, optionally transformed before recording or effect. */
     readonly text: string;
     readonly mode: SessionSendMode;
     /** The id the layers below deduplicate on (see the module note). */
