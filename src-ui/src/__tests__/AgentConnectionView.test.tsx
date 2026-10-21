@@ -617,29 +617,8 @@ describe('AgentConnectionView', () => {
   // and opens it, where setup continues; a bare "Add" beside that label
   // promised a usable engine.
   test('a native row that still needs setup says Add and set up', async () => {
-    agentCatalog = [
-      ...DEFAULT_AGENT_CATALOG,
-      {
-        id: 'muse',
-        kind: 'agent',
-        type: 'muse',
-        name: 'Muse Code',
-        enabled: true,
-        status: 'missing_prerequisites',
-        capabilities: ['agent-runtime'],
-        prerequisites: [
-          {
-            id: 'muse-cli',
-            name: 'Muse Code CLI',
-            description: 'Required to launch the Muse Code runtime.',
-            status: 'missing',
-            category: 'required',
-          },
-        ],
-        config: { executionClass: 'connected' },
-        setup: { state: 'available', detected: false, configured: false },
-      },
-    ];
+    // The exact shape the server writes for a missing Muse CLI.
+    agentCatalog = [...DEFAULT_AGENT_CATALOG, museMissingBinaryConnection()];
 
     await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
