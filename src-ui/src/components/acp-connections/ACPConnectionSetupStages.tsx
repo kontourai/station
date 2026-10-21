@@ -48,6 +48,7 @@ export function ACPConnectionSetupActions({
   isCustom,
   canSubmit,
   ready,
+  canRetryCheck,
   errorKind,
   confirmLabel,
   onCatalog,
@@ -63,6 +64,8 @@ export function ACPConnectionSetupActions({
   isCustom: boolean;
   canSubmit: boolean;
   ready: boolean;
+  /** The result failed its probe; re-running the add re-probes it. */
+  canRetryCheck: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   confirmLabel: string;
   onCatalog: () => void;
@@ -89,6 +92,7 @@ export function ACPConnectionSetupActions({
         stage={stage}
         isCustom={isCustom}
         ready={ready}
+        canRetryCheck={canRetryCheck}
         errorKind={errorKind}
         onCatalog={onCatalog}
         onCustom={onCustom}
@@ -176,6 +180,7 @@ function ACPConnectionSetupCompletionActions({
   stage,
   isCustom,
   ready,
+  canRetryCheck,
   errorKind,
   onCatalog,
   onCustom,
@@ -186,6 +191,7 @@ function ACPConnectionSetupCompletionActions({
   stage: ACPConnectionSetupStage;
   isCustom: boolean;
   ready: boolean;
+  canRetryCheck: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   onCatalog: () => void;
   onCustom: () => void;
@@ -204,6 +210,15 @@ function ACPConnectionSetupCompletionActions({
           onClick={edit}
         >
           {isCustom ? 'Edit setup' : 'Choose another engine'}
+        </button>
+      )}
+      {stage === 'result' && canRetryCheck && (
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={onRetryMutation}
+        >
+          Retry check
         </button>
       )}
       {stage === 'error' && errorKind === 'mutation' && (

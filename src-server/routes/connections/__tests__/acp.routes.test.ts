@@ -27,6 +27,12 @@ const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
 const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
+const { addACPManagerConnection, removeACPManagerConnection } = await import(
+  '../../../services/acp/acp-manager-orchestration.js'
+);
+const { getACPManagerStatus } = await import(
+  '../../../services/acp/acp-manager-view.js'
+);
 const homes: string[] = [];
 
 /**
@@ -79,6 +85,64 @@ function createMockRuntimeContext() {
       async <T>(operation: (beginMutation: () => void) => Promise<T>) =>
         operation(beginAgentConfigurationMutation),
     ),
+  };
+}
+
+/**
+ * A bridge whose add/status path is the real manager orchestration and
+ * status view, with only the engine process replaced: each probe settles to
+ * `outcome` the way `ACPProbe.runProbe` does (stamping `lastProbeAt` and
+ * `lastError`). `outcome` is read per probe, so a test can flip it between
+ * an initial add and a retry.
+ */
+function probeOutcomeBridge(outcome: {
+  ok: boolean;
+  lastError?: { phase: string; message: string };
+}) {
+  const probes = new Map<string, any>();
+  const configs = new Map<string, any>();
+  const removeConnection = (id: string) =>
+    removeACPManagerConnection({ id, probes, configs });
+  const createProbe = () => {
+    const probe = {
+      lastProbeAt: 0,
+      lastError: null as { phase: string; message: string } | null,
+      handshakeObservedAt: 0,
+      getModes: () => [],
+      getConfigOptions: () => [],
+      getCapabilities: () => undefined,
+      getHandshakeObservedAt: () => probe.handshakeObservedAt,
+      isAvailable: () => probe.handshakeObservedAt > 0 && !probe.lastError,
+      isProbeInFlight: () => false,
+      async probe() {
+        probe.lastProbeAt = Date.now();
+        if (outcome.ok) {
+          probe.handshakeObservedAt = probe.lastProbeAt;
+          probe.lastError = null;
+        } else {
+          probe.lastError = outcome.lastError ?? null;
+        }
+        return outcome.ok;
+      },
+      async dispose() {},
+    };
+    return probe;
+  };
+  return {
+    addConnection: vi.fn((config: any) =>
+      addACPManagerConnection({
+        config,
+        probes,
+        configs,
+        logger: {},
+        managedWorkspaceHomeDir: tmpdir(),
+        createProbe,
+        removeConnection,
+      }),
+    ),
+    removeConnection: vi.fn(removeConnection),
+    reconnect: vi.fn().mockResolvedValue(false),
+    getStatus: () => getACPManagerStatus(probes, configs, 0),
   };
 }
 
@@ -599,6 +663,107 @@ describe('ACP Routes', () => {
       kind: 'engine-connection',
       engineConnectionId: 'muse',
     });
+  });
+
+  // A failed first add registers no identity, so GET /connections never lists
+  // the connection. The response is the only place the setup dialog can read
+  // the probe's outcome; without it the dialog waited on a list row that
+  // could never arrive.
+  test('POST /registry/:id/install answers a failed first add with the probe status and reason', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
+        },
+      },
+    ];
+    const { ctx } = await createFilesystemRuntimeContext();
+    const outcome = {
+      ok: false,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    };
+    ctx.acpBridge = probeOutcomeBridge(outcome);
+    const app = asOperator(createACPRoutes(ctx));
+
+    const failed = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(failed).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+      },
+    });
+    // The whole body, pinned: src-ui's ACPAddConnectionModal test drives the
+    // dialog with this exact shape (`failedFirstAddResponse`).
+    expect(failed.data).toEqual({
+      id: 'muse',
+      name: 'Muse',
+      command: 'muse',
+      args: [],
+      icon: '🔌',
+      enabled: true,
+      status: 'unavailable',
+      modes: [],
+      sessionId: null,
+      mcpServers: [],
+      configOptions: [],
+      currentModel: null,
+      providerRoutingCurrent: true,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    });
+    expect(failed.agent).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
+
+    // Retry check re-posts the same entry; once the probe handshakes the
+    // engine registers, its Agent materializes, and the list serves it.
+    outcome.ok = true;
+    const retried = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(retried).toMatchObject({
+      success: true,
+      data: { id: 'muse', status: 'available' },
+      agent: { created: true, data: { slug: 'muse' } },
+    });
+    expect(retried.data.lastError).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toMatchObject([
+      { id: 'muse', status: 'available' },
+    ]);
+  });
+
+  test('POST /connections answers a failed first add with the probe status and reason', async () => {
+    const { ctx } = await createFilesystemRuntimeContext();
+    ctx.acpBridge = probeOutcomeBridge({
+      ok: false,
+      lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+    });
+    const app = asOperator(createACPRoutes(ctx));
+
+    const body = await json(
+      await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'muse', command: 'muse', name: 'Muse' }),
+      }),
+    );
+
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        command: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+      },
+    });
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
   });
 
   test('POST /connections creates no Agent when the probe rejects', async () => {

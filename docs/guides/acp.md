@@ -559,7 +559,7 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 ### Agent not appearing in the New Chat picker
 
-Every configured connection should surface as one External agent with the same clean ID, even while disabled, unprobed, unavailable, or in error. If it is missing, inspect `config/agent-registry.json` and the connection lifecycle error; probe state should change availability, never Agent existence.
+A connection surfaces as an External agent with the same clean ID once its probe has handshaked at least once. Adding or installing a connection saves its config first and registers the engine and its Agent only when that probe succeeds; a failed first add keeps the config, answers with the probe's `status` and `lastError`, and stays out of `GET /api/acp/connections`. Repeat the same add (the setup dialog's **Retry check**) after fixing the cause: it re-probes and registers on success. Once registered, probe state changes availability, never Agent existence. If a connection that has handshaked is missing, inspect `config/agent-registry.json` and the connection lifecycle error.
 
 ### A previous ACP session cannot be restored
 

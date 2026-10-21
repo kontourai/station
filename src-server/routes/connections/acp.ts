@@ -293,6 +293,28 @@ async function registeredRuntimeConnectionIds(configLoader: {
   return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
 
+/**
+ * One connection as GET /connections serves it: its config merged with the
+ * bridge's live status. The create and install routes answer with this same
+ * projection, because a connection whose first probe failed is not listed
+ * (its identity never registered) and the response is then the only place
+ * the caller can read the probe's status and reason.
+ */
+function connectionStatusView(
+  cfg: ACPConnectionConfig,
+  status: ReturnType<RuntimeContext['acpBridge']['getStatus']>,
+) {
+  return {
+    ...cfg,
+    ...(status.connections.find((s) => s.id === cfg.id) || {
+      status: ACPStatus.UNAVAILABLE,
+      modes: [],
+      sessionId: null,
+      mcpServers: [],
+    }),
+  };
+}
+
 export function createACPRoutes(ctx: RuntimeContext) {
   const app = new Hono();
 
@@ -303,15 +325,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
   app.get('/connections', async (c) => {
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
-    const connections = allConnections.map((cfg) => ({
-      ...cfg,
-      ...(status.connections.find((s) => s.id === cfg.id) || {
-        status: ACPStatus.UNAVAILABLE,
-        modes: [],
-        sessionId: null,
-        mcpServers: [],
-      }),
-    }));
+    const connections = allConnections.map((cfg) =>
+      connectionStatusView(cfg, status),
+    );
     return c.json({ success: true, data: connections });
   });
 
@@ -395,7 +411,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
           acpOps.add(1, { op: 'create' });
           return c.json({
             success: true,
-            data: newConn,
+            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
             ...(agent
               ? {
                   agent: {
@@ -468,7 +484,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
             await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
           }
           acpOps.add(1, { op: 'create' });
-          return c.json({ success: true, data: newConn });
+          return c.json({
+            success: true,
+            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
+          });
         },
       ),
     );

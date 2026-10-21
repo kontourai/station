@@ -311,6 +311,7 @@ export async function connectAndMaterializeACPRegistryEngine(
   const result = (await response.json()) as {
     success?: boolean;
     error?: unknown;
+    data?: Partial<ACPConnectionInfo>;
     agent?: {
       data?: unknown;
       created?: boolean;
@@ -321,6 +322,14 @@ export async function connectAndMaterializeACPRegistryEngine(
     throw new Error(acpRegistryInstallErrorMessage(result.error));
   }
   if (!result.agent) {
+    // The engine's first probe failed: the route saved the connection but
+    // registered no Agent, and its `data` carries the probe's reason.
+    const failure = result.data?.lastError;
+    if (failure) {
+      throw new Error(
+        `${result.data?.name ?? id} did not connect. ${failure.phase}: ${failure.message}`,
+      );
+    }
     throw new Error(
       'Engine connection was saved, but no Agent receipt was returned.',
     );

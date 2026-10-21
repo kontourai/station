@@ -31,6 +31,30 @@ function connection(status: string) {
   };
 }
 
+/**
+ * What POST /api/acp/registry/kiro/install answers when the engine's first
+ * probe fails: the shape is pinned at the producer by acp.routes.test.ts
+ * ("answers a failed first add with the probe status and reason"). The
+ * connection is never listed by GET /connections, because a failed first add
+ * registers no identity, so `connections` stays empty in these tests.
+ */
+const failedFirstAddResponse = {
+  id: 'kiro',
+  name: 'Kiro CLI',
+  command: 'kiro',
+  args: ['--acp'],
+  icon: '🔌',
+  enabled: true,
+  status: 'unavailable',
+  modes: [],
+  sessionId: null,
+  mcpServers: [],
+  configOptions: [],
+  currentModel: null,
+  providerRoutingCurrent: true,
+  lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+};
+
 describe('ACPAddConnectionModal', () => {
   test('keeps every unconfigured choice behind the named accessible dialog', () => {
     render(
@@ -238,6 +262,79 @@ describe('ACPAddConnectionModal', () => {
     expect(screen.getByRole('status').textContent).not.toContain(
       'a stale earlier failure',
     );
+  });
+
+  test('a failed first add lands on Setup needed from the add response, and Retry check re-runs it', async () => {
+    const { lastError: _failure, ...connected } = failedFirstAddResponse;
+    const onInstallRegistryEntry = vi
+      .fn()
+      .mockResolvedValueOnce(failedFirstAddResponse)
+      .mockResolvedValueOnce({ ...connected, status: 'available' });
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[kiro]}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+    });
+    expect(screen.queryByText('Checking')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(
+      'initialize: Timed out after 10000ms',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Choose another engine' }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Ready');
+    });
+    expect(onInstallRegistryEntry).toHaveBeenNthCalledWith(2, 'kiro');
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
+
+  test('a failed first custom add offers Retry check and Edit setup', async () => {
+    const onAdd = vi.fn().mockResolvedValue({
+      ...failedFirstAddResponse,
+      id: 'gemini',
+      name: 'Gemini CLI',
+      command: 'gemini',
+      args: [],
+      lastError: { phase: 'spawn', message: 'spawn gemini ENOENT' },
+    });
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[]}
+        connections={[]}
+        onAdd={onAdd}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Gemini CLI' },
+    });
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'gemini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+    });
+    expect(screen.getByRole('status').textContent).toContain(
+      'spawn: spawn gemini ENOENT',
+    );
+    expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    expect(screen.getByDisplayValue('Gemini CLI')).toBeTruthy();
   });
 
   test('recovers a successful mutation when its connection refresh fails', async () => {

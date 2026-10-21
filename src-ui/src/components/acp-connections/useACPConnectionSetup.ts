@@ -23,6 +23,12 @@ interface ACPConnectionSetupState {
   stage: ACPConnectionSetupStage;
   selectedEntry: ACPConnectionRegistryEntry | null;
   resultConnectionId: string | null;
+  /**
+   * The connection as the add/install response projected it. A first add
+   * whose probe failed registers no identity, so the connection list never
+   * serves it; this is then the only result the dialog can show.
+   */
+  addedConnection: ACPConnectionInfo | null;
   mutationComplete: boolean;
   error: string | null;
   errorKind: ACPConnectionSetupErrorKind | null;
@@ -40,7 +46,7 @@ type SetupAction =
   | { type: 'draft'; field: keyof ACPConnectionDraft; value: string }
   | { type: 'submit'; entry: ACPConnectionRegistryEntry | null; id: string }
   | { type: 'refresh' }
-  | { type: 'complete' }
+  | { type: 'complete'; connection: ACPConnectionInfo | null }
   | { type: 'result' }
   | { type: 'error'; message: string; kind: ACPConnectionSetupErrorKind };
 
@@ -98,6 +104,7 @@ function reduceACPConnectionSetup(
         stage: 'checking',
         selectedEntry: action.entry,
         resultConnectionId: action.id,
+        addedConnection: null,
         mutationComplete: false,
         error: null,
         errorKind: null,
@@ -111,7 +118,11 @@ function reduceACPConnectionSetup(
         errorKind: null,
       };
     case 'complete':
-      return { ...state, mutationComplete: true };
+      return {
+        ...state,
+        mutationComplete: true,
+        addedConnection: action.connection,
+      };
     case 'result':
       return { ...state, stage: 'result' };
     case 'error':
@@ -129,12 +140,25 @@ function initialState(entries: ACPConnectionRegistryEntry[]) {
     stage: entries.length === 0 ? ('custom' as const) : ('catalog' as const),
     selectedEntry: null,
     resultConnectionId: null,
+    addedConnection: null,
     mutationComplete: false,
     error: null,
     errorKind: null,
     advancedOpen: false,
     draft: EMPTY_DRAFT,
   };
+}
+
+/** The add response's connection projection, when it is one for `id`. */
+function addedConnectionFor(
+  response: unknown,
+  id: string,
+): ACPConnectionInfo | null {
+  if (!response || typeof response !== 'object') return null;
+  const candidate = response as Partial<ACPConnectionInfo>;
+  return candidate.id === id && typeof candidate.status === 'string'
+    ? (candidate as ACPConnectionInfo)
+    : null;
 }
 
 function setupError(error: unknown, fallback: string) {
@@ -178,9 +202,13 @@ function useSetupSubmit(
         );
       dispatch({ type: 'submit', entry, id });
       try {
-        if (entry) await onInstallRegistryEntry?.(entry.id);
-        else await onAdd({ ...state.draft, id });
-        dispatch({ type: 'complete' });
+        const response = entry
+          ? await onInstallRegistryEntry?.(entry.id)
+          : await onAdd({ ...state.draft, id });
+        dispatch({
+          type: 'complete',
+          connection: addedConnectionFor(response, id),
+        });
       } catch (error) {
         dispatch({
           type: 'error',
@@ -233,10 +261,12 @@ export function useACPConnectionSetup({
     registryEntries,
     initialState,
   );
+  // The listed connection is fresher when it exists; the add response stands
+  // in when it is not listed (a failed first add).
   const resultConnection = state.resultConnectionId
     ? (connections.find(
         (connection) => connection.id === state.resultConnectionId,
-      ) ?? null)
+      ) ?? state.addedConnection)
     : null;
 
   useSetupResult(state, resultConnection, queryError, queryFetching, dispatch);

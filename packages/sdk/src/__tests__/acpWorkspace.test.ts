@@ -53,6 +53,26 @@ describe('connectAndMaterializeACPRegistryEngine', () => {
     ).rejects.toThrow(message);
   });
 
+  test('names the probe failure when a first add saved no Agent', async () => {
+    authenticatedFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            id: 'kiro',
+            name: 'Kiro CLI',
+            status: 'unavailable',
+            lastError: { phase: 'spawn', message: 'spawn kiro ENOENT' },
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      connectAndMaterializeACPRegistryEngine('kiro'),
+    ).rejects.toThrow('Kiro CLI did not connect. spawn: spawn kiro ENOENT');
+  });
+
   test('preserves an explicit 409 message', async () => {
     authenticatedFetch.mockResolvedValueOnce(
       new Response(
