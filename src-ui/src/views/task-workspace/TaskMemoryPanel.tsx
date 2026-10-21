@@ -16,6 +16,7 @@ import {
 } from '@kontourai/station-sdk';
 import { type FormEvent, useId, useState } from 'react';
 import { Button } from '../../components/Button';
+import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
@@ -29,10 +30,10 @@ const LIVE_SECTIONS: ReadonlyArray<{
   {
     kind: 'question',
     title: 'Open questions',
-    empty: 'Nothing is waiting on a person.',
+    empty: 'Nothing is waiting on a person',
   },
-  { kind: 'decision', title: 'Decisions', empty: 'No decisions recorded.' },
-  { kind: 'dead_end', title: 'Dead ends', empty: 'No dead ends recorded.' },
+  { kind: 'decision', title: 'Decisions', empty: 'No decisions recorded' },
+  { kind: 'dead_end', title: 'Dead ends', empty: 'No dead ends recorded' },
 ];
 
 const TIER_LABELS = { standing: 'Standing', on_topic: 'On topic' } as const;
@@ -66,14 +67,17 @@ export function TaskMemoryPanel({ taskId }: { taskId: string }) {
         </div>
       </div>
       {memory.isLoading ? (
-        <p className="task-memory__note">Reading the Task memory…</p>
-      ) : memory.error ? (
-        <p className="task-memory__note" role="status">
-          Couldn’t read the Task memory. {errorText(memory.error)}
-        </p>
+        <SkeletonList count={2} label="Reading the Task memory" />
+      ) : memory.error || !memory.data ? (
+        <ErrorState
+          variant="compact"
+          title="Couldn’t read the Task memory"
+          description={errorText(memory.error)}
+          action={<Button onClick={() => void memory.refetch()}>Retry</Button>}
+        />
       ) : (
         <>
-          <TaskSummaryBlock taskId={taskId} summary={memory.data?.summary} />
+          <TaskSummaryBlock taskId={taskId} summary={memory.data.summary} />
           <div className="task-memory__sections">
             {LIVE_SECTIONS.map((section) => (
               <TaskRecordList
@@ -197,9 +201,11 @@ function TaskSummaryBlock({
           </p>
         ) : null}
         {editing ? null : (
-          <Button size="sm" onClick={startEditing}>
-            {summary ? 'Edit' : 'Write summary'}
-          </Button>
+          <div className="task-memory__actions">
+            <Button size="sm" onClick={startEditing}>
+              {summary ? 'Edit' : 'Write summary'}
+            </Button>
+          </div>
         )}
       </div>
       {editing ? (
@@ -221,18 +227,20 @@ function TaskSummaryBlock({
                   <pre className="task-memory__summary-text task-memory__summary-text--theirs">
                     {conflict.text}
                   </pre>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setDraft(conflict.text);
-                      setBase(conflict.revision);
-                      setConflict(undefined);
-                      save.reset();
-                    }}
-                  >
-                    Use their text
-                  </Button>
+                  <div className="task-memory__actions">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setDraft(conflict.text);
+                        setBase(conflict.revision);
+                        setConflict(undefined);
+                        save.reset();
+                      }}
+                    >
+                      Use their text
+                    </Button>
+                  </div>
                 </>
               ) : null}
             </div>
@@ -283,9 +291,11 @@ function TaskSummaryBlock({
       ) : summary ? (
         <pre className="task-memory__summary-text">{summary.text}</pre>
       ) : (
-        <p className="task-memory__empty">
-          No summary yet. Agents write one at milestones.
-        </p>
+        <Empty
+          variant="compact"
+          label="No summary yet"
+          description="Agents write one at milestones."
+        />
       )}
       <DiscardModal />
     </section>
@@ -323,7 +333,7 @@ function TaskRecordList({
           ))}
         </ul>
       ) : (
-        <p className="task-memory__empty">{empty}</p>
+        <Empty variant="compact" label={empty} />
       )}
     </section>
   );

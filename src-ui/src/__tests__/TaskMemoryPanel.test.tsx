@@ -20,6 +20,7 @@ import {
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -33,6 +34,7 @@ import {
   taskSummaryResponse,
 } from '../../../src-server/routes/orchestration/task-memory-http';
 import { createSqliteTaskMemoryStore } from '../../../src-server/services/orchestration/task-memory-store';
+import { navigationStore } from '../contexts/navigation-store';
 import { TaskMemoryPanel } from '../views/task-workspace/TaskMemoryPanel';
 
 const updateParams = vi.hoisted(() => vi.fn());
@@ -320,7 +322,55 @@ describe('Task memory panel', () => {
     expect(store.listRecords(TASK)).toMatchObject([
       { key: 'scope', state: 'answered', answer: 'No.', author: PERSON },
     ]);
-    await within(panel).findByText('Nothing is waiting on a person.');
+    await within(panel).findByText('Nothing is waiting on a person');
     expect(within(panel).getByText('Answer: No.')).toBeTruthy();
+  });
+
+  test('leaving with an unsaved summary edit asks first, and an untouched draft does not', async () => {
+    store.updateSummary({
+      ...write(LEAD),
+      text: 'Agent view.',
+      baseRevision: 0,
+    });
+    navigationStore.navigate('/task-memory-origin');
+    renderPanel();
+    const panel = await screen.findByTestId('task-memory-panel');
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Edit' }));
+    // An open editor whose text matches the summary holds nothing to lose.
+    act(() => navigationStore.navigate('/task-memory-untouched'));
+    expect(window.location.pathname).toBe('/task-memory-untouched');
+    expect(
+      screen.queryByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeNull();
+
+    fireEvent.change(within(panel).getByRole('textbox'), {
+      target: { value: 'Half a thought' },
+    });
+    act(() => navigationStore.navigate('/task-memory-elsewhere'));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Unsaved Changes',
+    });
+    expect(window.location.pathname).toBe('/task-memory-untouched');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(window.location.pathname).toBe('/task-memory-untouched');
+    expect(
+      (within(panel).getByRole('textbox') as HTMLTextAreaElement).value,
+    ).toBe('Half a thought');
+  });
+
+  test('a failed read says so with the shared error state and retries', async () => {
+    const served = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementationOnce(async () =>
+      Response.json(
+        { success: false, error: 'Task memory is not running' },
+        { status: 503 },
+      ),
+    );
+    renderPanel();
+    const panel = await screen.findByTestId('task-memory-panel');
+    await within(panel).findByText('Couldn’t read the Task memory');
+    vi.mocked(fetch).mockImplementation(served);
+    fireEvent.click(within(panel).getByRole('button', { name: 'Retry' }));
+    await within(panel).findByText('No summary yet');
   });
 });
