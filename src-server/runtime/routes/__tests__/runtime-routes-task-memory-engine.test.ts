@@ -658,17 +658,18 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     const brief = await call('get_task_brief');
     expect(brief.isError, JSON.stringify(brief.body)).toBe(false);
     const text = brief.body as string;
+    // Agent-written text is quoted under who wrote it (#4003 review F2, F3).
     expect(text).toMatch(
-      /## Task summary \(revision 2, by session [^)]+\)\nNow: tests pass\.\n/,
+      /## Task summary \(revision 2, by session [^)]+\)\nQuoted, written by agents and people on this Task:\n> Now: tests pass\.\n/,
+    );
+    expect(text).toMatch(
+      /## Standing decisions \(newest first\)\n- `storage` \(by [^)]+\):\n> Use SQLite\.\n/,
     );
     expect(text).toContain(
-      '## Standing decisions (newest first)\n- `storage`: Use SQLite.\n',
+      `## Open questions for a person (newest first)\n- \`scope\` (asked by session ${sessionId}):\n> CLI too?\n`,
     );
-    expect(text).toContain(
-      `## Open questions for a person (newest first)\n- \`scope\`: CLI too? (asked by session ${sessionId})\n`,
-    );
-    expect(text).toContain(
-      '## Recent dead ends (newest first)\n- `regex`: Cannot nest.\n',
+    expect(text).toMatch(
+      /## Recent dead ends \(newest first\)\n- `regex` \(by [^)]+\):\n> Cannot nest\.\n/,
     );
     expect(text).not.toContain('Only for the CLI.');
     expect(text).toContain('- On-topic records, counted only: 1 decision;');
@@ -677,7 +678,9 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     );
     // The Session line is the digest of its recorded turn.
     expect(text).toContain(`- ${sessionId} (task-dispatch, this session): `);
-    expect(text).toContain('1 turn; last turn completed: "Fix the parser"');
+    expect(text).toContain(
+      '1 turn; last turn completed\n> last request: Fix the parser',
+    );
 
     const records = await call('get_task_brief', { include: 'all_records' });
     expect(records.isError).toBe(false);
