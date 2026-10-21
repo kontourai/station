@@ -172,6 +172,38 @@ Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
 `openQuestionCount` to a Task with open questions.
 
+### Lessons from a done Task
+
+When a Task is done, its active, standing decisions and dead ends are
+candidates for the Project's knowledge store; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#learning-promoting-a-done-tasks-lessons).
+Same authority as the routes above. No Station Control tool names these
+routes, so an agent's request is refused (`403`,
+`station_control_route_unmapped`) before they run.
+
+- `GET /api/tasks/:taskId/room/memory/learning` returns
+  `station.task-learning/v1`: `offered` (the Task is done), the Project's
+  writable knowledge `stores` (empty when it has none), and each candidate
+  with its `knowledgeRecordId` and `review` (`open`, `promoted` with its
+  `rootId`, or `dismissed`). A Task that is not done has no candidates.
+- `POST /api/tasks/:taskId/room/memory/learning/promote` takes `{kind, key,
+  version, rootId, title, text}` and creates one `raw` knowledge record in
+  that Project store through its adapter: the edited `text` as the body,
+  category `task-learning.decisions` or `task-learning.dead-ends`, and
+  `provenance` with `agent: "station-task-learning"`, the authoring Session's
+  `session_id`, and a `note` naming the person, Task, Task creation time,
+  record version and work item. `201` with `status: "promoted"`; a version
+  already in any Project store is `200` with `status: "already-promoted"` and
+  writes nothing. `409` codes: `task_learning_not_done`,
+  `task_learning_not_a_candidate` (not the current active standing version),
+  `task_learning_dismissed`, `task_learning_no_store`.
+- `POST /api/tasks/:taskId/room/memory/learning/dismiss` takes `{kind, key,
+  version}` and records the dismissal; a second one answers
+  `status: "already-dismissed"`.
+
+A promoted record is searchable once its store is reindexed
+(`POST /api/knowledge/index/rebuild`); promotion does not index it.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

@@ -48,14 +48,14 @@ for its brief with `get_task_brief`. Nothing polls.
 
 ## Task memory
 
-What a Task knows comes in four layers. Only the third is new here.
+What a Task knows comes in four layers. The third and fourth are new here.
 
 | Layer | What it is | Who writes it |
 | --- | --- | --- |
 | 1. Durability | Monument: Sessions and the Station process survive restarts | Station |
 | 2. Facts | The event store's records: `get_session_digest` and `list_project_activity` ([#3428](https://github.com/kontourai/station/issues/3428)), kept outputs, the observed work item | Station derives them; no agent writes them |
 | 3. Judgment | **Task memory**: what matters, decided by agents and editable by people | Agents and people |
-| 4. Learning | Promotion of durable lessons into project knowledge | A later lane |
+| 4. Learning | A done Task's standing decisions and dead ends, promoted into the Project's knowledge store | A person reviews; Station writes the record |
 
 Task memory has two parts. Both are stored in the orchestration database,
 per Task incarnation (a Task re-created under the same id starts empty), in
@@ -232,6 +232,52 @@ keyed by Task incarnation `{taskId, taskCreatedAt}`:
   `askedBySessionId` when a Session asked it.
 - `countOpenQuestions(incarnations)` returns a per-Task count, as the Tasks
   list uses it.
+
+## Learning: promoting a done Task's lessons
+
+When a Task is done (a person's status change or close-on-merge), its
+active, standing decisions and dead ends become **candidates** for the
+Project's knowledge store. A person reviews each one in the Task workspace:
+**Promote** (edit the title and text, then write it) or **Dismiss**. Nothing
+is promoted on its own, following the lesson that promotion is a reviewed
+step.
+
+- **Derived, not copied.** Candidates are read from
+  `listStandingRecords(incarnation)` each time the Task opens. A Task that is
+  not done offers none; reopening a Task stops offering them. `on_topic`
+  records, answered questions and retired records are never candidates.
+- **The store's own write path.** Promote creates one `raw` record through
+  the Project store's adapter (`KnowledgeStoreProvider.adapterFor(rootId)`),
+  the same create `POST /api/knowledge/roots/:rootId/records` uses. Its
+  category is `task-learning.decisions` or `task-learning.dead-ends`.
+  Provenance uses the Kit's creation fields: `agent` is
+  `station-task-learning` (the process that wrote it), `session_id` is the
+  Session that wrote the record version (absent when a person did), and
+  `note` names the person, the Task, its creation time, the record
+  `kind/key` and version, and the work item.
+- **Once per version.** The record's id is derived from the record's kind,
+  key and version and a digest of the Task incarnation. The store refuses a
+  second record with that id, so promoting the same version twice writes once
+  (the second answer is `already-promoted`), whichever Project store it went
+  to. "Promoted" is read back from the stores, not recorded beside them. A
+  later version of the same key is a new candidate.
+- **Dismissal is the one state Station keeps**: an append-only row per
+  dismissed record version (`task_learning_dismissals`, migration 018).
+- **No store.** A Project without a knowledge store still lists its
+  candidates and says so plainly, with a link to the Project page, where
+  Knowledge stores has **Create store**. Promote is disabled until one exists.
+- **Person only.** The routes take the Task room's request authority, like
+  the person's Task memory edits, and no Station Control tool names them, so
+  the central guard refuses an agent's request. An agent can still capture
+  its own raw record with `add_knowledge_record`; that does not touch a
+  candidate.
+- **Search.** A promoted record is searchable after its store is reindexed.
+  Promotion does not index it, as no store write does today.
+
+The Knowledge Kit's `propose`/`apply`/`reject` gate was considered and not
+used: it records a proposed change to an existing `concept` record, carried
+by a proposer record that must already be in the store. A candidate would
+then be written into the store before anyone reviewed it.
 
 ## Starting a Task from a tracker item
 
