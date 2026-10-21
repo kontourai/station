@@ -3,8 +3,10 @@
  * processes into one supervisor process.
  */
 import { type ChildProcess, fork, type SendHandle } from 'node:child_process';
+import type { Socket } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
+import { createNetCatcher } from './catcher.ts';
 import { ControlServer } from './control-server.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
 import {
@@ -64,6 +66,32 @@ export interface SupervisorOptions {
 
 /** Set by other Station supervisors (Desktop, `service run`) on their child. */
 const INHERITED_SUPERVISOR_BIRTH_ENV = 'STATION_SUPERVISOR_BIRTH';
+/**
+ * Spares per held listener the supervisor listens on during a Windows
+ * handoff. A listener received over IPC keeps a single accept posted, so each
+ * spare adds one. On a Windows host, under 16 concurrent fresh-connection
+ * clients, one spare still left a reset in a third of handoffs; eight left
+ * none in 700 handoffs.
+ */
+const CATCH_SPARES = 8;
+
+/**
+ * Tests only: 1 or 0 forces connection catching on or off on any platform.
+ * Generations do not inherit it.
+ */
+const TEST_FORCE_CATCHING_ENV = 'STATION_SUPERVISOR_TEST_FORCE_CATCHING';
+
+/**
+ * Whether handoffs catch connections: on Windows only, the one platform that
+ * resets a connection completed into a closing listener's accept, unless a
+ * test forces it (TEST_FORCE_CATCHING_ENV).
+ */
+function catchesConnections(): boolean {
+  const forced = process.env[TEST_FORCE_CATCHING_ENV];
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  return process.platform === 'win32';
+}
 
 /** Signals a generation and, on POSIX, every process in its group. */
 function killTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
@@ -96,6 +124,7 @@ function createForkLauncher(options: {
       // names that process, not this one; a core comparing it against its
       // parent would conclude its supervisor is gone.
       delete env[INHERITED_SUPERVISOR_BIRTH_ENV];
+      delete env[TEST_FORCE_CATCHING_ENV];
       const child = fork(entry, [], {
         env,
         // The supervisor's own Node flags are not the core's.
@@ -118,6 +147,30 @@ function createForkLauncher(options: {
         child.on('exit', () => options.registry.remove(pid));
       }
       child.on('exit', () => options.children.delete(child));
+      // Held connections sent to this generation, with their raw handles.
+      // Node queues a handle sent while an earlier one awaits the child's
+      // acknowledgement and drops that queue without calling back when the
+      // channel closes; the one in flight has already left its Socket (Node
+      // detaches `_handle` to send it) and is closed only on that
+      // acknowledgement. Either way one the generation never took would stay
+      // open here, so all are closed when it goes. Closing this process's
+      // copy of one it did take leaves the generation's own copy open. A
+      // generation is sent held connections only as it takes over, so this
+      // holds at most what one handoff held.
+      const adopting = new Map<Socket, { close(): void } | null>();
+      const closeAdopting = () => {
+        for (const [socket, raw] of adopting) {
+          try {
+            socket.destroy();
+            raw?.close();
+          } catch {
+            // Already closed.
+          }
+        }
+        adopting.clear();
+      };
+      child.on('disconnect', closeAdopting);
+      child.on('exit', closeAdopting);
       child.on('error', (error) =>
         options.log(`generation ${generation} process error: ${String(error)}`),
       );
@@ -126,12 +179,35 @@ function createForkLauncher(options: {
           return child.pid ?? null;
         },
         send(message, handle) {
-          if (!child.connected) return;
+          // A held connection that is not sent is closed here; a listening
+          // handle is the supervisor's own copy and stays open.
+          const unsent = () => {
+            if (message.type === 'connection.adopt' && handle) {
+              try {
+                (handle as { destroy(): void }).destroy();
+              } catch {
+                // Already gone.
+              }
+            }
+          };
+          if (!child.connected) {
+            unsent();
+            return;
+          }
+          if (message.type === 'connection.adopt' && handle) {
+            const socket = handle as Socket;
+            const raw = Reflect.get(socket, '_handle') as {
+              close(): void;
+            } | null;
+            adopting.set(socket, raw);
+          }
           child.send(message, handle as SendHandle | undefined, (error) => {
-            if (error)
+            if (error) {
+              unsent();
               options.log(
                 `send to generation ${generation} failed: ${String(error)}`,
               );
+            }
           });
         },
         kill(signal) {
@@ -192,6 +268,15 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     restart: options.restart,
     log,
     resolveEntry: createEntryBoundary(options.buildRoot),
+    ...(catchesConnections()
+      ? {
+          catchConnections: {
+            spares: CATCH_SPARES,
+            createCatcher: (name, handle, now, onCatch) =>
+              createNetCatcher(name, handle, now, onCatch, log),
+          },
+        }
+      : {}),
     onEvent: (event) => {
       for (const subscriber of [...subscribers]) subscriber(event);
     },

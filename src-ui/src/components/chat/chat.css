@@ -1987,15 +1987,15 @@
 }
 
 .ui-block--tone-success {
-  border-color: rgba(32, 180, 96, 0.35);
+  border-color: color-mix(in srgb, var(--success-text) 35%, transparent);
 }
 
 .ui-block--tone-warning {
-  border-color: rgba(230, 168, 52, 0.4);
+  border-color: color-mix(in srgb, var(--warning-text) 40%, transparent);
 }
 
 .ui-block--tone-danger {
-  border-color: rgba(209, 72, 54, 0.4);
+  border-color: color-mix(in srgb, var(--error-text) 40%, transparent);
 }
 
 .ui-block__table-wrap {

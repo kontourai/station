@@ -676,7 +676,7 @@
   font-family: var(--font-mono);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-primary);
   border-radius: 0.5rem;
   outline: none;
   resize: vertical;
@@ -688,7 +688,8 @@
 .schedule__field textarea:focus,
 .schedule__field select:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.12);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 .schedule__field input::placeholder,
 .schedule__field textarea::placeholder {
@@ -826,7 +827,7 @@
 /* ── Divider between form sections ── */
 .schedule__form-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--border-primary);
   margin: 0.25rem 0;
 }
 
@@ -843,20 +844,20 @@
   gap: 0.375rem;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
+    color-mix(in srgb, var(--k-text) 3%, transparent) 0%,
+    color-mix(in srgb, var(--k-text) 1%, transparent) 100%
   );
-  border: 2px solid rgba(255, 255, 255, 0.08);
+  border: 2px solid var(--border-primary);
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
   font-family: var(--font-mono);
   transition: border-color var(--motion-base) var(--ease-standard);
 }
 .cron-editor__fields:focus-within {
-  border-color: rgba(74, 158, 255, 0.3);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
 }
 .cron-editor__fields--error {
-  border-color: rgba(239, 68, 68, 0.5);
+  border-color: color-mix(in srgb, var(--error-text) 50%, transparent);
 }
 .cron-editor__input {
   background: none;
@@ -907,18 +908,19 @@
 }
 .cron-editor__label:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--k-text) 4%, transparent);
 }
 .cron-editor__label--active {
   color: var(--text-primary);
 }
 .cron-editor__label--focused {
-  background: rgba(74, 158, 255, 0.15);
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
   color: var(--accent-primary);
-  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.2);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--accent-primary) 20%, transparent);
 }
 .cron-editor__label--error {
-  background: rgba(239, 68, 68, 0.15);
+  background: color-mix(in srgb, var(--error-text) 15%, transparent);
   color: var(--error-text);
 }
 .cron-editor__help {
@@ -959,7 +961,7 @@
 }
 .cron-editor__syntax td {
   padding: 0.2rem 0.625rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-text) 6%, transparent);
 }
 .cron-editor__sym {
   font-family: var(--font-mono);
@@ -1000,12 +1002,12 @@
   font-weight: 500;
 }
 .schedule__cron-time {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--k-text) 5%, transparent);
   padding: 0.2rem 0.5rem;
   border-radius: 0.375rem;
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-primary);
 }
 
 /* ── Mobile responsive ── */
@@ -1144,7 +1146,7 @@
   border-radius: 0.375rem;
   max-height: 280px;
   overflow: auto;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-menu);
 }
 
 .agent-picker__filter-wrap {
@@ -1321,7 +1323,7 @@
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--warning-text);
-  background: var(--warning-bg, rgba(255, 170, 0, 0.1));
+  background: var(--warning-bg);
   border-radius: 4px;
 }
 .schedule__rate-value--high {

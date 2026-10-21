@@ -5,7 +5,7 @@
   --vo-size: 34px;
   --vo-active-bg: var(--health-error, #ef4444);
   --vo-active-color: #fff;
-  --vo-active-outline: rgba(239, 68, 68, 0.4);
+  --vo-active-outline: color-mix(in srgb, var(--vo-active-bg) 40%, transparent);
   --vo-idle-bg: var(--bg-tertiary);
   --vo-error-color: var(--health-error, #ef4444);
 

@@ -60,10 +60,11 @@
   padding: 0.5rem;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--bg-primary) 92%, white 8%),
+    color-mix(in srgb, var(--bg-primary) 92%, var(--surface-lift) 8%),
     var(--bg-secondary)
   );
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: 14px;
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.28),
@@ -130,7 +131,11 @@
 .path-autocomplete__badge {
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-tertiary) 86%, white 14%);
+  background: color-mix(
+    in srgb,
+    var(--bg-tertiary) 86%,
+    var(--surface-lift) 14%
+  );
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.68rem;
