@@ -167,40 +167,6 @@ export interface AcpMapperContext {
  * type (no contract change). `audio`/`resource_link` are not rendered by
  * the legacy bridge either — an accepted gap (see the plan's Risks).
  */
-/**
- * archive#1182: extract the ACP agent's own currently-selected model — a
- * genuinely engine-reported signal, not Station's request echoed back.
- * `acp-process.ts`'s `setConfigOption` doc comment ("Set a config option
- * (e.g., model) for the current session") confirms the ACP protocol's
- * `model`-category `SessionConfigOption` is how agents expose and accept a
- * model selection; a `select`-type option's `currentValue` is the agent's
- * own live answer to "what model is this session using." Only read from a
- * fresh `newSession` response (`acp-adapter.ts`) — `loadSession` (resume)
- * returns no config-option snapshot, so a resumed session honestly has no
- * signal here. Absent whenever the connected agent exposes no config
- * options at all (most ACP agents today) or none is categorized "model" —
- * that absence must not be treated as "no model," only as "not reported."
- */
-export function extractReportedModelFromConfigOptions(
-  configOptions: unknown,
-): string | undefined {
-  if (!Array.isArray(configOptions)) return undefined;
-  for (const option of configOptions) {
-    if (
-      !option ||
-      typeof option !== 'object' ||
-      (option as { category?: unknown }).category !== 'model'
-    ) {
-      continue;
-    }
-    const currentValue = (option as { currentValue?: unknown }).currentValue;
-    if (typeof currentValue === 'string' && currentValue.trim()) {
-      return currentValue.trim();
-    }
-  }
-  return undefined;
-}
-
 function renderAcpContentBlockAsText(
   content: ContentBlock,
 ): string | undefined {

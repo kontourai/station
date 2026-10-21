@@ -1258,8 +1258,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     skills: { state: 'unsupported' },
     commands: { state: 'unsupported' },
     // The adapter applies start-time selection only when this session's fresh
-    // option catalog advertises the value and the operation response confirms
-    // the exact currentValue. Resume/per-turn remain unsupported.
+    // catalog advertises the value: a model config option whose response
+    // confirms the exact currentValue, else a `models` list switched with
+    // session/set_model (#352). Resume/per-turn remain unsupported.
     modelSelection: { state: 'session', channel: 'wire' },
     // ACP enters the shared staged policy at requestPermission. Coverage is
     // still partial: ACP does not guarantee every tool call requests
@@ -1284,9 +1285,10 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       basis: 'runtime_observation',
     },
     // ACP has no protocol-level steer. The adapter still implements
-    // steerTurn: Kiro `_session/steer` and Grok `_x.ai/interject` when
-    // those extension methods exist, else a cancel + re-prompt fallback on
-    // the same Station turn id.
+    // steerTurn: `_session/steer` or `_x.ai/interject` when the live
+    // handshake declares one or identifies an engine known to answer it
+    // undeclared (Kiro, Grok), else a cancel + re-prompt fallback on the same
+    // Station turn id.
     midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.

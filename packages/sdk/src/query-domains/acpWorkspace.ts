@@ -70,6 +70,23 @@ export interface ACPConnectionInfo {
     options?: Array<string | { value: string; name?: string }>;
   }>;
   /**
+   * The model catalog Station offers for this connection: its model config
+   * option when it has one, else `sessionModels` (#352).
+   */
+  advertisedModels?: Array<{ id: string; name: string }>;
+  /**
+   * #352: the session's `models` list, for an engine that offers no model
+   * config option and switches with `session/set_model`.
+   */
+  sessionModels?: {
+    currentModelId?: string;
+    availableModels: Array<{
+      modelId: string;
+      name?: string;
+      description?: string;
+    }>;
+  };
+  /**
    * Explicit opt-in (docs/design/connections-onboarding.md §5): ids of
    * Station tool servers passed through to this connection's ACP sessions
    * as MCP servers. Absent/empty ⇒ passthrough is off (the default).
