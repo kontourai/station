@@ -183,6 +183,17 @@ interface ProjectTaskRoomRuntimeDeps {
   ) => { readonly projectId: string; readonly taskId: string } | undefined;
   /** #4003 Task memory; absent, memory reads and writes are unavailable. */
   readonly memory?: TaskMemoryStore;
+  /**
+   * #4003 lead wake: told of each Task record version after its write has
+   * committed. Its outcome and any throw are its own: the write stands.
+   */
+  readonly afterTaskRecord?: (input: {
+    readonly incarnation: {
+      readonly taskId: string;
+      readonly taskCreatedAt: string;
+    };
+    readonly record: TaskMemoryRecord;
+  }) => Promise<unknown> | unknown;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
   /** Test-only crash boundary for durable publication recovery proofs. */
@@ -706,7 +717,7 @@ export class ProjectTaskRoomRuntime {
   }): Promise<TaskRecordWriteOutcome> {
     const access = await this.#sessionMemoryAccess(input.sessionId);
     if (access.kind !== 'granted') return access;
-    return this.#writeRecord(access, input.write);
+    return this.#afterRecord(access, this.#writeRecord(access, input.write));
   }
 
   /** A person's record write (an answer, say) from the Task workspace. */
@@ -717,7 +728,7 @@ export class ProjectTaskRoomRuntime {
   }): Promise<TaskRecordWriteOutcome> {
     const access = await this.#personMemoryAccess(input.taskId, input.request);
     if (access.kind !== 'granted') return access;
-    return this.#writeRecord(access, input.write);
+    return this.#afterRecord(access, this.#writeRecord(access, input.write));
   }
 
   /** The Task's memory for a person allowed to read its room. */
@@ -786,6 +797,30 @@ export class ProjectTaskRoomRuntime {
         ...(result.unchanged ? { unchanged: true as const } : {}),
       };
     return result;
+  }
+
+  /**
+   * Record before effect: the version has committed before the lead wake
+   * runs, and nothing the wake does changes the write's outcome.
+   */
+  async #afterRecord(
+    access: TaskMemoryAccess,
+    outcome: TaskRecordWriteOutcome,
+  ): Promise<TaskRecordWriteOutcome> {
+    if (outcome.kind !== 'recorded' || !this.#deps.afterTaskRecord)
+      return outcome;
+    try {
+      await this.#deps.afterTaskRecord({
+        incarnation: {
+          taskId: access.write.taskId,
+          taskCreatedAt: access.write.taskCreatedAt,
+        },
+        record: outcome.record,
+      });
+    } catch {
+      // The wake reports its own failures; the committed write stands.
+    }
+    return outcome;
   }
 
   #writeRecord(

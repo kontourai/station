@@ -221,7 +221,7 @@ writes through the Task room's request authority, the same as document edits.
 
 ### Server read API for later lanes
 
-The promotion and lead-wake lanes read Task memory through the store
+The promotion lane and the lead wake read Task memory through the store
 (`EventStore.taskMemoryStore()`, in
 [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts)),
 keyed by Task incarnation `{taskId, taskCreatedAt}`:
@@ -232,6 +232,49 @@ keyed by Task incarnation `{taskId, taskCreatedAt}`:
   `askedBySessionId` when a Session asked it.
 - `countOpenQuestions(incarnations)` returns a per-Task count, as the Tasks
   list uses it.
+
+### Lead wake
+
+An open question reaches people through Needs you. The Task's lead Session
+learns of a question or an answer only when it reads its brief, so Station
+also puts one message into the lead's conversation
+([`task-question-wake.ts`](../../src-server/services/orchestration/task-question-wake.ts)):
+
+- **What wakes the lead.** A question opened (`set`) by a Session that is not
+  the lead, and an answer by anyone who is not the lead, a person or another
+  Session. A question a person opens does not wake it: questions are for
+  people. Decisions, dead ends and retires never wake it.
+- **Who the lead is.** `TaskRecord.sessionId`, compared by conversation, so a
+  successor Session of the lead is still the lead. Independently requested
+  Sessions are never leads, so there is one lead or none.
+- **No loops.** Only the lead is woken, and nothing the lead writes wakes
+  anyone. A woken lead that asks or answers in turn sends nothing.
+- **No live lead, no send.** A Task with no lead, a Task that is done or
+  canceled, or a lead whose current Session has stopped (`completed`,
+  `failed`, `canceled`) gets nothing; the question still shows in Needs you.
+- **Record before effect.** The wake runs only after the version has
+  committed. Its failure never fails or rolls back the write: the write's
+  answer is unchanged, and the failure is logged as `task question wake not
+  delivered` with the Task, key, version, action and reason.
+- **Exactly once per version.** The message is a conversation inbox entry
+  (the held follow-up inbox, `ThreadInboxDelivery`), keyed by a digest of the
+  Task incarnation, record key, version and action. A resubmitted key answers
+  the stored entry, and placement reads the conversation's turn ledger before
+  it starts anything, so a retry or a restart never sends twice. Setting the
+  same question again writes a new version and so wakes the lead again.
+- **Busy or idle.** The inbox's rule: an idle lead gets a new turn now; a
+  running one keeps the message queued until its turn ends. A wake never
+  steers. It is not urgent enough to change a turn already running, and a
+  steer would need a second durable record to pin its branch. It is sent as
+  the lead Session's recorded owner, with an internal client origin.
+- **The text** names the key and who asked or answered, quotes the question
+  (and the answer), and for an open question says how to answer:
+  `task_record` with `action: "answer"`.
+
+Gap: a crash after the write commits and before the inbox entry is submitted
+loses that one wake. Nothing re-derives it at startup, because inbox
+retention could then let an old version send again. The question still shows
+in Needs you and in the lead's next `get_task_brief`.
 
 ## Starting a Task from a tracker item
 
