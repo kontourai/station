@@ -1,13 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
@@ -22,16 +14,15 @@ import {
   type DelegationGroupSpecV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
-import { afterEach, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+
+const makeTempDir = trackTempDirs();
 
 // Requires published built Flow authority/group APIs plus Station finalizeCommit058d.
 // No skip, controller mock, downloaded source import, install or provider execution.
-const temporary: string[] = [];
-afterEach(() => {
-  for (const root of temporary.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
 const digest = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 const reference = (id: string) => ({
@@ -40,8 +31,7 @@ const reference = (id: string) => ({
   digest: `sha256:${digest(id)}`,
 });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'station-delegation-persistence-'));
-  temporary.push(root);
+  const root = makeTempDir('station-delegation-persistence-');
   const persistence = new StationDelegationPersistence(root);
   let active = true;
   const finalizeCurrent = (): undefined => {

@@ -2,18 +2,17 @@ import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   linkSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
 import {
   type DelegationGroupBinding,
   delegationGroupBindingKey,
@@ -62,11 +61,9 @@ function reserve(
 }
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'station-group-binding-'));
+  dir = makeTempDir('station-group-binding-');
   store = new FileDelegationGroupBindingStore(dir);
 });
-
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('durable group launch identity', () => {
   test.each(['request-aborted', 'owner-replaced'] as const)(
@@ -444,6 +441,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { setImmediate as immediate } from 'node:timers/promises';
+
+const makeTempDir = trackTempDirs();
 const invalidResult = () => {
   if (variant === 'rejecting') return (async () => {
     await Promise.resolve();

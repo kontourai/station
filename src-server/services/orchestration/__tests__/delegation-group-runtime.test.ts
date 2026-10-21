@@ -3,16 +3,13 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import filesystem from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   DelegationExecutionBindingV2,
@@ -29,6 +26,8 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import * as lifecycle from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
 import { createDelegationGroupRoutes } from '../../../routes/orchestration/delegation-groups.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import {
@@ -43,14 +42,13 @@ import { EnvironmentSecurityService } from '../../ssh/environment-security-servi
 import { DelegationGroupRuntime } from '../delegation-group-runtime.js';
 import { EventBus } from '../event-bus.js';
 
+const makeTempDir = trackTempDirs();
+
 // Runtime owner tests use a real local-grant Request on an existing scoped ingress.
 // Group HTTP scope/mount acceptance belongs to the serving composition tests.
-const roots: string[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
   syncBuiltinESMExports();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 const sha = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
@@ -61,10 +59,7 @@ const ref = (id: string) => ({
 });
 
 async function fixture() {
-  const directory = realpathSync(
-    mkdtempSync(join(tmpdir(), 'station-group-runtime-')),
-  );
-  roots.push(directory);
+  const directory = realpathSync(makeTempDir('station-group-runtime-'));
   const privateRoot = join(directory, 'groups');
   mkdirSync(privateRoot, { mode: 0o700 });
   mkdirSync(join(privateRoot, 'prepared'), { mode: 0o700 });

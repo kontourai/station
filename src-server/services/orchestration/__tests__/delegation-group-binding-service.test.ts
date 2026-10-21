@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
 import {
   assertBoundedApiExecutionAvailable,
   currentBoundedApiTurnCompanion,
@@ -38,10 +39,9 @@ const binding: DelegationGroupBinding = {
 };
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'station-group-caller-'));
+  dir = makeTempDir('station-group-caller-');
   store = new FileDelegationGroupBindingStore(dir);
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 async function reserve() {
   const result = await store.reserve(
@@ -283,6 +283,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { setImmediate as immediate } from 'node:timers/promises';
+
+const makeTempDir = trackTempDirs();
 const invalidResult = () => {
   if (variant === 'rejecting') return (async () => {
     await Promise.resolve();
