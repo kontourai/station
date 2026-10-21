@@ -632,7 +632,8 @@ proposal declined and creates nothing.
 
 Approve claims the proposal before the job is created and records it
 approved after, or gives it back if creating the job failed, so a Decline
-that races an Approve never leaves a job behind a declined proposal. A
+that races an Approve never leaves a job behind a declined proposal. An
+Approve that a restart cut short is open again after the restart. A
 proposal's `agent` must be in the chat's own scope, as for a dispatch
 (`job_proposal_agent_out_of_scope`); a conversation may create at most 10
 proposals an hour (`job_proposal_rate_limited`); and a hosted Station, which

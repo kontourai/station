@@ -307,8 +307,10 @@ answer. An assistant row with nothing to draw renders no bubble: the streaming
 row appears with its first text, reasoning or tool row (the pill carries the
 starting state before that) and eases in, and a settled row whose only content
 is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
-ended with nothing to draw (its reasoning hidden by the reader) keeps its row
-as one line, **No reply** or **Stopped**, with its footer. The pill's state changes animate its width with
+ended with nothing to draw (no text, tool or file rows, or only reasoning the
+reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
+was stopped, with its footer; the engine's stop reason is not drawn in its
+place. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line
@@ -320,8 +322,9 @@ reload. A running batch keeps one summary row ("4 commands · 3 done", where
 "done" counts calls that finished successfully, past tense only once every
 call settled) and shows each running call on its own row beneath it, at most
 two and then "+N more", with its elapsed time after ten seconds; a single
-running call shows it too. The elapsed time holds its column from the start,
-so its appearing never widens the card. A call is shown running only inside
+running call shows it too. The batch fills the answer's column for its whole
+life, so its running calls changing never resize the card, and the elapsed time
+holds its column from the start, so its appearing never widens it. A call is shown running only inside
 the turn the server reports open. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
