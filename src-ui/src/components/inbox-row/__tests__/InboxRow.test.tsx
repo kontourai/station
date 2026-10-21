@@ -470,6 +470,9 @@ describe('the chip line exists only when a chip does', () => {
 
   it('the chip derivation, fact by fact', () => {
     expect(inboxRowChips({})).toEqual([]);
+    expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([
+      { kind: 'agent-message', label: 'Agent message' },
+    ]);
     expect(
       inboxRowChips({}, { hasUnsentDraft: false, isWoken: false }),
     ).toEqual([]);

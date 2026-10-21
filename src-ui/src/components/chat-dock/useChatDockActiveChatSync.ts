@@ -139,6 +139,10 @@ export function useChatDockActiveChatSync({
           clearDeadChatPointer();
           return;
         }
+        // Hydrating the conversation the URL already names is not a reveal:
+        // the URL's own `dock` and `maximize` stand, and so does any pane a
+        // phone layer shows over Chat. The reveal rewrote them — a reload
+        // then came back docked from a full-screen Chat.
         const opened =
           conversation.acceptedModel || conversation.model
             ? await openConversationRef.current(
@@ -148,6 +152,7 @@ export function useChatDockActiveChatSync({
                   projectSlug: conversation.projectSlug ?? undefined,
                   model: conversation.model,
                   acceptedModel: conversation.acceptedModel,
+                  revealDock: false,
                 },
               )
             : await openConversationRef.current(
@@ -155,6 +160,7 @@ export function useChatDockActiveChatSync({
                 conversation.agentSlug,
                 {
                   projectSlug: conversation.projectSlug ?? undefined,
+                  revealDock: false,
                 },
               );
         // A loaded catalog that refuses the conversation's owner is a real

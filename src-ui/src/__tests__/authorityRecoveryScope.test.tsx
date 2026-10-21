@@ -39,13 +39,13 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   recoveryDisclosureKey,
   resetUsageTelemetryDisclosureDismissal,
   UsageTelemetryDisclosure,
+  UsageTelemetryDisclosureStep,
 } from '../components/UsageTelemetryDisclosure';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import {
@@ -338,6 +338,14 @@ describe('recovery request authority (real SDK guards)', () => {
     const ackPayload = deferred<unknown>();
     harness.plan.set('', async () => {
       const last = harness.fetchLog.at(-1);
+      if (last?.url.endsWith('/status'))
+        return okResponse({
+          data: {
+            publishers: offPublishers,
+            liteInventoryRevision: 'lite-scope',
+            liteInventory: {},
+          },
+        });
       if (last?.url.endsWith('/disclosure/acknowledgements')) {
         return okResponse(await ackPayload.promise);
       }
@@ -448,13 +456,28 @@ async function renderPairedDisclosure(options: {
   endpointConfigured: boolean;
   writeError?: string;
   dnt?: boolean;
+  choose?: boolean;
 }) {
   harness = createHarness();
   installFetchDouble(harness);
-  const view = renderScopeTree(<UsageTelemetryDisclosure firstRun />);
+  const view = renderScopeTree(
+    options.choose ? (
+      <UsageTelemetryDisclosureStep onAdvance={() => {}} />
+    ) : (
+      <UsageTelemetryDisclosure firstRun />
+    ),
+  );
   const home = await addHome('paired-consent');
   harness.plan.set('', async () => {
     const last = harness.fetchLog.at(-1);
+    if (last?.url.endsWith('/status'))
+      return okResponse({
+        data: {
+          publishers: offPublishers,
+          liteInventoryRevision: 'lite-scope',
+          liteInventory: {},
+        },
+      });
     if (last?.url.endsWith('/disclosure/acknowledgements')) {
       return new Response(
         JSON.stringify({ error: { code: 'insufficient_scope' } }),
@@ -522,13 +545,14 @@ describe('paired-device disclosure decisions', () => {
     },
   );
 
-  it('keeps Off and remembers a non-acknowledging decision when a standard device cannot acknowledge', async () => {
-    const { view, home } = await renderPairedDisclosure({
+  it('saves both destinations Off through recovery without requesting an acknowledgement', async () => {
+    const { view } = await renderPairedDisclosure({
       endpointConfigured: true,
+      choose: true,
     });
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
-    );
+    const save = await screen.findByRole('button', { name: 'Save choice' });
+    await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(save);
     await waitFor(() =>
       expect(harness.fetchLog.some((entry) => entry.method === 'PUT')).toBe(
         true,
@@ -536,67 +560,40 @@ describe('paired-device disclosure decisions', () => {
     );
     const write = harness.fetchLog.find((entry) => entry.method === 'PUT');
     expect(JSON.parse(String(write?.body))).toEqual({
-      telemetryTier: { operator: 'off' },
+      telemetryTier: { kontour: 'off', operator: 'off' },
     });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    const scope = harness.scopes.at(-1)!;
     expect(
-      harness.recoveryClient?.getQueryData(
-        recoveryDisclosureKey(scope.apiBase, scope.identityKey),
+      harness.fetchLog.filter((entry) =>
+        entry.url.endsWith('/acknowledgements'),
       ),
-    ).toMatchObject({ acknowledged: false });
-    const persisted = localStorage.getItem(
-      'station.usage-telemetry-disclosure.dnt-decisions',
-    );
-    expect(persisted).toContain(home.url);
-    view.unmount();
-    resetUsageTelemetryDisclosureDismissal();
-    localStorage.setItem(
-      'station.usage-telemetry-disclosure.dnt-decisions',
-      persisted!,
-    );
-    const reload = renderScopeTree(
-      <>
-        <UsageTelemetryDisclosure />
-        <UsageTelemetryDisclosure firstRun />
-      </>,
-    );
+    ).toEqual([]);
+    const scope = harness.scopes.at(-1)!;
     await waitFor(() =>
       expect(
-        screen.getByRole('region', { name: 'Usage telemetry disclosure' }),
-      ).toBeTruthy(),
+        harness.recoveryClient?.getQueryData(
+          recoveryDisclosureKey(scope.apiBase, scope.identityKey),
+        ),
+      ).toMatchObject({ acknowledged: false }),
     );
-    expect(screen.queryByRole('dialog')).toBeNull();
-    await waitFor(() => expect(harness.scopes.at(-1)?.apiBase).toBe(home.url));
-    const reloadedScope = harness.scopes.at(-1)!;
-    // A changed inventory must be offered again; a local decision is not a receipt.
-    await act(async () => {
-      harness.recoveryClient?.setQueryData(
-        recoveryDisclosureKey(reloadedScope.apiBase, reloadedScope.identityKey),
-        {
-          ...DISCLOSURE_BODY,
-          inventoryRevision: 'next-revision',
-          publishers: offPublishers,
-          endpointConfigured: true,
-        },
-      );
-    });
-    expect(await screen.findByRole('dialog')).toBeTruthy();
-    reload.unmount();
+    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
+    view.unmount();
   });
 
-  it('shows the server refusal when the recovery setting cannot be saved', async () => {
+  it('keeps a refused recovery save visible without acknowledging', async () => {
     const reason =
       'Only the operator or a device with access:manage can raise telemetry tiers.';
     const { view } = await renderPairedDisclosure({
       endpointConfigured: true,
       writeError: reason,
+      choose: true,
     });
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
+    const save = await screen.findByRole('button', { name: 'Save choice' });
+    await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(save);
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Your sharing choice could not be saved',
     );
-    expect((await screen.findByRole('alert')).textContent).toContain(reason);
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save choice' })).toBeTruthy();
     expect(
       harness.fetchLog.filter((entry) =>
         entry.url.endsWith('/acknowledgements'),
@@ -618,17 +615,17 @@ describe('protected Settings disclosure decisions (real SDK)', () => {
       <ApiBaseProvider>
         <ConnectionsProbe />
         <QueryClientProvider client={client}>
-          <UsageTelemetryDisclosure />
+          <UsageTelemetryDisclosureStep onAdvance={() => {}} />
           <UsageTelemetryDisclosure firstRun />
         </QueryClientProvider>
       </ApiBaseProvider>,
     );
   }
 
-  it('Settings saves Off and persists a revision-bound decision after a forbidden acknowledgement without inventing a receipt', async () => {
+  it('the protected sharing form saves Off without inventing an acknowledgement', async () => {
     harness = createHarness();
     installFetchDouble(harness);
-    let disclosure = {
+    const disclosure = {
       ...DISCLOSURE_BODY,
       endpointConfigured: true,
       telemetryEnabled: false,
@@ -641,71 +638,46 @@ describe('protected Settings disclosure decisions (real SDK)', () => {
           success: true,
           data: { telemetryTier: { kontour: 'off', operator: 'off' } },
         });
-      if (request.url.endsWith('/disclosure/acknowledgements'))
-        return Response.json(
-          { error: { code: 'insufficient_scope' } },
-          { status: 403 },
-        );
+      if (request.url.endsWith('/status'))
+        return okResponse({
+          data: {
+            publishers: offPublishers,
+            liteInventoryRevision: 'lite-scope',
+            liteInventory: {},
+          },
+        });
       if (request.url.endsWith('/disclosure'))
         return okResponse(disclosureEnvelope(disclosure));
-      throw new Error(`Unexpected Settings request: ${request.url}`);
+      throw new Error(`Unexpected protected sharing request: ${request.url}`);
     });
     const view = renderProtectedTree();
     const home = await addHome('protected-consent');
     await switchTo(home.id);
-    const settings = await screen.findByRole('region', {
-      name: 'Usage telemetry disclosure',
-    });
-    await screen.findByRole('dialog');
-    fireEvent.click(
-      within(settings).getByRole('button', {
-        name: 'Keep usage telemetry off',
-      }),
+    const save = await screen.findByRole('button', { name: 'Save choice' });
+    await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(
+        harness.fetchLog.filter((entry) => entry.method !== 'GET'),
+      ).toHaveLength(1),
     );
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const writes = harness.fetchLog.filter((entry) => entry.method !== 'GET');
     expect(writes.map(({ url, method }) => ({ url, method }))).toEqual([
       { url: `${home.url}/config/app`, method: 'PUT' },
-      {
-        url: `${home.url}/api/usage-telemetry/disclosure/acknowledgements`,
-        method: 'POST',
-      },
     ]);
     expect(JSON.parse(String(writes[0].body))).toEqual({
-      telemetryTier: { operator: 'off' },
+      telemetryTier: { kontour: 'off', operator: 'off' },
     });
+    await waitFor(() =>
+      expect(
+        client.getQueryData(['usage-telemetry-disclosure', home.url]),
+      ).toMatchObject({ acknowledged: false }),
+    );
+    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
     expect(
-      client.getQueryData(['usage-telemetry-disclosure', home.url]),
-    ).toMatchObject({ acknowledged: false });
-    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
-    const persisted = localStorage.getItem(
-      'station.usage-telemetry-disclosure.dnt-decisions',
-    );
-    expect(JSON.parse(persisted!)).toEqual({
-      [home.url]: DISCLOSURE_BODY.inventoryRevision,
-    });
+      localStorage.getItem('station.usage-telemetry-disclosure.dnt-decisions'),
+    ).toBeNull();
     view.unmount();
-    client.clear();
-    resetUsageTelemetryDisclosureDismissal();
-    localStorage.setItem(
-      'station.usage-telemetry-disclosure.dnt-decisions',
-      persisted!,
-    );
-    const reload = renderProtectedTree();
-    await screen.findByRole('region', { name: 'Usage telemetry disclosure' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.queryByText('You acknowledged this inventory.')).toBeNull();
-    disclosure = {
-      ...disclosure,
-      inventoryRevision: 'next-protected-revision',
-    };
-    await act(async () => {
-      await client.invalidateQueries({
-        queryKey: ['usage-telemetry-disclosure', home.url],
-      });
-    });
-    expect(await screen.findByRole('dialog')).toBeTruthy();
-    reload.unmount();
     client.clear();
   });
 

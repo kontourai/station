@@ -231,4 +231,41 @@ describe('a continuation child never renames its conversation (#1536 B4)', () =>
       database.close();
     }
   });
+  test('the rebuilt conversation index retains the captured human title', () => {
+    const title = 'Where should preference state live?';
+    store.upsertSession({
+      provider: 'claude',
+      threadId: ROOT,
+      status: 'ready',
+      createdAt: ROOT_CREATED,
+      updatedAt: LAST_UPDATED,
+    });
+    store.appendEvent({
+      eventId: 'room-start',
+      provider: 'claude',
+      threadId: ROOT,
+      sessionId: ROOT,
+      method: 'session.started',
+      createdAt: ROOT_CREATED,
+      metadata: { userId: OWNER, agentSlug: 'claude', delegationTitle: title },
+    });
+    store.appendEvent({
+      eventId: 'room-turn',
+      provider: 'claude',
+      threadId: ROOT,
+      turnId: 'room-turn',
+      method: 'turn.started',
+      createdAt: ROOT_CREATED,
+      prompt: `${title}\n\n---\n# Task brief: Private context`,
+    });
+    expect(store.conversationTitle([ROOT])).toBe(title);
+    store.close();
+    const projection = new DatabaseSync(join(dir, 'orchestration.sqlite'));
+    projection.exec(
+      'DELETE FROM orchestration_conversation_history; DELETE FROM orchestration_conversation_history_upgrade;',
+    );
+    projection.close();
+    store = new EventStore(join(dir, 'orchestration.sqlite'));
+    expect(store.conversationTitle([ROOT])).toBe(title);
+  });
 });

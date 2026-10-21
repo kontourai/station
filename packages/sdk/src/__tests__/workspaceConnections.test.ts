@@ -135,6 +135,10 @@ describe('credential recovery SDK workspace-connections domain', () => {
     const policy = lastMutationOptions<{
       id: string;
       automatic: boolean;
+      allowancePreference?: {
+        windowId: string;
+        minimumRemainingPercent: number;
+      } | null;
     }>();
     await policy.mutationFn({ id: 'codex', automatic: false });
     expect(fetch).toHaveBeenLastCalledWith(
@@ -142,6 +146,32 @@ describe('credential recovery SDK workspace-connections domain', () => {
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ automatic: false }),
+      }),
+    );
+    const preference = { windowId: 'secondary', minimumRemainingPercent: 20 };
+    await policy.mutationFn({
+      id: 'codex',
+      automatic: true,
+      allowancePreference: preference,
+    });
+    expect(fetch).toHaveBeenLastCalledWith(
+      'http://example.test/api/connections/agent/codex/credential-recovery/policy',
+      expect.objectContaining({
+        body: JSON.stringify({
+          automatic: true,
+          allowancePreference: preference,
+        }),
+      }),
+    );
+    await policy.mutationFn({
+      id: 'codex',
+      automatic: false,
+      allowancePreference: null,
+    });
+    expect(fetch).toHaveBeenLastCalledWith(
+      'http://example.test/api/connections/agent/codex/credential-recovery/policy',
+      expect.objectContaining({
+        body: JSON.stringify({ automatic: false, allowancePreference: null }),
       }),
     );
   });

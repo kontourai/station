@@ -36,7 +36,10 @@ import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
-import type { PreviewTokenLine } from '../highlight/preview-tokens';
+import {
+  isPreviewSyntaxRole,
+  type PreviewTokenLine,
+} from '../highlight/preview-tokens';
 import { copyToClipboard } from '../lib/clipboard';
 import {
   browserEpochMs,
@@ -300,25 +303,6 @@ function FilePreviewDownloadHandoff({
   );
 }
 
-/**
- * github-dark's foregrounds (the one theme the shared highlighter loads)
- * mapped onto Station's measured syntax rungs. The theme's own pigments are
- * dark-only and fail contrast on the light theme (#2140), so the grammar
- * decides WHAT a token is and the Station theme decides how it looks. A
- * foreground absent here (the default text colour, brackets, invalid markers)
- * renders as ordinary text.
- */
-const SYNTAX_RUNG_BY_THEME_FOREGROUND: Readonly<Record<string, string>> = {
-  '#F97583': 'var(--syntax-keyword)',
-  '#9ECBFF': 'var(--syntax-string)',
-  '#DBEDFF': 'var(--syntax-string)',
-  '#79B8FF': 'var(--syntax-number)',
-  '#6A737D': 'var(--text-muted)',
-  '#B392F0': 'var(--syntax-function)',
-  '#85E89D': 'var(--syntax-tag)',
-  '#FFAB70': 'var(--syntax-variable)',
-};
-
 type PreviewSyntax =
   | { status: 'off' }
   | { status: 'pending' }
@@ -353,8 +337,7 @@ function acceptPreviewTokens(
           'Syntax colours are off: the highlighter did not reproduce this text exactly.',
       };
     for (const token of tokens[index])
-      if (token.color && SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color])
-        spans += 1;
+      if (isPreviewSyntaxRole(token.color)) spans += 1;
     if (spans > MAX_SOURCE_HIGHLIGHT_TOKENS)
       return {
         status: 'plain',
@@ -415,9 +398,8 @@ function FilePreviewLineText({
 }) {
   if (!tokens) return text;
   return tokens.map((token, index) => {
-    const rung = token.color
-      ? SYNTAX_RUNG_BY_THEME_FOREGROUND[token.color]
-      : undefined;
+    // Already a Station role (`var(--syntax-*)`); anything else stays text.
+    const rung = isPreviewSyntaxRole(token.color) ? token.color : undefined;
     return rung ? (
       <span
         // Tokens are positional within one immutable line.

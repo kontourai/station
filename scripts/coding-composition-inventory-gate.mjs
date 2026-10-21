@@ -149,6 +149,9 @@ const expectedDependencies = new Map(
     // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
     // module: drawn pixels, nothing decided.
     'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
+    // The terminal's xterm colours, read from the `--terminal-*` theme
+    // variables: a colour mapping, nothing run or granted.
+    'src-ui/src/components/coding-layout/terminalTheme.ts': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -180,7 +183,6 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',
-    'src-ui/src/hooks/useGitActions.ts': 'git-review',
     'src-ui/src/hooks/useNewProjectStarter.ts': 'distribution',
     // Selects a decorative icon by Layout type; it mounts no Coding pane.
     'src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx':
@@ -200,6 +202,13 @@ const expectedDependencies = new Map(
     // focusing the chat so the Coding host centres it. It renders no Coding
     // pane and grants no workspace authority: a route choice only.
     'src-ui/src/views/home/useHomeViewModel.ts': 'navigation',
+    // Pane relationships (docs/design/pane-relationships.md): a related
+    // preview's Up to a Files opener reads that Project's layout list and,
+    // when one is a Coding layout, returns there through canonical
+    // `setLayout`; while the dock is bound to that Project it reveals the
+    // dock's `coding:file-browser` surface instead. A route or reveal choice
+    // only: it mounts no Coding pane and grants nothing.
+    'src-ui/src/workspace-panes/RelatedPaneStrip.tsx': 'navigation',
     // #2047: the surface → pane inventory joins the coding dock surfaces
     // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical

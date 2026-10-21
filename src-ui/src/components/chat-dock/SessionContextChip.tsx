@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { type RefObject, useLayoutEffect, useRef } from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import './SessionContextChip.css';
 
@@ -13,12 +13,28 @@ export function SessionContextChip({
   triggerRef,
   expanded,
   onOpen,
+  onUnmountWhileFocused,
 }: {
   status: { word: string; text: string; tone: WorkStatusTone } | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
   expanded: boolean;
   onOpen: () => void;
+  /**
+   * The chip is going away (the card it stands in for has room again) while
+   * it holds focus; the caller hands focus on. Checked in the layout
+   * cleanup, while the button is still in the document.
+   */
+  onUnmountWhileFocused?: () => void;
 }) {
+  const unmountWhileFocusedRef = useRef(onUnmountWhileFocused);
+  unmountWhileFocusedRef.current = onUnmountWhileFocused;
+  useLayoutEffect(() => {
+    const button = triggerRef.current;
+    return () => {
+      if (button && document.activeElement === button)
+        unmountWhileFocusedRef.current?.();
+    };
+  }, [triggerRef]);
   return (
     <button
       ref={triggerRef}

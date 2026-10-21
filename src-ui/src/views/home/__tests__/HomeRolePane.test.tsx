@@ -1,3 +1,4 @@
+import { ConnectionsProvider } from '@kontourai/station-connect';
 /** @vitest-environment jsdom */
 
 import { createWorkspaceHomeRoleGrant } from '@kontourai/station-contracts/workspace-home-role';
@@ -513,4 +514,29 @@ describe('a widened projection is a new grant', () => {
     // Derived from the projection type's own description of the field.
     expect(notice.textContent).toContain('Session, chat, and task titles');
   });
+});
+
+test('a blocked Home extension offers review while preserving the built-in Home', () => {
+  registry.loadStatus = {
+    state: 'degraded',
+    failure: 'remote-isolation',
+    failedPluginNames: [],
+  };
+  registry.trustedLayout = null;
+  render(
+    <ConnectionsProvider>
+      <HomeRolePane
+        grant={grantFor()}
+        builtinHome={builtinHome}
+        onRevoke={vi.fn()}
+      />
+    </ConnectionsProvider>,
+  );
+  expect(screen.getByTestId('builtin-home')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+  expect(
+    screen.getByRole('dialog', { name: /Allow extensions from/ }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  expect(screen.getByTestId('builtin-home')).toBeTruthy();
 });

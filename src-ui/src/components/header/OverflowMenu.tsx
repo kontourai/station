@@ -1,16 +1,62 @@
 import { ConnectionStatusDot } from '@kontourai/station-connect';
+import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
+import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import type { ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
-import { MonitorGlyph, QuestionGlyph } from '../icons/Glyph';
+import { MonitorGlyph, PeopleGlyph, QuestionGlyph } from '../icons/Glyph';
+import { activeLiveWorkSessions } from '../project-sidebar/liveWork';
 import './HeaderMenu.css';
 import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 
 type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
+
+/**
+ * Live work's phone route while the drawer is closed: the footer's presence
+ * tray is inside the drawer, so this row names the same active-session count
+ * (`activeLiveWorkSessions`) and opens Activity, where that work is listed.
+ * The count is only stated once the inventory has answered.
+ */
+function LiveWorkRow({ onClose }: { onClose: () => void }) {
+  const sessions = useOrchestrationSessionsQuery({ refetchInterval: 10_000 });
+  const showSurface = useShowSurface();
+  const active =
+    sessions.isError || sessions.data === undefined
+      ? null
+      : activeLiveWorkSessions(sessions.data).length;
+  const detail =
+    active === null
+      ? sessions.isError
+        ? 'unavailable'
+        : 'not read yet'
+      : active === 0
+        ? 'nothing active'
+        : `${active} active`;
+  return (
+    <button
+      type="button"
+      className="menu-row"
+      aria-label={`Live work, ${detail}`}
+      onClick={() => {
+        onClose();
+        showSurface(ACTIVITY_SURFACE_ID);
+      }}
+    >
+      <span className="menu-row__glyph" aria-hidden="true">
+        <PeopleGlyph />
+      </span>
+      Live work
+      <span className="app-toolbar__overflow-detail" aria-hidden="true">
+        {detail}
+      </span>
+    </button>
+  );
+}
 
 /**
  * #917: where the `⋯` button is rendered, the region commands live here rather
@@ -189,6 +235,7 @@ export function OverflowMenu({
           </span>
           Help
         </button>
+        {hasRegionModel && <LiveWorkRow onClose={onClose} />}
         {/* Appended, not prepended: every row above keeps the position the
             banner-overlap note describes, and the region rows are the ones a
             phone user reaches for repeatedly, so they sit closest to the

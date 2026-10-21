@@ -1,8 +1,10 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import type { PaneRelatedPanesHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
   _setApiBase,
   _setProviderFunctions,
   type SDKContextValue,
+  type SDKHost,
   SDKProvider,
   type SDKToast,
   type ToastAction,
@@ -11,8 +13,12 @@ import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { getPluginHeaders } from '@kontourai/station-sdk/client';
-import { type ReactNode, useEffect, useMemo } from 'react';
+import {
+  getPluginHeaders,
+  mountPluginTelemetryPane,
+} from '@kontourai/station-sdk/client';
+import { useQuery } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useId, useMemo } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -29,6 +35,13 @@ import {
   useOpenConversation,
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
+import { copyToClipboard } from '../lib/clipboard';
+import { openPluginExternalLink } from '../platform/openExternalLink';
+import {
+  usePaneConfirmChrome,
+  usePaneHostFacts,
+  usePanePromptChrome,
+} from '../workspace-panes/paneHostShellChrome';
 import {
   configureProvider,
   getActiveProviderId,
@@ -36,6 +49,7 @@ import {
   hasProvider,
   registerProvider,
 } from './layoutProviders';
+import { useSDKShortcutsHost } from './sdkShortcutsHost';
 
 const EMPTY_LAYOUTS: never[] = [];
 
@@ -59,6 +73,8 @@ interface SDKAdapterProps {
   boundProjectSlug?: string;
   /** Owning installed plugin, distinct from this Pane occurrence/layout id. */
   boundPluginName?: string;
+  /** The occurrence's related-pane capability, when its placement offers one. */
+  relatedPanes?: PaneRelatedPanesHost;
 }
 
 /**
@@ -70,21 +86,38 @@ export function SDKAdapter({
   layout,
   boundProjectSlug,
   boundPluginName,
+  relatedPanes,
 }: SDKAdapterProps) {
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
 
   _setApiBase(apiBase);
+  const paneId = useId();
+  const paneTelemetry = useQuery({
+    queryKey: ['plugin-telemetry-pane', apiBase, boundPluginName, paneId],
+    enabled: !!boundPluginName,
+    staleTime: 240000,
+    gcTime: 0,
+    refetchInterval: 240000,
+    retry: false,
+    queryFn: ({ signal }) =>
+      mountPluginTelemetryPane(apiBase, boundPluginName!, signal),
+  });
   const pluginApiIdentity = useMemo(
     () =>
       boundPluginName
         ? Object.freeze({
             pluginName: boundPluginName,
+            telemetryCapability: () =>
+              paneTelemetry.data &&
+              Date.parse(paneTelemetry.data.expiresAt) > Date.now()
+                ? paneTelemetry.data.token
+                : undefined,
             getHeaders: (extraHeaders?: Record<string, string>) =>
               getPluginHeaders(extraHeaders, boundPluginName),
           })
         : undefined,
-    [boundPluginName],
+    [boundPluginName, paneTelemetry.data],
   );
 
   // Configure process-wide host functions only. Plugin request identity stays
@@ -169,6 +202,35 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
+  // The installed plugin this pane belongs to, as the host admitted it. Only
+  // `PluginWorkspacePaneSDKBoundary` passes one; the layout routes
+  // (LayoutView, PersonalBoardView, LayoutWorkspacePane) mount layouts whose
+  // `plugin` field is editable config, so they have no verified identity.
+  const verifiedPlugin = boundPluginName;
+
+  // Host services. The dialogs are the shell's own chrome, rendered here
+  // beside the plugin: this adapter is mounted exactly while it renders its
+  // children, so `active` is constant and unmount settles an open request.
+  // They name who asked, so a plugin's dialog cannot pass as Station's.
+  const requester = verifiedPlugin ?? 'an unverified layout';
+  const { confirm, confirmChrome } = usePaneConfirmChrome(
+    true,
+    undefined,
+    requester,
+  );
+  const { prompt, promptChrome } = usePanePromptChrome(true, requester);
+  const facts = usePaneHostFacts();
+  const sdkHost = useMemo<SDKHost>(
+    () => ({
+      clipboard: { writeText: copyToClipboard },
+      openExternal: openPluginExternalLink,
+      prompt,
+      confirm,
+    }),
+    [prompt, confirm],
+  );
+  const shortcuts = useSDKShortcutsHost(verifiedPlugin);
+
   // Create SDK context value with injected contexts. The agents, navigation,
   // toast and auth slots are the SDK's published contracts (#2399), so this
   // object is where the host is checked against them.
@@ -177,6 +239,7 @@ export function SDKAdapter({
       ({
         apiBase,
         ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
+        ...(relatedPanes ? { relatedPanes } : {}),
         contexts: {
           agents: { useAgents: () => agents },
           layouts: {
@@ -188,6 +251,8 @@ export function SDKAdapter({
           toast: { useToast: () => sdkToast },
           config: { useApiBase: () => ({ apiBase }) },
           auth: { useAuth: () => auth },
+          host: { useHost: () => sdkHost, facts },
+          ...(shortcuts ? { shortcuts } : {}),
           activeChats: {
             useSendMessage: () => sendMessage,
             useCreateChatSession: () => createChatSession,
@@ -201,6 +266,7 @@ export function SDKAdapter({
     [
       apiBase,
       pluginApiIdentity,
+      relatedPanes,
       agents,
       layouts,
       activeLayout?.config,
@@ -214,8 +280,17 @@ export function SDKAdapter({
       openConversation,
       launchChat,
       auth,
+      sdkHost,
+      facts,
+      shortcuts,
     ],
   );
 
-  return <SDKProvider value={sdkValue}>{children}</SDKProvider>;
+  return (
+    <SDKProvider value={sdkValue}>
+      {children}
+      {confirmChrome}
+      {promptChrome}
+    </SDKProvider>
+  );
 }

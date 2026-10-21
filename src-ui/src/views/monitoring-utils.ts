@@ -41,34 +41,33 @@ export const EVENT_TYPE_GROUPS = {
   Health: ['agent-health'],
 } as const;
 
-/** Consistent color for agent slug (avoids filter colors) */
-export function getAgentColor(agentSlug: string): string {
-  const colors = [
-    '#ef4444',
-    '#22c55e',
-    '#a855f7',
-    '#f97316',
-    '#14b8a6',
-    '#ec4899',
-  ];
-  const hash = agentSlug
-    .split('')
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return colors[hash % colors.length];
+/**
+ * The categorical series palette (`--series-1..6`, measured per theme in
+ * index.css), so agent and conversation accents follow light/dark and
+ * palette themes. These are only ever painted through CSS (`style`,
+ * `color-mix()`), where a var() reference resolves; they were literal dark
+ * hexes, which no theme could reach.
+ */
+const SERIES_COLORS = [
+  'var(--series-1)',
+  'var(--series-2)',
+  'var(--series-3)',
+  'var(--series-4)',
+  'var(--series-5)',
+  'var(--series-6)',
+] as const;
+
+function seriesColorFor(key: string): string {
+  const hash = key.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return SERIES_COLORS[hash % SERIES_COLORS.length];
 }
 
-/** Consistent color for conversation ID */
+/** Consistent series color for an agent slug. */
+export function getAgentColor(agentSlug: string): string {
+  return seriesColorFor(agentSlug);
+}
+
+/** Consistent series color for a conversation ID. */
 export function getConversationColor(conversationId: string): string {
-  const colors = [
-    '#3b82f6',
-    '#8b5cf6',
-    '#ec4899',
-    '#f59e0b',
-    '#10b981',
-    '#06b6d4',
-  ];
-  const hash = conversationId
-    .split('')
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return colors[hash % colors.length];
+  return seriesColorFor(conversationId);
 }

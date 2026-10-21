@@ -194,6 +194,12 @@ interface TranscriptTurnRailProps {
   readonly onJump: (turnIndex: number) => void;
   /** Older history exists beyond the loaded rows (see `turnPosition`). */
   readonly olderHistory: boolean;
+  /**
+   * Whether the gutter has room to show (the column and height minimums
+   * below), reported when it changes. The transcript offers a compact step
+   * at the latest message while it has none.
+   */
+  readonly onAvailableChange?: (available: boolean) => void;
 }
 
 /**
@@ -237,12 +243,18 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   activeTurn,
   onJump,
   olderHistory,
+  onAvailableChange,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const previewId = useId();
   const [hovered, setHovered] = useState<number>();
   const [focused, setFocused] = useState<number>();
+  // Mirrors the host's `data-unavailable`: a hidden rail shows no preview,
+  // which would otherwise stay mounted and take the next Escape.
+  const [unavailable, setUnavailable] = useState(false);
+  const availableChangeRef = useRef(onAvailableChange);
+  availableChangeRef.current = onAvailableChange;
   const scrubRef = useRef<{ pointerId: number; last?: number } | null>(null);
 
   // The gutter sits over the transcript's right edge, inside its scrollbar,
@@ -261,11 +273,14 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         '--transcript-turn-rail-scrollbar',
         `${Math.max(0, element.offsetWidth - element.clientWidth)}px`,
       );
-      host.toggleAttribute(
-        'data-unavailable',
+      const hidden =
         element.clientWidth < RAIL_MIN_COLUMN_WIDTH_PX ||
-          element.clientHeight < RAIL_MIN_TRANSCRIPT_HEIGHT_PX,
-      );
+        element.clientHeight < RAIL_MIN_TRANSCRIPT_HEIGHT_PX;
+      host.toggleAttribute('data-unavailable', hidden);
+      setUnavailable(hidden);
+      // The pointer that was resting on the rail is no longer over anything.
+      if (hidden) setHovered(undefined);
+      availableChangeRef.current?.(!hidden);
     };
     place();
     if (typeof ResizeObserver === 'undefined') return;
@@ -347,7 +362,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   // Escape dismisses the preview where it stands (WCAG 1.4.13); pointing at
   // or focusing another turn, or leaving the rail, shows previews again.
   const [dismissed, setDismissed] = useState<number>();
-  const target = hovered ?? focused;
+  const target = unavailable ? undefined : (hovered ?? focused);
   useEffect(() => {
     if (dismissed !== undefined && target !== dismissed)
       setDismissed(undefined);
@@ -482,8 +497,13 @@ interface TranscriptTurnActionsProps {
   readonly onJump: (turnIndex: number) => void;
   /** Positioned over the transcript rather than placed in a host's row. */
   readonly floating: boolean;
+  /**
+   * At the latest message, with no rail to navigate by: Previous turn alone
+   * (there is no next turn, and no Scroll to bottom to sit beside).
+   */
+  readonly latest?: boolean;
   /** The transcript's existing return-to-latest control. */
-  readonly children: ReactNode;
+  readonly children?: ReactNode;
 }
 
 /**
@@ -496,6 +516,7 @@ export function TranscriptTurnActions({
   nextTurn,
   onJump,
   floating,
+  latest = false,
   children,
 }: TranscriptTurnActionsProps) {
   return (
@@ -503,6 +524,7 @@ export function TranscriptTurnActions({
       className="transcript-turn-actions"
       aria-label="Turn navigation"
       data-floating={floating || undefined}
+      data-latest={latest || undefined}
     >
       <button
         type="button"
@@ -514,16 +536,18 @@ export function TranscriptTurnActions({
       >
         <ArrowUpGlyph />
       </button>
-      <button
-        type="button"
-        className="transcript-turn-actions__step"
-        aria-label="Next turn"
-        title="Next turn"
-        aria-disabled={nextTurn === undefined || undefined}
-        onClick={() => nextTurn !== undefined && onJump(nextTurn)}
-      >
-        <ArrowDownGlyph />
-      </button>
+      {!latest && (
+        <button
+          type="button"
+          className="transcript-turn-actions__step"
+          aria-label="Next turn"
+          title="Next turn"
+          aria-disabled={nextTurn === undefined || undefined}
+          onClick={() => nextTurn !== undefined && onJump(nextTurn)}
+        >
+          <ArrowDownGlyph />
+        </button>
+      )}
       {children}
     </fieldset>
   );

@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed the additive optional TelemetryPublisherStatus.fullAvailable field and its UI/status consumers. Absence fails closed in the UI for older servers. The documented contract ownership, imports and runtime-validation boundary remain accurate; no event inventory or runtime helper was added to contracts.","inputs":["docs/reference/contracts.md","packages/contracts/src/product-telemetry.ts"]}
+  ]
+}

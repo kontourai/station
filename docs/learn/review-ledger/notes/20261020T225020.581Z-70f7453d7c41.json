@@ -1,0 +1,7 @@
+{
+  "revision": "0abb78d7e904361bc4afb6fc03deea1e75a0b721",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the c8ff5445e22 Claude mapper/child-work delta through the actual SDK-message caller: top-level SendMessage only corroborates a settled child resume, early own model/tool facts buffer under the matching resume call, and parent facts remain on their original transcript path. This does not send smoke prompts, change smoke admission or promote discovery/catalog/readiness evidence. The owning deterministic adapter tests passed180; live engines remain unverified.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/adapters/claude-adapter-events.ts"]}
+  ]
+}

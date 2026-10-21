@@ -1,0 +1,7 @@
+{
+  "revision": "c7e8df2ccf029ea2c84a00234a941076f50da0c1",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"MessageContent.tsx changes arrived from main's own reviewed work; checked this document's bridge claims against the merged component; unchanged by this PR.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

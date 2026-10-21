@@ -86,6 +86,16 @@ const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
 /** Bound on this owner's remembered abandoned claims (oldest dropped first). */
 const TURN_CLAIM_RETAINED_MAX = 4096;
 
+export class TurnIdempotencySettledError extends Error {
+  readonly code = 'client_turn_settled';
+  constructor(readonly disposition: 'cancelled' | 'definitively-refused') {
+    super(
+      `This turn was ${disposition === 'cancelled' ? 'cancelled' : 'definitively refused'}. A new request requires a new turn key.`,
+    );
+    this.name = 'TurnIdempotencySettledError';
+  }
+}
+
 /** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
 export type TurnClaimInspection =
   | { state: 'absent' }
@@ -102,6 +112,16 @@ export type TurnClaimInspection =
   | { state: 'indeterminate'; ageOnly?: true }
   | { state: 'expired' };
 
+const preparedClaimCustody = new WeakMap<
+  object,
+  { key: string; owner: OwnerIdentity; createdAt: number }
+>();
+
+/** Internal host composition only; no token is attached to the public claim. */
+export function readPreparedClaimCustody(claim: object) {
+  return preparedClaimCustody.get(claim);
+}
+
 export class TurnIdempotencyStore {
   private readonly owner: OwnerIdentity;
   private readonly liveness: OwnerLiveness;
@@ -112,6 +132,35 @@ export class TurnIdempotencyStore {
    * the owner dying turns the same claim `indeterminate` durably.
    */
   private readonly retained = new Set<string>();
+
+  bindPreparedClaim(key: string, claim: object): void {
+    const read = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    const owner = read.kind === 'found' ? read.record.owner : undefined;
+    if (
+      read.kind !== 'found' ||
+      !owner ||
+      owner.id !== this.owner.id ||
+      owner.pid !== this.owner.pid ||
+      owner.identityKind !== this.owner.identityKind ||
+      (owner.identityKind === 'exact' &&
+        (this.owner.identityKind !== 'exact' ||
+          owner.birth !== this.owner.birth))
+    )
+      throw new Error('Prepared claim owner is unavailable.');
+    preparedClaimCustody.set(claim, {
+      key,
+      owner: this.owner,
+      createdAt: read.record.createdAt,
+    });
+  }
+  composePreparedClaims<T>(
+    compose: (binding: { owner: OwnerIdentity; liveness: OwnerLiveness }) => T,
+  ): T {
+    return compose({ owner: this.owner, liveness: this.liveness });
+  }
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
     processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
@@ -178,12 +227,15 @@ export class TurnIdempotencyStore {
         }
         turnDedupClaims.add(1, { outcome: 'contended' });
         return { claimed: false };
+      case 'prepared':
       case 'indeterminate':
         turnDedupClaims.add(1, { outcome: 'indeterminate' });
         return { claimed: false, indeterminate: true };
       case 'expired':
         turnDedupClaims.add(1, { outcome: 'expired' });
         return { claimed: false, expired: true };
+      case 'settled':
+        throw new TurnIdempotencySettledError(result.disposition);
       case 'refused':
         throw new Error(
           `Turn claim refused by ${result.participant}: ${result.reason}`,
@@ -256,6 +308,8 @@ export class TurnIdempotencyStore {
         `Turn claim read refused by ${result.participant}: ${result.reason}`,
       );
     const record = result.record;
+    if (record.settlement)
+      throw new TurnIdempotencySettledError(record.settlement.disposition);
     if (
       inputDigest !== undefined &&
       record.inputDigest !== undefined &&

@@ -316,6 +316,58 @@ describe('verification policy gate', () => {
     );
   });
 
+  test('admits the runtime import guard once and rejects altered fixed command vectors', () => {
+    const guard = 'scripts/agent-runtime-import-boundary-gate.mjs';
+    const refusal =
+      'ci:fast must run only its fixed bounded static invariant allowlist';
+    expect(
+      verificationPolicyErrors({ ciFastStaticCommands: FAST_STATIC_COMMANDS }),
+    ).toEqual([]);
+    expect(
+      FAST_STATIC_COMMANDS.filter(
+        ([command, args]) =>
+          command === process.execPath &&
+          args.length === 1 &&
+          args[0] === guard,
+      ),
+    ).toHaveLength(1);
+
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: FAST_STATIC_COMMANDS.filter(
+          ([, args]) => args[0] !== guard,
+        ),
+      }),
+    ).toContain(refusal);
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: [
+          ...FAST_STATIC_COMMANDS,
+          [process.execPath, ['scripts/unregistered-invariant.mjs']],
+        ],
+      }),
+    ).toContain(refusal);
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: [
+          ...FAST_STATIC_COMMANDS,
+          [process.execPath, [guard]],
+        ],
+      }),
+    ).toContain(refusal);
+    for (const replacement of [
+      ['scripts/agent-runtime-import-boundary.mjs'],
+      [guard, '--skip-check'],
+    ])
+      expect(
+        verificationPolicyErrors({
+          ciFastStaticCommands: FAST_STATIC_COMMANDS.map(([command, args]) =>
+            args[0] === guard ? [command, replacement] : [command, args],
+          ),
+        }),
+      ).toContain(refusal);
+  });
+
   test('pins admission headroom for ci:fast beside every ordinary shard', () => {
     expect(CI_FAST_RESERVED_WEIGHT).toBe(20);
     expect(CI_FAST_TIMEOUT_MS).toBe(15 * 60_000);

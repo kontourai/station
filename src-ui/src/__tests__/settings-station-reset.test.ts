@@ -144,6 +144,9 @@ describe('buildStationResetPlan', () => {
     // file can see. The ordered literal fixes the SET too, and the set is
     // what a reset depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
+      // System. #3851: the Automatic server download select SystemSection
+      // renders; clearing it (`null`) restores `after-24h`.
+      'serverUpdateDownloadPolicy',
       // Station host
       'terminalShell',
       'mcpUiHost',

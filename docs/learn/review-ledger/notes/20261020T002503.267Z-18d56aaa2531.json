@@ -1,0 +1,7 @@
+{
+  "revision": "7151a30401bbe8526415e0dec265b55194314688",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked against the container build-context fix: .dockerignore now admits packaging/licenses/ and the Dockerfile build stage copies it so the server build can copy Cedar's LICENSE/NOTICE. This document makes no claim about the build context, packaging/ contents, or license material, so its claims are unchanged.","inputs":["docs/guides/self-hosted-broker.md","Dockerfile"]}
+  ]
+}

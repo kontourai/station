@@ -1,5 +1,11 @@
+import type { InvocationTerminalRead } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { advanceOpenTurnId } from './session-lifecycle-service.js';
+import {
+  advanceOpenTurnId,
+  nextTurnIdentityAnchor,
+  type TurnIdentityAnchor,
+} from './session-lifecycle-service.js';
+import type { InputlessTurnDisposition } from './session-turn-boundary.js';
 
 /**
  * #3160: the wait behind `wait_session`.
@@ -29,6 +35,12 @@ export interface SessionTurnWaitPorts {
   headSequence(threadId: string): number;
   /** Whether the live coordinator holds a turn the log has not shown yet. */
   coordinatorBusy(threadId: string): boolean;
+  readInputlessTurnDisposition?(threadId: string): InputlessTurnDisposition;
+  readInvocationTerminal?(
+    threadId: string,
+    invocationId: string,
+    providerTurnId?: string,
+  ): InvocationTerminalRead;
   /**
    * Call `listener` whenever an event is appended to this Session's log;
    * returns the unsubscribe. The wait re-reads the log on each call, so the
@@ -40,6 +52,7 @@ export interface SessionTurnWaitPorts {
 export interface SessionSettledTurn {
   readonly turnId?: string;
   readonly sequence: number;
+  readonly invocationId?: string;
   readonly outcome: 'completed' | 'aborted' | 'error' | 'exited';
 }
 
@@ -72,7 +85,11 @@ const SETTLE_OUTCOME: Record<string, SessionSettledTurn['outcome']> = {
 export function evaluateSessionWait(
   ports: Pick<
     SessionTurnWaitPorts,
-    'foldEvents' | 'headSequence' | 'coordinatorBusy'
+    | 'foldEvents'
+    | 'headSequence'
+    | 'coordinatorBusy'
+    | 'readInvocationTerminal'
+    | 'readInputlessTurnDisposition'
   >,
   threadId: string,
   until: SessionWaitUntil,
@@ -84,17 +101,64 @@ export function evaluateSessionWait(
     events.at(-1)?.sequence ?? 0,
   );
   let open: string | undefined;
+  let invocationId: string | undefined;
+  let anchor: TurnIdentityAnchor | undefined;
   let settled: SessionSettledTurn | undefined;
   for (const { sequence, event } of events) {
     const before = open;
-    open = advanceOpenTurnId(open, event);
-    if (before !== undefined && open === undefined && sequence > cursor) {
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
+    if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
+    let settledInvocation = invocationId;
+    const ordinary =
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      ) &&
+      (event.turnId !== undefined || event.invocationId !== undefined);
+    if (
+      before !== undefined &&
+      ordinary &&
+      (invocationId !== undefined || event.invocationId !== undefined)
+    ) {
+      const proofInvocation = invocationId ?? event.invocationId;
+      const read =
+        proofInvocation === undefined
+          ? undefined
+          : ports.readInvocationTerminal?.(threadId, proofInvocation, before);
+      if (
+        read?.kind === 'found' &&
+        read.fact.terminalEventId === event.eventId
+      ) {
+        open = undefined;
+        settledInvocation = read.fact.invocationId;
+      } else open = before;
+    }
+    const canAcknowledge =
+      settledInvocation !== undefined ||
+      !ordinary ||
+      ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless';
+    if (
+      before !== undefined &&
+      open === undefined &&
+      sequence > cursor &&
+      canAcknowledge
+    ) {
       settled = {
         ...(before ? { turnId: before } : {}),
+        ...(settledInvocation === undefined
+          ? {}
+          : { invocationId: settledInvocation }),
         sequence,
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };
     }
+    if (event.method === 'turn.started' && !retainedStart)
+      invocationId = event.invocationId;
+    else if (open === undefined) invocationId = undefined;
+    anchor = nextAnchor;
   }
   const busy = open !== undefined || ports.coordinatorBusy(threadId);
   const view: SessionWaitState = {

@@ -6,6 +6,7 @@ import type { KeyboardShortcut } from '../contexts/KeyboardShortcutsContext';
 // namespace to a human label. Unmapped ids fall back to "Other".
 const CATEGORY_LABELS: Record<string, string> = {
   app: 'General',
+  plugin: 'Plugins',
   'command-palette': 'General',
   nav: 'Navigation',
   dock: 'Chat & dock',
@@ -14,7 +15,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 // Friendly display order; categories not listed here sort alphabetically after
 // these, so unknown namespaces still render deterministically (not by Map order).
-const CATEGORY_ORDER = ['General', 'Navigation', 'Chat & dock', 'Appearance'];
+const CATEGORY_ORDER = [
+  'General',
+  'Navigation',
+  'Chat & dock',
+  'Appearance',
+  'Plugins',
+];
 
 export function categoryLabel(id: string): string {
   const prefix = id.includes('.') ? id.slice(0, id.indexOf('.')) : id;

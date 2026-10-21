@@ -46,7 +46,7 @@ export interface AttachUserInputToTaskAdapter extends TaskPickerAdapter {
 }
 
 function answerSuccess(task: TaskPickerTask) {
-  return `Answer reference added to Task “${task.title}”.`;
+  return `Answer added to Task “${task.title}”.`;
 }
 
 /** Adds an exact completed assistant turn to an explicitly selected Task. */
@@ -65,9 +65,9 @@ export function AttachAnswerToTaskButton({
     <TaskPicker
       target={{ sessionId, turnId }}
       triggerLabel="Add to Task"
-      triggerAriaLabel={`Add this answer to a Task (turn ${turnId})`}
-      dialogTitle="Add answer to Task"
-      eyebrow="Answer reference"
+      triggerAriaLabel="Add to Task: answer"
+      dialogTitle="Add to Task"
+      eyebrow="Add to Task"
       projectId={projectId}
       adapter={adapter}
       onNewTask={(source) =>
@@ -172,8 +172,9 @@ export function AttachUserInputToTaskButton({
   return (
     <TaskPicker
       target={{ sessionId, eventId }}
-      triggerLabel="Add input to Task"
-      dialogTitle="Add input to Task"
+      triggerLabel="Add to Task"
+      triggerAriaLabel="Add to Task: message"
+      dialogTitle="Add to Task"
       eyebrow="Pinned input"
       projectId={projectId}
       adapter={adapter}

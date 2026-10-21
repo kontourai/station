@@ -40,9 +40,10 @@ directory by `linkWorkspacePackages`), so the root importer in the lock holds a
 the package other than through its exported entry points.
 
 `packages/supervisor` is declared in both workspace lists as well. It is
-private, has no dependencies, and nothing depends on it yet, so its lock
-importer is empty and no other importer links it. The server build bundles it
-into a self-contained `dist-server/station-supervisor.js`.
+private and has no dependencies, so its own lock importer is empty. The root
+links it as a development dependency for the core's public supervisor protocol
+import. The server build bundles it into a self-contained
+`dist-server/station-supervisor.js`.
 
 Preserve the managed `dependencies:*` entry points. They bootstrap the exact
 pnpm pin, force an inert install, inspect all installed lifecycle packages,

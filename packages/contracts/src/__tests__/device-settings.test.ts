@@ -182,6 +182,9 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // surface-visibility flags read this to decide whether the
         // Developer and Monitoring surfaces are advertised at all.
         'developerToolsEnabled',
+        'experimentalFlowEnabled',
+        'experimentalReadinessEnabled',
+        'experimentalTrustEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.

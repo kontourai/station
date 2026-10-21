@@ -162,7 +162,43 @@
 
     "src-ui/src/hooks/__tests__/useLayoutSessionPanels.test.tsx",
 
-    "src-ui/src/lib/__tests__/layout-panels-record.test.ts"
+    "src-ui/src/lib/__tests__/layout-panels-record.test.ts",
+
+    "src-ui/src/components/chat/SubagentTranscriptCard.tsx",
+
+    "src-ui/src/components/chat/SubagentTranscriptCard.css",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.css",
+
+    "src-ui/src/components/chat-dock/backgroundTaskRows.tsx",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.css",
+
+    "src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx",
+
+    "src-ui/src/components/chat/ChildWorkIdentity.tsx",
+
+    "src-ui/src/components/chat/ChildWorkIdentity.css",
+
+    "src-ui/src/components/chat/ChildWorkActivity.tsx",
+
+    "src-ui/src/components/chat/ChildWorkActivity.css",
+
+    "src-ui/src/utils/child-work-display.ts",
+
+    "src-ui/src/contexts/background-tasks-store.ts",
+
+    "src-server/providers/adapters/claude-adapter-child-work.ts",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/session-event-reads.ts",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"
   ],
 
   "checks": [

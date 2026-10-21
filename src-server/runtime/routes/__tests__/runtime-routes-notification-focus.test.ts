@@ -17,8 +17,12 @@ import type {
   FocusSource,
   InAppLiveness,
 } from '../../../services/notifications/delivery/router.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { orchestrationStreamPresenceSubjectForSession } from '../../../services/orchestration/orchestration-stream-presence.js';
+import { wireTurnCompletionNotifications } from '../../../services/orchestration/turn-completion-notifications.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
+import { wireNotificationDelivery } from '../notification-delivery-wiring.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const captured = vi.hoisted(() => ({
@@ -170,6 +174,8 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     expect(delivery?.inAppLiveness).toBeDefined();
     return {
       app,
+      homeDir,
+      pairing,
       browser,
       browserDeviceId: pairing.identifyDevice(browser.credential)!.id,
       focus: delivery!.focus!,
@@ -273,5 +279,175 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     await vi.waitFor(() => expect(liveness.isLive(surface)).toBe(true));
     focused.abort();
     await vi.waitFor(() => expect(liveness.isLive(surface)).toBe(false));
+  });
+
+  /**
+   * The live-instance failure: the desktop app signs in with a credential
+   * minted by the local grant (home-possession). Its requests — the focus
+   * report included — resolve to the operator, so delivery must read its
+   * surface as the operator's too, or its own focus is discarded and its
+   * own feed alerts for the turn the user is watching.
+   */
+  function pairDevice(
+    pairing: DevicePairingService,
+    name: string,
+    options: { localGrant?: boolean; tailnetLogin?: string } = {},
+  ) {
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: DEFAULT_GRANT_PAIRING_SCOPE,
+      kind: 'device',
+    });
+    const base = {
+      requesterPosition: 'off-box' as const,
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: name,
+    };
+    const request = options.tailnetLogin
+      ? pairing.requestPairing({
+          ...base,
+          source: 'tailnet',
+          requester: {
+            provider: 'tailscale-serve',
+            login: options.tailnetLogin,
+          },
+        })
+      : pairing.requestPairing(base);
+    pairing.confirmRequest(
+      request.requestId,
+      options.localGrant
+        ? { kind: 'local-grant' }
+        : { kind: 'presented-credential' },
+      options.tailnetLogin
+        ? { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'verified-ingress' }
+        : undefined,
+    );
+    return pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+      ...(options.localGrant
+        ? {
+            locality: 'home-possession' as const,
+            mintKind: 'local-grant' as const,
+          }
+        : {}),
+    });
+  }
+
+  test('a focused local-grant desktop with a live stream gets no OS alert for a turn ending, quiets the owner phone, not a family member', async () => {
+    const { app, homeDir, pairing, focus, liveness } = await setup();
+    const desktop = pairDevice(pairing, 'desktop app', { localGrant: true });
+    const phone = pairDevice(pairing, 'owner phone');
+    const family = pairDevice(pairing, 'housemate phone', {
+      tailnetLogin: 'housemate@github',
+    });
+    for (const paired of [phone, family])
+      pairing.setPushSubscription(paired.device.id, {
+        endpoint: `https://push.example.test/${paired.device.id}`,
+        keys: {
+          p256dh: `p-${paired.device.id}`,
+          auth: `a-${paired.device.id}`,
+        },
+      });
+    const surface = `device:${desktop.device.id}` as const;
+    const headers = {
+      Authorization: `Bearer ${desktop.credential}`,
+      'X-Station-Client-Session': TAB,
+    };
+
+    const controller = new AbortController();
+    streams.push(controller);
+    const stream = await app.request(
+      '/events',
+      { headers, signal: controller.signal },
+      LOOPBACK,
+    );
+    expect(stream.status).toBe(200);
+    const report = await app.request(
+      FOCUS_PRESENCE_REPORT_PATH,
+      {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          clientSessionId: TAB,
+          state: 'focused',
+          seq: 1,
+        }),
+      },
+      LOOPBACK,
+    );
+    expect(report.status).toBe(204);
+    await vi.waitFor(() => expect(liveness.isLive(surface)).toBe(true));
+    // The focus route recorded the desktop under the operator, as every
+    // route resolves its credential.
+    expect(
+      focus.snapshotForPrincipals([LOCAL_OPERATOR_PRINCIPAL_ID]).get(surface),
+    ).toMatchObject({
+      state: 'focused',
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+
+    // The real producer and the real delivery composition, on one bus.
+    const producerWarn = vi.fn();
+    const bus = new EventBus();
+    const notifications = new NotificationService(
+      bus,
+      makeTempDir('station-notification-focus-records-'),
+      999_999,
+    );
+    const send = vi.fn().mockResolvedValue('sent');
+    const delivery = wireNotificationDelivery({
+      enabled: true,
+      homeDir,
+      eventBus: bus,
+      logger: { warn: vi.fn() },
+      devicePairing: pairing,
+      webPushService: { send },
+      canUserReadSession: () => true,
+      getNotification: (id) => notifications.get(id),
+      focus,
+      inAppLiveness: liveness,
+    });
+    // The desktop host polls its feed, which registers the surface.
+    delivery.desktopHostChannel!.read(surface, 0);
+    wireTurnCompletionNotifications(
+      bus,
+      {
+        isReadOnlyAttachedSession: () => false,
+        isEphemeralSession: () => false,
+        resolveSessionPresenceSubject: () =>
+          orchestrationStreamPresenceSubjectForSession('owner-1'),
+      },
+      notifications,
+      { warn: producerWarn },
+    );
+    await notifications.start();
+    const turn = {
+      createdAt: new Date().toISOString(),
+      provider: 'claude',
+      threadId: 'thread-watched',
+      turnId: 'turn-1',
+    };
+    bus.emit('orchestration:event', {
+      event: { ...turn, method: 'turn.started', prompt: 'go' },
+    });
+    bus.emit('orchestration:event', {
+      event: { ...turn, method: 'turn.completed', finishReason: 'stop' },
+    });
+    await notifications.drainAsyncDispatch();
+    expect(producerWarn).not.toHaveBeenCalled();
+    expect(await notifications.list()).toHaveLength(1);
+
+    // The family member's phone is its own person: it is interrupted.
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0]![0]).toMatchObject({
+      endpoint: `https://push.example.test/${family.device.id}`,
+    });
+    // Neither the watched desktop's own feed nor the owner's phone is.
+    expect(delivery.desktopHostChannel!.read(surface, 0).entries).toEqual([]);
+    await notifications.shutdown();
+    delivery.router.stop();
   });
 });

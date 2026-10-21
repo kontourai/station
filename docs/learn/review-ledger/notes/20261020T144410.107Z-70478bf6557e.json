@@ -1,0 +1,7 @@
+{
+  "revision": "c7cdfef9b0d14c663a5a20f2612b0c9698af2d49",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 fix round: added the start-time provenance check (findUnaccountedCodexConfig, called in startReservedSession before spawn for every non-host start/resume/fork/adoption) against the temp-staging plant; untracked root .codex refused; nested-repository and non-git residual; F2 checked-in root .codex may grant extra writes (accepted); F3 network not in posture (pre-existing). Contract comment for confinement_workspace_incompatible matches. Live-checked with codex-cli 0.162.1 macOS.","inputs":["docs/design/approval-posture-server-ordered.md","packages/contracts/src/execution-confinement.ts","src-server/providers/adapters/codex-confinement.ts"]}
+  ]
+}

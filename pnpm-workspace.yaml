@@ -8,6 +8,7 @@ packages:
   - packages/connect
   - packages/telemetry-broker
   - packages/monument
+  - packages/agent-runtime
   - packages/supervisor
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
@@ -38,6 +39,8 @@ pmOnFail: ignore
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 overrides:
+  '@changesets/cli>launch-editor': 2.14.2
+  '@kontourai/survey>@modelcontextprotocol/server': 2.3.1
   http-cache-semantics: 4.3.0
   '@modelcontextprotocol/client': 2.3.1
   '@modelcontextprotocol/sdk': 1.32.1
@@ -48,6 +51,7 @@ overrides:
   '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
   axios: ^1.20.0
+  axios>follow-redirects: 1.16.1
   express-rate-limit: ^8.3.1
   fast-uri: ^3.1.8
   form-data: ^4.0.6

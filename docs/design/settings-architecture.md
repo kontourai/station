@@ -79,6 +79,44 @@ sound choices open under **Notification sounds** and still save and preview on
 this device. These presentation changes do not change settings persistence,
 permissions, or runtime defaults.
 
+Scope indicators use short **Account**, **This device**, and **Station** pills.
+Account and Station pills use quiet theme tints; the written label carries the
+meaning. Account means this person’s preferences on the connected Station, not
+cross-Station cloud sync. Scope details are available on hover. Reset actions
+sit with value controls, separate from the scope label; boolean preferences use
+only their on/off switch. Font size uses its own
+single reset in both account and device modes. The mixed personal/device
+group no longer repeats a paragraph explaining storage. Experimental switches
+have their own **Developer previews** heading and spacing within Developer tools.
+On phones, toggle labels and scope pills have the full row width; the description
+and compact switch sit beneath them.
+
+## Experimental project tools
+
+Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
+and Trust preview switches. All three default off on each device; enabling
+Developer tools alone enables none of them. Disabling it withdraws previews
+without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
+and chat remain available. Pane discovery omits disabled previews, and restored
+or direct Flow console renderers show an off state before reading Flow data.
+The Trust evidence setting also leaves Settings search and the command palette
+until Trust is enabled. These are UI gates, not authorization or backend feature
+switches; stored evidence and server configuration remain intact. Withdrawing a
+preview removes that pane while preserving unrelated panes, grouping and the
+selection of a retained pane.
+
+Host options retain their editable settings. **Host diagnostics** is a collapsed,
+on-demand troubleshooting disclosure; build provenance is also under **Build
+details**. Settings does not request the host-status report until one of those
+disclosures is opened. Setting source information opens in a responsive dialog
+rather than
+a viewport-dependent popover. It no longer occupies a separate mobile row.
+Closing it leaves the Settings location unchanged and returns focus to its trigger.
+
+The [launch triage](settings-launch-triage.md) records the complete Settings
+inventory, value questions, and remaining qualification work. It is not a claim
+that every listed option has passed a live workflow.
+
 ## Account preferences and device settings
 
 Personal display choices now belong to the authenticated person on this Station:
@@ -127,7 +165,7 @@ General → Your account. It copies only portable choices that remain unset unde
 the server's mutation lock. It keeps the old device record and never imports
 execution permissions, grants, hardware selection or geometry. Device reset
 excludes account preferences while an account is active. Per-setting resets
-use **Use default** to remove the account value and use the registry default,
+use **Reset** beside the control to remove the account value and use the registry default,
 including both fields of Answer delivery. Approval defaults offer **Use inherited
 default**, which resumes the Agent → Station → engine chain.
 
@@ -230,8 +268,15 @@ feature flags (env-derived ones shown **read-only with provenance**, e.g.
 Storage: `<STATION_HOME>/config/app.json`, typed contract at the route
 boundary. One instance = one settings document; every client sees the same values.
 
-Per-publisher product-telemetry choices also use S1. Settings shows effective
-DNT/disclosure status alongside the stored choice, and resets preserve those
+Usage sharing also uses S1. Privacy & sharing has one primary choice for both
+built-in destinations: Don't share (`off`), Anonymous usage counts (`lite`), or
+Detailed usage to help improve Station (`full`). Independent destination choices
+and delivery details remain under a collapsed Advanced section, whose mounted
+rows preserve canonical deep links. Detailed selection shows the server-owned
+included fields; Save acknowledges each configured destination's displayed
+revision before storing Full. Kontour additionally binds its acknowledgement to
+the displayed build address. Importing a setting never acknowledges unseen
+fields. Do Not Track status uses the shared callout, and resets preserve saved
 choices. Telemetry destinations and SecretBinding references also use S1. Product
 observations need their own disclosure; operator metrics/traces use a separate
 collector configuration. Saved references require explicit instance destination
@@ -309,11 +354,18 @@ permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
 The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work in one compact row. A collapsed workspace map puts these utilities
+live work in one compact row. In the desktop app, a desktop-update control sits
+above that row while an update is available, downloading or ready to install
+(#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
 in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
 no longer appear in Appearance; existing device values remain compatible.
-Customize opens Agents, Skills, Connections, and Plugins at their existing
-routes. Developer joins that chooser when enabled. The footer replaces its
+Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
+at their existing routes. Developer joins that chooser, before Settings, when
+enabled. Settings stays reachable from the footer gear, its keyboard shortcut
+and the command palette. The Appearance page owns light/dark mode, the color
+theme, its flavor and its accent; Settings' Appearance topic keeps the mode
+toggle, the phone-only haptics row, and Theme and Accent color rows that link
+to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings
@@ -487,6 +539,8 @@ One rule, everywhere a setting is edited:
   same rule for their own multi-field server documents. This never applies
   to S3 device settings — nothing in that scope round-trips to the server —
   or to a single S1/S2 field edited in isolation.
+Telemetry publisher choices in the Station draft are saved in separate requests before other settings. Each successful publisher write advances its saved baseline even if a later request fails. The error reports a partial save, and retry sends only unsaved choices. Optional reasons compare the draft with the saved tier; Cancel or Escape restores the prior draft without writing.
+
 - Rule of thumb when adding a new setting: if the write is one field with no
   cross-field validation dependency, save immediately; if committing that one
   field mid-edit could leave a larger document half-intended, batch it behind

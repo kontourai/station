@@ -195,6 +195,8 @@ async function respondToQuotaRead(
   process.stdout.write(`${JSON.stringify({ id: '2', result: payload })}\n`);
 }
 
+const makeSessionWorkspace = trackTempDirs();
+
 async function startQuotaSession(options: {
   adapter: CodexAdapter;
   connectionId: string;
@@ -205,6 +207,7 @@ async function startQuotaSession(options: {
   const session = options.adapter.startSession({
     provider: 'codex',
     threadId: options.threadId,
+    cwd: makeSessionWorkspace('codex-quota-workspace-'),
     modelId: 'gpt-5-codex',
     metadata: { connectionId: options.connectionId },
     ...(options.credentialProfileRef
@@ -428,6 +431,68 @@ describe('CodexAdapter', () => {
     expect(snapshot?.credits).toBeUndefined();
   });
 
+  test.each([
+    {
+      id: 'primary',
+      primary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+      secondary: null,
+    },
+    {
+      id: 'secondary',
+      primary: null,
+      secondary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+    },
+    {
+      id: 'primary',
+      primary: { usedPercent: 94, windowDurationMins: null, resetsAt: null },
+      secondary: null,
+    },
+  ])(
+    'reads nullable native quota windows without inventing allowance ($id)',
+    async ({ id, primary, secondary }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '2', result: { rateLimits: { primary, secondary, credits: { hasCredits: false, unlimited: false, balance: null } } } })}\n`,
+      );
+      const result = await read;
+      expect(result.kind).toBe('snapshot');
+      if (result.kind !== 'snapshot')
+        throw new Error('Expected native quota snapshot');
+      expect(result.snapshot.windows).toHaveLength(1);
+      expect(result.snapshot.windows[0]).toMatchObject({ id, usedPercent: 94 });
+      expect(result.snapshot.credits?.value).toEqual({
+        hasCredits: false,
+        unlimited: false,
+      });
+      const window = primary ?? secondary;
+      if (window?.resetsAt === null) {
+        expect(result.snapshot.windows[0]).not.toHaveProperty('resetsAt');
+        expect(result.snapshot.windows[0]?.resetDeadlineAt).toBeUndefined();
+        expect(result.snapshot.windows[0]).not.toHaveProperty(
+          'windowDurationMins',
+        );
+      }
+      await adapter.stopAll();
+    },
+  );
+
   test('returns provider-error when the quota transport fails', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({ processFactory: () => processHandle! });
@@ -478,7 +543,7 @@ describe('CodexAdapter', () => {
       null,
       42,
       { rateLimits: null },
-      { rateLimits: { primary: null } },
+      { rateLimits: { primary: [] } },
       { rateLimits: { secondary: 42 } },
     ]) {
       expect(() =>
@@ -496,7 +561,7 @@ describe('CodexAdapter', () => {
     });
     for (const [process, payload] of [
       [first, { rateLimits: null }],
-      [second, { rateLimits: { primary: null } }],
+      [second, { rateLimits: { primary: [] } }],
     ] as const) {
       const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
       await flushIo();
@@ -1493,6 +1558,7 @@ describe('CodexAdapter', () => {
   test.each(['home', 'profile'] as const)(
     'a native return refuses a changed %s before starting another Codex process',
     async (changed) => {
+      const cwd = makeSessionWorkspace('codex-binding-workspace-');
       let home = '/profiles/original';
       let profileRef = 'original';
       processHandle = new FakeCodexProcess();
@@ -1506,6 +1572,7 @@ describe('CodexAdapter', () => {
         const source = adapter.startSession({
           provider: 'codex',
           threadId: 'binding-source',
+          cwd,
         });
         await flushIo();
         processHandle.stdout.write(
@@ -1528,14 +1595,19 @@ describe('CodexAdapter', () => {
           }
         }
         if (!bindingKey) throw new Error('No observed source binding');
-        await adapter.stopSession('binding-source');
         if (changed === 'home') home = '/profiles/replacement';
         else profileRef = 'replacement';
+        expect(adapter.preparedTurnBinding('binding-source')).toMatchObject({
+          bindingKey,
+          nativeIdentity: { sessionId: 'native-source' },
+        });
+        await adapter.stopSession('binding-source');
         const invocations = processFactory.mock.calls.length;
         await expect(
           adapter.startSession({
             provider: 'codex',
             threadId: 'binding-return',
+            cwd,
             resumeCursor: { codexThreadId: 'native-source' },
             requireNativeResumeIdentity: true,
             nativeResumeBindingKey: bindingKey,
@@ -1569,6 +1641,7 @@ describe('CodexAdapter', () => {
       const started = adapter.startSession({
         provider: 'codex',
         threadId: 'strict-resume',
+        cwd: makeSessionWorkspace('codex-resume-workspace-'),
         resumeCursor: { codexThreadId: 'native-original' },
         requireNativeResumeIdentity: true,
       });
@@ -4314,6 +4387,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-3',
+      cwd: makeSessionWorkspace('codex-json-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-3', {
@@ -4358,6 +4432,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-failed-start',
+      cwd: makeSessionWorkspace('codex-failed-start-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-failed-start', {
@@ -4631,6 +4706,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-4',
+      cwd: makeSessionWorkspace('codex-approval-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-4', {
@@ -4740,10 +4816,10 @@ describe('CodexAdapter', () => {
     const threadStart = processHandle.stdin.lines
       .map(parseLine)
       .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).toMatchObject({
-      approvalPolicy: 'untrusted',
-      sandbox: 'workspace-write',
-    });
+    expect(threadStart.params).toMatchObject({ approvalPolicy: 'untrusted' });
+    // #3800: outside a host session workspace-write is the permission
+    // profile the spawn selects; a mode would replace it.
+    expect(threadStart.params).not.toHaveProperty('sandbox');
 
     // First turn carries no override — omit knobs so the thread keeps the
     // engine/session policy rather than resetting to Station's old Never
@@ -5040,10 +5116,9 @@ describe('CodexAdapter', () => {
           confinement,
           resume,
         );
-        expect(request?.params).toMatchObject({
-          approvalPolicy: 'never',
-          sandbox: 'workspace-write',
-        });
+        // #3800: the workspace sandbox is the spawn's permission profile.
+        expect(request?.params).toMatchObject({ approvalPolicy: 'never' });
+        expect(request?.params).not.toHaveProperty('sandbox');
         expect(configured.metadata).toMatchObject({
           sandbox: 'workspace-write',
           approvalMode: 'never',
@@ -5384,6 +5459,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'configured-profile-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
         }),
       ).rejects.toThrow(
         'Credential profile environment could not be prepared.',
@@ -5469,6 +5545,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'thread-profile-ref-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
           credentialProfileRef: 'canary-profile-ref',
         }),
       ).rejects.toThrow(

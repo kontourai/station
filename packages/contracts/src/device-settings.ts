@@ -365,10 +365,14 @@ export interface DeviceSettings {
   /**
    * archive#3313: show the Developer surface (logs, system, telemetry,
    * memory, archive) in this device's sidebar and command palette. Gates
-   * navigation advertisement only — /developer deep links keep working when
-   * off. Never had a prior key: Developer was previously always visible.
+   * navigation advertisement and access to independently opted-in UI previews;
+   * /developer deep links keep working when off. Never had a prior key: Developer was previously always visible.
    */
   developerToolsEnabled: boolean;
+  /** Developer-only UI previews, independently opted in on this device. */
+  experimentalFlowEnabled?: boolean;
+  experimentalReadinessEnabled?: boolean;
+  experimentalTrustEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -1030,11 +1034,38 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Enable developer tools',
-    help: 'The Developer surface appears in your sidebar and command palette.',
+    help: 'Show Developer navigation and the opt-ins for experimental project tools.',
     description:
-      'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette in your interface. Deep links to /developer keep working either way.',
+      'Show Developer navigation and independent opt-ins for experimental Flow delivery, Veritas readiness, and Trust tools on this device. Deep links to /developer keep working either way.',
     // archive#3313: developer surfaces are opt-in; which navigation entries a
     // device shows is that device's preference, with account scope while signed in.
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalFlowEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Flow delivery preview',
+    help: 'Opt in to experimental Flow delivery plans and setup tools in Coding.',
+    description: 'Track delivery plans, gates, and evidence in Coding.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalReadinessEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Veritas readiness preview',
+    help: 'Opt in to experimental Veritas readiness and setup tools in Coding.',
+    description: 'Show workspace readiness checks and setup tools in Coding.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalTrustEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Trust preview',
+    help: 'Opt in to experimental Trust panels and evidence-import settings.',
+    description: 'Show project evidence panels and Trust settings.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1182,6 +1213,9 @@ export const PREFERENCE_DEVICE_KEYS = [
   'hapticsEnabled',
   'openLastStationOnLaunch',
   'developerToolsEnabled',
+  'experimentalFlowEnabled',
+  'experimentalReadinessEnabled',
+  'experimentalTrustEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

@@ -1,0 +1,9 @@
+{
+  "revision": "2dc0adfd6b4809d4d3f3d34ca6e60bfa9a5835af",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"native-platform-boundary.mjs's lexer now decodes TOML 1.1 \\xHH and whitespace-before-newline continuations, refuses escapes TOML does not define, and ends JSON5 comments and continuations at every line terminator; the document's least-privilege claims still hold.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Added that publish-release runs its policy from the default branch, so republishing or a break-glass pointer repair for a tag signed before the version-binding rule is refused at the assemble step before any upload, and rebuilding such a tag reuses its own older signing script.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}
