@@ -306,16 +306,23 @@ for not sent and may-have-reached, and caution-coloured for a send with no
 answer. An assistant row with nothing to draw renders no bubble: the streaming
 row appears with its first text, reasoning or tool row (the pill carries the
 starting state before that) and eases in, and a settled row whose only content
-is reasoning keeps a collapsed **Reasoning · N words** disclosure. The pill's state changes animate its width with
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
+ended with nothing to draw (its reasoning hidden by the reader) keeps its row
+as one line, **No reply** or **Stopped**, with its footer. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line
-and a queued steer's "Waiting for tools to finish" use the same running rule
-as the tool rows, so a call waiting on approval never reads as running in one
-place and not another. A running batch keeps one summary row
-("4 commands · 3 done", past tense only once every call settled) and shows each
-running call on its own row beneath it, at most two and then "+N more", with
-its elapsed time after ten seconds. Reduced motion disables the highlight and
+use the same running rule as the tool rows, so a call waiting on approval
+never reads as running in one place and not another. A queued steer's
+"Waiting for tools to finish" reads the server's record of the open turn's
+running calls, the same fact the status pill reads, so the two agree after a
+reload. A running batch keeps one summary row ("4 commands · 3 done", where
+"done" counts calls that finished successfully, past tense only once every
+call settled) and shows each running call on its own row beneath it, at most
+two and then "+N more", with its elapsed time after ten seconds; a single
+running call shows it too. The elapsed time holds its column from the start,
+so its appearing never widens the card. A call is shown running only inside
+the turn the server reports open. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
 On a phone, a settled answer shows its tool work as one row. Every call from
@@ -829,7 +836,8 @@ stay beside the composer, while Project and file context remain in their owning
 surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
 Working chats are the first rows of the dock's
-keyboard-operable More menu; their count rides the inbox toggle. On mobile, the title is one line with assistant context beneath it. The direct
+keyboard-operable More menu; their count rides the inbox toggle, and is the
+number of inbox rows that say Running. On mobile, the title is one line with assistant context beneath it. The direct
 Project control retains its New chats caption: it sets future chat context,
 not the current conversation’s binding. Moving that control into Chat actions
 remains an unimplemented proposal requiring a product-contract decision.
