@@ -74,7 +74,7 @@ export type TaskLearningRefusal =
   | { readonly kind: 'not-a-candidate' }
   | { readonly kind: 'was-dismissed' }
   | { readonly kind: 'no-store' }
-  | { readonly kind: 'invalid'; readonly message: string }
+  | { readonly kind: 'invalid'; readonly field: 'title' | 'text' }
   | { readonly kind: 'stale' }
   | { readonly kind: 'store-failed'; readonly error: unknown };
 
@@ -253,15 +253,9 @@ export async function promoteTaskLearning(
   const title = promotion.title.trim();
   const body = promotion.text.trim();
   if (!title || title.length > TASK_LEARNING_LIMITS.titleChars)
-    return {
-      kind: 'invalid',
-      message: `The title must be 1 to ${TASK_LEARNING_LIMITS.titleChars} characters.`,
-    };
+    return { kind: 'invalid', field: 'title' };
   if (!body || body.length > TASK_LEARNING_LIMITS.bodyChars)
-    return {
-      kind: 'invalid',
-      message: `The text must be 1 to ${TASK_LEARNING_LIMITS.bodyChars} characters.`,
-    };
+    return { kind: 'invalid', field: 'text' };
   const found = candidateFor(access, promotion);
   if (found.kind !== 'candidate') return found;
   const { record } = found;

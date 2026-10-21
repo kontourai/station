@@ -17,6 +17,7 @@
 import type { KnowledgeStoreProvider } from '@kontourai/station-contracts/knowledge-store';
 import {
   TASK_LEARNING_KINDS,
+  TASK_LEARNING_LIMITS,
   TASK_RECORD_KEY_PATTERN,
 } from '@kontourai/station-contracts/task-memory';
 import { type Context, Hono } from 'hono';
@@ -100,15 +101,20 @@ function refusal(c: Context, refused: TaskLearningRefusal) {
         },
         409,
       );
-    case 'invalid':
+    case 'invalid': {
+      const limit =
+        refused.field === 'title'
+          ? TASK_LEARNING_LIMITS.titleChars
+          : TASK_LEARNING_LIMITS.bodyChars;
       return c.json(
         {
           success: false,
           code: 'task_learning_invalid',
-          error: refused.message,
+          error: `The ${refused.field} must be 1 to ${limit} characters. Nothing was written.`,
         },
         400,
       );
+    }
     case 'stale':
       return c.json({ success: false, error: 'Task not found' }, 404);
     case 'store-failed':

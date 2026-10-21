@@ -602,7 +602,7 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     );
   });
 
-  test('a version that is no longer current is refused', async () => {
+  test('a version that is no longer current, or blank text, is refused', async () => {
     const e = await setup();
     const { taskId } = await e.closedTaskWithLessons();
     const root = await e.createProjectStore();
@@ -620,6 +620,24 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     );
     expect(refused.status).toBe(409);
     expect(refused.json.code).toBe('task_learning_not_a_candidate');
+    // Blank text is refused with a sentence, before any write.
+    const blank = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      {
+        kind: 'decision',
+        key: 'storage-engine',
+        version: 1,
+        rootId: root.id,
+        title: 'Storage',
+        text: '   ',
+      },
+    );
+    expect(blank.status).toBe(400);
+    expect(blank.json).toMatchObject({
+      code: 'task_learning_invalid',
+      error: 'The text must be 1 to 4000 characters. Nothing was written.',
+    });
     expect(
       await (await e.knowledge.adapterFor(root.id)).listByType('raw'),
     ).toEqual([]);
