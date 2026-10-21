@@ -50,9 +50,13 @@ approved lifecycle/native checks and the PTY handshake passed. The installed
 package's 367 inspected artifact files match the verified tarball. Managed
 installation does not establish supported group execution or provider acceptance.
 
-Brian authorized the upstream Flow Agents work. Station consumes the published
-contract rather than sibling internals. The upstream release and the single
-Station epic PR have separate acceptance evidence.
+The published 9.3.0 pin and managed installation were explicitly authorized.
+Subsequent rounds, renewal and accounting work followed the agent's assessment
+of contract gaps; issue requirements and that assessment do not establish blanket
+authorization for every new primitive. Brian requested an independent scope and
+product-ownership audit. Station consumes published contracts rather than
+sibling internals, and the upstream release and single Station epic PR have
+separate acceptance evidence.
 
 Before implementing group execution, bind the published authority and
 persistence contracts for create/get/list/events/cancel, ready seats, aggregate
@@ -97,6 +101,24 @@ Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
 acceptance obligations. Closed-as-batched is not implemented. In particular,
 permission posture, envelope authority, context ACKs, team presets, and topology
 inspection need their own real producer and caller evidence.
+
+## Scope and delivery priority after audit
+
+The independent scope audit found real published contract gaps and broadly
+appropriate product boundaries, but identified production adoption as the main
+unfinished work. Station's group runtime still refuses runtime resolution,
+invocation and request execution. More isolated framework tests cannot complete
+that path. Preserve the existing candidates and fail-closed behavior; hold
+upstream publication and generalized authority migration until a concrete
+Station consumer demonstrates the necessary contract changes.
+
+The next increment must connect one real authenticated preparation, member
+session, reserved invocation and durable output/event projection. A sealed,
+no-tools API pilot is progress, not a substitute for the original cross-family,
+peer/SSH lineage, elicitation, retry/reconnect and actual-session ACK obligations.
+Keep the full epic and one-final-Station-PR rule intact. Reconcile changed
+contracts and actual readiness failures without expanding into unrelated stale
+document cleanup or resetting the freshness baseline.
 
 ## Production adoption sequence
 
