@@ -38,6 +38,7 @@ import {
   SkeletonBlock,
   SkeletonList,
 } from '../components/state';
+import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
@@ -193,7 +194,17 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
+  const { apiBase } = useApiBase();
+  const [selectedTab, selectTab] = useState<{
+    identity: string;
+    tab: string;
+  } | null>(null);
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
+  const tabIdentity = JSON.stringify([apiBase, taskId, graph?.task.createdAt]);
+  const setTab = useCallback(
+    (tab: string) => selectTab({ identity: tabIdentity, tab }),
+    [tabIdentity],
+  );
   const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;
     isLoading: boolean;
@@ -224,6 +235,7 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
+  const tab = selectedTab?.identity === tabIdentity ? selectedTab.tab : 'Chat';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -242,6 +254,8 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           graph={graph}
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
+          tab={tab}
+          setTab={setTab}
         />
       </ProjectTaskRoomProvider>
     </>
@@ -373,13 +387,16 @@ function TaskWorkspaceContent({
   graph,
   projectSlug,
   projectId,
+  tab,
+  setTab,
 }: {
   taskId: string;
   graph: TaskGraph;
   projectSlug: string;
   projectId: string;
+  tab: string;
+  setTab: (tab: string) => void;
 }) {
-  const [tab, setTab] = useState('Chat');
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
@@ -422,7 +439,7 @@ function TaskWorkspaceContent({
             }
           : null,
       ),
-    [],
+    [setTab],
   );
   const [outputPromotion, setOutputPromotion] =
     useState<TaskOutputPromotion | null>(null);

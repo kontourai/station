@@ -330,7 +330,7 @@ function render(
 }
 
 function openAnswerDetails() {
-  fireEvent.click(screen.getByRole('tab', { name: /^Results/ }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
   fireEvent.click(screen.getByText('Answer details', { selector: 'summary' }));
 }
 
@@ -1311,7 +1311,13 @@ describe('TaskWorkspaceView', () => {
     await waitFor(() => expect(request).toHaveBeenCalled());
     await act(async () => {});
     fireEvent.click(open);
-    expect(await screen.findByTestId('task-basis-pane')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByTestId('task-basis-pane')
+          .find((pane) => pane.textContent?.includes('basis:task-answer:')),
+      ).toBeTruthy(),
+    );
     expect(screen.queryByRole('dialog', { name: 'Basis' })).toBeNull();
     Object.defineProperty(window.navigator, 'locks', {
       configurable: true,
@@ -1819,6 +1825,36 @@ describe('TaskWorkspaceView', () => {
     });
   });
 
+  test('retains the selected tab across a Project reload only for the same Task incarnation', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    const settledProjects = projectsResult;
+    projectsResult = { data: undefined, isLoading: true, refetch: vi.fn() };
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.getByRole('status', { name: 'Loading task workspace' }),
+    ).toBeTruthy();
+    projectsResult = settledProjects;
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    queryResult = {
+      ...queryResult,
+      data: {
+        ...queryResult.data,
+        task: {
+          ...queryResult.data.task,
+          createdAt: '2026-10-21T00:00:00.000Z',
+        },
+      },
+    };
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+
   test('renders loading, error, and Task 404 states', () => {
     queryResult = { data: undefined, isLoading: true, refetch: vi.fn() };
     const { rerender } = render(<TaskWorkspaceView taskId="task-alpha" />);
@@ -2178,8 +2214,10 @@ describe('TaskWorkspaceView', () => {
       name: 'Pinned inputs',
     });
     expect(
-      within(details).queryByRole('region', { name: 'Answer details' }),
-    ).toBeNull();
+      within(details).getByText(
+        'Add a completed assistant answer to this Task to reopen it here.',
+      ),
+    ).toBeTruthy();
     expect(inputs.textContent).toContain(
       'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
     );
