@@ -1604,6 +1604,43 @@ normal request authentication runs first. See the
 
 ---
 
+## Ensemble preparation observations
+
+`POST /api/orchestration/ensembles/prepare` is a local preparation diagnostic, not a
+launch operation. The route belongs to `orchestration:operate` and additionally
+requires the current local operator on a personal Station. Remote, hosted, Agent
+and device authority do not qualify for this caller. Current request authority is
+rechecked around asynchronous resolution and immediately before the login probe.
+
+The closed JSON request contains `path`, `expectedPresetHash` (`sha256:` followed
+by 64 lowercase hex digits), `brief` and `bindings`. Each binding is keyed by a
+preset member ID and contains `{agent, projectSlug}`. The server supplies the
+current Environment and resolves the receiver-owned Agent, engine connection,
+credential-profile selection and canonical shared Project folder. Preset bytes
+must match the supplied digest. Connections are read without model discovery;
+unknown readiness remains unknown. Ordinary execution still requires ready status.
+
+For supported Claude/Codex contexts without model-option discovery, the adapter
+runs a bounded, uncached login-status command using the selected executable,
+workspace and connection/profile environment. The returned observation contains
+`state`, an opaque `contextHash`, `checkedAt`, `modelEntitlement: "not-checked"`
+and `outputTokenLimitFidelity: "unavailable"`. It contains no CLI output or
+credential value. Identity, profile, folder or preset changes refuse the result.
+
+The current production caller always refuses bounded-group preparation: login
+alone establishes neither selected-model entitlement nor native output-token
+limits. It stops at the first unsupported member and issues no complete prepared
+snapshot, session or provider turn. API engines and presets requiring option or
+reasoning catalog discovery are unsupported in this caller.
+
+Responses use `{success:false,code,error?,observation?}`: invalid schema returns
+400, missing local-operator authority returns 403, and preparation refusals return
+422. Codes distinguish stale preset, unsupported workspace/authentication/options,
+changed context, unverified login and unavailable execution guarantees. Generic
+errors return `ensemble_preparation_refused` without exposing preset contents or
+credential paths. See the [service](../../src-server/services/orchestration/ensemble-execution-context.ts)
+and [route](../../src-server/routes/orchestration/ensemble-preparation.ts).
+
 ## Orchestration model launch behavior
 
 Installed [Skill experiences](skill-experiences.md) use this same foreground

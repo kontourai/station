@@ -90,10 +90,15 @@ envelope generation, task/session, client turn, provider turn and actual invocat
 Admission must cover every physical model request, including retries, rather than wrapping an
 entire `delegateTask` call as one Relay invocation.
 
-Actual-context authentication remains a concrete missing host implementation. Preparation must
-bind the exact executable, environment, credential profile, principal, workspace and model/options
-that launch will consume. Catalog readiness or credential-file presence cannot mint a successful
-authentication receipt. A snapshot must be revalidated at launch and at subsequent effects.
+A local production preparation caller now consumes fresh login observations bound to executable,
+connection/profile environment, receiver-owned Agent profile pin, workspace, principal and model.
+Its inventory does not discover models or invent ready status. Request authority and context are
+rechecked around the probe. At `49c27af63cad55b55e28c26e176b797a77645769`, the implementer
+reports 306 focused passes, focused typechecking and two compiling mutation catches with exact
+restoration; independent review is pending. The caller stops at the first unsupported guarantee
+and returns a refusal, not a complete prepared snapshot. API engines and option/reasoning catalog
+discovery are unsupported. Real credential/model entitlement, launch-time context consumption and
+subsequent effect enforcement still need implementation and evidence.
 
 Published Relay 0.7.1 Codex and Claude Code runtimes declare output-token limiting unavailable;
 the upstream execution bridge requires a native limit and refuses these bindings. Do not relabel
