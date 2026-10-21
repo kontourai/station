@@ -30,6 +30,7 @@ import type { ConversationMessage } from '@kontourai/station-shared/conversation
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
+import type { ConversationContextSeedPin } from './conversation-handoff-module.js';
 import {
   type ConversationHistoryPage,
   type ConversationHistoryReadService,
@@ -48,6 +49,8 @@ import { conversationTitle } from './session-query-module.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
+const CONTINUATION_TRANSCRIPT_HEADING =
+  'Prior conversation transcript (context only, not a new request; provider-native state is not carried).';
 
 /**
  * Read-only companion to resolveConversationContinuation. It intentionally
@@ -310,22 +313,28 @@ export class ConversationLineage {
       );
     }
     const handoff = store.conversationHandoffForSession(current.sessionId);
-    if (handoff?.nativeReturnSourceSessionId) {
+    if (
+      handoff &&
+      (handoff.contextSeed ||
+        store.conversationContextBoundaryForSuccessor(current.sessionId)
+          ?.policy !== 'empty-next-cold-start')
+    ) {
       const delivery = await this.readConversationHandoffStatus(
         conversationId,
         handoff.idempotencyKey,
         authority,
       );
-      // An accepted native start does not establish delivery of its catch-up.
+      // An accepted Session start does not establish delivery of its seed.
       // Ordinary reuse must not turn a failed or uncertain seeded turn into a
       // continuation that silently forgets the intervening conversation.
       const completed = handoff.contextSeed
         ? delivery?.contextDelivery?.status === 'completed' &&
-          delivery.nativeResumeIdentity === 'matched'
+          (!handoff.nativeReturnSourceSessionId ||
+            delivery.nativeResumeIdentity === 'matched')
         : delivery?.status === 'completed';
       if (!completed) {
         throw new Error(
-          'Native-return context delivery has not completed. Reconcile the handoff before continuing.',
+          `${handoff.nativeReturnSourceSessionId ? 'Native-return' : 'Handoff'} context delivery has not completed. Reconcile the handoff before continuing.`,
         );
       }
     }
@@ -739,30 +748,25 @@ export class ConversationLineage {
           'The native return acceptance boundary changed; no replacement activation was started.',
         );
       }
-      if (nativeReturn) {
+      if (contextBoundary?.policy !== 'empty-next-cold-start') {
         if (!existing.contextSeed)
           throw new Error(
-            'This legacy native-return reservation has no pinned context; reconcile it before dispatch.',
+            'This legacy handoff reservation has no pinned context; reconcile it before dispatch.',
           );
         for (const cutoff of existing.contextSeed.sourceCutoffs) {
           if (!(await this.deps.readSession(cutoff.sessionId, authority)))
             throw new Error(
-              'The reserved native-return context is no longer authorized.',
+              'The reserved handoff context is no longer authorized.',
             );
         }
       }
       return {
         ...store.describeConversationHandoff(existing, 'existing'),
         ...(contextBoundary ? { contextBoundary } : {}),
-        ...(nativeReturn
-          ? { ...nativeReturn, transcriptSeed: existing.contextSeed!.text }
-          : handoffTranscriptContext(
-              contextBoundary,
-              this.readConversationTranscriptMessages(
-                conversationId,
-                authority,
-              ),
-            )),
+        ...(nativeReturn ?? {}),
+        ...(contextBoundary?.policy !== 'empty-next-cold-start'
+          ? { transcriptSeed: existing.contextSeed!.text }
+          : {}),
       };
     }
     const lineage = store.conversationSessions(conversationId);
@@ -812,6 +816,14 @@ export class ConversationLineage {
           detail.session.cwd,
         )
       : undefined;
+    const transcriptContext =
+      nativeReturn ??
+      (await this.handoffTranscriptContext(
+        conversationId,
+        authority,
+        predecessor.sessionId,
+        boundary ? projectConversationContextBoundary(boundary) : undefined,
+      ));
     const reservation = store.reserveConversationHandoff({
       conversationId,
       predecessorSessionId: predecessor.sessionId,
@@ -824,8 +836,10 @@ export class ConversationLineage {
         ? {
             nativeReturnSourceSessionId: nativeReturn.sourceSessionId,
             nativeReturnSourceEventId: nativeReturn.sourceEventId,
-            contextSeed: nativeReturn.contextSeed,
           }
+        : {}),
+      ...(transcriptContext.contextSeed
+        ? { contextSeed: transcriptContext.contextSeed }
         : {}),
       targetAgentId: target.agentId,
       ...(target.executionAgentId
@@ -846,11 +860,7 @@ export class ConversationLineage {
       ...(boundary
         ? { contextBoundary: projectConversationContextBoundary(boundary) }
         : {}),
-      ...(nativeReturn ??
-        handoffTranscriptContext(
-          boundary ? projectConversationContextBoundary(boundary) : undefined,
-          this.readConversationTranscriptMessages(conversationId, authority),
-        )),
+      ...transcriptContext,
     };
   }
 
@@ -969,9 +979,58 @@ export class ConversationLineage {
       );
     if (invalidated) return undefined;
     const sources = lineage.slice(index + 1, throughIndex + 1);
+    const contextSeed = await this.captureTranscriptContext(
+      sources,
+      authority,
+      'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+    );
+    return {
+      sourceSessionId,
+      sourceEventId: terminal.eventId,
+      resumeCursor: source.session.resumeCursor,
+      nativeResumeBindingKey: key,
+      transcriptSeed: contextSeed.text,
+      contextSeed,
+    };
+  }
+
+  private async handoffTranscriptContext(
+    conversationId: string,
+    authority: SessionReadScope,
+    throughSessionId: string,
+    boundary: ConversationContextBoundaryProjection | undefined,
+  ): Promise<{
+    transcriptSeed?: string;
+    contextSeed?: ConversationContextSeedPin;
+  }> {
+    if (boundary?.policy === 'empty-next-cold-start') return {};
+    if (
+      boundary &&
+      !['reserved', 'failed', 'consumed'].includes(boundary.status)
+    )
+      throw new Error('The conversation context boundary is not dispatchable.');
+    const lineage = this.deps.eventStore!.conversationSessions(conversationId);
+    const throughIndex = lineage.findIndex(
+      (entry) => entry.sessionId === throughSessionId,
+    );
+    if (throughIndex < 0)
+      throw new Error('Conversation context source was not found.');
+    const contextSeed = await this.captureTranscriptContext(
+      lineage.slice(0, throughIndex + 1),
+      authority,
+      CONTINUATION_TRANSCRIPT_HEADING,
+    );
+    return { transcriptSeed: contextSeed.text, contextSeed };
+  }
+
+  private async captureTranscriptContext(
+    sources: readonly { readonly sessionId: string }[],
+    authority: SessionReadScope,
+    heading: string,
+  ): Promise<ConversationContextSeedPin> {
     for (const entry of sources) {
       if (!(await this.deps.readSession(entry.sessionId, authority)))
-        throw new Error('Native-return context is not authorized.');
+        throw new Error('Conversation context is not authorized.');
     }
     const sourceCutoffs = sources.map((entry) => ({
       sessionId: entry.sessionId,
@@ -985,27 +1044,19 @@ export class ConversationLineage {
     );
     const seedSource = transcriptSeedSource(messages);
     const seed = buildTranscriptSeed({
-      heading:
-        'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+      heading,
       ...seedSource,
     });
     return {
-      sourceSessionId,
-      sourceEventId: terminal.eventId,
-      resumeCursor: source.session.resumeCursor,
-      nativeResumeBindingKey: key,
-      transcriptSeed: seed.text,
-      contextSeed: {
-        text: seed.text,
-        seedDigest: crypto.createHash('sha256').update(seed.text).digest('hex'),
-        sourceCutoffs,
-        omission: {
-          totalMessages: seed.totalMessages,
-          includedMessages: seed.includedMessages,
-          omittedMessages: seed.omittedMessages,
-          newestShortened: seed.newestShortened,
-          nonTextMessages: seedSource.nonTextMessages,
-        },
+      text: seed.text,
+      seedDigest: crypto.createHash('sha256').update(seed.text).digest('hex'),
+      sourceCutoffs,
+      omission: {
+        totalMessages: seed.totalMessages,
+        includedMessages: seed.includedMessages,
+        omittedMessages: seed.omittedMessages,
+        newestShortened: seed.newestShortened,
+        nonTextMessages: seedSource.nonTextMessages,
       },
     };
   }
@@ -1211,7 +1262,8 @@ export class ConversationLineage {
               omission: marker.contextSeed.omission,
               status: contextDeliveryStatus,
               ...(contextDeliveryStatus === 'completed' &&
-              nativeResumeIdentity === 'matched' &&
+              (!marker.nativeReturnSourceSessionId ||
+                nativeResumeIdentity === 'matched') &&
               marker.contextSeed.omission.omittedMessages === 0 &&
               !marker.contextSeed.omission.newestShortened
                 ? { acceptedTextThrough: marker.contextSeed.sourceCutoffs }
@@ -1556,27 +1608,6 @@ function executionMetadata(
 }
 
 /**
- * A handoff never carries a provider cursor.  A context boundary narrows the
- * remaining safe retry states: after an accepted start, the exact handoff
- * turn may still need its transcript seed; while a claim is ambiguous, it
- * must not be sent or reconstructed.
- */
-function handoffTranscriptContext(
-  boundary: ConversationContextBoundaryProjection | undefined,
-  messages: readonly ConversationMessage[],
-): { transcriptSeed?: string } {
-  if (boundary?.policy === 'empty-next-cold-start') return {};
-  if (
-    boundary &&
-    boundary.status !== 'reserved' &&
-    boundary.status !== 'failed' &&
-    boundary.status !== 'consumed'
-  )
-    return {};
-  return { transcriptSeed: continuationTranscriptSeed(messages) };
-}
-
-/**
  * Deterministic cross-engine fallback. It carries only the already-authorized
  * canonical conversation projection, as whole messages under the shared seed
  * budget (#3164); provider cursor state, tool state, approvals, and
@@ -1586,8 +1617,7 @@ function continuationTranscriptSeed(
   messages: readonly ConversationMessage[],
 ): string {
   return buildTranscriptSeed({
-    heading:
-      'Prior conversation transcript (context only, not a new request; provider-native state is not carried).',
+    heading: CONTINUATION_TRANSCRIPT_HEADING,
     ...transcriptSeedSource(messages),
   }).text;
 }

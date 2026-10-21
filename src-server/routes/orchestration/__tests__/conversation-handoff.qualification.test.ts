@@ -69,6 +69,7 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly turns: ProviderSendTurnInput[] = [];
   readonly stopped = new Set<string>();
   failNextNativeReturn = false;
+  failNextTranscriptSeed = false;
   private readonly nativeIds = new Map<string, string>();
   private readonly sessions = new Map<string, ProviderSession>();
 
@@ -196,16 +197,20 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
       prompt: input.displayInput ?? input.input,
     });
     if (
-      this.failNextNativeReturn &&
-      input.ambientContext?.includes('Conversation while this engine was away')
+      (this.failNextNativeReturn &&
+        input.ambientContext?.includes(
+          'Conversation while this engine was away',
+        )) ||
+      (this.failNextTranscriptSeed && input.ambientContext)
     ) {
       this.failNextNativeReturn = false;
+      this.failNextTranscriptSeed = false;
       this.events.push({
         ...base,
         eventId: `${turnId}:failed`,
         method: 'runtime.error',
         severity: 'error',
-        message: 'Scripted failure before processing the native-return seed.',
+        message: 'Scripted failure before processing the transcript seed.',
       });
       return { threadId: input.threadId, turnId };
     }
@@ -445,6 +450,14 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: false,
       missingSeedInvocation: true,
     },
+    {
+      label: 'Claude first handoff seed failure fences ordinary native reuse',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      failFirstHandoffSeed: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
     async ({
@@ -458,6 +471,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       raceContextReservation = false,
       restartBeforeReturnStart = false,
       missingSeedInvocation = false,
+      failFirstHandoffSeed = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -771,6 +785,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           agent: targetRef,
         },
       };
+      targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed;
       const handoff = await post(
         `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
         handoffBody,
@@ -788,6 +803,32 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           };
         };
       };
+      if (failFirstHandoffSeed) {
+        try {
+          await eventually(async () => {
+            expect(
+              (
+                await service.readConversationHandoffStatus(
+                  conversationId,
+                  idempotencyKey,
+                  INTERNAL_SESSION_READ_SCOPE,
+                )
+              )?.status,
+            ).toBe('failed');
+          });
+          await expect(
+            execute(target, {
+              conversationId,
+              message: 'Continue after the first handoff seed failed.',
+            }),
+          ).rejects.toThrow(/handoff.*context|context.*handoff/i);
+          expect(targetAdapter.turns).toHaveLength(1);
+        } finally {
+          await service.shutdown();
+          store.close();
+        }
+        return;
+      }
       expect(handoffReceipt.data.handoff).toMatchObject({
         predecessorSessionId: conversationId,
         currentSessionId: handoffReceipt.data.sessionId,

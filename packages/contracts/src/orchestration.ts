@@ -1540,7 +1540,7 @@ export interface ConversationHandoffStatusProjection {
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
-  /** A pinned native-return catch-up, not proof of provider transcript retention. */
+  /** A pinned handoff seed, not proof of provider transcript retention. */
   contextDelivery?: ConversationContextSeedReceipt & {
     status: ConversationHandoffEffectStatus;
     /** Complete text projection only; omitted/shortened history is never acknowledged. */
