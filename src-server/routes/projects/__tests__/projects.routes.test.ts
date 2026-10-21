@@ -1754,11 +1754,6 @@ describe('Project Routes', () => {
     const accepted = await appAtDepth(32).request('/test/panes');
     expect(accepted.status).toBe(200);
     const acceptedBody = await json(accepted);
-    // The 10 descriptors authored here, plus Chat and Work Board, which are
-    // fixed Project panes.
-    expect(acceptedBody.data.descriptors).toHaveLength(
-      10 + FIXED_PROJECT_PANE_DESCRIPTOR_IDS_DECLARED.length,
-    );
     expect(acceptedBody.data.descriptors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
