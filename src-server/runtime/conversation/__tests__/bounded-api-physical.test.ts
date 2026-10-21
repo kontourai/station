@@ -27,6 +27,7 @@ import {
   issueAuthorizedTurnCorrelationHandoff,
   parseAuthorizedTurnCorrelation,
 } from '../authorized-turn-correlation.js';
+import { runWithModelInvocationCancellation } from '../bounded-api-model.js';
 import { boundedApiTransport } from '../bounded-api-transport.js';
 import {
   BoundedApiExecutionUnavailableError,
@@ -207,6 +208,41 @@ async function cancelStartedStrandsStream(agent: IAgent) {
   physical.mockClear();
 }
 
+async function cancelPendingStrandsStream(agent: IAgent) {
+  const peer = await new StrandsFramework().createTempAgent({
+    name: 'independent-stream',
+    instructions: 'Answer briefly.',
+    tools: [],
+    model: new VercelModel({ provider: installedModel() }),
+  });
+  const result = await agent.streamText('Hi');
+  const other = await peer.streamText('Independent');
+  const iterator = result.fullStream[Symbol.asyncIterator]();
+  expect((await iterator.next()).value).toMatchObject({ type: 'start' });
+  expect((await iterator.next()).value).toMatchObject({ type: 'start-step' });
+  const next = iterator.next();
+  const closing = iterator.return?.();
+  const values = await Promise.all([
+    result.text,
+    result.finishReason,
+    result.usage,
+  ]);
+  expect(await closing).toMatchObject({ done: true });
+  expect(await next).toMatchObject({ done: true });
+  expect(values).toEqual(['', 'cancelled', undefined]);
+  await drain(other.fullStream);
+  expect(await other.text).toBe('OK');
+  expect(await other.usage).toMatchObject({
+    promptTokens: 3,
+    completionTokens: 1,
+  });
+  expect(physical).toHaveBeenCalledTimes(1);
+  const body = String(physical.mock.calls[0]?.[1]?.body);
+  expect(body).toContain('Independent');
+  expect(body).not.toContain('"content":"Hi"');
+  physical.mockClear();
+}
+
 async function rejectUnstartedStrandsStream(agent: IAgent) {
   const result = await runWithRequiredBoundedApiTurn(() =>
     agent.streamText('Hi'),
@@ -296,6 +332,29 @@ test.each(['anthropic', 'google', 'openai-compat'] as const)(
   },
 );
 
+test('cached installed model rechecks per-invocation cancellation at final fetch after SDK awaits without cancelling its peer', async () => {
+  const model = installedModel();
+  const stopped = new AbortController();
+  const peer = new AbortController();
+  const cancelled = runWithModelInvocationCancellation(stopped.signal, () =>
+    model.doGenerate(calls),
+  );
+  const allowed = runWithModelInvocationCancellation(peer.signal, () =>
+    model.doGenerate(calls),
+  );
+  stopped.abort();
+  await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+  expect((await allowed).content).toContainEqual({ type: 'text', text: 'OK' });
+  expect(physical).toHaveBeenCalledTimes(1);
+  expect(physical.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+  physical.mockClear();
+  expect((await model.doGenerate(calls)).content).toContainEqual({
+    type: 'text',
+    text: 'OK',
+  });
+  expect(physical.mock.calls[0]?.[1]?.signal).toBeUndefined();
+});
+
 test('a model created while required cannot escape into an unbound invocation', async () => {
   const model = runWithRequiredBoundedApiTurn(installedModel);
   await expect(async () => model.doGenerate(calls)).rejects.toBeInstanceOf(
@@ -346,6 +405,7 @@ test.each(['volt', 'strands'] as const)(
       ]);
       await rejectUnstartedStrandsStream(agent);
       await cancelStartedStrandsStream(agent);
+      await cancelPendingStrandsStream(agent);
     }
     if ('raw' in agent && agent.raw instanceof Agent) {
       const raw = agent.raw;
@@ -399,6 +459,7 @@ test.each(['volt', 'strands'] as const)(
       ]);
       await rejectUnstartedStrandsStream(bundle.agent);
       await cancelStartedStrandsStream(bundle.agent);
+      await cancelPendingStrandsStream(bundle.agent);
     }
     if ('raw' in bundle.agent && bundle.agent.raw instanceof Agent) {
       const raw = bundle.agent.raw;

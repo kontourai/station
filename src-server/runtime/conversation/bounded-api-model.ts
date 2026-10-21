@@ -1,7 +1,22 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   assertBoundedApiExecutionAvailable,
   currentBoundedApiTurnCompanion,
 } from './bounded-api-turn-grant.js';
+
+const invocationCancellation = new AsyncLocalStorage<AbortSignal>();
+
+/** Local invocation cancellation only; this context grants no model or budget authority. */
+export function runWithModelInvocationCancellation<T>(
+  signal: AbortSignal,
+  work: () => T,
+): T {
+  return invocationCancellation.run(signal, work);
+}
+
+export function currentModelInvocationCancellation(): AbortSignal | undefined {
+  return invocationCancellation.getStore();
+}
 
 const EFFECT_METHODS = new Set([
   'invoke',
@@ -25,9 +40,11 @@ export function guardBoundedApiModel<T extends object>(model: T): T {
         return value.bind(target);
       }
       return (...args: unknown[]) => {
+        currentModelInvocationCancellation()?.throwIfAborted();
         assertBoundedApiExecutionAvailable(`model.${key}`, captured);
         if (key === 'stream') {
           return (async function* () {
+            currentModelInvocationCancellation()?.throwIfAborted();
             assertBoundedApiExecutionAvailable(
               'model.stream iteration',
               captured,

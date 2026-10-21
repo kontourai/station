@@ -39,7 +39,10 @@ import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
-import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
+import {
+  guardBoundedApiModel,
+  runWithModelInvocationCancellation,
+} from '../conversation/bounded-api-model.js';
 import {
   assertBoundedApiExecutionAvailable,
   currentBoundedApiTurnCompanion,
@@ -351,7 +354,14 @@ class StrandsAgentWrapper implements IAgent {
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
     // object — archive#1834 rounds 3-4); see invocationOptions.
-    const invokeOptions = this.invocationOptions(_options);
+    const cancellation = new AbortController();
+    const invocationSignal = _options?.signal
+      ? AbortSignal.any([_options.signal, cancellation.signal])
+      : cancellation.signal;
+    const invokeOptions = this.invocationOptions({
+      ..._options,
+      signal: invocationSignal,
+    });
     const agent = this.strandsAgent;
     let resolveUsage: (u: any) => void;
     let resolveFinish: (r: string) => void;
@@ -456,19 +466,56 @@ class StrandsAgentWrapper implements IAgent {
     }
 
     const iterator = streamGenerator();
+    const done: IteratorResult<IStreamChunk> = { done: true, value: undefined };
+    let closePending!: (result: IteratorResult<IStreamChunk>) => void;
+    const closed = new Promise<IteratorResult<IStreamChunk>>((resolve) => {
+      closePending = resolve;
+    });
     const fullStream: AsyncIterableIterator<IStreamChunk> = {
       [Symbol.asyncIterator]() {
         return this;
       },
-      next: () => iterator.next(),
+      next: () =>
+        Promise.race([
+          closed,
+          runWithModelInvocationCancellation(invocationSignal, async () => {
+            // Let a synchronous consumer return close the invocation before SDK work begins.
+            await Promise.resolve();
+            if (cancellation.signal.aborted) return done;
+            try {
+              const result = await iterator.next();
+              return cancellation.signal.aborted ? done : result;
+            } catch (error) {
+              if (cancellation.signal.aborted) return done;
+              throw error;
+            }
+          }),
+        ]),
       // Returning an unstarted generator never enters its finally block.
       return: (value) => {
+        cancellation.abort();
+        closePending(done);
         settle(fullText, 'cancelled', undefined);
-        return iterator.return(value);
+        void iterator.return(value).catch((error) =>
+          logger.warn('Strands iterator cleanup failed after cancellation', {
+            error,
+          }),
+        );
+        return Promise.resolve({ done: true, value });
       },
       throw: (error) => {
+        cancellation.abort();
+        closePending(done);
         settle(fullText, 'error', undefined);
-        return iterator.throw(error);
+        void iterator
+          .return(undefined)
+          .catch((cleanupError) =>
+            logger.warn(
+              'Strands iterator cleanup failed after consumer error',
+              { error: cleanupError },
+            ),
+          );
+        return Promise.reject(error);
       },
     };
 

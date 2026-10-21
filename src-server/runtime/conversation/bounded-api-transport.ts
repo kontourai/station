@@ -1,3 +1,4 @@
+import { currentModelInvocationCancellation } from './bounded-api-model.js';
 import {
   assertBoundedApiExecutionAvailable,
   currentBoundedApiTurnCompanion,
@@ -8,6 +9,14 @@ export function boundedApiTransport(): typeof fetch {
   const captured = currentBoundedApiTurnCompanion();
   return (input, init) => {
     assertBoundedApiExecutionAvailable('provider fetch', captured);
-    return fetch(input, init);
+    const cancellation = currentModelInvocationCancellation();
+    if (!cancellation) return fetch(input, init);
+    const upstreamSignal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    const signal = upstreamSignal
+      ? AbortSignal.any([upstreamSignal, cancellation])
+      : cancellation;
+    signal.throwIfAborted();
+    return fetch(input, { ...init, signal });
   };
 }
