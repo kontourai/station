@@ -62,7 +62,8 @@ nothing else, so a working-directory ask and a plan-mode refusal were skipped.
 On ACP, no staged-evaluator allow (a `toolGrant`, a pattern match or a
 guardian allow) answers a request addressed to a person
 (`toolRequestNeedsPerson`: a plan exit by `switch_mode` kind or
-`ExitPlanMode`, `AskUserQuestion`, `SandboxNetworkAccess`). ACP reports no
+`ExitPlanMode`, Cursor's plan review `cursor/create_plan`, `AskUserQuestion`,
+`SandboxNetworkAccess`). ACP reports no
 other escalation signal, so there a guardian allow still answers every other
 call. A session answer to an ACP plan exit is
 an `accept` and mints no Station session grant. Its response mapper prefers
@@ -73,6 +74,8 @@ session option. In a delegated child that cannot grant approvals
 (`delegation.denyApprovals`), a request either adapter would otherwise open is
 denied at once with the staged evaluator's `delegation_deny_approvals` denial,
 since nobody could answer it. That includes a question from such a child.
+Cursor's `cursor/ask_question` and `cursor/create_plan` requests from such a
+child are answered at once with Cursor's `skipped` and `rejected` outcomes.
 Known `AskUserQuestion` callbacks are handled before those grants: answering
 a question requires content that passes the opened form (#3390) and never
 creates a session tool grant. This is a question interaction boundary, not a new consent floor

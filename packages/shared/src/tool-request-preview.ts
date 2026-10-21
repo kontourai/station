@@ -334,8 +334,10 @@ export type ClaudeAskReason = {
 /** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
 const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
 /**
- * Tools whose request gets no standing answer: a plan exit and a harness
- * question, which are addressed to a person, and Claude Code's sandbox
+ * Tools whose request gets no standing answer: a plan exit, Cursor's plan
+ * review (`cursor/create_plan`, which the ACP adapter publishes under that
+ * method name) and a harness question, which are addressed to a person,
+ * and Claude Code's sandbox
  * network ask (#2932; input `{host}`). The engine remembers an allowed host
  * for the session itself, and a Station grant on that tool would answer
  * every later host (see `toolRequestNeedsPerson`).
@@ -343,6 +345,7 @@ const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'askuserquestion',
   'sandboxnetworkaccess',
+  'cursor/createplan',
   ...PLAN_EXIT_TOOLS,
 ]);
 /**

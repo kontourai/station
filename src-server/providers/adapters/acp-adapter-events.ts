@@ -33,6 +33,11 @@ import type {
   ProviderSession,
 } from '../adapter-shape.js';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
+import {
+  type CursorTodo,
+  cursorTodosToPlanEntries,
+  foldCursorTodos,
+} from './acp-cursor-extensions.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
 import {
   type ParagraphBoundaryState,
@@ -61,6 +66,8 @@ export interface AcpMapperState {
     description: string;
     argumentHint?: string;
   }>;
+  /** Cursor's todo list, folded from `cursor/update_todos`. */
+  cursorTodos?: CursorTodo[];
   /**
    * Extension notifications retained during the in-flight turn window that
    * are bound (via `extensionNotificationBinding` — see
@@ -439,6 +446,22 @@ export function mapAcpExtensionNotification(
         notifications.shift();
       }
       ctx.state.turnErrorNotifications = notifications;
+    }
+  }
+  if (binding?.consumer === 'acp.cursor.todos' && ctx.state) {
+    const todos = foldCursorTodos(ctx.state.cursorTodos, params);
+    // A malformed or oversized update leaves the plan as it was.
+    if (todos) {
+      ctx.state.cursorTodos = todos;
+      ctx.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'acp',
+        threadId: ctx.session.threadId,
+        createdAt: new Date().toISOString(),
+        turnId: ctx.activeTurnId,
+        method: 'plan.updated',
+        entries: cursorTodosToPlanEntries(todos),
+      });
     }
   }
   if (binding?.consumer === 'acp.commands.available' && ctx.state) {
