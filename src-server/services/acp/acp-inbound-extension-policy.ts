@@ -107,9 +107,10 @@
  * *could* close over `getInternalApiToken()`, and a name-based predicate is
  * a poor barrier for that. Ranked honestly:
  *
- * 1. **The allowlist is empty, and filling it requires a reviewed code
- *    change.** This is the protection, and it is the same one that held
- *    before. Nothing is answerable out of the box.
+ * 1. **The allowlist is {@link REVIEWED_INBOUND_EXTENSION_REQUESTS}, and
+ *    extending it requires a reviewed code change.** This is the
+ *    protection. Its entries are requests addressed to a person, answered
+ *    with what that person decided; nothing else is answerable.
  * 2. **Both production call sites construct their own registry and share it
  *    with nobody** — the adapter (per session) and the probe (per
  *    connection). No reference escapes, so no route can add a handler at
@@ -125,14 +126,14 @@
  * the point: this predicate can only ever *deny*. It never grants, and it
  * never changes the default, which is already refusal. Over-matching costs a
  * reviewer conversation before an allowlist entry lands; under-matching
- * costs nothing today, because the allowlist is empty and every unlisted
- * method is refused anyway. It is a tripwire on the obvious vocabulary, not
- * a proof of completeness. Known misses, so nobody mistakes it for one:
- * `_vendor/session/refresh` (no credential word), `_vendor/getAPIToken` (the
- * camelCase splitter breaks at `t|A`, so `getAPIKey` matches but
- * `getAPIToken` does not), any non-English method name, and
- * `_x/session/bootstrap` — which could return a credential without naming
- * one. The protection is (1) and (2) above; this is a tripwire on top.
+ * costs nothing today, because the allowlist is a short reviewed table and
+ * every unlisted method is refused anyway. It is a tripwire on the obvious
+ * vocabulary, not a proof of completeness. Known misses, so nobody mistakes
+ * it for one: `_vendor/session/refresh` (no credential word),
+ * `_vendor/getAPIToken` (the camelCase splitter breaks at `t|A`, so
+ * `getAPIKey` matches but `getAPIToken` does not), any non-English method
+ * name, and `_x/session/bootstrap` — which could return a credential without
+ * naming one. The protection is (1) and (2) above; this is a tripwire on top.
  *
  * ### Why this module exists at all, given the SDK
  *
@@ -256,9 +257,42 @@ export class AcpCredentialBridgingRefusedError extends Error {
 }
 
 /**
+ * Who answers a reviewed inbound request. Vendor-scoped: each names one
+ * vendor's documented contract, never a cross-vendor meaning.
+ */
+export type AcpInboundExtensionRequestHandlerId =
+  | 'cursor.ask-question'
+  | 'cursor.create-plan';
+
+export interface AcpReviewedInboundExtensionRequest {
+  /** Exact method name; no prefix or namespace matching. */
+  readonly method: string;
+  readonly handler: AcpInboundExtensionRequestHandlerId;
+}
+
+/**
+ * Every inbound extension request Station answers. Cursor sends both without
+ * declaring them at `initialize`, so they are keyed by exact method name
+ * (ADR 0013: inbound requests are answered only through a reviewed entry).
+ * Only the chat adapter registers them; the availability probe has no person
+ * to ask and keeps an empty registry.
+ */
+export const REVIEWED_INBOUND_EXTENSION_REQUESTS: readonly AcpReviewedInboundExtensionRequest[] =
+  Object.freeze([
+    Object.freeze({
+      method: 'cursor/ask_question',
+      handler: 'cursor.ask-question' as const,
+    }),
+    Object.freeze({
+      method: 'cursor/create_plan',
+      handler: 'cursor.create-plan' as const,
+    }),
+  ]);
+
+/**
  * The only way an inbound agent→client extension request gets answered at
- * all. Empty by default and empty today: no method in the live ecosystem has
- * a reviewed Station handler.
+ * all. Empty by default; a caller registers entries from
+ * {@link REVIEWED_INBOUND_EXTENSION_REQUESTS}.
  */
 export class AcpInboundExtensionRegistry {
   private readonly handlers = new Map<string, AcpInboundExtensionHandler>();
