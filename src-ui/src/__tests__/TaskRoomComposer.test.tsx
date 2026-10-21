@@ -660,3 +660,103 @@ test('restoring an ordinary mention of a person cannot turn it into an agent req
   await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
   expect(mocks.agent).not.toHaveBeenCalled();
 });
+
+test('a second mounted room composer cannot overwrite another view’s uncertain operation', async () => {
+  mocks.agent.mockRejectedValueOnce(new Error('acknowledgement lost'));
+  const first = render(<TaskRoomComposer {...props} />);
+  const second = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(within(first.container).getByRole('textbox'), {
+    target: { value: '@researcher Preserve this exact operation' },
+  });
+  fireEvent.click(
+    within(first.container).getByRole('button', { name: 'Send to task room' }),
+  );
+  await within(first.container).findByText(
+    /Request acknowledgement is unavailable/,
+  );
+  const original = mocks.agent.mock.calls[0][0];
+  fireEvent.change(within(second.container).getByRole('textbox'), {
+    target: { value: 'A different unsent message' },
+  });
+  fireEvent.click(
+    within(second.container).getByRole('button', { name: 'Send to task room' }),
+  );
+  await act(async () => {});
+  expect(mocks.message).not.toHaveBeenCalled();
+  expect(
+    window.sessionStorage.getItem('station-task-room-draft-recovery-v1'),
+  ).toContain(original.operationId);
+});
+
+test('a refused retry does not erase the original unknown operation or unlock a replacement send', async () => {
+  mocks.agent
+    .mockRejectedValueOnce(new Error('lost'))
+    .mockResolvedValueOnce({ kind: 'refused', reason: 'conflict' });
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@researcher Keep original intent' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await screen.findByText(/Request acknowledgement is unavailable/);
+  const original = mocks.agent.mock.calls[0][0];
+  first.unmount();
+  const next = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same agent request' }),
+  );
+  await screen.findByText(/The original request remains unconfirmed/);
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  expect(mocks.agent.mock.calls[1][0]).toEqual(original);
+  next.unmount();
+  render(<TaskRoomComposer {...props} />);
+  expect(
+    screen.getByRole('region', { name: 'Saved Task draft' }).textContent,
+  ).toContain('unknown outcome');
+  expect(mocks.agent).toHaveBeenCalledTimes(2);
+});
+
+test.each([
+  'missing-operation',
+  'changed-recipient',
+  'changed-visible-prompt',
+  'unsupported-payload',
+  'duplicate-owner',
+  'over-capacity',
+])(
+  'a corrupt saved request (%s) refuses restoration without any new send',
+  async (corruption) => {
+    mocks.agent.mockRejectedValueOnce(new Error('unknown'));
+    const first = render(<TaskRoomComposer {...props} />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '@researcher Exact request' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+    await screen.findByText(/Request acknowledgement is unavailable/);
+    first.unmount();
+    const key = 'station-task-room-draft-recovery-v1';
+    const saved = JSON.parse(window.sessionStorage.getItem(key)!);
+    const record = saved.entries[0];
+    if (corruption === 'missing-operation')
+      delete record.unconfirmed.operationId;
+    if (corruption === 'changed-recipient') record.recipient.id = 'builder';
+    if (corruption === 'changed-visible-prompt')
+      record.draft = 'A different prompt';
+    if (corruption === 'unsupported-payload')
+      record.unconfirmed.model = { override: 'unexpected' };
+    if (corruption === 'duplicate-owner') saved.entries.push(record);
+    if (corruption === 'over-capacity')
+      saved.entries = Array.from({ length: 21 }, (_, index) => ({
+        ...record,
+        owner: `owner-${index}`,
+      }));
+    window.sessionStorage.setItem(key, JSON.stringify(saved));
+    render(<TaskRoomComposer {...props} />);
+    expect(
+      screen.queryByRole('button', { name: 'Restore saved draft' }),
+    ).toBeNull();
+    expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+    expect(mocks.agent).toHaveBeenCalledOnce();
+    expect(mocks.message).not.toHaveBeenCalled();
+  },
+);

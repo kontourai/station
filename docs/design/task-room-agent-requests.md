@@ -255,7 +255,11 @@ proof of failure. Agent retries preserve the original operation ID, recipient,
 prompt and context digest. Room-message retries preserve proposal ID, text and
 occurrence time; a new server-default timestamp would conflict with the original
 proposal. Saved operations are written before dispatch, and storage refusal
-prevents a new attempt. Explicit Discard removes only the local copy, not work
+prevents a new attempt. A refused retry leaves the original unknown operation
+locked and saved; refusal of a new attempt does not establish that an earlier
+attempt failed. Concurrent views compare their last saved snapshot before a
+write or removal, so a stale composer cannot overwrite newer uncertain intent.
+Explicit Discard removes only the local copy, not work
 that may already be running. Cancel keeps the saved copy.
 
 Recovery partitions include the saved Station connection, API origin, current

@@ -24,6 +24,7 @@ import {
   readTaskRoomDraft,
   removeTaskRoomDraft,
   saveTaskRoomDraft,
+  type TaskRoomDraftRecovery,
 } from './task-room-draft-recovery';
 import './TaskRoomComposer.css';
 
@@ -73,6 +74,18 @@ export function TaskRoomComposer({
       ])
     : undefined;
   const [recovery, setRecovery] = useState(() => recoveryAt(recoveryOwner));
+  const recoveryBaseline = useRef({
+    owner: recovery.owner,
+    saved: recovery.saved,
+  });
+  const persistRecovery = (saved: TaskRoomDraftRecovery) => {
+    if (recoveryBaseline.current.owner !== saved.owner)
+      throw new Error('Draft owner changed');
+    recoveryBaseline.current = {
+      owner: saved.owner,
+      saved: saveTaskRoomDraft(saved, recoveryBaseline.current.saved),
+    };
+  };
   const [recoveryError, setRecoveryError] = useState(false);
   const [showDiscardRecovery, setShowDiscardRecovery] = useState(false);
   const mounted = useRef(true);
@@ -131,6 +144,7 @@ export function TaskRoomComposer({
   const owner = JSON.stringify([
     scope?.apiBase,
     scope?.authorityKey,
+    projectSlug,
     taskId,
     taskCreatedAt,
   ]);
@@ -147,7 +161,8 @@ export function TaskRoomComposer({
     )
       return false;
     try {
-      removeTaskRoomDraft(recoveryOwner);
+      removeTaskRoomDraft(recoveryOwner, recoveryBaseline.current.saved);
+      recoveryBaseline.current = { owner: recoveryOwner, saved: undefined };
       setRecovery({ owner: recoveryOwner, saved: undefined, error: false });
       setDraft('');
       setRecipient(undefined);
@@ -171,8 +186,11 @@ export function TaskRoomComposer({
   );
   useLayoutEffect(() => {
     if (recovery.owner !== recoveryOwner) {
-      if (!draft && !recipient && !unconfirmed && !unconfirmedMessage)
-        setRecovery(recoveryAt(recoveryOwner));
+      if (!draft && !recipient && !unconfirmed && !unconfirmedMessage) {
+        const next = recoveryAt(recoveryOwner);
+        recoveryBaseline.current = { owner: next.owner, saved: next.saved };
+        setRecovery(next);
+      }
       return;
     }
     if (
@@ -184,15 +202,21 @@ export function TaskRoomComposer({
     )
       return;
     try {
-      saveTaskRoomDraft({
+      recoveryBaseline.current = {
         owner: recoveryOwner,
-        draft,
-        recipient,
-        leadingPerson,
-        includeBrief,
-        unconfirmed,
-        unconfirmedMessage,
-      });
+        saved: saveTaskRoomDraft(
+          {
+            owner: recoveryOwner,
+            draft,
+            recipient,
+            leadingPerson,
+            includeBrief,
+            unconfirmed,
+            unconfirmedMessage,
+          },
+          recoveryBaseline.current.saved,
+        ),
+      };
       setRecoveryError(false);
     } catch {
       setRecoveryError(true);
@@ -373,7 +397,7 @@ export function TaskRoomComposer({
         );
         if (options.isError || !currentRecipient) {
           setNotice(
-            'This agent is unavailable. The request has been kept; nothing was sent.',
+            'This agent is unavailable. The request has been kept; no new attempt was sent.',
           );
           return;
         }
@@ -425,10 +449,13 @@ export function TaskRoomComposer({
           return;
         }
         try {
-          saveTaskRoomDraft({
+          persistRecovery({
             owner: recoveryOwner,
             draft,
-            recipient: selectedRecipient,
+            recipient: {
+              id: selectedRecipient.id,
+              name: selectedRecipient.name,
+            },
             leadingPerson,
             includeBrief,
             unconfirmed: input,
@@ -440,7 +467,10 @@ export function TaskRoomComposer({
           );
           return;
         }
-        setRecipient(selectedRecipient);
+        setRecipient({
+          id: selectedRecipient.id,
+          name: selectedRecipient.name,
+        });
         setUnconfirmed(input);
         try {
           const outcome = await request.mutateAsync(input);
@@ -462,9 +492,11 @@ export function TaskRoomComposer({
                 : 'Agent request recorded. Execution is not confirmed.',
             );
           } else {
-            setUnconfirmed(undefined);
+            if (!unconfirmed) setUnconfirmed(undefined);
             setNotice(
-              `Agent request refused: ${outcome.reason}. Draft retained.`,
+              unconfirmed
+                ? `Retry refused: ${outcome.reason}. The original request remains unconfirmed.`
+                : `Agent request refused: ${outcome.reason}. Draft retained.`,
             );
           }
         } catch (error) {
@@ -501,7 +533,7 @@ export function TaskRoomComposer({
         return;
       }
       try {
-        saveTaskRoomDraft({
+        persistRecovery({
           owner: recoveryOwner,
           draft,
           leadingPerson,
@@ -511,7 +543,7 @@ export function TaskRoomComposer({
       } catch {
         setRecoveryError(true);
         setNotice(
-          'The message could not be saved for recovery. Nothing was sent.',
+          'Recovery could not be updated. No new attempt was sent; any earlier message remains unconfirmed.',
         );
         return;
       }

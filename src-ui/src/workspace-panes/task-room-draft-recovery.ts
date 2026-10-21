@@ -40,6 +40,21 @@ function input(value: unknown): value is TaskRoomWorkInput {
   );
 }
 
+function requestMatchesDraft(
+  draft: string,
+  recipient: Record<string, unknown>,
+  request: TaskRoomWorkInput,
+): boolean {
+  if (draft.trim() === request.prompt) return true;
+  const mention = /^@([^\s]+)\s+([\s\S]+)$/.exec(draft.trim());
+  if (!mention || mention[2].trim() !== request.prompt) return false;
+  return [request.agentId, recipient.name].some(
+    (name) =>
+      typeof name === 'string' &&
+      name.toLowerCase() === mention[1].toLowerCase(),
+  );
+}
+
 function entry(value: unknown): value is TaskRoomDraftRecovery {
   return (
     isRecord(value) &&
@@ -67,7 +82,8 @@ function entry(value: unknown): value is TaskRoomDraftRecovery {
     (value.unconfirmed === undefined ||
       (input(value.unconfirmed) &&
         isRecord(value.recipient) &&
-        value.recipient.id === value.unconfirmed.agentId))
+        value.recipient.id === value.unconfirmed.agentId &&
+        requestMatchesDraft(value.draft, value.recipient, value.unconfirmed)))
   );
 }
 
@@ -97,18 +113,37 @@ export function readTaskRoomDraft(
 }
 
 /** No eviction: capacity or quota refusal must not erase an uncertain operation. */
-export function saveTaskRoomDraft(saved: TaskRoomDraftRecovery): void {
+export function saveTaskRoomDraft(
+  saved: TaskRoomDraftRecovery,
+  expected: TaskRoomDraftRecovery | undefined,
+): TaskRoomDraftRecovery | undefined {
   if (!entry(saved)) throw new Error('Draft cannot be saved for recovery');
-  const entries = read().filter((item) => item.owner !== saved.owner);
+  const current = read();
+  if (
+    JSON.stringify(current.find((item) => item.owner === saved.owner)) !==
+    JSON.stringify(expected)
+  )
+    throw new Error('Another view changed the saved draft');
+  const entries = current.filter((item) => item.owner !== saved.owner);
   if (saved.draft || saved.recipient || saved.unconfirmed) entries.push(saved);
   if (entries.length > MAX_ENTRIES) throw new Error('Recovery storage is full');
   const bytes = JSON.stringify({ version: 1, entries });
   if (bytes.length > MAX_STORAGE_LENGTH)
     throw new Error('Recovery storage is full');
   window.sessionStorage.setItem(KEY, bytes);
+  return entries.find((item) => item.owner === saved.owner);
 }
 
-export function removeTaskRoomDraft(owner: string): void {
-  const entries = read().filter((item) => item.owner !== owner);
+export function removeTaskRoomDraft(
+  owner: string,
+  expected: TaskRoomDraftRecovery | undefined,
+): void {
+  const current = read();
+  if (
+    JSON.stringify(current.find((item) => item.owner === owner)) !==
+    JSON.stringify(expected)
+  )
+    throw new Error('Another view changed the saved draft');
+  const entries = current.filter((item) => item.owner !== owner);
   window.sessionStorage.setItem(KEY, JSON.stringify({ version: 1, entries }));
 }
