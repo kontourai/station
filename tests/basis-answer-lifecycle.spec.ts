@@ -191,7 +191,9 @@ test('inspect before Keep, retain the exact answer, restart, and revoke its asse
     if (keptAnswer?.state !== 'available')
       throw new Error('Exact kept answer is unavailable');
     const referenceId = keptAnswer.id;
-    expect(keptAnswer.answer.parts).toContainEqual({ type: 'text', text: REPLY });
+    expect(keptAnswer.answer).toMatchObject({
+      parts: expect.arrayContaining([{ type: 'text', text: REPLY }]),
+    });
     const target = await apiJson<{ data: StationAnswerAssessmentReadTarget }>(
       page,
       `${assessmentPath}/target`,
