@@ -34,7 +34,7 @@ type AcpHandshakeIdentity =
  * answered `-32602`/`-32603` naming the session rather than `-32601`
  * (2026-10-21).
  */
-export const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
+const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
   identity: AcpHandshakeIdentity;
   channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
   methods: readonly string[];
