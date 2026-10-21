@@ -1606,18 +1606,20 @@ normal request authentication runs first. See the
 
 ## Ensemble preparation observations
 
-> This unpublished source increment is not qualified for use. `071b49b8` repairs
-> the five original reproductions, but independent review found two later windows:
-> a stale receiver snapshot after Project lookup and private profile/overlay drift
-> before spawn. Repairs are in progress; the boundaries below remain required
-> contracts.
+> This unpublished diagnostic has passed bounded independent review at `9df426d7`
+> for managed-owner configuration currency and mocked login observations. Booted
+> Station composition, real credentials/providers and atomic filesystem-to-execution
+> custody remain unverified. It does not prepare or launch a bounded group.
 
 `POST /api/orchestration/ensembles/prepare` is a local preparation diagnostic, not a
 launch operation. The route belongs to `orchestration:operate` and additionally
 requires a bound host-minted local-operator grant on a personal Station. A raw
 operator credential alone does not qualify, even over loopback. Hosted, Agent
 and device authority do not qualify for this caller. Current request authority is
-rechecked around asynchronous resolution and immediately before the login probe.
+rechecked around asynchronous resolution and last in a synchronous finalizer before
+each probe subprocess. Source-file witnesses, Project revisions, provider
+launchability and the runtime Agent configuration revision bind managed settings
+through asynchronous setup.
 
 The closed JSON request contains `path`, `expectedPresetHash` (`sha256:` followed
 by 64 lowercase hex digits), `brief` and `bindings`. Each binding is keyed by a
@@ -1632,7 +1634,12 @@ runs a bounded, uncached login-status command using the selected executable,
 workspace and connection/profile environment. The returned observation contains
 `state`, an opaque `contextHash`, `checkedAt`, `modelEntitlement: "not-checked"`
 and `outputTokenLimitFidelity: "unavailable"`. It contains no CLI output or
-credential value. Identity, profile, folder or preset changes refuse the result.
+credential value. Observed identity, profile, folder or preset changes refuse the
+result. Managed-owner changes covered by the finalizer refuse before the probe.
+Direct external filesystem changes can race the sequential checks: late cwd or
+preset changes may permit a probe before postflight refusal, and creation then
+deletion of an initially absent source is not remembered. These observations do
+not establish atomic execution or hostile same-UID isolation.
 
 The current production caller always refuses bounded-group preparation: login
 alone establishes neither selected-model entitlement nor native output-token
