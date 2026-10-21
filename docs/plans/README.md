@@ -8,6 +8,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [1364-owner-source-observation--grounding.md](1364-owner-source-observation--grounding.md) — Owner-backed learning source observation — grounding proposal
 - [2675-slice-w-install-ps1.md](2675-slice-w-install-ps1.md) — #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
+- [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
 - [onboarding-improvement-rounds.md](onboarding-improvement-rounds.md) — Onboarding improvement rounds
