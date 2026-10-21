@@ -243,3 +243,16 @@ context-boundary recovery, final source review/docs/readiness and upstream
 integration. Real onboarding and two-account identity/quota/selection/credential
 application remain NOT_VERIFIED. Brian explicitly deferred second-account sign-in;
 no fresh login or provider call was started. The branch remains unpublished.
+
+
+The next source increment adds `fork-ready` opening without a provider Session,
+SDK wire validation, shared dock writability and explicit busy state. Deletion
+of an unstarted fork now tombstones the seed inside the lifecycle guard before
+file cleanup. Delete-then-send failed before the repair and passes afterwards;
+pre-start opening likewise failed before the repair. Six HTTP/service fork cases
+pass, including deleted lookup/open returning 404 and unrelated-owner refusal.
+The SDK/dock/fork selection passes 46 tests and the recovery-notice owner passes
+seven. UI typechecking now reports only the unused private
+`restartCredentialProfileRecoverySession` forwarder, verified unchanged from the
+published d96f base. This is an unresolved typecheck failure, not a waiver.
+No login/provider call, publication or readiness claim is added by this increment.

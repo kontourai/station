@@ -76,7 +76,7 @@ function parseConversationOpenResolution(
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (
-    !['resolved', 'missing-session', 'unavailable'].includes(
+    !['resolved', 'fork-ready', 'missing-session', 'unavailable'].includes(
       String(record.status),
     ) ||
     typeof record.canContinue !== 'boolean' ||
@@ -114,6 +114,17 @@ function parseConversationOpenResolution(
     )
   )
     return false;
+  if (record.status === 'fork-ready') {
+    return (
+      record.currentSessionId === undefined &&
+      record.execution === undefined &&
+      transcript.available === true &&
+      transcript.owner === 'fork-context' &&
+      actions.length === 0 &&
+      (record.continuationPending === undefined ||
+        typeof record.continuationPending === 'boolean')
+    );
+  }
   if (record.status === 'resolved') {
     if (
       record.execution !== undefined &&

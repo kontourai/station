@@ -1596,9 +1596,13 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
-carry a current Session identity and a server-derived
-`canContinue` decision. Transport, rejection, and invalid wire failures throw a
+`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+can carry a current Session identity. `fork-ready` identifies an authorized saved
+fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
+it has no provider Session or runtime execution binding until first send. Both
+successful arms carry the server-derived `canContinue` decision. A pending first
+start may return `canContinue: false` with `continuationPending: true`; clients
+must wait rather than fabricate a Session identity. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
 sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without

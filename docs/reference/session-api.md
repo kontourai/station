@@ -46,6 +46,21 @@ that a provider retains its transcript indefinitely. Context-start consumption
 remains a separate boundary; ordinary context replacement and fork delivery are
 not qualified by this native-return receipt.
 
+Saved forks reserve their selected copied context in the same EventStore before
+creating the file transcript. The first native turn carries that saved seed; an
+ordinary follow-up refuses if the seed-bearing turn failed or has uncertain
+completion. Later native transcript reads include both the copied parent rows
+and new runtime turns. This is an independent Conversation, with explicit parent
+provenance, rather than another child Session in the parent's lineage.
+
+An authorized fork with no provider Session opens as `fork-ready`, with
+`transcript.owner: 'fork-context'`. First send creates the real provider Session;
+opening alone does not. Deleting an unstarted fork tombstones its saved seed
+under the existing lifecycle guard before file cleanup, so a failed cleanup
+cannot make it eligible for later activation. Runtime-owned history remains
+read-only through that file deletion route. These paths have scripted local
+qualification; live installed-provider acceptance remains unverified.
+
 The compact conversation reader used by `read_conversation` and the SDK's
 `readConversation` preserves message Session attribution. Versioned `provenance`
 reports the ordered Sessions, providers, handoffs, requested native returns and

@@ -1924,6 +1924,20 @@ export interface ConversationOpenExecution {
 
 export type ConversationOpenResolution =
   | {
+      /** A saved, authorized fork with no provider Session until first send. */
+      status: 'fork-ready';
+      conversation: ConversationListItem;
+      transcript: {
+        available: true;
+        owner: 'fork-context';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: boolean;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
+  | {
       status: 'resolved';
       conversation: ConversationListItem;
       currentSessionId: string;

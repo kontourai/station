@@ -41,6 +41,7 @@ import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
   ConversationListItem,
+  ConversationOpenResolution,
   InterruptTurnResult,
   OrchestrationCommand,
   OrchestrationCommandDispatchResult,
@@ -6264,8 +6265,48 @@ export class OrchestrationService {
   async resolveConversationOpen(
     conversationId: string,
     authority: SessionReadAuthority,
-  ) {
+  ): Promise<ConversationOpenResolution | null> {
     this.initialize();
+    const fork = this.forkContexts.reference(conversationId, authority);
+    if (fork === null) return null;
+    if (fork && !this.options.eventStore?.readSessionByThread(conversationId)) {
+      if (fork.state !== 'ready') return null;
+      const snapshot = this.forkContexts.snapshot(
+        conversationId,
+        authority,
+        true,
+      );
+      const transcript = this.forkContexts.transcript(
+        conversationId,
+        authority,
+      );
+      if (!snapshot || !transcript) return null;
+      const starting = this.startsUnderway.has(conversationId);
+      return {
+        status: 'fork-ready',
+        conversation: {
+          id: conversationId,
+          source: 'store',
+          agentSlug: publicAgentIdFromRuntimeKey(fork.targetAgent),
+          ...(fork.projectSlug ? { projectSlug: fork.projectSlug } : {}),
+          title: snapshot.title,
+          createdAt: snapshot.createdAt,
+          updatedAt: snapshot.createdAt,
+          messageCount: transcript.messages.length,
+          mutable: true,
+          answerability: { answerable: true },
+        },
+        transcript: {
+          available: true,
+          owner: 'fork-context',
+          messageCount: transcript.messages.length,
+        },
+        canContinue: !starting,
+        ...(starting ? { continuationPending: true } : {}),
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+    }
     const currentSessionId = this.currentConversationSessionId(conversationId);
     const detail = await this.readCurrentConversationSession(
       conversationId,

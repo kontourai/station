@@ -26,7 +26,7 @@ function renderNotice(state: ConversationOpenRecoveryNoticeProps['state']) {
 describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   // `resolved` reaches the notice only as a resolution that refused
   // continuation.
-  test.each(['missing-session', 'resolved'] as const)(
+  test.each(['missing-session', 'resolved', 'fork-ready'] as const)(
     '%s is a verdict and says read-only',
     (state) => {
       expect(renderNotice(state)).toContain('Cool chat is read-only.');

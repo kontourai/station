@@ -1692,7 +1692,32 @@ export function createConversationRoutes(
         );
       }
 
-      await adapter.deleteConversation(conversationId);
+      await reserveFork(conversationId, async () => {
+        const fork = sessionMessageReader?.readForkConversation?.(
+          conversationId,
+          authority,
+        );
+        if (
+          fork === null ||
+          (fork && runtimeAgentKey(fork.resourceId) !== runtimeAgentKey(slug))
+        )
+          throw new ConversationForkContextError(
+            'The requested fork was not found.',
+          );
+        if (fork) {
+          if (!sessionMessageReader?.deleteUnstartedConversationForkContext)
+            throw new ConversationForkContextError(
+              'The fork lifecycle owner is unavailable.',
+            );
+          // Tombstone before file cleanup: a failed file deletion must never
+          // leave the retained seed eligible for a provider start.
+          await sessionMessageReader.deleteUnstartedConversationForkContext(
+            conversationId,
+            authority,
+          );
+        }
+        await adapter.deleteConversation(conversationId);
+      });
       // Derived summaries do not outlive their source conversation. Their
       // owner-scoped coordinate prevents an ID reused later from inheriting
       // this conversation's derived text.
@@ -2349,6 +2374,7 @@ export function createGlobalConversationRoutes(
     | 'readSessionConversation'
     | 'searchSessionMessages'
     | 'successorConversationId'
+    | 'readForkConversation'
   > & {
     listConversationHistoryPage(
       authority: SessionReadAuthority,
@@ -2687,6 +2713,29 @@ export function createGlobalConversationRoutes(
       const id = param(c, 'id');
       const authority = authorityFor(c.req.raw);
       const hosted = isHostedSessionReadAuthority(authority);
+      const fork = sessionConversationReader.readForkConversation?.(
+        id,
+        authority,
+      );
+      if (fork === null)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (fork) {
+        return c.json({
+          success: true,
+          data: {
+            ...fork,
+            agentSlug: publicAgentIdFromRuntimeKey(fork.resourceId),
+            ...(typeof fork.metadata.projectSlug === 'string'
+              ? { projectSlug: fork.metadata.projectSlug }
+              : {}),
+            ...(eventStore
+              ? {
+                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                }
+              : {}),
+          },
+        });
+      }
 
       // Try project storage first (has projectId/projectSlug)
       const projectRecord = hosted ? null : storageAdapter.getConversation(id);

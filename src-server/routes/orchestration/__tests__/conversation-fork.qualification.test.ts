@@ -22,7 +22,10 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import type { Logger } from '../../../utils/logger.js';
-import { createConversationRoutes } from '../../chat/conversations.js';
+import {
+  createConversationRoutes,
+  createGlobalConversationRoutes,
+} from '../../chat/conversations.js';
 
 const OWNER = 'fork-qualification-owner';
 const ENVIRONMENT = 'fork-qualification-station';
@@ -112,11 +115,23 @@ describe('scripted fork delivery and canonical history qualification', () => {
       }),
     });
     runtimes.push({ service, store });
+    const memoryAdapters = new Map([
+      [PARENT_AGENT, parentFiles],
+      [agentId(provider), targetFiles],
+    ]);
+    const globalRoutes = createGlobalConversationRoutes(
+      memoryAdapters,
+      { getConversation: () => null },
+      logger,
+      undefined,
+      service,
+      () => OWNER,
+      undefined,
+      () => authority,
+      service,
+    );
     const routes = createConversationRoutes(
-      new Map([
-        [PARENT_AGENT, parentFiles],
-        [agentId(provider), targetFiles],
-      ]),
+      memoryAdapters,
       logger,
       undefined,
       undefined,
@@ -294,6 +309,7 @@ describe('scripted fork delivery and canonical history qualification', () => {
       service,
       store,
       routes,
+      globalRoutes,
       conversationId,
       receiver: provider === 'codex' ? codex : claude,
       other: provider === 'codex' ? claude : codex,
@@ -358,6 +374,56 @@ describe('scripted fork delivery and canonical history qualification', () => {
       f.execute('codex', 'Continue after the failed first turn.'),
     ).rejects.toThrow('Fork context delivery has not completed.');
     expect(f.receiver.turns).toHaveLength(1);
+  });
+
+  test('an owned unstarted fork opens with copied context and no invented provider Session', async () => {
+    const f = await fixture('codex');
+    const response = await f.globalRoutes.request(
+      `/${encodeURIComponent(f.conversationId)}/open`,
+    );
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    if (!body || typeof body !== 'object' || !('data' in body))
+      throw new Error('Fork open omitted its result.');
+    const opened = body.data;
+    expect(opened).toMatchObject({
+      status: 'fork-ready',
+      conversation: { id: f.conversationId, agentSlug: 'codex' },
+      transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+      canContinue: true,
+    });
+    expect(opened).not.toHaveProperty('currentSessionId');
+    expect(
+      await f.service.resolveConversationOpen(
+        f.conversationId,
+        sessionReadAuthorityFromRequest(
+          'unrelated-owner',
+          undefined,
+          undefined,
+        ),
+      ),
+    ).toBeNull();
+    expect(f.receiver.starts).toHaveLength(0);
+  });
+
+  test('deleting an unstarted fork prevents its saved seed from activating later', async () => {
+    const f = await fixture('codex');
+    const deleted = await f.routes.request(
+      `/codex/conversations/${encodeURIComponent(f.conversationId)}`,
+      { method: 'DELETE' },
+    );
+    expect(deleted.status).toBe(200);
+    const lookup = await f.globalRoutes.request(
+      `/${encodeURIComponent(f.conversationId)}`,
+    );
+    expect(lookup.status).toBe(404);
+    const reopened = await f.globalRoutes.request(
+      `/${encodeURIComponent(f.conversationId)}/open`,
+    );
+    expect(reopened.status).toBe(404);
+    await expect(f.execute('codex', FIRST_MESSAGE)).rejects.toThrow();
+    expect(f.receiver.starts).toHaveLength(0);
+    expect(f.receiver.turns).toHaveLength(0);
   });
 
   test('native fork refresh includes copied context and the new user turn', async () => {
