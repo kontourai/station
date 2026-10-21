@@ -1364,6 +1364,12 @@ export function NewChatModal({
         : undefined) ??
       flatList.find((agent) => agentFixRoute(agent)) ??
       flatList[0];
+    // The prepared app is still on its first start and has no Agent yet, so
+    // nothing in the list stands for it; its notice outranks whichever agent
+    // (often the built-in Station agent) the list falls back to.
+    const preparedStillStarting =
+      Boolean(startingNotice) &&
+      !flatList.some((agent) => agent.engineId === preparedEngineId);
     const canEnableAgent = flatList.some(
       (agent) =>
         resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
@@ -1448,6 +1454,17 @@ export function NewChatModal({
                 enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
               }
             />
+          ) : preparedStillStarting ? (
+            <Empty
+              variant="compact"
+              label="Your AI app is still starting"
+              description={startingNotice}
+              action={
+                <Button onClick={() => beginSetup('/connections/engines')}>
+                  Open engines
+                </Button>
+              }
+            />
           ) : needsAttention ? (
             <>
               <p>
@@ -1460,17 +1477,6 @@ export function NewChatModal({
                 onFix={(route) => repairAgent(needsAttention, route)}
               />
             </>
-          ) : startingNotice ? (
-            <Empty
-              variant="compact"
-              label="Your AI app is still starting"
-              description={startingNotice}
-              action={
-                <Button onClick={() => beginSetup('/connections/engines')}>
-                  Open engines
-                </Button>
-              }
-            />
           ) : (
             <Empty
               variant="compact"
