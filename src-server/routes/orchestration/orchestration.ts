@@ -99,6 +99,7 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
@@ -127,6 +128,11 @@ import {
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  type CliSessionGroupHost,
+  CliSessionGroups,
+  CliSessionGroupUnavailable,
+} from '../../services/orchestration/cli-session-group.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -1199,6 +1205,8 @@ interface DelegateTaskRequest {
   fullAccessGrant: FullAccessGrant | null;
   /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
   dispatchCwdAdmission?: DispatchCwdAdmission;
+  delegationGroupAdmission?: { assertCurrent(): void };
+  initialClientTurnId?: string;
   clientOrigin?: ClientOrigin;
   /**
    * #484 controller/receiver split: for a `project-portable` workspace
@@ -2106,6 +2114,8 @@ export function createOrchestrationRoutes(
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    /** Personal runtime composition; absent means session-group routes refuse. */
+    cliSessionGroupHome?: string;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
     answerAssessmentModule?: AnswerAssessmentModule;
     /** Personal-only exact retained narrative binding owner. */
@@ -3659,6 +3669,11 @@ export function createOrchestrationRoutes(
   async function dispatchAuthorizedDelegation(
     c: Context,
     sent: z.infer<typeof delegateTaskSchema>,
+    delegationGroupAdmission?: {
+      assertCurrent(): void;
+      sessionId: string;
+      initialClientTurnId: string;
+    },
   ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
@@ -3820,7 +3835,7 @@ export function createOrchestrationRoutes(
       const roomRequest = body.taskRoomRequest;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
-        sessionId?: string,
+        sessionId: string | undefined = delegationGroupAdmission?.sessionId,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
@@ -3830,7 +3845,15 @@ export function createOrchestrationRoutes(
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
         }
+        delegationGroupAdmission?.assertCurrent();
         return delegate({
+          ...(delegationGroupAdmission
+            ? {
+                delegationGroupAdmission,
+                initialClientTurnId:
+                  delegationGroupAdmission.initialClientTurnId,
+              }
+            : {}),
           ...request,
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(contextSnapshot
@@ -3854,7 +3877,10 @@ export function createOrchestrationRoutes(
           ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
           clientOrigin,
           ...(sessionId
-            ? { sessionId, parentTaskId: roomRequest?.taskId }
+            ? {
+                sessionId,
+                ...(roomRequest ? { parentTaskId: roomRequest.taskId } : {}),
+              }
             : {}),
           ...(recheck && roomBinding
             ? {
@@ -4152,6 +4178,190 @@ export function createOrchestrationRoutes(
     }
   }
 
+  const cliGroups = deps.cliSessionGroupHome
+    ? new CliSessionGroups(
+        deps.cliSessionGroupHome,
+        (input) => delegateTaskSchema.parse(input),
+        deps.logger,
+      )
+    : undefined;
+  const groupMemberSchema = delegateTaskSchema
+    .pick({ prompt: true, target: true, parentTaskId: true })
+    .extend({
+      seatId: z
+        .string()
+        .min(1)
+        .max(128)
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+      needs: z.array(z.string().min(1).max(128)).max(32).default([]),
+    })
+    .strict()
+    .refine(
+      (member) =>
+        (member.target.environment?.kind ?? 'current') === 'current' &&
+        member.target.expectedEngine?.kind === 'connection',
+      'Session groups currently require local targets.',
+    );
+  const groupCreateSchema = z
+    .object({
+      operationId: z.string().min(1).max(128),
+      members: z.array(groupMemberSchema).min(1).max(32),
+      maxConcurrent: z.number().int().min(1).max(32),
+      deadlineAt: z.number().int().positive(),
+    })
+    .strict();
+  const groupResponseSchema = z.object({
+    success: z.literal(true),
+    data: z.unknown(),
+  });
+  const groupSnapshotSchema = z.object({
+    status: z.string(),
+    sessionId: z.string(),
+  });
+  const groupAuthority = (c: Context) => {
+    const binding = deps.callerBindingForRequest?.(c.req.raw);
+    const actor = resolveActorPrincipal(deps, c);
+    const assertCurrent = () => {
+      if (
+        !binding ||
+        deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+        deps.callerBindingForRequest?.(c.req.raw) !== binding ||
+        resolveActorPrincipal(deps, c).userId !== actor.userId
+      )
+        throw new CliSessionGroupUnavailable('group_authority_required');
+    };
+    assertCurrent();
+    return { owner: JSON.stringify([actor.userId, binding]), assertCurrent };
+  };
+  const sessionGroupHost = (
+    c: Context,
+    assertCurrent: () => void,
+  ): CliSessionGroupHost<z.infer<typeof delegateTaskSchema>> => ({
+    assertCurrent,
+    dispatch: async (input, admission) => {
+      assertCurrent();
+      const response = await dispatchAuthorizedDelegation(c, input, admission);
+      return groupResponseSchema.parse(await response.json()).data;
+    },
+    observe: async (handle) => {
+      assertCurrent();
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      assertCurrent();
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      if (snapshot.status !== 'completed') return snapshot;
+      if (!handle.initialTurnId) return { ...snapshot, status: 'unknown' };
+      const window = await orchestrationService.readSessionEventWindow(
+        handle.sessionId,
+        { turnLimit: 20, authority: readAuthorityFor(c) },
+      );
+      assertCurrent();
+      const terminal = window?.events.find(
+        ({ event }) =>
+          event.threadId === handle.sessionId &&
+          event.turnId === handle.initialTurnId &&
+          event.method === 'turn.completed',
+      );
+      return terminal
+        ? {
+            ...snapshot,
+            completedEvent: {
+              eventId: terminal.event.eventId,
+              turnId: handle.initialTurnId,
+            },
+          }
+        : { ...snapshot, status: 'unknown' };
+    },
+    interrupt: async (handle) => {
+      assertCurrent();
+      const response = await interruptAuthorizedDelegatedTask(
+        c,
+        handle.taskId,
+        {},
+      );
+      groupResponseSchema.parse(await response.json());
+    },
+  });
+  const respondSessionGroup = async (
+    c: Context,
+    operation: (
+      groups: NonNullable<typeof cliGroups>,
+      authority: ReturnType<typeof groupAuthority>,
+    ) => Promise<unknown>,
+  ) => {
+    c.header('Cache-Control', 'private, no-store');
+    try {
+      if (!cliGroups)
+        return c.json({ success: false, code: 'group_unavailable' }, 503);
+      const authority = groupAuthority(c);
+      const data = await operation(cliGroups, authority);
+      authority.assertCurrent();
+      return c.json({ success: true, data });
+    } catch (error) {
+      const code =
+        error instanceof CliSessionGroupUnavailable
+          ? error.code
+          : error instanceof z.ZodError || error instanceof SyntaxError
+            ? 'group_invalid'
+            : 'group_unavailable';
+      return c.json(
+        { success: false, code },
+        code === 'group_authority_required'
+          ? 403
+          : code === 'group_not_found'
+            ? 404
+            : 409,
+      );
+    }
+  };
+  app.post('/session-groups', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const input = groupCreateSchema.parse(JSON.parse(body.body));
+      return groups.create(
+        authority.owner,
+        input.operationId,
+        {
+          seats: input.members.map(({ seatId, needs, ...member }) => ({
+            seatId,
+            needs,
+            input: delegateTaskSchema.parse(member),
+          })),
+          maxConcurrent: input.maxConcurrent,
+          deadlineAt: input.deadlineAt,
+        },
+        authority.assertCurrent,
+      );
+    }),
+  );
+  app.get('/session-groups/:groupId', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.view(param(c, 'groupId'), authority.owner),
+    ),
+  );
+  app.post('/session-groups/:groupId/run', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.run(
+        param(c, 'groupId'),
+        authority.owner,
+        sessionGroupHost(c, authority.assertCurrent),
+        c.req.raw.signal,
+      ),
+    ),
+  );
+  app.post('/session-groups/:groupId/cancel', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.cancel(
+        param(c, 'groupId'),
+        authority.owner,
+        sessionGroupHost(c, authority.assertCurrent),
+      ),
+    ),
+  );
+
   app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>
     dispatchAuthorizedDelegation(c, getBody(c)),
   );
@@ -4284,16 +4494,18 @@ export function createOrchestrationRoutes(
     }
   });
 
-  app.get('/delegations/:taskId', async (c) => {
+  async function readAuthorizedDelegatedTask(
+    c: Context,
+    taskId: string,
+    query: z.infer<typeof delegatedTaskQuerySchema>,
+  ): Promise<Response> {
     if (!deps.observeDelegatedTask) {
       return c.json(
         { success: false, error: 'Delegated task lookup is unavailable' },
         503,
       );
     }
-    const parsed = delegatedTaskQuerySchema.safeParse({
-      environmentId: c.req.query('environmentId'),
-    });
+    const parsed = delegatedTaskQuerySchema.safeParse(query);
     if (!parsed.success) {
       return c.json(
         { success: false, error: 'Invalid delegated task query' },
@@ -4311,7 +4523,7 @@ export function createOrchestrationRoutes(
     try {
       const data = await deps.observeDelegatedTask({
         ...parsed.data,
-        taskId: param(c, 'taskId'),
+        taskId,
         userId: resolveActorPrincipal(deps, c).userId,
       });
       // #3158: the parent read its own child at rest; that result is not
@@ -4335,7 +4547,13 @@ export function createOrchestrationRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
-  });
+  }
+
+  app.get('/delegations/:taskId', (c) =>
+    readAuthorizedDelegatedTask(c, param(c, 'taskId'), {
+      environmentId: c.req.query('environmentId'),
+    }),
+  );
 
   app.get('/delegations/:taskId/events', async (c) => {
     if (!deps.observeDelegatedTaskEvents) {
@@ -4702,84 +4920,83 @@ export function createOrchestrationRoutes(
     },
   );
 
+  async function interruptAuthorizedDelegatedTask(
+    c: Context,
+    taskId: string,
+    body: InterruptDelegatedTaskBody,
+  ): Promise<Response> {
+    if (!deps.interruptDelegatedTask) {
+      return c.json(
+        { success: false, error: 'Delegated task interrupt is unavailable' },
+        503,
+      );
+    }
+    // #2377 slice C3: stopping a task's turn stays in the caller's scope,
+    // like a follow-up to it (another Station needs a bound operator).
+    const scopeRefused = refuseOutOfScopeDispatch(
+      c,
+      deps.stationControlDispatchScope,
+      () => ({
+        kind: 'task',
+        taskId: taskId,
+        remote: body.environmentId !== undefined,
+      }),
+    );
+    if (scopeRefused) return scopeRefused;
+    try {
+      const { principal, userId, ownerAttribution } = resolveDispatchActor(
+        deps,
+        c,
+      );
+      // #3158: the recorded parent's interrupt fences the turn it stops and
+      // cancels results not yet delivered. Fenced before the effect (the
+      // stopped turn's settlement is delivered synchronously from the
+      // event), and undone below if the interrupt is refused or the
+      // service reports it stopped nothing. A named turn is the only turn
+      // the service will stop, so it is the only one fenced.
+      const canceller =
+        body.environmentId === undefined
+          ? delegationResultCanceller(c, userId)
+          : undefined;
+      const cancellation = canceller
+        ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+            deps.delegationResults?.beginCancel(taskId, canceller, body.turnId),
+          )
+        : undefined;
+      let data: DelegatedTaskInterruptResult;
+      try {
+        data = await deps.interruptDelegatedTask({
+          ...body,
+          taskId: taskId,
+          userId,
+          principal,
+          ownerAttribution,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        });
+      } catch (error) {
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'reopen', () =>
+            deps.delegationResults?.reopenCancellation(cancellation),
+          );
+        throw error;
+      }
+      if (cancellation)
+        bestEffortDelegationResult(deps.logger, 'settle', () =>
+          deps.delegationResults?.settleCancellation(
+            cancellation,
+            data.interruptOutcome,
+          ),
+        );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  }
+
   app.post(
     '/delegations/:taskId/interrupt',
     validateFiles(interruptDelegatedTaskBodySchema),
-    async (c) => {
-      if (!deps.interruptDelegatedTask) {
-        return c.json(
-          { success: false, error: 'Delegated task interrupt is unavailable' },
-          503,
-        );
-      }
-      // #2377 slice C3: stopping a task's turn stays in the caller's scope,
-      // like a follow-up to it (another Station needs a bound operator).
-      const scopeRefused = refuseOutOfScopeDispatch(
-        c,
-        deps.stationControlDispatchScope,
-        () => ({
-          kind: 'task',
-          taskId: param(c, 'taskId'),
-          remote:
-            (getBody(c) as { environmentId?: unknown }).environmentId !==
-            undefined,
-        }),
-      );
-      if (scopeRefused) return scopeRefused;
-      try {
-        const { principal, userId, ownerAttribution } = resolveDispatchActor(
-          deps,
-          c,
-        );
-        // #3158: the recorded parent's interrupt fences the turn it stops and
-        // cancels results not yet delivered. Fenced before the effect (the
-        // stopped turn's settlement is delivered synchronously from the
-        // event), and undone below if the interrupt is refused or the
-        // service reports it stopped nothing. A named turn is the only turn
-        // the service will stop, so it is the only one fenced.
-        const body = getBody(c) as InterruptDelegatedTaskBody;
-        const canceller =
-          body.environmentId === undefined
-            ? delegationResultCanceller(c, userId)
-            : undefined;
-        const cancellation = canceller
-          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
-              deps.delegationResults?.beginCancel(
-                param(c, 'taskId'),
-                canceller,
-                body.turnId,
-              ),
-            )
-          : undefined;
-        let data: DelegatedTaskInterruptResult;
-        try {
-          data = await deps.interruptDelegatedTask({
-            ...getBody(c),
-            taskId: param(c, 'taskId'),
-            userId,
-            principal,
-            ownerAttribution,
-            clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          });
-        } catch (error) {
-          if (cancellation)
-            bestEffortDelegationResult(deps.logger, 'reopen', () =>
-              deps.delegationResults?.reopenCancellation(cancellation),
-            );
-          throw error;
-        }
-        if (cancellation)
-          bestEffortDelegationResult(deps.logger, 'settle', () =>
-            deps.delegationResults?.settleCancellation(
-              cancellation,
-              data.interruptOutcome,
-            ),
-          );
-        return c.json({ success: true, data });
-      } catch (error) {
-        return c.json({ success: false, error: errorMessage(error) }, 400);
-      }
-    },
+    (c) => interruptAuthorizedDelegatedTask(c, param(c, 'taskId'), getBody(c)),
   );
 
   /**

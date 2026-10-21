@@ -127,6 +127,16 @@ until an actual consumer requires them.
 
 ## Production adoption sequence
 
+The personal `/api/orchestration/session-groups` path now composes the shared
+authorized delegation handler with installed Flow scheduling. It persists seat
+launch intents and reserved session/client-turn identities, retains returned
+provider-turn identities and admits dependencies from an explicit Station
+completion observation. Controlled HTTP tests cover three actual orchestration
+sessions and event-store joins, plus refusal at the adapter boundary after
+cancellation during Agent preparation. Live CLI engines, complete preset/inspector
+adoption, independent review and full epic acceptance remain outstanding.
+
+
 Reuse the authenticated delegation route for caller resolution, permission
 posture, execution-target placement, attachments, receiver admission, session
 creation and initial-turn delivery. Persist group membership against the actual

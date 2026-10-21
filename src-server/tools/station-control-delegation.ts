@@ -395,6 +395,10 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Trusted group admission, checked synchronously at initial session/turn effects. */
+  delegationGroupAdmission?: { assertCurrent(): void };
+  /** Server-minted first-turn join for a durable session group. */
+  initialClientTurnId?: string;
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -576,6 +580,8 @@ interface ResolvedDelegationProject {
 }
 
 export interface DelegatedTaskHandle {
+  /** Provider-accepted first turn, when the executing Station reported it. */
+  initialTurnId?: string;
   /** Durable conversation identity; `taskId` is the legacy compatibility alias. */
   conversationId: string;
   taskId: string;
@@ -6027,6 +6033,9 @@ export async function delegateTask(
             environmentId: target.environmentId,
           },
           resourceAdmissionIntent: 'delegated_background',
+          ...(input.delegationGroupAdmission
+            ? { delegationGroupAdmission: input.delegationGroupAdmission }
+            : {}),
           // #3323: stamped beside `delegation` after the reserved-key strip.
           ...(input.delegation && input.delegationProvenance
             ? {
@@ -6113,6 +6122,9 @@ export async function delegateTask(
         type: 'sendTurn',
         input: {
           threadId: sessionId,
+          ...(input.initialClientTurnId
+            ? { clientTurnId: input.initialClientTurnId }
+            : {}),
           input: delegatePrompt,
           // See the foreground sendTurn: the Agent's declared model is a
           // start-time selection, not a per-turn override.
@@ -6141,6 +6153,9 @@ export async function delegateTask(
           environmentId: target.environmentId,
         },
         resourceAdmissionIntent: 'delegated_background',
+        ...(input.delegationGroupAdmission
+          ? { delegationGroupAdmission: input.delegationGroupAdmission }
+          : {}),
         ...(input.taskRoomInvocationAdmission
           ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }
           : {}),
@@ -6231,6 +6246,7 @@ export async function delegateTask(
         ...(confinement ? { confinement } : {}),
       },
       provider: resolved.provider,
+      ...(attemptInitialTurnId ? { initialTurnId: attemptInitialTurnId } : {}),
       ...(capabilityDelivery ? { capabilityDelivery } : {}),
     };
   } catch (attemptError) {

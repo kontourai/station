@@ -156,6 +156,8 @@ export type SessionCommandInternalOptions = {
   roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /** Server-owned initial group dispatch fence; never public command JSON. */
+  delegationGroupAdmission?: { assertCurrent(): void };
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
   receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;

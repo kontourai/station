@@ -533,6 +533,8 @@ interface OrchestrationDispatchInternalOptions {
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  /** Server-owned initial group dispatch fence; never public command JSON. */
+  delegationGroupAdmission?: { assertCurrent(): void };
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
    * the provider-effect path (start/sendTurn) adjacent to the adapter
@@ -6680,7 +6682,10 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => adapter.startSession(input),
+                    () => {
+                      internal?.delegationGroupAdmission?.assertCurrent();
+                      return adapter.startSession(input);
+                    },
                     internal?.sessionStartAdmission,
                   ),
               );
@@ -7910,6 +7915,7 @@ export class OrchestrationService {
                                 turnInput.threadId,
                                 turnInput.invocationId,
                               );
+                            internal?.delegationGroupAdmission?.assertCurrent();
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground

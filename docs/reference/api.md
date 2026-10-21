@@ -1638,6 +1638,57 @@ inspection 422; oversized requests return 413. Request validation errors use
 Final source/configuration/request checks are observations, not atomic external
 filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
 
+## CLI session groups
+
+The personal runtime exposes an initial Station-authorized session-group path:
+
+- `POST /api/orchestration/session-groups`: create or replay an operation.
+- `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
+- `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
+- `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
+
+This path is under development on the child-work branch. Controlled-adapter
+checks exercise the actual delegation, session and event-store path; live CLI,
+hosted, native and provider acceptance have not been established. It does not
+activate the separate hard-cap API group runtime or complete #205.
+
+Creation takes `operationId`, `maxConcurrent` (1–32), an absolute `deadlineAt`
+within 30 minutes, and 1–32 `members`. Each member has `seatId`, `prompt`, a local
+execution `target`, optional `parentTaskId` and optional `needs` naming predecessor
+seats. The target must include its expected engine connection. Station reuses the
+ordinary delegation route's actor, posture, full-access, workspace, receiver and
+lineage decisions; a group does not authorize anything those decisions refuse.
+The authenticated credential/caller binding owns the group. Another credential
+cannot inherit it merely by naming the same user.
+
+Published Flow owns readiness, durable claims, dependency joins and gate
+appraisal. Station records launch intent and server-minted session/client-turn
+identities before dispatch. An accepted handle adds the actual provider turn.
+A dependent seat is released only after Station observes the exact member turn's
+completion in the authorized event window and attaches that observation as an
+explicitly `assumed` Flow claim. This is scheduling evidence, not independent
+acceptance of the member's work; group `acceptance` remains `unassessed`.
+
+Members retain the existing delegation endpoints for status, raw events,
+interrupt, reply and continuation. Group supervision waits through `needs_input`;
+answer the member's existing request rather than starting another member. If the
+bounded event window cannot establish the original turn's completion, the seat
+stays occupied. A changed session does not silently replace the accepted one.
+
+Responses disclose `authority: "station-session"` and
+`portableFlowLineage: "unbound"`. Dollar, token and physical-attempt caps are
+`unavailable`. A session turn can contain hidden retries or other provider work;
+its identity is not a physical-attempt count. Existing session permissions and
+confinement still apply. The deadline stops admission and requests interruption;
+it is not proof of physical termination. Unknown cost is not zero.
+
+An ambiguous start retains its occupied seat and its reserved identifiers across
+restart. Re-running supervision never re-sends that seat. Cancellation is durable,
+and synchronous checks also fence the initial adapter start and turn after
+asynchronous setup. Interrupted supervision can re-observe accepted members;
+it does not manufacture a completion or a stop proof. Requests are bounded to
+256 KiB; the private owner retains at most 128 groups without automatic eviction.
+
 ## Ensemble preparation observations
 
 > This unpublished diagnostic has passed bounded independent review at `9df426d7`

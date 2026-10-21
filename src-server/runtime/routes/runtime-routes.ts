@@ -5013,6 +5013,9 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ...(isPersonalHost
+        ? { cliSessionGroupHome: context.configLoader.getProjectHomeDir() }
+        : {}),
       eventBus: context.eventBus,
       ...(delegationResults ? { delegationResults } : {}),
       ...(threadInbox ? { threadInbox } : {}),
