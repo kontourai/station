@@ -191,6 +191,7 @@ test('inspect before Keep, retain the exact answer, restart, and revoke its asse
     if (keptAnswer?.state !== 'available')
       throw new Error('Exact kept answer is unavailable');
     const referenceId = keptAnswer.id;
+    expect(keptAnswer.answer.parts).toContainEqual({ type: 'text', text: REPLY });
     const target = await apiJson<{ data: StationAnswerAssessmentReadTarget }>(
       page,
       `${assessmentPath}/target`,
@@ -285,7 +286,7 @@ test('inspect before Keep, retain the exact answer, restart, and revoke its asse
       `/api/tasks/${task.data.id}/turn-references`,
     );
     expect(reopened.data).toMatchObject([
-      { id: referenceId, sessionId, turnId, answer: { content: REPLY } },
+      { id: referenceId, sessionId, turnId, answer: keptAnswer.answer },
     ]);
   } finally {
     if (!stopped) await stopStation(live);
