@@ -152,6 +152,75 @@ async function drain(stream: AsyncIterable<unknown>) {
   }
 }
 
+async function cancelStrandsStream(agent: IAgent, afterStart: boolean) {
+  const result = afterStart
+    ? await agent.streamText('Hi')
+    : await runWithRequiredBoundedApiTurn(() => agent.streamText('Hi'));
+  const iterator = result.fullStream[Symbol.asyncIterator]();
+  if (afterStart)
+    expect(await iterator.next()).toMatchObject({
+      value: { type: 'start' },
+      done: false,
+    });
+  expect(physical).not.toHaveBeenCalled();
+  await iterator.return?.();
+  const settled = Promise.all([result.text, result.finishReason, result.usage]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    expect(
+      await Promise.race([
+        settled,
+        new Promise((resolve) => {
+          timer = setTimeout(() => resolve('pending'), 200);
+        }),
+      ]),
+      afterStart ? 'after synthetic start' : 'before first next',
+    ).toEqual(['', 'cancelled', undefined]);
+  } finally {
+    clearTimeout(timer);
+  }
+  expect(await iterator.next()).toMatchObject({ done: true });
+  await iterator.return?.();
+  expect(await settled).toEqual(['', 'cancelled', undefined]);
+  expect(physical).not.toHaveBeenCalled();
+}
+
+async function cancelStartedStrandsStream(agent: IAgent) {
+  const result = await agent.streamText('Hi');
+  const iterator = result.fullStream[Symbol.asyncIterator]();
+  let text = '';
+  for (;;) {
+    const next = await iterator.next();
+    if (next.done) throw new Error('Expected model text before cancellation');
+    if (next.value.type === 'text-delta') {
+      text += next.value.text;
+      break;
+    }
+  }
+  expect(physical).toHaveBeenCalledTimes(1);
+  await iterator.return?.();
+  expect(
+    await Promise.all([result.text, result.finishReason, result.usage]),
+  ).toEqual([text, 'cancelled', undefined]);
+  await iterator.return?.();
+  expect(physical).toHaveBeenCalledTimes(1);
+  physical.mockClear();
+}
+
+async function rejectUnstartedStrandsStream(agent: IAgent) {
+  const result = await runWithRequiredBoundedApiTurn(() =>
+    agent.streamText('Hi'),
+  );
+  const iterator = result.fullStream[Symbol.asyncIterator]();
+  const error = new Error('consumer abandoned stream');
+  await expect(iterator.throw?.(error)).rejects.toBe(error);
+  expect(
+    await Promise.all([result.text, result.finishReason, result.usage]),
+  ).toEqual(['', 'error', undefined]);
+  expect(await iterator.next()).toMatchObject({ done: true });
+  expect(physical).not.toHaveBeenCalled();
+}
+
 async function refuseEscapedStrandsStream(agent: IAgent) {
   const escaped = await runWithRequiredBoundedApiTurn(() =>
     agent.streamText('Hi'),
@@ -264,7 +333,20 @@ test.each(['volt', 'strands'] as const)(
     await refused(async () => {
       await drain((await agent.streamText('Hi')).fullStream);
     });
-    if (kind === 'strands') await refuseEscapedStrandsStream(agent);
+    if (kind === 'strands') {
+      await refuseEscapedStrandsStream(agent);
+      expect(
+        await Promise.allSettled([
+          cancelStrandsStream(agent, false),
+          cancelStrandsStream(agent, true),
+        ]),
+      ).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      await rejectUnstartedStrandsStream(agent);
+      await cancelStartedStrandsStream(agent);
+    }
     if ('raw' in agent && agent.raw instanceof Agent) {
       const raw = agent.raw;
       await refused(() => raw.generateText('Hi'));
@@ -304,7 +386,20 @@ test.each(['volt', 'strands'] as const)(
     await refused(async () => {
       await drain((await bundle.agent.streamText('Hi')).fullStream);
     });
-    if (kind === 'strands') await refuseEscapedStrandsStream(bundle.agent);
+    if (kind === 'strands') {
+      await refuseEscapedStrandsStream(bundle.agent);
+      expect(
+        await Promise.allSettled([
+          cancelStrandsStream(bundle.agent, false),
+          cancelStrandsStream(bundle.agent, true),
+        ]),
+      ).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      await rejectUnstartedStrandsStream(bundle.agent);
+      await cancelStartedStrandsStream(bundle.agent);
+    }
     if ('raw' in bundle.agent && bundle.agent.raw instanceof Agent) {
       const raw = bundle.agent.raw;
       await refused(() => raw.generateText('Hi'));

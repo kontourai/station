@@ -61,6 +61,7 @@ import type {
   IStreamResult,
   ITool,
   ModelInputComposer,
+  TokenUsage,
   ToolCallDenial,
 } from '../types.js';
 import { conformAgentHooks } from './conduit-framework-adapter.js';
@@ -367,9 +368,21 @@ class StrandsAgentWrapper implements IAgent {
     });
 
     const self = this;
+    let fullText = '';
+    let settled = false;
+    const settle = (
+      text: string,
+      finish: string,
+      usage: TokenUsage | undefined,
+    ) => {
+      if (settled) return;
+      settled = true;
+      resolveText(text);
+      resolveFinish(finish);
+      resolveUsage(usage);
+    };
 
-    async function* streamGenerator(): AsyncIterable<IStreamChunk> {
-      let fullText = '';
+    async function* streamGenerator(): AsyncGenerator<IStreamChunk> {
       const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let observedUsage = false;
       try {
@@ -396,9 +409,11 @@ class StrandsAgentWrapper implements IAgent {
         for await (const event of stream) {
           if (event.type === 'agentResultEvent') {
             const agentResult = (event as any).result as AgentResult;
-            resolveText(agentResult.toString());
-            resolveFinish(agentResult.stopReason || 'end_turn');
-            resolveUsage(accUsage);
+            settle(
+              agentResult.toString(),
+              agentResult.stopReason || 'end_turn',
+              accUsage,
+            );
             continue;
           }
 
@@ -431,19 +446,34 @@ class StrandsAgentWrapper implements IAgent {
         if (emittedTextStart) yield { type: 'text-end', id: '0' };
         yield { type: 'finish-step', id: '0' };
 
-        resolveText(fullText);
-        resolveFinish('end_turn');
-        resolveUsage(accUsage);
+        settle(fullText, 'end_turn', accUsage);
       } catch (error) {
-        resolveText(fullText);
-        resolveFinish('error');
-        resolveUsage(observedUsage ? accUsage : undefined);
+        settle(fullText, 'error', observedUsage ? accUsage : undefined);
         throw error;
+      } finally {
+        settle(fullText, 'cancelled', undefined);
       }
     }
 
+    const iterator = streamGenerator();
+    const fullStream: AsyncIterableIterator<IStreamChunk> = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next: () => iterator.next(),
+      // Returning an unstarted generator never enters its finally block.
+      return: (value) => {
+        settle(fullText, 'cancelled', undefined);
+        return iterator.return(value);
+      },
+      throw: (error) => {
+        settle(fullText, 'error', undefined);
+        return iterator.throw(error);
+      },
+    };
+
     return {
-      fullStream: streamGenerator(),
+      fullStream,
       text: textPromise,
       usage: usagePromise,
       finishReason: finishPromise,
