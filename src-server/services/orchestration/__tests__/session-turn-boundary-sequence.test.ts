@@ -439,12 +439,36 @@ describe('session-terminal boundary ordering', () => {
       },
     );
   }
-  test.each(['observe', 'read', 'restart'] as const)(
-    'Station’s own shutdown exit keeps an in-flight turn for the next boot’s recovery (%s)',
-    (mode) => {
+  test.each(
+    (['observe', 'read', 'restart'] as const).flatMap((mode) =>
+      (['sent', 'engine-opened'] as const).map((kind) => [mode, kind] as const),
+    ),
+  )(
+    'Station’s own shutdown exit keeps an in-flight turn for the next boot’s recovery (%s, %s)',
+    (mode, kind) => {
       const path = databasePath();
       const store = open(path);
-      invoking(store);
+      if (kind === 'sent') invoking(store);
+      else {
+        const now = new Date().toISOString();
+        const prepared = store
+          .sessionTurnBoundaryAuthority()
+          .prepareProviderTurn('thread', 'engine-turn', now);
+        store.appendEvent(
+          {
+            eventId: 'engine-start',
+            provider: 'claude',
+            threadId: 'thread',
+            method: 'turn.started',
+            turnId: 'engine-turn',
+            createdAt: now,
+          },
+          [],
+          () => {
+            expect(prepared.record()).toEqual({ kind: 'applied' });
+          },
+        );
+      }
       const exited = (
         eventId: string,
         reason: string,
