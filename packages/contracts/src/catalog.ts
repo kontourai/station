@@ -448,6 +448,24 @@ export interface ProviderSessionSurfaceEvidence {
   sessionResume?: boolean;
 }
 
+/**
+ * ADR 0013: what one engine connection declared about itself at its protocol
+ * handshake (ACP `initialize`). Self-reported by the engine: a declaration,
+ * never proof that a surface works, and kept beside the capability matrix.
+ */
+export interface ProviderDeclaredHandshake {
+  /** When the handshake that declared these facts succeeded. */
+  observedAt: string;
+  protocolVersion: number;
+  agentInfo?: { name: string; title?: string; version?: string };
+  /** Core session lifecycle methods the engine named. */
+  sessionCapabilities: Array<'list' | 'resume' | 'close' | 'fork' | 'delete'>;
+  /** Sign-in methods exactly as the engine sent them. */
+  authMethods: unknown[];
+  /** Extension methods the engine listed in its capability `_meta`. */
+  extensionMethods: string[];
+}
+
 export interface ProviderCapabilityInventory {
   providerId: string;
   connectionId?: string;
@@ -463,4 +481,5 @@ export interface ProviderCapabilityInventory {
   skills: ProviderNativeSkill[];
   slashCommands: ProviderNativeSlashCommand[];
   sessionSurfaces?: ProviderSessionSurfaceEvidence;
+  declaredHandshake?: ProviderDeclaredHandshake;
 }

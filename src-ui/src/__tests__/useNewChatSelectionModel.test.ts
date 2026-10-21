@@ -113,6 +113,41 @@ describe('acpCatalogModelOptions (#3028)', () => {
     ]);
   });
 
+  test('#352: a models list is the catalog when no model option exists, and never outranks one', () => {
+    const sessionModels = {
+      currentModelId: 'grok-4.6',
+      availableModels: [
+        { modelId: 'grok-4.6', name: 'Grok 4.6' },
+        { modelId: 'grok-4.5' },
+      ],
+    };
+    expect(
+      acpCatalogModelOptions(
+        [
+          {
+            id: 'grok',
+            currentModel: 'grok-4.6',
+            configOptions: [],
+            sessionModels,
+          },
+        ],
+        'grok',
+      ),
+    ).toEqual([
+      { id: 'grok-4.6', name: 'Grok 4.6' },
+      { id: 'grok-4.5', name: 'grok-4.5' },
+    ]);
+    expect(
+      acpCatalogModelOptions(
+        [{ ...connections[0]!, sessionModels }],
+        'opencode',
+      ),
+    ).toEqual([
+      { id: 'opencode/big-pickle', name: 'opencode/big-pickle' },
+      { id: 'zai-coding-plan/glm-5.3', name: 'zai-coding-plan/glm-5.3' },
+    ]);
+  });
+
   test('no catalog, no connection id, or non-model categories yield empty', () => {
     expect(acpCatalogModelOptions(connections, 'kiro')).toEqual([]);
     expect(acpCatalogModelOptions(connections, undefined)).toEqual([]);

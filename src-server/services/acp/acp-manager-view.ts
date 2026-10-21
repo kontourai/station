@@ -5,6 +5,8 @@ import {
   ACPStatus,
   type ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
+import type { AcpDeclaredHandshake } from './acp-handshake-facts.js';
+import type { AcpSessionModelState } from './acp-process.js';
 
 /** archive#895 wave B: per-connection session-surface evidence projected from a
  * live ACP `initialize` handshake.
@@ -89,6 +91,8 @@ interface ACPProbeLike {
   getAgentCapabilities?(): AgentCapabilities | null | undefined;
   getProviderRouting?(): ProviderInfo[] | null;
   getProviderRoutingCurrent?(): boolean;
+  getDeclaredHandshake?(): AcpDeclaredHandshake | null;
+  getSessionModels?(): AcpSessionModelState | null;
   /** archive#1549: epoch ms of the last SUCCESSFUL initialize handshake; `0`/absent when none ever succeeded. */
   getHandshakeObservedAt?(): number;
   isAvailable(): boolean;
@@ -132,6 +136,13 @@ export function getACPManagerStatus(
      * previous cache and would otherwise re-date it.
      */
     handshakeObservedAt?: string;
+    /** ADR 0013: what the agent declared at that handshake (self-reported). */
+    declaredHandshake?: AcpDeclaredHandshake;
+    /**
+     * #352: the probe session's `models` list. A model config option, when
+     * present, outranks it as the catalog.
+     */
+    sessionModels?: AcpSessionModelState;
     /**
      * Why the connection is unavailable, from the probe's most recent
      * failure. Absent whenever the connection is available or no probe has
@@ -154,6 +165,8 @@ export function getACPManagerStatus(
       );
       const observedAt = probe.getHandshakeObservedAt?.() ?? 0;
       const providerRouting = probe.getProviderRouting?.() ?? null;
+      const declaredHandshake = probe.getDeclaredHandshake?.() ?? undefined;
+      const sessionModels = probe.getSessionModels?.() ?? undefined;
       const providerRoutingCurrent =
         probe.getProviderRoutingCurrent?.() ?? true;
 
@@ -188,7 +201,9 @@ export function getACPManagerStatus(
         sessionId: null,
         mcpServers: [],
         configOptions,
-        currentModel: modelConfig?.currentValue || null,
+        currentModel: modelConfig
+          ? modelConfig.currentValue || null
+          : sessionModels?.currentModelId || null,
         capabilities,
         providerRouting:
           providerRouting === null
@@ -197,6 +212,8 @@ export function getACPManagerStatus(
         providerRoutingCurrent,
         handshakeObservedAt:
           observedAt > 0 ? new Date(observedAt).toISOString() : undefined,
+        ...(declaredHandshake ? { declaredHandshake } : {}),
+        ...(sessionModels ? { sessionModels } : {}),
         lastError: probe.lastError ?? undefined,
       };
     }),

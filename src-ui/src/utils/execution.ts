@@ -344,20 +344,35 @@ export function resolveEffectiveModel({
  * sites rather than inside the shared resolver.
  */
 /**
- * The models an ACP engine advertised on its config options (category
- * "model"). ACP select options are `{ value, name }` objects; bare strings
- * are tolerated.
+ * The models an ACP engine advertised: its config option of category "model"
+ * when it has one (select options are `{ value, name }`; bare strings are
+ * tolerated), else the session's `models` list (#352).
  */
 export function acpAdvertisedModels(
-  configOptions:
-    | ReadonlyArray<{
-        category: string;
-        options?: Array<string | { value: string; name?: string }>;
-      }>
+  connection:
+    | {
+        configOptions?: ReadonlyArray<{
+          category: string;
+          options?: Array<string | { value: string; name?: string }>;
+        }>;
+        sessionModels?: {
+          availableModels: ReadonlyArray<{ modelId: string; name?: string }>;
+        };
+      }
     | undefined,
 ): Array<{ id: string; name: string }> {
-  return (configOptions ?? [])
-    .filter((option) => option.category === 'model')
+  const modelOptions = (connection?.configOptions ?? []).filter(
+    (option) => option.category === 'model',
+  );
+  if (modelOptions.length === 0) {
+    return (connection?.sessionModels?.availableModels ?? [])
+      .map((model) => ({
+        id: model.modelId,
+        name: model.name ?? model.modelId,
+      }))
+      .filter((model) => model.id.length > 0);
+  }
+  return modelOptions
     .flatMap((option) => option.options ?? [])
     .map((entry) =>
       typeof entry === 'string'

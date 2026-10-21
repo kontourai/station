@@ -88,6 +88,11 @@ export interface ACPSelectionConnection {
     /** ACP select options are { value, name } objects; bare strings tolerated. */
     options?: Array<string | { value: string; name?: string }>;
   }>;
+  /** #352: the session's model list, for an engine without a model option. */
+  sessionModels?: {
+    currentModelId?: string;
+    availableModels: Array<{ modelId: string; name?: string }>;
+  };
 }
 
 /**
@@ -102,7 +107,7 @@ export function acpCatalogModelOptions(
 ): Array<{ id: string; name: string }> {
   if (!agentConnectionId) return [];
   return acpAdvertisedModels(
-    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions,
+    acpConnections.find((acp) => acp.id === agentConnectionId),
   );
 }
 
@@ -530,7 +535,7 @@ export function useNewChatSelectionModel({
           runtimeCurrentMode: acpConnection?.configOptions?.find(
             (option) => option.category === 'mode',
           )?.currentValue,
-          advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
+          advertisedModels: acpAdvertisedModels(acpConnection),
           projectDefaultModel: newChatProjectDefaultModel(
             agent,
             selectedProjectConfig?.defaultModel,
