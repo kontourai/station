@@ -36,6 +36,7 @@ import {
   getStationControlCaller,
   jsonToolResult,
 } from './station-control-shared.js';
+import { registerTaskNoteTools } from './station-control-task-note-tools.js';
 import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
@@ -299,6 +300,7 @@ export function createSelectedStationControlMcpServer(
   registerHtmlReplyTools(registry);
   registerDeclarePullRequestTools(registry);
   registerReviewGuideTools(registry);
+  registerTaskNoteTools(registry);
   return server;
 }
 

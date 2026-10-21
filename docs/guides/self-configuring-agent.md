@@ -75,6 +75,16 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   status) refreshes the Conversation's pull-request links, so nothing reconciles
   without such a viewer. No agent tool sets the opt-in, and an older Station
   build refuses a Task store that carries it, so clear it before a rollback.
+- `task_note` for an agent to record Task memory in the Task document of the
+  Task its own Session works on: `{section, text}`, where `section` is
+  `decision`, `done`, `in_progress` or `question`. The Task comes from the
+  Session's room execution binding, never an argument, and a Session with no
+  Task is refused. Each entry is one line, at most 2000 characters (longer or
+  multi-line text is refused, not cut), and records the Session and the time.
+  An `in_progress` entry replaces that Session's own earlier line. The tool only
+  inserts lines through the room's edit model, never edits other text, and
+  never changes Task status
+  ([Task memory](../design/tracker-backed-tasks.md#task-memory)).
 - `send_to_session`, `interrupt_session`, and `wait_session` to message,
   interrupt, and wait on another Session in the caller's Project
   ([Session control](#session-control))

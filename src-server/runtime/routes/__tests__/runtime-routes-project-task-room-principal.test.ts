@@ -392,7 +392,8 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         await roomRuntime.document({ taskId: taskRecord.id, request }),
       ).toMatchObject({
         kind: 'snapshot',
-        text: '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.',
+        // The brief, then the four Task-memory sections (#4003).
+        text: '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.\n\n## Decisions\n\n## Done\n\n## In progress\n\n## Open questions\n',
       });
       expect(
         await roomRuntime.discover({ taskId: taskRecord.id, request }),

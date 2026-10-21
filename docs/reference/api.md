@@ -123,7 +123,7 @@ when a person accepts a chat proposal. The normal `title` carries the proposal t
 carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
 assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
-refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority and writes the brief followed by the four Task-memory headings (`## Decisions`, `## Done`, `## In progress`, `## Open questions`). A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
 ## Personal Task room agent requests
 
@@ -185,6 +185,15 @@ is dropped if the turn is aborted, interrupted, ends in an error or is replaced
 (a retried transient error keeps the turn alive), or if Station
 restarts before the turn completes (declarations wait in memory until the
 terminal event is stored). The keep above applies to it unchanged.
+
+The Station Control `task_note` tool's REST side,
+`POST /api/orchestration/station-control/task-note`, is also for Station's own
+tool code only (404 otherwise). It takes exactly `{section, text}`, derives the
+Session from the verified caller and the Task from that Session's room execution
+binding, and answers `{status: 'recorded', taskId, section, replaced, entry,
+revision}`. Text over 2000 characters, empty or multi-line text is `400` and
+nothing is written; a Session with no bound Task is `409`; an unavailable Task
+document is `503`. It never reaches Task status.
 
 `PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
 Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool

@@ -885,6 +885,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/declare-pull-request')],
   },
+  // #4003: appends one Task-memory entry to the Task document of the caller's
+  // OWN Session. The route reads the Session from the verified caller and the
+  // Task from its immutable room execution binding, never the body, and holds
+  // it to the one scope rule. A bounded write: one capped line in the
+  // caller's own Task, inserted through the room's edit model, never status.
+  task_note: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-note')],
+  },
 
   // ── notify ─────────────────────────────────────────────────────────────
   html_render: {

@@ -2642,6 +2642,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // #4003 `task_note`'s REST side. Internal-only at the route like the leaf
+    // above; the Task it writes is the verified caller Session's own bound
+    // Task, and the write is one capped Task-document line.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-note',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.

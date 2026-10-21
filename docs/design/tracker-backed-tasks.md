@@ -66,6 +66,49 @@ Session replaces its own in-progress line.
 Agents cannot change a Task's status. Status changes remain person-only, and
 close-on-merge is unchanged.
 
+### How `task_note` works
+
+These details were settled during implementation:
+
+- **Seeding.** A Task created from a shaping proposal is seeded with its brief
+  and then the four headings. The room runtime's `seedTaskDocument` does this
+  through the person's own edit path and writes only to an empty document;
+  Start Task calls the same method. A Task created any other way starts empty.
+  Its headings are added when the first note is recorded, at the end of the
+  document. Existing text is never moved, so an older Task can end up with its
+  sections in a different order.
+- **Entry.** Each entry is one line:
+  `- [session <sessionId>, <UTC time>] <text>`. The text is a single line of
+  at most 2000 characters. Longer, empty or multi-line text is refused with
+  nothing written; it is never cut. The entry goes after the last non-blank
+  line of its section. A section ends at the next level-1 or level-2 heading.
+  Headings inside fenced code are ignored, and if a person repeats a heading
+  the first one is used.
+- **In progress.** An `in_progress` entry replaces the line in that section
+  that starts with the calling Session's own prefix. Other Sessions' lines
+  are never touched. If a person moves the line out of the section, the next
+  entry is added as a new line.
+- **Authority.** The Task comes from the Session's immutable room execution
+  binding, written when the provider starts. That Session must also still be
+  the Task's lead Session, or a recorded independent request for this Task
+  incarnation. Without both, the call is refused. The tool takes no Task id.
+  The room runtime checks this again before the write commits.
+- **Write path.** The entry is planned as text edits that only insert text,
+  or replace the Session's own in-progress line. These edits are settled as
+  exact atom operations through the room's shared working state, so revision
+  history and concurrent edits by people converge as they do for any other
+  edit. If the edits would delete more than their own range, the call is
+  refused instead of written.
+- **Edit identities (a change to the person path).** Operation ids order
+  RGA siblings in ascending order. When a new insert's id sorted after the
+  text already at its position, the editing planner deleted and reinserted
+  everything after the edit. That rewrote other people's text and moved any
+  concurrent note anchored there, about half the time for any edit in the
+  middle of the document. The room runtime now gives every edit it plans a
+  low, strictly decreasing id, for people's edits and notes alike. New edits
+  therefore insert before the existing text. The planner's suffix-reinsert
+  branch remains as a fallback.
+
 ## Session brief
 
 When a Session is dispatched for a Task, it receives a Task brief before its

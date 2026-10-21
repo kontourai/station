@@ -161,6 +161,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
     repository: { owner: 'o', name: 'r' },
     ref: '1',
   },
+  task_note: { section: 'decision', text: 'A decision.' },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },

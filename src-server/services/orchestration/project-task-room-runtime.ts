@@ -46,6 +46,18 @@ import {
   type SharedWorkingStateEditBatch,
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
+import {
+  applyTaskMemoryEdit,
+  isTaskNoteSessionId,
+  planMissingTaskMemoryHeadings,
+  planTaskNoteEntry,
+  type TaskMemoryEdit,
+  type TaskNoteSection,
+  type TaskNoteTextRefusal,
+  taskDocumentSeedText,
+  taskNoteEntry,
+  taskNoteTextRefusal,
+} from '../../domain/task-memory.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
 import {
   projectTaskRoomDocumentId,
@@ -162,6 +174,13 @@ interface ProjectTaskRoomRuntimeDeps {
       }
     | undefined
   >;
+  /**
+   * The immutable Session -> Task room binding written at provider start.
+   * `task_note` authority starts here; absent, no Session can write a note.
+   */
+  readonly readExecutionBinding?: (
+    sessionId: string,
+  ) => { readonly projectId: string; readonly taskId: string } | undefined;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
   /** Test-only crash boundary for durable publication recovery proofs. */
@@ -321,6 +340,7 @@ export class ProjectTaskRoomRuntime {
   readonly #history: RecoverableRoomHistory;
   readonly #live = new Map<string, LiveRoomEntry>();
   readonly #liveStateChains = new Map<string, Promise<void>>();
+  readonly #taskNoteChains = new Map<string, Promise<void>>();
   readonly #recovery = new Map<string, Promise<boolean>>();
   readonly #subscribers = new Map<string, Set<RoomSubscriber>>();
   /**
@@ -550,32 +570,13 @@ export class ProjectTaskRoomRuntime {
       operations: plan.batch.operations,
       beforeCommit: async () => Boolean(this.#agentAssociation(input)),
     } as const;
-    let result = await this.#deps.working.settle(settlement);
-    if (
-      result.kind === 'rejected' &&
-      result.reason === 'revision-publication-pending' &&
-      this.#agentAssociation(input)
-    ) {
-      await this.#drainRevisionPublication({
-        taskId: input.taskId,
-        scope: association.document,
-        systemRecovery: true,
-      });
-      if (!this.#agentAssociation(input)) return { kind: 'not-found' };
-      // The worker receipt makes this exact retry duplicate-safe if the first
-      // attempt committed but its response was lost at the process boundary.
-      result = await this.#deps.working.settle(settlement);
-    }
-    if (!this.#agentAssociation(input)) return { kind: 'not-found' };
-    if (result.kind !== 'committed' && result.kind !== 'duplicate')
-      return result.kind === 'rejected'
-        ? {
-            kind: 'refused',
-            reason: result.reason ?? 'working-operation-rejected',
-          }
-        : { kind: 'unavailable' };
-    if (!result.revision || result.text === undefined)
-      return { kind: 'unavailable' };
+    const settled = await this.#settleAgentEdit({
+      taskId: input.taskId,
+      settlement,
+      current: async () => Boolean(this.#agentAssociation(input)),
+    });
+    if (settled.kind !== 'settled') return settled;
+    const { result } = settled;
     this.#publishAgentPresence({
       task: association.task,
       scope: association.scope,
@@ -586,20 +587,307 @@ export class ProjectTaskRoomRuntime {
         association.task.dispatchedAt ?? association.task.updatedAt,
       ),
     });
-    await this.#notify(association.document, { type: 'document', ...result });
-    const revisionEvidence = await this.#drainRevisionPublication({
-      taskId: input.taskId,
-      scope: association.document,
-      systemRecovery: true,
-    });
-    if (revisionEvidence.kind === 'linked')
-      await this.#publishHistory(association.document);
+    await this.#announceAgentEdit(input.taskId, association.document, result);
     return {
       kind: result.kind,
       revision: result.revision,
       text: result.text,
       sessionId: input.sessionId,
       runId,
+    };
+  }
+
+  /**
+   * One agent-authored settlement through the room's working state, with the
+   * exact retry after a pending revision publication drains. `current`
+   * re-derives the caller's authority across every await.
+   */
+  async #settleAgentEdit(input: {
+    readonly taskId: string;
+    readonly settlement: Parameters<ProjectTaskRoomWorkingState['settle']>[0];
+    readonly current: () => Promise<boolean>;
+  }): Promise<
+    | {
+        readonly kind: 'settled';
+        readonly result: {
+          readonly kind: 'committed' | 'duplicate';
+          readonly revision: string;
+          readonly text: string;
+        };
+      }
+    | { readonly kind: 'not-found' | 'unavailable' }
+    | { readonly kind: 'refused'; readonly reason: string }
+  > {
+    let result = await this.#deps.working.settle(input.settlement);
+    if (
+      result.kind === 'rejected' &&
+      result.reason === 'revision-publication-pending' &&
+      (await input.current())
+    ) {
+      await this.#drainRevisionPublication({
+        taskId: input.taskId,
+        scope: input.settlement.scope,
+        systemRecovery: true,
+      });
+      if (!(await input.current())) return { kind: 'not-found' };
+      // The worker receipt makes this exact retry duplicate-safe if the first
+      // attempt committed but its response was lost at the process boundary.
+      result = await this.#deps.working.settle(input.settlement);
+    }
+    if (!(await input.current())) return { kind: 'not-found' };
+    if (result.kind !== 'committed' && result.kind !== 'duplicate')
+      return result.kind === 'rejected'
+        ? {
+            kind: 'refused',
+            reason: result.reason ?? 'working-operation-rejected',
+          }
+        : { kind: 'unavailable' };
+    if (!result.revision || result.text === undefined)
+      return { kind: 'unavailable' };
+    return {
+      kind: 'settled',
+      result: {
+        kind: result.kind,
+        revision: result.revision,
+        text: result.text,
+      },
+    };
+  }
+
+  /** Projection and revision evidence after an agent-authored settlement. */
+  async #announceAgentEdit(
+    taskId: string,
+    document: { projectId: string; taskId: string; documentId: string },
+    result: { kind: 'committed' | 'duplicate'; revision: string; text: string },
+  ): Promise<void> {
+    await this.#notify(document, { type: 'document', ...result });
+    const revisionEvidence = await this.#drainRevisionPublication({
+      taskId,
+      scope: document,
+      systemRecovery: true,
+    });
+    if (revisionEvidence.kind === 'linked')
+      await this.#publishHistory(document);
+  }
+
+  /**
+   * `task_note` (#4003): record one Task-memory entry for the calling
+   * Session. The caller names only its own Session (the verified
+   * station-control caller) and the entry: the Task comes from the Session's
+   * immutable room execution binding, and the Session must still be the
+   * Task's lead or a recorded independent request of this Task incarnation.
+   *
+   * The entry is planned as text edits that only insert, or replace the
+   * Session's own in-progress line, and settles through the room's working
+   * state as exact atom operations. Concurrent edits by people therefore
+   * converge rather than being overwritten. Nothing here reads or writes Task
+   * status.
+   */
+  appendTaskNote(input: {
+    readonly sessionId: string;
+    readonly section: TaskNoteSection;
+    readonly text: string;
+    /** Test seam for the entry time; production uses the server clock. */
+    readonly at?: Date;
+  }): Promise<TaskNoteOutcome> {
+    if (this.#closed || this.#deps.hosted?.())
+      return Promise.resolve({ kind: 'unavailable' });
+    const refusal = taskNoteTextRefusal(input.text);
+    if (refusal) return Promise.resolve({ kind: 'refused', refusal });
+    if (!isTaskNoteSessionId(input.sessionId))
+      return Promise.resolve({ kind: 'no-task' });
+    const binding = this.#readExecutionBinding(input.sessionId);
+    if (binding === 'unavailable')
+      return Promise.resolve({ kind: 'unavailable' });
+    if (!binding) return Promise.resolve({ kind: 'no-task' });
+    // One Task's notes plan against the state their predecessor committed,
+    // so one Session's two quick in-progress notes never both append.
+    const prior = this.#taskNoteChains.get(binding.taskId) ?? Promise.resolve();
+    const result = prior.then(() => this.#appendTaskNote(input));
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#taskNoteChains.set(binding.taskId, settled);
+    void settled.then(() => {
+      if (this.#taskNoteChains.get(binding.taskId) === settled)
+        this.#taskNoteChains.delete(binding.taskId);
+    });
+    return result;
+  }
+
+  #readExecutionBinding(sessionId: string) {
+    try {
+      return this.#deps.readExecutionBinding?.(sessionId);
+    } catch {
+      return 'unavailable' as const;
+    }
+  }
+
+  async #taskNoteAssociation(sessionId: string) {
+    const binding = this.#readExecutionBinding(sessionId);
+    if (!binding || binding === 'unavailable') return undefined;
+    const association = await this.#lifecycleAssociation(
+      binding.taskId,
+      sessionId,
+    );
+    if (
+      !association ||
+      association.task.id !== binding.taskId ||
+      association.scope.projectId !== binding.projectId
+    )
+      return undefined;
+    return {
+      ...association,
+      document: {
+        ...association.scope,
+        documentId: documentIdFor(association.scope),
+      },
+    };
+  }
+
+  async #appendTaskNote(input: {
+    readonly sessionId: string;
+    readonly section: TaskNoteSection;
+    readonly text: string;
+    readonly at?: Date;
+  }): Promise<TaskNoteOutcome> {
+    const association = await this.#taskNoteAssociation(input.sessionId);
+    if (!association) return { kind: 'no-task' };
+    const provider = (
+      await this.#deps.readAgentLifecycle?.({ sessionId: input.sessionId })
+    )?.provider;
+    if (!provider) return { kind: 'unavailable' };
+    const current = async () => {
+      const now = await this.#taskNoteAssociation(input.sessionId);
+      return (
+        now !== undefined &&
+        now.agentId === association.agentId &&
+        now.task.createdAt === association.task.createdAt &&
+        sameScope(now.scope, association.scope)
+      );
+    };
+    const snapshot = await this.#deps.working.privateSnapshot({
+      scope: association.document,
+    });
+    if (!snapshot || !(await current())) return { kind: 'unavailable' };
+    const base = new SharedWorkingState({
+      scope: association.document,
+      snapshot,
+    }).text();
+    const entry = taskNoteEntry({
+      sessionId: input.sessionId,
+      at: input.at ?? new Date(),
+      text: input.text,
+    });
+    // At most two contiguous edits: the missing headings at the end, then
+    // the entry. Each is planned on the text the previous one produces.
+    const headings = planMissingTaskMemoryHeadings(base);
+    const withHeadings = headings ? applyTaskMemoryEdit(base, headings) : base;
+    const note = planTaskNoteEntry(withHeadings, {
+      section: input.section,
+      sessionId: input.sessionId,
+      entry,
+    });
+    if (!note) return { kind: 'unavailable' };
+    const runId = createOrchestrationRunId(provider, input.sessionId);
+    const actorId = agentActorId(
+      association.task.id,
+      association.agentId,
+      input.sessionId,
+    );
+    const epoch = authorizationEpoch(
+      this.#roomPolicyRevision(association.scope),
+    );
+    const batches: SharedWorkingStateEditBatch[] = [];
+    let text = base;
+    for (const edit of headings ? [headings, note] : [note]) {
+      const intentId = roomEditIntentId();
+      const capability = createSharedWorkingStateEditingCapability({
+        scope: association.document,
+        snapshot: () => snapshot,
+        authorization: () => ({
+          scope: association.document,
+          epoch,
+          allowedActorIds: new Set([actorId]),
+        }),
+        actor: () => ({
+          actorId,
+          kind: 'agent',
+          displayLabel: association.agentId,
+        }),
+        attribution: () => ({
+          projectId: association.scope.projectId,
+          taskId: association.task.id,
+          agentSessionId: input.sessionId,
+          runId,
+          correlationId: `task-note:${association.task.id}:${input.sessionId}`,
+        }),
+        replicaId: `agent-session:${input.sessionId}`,
+        nextIntentId: () => intentId,
+      });
+      const desiredText = applyTaskMemoryEdit(text, edit);
+      const plan = capability.plan({
+        currentText: text,
+        desiredText,
+        selection: { anchor: 0, focus: 0 },
+        pending: batches,
+      });
+      if (plan.outcome === 'unchanged') continue;
+      if (plan.outcome !== 'planned')
+        return { kind: 'unavailable', reason: plan.reason };
+      // The planner may delete and reinsert a retained suffix when its new
+      // atoms would sort after the existing branch. That would rewrite other
+      // people's text, so a plan deleting more than the edit's own range is
+      // never settled.
+      if (
+        deletedAtomCount(plan.batch.operations) > allowedDeletions(text, edit)
+      )
+        return { kind: 'unavailable', reason: 'note would rewrite other text' };
+      batches.push(plan.batch);
+      text = desiredText;
+    }
+    const last = batches.at(-1);
+    if (!last) return { kind: 'unavailable' };
+    const operations = batches.flatMap((batch) => batch.operations);
+    const settled = await this.#settleAgentEdit({
+      taskId: association.task.id,
+      current,
+      settlement: {
+        scope: association.document,
+        intentId: last.intentId,
+        intentDigest: sharedWorkingStateEditBatchDigest({
+          intentId: last.intentId,
+          scope: association.document,
+          operations,
+        }),
+        actorId,
+        actorLabel: association.agentId,
+        actorKind: 'agent',
+        publicationCorrelation: { agentSessionId: input.sessionId, runId },
+        publicationPrincipal: {
+          operatorId: association.ownerOperatorId,
+          deviceId: `agent-session:${input.sessionId}`,
+          policyRevision: this.#roomPolicyRevision(association.scope),
+        },
+        epoch,
+        operations,
+        beforeCommit: current,
+      },
+    });
+    if (settled.kind !== 'settled') return settled;
+    await this.#announceAgentEdit(
+      association.task.id,
+      association.document,
+      settled.result,
+    );
+    return {
+      kind: 'recorded',
+      taskId: association.task.id,
+      section: input.section,
+      entry,
+      replaced: note.replaced,
+      revision: settled.result.revision,
     };
   }
 
@@ -1331,16 +1619,24 @@ export class ProjectTaskRoomRuntime {
     }
   }
 
-  /** Acceptance reuses human editing authority and never replaces later edits. */
-  async seedProposalBrief(input: {
+  /**
+   * Seed a new Task's document: the brief, then the four Task-memory
+   * sections (`taskDocumentSeedText`). Reuses the person's editing authority
+   * and writes only an empty document, so it never replaces later edits; a
+   * retry of the same seed succeeds. Proposal acceptance and Start Task call
+   * this; an empty brief seeds the sections alone.
+   */
+  async seedTaskDocument(input: {
     taskId: string;
     request: Request;
-    text: string;
+    brief: string;
   }): Promise<boolean> {
+    const text = taskDocumentSeedText(input.brief);
     const plan = await this.editPlan({
-      ...input,
+      taskId: input.taskId,
+      request: input.request,
       intentId: randomUUID(),
-      desiredText: input.text,
+      desiredText: text,
       selection: { anchor: 0, focus: 0 },
       onlyIfEmpty: true,
     });
@@ -1358,7 +1654,7 @@ export class ProjectTaskRoomRuntime {
       taskId: input.taskId,
       request: input.request,
     });
-    return document.kind === 'snapshot' && document.text === input.text;
+    return document.kind === 'snapshot' && document.text === text;
   }
 
   async editPlan(input: {
@@ -1378,7 +1674,9 @@ export class ProjectTaskRoomRuntime {
     const state = new SharedWorkingState({ scope, snapshot });
     if (input.onlyIfEmpty && state.text())
       return { kind: 'unchanged' } as const;
-    const issuedIntentId = randomUUID();
+    // Low-sorting, so a mid-document edit inserts before the existing branch
+    // instead of deleting and reinserting everything after it.
+    const issuedIntentId = roomEditIntentId();
     // Document operations participate in the room policy, not the credential
     // version of the browser that happened to plan them. Exact device
     // reauthorization still fences the eventual commit below.
@@ -3532,6 +3830,58 @@ function agentLifecycleReceiptId(
   return `agent-room:${createHash('sha256')
     .update(`${taskId}\u0000${sessionId}\u0000${outcome}`)
     .digest('hex')}`;
+}
+
+export type TaskNoteOutcome =
+  | {
+      readonly kind: 'recorded';
+      readonly taskId: string;
+      readonly section: TaskNoteSection;
+      readonly entry: string;
+      /** True when an in-progress entry replaced this Session's own line. */
+      readonly replaced: boolean;
+      readonly revision: string;
+    }
+  /** The Session has no Task binding, or is no longer this Task's Session. */
+  | { readonly kind: 'no-task' | 'not-found' }
+  | { readonly kind: 'refused'; readonly refusal: TaskNoteTextRefusal }
+  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'unavailable'; readonly reason?: string };
+
+let lastRoomEditOrdinal = Number.POSITIVE_INFINITY;
+
+/**
+ * Server-minted intent identity for every room edit this runtime plans.
+ *
+ * Operation identities order RGA siblings ascending (`compareWorkingStateIds`).
+ * When an insertion's atoms sort AFTER the existing branch at its insertion
+ * point, the editing capability must delete and reinsert the whole retained
+ * suffix to render the requested text. That rewrites everyone else's text
+ * after the edit and displaces any concurrent edit anchored in it. `!` sorts
+ * below the UUID alphabet of older identities, and the ordinal strictly
+ * decreases within the process (and with the clock across restarts), so a
+ * new edit sorts before the branches that already exist.
+ */
+function roomEditIntentId(): string {
+  const ordinal = Math.min(
+    9_000_000_000_000_000 - Date.now() * 1000,
+    lastRoomEditOrdinal - 1,
+  );
+  lastRoomEditOrdinal = ordinal;
+  return `!room-edit:${String(ordinal).padStart(16, '0')}:${randomUUID()}`;
+}
+
+function deletedAtomCount(operations: readonly TextDocumentOperation[]) {
+  return operations.reduce(
+    (count, operation) =>
+      operation.kind === 'delete' ? count + operation.target.length : count,
+    0,
+  );
+}
+
+/** One atom per Unicode scalar: the edit may delete at most its own range. */
+function allowedDeletions(text: string, edit: TaskMemoryEdit): number {
+  return [...text.slice(edit.start, edit.end)].length;
 }
 
 function agentActorId(taskId: string, agentId: string, sessionId: string) {

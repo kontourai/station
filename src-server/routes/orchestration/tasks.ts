@@ -355,10 +355,11 @@ export function createTaskRoutes(
   options: {
     taskDispatcher: TaskDispatcher;
     proposalBriefAvailable?: () => boolean;
-    seedProposalBrief?: (input: {
+    /** `ProjectTaskRoomRuntime.seedTaskDocument`: the brief and memory sections. */
+    seedTaskDocument?: (input: {
       taskId: string;
       request: Request;
-      text: string;
+      brief: string;
     }) => Promise<boolean>;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
@@ -449,10 +450,11 @@ export function createTaskRoutes(
   } = {} as {
     taskDispatcher: TaskDispatcher;
     proposalBriefAvailable?: () => boolean;
-    seedProposalBrief?: (input: {
+    /** `ProjectTaskRoomRuntime.seedTaskDocument`: the brief and memory sections. */
+    seedTaskDocument?: (input: {
       taskId: string;
       request: Request;
-      text: string;
+      brief: string;
     }) => Promise<boolean>;
     canReadSession?: (
       sessionId: string,
@@ -659,7 +661,7 @@ export function createTaskRoutes(
       if (input.shapingSource) {
         if (
           !input.proposalBrief ||
-          !options.seedProposalBrief ||
+          !options.seedTaskDocument ||
           options.proposalBriefAvailable?.() === false
         )
           return c.json(
@@ -724,10 +726,10 @@ export function createTaskRoutes(
       if (input.shapingSource) {
         let seeded = false;
         try {
-          seeded = await options.seedProposalBrief!({
+          seeded = await options.seedTaskDocument!({
             taskId: data.id,
             request: c.req.raw,
-            text: input.proposalBrief!,
+            brief: input.proposalBrief!,
           });
         } catch {
           /* Retry retains the exact source identity. */

@@ -2589,7 +2589,9 @@ Unicode scalars and visible atoms. Deletions name exact atoms; remote atoms
 inserted later are not swept into that deletion. Insertion names the exact
 predecessor. Where immutable RGA sibling ordering would put a retained suffix
 before the inserted text, the planner reinserts that suffix to obtain the
-requested text. Applying the resulting batch to a cloned document must reproduce
+requested text. The room runtime avoids that branch by minting every edit's
+intent ID low and strictly decreasing (#4003), so a new insertion sorts before
+the existing branch; the reinsert remains only as a fallback. Applying the resulting batch to a cloned document must reproduce
 the desired text before the plan is accepted.
 
 Deletion operations are chunked by measured JSON UTF-8 bytes, replacing the
@@ -2599,8 +2601,11 @@ batch to 384 operations. Text has separate 256 Ki code-unit and 256 KiB UTF-8
 limits; atom IDs and selections are checked too. These are admission ceilings,
 not a promise that every maximum-sized edit has acceptable interactive latency.
 
-**Callers.** `ProjectTaskRoomRuntime.editPlan()` and `publishAgentDocumentEdit()`
-use this capability on the server. Browser edits receive an opaque intent ID
+**Callers.** `ProjectTaskRoomRuntime.editPlan()`, `publishAgentDocumentEdit()`
+and `appendTaskNote()` (the `task_note` Station Control tool, #4003) use this
+capability on the server. `appendTaskNote()` plans only insertions, or the
+replacement of the calling Session's own in-progress line, and refuses a plan
+that would delete more than that range. Browser edits receive an opaque intent ID
 and digest plus text/selection preview, never atoms, operations or a writer
 grant. The runtime keeps at most 256 private plans, expires a plan after five
 minutes, and settles only its exact scope/principal/digest. If the in-memory
@@ -3669,7 +3674,7 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown, followed by the four Task-memory headings (`seedTaskDocument`, #4003), through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and

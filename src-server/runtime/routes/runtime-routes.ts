@@ -349,6 +349,7 @@ import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createTaskNoteRoutes } from '../../routes/orchestration/task-note.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -2675,6 +2676,22 @@ export function configureRuntimeRoutes(
         context.orchestrationService.declareStationControlPullRequest(input),
     }),
   );
+  // #4003 `task_note`'s REST side: the verified caller's own Session; the
+  // room runtime derives its Task from the immutable execution binding.
+  context.app.route(
+    '/api/orchestration',
+    createTaskNoteRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      get appendTaskNote() {
+        // Composed later in this function; read at request time.
+        return projectTaskRoomRuntime
+          ? (input: Parameters<ProjectTaskRoomRuntime['appendTaskNote']>[0]) =>
+              projectTaskRoomRuntime!.appendTaskNote(input)
+          : undefined;
+      },
+    }),
+  );
   context.app.route(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
@@ -3953,8 +3970,8 @@ export function configureRuntimeRoutes(
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
-      seedProposalBrief: (input) =>
-        projectTaskRoomRuntime?.seedProposalBrief(input) ??
+      seedTaskDocument: (input) =>
+        projectTaskRoomRuntime?.seedTaskDocument(input) ??
         Promise.resolve(false),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
@@ -4216,6 +4233,10 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readExecutionBinding: (sessionId) =>
+        context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+          sessionId,
+        ),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,

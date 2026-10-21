@@ -68,13 +68,16 @@ describe('station-control tool classification', () => {
     );
     // #2584: notify_user writes (one bounded inbox record), so it is not
     // labelled a reader; it is auto-approved as a bounded write.
+    // #4003: task_note appends one capped line to the caller's own Task.
     expect(boundedWrite).toEqual([
       'notify_user',
       'html_render',
       'html_preview',
+      'task_note',
     ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_task_note',
       'station-control_html_render',
       'station-control_html_preview',
       'station-control_notify_user',

@@ -26,6 +26,8 @@ const proposalAnswer =
   '```station-task-proposal\n' + JSON.stringify(proposal) + '\n```';
 const brief =
   '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.';
+/** The saved document: the brief, then the four Task-memory sections (#4003). */
+const seededDocument = `${brief}\n\n## Decisions\n\n## Done\n\n## In progress\n\n## Open questions\n`;
 const input = {
   projectId: 'alpha',
   title: 'Installer progress',
@@ -97,7 +99,7 @@ async function fixture(
       sessionReadAuthorityFromRequest('owner', undefined, undefined),
     canReadSession: () => true,
     readAssistantTurn: read,
-    seedProposalBrief: (input) => room.seedProposalBrief(input),
+    seedTaskDocument: (input) => room.seedTaskDocument(input),
   });
   const accept = (changes: Partial<typeof input> & { agentId?: string } = {}) =>
     app.request('/', {
@@ -148,7 +150,7 @@ test('acceptance durably commits the brief and first Session link, and retries k
   ]);
   const request = new Request('http://station.test');
   expect(await room.document({ taskId: task.id, request })).toMatchObject({
-    text: brief,
+    text: seededDocument,
   });
   expect(working.settle.mock.calls[0][0].operations).toEqual(
     expect.arrayContaining([
@@ -256,7 +258,7 @@ test('a failed document write reports recoverable creation and retry seeds the s
       taskId: task.id,
       request: new Request('http://station.test'),
     }),
-  ).toMatchObject({ text: brief });
+  ).toMatchObject({ text: seededDocument });
 });
 test('document authority loss reports a recoverable failure without writing under another principal', async () => {
   const { revoke, service, accept, working } = await fixture();
@@ -310,7 +312,7 @@ test('concurrent acceptance saves one brief and both callers succeed', async () 
       taskId: service.listTasks()[0].id,
       request: new Request('http://station.test'),
     }),
-  ).toMatchObject({ text: brief });
+  ).toMatchObject({ text: seededDocument });
 });
 
 test.each([
