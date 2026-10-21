@@ -398,58 +398,34 @@ export interface DeviceSettings {
    */
   regionArrangement: RegionArrangementRecord;
   /**
-   * #3051: the Coding layout's panels, per session. Which tool is open
-   * beside Chat and how wide, whether the Terminal's lower panel is open and
-   * how tall — remembered for each conversation and restored on return, so
-   * a review in one session does not reshape another. Bounded to
-   * `CODING_PANELS_SESSION_BOUND` sessions, the entry touched longest ago
-   * evicted. A session with no entry starts closed. Read through the UI's
-   * `coding-panels-record.ts`, whose parser is also the import validation;
-   * a malformed value is dropped, never a crash.
-   * Never had a prior key: the stack had no side panel before it.
+   * Side/lower-panel choices per layout and conversation on this device.
+   * Both layout and session retention are bounded; an unseen pair starts closed.
+   * The UI record parser also validates imported settings.
    */
-  codingPanels: CodingSessionPanelsRecord;
+  layoutPanels: LayoutPanelsRecord;
 }
 
-/**
- * One session's Coding panels. `sideWidth`/`terminalHeight` are `null` until
- * the reader resized them (the layout's default applies); `at` is when the
- * entry was last touched, which decides eviction.
- */
-export interface CodingSessionPanels {
-  /** The pane instance open beside Chat, or null for Chat alone. */
+/** One layout's side/lower-panel state for a conversation on this device. */
+export interface LayoutSessionPanels {
   side: string | null;
   sideWidth: number | null;
-  terminalOpen: boolean;
-  terminalHeight: number | null;
-  /**
-   * The inbox as the reader left it BY HAND while a tool was beside Chat
-   * (#3046 round): `null` means no such choice, and the layout may collapse
-   * the inbox itself to keep the transcript its floor and reopen it when the
-   * tool closes; `true`/`false` is the reader's own choice for this session,
-   * which the layout never overrides; `'layout'` records that the layout
-   * folded it, so a reload or a return restores it when the tool closes.
-   */
+  lowerOpen: boolean;
+  lowerHeight: number | null;
   inbox: boolean | 'layout' | null;
+  /** Last interaction time, used for bounded retention. */
   at: number;
 }
 
-export interface CodingSessionPanelsRecord {
+export interface LayoutPanelsRecord {
   version: 1;
-  sessions: Record<string, CodingSessionPanels>;
+  layouts: Record<string, { sessions: Record<string, LayoutSessionPanels> }>;
 }
 
-/**
- * How many sessions' panels a device remembers. Beyond it the entry touched
- * longest ago is evicted. Thirty-two covers a working week of conversations
- * at well under a kilobyte, inside the one envelope every device setting
- * shares.
- */
-export const CODING_PANELS_SESSION_BOUND = 32;
-
-export const DEFAULT_CODING_PANELS_RECORD: CodingSessionPanelsRecord = {
+export const LAYOUT_PANELS_SESSION_BOUND = 32;
+export const LAYOUT_PANELS_LAYOUT_BOUND = 32;
+export const DEFAULT_LAYOUT_PANELS_RECORD: LayoutPanelsRecord = {
   version: 1,
-  sessions: {},
+  layouts: {},
 };
 
 export interface DeviceSettingDefinition<
@@ -1086,15 +1062,15 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,
   }),
   defineDeviceSetting({
-    key: 'codingPanels',
+    key: 'layoutPanels',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Coding panels',
-    help: 'Each conversation reopens with the tool beside Chat, the Terminal, and their sizes as you left them.',
+    label: 'Layout panels',
+    help: 'Each layout and conversation reopens with its side and lower panels and their sizes as you left them.',
     description:
-      'Per session in the Coding layout: the tool open beside Chat and its width, the Terminal’s open state and height.',
-    // #3051: new device setting; nothing remembered panels before it.
-    defaultValue: DEFAULT_CODING_PANELS_RECORD,
+      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and the inbox fold.',
+    // #2993: obsolete pre-release panel preferences reset to generic defaults.
+    defaultValue: DEFAULT_LAYOUT_PANELS_RECORD,
   }),
 ] as const satisfies readonly DeviceSettingDefinition[];
 
@@ -1160,7 +1136,7 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'chatDockHeight',
   'chatDockWidth',
   'regionArrangement',
-  'codingPanels',
+  'layoutPanels',
   'dockSlotPlacement',
   'chatDockProjectSlug',
   'inboxScope',

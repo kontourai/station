@@ -1227,7 +1227,7 @@ to `@kontourai/station-shared` or into the plugin).
 | --- | --- | --- |
 | Layout host, navigation, chat placement | navigation store, chat placement, `CodingChatPane`, `ChatDock`, pane-host reducer, commands and open context, region chrome slots | HOST (a). Plugin-initiated opens go through SDK-4 (#3875) |
 | Pane head actions | `PaneHeadSlots` (a React portal) | SDK-1: a declarative `usePaneHeadActions`, because #3875 bars React slots from crossing the capability |
-| Panel and device state | `coding-panels-record`, device settings, `transcriptMeasure` | a2 (a generic panel record keyed by layout, migrating the `codingPanels` device-settings key); SDK-6 for the plugin's own per-device state |
+| Panel and device state | `layout-panels-record`, device settings, `transcriptMeasure` | a2 (a generic panel record keyed by layout, retiring the pre-release `codingPanels` preferences); SDK-6 for the plugin's own per-device state |
 | Device facts | `useIsMobile`, `useDockSlotDevice`, mobile viewport, menu focus | SDK-1 (`useHostFacts`); viewport and menu focus are HOST or KIT |
 | Shortcuts | `useKeyboardShortcut`, `KeyboardShortcutsContext` | SDK-1. The SDK's `useKeyboardShortcut(s)` exist but throw for plugins: `SDKAdapter.tsx` passes `hooks: {}` and wires no shortcuts context |
 | Chat interop | `ActiveChatsContext` drafts, `CodingFilesContextProvider`, `ACPChatPanel`, `useACPConnections`, `useRecentAgents` | SDK-3 (`useChatComposer`, `useChatContextAttachments`); the chat pane by descriptor (SDK-4); ACP connections are already in the SDK; recent agents become plugin-local on SDK-6 |
@@ -1471,8 +1471,13 @@ derivation (so only `type === 'coding'` works) must fail the fixture half.
 The server workspace-binding portion is implemented in source: Project layout
 creation, updates, reads and catalog application accept the repository binding
 and retain legacy Coding restrictions. See [the current API](../reference/api.md#layout-management).
-The generic panel record and its device-settings migration below remain
-unfinished; this is not completion of a2 or the Coding extraction.
+The generic `layoutPanels` record is also implemented in source, keyed by
+Project/Layout host scope and conversation. Panel slots are side/lower rather
+than Coding-specific. On 2026-10-21 the owner chose to reset old panel preferences
+to generic defaults, superseding the preservation requirement below. The v3
+device envelope removes the obsolete `codingPanels` field; no compatibility
+bucket or deferred adoption remains. This does not complete the generic host
+presentation or Coding extraction.
 
 - Add `workspaceBinding?: 'repository'` to the layout contract. A layout
   declaring it gets the working directory derived from its project, and a
@@ -1488,7 +1493,8 @@ unfinished; this is not completion of a2 or the Coding extraction.
 - **Migration:** a stored `type: 'coding'` layout without the field reads
   as `workspaceBinding: 'repository'`, whether or not the Coding plugin is
   installed, so the plugin's absence never loosens admission. A stored
-  `codingPanels` record migrates once into the generic record.
+  obsolete `codingPanels` visibility/size preferences reset to generic defaults
+  in the v3 device envelope (owner choice, 2026-10-21).
 
 Acceptance:
 
@@ -1498,8 +1504,10 @@ Acceptance:
 - A stored `type: 'coding'` layout in today's exact shape, with no
   `workspaceBinding`, is still refused a `config.workingDirectory` write
   with the Coding plugin uninstalled.
-- A `codingPanels` record in today's exact shape migrates and the
-  workbench reopens with the same panels.
+- A v2 device envelope containing `codingPanels` upgrades to v3 without that
+  field. Unrelated preferences survive, and each layout starts with generic
+  panel defaults. Generic panel choices subsequently survive reload and stay
+  independent across layouts and conversations.
 
 Proof: server route tests for the derivation and both refusals, and a
 migration test from today's device-settings fixture. Reverting the

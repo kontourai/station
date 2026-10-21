@@ -4,6 +4,11 @@ Canonical cross-package contract ownership for Station.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
+`LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
+scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
+`LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
+pre-release Coding-only panel preference; it does not preserve those old sizes.
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain

@@ -189,7 +189,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // #2144 slice 6 — whether deleting a conversation asks first.
         'confirmConversationDelete',
         // #3051 — the Coding layout's panels, per session.
-        'codingPanels',
+        'layoutPanels',
         'chatReturnBehavior',
         // Named color themes (docs/decisions/user-color-themes.md).
         'colorTheme',

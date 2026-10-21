@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
-import { writeCodingSessionPanels } from '../../../lib/coding-panels-record';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { writeLayoutSessionPanels } from '../../../lib/layout-panels-record';
 import { createFilePreviewPaneInstance } from '../../../workspace-panes/filePreviewPaneInstance';
 import { usePaneHeadSlots } from '../../../workspace-panes/PaneHeadSlots';
 import { useRegionChromeSlots } from '../../../workspace-panes/RegionChromeSlots';
@@ -243,7 +243,7 @@ beforeEach(() => {
   harness.chatRenders = 0;
   harness.shortcuts.clear();
   harness.showSurface.mockReset();
-  deviceSettingsStore.reset('codingPanels');
+  deviceSettingsStore.reset('layoutPanels');
   deviceSettingsStore.reset('inboxOpen');
   navigationStore.navigate(ROUTE, {
     pane: null,
@@ -763,7 +763,9 @@ const lowerPanel = () =>
 const urlPane = () => new URLSearchParams(window.location.search).get('pane');
 const railItem = (name: string) => within(rail()).getByRole('button', { name });
 const remembered = (sessionKey: string) =>
-  deviceSettingsStore.get('codingPanels').sessions[sessionKey];
+  deviceSettingsStore.get('layoutPanels').layouts[scopeKey]?.sessions[
+    sessionKey
+  ];
 
 describe('CodingWorkbench — panels beside and below Chat past the wide fold (#3040, #3051)', () => {
   test('a rail pick opens the tool beside Chat: Chat stays the page, visible and the same instance; the entry is replaced, not pushed', async () => {
@@ -875,7 +877,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(urlPane()).toBeNull();
     expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
     expect(sidePanel().getAttribute('data-active')).toBe('false');
-    expect(remembered('conv-t')?.terminalOpen).toBe(true);
+    expect(remembered('conv-t')?.lowerOpen).toBe(true);
   });
 
   test('the separators resize by keyboard within bounds that keep Chat its floor, and reset', async () => {
@@ -944,7 +946,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(pages.style.getPropertyValue('--coding-lower-height')).toBe('246px');
     fireEvent.keyDown(lower, { key: 'ArrowLeft' });
     expect(lower.getAttribute('aria-valuenow')).toBe('246');
-    expect(remembered('~')?.terminalHeight).toBe(246);
+    expect(remembered('~')?.lowerHeight).toBe(246);
     fireEvent.keyDown(lower, { key: 'Enter' });
     expect(lower.getAttribute('aria-valuenow')).toBe('230');
   });
@@ -958,7 +960,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     await act(async () => undefined);
     expect(remembered('conv-a')).toMatchObject({
       side: diff.instanceId,
-      terminalOpen: true,
+      lowerOpen: true,
     });
 
     // A new session (the inbox's replace): closed.
@@ -983,9 +985,11 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     const envelope = JSON.parse(
       window.localStorage.getItem('station-device-settings-v1') ?? '{}',
     );
-    expect(envelope.values.codingPanels.sessions['conv-a']).toMatchObject({
+    expect(
+      envelope.values.layoutPanels.layouts[scopeKey].sessions['conv-a'],
+    ).toMatchObject({
       side: diff.instanceId,
-      terminalOpen: true,
+      lowerOpen: true,
     });
 
     // A fresh arrival on the session with nothing in the URL restores it.
@@ -1431,16 +1435,20 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
     // Left the layout with the inbox folded for a tool, then the tool was
     // closed elsewhere (another tab, a stale record): the return unfolds.
     deviceSettingsStore.set('inboxOpen', false);
-    deviceSettingsStore.set('codingPanels', {
+    deviceSettingsStore.set('layoutPanels', {
       version: 1,
-      sessions: {
-        'conv-left': {
-          side: null,
-          sideWidth: null,
-          terminalOpen: false,
-          terminalHeight: null,
-          inbox: 'layout',
-          at: 1,
+      layouts: {
+        [scopeKey]: {
+          sessions: {
+            'conv-left': {
+              side: null,
+              sideWidth: null,
+              lowerOpen: false,
+              lowerHeight: null,
+              inbox: 'layout',
+              at: 1,
+            },
+          },
         },
       },
     });
@@ -1452,24 +1460,28 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
   });
 
   test('the reader’s standing choice is applied when their session arrives or returns', async () => {
-    deviceSettingsStore.set('codingPanels', {
+    deviceSettingsStore.set('layoutPanels', {
       version: 1,
-      sessions: {
-        'conv-closed': {
-          side: diff.instanceId,
-          sideWidth: null,
-          terminalOpen: false,
-          terminalHeight: null,
-          inbox: false,
-          at: 1,
-        },
-        'conv-open': {
-          side: diff.instanceId,
-          sideWidth: null,
-          terminalOpen: false,
-          terminalHeight: null,
-          inbox: true,
-          at: 2,
+      layouts: {
+        [scopeKey]: {
+          sessions: {
+            'conv-closed': {
+              side: diff.instanceId,
+              sideWidth: null,
+              lowerOpen: false,
+              lowerHeight: null,
+              inbox: false,
+              at: 1,
+            },
+            'conv-open': {
+              side: diff.instanceId,
+              sideWidth: null,
+              lowerOpen: false,
+              lowerHeight: null,
+              inbox: true,
+              at: 2,
+            },
+          },
         },
       },
     });
@@ -1881,9 +1893,10 @@ describe('CodingWorkbench — delta review: one ⋯ per head, Escape’s reach, 
   test('a session arriving with a remembered tool and the layout’s fold keeps the fold: no unfold-and-refold, no inbox write', async () => {
     deviceSettingsStore.set('inboxOpen', false);
     deviceSettingsStore.set(
-      'codingPanels',
-      writeCodingSessionPanels(
-        deviceSettingsStore.get('codingPanels'),
+      'layoutPanels',
+      writeLayoutSessionPanels(
+        deviceSettingsStore.get('layoutPanels'),
+        scopeKey,
         '~',
         { side: diff.instanceId, inbox: 'layout' },
         Date.now(),

@@ -46,9 +46,10 @@ import { navigationStore } from '../../contexts/navigation-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useLayoutSessionPanels } from '../../hooks/useLayoutSessionPanels';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
-import { NO_SESSION_PANELS_KEY } from '../../lib/coding-panels-record';
+import { NO_SESSION_PANELS_KEY } from '../../lib/layout-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
@@ -95,7 +96,6 @@ import {
   codingSideMaxWidth,
   codingTranscriptWidth,
   resizeCodingPanelFromKeyboard,
-  useCodingSessionPanels,
 } from './codingPanels';
 import type { CodingStackLocation } from './codingStackPage';
 import './CodingWorkbench.css';
@@ -291,13 +291,16 @@ export function CodingWorkbench({
   // ── Wide: the URL's pane is the side panel, the Terminal is the lower one.
   const terminalId = terminal?.instance.instanceId ?? null;
   const sessionKey = activeChat ?? NO_SESSION_PANELS_KEY;
-  const { panels, update: updatePanels } = useCodingSessionPanels(sessionKey);
+  const { panels, update: updatePanels } = useLayoutSessionPanels(
+    scopeKey,
+    sessionKey,
+  );
   const sidePaneId =
     wide && location.page === 'drill-in' && location.paneId !== terminalId
       ? location.paneId
       : null;
   const sideOpen = sidePaneId !== null;
-  const lowerOpen = wide && terminal !== undefined && panels.terminalOpen;
+  const lowerOpen = wide && terminal !== undefined && panels.lowerOpen;
   /** The stack's page: on a wide screen Chat is always it. */
   const page: 'chat' | 'drill-in' = wide ? 'chat' : location.page;
   const paneId = wide ? sidePaneId : location.paneId;
@@ -630,7 +633,7 @@ export function CodingWorkbench({
     if (!wide || provisional || terminalId === null) return;
     if (location.page === 'drill-in' && location.paneId === terminalId) {
       replaceSide(null);
-      updatePanels({ terminalOpen: true });
+      updatePanels({ lowerOpen: true });
     }
   }, [
     location.page,
@@ -651,11 +654,11 @@ export function CodingWorkbench({
     const was = wasWide.current;
     wasWide.current = wide;
     if (!was || wide || provisional || terminalId === null) return;
-    if (panels.terminalOpen && location.page === 'chat')
+    if (panels.lowerOpen && location.page === 'chat')
       navigationStore.updateParams({ pane: terminalId, paneScope: scopeKey });
   }, [
     location.page,
-    panels.terminalOpen,
+    panels.lowerOpen,
     provisional,
     scopeKey,
     terminalId,
@@ -736,13 +739,13 @@ export function CodingWorkbench({
           document.activeElement &&
           lowerPanelRef.current.contains(document.activeElement),
       );
-      updatePanels({ terminalOpen: false });
+      updatePanels({ lowerOpen: false });
       setAnnouncement(`${label} closed`);
       if (viaKeyboard || focusWasInside)
         focusRailItem(terminal.instance.instanceId);
       return;
     }
-    updatePanels({ terminalOpen: true });
+    updatePanels({ lowerOpen: true });
     setAnnouncement(`${label} below the conversation`);
     if (viaKeyboard) setLowerFocusRequest((request) => request + 1);
   };
@@ -855,7 +858,7 @@ export function CodingWorkbench({
   );
   const lowerDefault = codingLowerDefaultHeight(roomHeight);
   const lowerHeight = clampCodingLowerHeight(
-    panels.terminalHeight ?? lowerDefault,
+    panels.lowerHeight ?? lowerDefault,
     roomHeight,
   );
   // A drag's frames are written to the room's own custom properties, not
@@ -1418,10 +1421,7 @@ export function CodingWorkbench({
                   }
                   onCommit={(height) =>
                     updatePanels({
-                      terminalHeight: clampCodingLowerHeight(
-                        height,
-                        roomHeight,
-                      ),
+                      lowerHeight: clampCodingLowerHeight(height, roomHeight),
                     })
                   }
                 />
