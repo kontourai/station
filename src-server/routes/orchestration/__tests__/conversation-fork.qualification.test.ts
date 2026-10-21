@@ -12,6 +12,7 @@ import {
 } from '../../../__test-utils__/scripted-continuity-adapter.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
+import { nativeSessionIdentityKey } from '../../../providers/adapters/native-resume-binding.js';
 import {
   createConversationHandoffIntent,
   type ExecutionTargetExecutionDependencies,
@@ -434,6 +435,110 @@ describe('scripted fork delivery and canonical history qualification', () => {
     );
     await expect(
       f.execute('codex', 'Continue after the failed first turn.'),
+    ).rejects.toThrow('Fork context delivery has not completed.');
+    expect(f.receiver.turns).toHaveLength(1);
+  });
+
+  test('a completion witnesses the invocation native identity rather than a later carrier rebind', async () => {
+    const f = await fixture('codex');
+    const send = f.receiver.sendTurn.bind(f.receiver);
+    let invokedIdentity: string | undefined;
+    const rebind = vi
+      .spyOn(f.receiver, 'sendTurn')
+      .mockImplementationOnce((input) => {
+        const row = f.store['db']
+          .prepare(
+            'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+          )
+          .get(input.threadId);
+        if (
+          !row ||
+          typeof row !== 'object' ||
+          !('identity_key' in row) ||
+          typeof row.identity_key !== 'string'
+        )
+          throw new Error('expected the invocation native identity');
+        invokedIdentity = row.identity_key;
+        const sent = send(input);
+        f.store.claimNativeSessionIdentity(
+          nativeSessionIdentityKey(
+            'codex',
+            'b'.repeat(64),
+            `codex:native:${input.threadId}`,
+          ),
+          input.threadId,
+          true,
+        );
+        return sent;
+      });
+    try {
+      await f.execute('codex', FIRST_MESSAGE);
+    } finally {
+      rebind.mockRestore();
+    }
+    const captured = f.receiver.turns[0];
+    if (!captured?.clientTurnId || !invokedIdentity)
+      throw new Error('expected the captured seed turn');
+    await vi.waitFor(() =>
+      expect(
+        f.store.latestEventByMethod(f.conversationId, 'turn.completed'),
+      ).toBeDefined(),
+    );
+    expect(
+      f.store.conversationSeedWitness(f.conversationId, captured.clientTurnId),
+    ).toMatchObject({ nativeIdentityKey: invokedIdentity });
+    await expect(
+      f.execute('codex', 'Continue under the replacement identity.'),
+    ).rejects.toThrow('Fork context delivery has not completed.');
+    expect(f.receiver.turns).toHaveLength(1);
+    f.store.claimNativeSessionIdentity(invokedIdentity, f.conversationId, true);
+    await f.execute(
+      'codex',
+      'Continue after restoring the original native identity.',
+    );
+    await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(2));
+    expect(f.receiver.turns[1]?.ambientContext).toBeUndefined();
+  });
+
+  test('corrupt derived context cannot roll back a real provider completion or qualify its seed', async () => {
+    const f = await fixture('codex');
+    const send = f.receiver.sendTurn.bind(f.receiver);
+    const corruption = vi
+      .spyOn(f.receiver, 'sendTurn')
+      .mockImplementationOnce((input) => {
+        const sent = send(input);
+        f.store['db']
+          .prepare(
+            'UPDATE orchestration_conversation_fork_context SET snapshot_json = ? WHERE target_conversation_id = ?',
+          )
+          .run('{private-context-canary', f.conversationId);
+        return sent;
+      });
+    try {
+      await f.execute('codex', FIRST_MESSAGE);
+    } finally {
+      corruption.mockRestore();
+    }
+    const captured = f.receiver.turns[0];
+    if (!captured?.invocationId || !captured.clientTurnId)
+      throw new Error('expected the captured seed-bearing invocation');
+    expect(captured.ambientContext).toContain(PARENT_ONLY);
+    await vi.waitFor(() =>
+      expect(
+        f.store
+          .listEvents(f.conversationId)
+          .some(
+            (event) =>
+              event.payload.method === 'turn.completed' &&
+              event.payload.invocationId === captured.invocationId,
+          ),
+      ).toBe(true),
+    );
+    expect(
+      f.store.conversationSeedWitness(f.conversationId, captured.clientTurnId),
+    ).toBeUndefined();
+    await expect(
+      f.execute('codex', 'Continue after context projection corruption.'),
     ).rejects.toThrow('Fork context delivery has not completed.');
     expect(f.receiver.turns).toHaveLength(1);
   });

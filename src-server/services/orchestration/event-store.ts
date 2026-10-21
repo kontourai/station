@@ -3988,7 +3988,25 @@ export class EventStore {
     const observed = this.sessionTurnBoundaries.observe(event);
     if (observed.kind !== 'applied')
       throw new Error('Invocation terminal observation unavailable.');
-    this.projectConversationSeedWitness(event);
+    if (event.method !== 'turn.completed' || !event.turnId) return;
+    this.db.exec('SAVEPOINT context_seed_witness_projection');
+    try {
+      this.projectConversationSeedWitness(event);
+      this.db.exec('RELEASE SAVEPOINT context_seed_witness_projection');
+    } catch {
+      // Derived proof cannot erase a provider fact. Roll back any partial
+      // witness so a projection failure leaves context delivery unverified.
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT context_seed_witness_projection; RELEASE SAVEPOINT context_seed_witness_projection',
+      );
+      logger.warn(
+        'Context delivery projection failed; witness update rolled back.',
+        {
+          threadId: event.threadId,
+          invocationId: event.invocationId,
+        },
+      );
+    }
   }
 
   private projectConversationSeedWitness(event: CanonicalRuntimeEvent): void {
@@ -4096,11 +4114,13 @@ export class EventStore {
       !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
     )
       return;
-    const native = this.db
-      .prepare(
-        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
-      )
-      .get(event.threadId) as { identity_key: string } | undefined;
+    const nativeIdentityKey =
+      prepared.capture.resumeGuard.binding.nativeIdentityKey;
+    const native =
+      typeof nativeIdentityKey === 'string' &&
+      /^[a-f0-9]{64}$/.test(nativeIdentityKey)
+        ? nativeIdentityKey
+        : undefined;
     const witness = createConversationSeedWitness({
       kind: context.kind,
       contextId: context.contextId,
@@ -4111,7 +4131,7 @@ export class EventStore {
       invocationId: event.invocationId,
       providerTurnId: event.turnId,
       terminalEventId: event.eventId,
-      ...(native ? { nativeIdentityKey: native.identity_key } : {}),
+      ...(native ? { nativeIdentityKey: native } : {}),
     });
     this.db
       .prepare(`INSERT OR IGNORE INTO orchestration_context_seed_witnesses
@@ -10759,6 +10779,16 @@ export class EventStore {
         'The native conversation is owned by another execution Session.',
       );
     }
+  }
+
+  /** Opaque identity recorded in the invocation binding before the provider effect. */
+  nativeSessionBindingIdentity(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+      )
+      .get(sessionId) as { identity_key: string } | undefined;
+    return row?.identity_key;
   }
 
   nativeSessionOwnedBy(sessionId: string): boolean {

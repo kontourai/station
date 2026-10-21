@@ -1708,7 +1708,10 @@ text and source cutoffs before provider start. The
 [context-start fence](../../src-server/services/orchestration/conversation-start-context.ts)
 uses the [completion witness](../../src-server/services/orchestration/conversation-context-seed-witness.ts)
 for the exact prepared invocation, terminal event and required native identity.
-These private projections remain in the existing EventStore. A consumed start
+The native identity is captured with the prepared invocation, so a later
+carrier rebind cannot borrow its acknowledgement. A failed witness projection
+rolls back only that derived update; the observed canonical terminal remains
+independently persistable. These private projections remain in the existing EventStore. A consumed start
 boundary is not a delivery acknowledgement; uncertain or failed seed delivery
 refuses ordinary reuse. Deliberate empty context and the framework's native
 memory companion retain their separate contracts.

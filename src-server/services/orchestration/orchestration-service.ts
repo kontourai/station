@@ -13268,7 +13268,10 @@ export class OrchestrationService {
     const liveBinding = this.options.adapterRegistry
       .get(session.provider)
       ?.preparedTurnBinding?.(threadId);
+    const nativeIdentityKey =
+      this.options.eventStore?.nativeSessionBindingIdentity(threadId);
     return {
+      ...(nativeIdentityKey !== undefined ? { nativeIdentityKey } : {}),
       provider: session.provider,
       resumeCursor: session.resumeCursor ?? null,
       cwd: session.cwd ?? null,

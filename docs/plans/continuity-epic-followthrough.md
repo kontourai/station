@@ -366,3 +366,24 @@ provider/account acceptance. Diagnostics are retained in
 /private/tmp/station-continuity-conversation-route-real-store-20261021.log; the
 passing owner receipt is
 /private/tmp/station-continuity-conversation-route-real-store-final-20261021.log.
+
+
+### Completion projection integrity and invocation identity
+
+A corruption probe demonstrated that malformed derived fork context rolled back
+an actual provider turn.completed event. Witness projection now runs under its
+own savepoint; any partial witness update is rolled back without erasing the
+canonical terminal. The ordinary-turn guard still refuses missing context proof.
+A separate race probe demonstrated that reading native identity at completion
+could credit a rebound carrier with context sent to the previous identity. The
+prepared invocation now captures the opaque native identity; the completion
+witness uses that retained value, never the current mutable binding. Replacement
+identity reuse refuses; restoring the original identity permits ordinary reuse.
+These source changes do not establish two-account or live-provider evidence.
+
+Baseline failures are retained at
+/private/tmp/station-continuity-terminal-projection-before-20261021.log and
+/private/tmp/station-continuity-native-invocation-binding-before-20261021.log.
+The fourteen-case qualification owner, handoff owner and pin-codec owner pass
+34 focused tests; server-test typechecking and governance pass. The broader
+orchestration/EventStore owner run passes all 830 tests.

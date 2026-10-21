@@ -329,15 +329,35 @@ qualification receipt. See [the connection controls](../guides/connections.md#in
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
-are the supported request contracts established from the live runtime callers:
+are the supported request contracts; source composition and live consumer
+qualification remain separate evidence:
 
 | Consumer | Explicit credential path | Missing or malformed credential |
 | --- | --- | --- |
 | Browser UI, desktop shell, and mobile shell | Device-session cookie after the public pairing/access-request exchange; the desktop may use its native request broker | Protected route returns `401 authentication_required`; public pairing paths remain available |
 | CLI | `--credential`, `STATION_API_CREDENTIAL`, or an OS-keyring-backed paired profile credential | The command reaches the same `401`; the CLI must pair or supply a credential |
-| `station-control` MCP | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects it as ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Station-owned `station-control` runtime | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Explicit local external MCP client | Independently revocable, header-only scoped lease from the personal-host operator setup surface | The MCP endpoint refuses missing, expired, revoked or out-of-scope leases; no internal token is exported |
 | SSH delegation | Paired outbound peer bearer attached to the tunnel request | The remote runtime returns `401`; a tunnel alone grants no API authority |
 | Station-owned UI/Tailscale proxy | It always classifies browser traffic as remote and relays its device-session cookie or bearer; the shared token carries only bounded proxy metadata | `401`; a loopback socket, Host, or SSH forward never becomes internal authority |
+
+External-client setup requires the file-proven personal-host operator and
+`access:manage`, with current device/account/group authority checked after body
+consumption and again during lease verification. It binds an existing recorded,
+operator-owned Session and its current Project; it creates no Session or
+Environment. Tools are explicitly selected from `read_conversation`, `board_read`
+and `board_pin`, with a 60–3600 second lifetime. Board tools remain self-owned
+rather than Project-partitioned. Each request and call rechecks
+recorded ownership and Project identity. These leases use loopback transport,
+remain `delegated-custody`, and cannot satisfy browser tools' bound-caller rule.
+Explicit revoke, expiry and process restart invalidate them. Session revocation
+removes existing client leases; an operator may deliberately issue a new lease
+against a retained stopped Session record afterwards. That is record binding,
+not Session liveness. See the [Session API](../reference/session-api.md#external-clients-using-station-tools)
+for the setup contract and [CLI](../reference/cli.md#mcp-clients) for private-file
+configuration. Browser/plugin consent flows retain their existing transactions;
+this personal-host surface grants no remote OAuth/TLS or external-execution
+ownership.
 
 The public pairing, access-request, exchange, proof, liveness, share-token, and
 MCP-token routes remain separately declared authentication contracts; this
