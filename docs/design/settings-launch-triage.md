@@ -27,9 +27,7 @@ Turning previews off withdraws those panes while retaining unrelated pane placem
    floating:** gate candidates. They automate or interrupt user work and need
    complete workflow evidence before normal exposure. Checkpoints and guardian
    already have off defaults; that is not evidence of hardened recovery.
-2. **Telemetry:** do not present unavailable Lite sending as a working delivery
-   choice. Keep Off and a truthful effective state. Separate consent from
-   operator receiver/collector configuration and diagnostic counters.
+2. **Telemetry:** the baseline review found Lite sending unavailable. The current source has notice-gated Lite daily sending and separately acknowledged Full for each configured built-in destination. Keep Off and distinguish the saved choice, current admission and actual delivery; an empty Kontour build address remains inert. Consent stays separate from operator receiver/collector setup and diagnostic counters.
 3. **Defaults:** scope model, token, prompt and region controls to engines that
    consume them. The max-turns copy is qualified in this change; runtime limits
    are unchanged. Strands does not consume that VoltAgent step cap.
@@ -96,7 +94,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Registry URL (`registry-url`) | Move | Startup-only install source override; most users need no override. Developer/operator configuration. | [source](../../src-server/runtime/bootstrap/runtime-initialize.ts) |
 | Disable default skill registries (`default-skill-registries`) | Simplify | Negative toggle is hard to parse; prefer “Use built-in skill catalogs” while preserving stored-key compatibility. | [source](../../src-server/runtime/bootstrap/runtime-startup.ts) |
 | Layout sources (`distribution-profile`) | Move | Chooses layout sources at startup; not a release/distribution channel. Developer/operator configuration. | [source](../../src-server/runtime/routes/runtime-routes.ts) |
-| Usage telemetry (`usage-telemetry`) | Simplify before launch | Lite can be selected although sending is unavailable; Kontour Full is unavailable. Keep Off and accurately distinguish stored intent from delivery. | [source](../../src-ui/src/views/settings/TelemetryTierSettings.tsx) |
+| Usage telemetry (`usage-telemetry`) | Simplify / qualify | The baseline lacked Lite sending. Current source sends Lite only after notice and admits Full independently for each configured destination after its disclosure acknowledgement; an empty Kontour build address stays inert. Keep Off and distinguish stored choice, admission and delivery. | [source](../../src-ui/src/views/settings/TelemetryTierSettings.tsx) |
 | Telemetry destination (`telemetry-destination`) | Simplify | Keep effective destination next to consent; no extra empty destination card. | [source](../../src-ui/src/views/settings/TelemetryDelivery.tsx) |
 | Product delivery (`product-telemetry-delivery`) | Move | Delivery diagnostics are useful to operators; a configured receiver is not an acknowledgement of receipt. | [source](../../src-ui/src/views/settings/TelemetryDelivery.tsx) |
 | Product receiver address (`productTelemetryEndpoint`) | Move | Advanced operator receiver setup, not an ordinary privacy preference. | [source](../../src-ui/src/views/settings/StationConfigSection.tsx) |

@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -59,6 +60,7 @@ const SYMLINK_CHILD_ID = '0199a001-0000-7000-8000-000000000007';
 const OVERSIZED_CHILD_ID = '0199a001-0000-7000-8000-000000000008';
 const LATER_TURN_ID = 'turn/opaque:later';
 const MARKER = `station-adoption:${TARGET_ID}`;
+const makeWorkspace = trackTempDirs();
 const tempRoots: string[] = [];
 
 function sourceHomeWithRollout(
@@ -748,6 +750,7 @@ describe('Codex native attached-session adoption', () => {
   });
 
   test('rejects a malformed affinity-bearing resume cursor instead of starting a fresh thread', async () => {
+    const cwd = makeWorkspace('station-codex-invalid-cursor-');
     const processFactory = vi.fn(() => new FakeCodexProcess());
     const adapter = new CodexAdapter({
       processFactory,
@@ -755,6 +758,7 @@ describe('Codex native attached-session adoption', () => {
     });
     await expect(
       adapter.startSession({
+        cwd,
         provider: 'codex',
         threadId: TARGET_ID,
         resumeCursor: {

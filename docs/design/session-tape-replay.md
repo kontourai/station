@@ -173,7 +173,7 @@ Adapter mappings, same Station event:
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
 
-Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
+Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallback where configured. Neither process mode establishes native mid-turn steering in the dock; supported input and control capabilities remain owned by the Muse adapter and capability matrix.
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The

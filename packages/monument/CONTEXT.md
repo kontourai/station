@@ -100,8 +100,9 @@ refused too, as are percent-encoded or backslash relative specifiers and any
 dependency entry (the package has none, and an aliased specifier such as
 `workspace:` or `npm:` is never allowed). The gate reads source text; a name
 assembled at run time is out of its reach and is left to review. The package may hold only source, Markdown, its licence and
-its root `package.json` and `tsconfig.json`; any other file (an extensionless
-module, a JSON fixture) is refused, because Node or the published `files` list
+its root `package.json`, `tsconfig.json` and `tsconfig.build.json`; the build
+config is an explicit reviewed exception. Other files (an extensionless
+module, a JSON fixture) are refused, because Node or the published `files` list
 would use it without the gate reading it. The same gate refuses Station code
 that reaches the package other than through its exported entry points: it
 resolves relative, absolute and `file:` specifiers through symlinks and

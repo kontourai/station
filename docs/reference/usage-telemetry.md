@@ -297,12 +297,7 @@ the reason. DNT suppresses the signal and does not record a feedback window.
 Settings offers the fixed reasons and Skip when lowering a publisher's choice;
 the comparison uses the saved tier, so editing an unsaved raise back down is not a lowering. The pending tier stays visible in the selector and is named in the reason prompt. The reason is staged until Save. Cancel or Escape closes the Settings prompt, restores the prior draft tier and focus, and sends nothing. Each edited publisher is written independently,
 with its optional reason in that same config request, preserving omitted
-publishers. Successful writes are marked saved even if a later write fails; the error identifies a partial save and retry includes only unsaved changes. The Full disclosure dialog offers the same optional prompt before
-its write-then-acknowledge sequence. Skip sends no feedback, and no prompt is
-offered under DNT. Failed writes do not acknowledge. Feedback is action metadata,
-not a persisted setting. The optional prompt focuses its heading once when
-opened and returns keyboard focus to the Settings tier control after a reason
-or Skip is chosen. A failed dialog setting write focuses its error so keyboard users can find the retry actions.
+publishers. Successful writes are marked saved even if a later write fails; the error identifies a partial save and retry includes only unsaved changes. In the current combined sharing dialog, Full acknowledgements precede the choice save; that dialog does not offer tier-lowering feedback. The older operator-only compatibility disclosure retains its separate optional feedback and write-then-acknowledge path. Skip sends no feedback, and DNT suppresses feedback. A failed setting write is not reported as saved; an acknowledgement already written is not rolled back by that failure. Feedback is action metadata, not a persisted setting. The Settings reason prompt focuses its heading when opened and returns focus to the tier control after a reason or Skip is chosen. A failed dialog setting write focuses its error so keyboard users can find the retry actions.
 
 `POST /api/usage-telemetry/feedback` accepts exactly publisher (`kontour` or
 `operator`), action and a fixed-enum reason. Non-skip reasons require action
@@ -320,7 +315,7 @@ family. Feedback contains no installation ID.
 
 ## Delivery status and connection checks
 
-Settings → Telemetry shows the connected Station's current-process queue,
+Settings → Privacy & sharing → Advanced shows the connected Station's current-process queue,
 acknowledged observations, failed attempts and discarded observations. These
 are process counters, not lifetime accounting or a durable spool. A product
 batch leaves the queue only after a matching `station-product-commit/v1`

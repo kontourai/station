@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // @vitest-environment jsdom
 import { act, render, screen } from '@testing-library/react';
 import { memo } from 'react';
@@ -80,15 +81,20 @@ test('mounted plugin consumers ignore parent and non-SDK navigation changes whil
     );
   });
   const layout = { slug: 'assistant', name: 'Assistant', tabs: [] };
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   function Harness({ tick }: { tick: number }) {
     return (
-      <div data-tick={tick}>
-        <NavigationProvider>
-          <SDKAdapter layout={layout}>
-            <Probe />
-          </SDKAdapter>
-        </NavigationProvider>
-      </div>
+      <QueryClientProvider client={client}>
+        <div data-tick={tick}>
+          <NavigationProvider>
+            <SDKAdapter layout={layout}>
+              <Probe />
+            </SDKAdapter>
+          </NavigationProvider>
+        </div>
+      </QueryClientProvider>
     );
   }
   navigationStore.updateParams({ dock: null, fontSize: null });
@@ -111,6 +117,7 @@ test('mounted plugin consumers ignore parent and non-SDK navigation changes whil
   expect(screen.getByTestId('plugin').textContent).toBe('2:open');
   const afterData = renders;
   view.unmount();
+  client.clear();
   expect({
     initial,
     afterParents,

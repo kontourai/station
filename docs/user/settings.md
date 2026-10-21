@@ -30,8 +30,14 @@ Turning a preview on affects everyone who uses this Station.
 
 **Enable developer tools** shows the **Developer** page in **Customize** and
 the command palette, and its **Monitoring** page in the command palette. It is
-off by default. Turning it off only hides them; a direct `/developer` link
-still opens.
+off by default; a direct `/developer` link still opens when it is off.
+
+Enabling it also reveals three independent previews: **Flow delivery preview**,
+**Veritas readiness preview**, and **Trust preview**. Each starts off and is
+saved on this device. The tools require both Developer tools and their own
+preview switch to be on. Turning Developer tools off makes them unavailable
+without clearing those saved choices. These device previews are separate from
+the Station-wide Feature previews above.
 
 ## Shared answers
 

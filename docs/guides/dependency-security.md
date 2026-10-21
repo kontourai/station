@@ -684,8 +684,13 @@ no publisher, while metadata completion can reconcile existing proof.
 The policy binds the exact head, repository and every current main-target PR
 sharing that head. It checks recorded base ancestry and the current run attempt;
 new main commits do not by themselves invalidate ancestral source evidence.
-Missing, unfinished, failed, cancelled or divergent proof cannot borrow an older
-success. Reconciliation launches no candidate tests. Keep the legacy required
+Missing or unfinished source proof remains pending. Failed, genuinely cancelled or
+divergent source proof cannot borrow an older success. A cancelled metadata-only run is
+ignored only with trusted metadata labels, an ancestor-bound referenced main workflow
+revision whose immutable CI run-name policy agrees, a cancelled title job, and every
+source producer skipped. A parent run cancelled after all required source producers
+succeeded can retain that completed proof; cancellation of a required producer remains
+non-passing. Reconciliation launches no candidate tests. Keep the legacy required
 `fast-checks` context until real publisher statuses are verified, then follow
 [the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
 This source status is not full release qualification.

@@ -111,6 +111,8 @@ Browser access is independent of attaching MCP sources. See the
 [browser and computer capability proposal](../design/agent-interaction-capabilities.md)
 for the proposed cross-engine behavior; it is not implemented.
 
+On Claude Code, an authentic built-in Station browser request can offer **Allow the Station browser for this session** beside the per-tool choice. It covers later plain calls from that same in-process server while the session record lives. An explicit Ask rule, an escalation, a question or a plan exit still requires its own decision. Station offers and honors this grant only after the engine reports exactly one `station-browser` server with SDK provenance; a matching name alone is insufficient. Stopping or restarting the session drops the grant.
+
 Claude and Codex offer **Keep harness tools**. New Agents add integrations to
 the harness configuration; existing Agents keep their previous behavior until
 you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
@@ -172,15 +174,15 @@ Station guardrail declaration does not establish external enforcement:
 
 ```json
 {
+  "maxSteps": 30,
   "guardrails": {
-    "maxSteps": 30,
     "maxTokens": 8192,
     "temperature": 0.3
   }
 }
 ```
 
-- `maxSteps` — maximum agentic steps per turn before the runtime halts the loop
+- `maxSteps` — top-level Agent step cap applied by VoltAgent; the Agent file schema rejects it inside `guardrails`. Strands does not apply this configured cap.
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
 - `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.

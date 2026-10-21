@@ -68,7 +68,7 @@ const snapshot = z
     nextOrdinal: z.number().int().nonnegative(),
   })
   .strict();
-export const resultSchema = z.union([
+export const resultSchema = z.discriminatedUnion('kind', [
   refused,
   z
     .object({

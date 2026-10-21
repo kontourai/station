@@ -46,6 +46,13 @@ The sequence passes `deliveryId` as `clientTurnId` or `clientInputId`, maps
 refused and indeterminate outcomes, and never tries the other branch. A thrown
 recording or port error propagates; a failed recording invokes no effect.
 
+The optional synchronous `ports.prepareText(text)` runs after a deliverable
+branch is selected and before recording or effect. A preparation error
+propagates without recording a new branch or invoking an effect. Without it,
+text passes through unchanged. A pinned replay uses its recorded branch and
+prepares the text without recording again. Station supplies sender framing
+through this host port; Monument imports no Station sender or framing contract.
+
 `conversationKeyDecision` classifies a key across every Session of a
 conversation. `startUnlessDelivered` returns a known started turn without
 calling the start port, refuses an unresolved live claim with

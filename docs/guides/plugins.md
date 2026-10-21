@@ -620,8 +620,11 @@ Use the documented SDK root or owning subpath. Key root hooks:
   contributed that Agent.
 - `useSendMessage()` sends to the active conversation; `useCreateChatSession()`
   and `useOpenConversation()` start or reopen one in the chat dock.
-- `useConversations()`, `useConversation(id)` and
-  `useConversationMessages(id)` read conversations.
+- `useConversations()` reads the default host's captured conversation list; its
+  Agent argument is not forwarded by Station's adapter. `useConversation(id)`
+  and `useConversationMessages(id)` require custom-host slots that Station's
+  default adapter does not supply. Use an explicitly supported query/client
+  operation for a protected read; see the [default host bindings](../reference/sdk.md#default-host-bindings-and-custom-hosts).
 
 <!-- compile-checked: examples/docs-snippets/src/plugins-agents-and-chat.tsx -->
 ```tsx
@@ -757,11 +760,16 @@ Three things are worth knowing before writing against it:
 
 ### Config
 
-```tsx
-import { useConfig } from '@kontourai/station-sdk';
+Station's default host supplies `useApiBase()` but does not bind the optional
+`useConfig()` slot. For a server configuration read, use `useConfigQuery()` and
+handle its loading, error and authorization result. A custom host may supply
+the compatibility slot explicitly; export presence alone does not enable it.
 
-const config = useConfig();
-// config.region, config.defaultModel, config.invokeModel, ...
+```tsx
+import { useConfigQuery } from '@kontourai/station-sdk';
+
+const config = useConfigQuery();
+// Read config.data only after this query succeeds.
 ```
 
 ### Notifications
@@ -777,12 +785,11 @@ showToast({ type: 'info', message: 'FYI' });
 
 ### Workflows & Slash Commands
 
-```tsx
-import { useWorkflows, useSlashCommands, useSlashCommandHandler } from '@kontourai/station-sdk';
-
-const workflows = useWorkflows();
-const commands = useSlashCommands();
-```
+`useWorkflows()`, `useSlashCommands()` and `useSlashCommandHandler()` are
+optional custom-host slots. Station's default plugin adapter does not supply
+them, so calling them there throws. For an Agent workflow catalog read, use
+`useAgentWorkflowsQuery(agentSlug)`; this query does not register or execute a
+slash command. See the [SDK hook boundaries](../reference/sdk.md#workflow-hooks).
 
 ### Query Hooks
 
@@ -829,23 +836,18 @@ operations throw; it does not return the outer `success`/`response` envelope.
 
 ### Server-Side Fetch Proxy
 
-For external HTTP calls from plugin UI (requires `network.fetch` permission):
+`useServerFetch()` is exported but is not a working production proxy in the
+current Station host. Its legacy plugin-name getter is empty, so it calls
+`POST /api/plugins/fetch`, which returns 403. The named
+`POST /api/plugins/:name/fetch` route also refuses after checking grants, until
+plugin execution identity can be verified. Declaring `network.fetch` does not
+enable either route.
 
-```tsx
-import { useServerFetch } from '@kontourai/station-sdk';
-
-const serverFetch = useServerFetch();
-const result = await serverFetch('https://api.example.com/data', {
-  method: 'GET',
-  headers: { Authorization: 'Bearer ...' },
-});
-// result: { status: number, contentType: string, body: string }
-// A proxy response with success: false throws; handle errors at the call site.
-```
-
-The [hook implementation](../../packages/sdk/src/hooks/operations.ts) returns
-the callable directly and strips the proxy's `success` field from a successful
-result.
+The CLI preview server has its own bounded development proxy; its success does
+not establish production support. See the [SDK refusal contract](../reference/sdk.md#utility-hooks),
+[hook](../../packages/sdk/src/hooks/operations.ts),
+[legacy identity getter](../../packages/sdk/src/api-core.ts), and
+[production route](../../src-server/routes/plugins/plugin-public-routes.ts).
 
 ### Layout Providers
 
@@ -1789,15 +1791,19 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-Native clients leave a saved Station's extensions off until this device explicitly
-allows them. A blocked pane or layout offers **Review and enable** in place.
+Native clients require this device's explicit loading consent for a saved
+Station, including one reached over a loopback address. An injected or
+owner-managed profile needs that consent when its API origin is not HTTP
+loopback. A blocked pane or layout offers **Review and enable** in place.
 Plugin previews with a client bundle or declared entrypoint explain that installation
 can proceed while custom code stays off; built-in views still work. The staged
 preview reports bundle presence separately from its manifest. The review names
 the Station and its origin. Code loaded into the app has app-wide authority.
-Paired native Stations use separate plugin frames, but their native security
-boundary is not qualified; the review says to treat that code as having access
-to app data, native features and saved credentials. This remains an explicit
+Saved remote profiles that are neither injected nor owner-managed use separate
+plugin frames in the native app. Their native security boundary is not
+qualified; the review says to treat that code as having access to app data,
+native features and saved credentials. Injected and owner-managed profiles
+load custom code inside the app. This remains an explicit
 opt-in, not a claim that frame isolation is verified. Dependency-only client code
 may first offer review when its blocked view opens; preview bundle metadata
 currently describes the staged root plugin.

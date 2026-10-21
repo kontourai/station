@@ -1520,7 +1520,20 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+A lifecycle at rest alone does not authorize a result. Before recording a
+delivery and again before each effect, the host requires either the exact
+invocation terminal disposition or a read-only disposition proving genuinely
+inputless storage. Retained capture history, unavailable or contradictory proof,
+and ambiguous legacy delivery identity hold the result. Output reads retain the
+proved invocation; a reused native turn ID cannot supply another invocation's result.
+
 **Held follow-ups (#3568).**
+The chat dock can read and remove server-held entries through
+`ConversationInboxMessages` and `useConversationInbox`, with captured request
+authority and explicit unavailable and removal-unknown states. This does not
+switch all composer follow-ups from the per-tab queue to server placement;
+that routing change remains separate.
+
 [ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
 holds a person's follow-up for a busy conversation, so it is sent even if the
 app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
@@ -2605,6 +2618,10 @@ the applicable page header. An already-visible strip
 and focused tab cause no extra reveal scroll. The host retains its tabbed
 presentation; the Basis renderer uses chromeless presentation to omit duplicate
 portable MCP App controls. Identity and workspace fields are collapsed by default.
+Task tab selection survives a temporary catalog loading boundary only for the
+same Station API and Task incarnation. Explicit Basis reveal refreshes the
+current authority-scoped Task Basis reads, including an already-mounted pane.
+Neither behavior preserves unsaved text across unmount or supplies effect authority.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.

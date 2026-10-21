@@ -329,6 +329,11 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
           { method: 'turn.completed' }
         > => event.method === 'turn.completed' && event.turnId === u2,
       )!;
+      const u2Start = events.find(
+        (event) => event.method === 'turn.started' && event.turnId === u2,
+      );
+      expect(u2Start?.invocationId).toEqual(expect.any(String));
+      expect(u2Completion.invocationId).toBe(u2Start?.invocationId);
       const before = events.slice(0, events.indexOf(u2Completion));
       expect(
         acceptsTurnTerminalEvent(
@@ -336,6 +341,21 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
           turnIdentityAnchorForEvents(before),
         ),
       ).toBe(true);
+      const anchor = turnIdentityAnchorForEvents(before);
+      const previousInvocationId = events.find(
+        (event) => event.method === 'turn.started' && event.turnId === u1,
+      )?.invocationId;
+      expect(previousInvocationId).toEqual(expect.any(String));
+      expect(previousInvocationId).not.toBe(u2Completion.invocationId);
+      for (const invocationId of [
+        undefined,
+        'wrong-invocation',
+        previousInvocationId,
+      ]) {
+        expect(
+          acceptsTurnTerminalEvent({ ...u2Completion, invocationId }, anchor),
+        ).toBe(false);
+      }
       // And the session ends settled on U2's reply, not the engine's.
       expect(detail?.session).toMatchObject({
         lifecycleState: 'idle',
@@ -365,6 +385,8 @@ describe('#2324 review H1: provider-triggered turns through OrchestrationService
     ]);
     expect(u2Events[0]).toMatchObject({ prompt: 'U2' });
     expect(u2Events[1]).toMatchObject({ reason: 'engine-ended-before-start' });
+    expect(u2Events[0]?.invocationId).toEqual(expect.any(String));
+    expect(u2Events[1]?.invocationId).toBe(u2Events[0]?.invocationId);
     expect(possibleEffect).toEqual({ kind: 'available', active: false });
   });
 });

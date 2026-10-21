@@ -252,7 +252,7 @@ export const APP_SETTINGS_REGISTRY = [
     descriptor: { kind: 'composite' },
     userFacing: false,
     label: 'Public telemetry registries',
-    help: 'Operator classification of public catalog source keys. Signature verification is also required.',
+    help: 'Classify public catalog source keys; signature verification is also required.',
     description:
       'Only these public registries may supply publisher telemetry declarations.',
   }),
