@@ -185,6 +185,14 @@ for (const [slug, name] of [
       canContinue: true,
       turns: () => startedTurns,
     });
+    await page.route(
+      '**/api/orchestration/conversations/draft-send-conversation/inbox',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill(json({ success: true, data: { entries: [] } }));
+      },
+    );
     await page.goto('/');
     await dismissSetupLauncher(page);
     const draft = page.getByRole('form', { name: 'Start work' });
@@ -240,7 +248,8 @@ for (const [slug, name] of [
     // The chat the draft started belongs to the Agent that was chosen.
     await expect(
       page.getByRole('button', {
-        name: new RegExp(`^Chats and tasks — ${name}`),
+        name: `Chats and tasks — Start from the draft., ${name}`,
+        exact: true,
       }),
     ).toBeVisible({ timeout: 15_000 });
   });

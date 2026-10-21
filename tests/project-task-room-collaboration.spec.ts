@@ -441,7 +441,7 @@ test.describe
           owner,
           taskId,
           { command: 'heartbeat' },
-          'refreshed',
+          'updated',
         );
         expect(
           stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId)?.state,
@@ -480,7 +480,7 @@ test.describe
           owner,
           taskId,
           { command: 'heartbeat' },
-          'refreshed',
+          'updated',
         );
         expect(
           stoppedAfterInput.panes.find((pane) => pane.paneId === paneId)?.state,
