@@ -3136,3 +3136,80 @@ describe('a check-back Station sent', () => {
     ).toBeUndefined();
   });
 });
+
+describe('projectRuntimeEventsToMessages — a turn that ended with nothing to show', () => {
+  const silent = (terminal: Record<string, unknown>) => [
+    ev({ method: 'turn.started', turnId: 'q1', prompt: 'Say nothing' }),
+    ev({ turnId: 'q1', ...terminal } as never),
+  ];
+  const assistantRows = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+  ) => messages.filter((message) => message.role === 'assistant');
+
+  it('keeps an empty row with its completed envelope when asked', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        silent({ method: 'turn.completed', finishReason: 'stop' }),
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parts).toEqual([]);
+    expect(rows[0]?.metadata).toMatchObject({
+      turnId: 'q1',
+      turnEnded: 'completed',
+      provenance: expect.objectContaining({ outcome: 'completed' }),
+    });
+  });
+
+  it('a stopped empty turn is the same row with an aborted envelope, and no reason text', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        silent({ method: 'turn.aborted', reason: 'interrupted' }),
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parts).toEqual([]);
+    // An aborted turn's envelope is revoked; `turnEnded` still says how.
+    expect(rows[0]?.metadata).toMatchObject({
+      turnId: 'q1',
+      turnEnded: 'aborted',
+    });
+  });
+
+  it('a stopped turn with text keeps its reason after it', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        [
+          ev({ method: 'turn.started', turnId: 'q1', prompt: 'Go' }),
+          ev({ method: 'content.text-delta', turnId: 'q1', delta: 'Half' }),
+          ev({ method: 'turn.aborted', turnId: 'q1', reason: 'interrupted' }),
+        ],
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows[0]?.parts.map((part) => part.text)).toEqual([
+      'Half',
+      '_interrupted_',
+    ]);
+  });
+
+  it('an open turn has no row yet, and without the option an ended one has none', () => {
+    expect(
+      assistantRows(
+        projectRuntimeEventsToMessages(
+          [ev({ method: 'turn.started', turnId: 'q1', prompt: 'Wait' })],
+          { markEndedTurns: true },
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      assistantRows(
+        projectRuntimeEventsToMessages(
+          silent({ method: 'turn.completed', finishReason: 'stop' }),
+        ),
+      ),
+    ).toEqual([]);
+  });
+});

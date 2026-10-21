@@ -34,7 +34,10 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
-import { useHasVisibleTranscriptContent } from './message-bubble/visibleContent';
+import {
+  endedTurnMarker,
+  useHasVisibleTranscriptContent,
+} from './message-bubble/visibleContent';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -331,7 +334,9 @@ function MessageBubbleComponent({
   // a turn that ended with nothing to show still keeps its row, a one-line
   // marker of how it ended, and the row's footer and anchor.
   const endedEmpty =
-    msg.role === 'assistant' && !hasVisibleContent && msg.provenance;
+    msg.role === 'assistant' && !hasVisibleContent
+      ? endedTurnMarker(msg)
+      : undefined;
   if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
     return null;
 
@@ -1026,12 +1031,7 @@ function MessageBubbleComponent({
           }
         >
           {endedEmpty ? (
-            <p className="message__empty-turn">
-              {isSupportedTurnProvenanceEnvelope(msg.provenance) &&
-              msg.provenance.outcome === 'aborted'
-                ? 'Stopped'
-                : 'No reply'}
-            </p>
+            <p className="message__empty-turn">{endedEmpty}</p>
           ) : null}
           <MessageContent
             contentParts={

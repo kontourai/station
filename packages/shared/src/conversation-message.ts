@@ -179,6 +179,11 @@ export interface ConversationMessage {
     /** True only for a terminal successful assistant response. */
     answerEligible?: boolean;
     /**
+     * How this row's turn ended, on the turn's last row, when the projection
+     * was asked to mark ended turns (`markEndedTurns`). Absent while open.
+     */
+    turnEnded?: 'completed' | 'aborted';
+    /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a
      * second store — see `packages/contracts/src/turn-provenance.ts`.

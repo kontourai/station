@@ -171,4 +171,38 @@ describe('settled assistant rows with no answer text', () => {
       container.querySelector('[data-chat-message-key="row-1"]'),
     ).not.toBeNull();
   });
+
+  test('an ended turn with no parts says how it ended; an open one draws nothing', () => {
+    const stopped = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        contentParts: [],
+        turnId: 'turn-stop',
+        turnEnded: 'aborted',
+      },
+      true,
+    );
+    expect(screen.getByText('Stopped')).toBeTruthy();
+    expect(stopped.container.querySelector('.turn-footer')).not.toBeNull();
+    stopped.unmount();
+
+    const quiet = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        contentParts: [],
+        turnEnded: 'completed',
+      },
+      true,
+    );
+    expect(screen.getByText('No reply')).toBeTruthy();
+    quiet.unmount();
+
+    const open = renderSettledRow(
+      { role: 'assistant', content: '', contentParts: [] },
+      true,
+    );
+    expect(open.container.querySelector('.message-row')).toBeNull();
+  });
 });

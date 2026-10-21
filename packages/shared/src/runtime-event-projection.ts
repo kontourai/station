@@ -180,6 +180,14 @@ export interface ProjectRuntimeEventsOptions {
    * the renderer reads `'call'` as "No result recorded".
    */
   liveOpenTurn?: { threadId: string; turnId?: string };
+  /**
+   * Each ended turn's last assistant row carries `turnEnded`, and a turn that
+   * ended with nothing to show keeps a row with no parts, so a chat can say
+   * how it ended ("No reply", "Stopped"). An aborted turn with no text or
+   * tool rows gets no reason text: `turnEnded` says it. Off, a turn with
+   * nothing to show has no row.
+   */
+  markEndedTurns?: boolean;
 }
 
 export function projectRuntimeEventsToMessages(
@@ -451,10 +459,29 @@ export function projectRuntimeEventsToMessages(
    * turn has not closed, so its held markers are not shown yet — unless its
    * Session already exited (`openTurnSessionExited`).
    */
-  const emitAssistantTurn = (releaseMarkers = true) => {
+  const emitAssistantTurn = (
+    releaseMarkers = true,
+    ended?: 'completed' | 'aborted',
+  ) => {
     flushReasoning();
     flushText();
+    const rowsBefore = messages.length;
     if (parts.length > 0) pushMessage('assistant', parts);
+    else if (ended && options.markEndedTurns) {
+      const key = turnKey(turnSessionId, turnIdentity);
+      // Only a turn with an identity and no row of its own yet (a steer may
+      // already have emitted its first part).
+      if (
+        key &&
+        preSteerRowIndex === undefined &&
+        !assistantMessageIndexByTurn.has(key)
+      )
+        pushMessage('assistant', []);
+    }
+    if (ended && options.markEndedTurns && messages.length > rowsBefore) {
+      const row = messages[messages.length - 1]!;
+      row.metadata = { ...row.metadata, turnEnded: ended };
+    }
     const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
     // or a late event for it would land on whatever turn is open next.
@@ -1184,8 +1211,9 @@ export function projectRuntimeEventsToMessages(
         turnAnswerEligible = false;
         stamp(ev.createdAt);
         flushText();
-        if (ev.reason) parts.push({ type: 'text', text: `_${ev.reason}_` });
-        emitAssistantTurn();
+        if (ev.reason && !(options.markEndedTurns && parts.length === 0))
+          parts.push({ type: 'text', text: `_${ev.reason}_` });
+        emitAssistantTurn(true, 'aborted');
         break;
       }
       case 'turn.completed': {
@@ -1235,7 +1263,7 @@ export function projectRuntimeEventsToMessages(
             textBuf = ev.outputText;
           }
         }
-        emitAssistantTurn();
+        emitAssistantTurn(true, 'completed');
         break;
       }
       case 'session.configured': {

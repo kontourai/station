@@ -1118,6 +1118,48 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
+  test('a turn that ended with nothing to show keeps a row saying how it ended', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'quiet' }),
+        event('e2', 'turn.completed', { turnId: 'turn-1' }),
+        event('e3', 'turn.started', { turnId: 'turn-2', prompt: 'stop me' }),
+        event('e4', 'turn.aborted', {
+          turnId: 'turn-2',
+          reason: 'interrupted',
+        }),
+        // Still open: no row until it draws something.
+        event('e5', 'turn.started', { turnId: 'turn-3', prompt: 'open' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(5));
+    const { endedTurnMarker } = await import(
+      '../components/chat/message-bubble/visibleContent'
+    );
+    expect(
+      result.current.messages.map((message) => [
+        message.role,
+        message.turnId,
+        message.contentParts?.length ?? 0,
+        message.role === 'assistant' ? endedTurnMarker(message) : undefined,
+      ]),
+    ).toEqual([
+      ['user', 'turn-1', 1, undefined],
+      ['assistant', 'turn-1', 0, 'No reply'],
+      ['user', 'turn-2', 1, undefined],
+      // The engine's reason is not drawn as text in its place.
+      ['assistant', 'turn-2', 0, 'Stopped'],
+      ['user', 'turn-3', 1, undefined],
+    ]);
+  });
+
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,

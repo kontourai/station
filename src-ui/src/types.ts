@@ -278,6 +278,8 @@ export interface ChatMessage {
   agentIcon?: string;
   /** True only for a normally completed assistant turn. */
   answerEligible?: boolean;
+  /** How this row's turn ended, on its last row; absent while open. */
+  turnEnded?: 'completed' | 'aborted';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it

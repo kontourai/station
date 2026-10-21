@@ -1,3 +1,4 @@
+import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type { ChatMessage } from '../../../types';
 import {
   isToolCallPart,
@@ -74,4 +75,22 @@ export function useHasVisibleTranscriptContent(
     splitToolCallRuns(parts, NO_APP_TOOLS),
   );
   return blocks.some((block) => blockHasVisibleContent(block, options));
+}
+
+/**
+ * The one line an ended assistant row with nothing to draw shows: how its
+ * turn ended. `turnEnded` comes from the turn's terminal event; a row from
+ * an older path may carry only its provenance envelope. Undefined while the
+ * turn is open, so a starting turn never draws an empty card.
+ */
+export function endedTurnMarker(
+  msg: Pick<ChatMessage, 'turnEnded' | 'provenance'>,
+): 'No reply' | 'Stopped' | undefined {
+  const outcome =
+    msg.turnEnded ??
+    (isSupportedTurnProvenanceEnvelope(msg.provenance)
+      ? msg.provenance.outcome
+      : undefined);
+  if (outcome === 'aborted') return 'Stopped';
+  return outcome === 'completed' ? 'No reply' : undefined;
 }
