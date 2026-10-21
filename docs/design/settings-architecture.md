@@ -48,7 +48,7 @@ routes do not depend on it, and disabling it does not remove an existing root.
 The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
-## Layout panel state
+## Panel state within a layout
 
 `layoutPanels` is device-local direct-manipulation state, keyed by Project/Layout
 host scope and conversation. It remembers generic side/lower-panel slots,

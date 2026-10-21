@@ -81,7 +81,7 @@ const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
  * root would silently orphan and their customizations would read back as
  * registry defaults.
  * v2 -> v3 retires the pre-release global Coding panel preference; generic
- * Layout panel choices start from their registered defaults.
+ * Panel choices within a Layout start from their registered defaults.
  */
 const CURRENT_ENVELOPE_VERSION = 3;
 

@@ -1065,7 +1065,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'layoutPanels',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Layout panels',
+    label: 'Panels within a layout',
     help: 'Each layout and conversation reopens with its side and lower panels and their sizes as you left them.',
     description:
       'Per layout and session: the side pane and its width, the lower panel’s open state and height, and the inbox fold.',
