@@ -39,6 +39,8 @@ pmOnFail: ignore
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
 overrides:
+  '@changesets/cli>launch-editor': 2.14.2
+  '@kontourai/survey>@modelcontextprotocol/server': 2.3.1
   http-cache-semantics: 4.3.0
   '@modelcontextprotocol/client': 2.3.1
   '@modelcontextprotocol/sdk': 1.32.1

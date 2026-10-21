@@ -168,9 +168,7 @@
 
     "src-server/routes/chat/conversation-reference-read.ts",
 
-    "packages/shared/src/conversation-message.ts",
-
-    "src-server/services/orchestration/session-message-delivery.ts"
+    "packages/shared/src/conversation-message.ts"
   ],
 
   "checks": [
