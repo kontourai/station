@@ -737,9 +737,26 @@ gets the same settings.
 1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
-3. Keep the same dialog or sheet open while Station shows **Checking**.
-4. Read the readiness result and its detail. If it is
-   not Ready, use the offered retry, edit, or choose-another-engine action before closing.
+3. Keep the same dialog or sheet open while Station shows **Checking**. An
+   engine that is starting for the first time can take up to a minute; the
+   dialog says so and keeps checking. If it has not finished after about 90
+   seconds, the dialog stops waiting; Station keeps checking the engine while
+   it runs. Station does not check it at startup after a restart; use its
+   **Retry check** (or add it again) if it was not ready by then.
+4. Read the readiness result and its detail. If it is not Ready, the result
+   names the phase that failed and its reason. Use **Retry check** after fixing
+   the cause, or edit the setup or choose another engine, before closing. The
+   engine's Agent is added only once its check succeeds.
+
+A configured engine that reads **Setup required** offers **Retry check** too, on its card and on its engine page.
+An engine whose first check never succeeded is saved but has no Agent yet; its
+card reads **Not connected yet** and offers **Retry check**, **Remove**, and,
+for a custom engine, **Edit setup**. It is not counted as one of your engines
+until a check succeeds.
+In the Add catalogue, an app that still needs setup offers **Add and set up**: it
+adds the engine and opens it, where setup continues. Station does not check
+whether a command-backed engine is signed in, so its login row says so and does
+not block chats.
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and

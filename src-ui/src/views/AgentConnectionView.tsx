@@ -268,6 +268,9 @@ export function AgentConnectionView({
     },
     onError: (mutationError: Error) => {
       setError(mutationError.message);
+      // A failed check changed the engine's readiness too; re-read it so the
+      // status beside this message does not keep saying Ready.
+      void refetchRuntimes();
     },
   });
   const selectedAcpConnectionId =
@@ -485,7 +488,7 @@ export function AgentConnectionView({
                   reconnectMutation.mutate(selectedAcpConnectionId)
                 }
               >
-                {reconnectMutation.isPending ? 'Reconnecting…' : 'Reconnect'}
+                {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
               </button>
             )}
           </DetailHeader>
@@ -1069,6 +1072,13 @@ function EngineAddCatalog({
             description: connection.description,
             href: '',
           });
+          // Add enables the engine and opens it; when the row still needs
+          // setup, that is where it continues, so the label says so.
+          const addLabel =
+            presentation.readiness === 'Ready' ||
+            presentation.readiness === 'Found, not connected'
+              ? 'Add'
+              : 'Add and set up';
           return (
             <div className="plugins__registry-item" key={connection.id}>
               <BrandIcon
@@ -1096,10 +1106,10 @@ function EngineAddCatalog({
                 aria-label={
                   pendingId === connection.id
                     ? `Adding ${connection.name}`
-                    : `Add ${connection.name}`
+                    : `${addLabel} ${connection.name}`
                 }
               >
-                {pendingId === connection.id ? 'Adding…' : 'Add'}
+                {pendingId === connection.id ? 'Adding…' : addLabel}
               </button>
             </div>
           );

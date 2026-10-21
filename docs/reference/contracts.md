@@ -282,6 +282,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
@@ -657,6 +658,12 @@ refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,
 carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+An engine that answers `session/new` (or `session/load`) with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", as the ACP SDK builds it) is refused the same way, carrying
+`ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
+`provider`); the same error on a prompt is that turn's `runtime.error` with the
+same code, and chat renders both as a prompt to sign in to the engine.
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An

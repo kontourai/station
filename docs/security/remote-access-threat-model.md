@@ -1023,8 +1023,9 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   code, `command-not-granted`, and nothing saved or run. It covers exactly:
   - `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`,
     `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
-    renaming, toggling, listing, removing and reconnecting are unchanged;
-    reconnect re-probes the stored command and cannot change it);
+    renaming, toggling, listing, removing, reconnecting and checking are
+    unchanged; reconnect and `POST /acp/connections/:id/check` re-probe the
+    stored command and cannot change it);
   - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
     are set or change, when a record that holds a command but did not launch it
     (a URL transport) is changed to launch it, and when any value is submitted

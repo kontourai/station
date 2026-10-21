@@ -6,6 +6,7 @@ import {
   ACPStatus,
   engineSupportsPlatform,
   installRecipeForPlatform,
+  normalizeACPArgs,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
@@ -19,7 +20,10 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { nativeRuntimeConnectionIds } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { recaptureLoginShellPath } from '../../providers/auth/cli-auth.js';
+import {
+  recaptureLoginShellPath,
+  resolveAugmentedPath,
+} from '../../providers/auth/cli-auth.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
@@ -108,7 +112,7 @@ export interface UnconnectedACPRegistryEntry {
 export async function listUnconnectedACPRegistryEntries(configLoader: {
   loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
 }): Promise<UnconnectedACPRegistryEntry[]> {
-  return getRegistryEntries(await installedACPConnections(configLoader))
+  return (await detectedRegistryEntries(configLoader))
     .filter((entry) => !entry.installed)
     .map((entry) => ({
       id: entry.id,
@@ -139,6 +143,20 @@ async function installedACPConnections(configLoader: {
   ).filter((connection) =>
     isRegisteredRuntimeConnection(connection.id, registeredIds),
   );
+}
+
+/**
+ * Registry entries with `detected` read after the login-shell PATH capture
+ * has landed. Built-in entries detect with the synchronous `findCliBinary`,
+ * which on the first call after start sees only the process PATH and
+ * well-known dirs, so an engine reachable only through the user's shell PATH
+ * read as not found. The capture is resolved once per process.
+ */
+async function detectedRegistryEntries(configLoader: {
+  loadACPConfig: () => Promise<{ connections: ACPConnectionConfig[] }>;
+}): Promise<ACPConnectionRegistryEntry[]> {
+  await resolveAugmentedPath();
+  return getRegistryEntries(await installedACPConnections(configLoader));
 }
 
 function getRegistryEntries(
@@ -217,7 +235,7 @@ function normalizeACPConnection(value: Record<string, any>) {
     id: value.id,
     name: value.name,
     command: value.command,
-    args: value.args ?? [],
+    args: normalizeACPArgs(value.args ?? []),
     icon: value.icon ?? '🔌',
     enabled: value.enabled !== false,
     ...(value.cwd ? { cwd: value.cwd } : {}),
@@ -326,8 +344,82 @@ async function registeredRuntimeConnectionIds(configLoader: {
   return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
 
+/**
+ * One connection as GET /connections serves it: its config merged with the
+ * bridge's live status. The create and install routes answer with this same
+ * projection, because a connection whose first probe failed is not listed
+ * (its identity never registered) and the response is then the only place
+ * the caller can read the probe's status and reason.
+ */
+function connectionStatusView(
+  cfg: ACPConnectionConfig,
+  status: ReturnType<RuntimeContext['acpBridge']['getStatus']>,
+) {
+  return {
+    ...cfg,
+    ...(status.connections.find((s) => s.id === cfg.id) || {
+      status: ACPStatus.UNAVAILABLE,
+      modes: [],
+      sessionId: null,
+      mcpServers: [],
+    }),
+  };
+}
+
+/**
+ * Registers a saved connection that a background probe (the cold first-contact
+ * continuation, or the periodic sweep) just handshaked for the first time.
+ * The result counts only for the config that probe ran: the saved entry must
+ * still match it exactly, or the result is dropped. Already-registered
+ * connections never enter the configuration queue; the cold probe itself ran
+ * outside it.
+ */
+async function registerFirstHandshakeACPConnection(
+  ctx: RuntimeContext,
+  probed: ACPConnectionConfig,
+): Promise<'registered' | 'already-registered' | 'config-changed' | 'skipped'> {
+  if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') {
+    return 'skipped';
+  }
+  if (
+    (await registeredRuntimeConnectionIds(ctx.configLoader))?.has(probed.id)
+  ) {
+    return 'already-registered';
+  }
+  const { value } = await captureConfigurationMutation(
+    ctx.applyAgentConfigurationMutation,
+    async (beginMutation) => {
+      const saved = (await ctx.configLoader.loadACPConfig()).connections.find(
+        (connection) => connection.id === probed.id,
+      );
+      if (!saved || !isDeepStrictEqual(saved, probed)) {
+        return 'config-changed' as const;
+      }
+      if (
+        (await registeredRuntimeConnectionIds(ctx.configLoader))?.has(probed.id)
+      ) {
+        return 'already-registered' as const;
+      }
+      beginMutation();
+      await registerPersistedACPConnection(ctx, probed.id, probed.name);
+      return 'registered' as const;
+    },
+  );
+  return value;
+}
+
 export function createACPRoutes(ctx: RuntimeContext) {
   const app = new Hono();
+
+  // Background first handshakes register here; nothing awaits them.
+  ctx.acpBridge.onFirstHandshake?.((config) => {
+    void registerFirstHandshakeACPConnection(ctx, config).catch((error) => {
+      ctx.logger?.warn?.('ACP first-handshake registration failed', {
+        id: config.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  });
 
   app.get('/status', (c) => {
     return c.json({ success: true, data: ctx.acpBridge.getStatus() });
@@ -336,22 +428,65 @@ export function createACPRoutes(ctx: RuntimeContext) {
   app.get('/connections', async (c) => {
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
-    const connections = allConnections.map((cfg) => ({
-      ...cfg,
-      ...(status.connections.find((s) => s.id === cfg.id) || {
-        status: ACPStatus.UNAVAILABLE,
-        modes: [],
-        sessionId: null,
-        mcpServers: [],
-      }),
-    }));
+    const connections = allConnections.map((cfg) =>
+      connectionStatusView(cfg, status),
+    );
     return c.json({ success: true, data: connections });
   });
 
-  app.get('/registry', async (c) => {
-    const entries = getRegistryEntries(
-      await installedACPConnections(ctx.configLoader),
+  // Saved user connections whose engine never registered (a failed first
+  // add). Kept off GET /connections and every installed projection
+  // (station#1548); this read is their repair handle.
+  app.get('/connections/unregistered', async (c) => {
+    const registeredIds = await registeredRuntimeConnectionIds(
+      ctx.configLoader,
     );
+    if (registeredIds === null) return c.json({ success: true, data: [] });
+    const config = await ctx.configLoader.loadACPConfig();
+    const status = ctx.acpBridge.getStatus();
+    const data = config.connections
+      .filter((connection) => !registeredIds.has(connection.id))
+      .map((connection) => connectionStatusView(connection, status));
+    return c.json({ success: true, data });
+  });
+
+  // Retry check for a saved connection, registered or not, whether or not
+  // the bridge holds a probe for it (after a restart it does not hold
+  // unregistered ones): the same probe-then-register as a repeated add, from
+  // the saved config, so it chooses no command.
+  app.post('/connections/:id/check', async (c) => {
+    return configurationMutationResponse(
+      await captureConfigurationMutation(
+        ctx.applyAgentConfigurationMutation,
+        async (beginMutation) => {
+          const id = param(c, 'id');
+          const saved = (
+            await ctx.configLoader.loadACPConfig()
+          ).connections.find((connection) => connection.id === id);
+          if (!saved) {
+            return c.json(
+              { success: false, error: 'Connection not found' },
+              404,
+            );
+          }
+          beginMutation();
+          const connected = await connectNewACPConnection(ctx, saved);
+          if (connected) {
+            await registerPersistedACPConnection(ctx, saved.id, saved.name);
+          } else {
+            ctx.acpBridge.continueFirstContact?.(saved.id);
+          }
+          return c.json({
+            success: true,
+            data: connectionStatusView(saved, ctx.acpBridge.getStatus()),
+          });
+        },
+      ),
+    );
+  });
+
+  app.get('/registry', async (c) => {
+    const entries = await detectedRegistryEntries(ctx.configLoader);
     return c.json({ success: true, data: entries });
   });
 
@@ -379,9 +514,13 @@ export function createACPRoutes(ctx: RuntimeContext) {
           }
           const config = await ctx.configLoader.loadACPConfig();
           const providerConns = getProviderConnections();
-          if (providerConns.some((conn) => conn.id === id)) {
+          const provided = providerConns.find((conn) => conn.id === id);
+          if (provided) {
             return c.json(
-              { success: false, error: `Connection '${id}' already exists` },
+              {
+                success: false,
+                error: `${provided.name || id} is already provided by a plugin.`,
+              },
               409,
             );
           }
@@ -422,7 +561,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
           const existing = config.connections.find((conn) => conn.id === id);
           if (existing && !isDeepStrictEqual(existing, newConn)) {
             return c.json(
-              { success: false, error: `Connection '${id}' already exists` },
+              {
+                success: false,
+                error: `${existing.name || id} is already saved with different settings. Use Edit setup on it, or remove it first.`,
+              },
               409,
             );
           }
@@ -439,6 +581,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // identity below registers — and a later install/re-check of the
           // same entry re-probes and materializes once the engine works.
           const connected = await connectNewACPConnection(ctx, newConn);
+          // A never-connected engine that ran out of the request budget gets
+          // its cold retry in the background; the response reads `probing`.
+          if (!connected) ctx.acpBridge.continueFirstContact?.(newConn.id);
           const agent = connected
             ? await registerPersistedACPConnection(
                 ctx,
@@ -449,7 +594,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
           acpOps.add(1, { op: 'create' });
           return c.json({
             success: true,
-            data: newConn,
+            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
             ...(agent
               ? {
                   agent: {
@@ -503,10 +648,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
             (connection) => connection.id === newConn.id,
           );
           if (existing && !isDeepStrictEqual(existing, newConn)) {
+            const name = existing.name || body.id;
             return c.json(
               {
                 success: false,
-                error: `Connection '${body.id}' already exists`,
+                error: `${name} already uses the ID "${body.id}". Choose a different ID under Advanced, or use Edit setup on ${name}.`,
               },
               409,
             );
@@ -520,9 +666,14 @@ export function createACPRoutes(ctx: RuntimeContext) {
           const connected = await connectNewACPConnection(ctx, newConn);
           if (connected) {
             await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
+          } else {
+            ctx.acpBridge.continueFirstContact?.(newConn.id);
           }
           acpOps.add(1, { op: 'create' });
-          return c.json({ success: true, data: newConn });
+          return c.json({
+            success: true,
+            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
+          });
         },
       ),
     );
@@ -545,16 +696,34 @@ export function createACPRoutes(ctx: RuntimeContext) {
                 { success: false, error: 'Connection not found' },
                 404,
               );
-            const previous = config.connections[idx];
+            const stored = config.connections[idx];
+            // Both sides without empty-string arguments (an earlier form saved
+            // blank arguments as ['']), so a rename is not read as a command
+            // change.
+            const previous = stored.args
+              ? { ...stored, args: normalizeACPArgs(stored.args) }
+              : stored;
+            const updates = Array.isArray(body.args)
+              ? { ...body, args: normalizeACPArgs(body.args) }
+              : body;
             // Changing what a connection runs, or where, is choosing a
             // command; renaming or toggling it is not.
-            if (changesAny(body, previous, ['command', 'args', 'cwd'])) {
+            if (changesAny(updates, previous, ['command', 'args', 'cwd'])) {
               const commandRefused = refuseUngrantedCommandChoice(c);
               if (commandRefused) return commandRefused;
             }
-            const next = { ...previous, ...body, id };
-            if (isDeepStrictEqual(previous, next)) {
-              return c.json({ success: true, data: previous });
+            // Edit setup sends every field: an empty folder means none, an
+            // empty icon means the default.
+            const next = { ...previous, ...updates, id };
+            if (next.cwd === '') delete next.cwd;
+            if (next.icon === '') next.icon = '🔌';
+            if (isDeepStrictEqual(stored, next)) {
+              // Nothing to save or re-probe; still answer the status the
+              // setup dialog reads.
+              return c.json({
+                success: true,
+                data: connectionStatusView(previous, ctx.acpBridge.getStatus()),
+              });
             }
             config.connections[idx] = next;
             await ctx.configLoader.saveACPConfig(config);
@@ -568,9 +737,14 @@ export function createACPRoutes(ctx: RuntimeContext) {
             const connected = await connectNewACPConnection(ctx, next);
             if (connected) {
               await registerPersistedACPConnection(ctx, id, next.name);
+            } else {
+              ctx.acpBridge.continueFirstContact?.(id);
             }
             acpOps.add(1, { op: 'update' });
-            return c.json({ success: true, data: config.connections[idx] });
+            return c.json({
+              success: true,
+              data: connectionStatusView(next, ctx.acpBridge.getStatus()),
+            });
           },
         ),
       );
@@ -627,7 +801,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
       c.json(
         {
           success: false,
-          error: 'The ACP connection could not be reconnected.',
+          // Retry check's own words; the engine's name, never the protocol.
+          error: `Could not check ${connection.name || id}.`,
           ...(phase ? { phase } : {}),
           ...(detail ? { detail: sanitizeFreeText(detail) } : {}),
         },

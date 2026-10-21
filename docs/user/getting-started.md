@@ -322,7 +322,10 @@ runs its own agent loop.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
-   External agent in the same confirmed action.
+   External agent in the same confirmed action. An engine that is starting for
+   the first time can be reported as still starting rather than failed: its
+   Agent is added if it connects while Station is running; otherwise set it up
+   again later.
 3. Follow its setup action until it reports **Ready**.
 
 For OpenAI's model service, supply its API key. A custom server may use another

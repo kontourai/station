@@ -21,15 +21,16 @@ import { providerFailure } from '../provider-failure.js';
 
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
-import type {
-  Client,
-  ContentBlock,
-  McpServer,
-  PermissionOption,
-  PromptResponse,
-  RequestPermissionRequest,
-  RequestPermissionResponse,
-  SessionNotification,
+import {
+  type Client,
+  type ContentBlock,
+  type McpServer,
+  type PermissionOption,
+  type PromptResponse,
+  RequestError,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
+  type SessionNotification,
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
@@ -45,6 +46,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
@@ -191,6 +193,24 @@ type AcpLogger = any;
 type AcpDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
 
 /** Stable internal outcome for a user stop or adapter shutdown racing start. */
+/**
+ * ACP's `auth_required` error, in the exact shape the ACP SDK's
+ * `RequestError.authRequired` builds: code -32000 and a message beginning
+ * "Authentication required". The code alone is not enough: -32000 opens
+ * JSON-RPC's generic server-error range.
+ */
+const ACP_AUTH_REQUIRED = RequestError.authRequired();
+
+function isAcpAuthRequired(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return (
+    code === ACP_AUTH_REQUIRED.code &&
+    typeof message === 'string' &&
+    message.startsWith(ACP_AUTH_REQUIRED.message)
+  );
+}
+
 class AcpSessionStartCancelledError extends Error {
   constructor() {
     super('ACP session start was cancelled before it became ready.');
@@ -464,6 +484,8 @@ export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  /** The engine's display name, for user-facing copy. */
+  connectionName: string;
   command: string;
   args?: string[];
   /**
@@ -1063,6 +1085,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      connectionName: config.name,
       command: config.command,
       args: config.args,
       promptEpoch: 0,
@@ -1824,7 +1847,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
 
       return session;
-    } catch (error) {
+    } catch (caught) {
+      // The engine's own "not signed in" answer is a refusal with a typed
+      // code, so a surface can say "sign in" instead of showing raw text.
+      const error = isAcpAuthRequired(caught)
+        ? new SessionStartRefusedError(
+            `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
+            ENGINE_SIGN_IN_REQUIRED_CODE,
+          )
+        : caught;
       record.startFailure = error;
       // A Stop that landed while `session/new` was in flight ends the start
       // as a stop whatever the engine then said: the user asked for it, so a
@@ -2542,9 +2573,14 @@ export class AcpAdapter implements ProviderAdapterShape {
           command: config.command,
           displayName: config.name,
           versionArgs: ['--version'],
-          authArgs: ['--version'],
+          // #1940: no generic engine command proves sign-in (a `--version`
+          // exit 0 used to read as signed in), and a handshake does not
+          // either: some engines refuse only at the first prompt.
+          // `detectAuthState` is where a per-engine sign-in check plugs in.
+          detectAuthState: async () => 'unknown',
+          unverifiedAuthDescription: `Station does not check whether ${config.name} is signed in. If a chat reports that it needs a sign-in, sign in with ${config.name} itself.`,
           installStep: `Install ${config.name} and ensure \`${config.command}\` is on PATH.`,
-          authStep: `Verify ${config.name} is configured and reachable via \`${config.command}\`.`,
+          authStep: `Sign in with ${config.name} itself if it asks you to.`,
         }),
       ),
     );
@@ -3437,6 +3473,19 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
             message: PROVIDER_PLAN_QUOTA_MESSAGE,
             details: providerQuotaEventDetails(quota),
+          } satisfies ProviderRuntimeErrorEvent);
+        } else if (isAcpAuthRequired(error)) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            ...providerFailure('auth'),
+            severity: 'error',
+            code: ENGINE_SIGN_IN_REQUIRED_CODE,
+            message: `${record.connectionName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = errorMessage(error);

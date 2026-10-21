@@ -29,6 +29,12 @@ export function ACPAddConnectionModal({
   onCancel,
   returnFocusTarget,
   initialProviderId,
+  probeStatuses,
+  probeStatusesUpdatedAt,
+  onFirstContactPendingChange,
+  editConnection,
+  onUpdate,
+  onCheck,
 }: {
   registryEntries?: ACPConnectionRegistryEntry[];
   connections?: ACPConnectionInfo[];
@@ -42,6 +48,20 @@ export function ACPAddConnectionModal({
   onCancel: () => void;
   returnFocusTarget?: HTMLElement | null;
   initialProviderId?: string | null;
+  /** Live probe status; the owner polls it while a first start runs. */
+  probeStatuses?: Array<{
+    id: string;
+    status: string;
+    lastError?: { message: string; phase: string };
+  }>;
+  /** When `probeStatuses` was fetched (epoch ms). */
+  probeStatusesUpdatedAt?: number;
+  /** Tells the owner when to poll `probeStatuses`. */
+  onFirstContactPendingChange?: (pending: boolean) => void;
+  /** Edit setup of a saved custom engine; saves through `onUpdate`. */
+  editConnection?: ACPConnectionInfo;
+  onUpdate?: (id: string, draft: ACPConnectionDraft) => unknown;
+  onCheck?: (id: string) => unknown;
 }) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const initialProviderHandled = useRef(false);
@@ -49,8 +69,10 @@ export function ACPAddConnectionModal({
     state,
     dispatch,
     resultConnection,
+    awaitingFirstContact,
     submit,
     retryMutation,
+    retryCheck,
     retryRefresh,
   } = useACPConnectionSetup({
     registryEntries,
@@ -60,7 +82,20 @@ export function ACPAddConnectionModal({
     onAdd,
     onInstallRegistryEntry,
     onRefreshConnections,
+    probeStatuses,
+    probeStatusesUpdatedAt,
+    editConnection,
+    onUpdate,
+    onCheck,
   });
+  const editing = Boolean(editConnection);
+  useEffect(() => {
+    onFirstContactPendingChange?.(awaitingFirstContact);
+  }, [awaitingFirstContact, onFirstContactPendingChange]);
+  useEffect(
+    () => () => onFirstContactPendingChange?.(false),
+    [onFirstContactPendingChange],
+  );
   const availableEntries = registryEntries.filter((entry) => !entry.installed);
   const readiness =
     resultConnection && getACPConnectionStatusView(resultConnection);
@@ -101,7 +136,11 @@ export function ACPAddConnectionModal({
       initialFocusPolicy="desktop"
       returnFocusTarget={returnFocusTarget}
     >
-      <ACPConnectionSetupHeader stage={state.stage} onClose={onCancel} />
+      <ACPConnectionSetupHeader
+        stage={state.stage}
+        editing={editing}
+        onClose={onCancel}
+      />
       <div className="acp-add-dialog__body">
         {state.stage === 'catalog' && (
           <ACPConnectionCatalogStage
@@ -118,6 +157,7 @@ export function ACPAddConnectionModal({
             draft={state.draft}
             advancedOpen={state.advancedOpen}
             nameInputRef={nameInputRef}
+            idLocked={editing}
             onDraftChange={(field, value) =>
               dispatch({ type: 'draft', field, value })
             }
@@ -130,14 +170,27 @@ export function ACPAddConnectionModal({
           error={state.error}
           reason={resultConnection?.lastError ?? null}
           pending={isPending}
+          firstContact={awaitingFirstContact}
+          attempt={state.attempt}
+          engineName={
+            resultConnection?.name ??
+            state.selectedEntry?.name ??
+            editConnection?.name ??
+            (state.draft.name || undefined)
+          }
         />
       </div>
       <ACPConnectionSetupActions
         stage={state.stage}
-        hasRegistryEntries={registryEntries.length > 0}
+        hasRegistryEntries={!editing && registryEntries.length > 0}
         isCustom={isCustom}
         canSubmit={Boolean(state.draft.name && state.draft.command)}
         ready={readiness?.statusLabel === 'Ready'}
+        firstContact={awaitingFirstContact}
+        canRetryCheck={
+          readiness?.statusLabel === 'Setup required' ||
+          readiness?.statusLabel === 'Unavailable'
+        }
         errorKind={state.errorKind}
         confirmLabel={
           state.selectedEntry
@@ -149,6 +202,7 @@ export function ACPAddConnectionModal({
         onConfirm={() => void submit(state.selectedEntry)}
         onSubmit={() => void submit(null)}
         onRetryMutation={() => void retryMutation()}
+        onRetryCheck={() => void retryCheck()}
         onRetryRefresh={() => void retryRefresh()}
         onClose={onCancel}
       />

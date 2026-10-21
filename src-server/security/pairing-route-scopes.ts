@@ -2796,6 +2796,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/acp/connections/:id' },
     { method: 'PUT', path: '/acp/connections/:id' },
     { method: 'POST', path: '/acp/connections/:id/reconnect' },
+    // Same sensitivity as their siblings: the unregistered read is
+    // GET /acp/connections' projection for saved connections that never
+    // registered, and check re-probes a saved command (choosing none) and
+    // registers it, as a repeated POST /acp/connections does.
+    { method: 'GET', path: '/acp/connections/unregistered' },
+    { method: 'POST', path: '/acp/connections/:id/check' },
     { method: 'GET', path: '/acp/registry' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },

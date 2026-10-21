@@ -164,12 +164,13 @@ test('hides raw command details until Advanced is opened', () => {
 test.each([
   ['available', true, 'Ready', null],
   ['probing', true, 'Checking', null],
-  ['unavailable', true, 'Setup needed', null],
+  ['unavailable', true, 'Setup required', 'Retry check'],
   ['error', true, 'Unavailable', 'Reconnect'],
   ['available', false, 'Off', 'Enable'],
 ] as const)(
   'renders one readiness label and action for %s / enabled=%s',
   (status, enabled, label, action) => {
+    const onReconnect = vi.fn();
     render(
       <ACPConnectionCard
         conn={{ ...connection, status, enabled }}
@@ -177,7 +178,7 @@ test.each([
         onClick={vi.fn()}
         onToggle={vi.fn()}
         onRemove={vi.fn()}
-        onReconnect={vi.fn()}
+        onReconnect={onReconnect}
       />,
     );
 
@@ -193,10 +194,13 @@ test.each([
     } else {
       expect(screen.queryByRole('button', { name: 'Enable' })).toBeNull();
     }
-    if (action === 'Reconnect') {
-      expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
-    } else {
-      expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    for (const probeAction of ['Reconnect', 'Retry check'] as const) {
+      if (action === probeAction) {
+        fireEvent.click(screen.getByRole('button', { name: probeAction }));
+        expect(onReconnect).toHaveBeenCalledTimes(1);
+      } else {
+        expect(screen.queryByRole('button', { name: probeAction })).toBeNull();
+      }
     }
   },
 );
@@ -221,4 +225,37 @@ test('keeps plugin-provided engines inspectable without unsupported mutations', 
   expect(
     screen.getByRole('button', { name: 'Open Kiro CLI connection details' }),
   ).toBeTruthy();
+});
+
+// A saved connection whose engine never registered (a failed first add):
+// shown so it can be repaired, labelled so it is not read as an engine
+// Station has, and offering the three repairs.
+test('an unregistered connection reads Not connected yet and offers its repairs', () => {
+  const onReconnect = vi.fn();
+  const onEditSetup = vi.fn();
+  const onRemove = vi.fn();
+  render(
+    <ACPConnectionCard
+      conn={{ ...connection, status: 'unavailable' }}
+      unregistered
+      agents={[]}
+      onClick={vi.fn()}
+      onToggle={vi.fn()}
+      onRemove={onRemove}
+      onReconnect={onReconnect}
+      onEditSetup={onEditSetup}
+    />,
+  );
+
+  expect(
+    screen.getByRole('status', { name: 'Readiness: Not connected yet' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+  expect(onReconnect).toHaveBeenCalledTimes(1);
+  expect(overflowItems(openOverflow('Manage Kiro CLI'))).toEqual([
+    { name: 'Edit setup', danger: false },
+    { name: 'Remove', danger: true },
+  ]);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
+  expect(onEditSetup).toHaveBeenCalledTimes(1);
 });

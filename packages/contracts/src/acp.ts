@@ -23,6 +23,15 @@ export interface ACPConnectionConfig {
   provideToolServers?: string[];
 }
 
+/**
+ * A connection's arguments without empty strings. Station's custom-engine
+ * form once saved blank arguments as `['']`, which launches the command with
+ * one empty argument and makes an unchanged command compare as changed.
+ */
+export function normalizeACPArgs(args: readonly string[]): string[] {
+  return args.filter((arg) => arg !== '');
+}
+
 export interface ACPConnectionRegistryEntry {
   id: string;
   name: string;

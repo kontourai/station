@@ -424,6 +424,37 @@ describe('confirming the checklist', () => {
     );
   });
 
+  // A cold engine's first start continues on the server after the add
+  // answers: it has not failed, so it is not offered as a retry or counted
+  // as one, and the report says what will happen.
+  test('reports a registry Engine still on its first start as starting, not failed', async () => {
+    const { EngineStillStartingError } = await vi.importActual<
+      typeof import('@kontourai/station-sdk')
+    >('@kontourai/station-sdk');
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    connectAndMaterializeEngine.mockRejectedValueOnce(
+      new EngineStillStartingError('Kiro CLI'),
+    );
+    const { onDone } = renderChapter([detectedKiro]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    const report = await screen.findByTestId('first-run-engines-report');
+    expect(report.textContent).toContain(
+      'Kiro CLI: still starting for the first time.',
+    );
+    expect(report.textContent).not.toContain('could not be set up');
+    expect(report.querySelector('[data-status="starting"]')).not.toBeNull();
+    expect(screen.queryByTestId('first-run-engines-retry')).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   test('creates exactly one Agent per newly ticked engine', async () => {
     const { onDone } = renderChapter([CODEX, CLAUDE]);
     await act(async () => {

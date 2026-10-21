@@ -631,6 +631,31 @@ describe('AgentConnectionView', () => {
     });
   });
 
+  // A native row the catalogue labels "Setup required" still adds the engine
+  // and opens it, where setup continues; a bare "Add" beside that label
+  // promised a usable engine.
+  test('a native row that still needs setup says Add and set up', async () => {
+    // The exact shape the server writes for a missing Muse CLI.
+    agentCatalog = [...DEFAULT_AGENT_CATALOG, museMissingBinaryConnection()];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Setup required')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add and set up Muse Code' }),
+    );
+    expect(save).toHaveBeenCalledWith({
+      connection: expect.objectContaining({ id: 'muse' }),
+      isNew: false,
+    });
+    // The found, ready-to-connect row keeps its plain Add.
+    expect(
+      screen.getByRole('button', { name: 'Add Claude Code' }),
+    ).toBeTruthy();
+  });
+
   // #592 slice 2, review M1: the catalog endpoint is not
   // registration-authoritative (`AgentConnectionView.tsx`'s own
   // `isAddedEngine` doc comment) — it can carry a row this Station already
@@ -1167,7 +1192,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     expect(reconnectMutate).toHaveBeenCalledWith('opencode');
   });
 
@@ -1189,13 +1214,14 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
   });
 
   test('a refused reconnect reports the engine observation in place', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    // The route's own words for a failed re-check (acp.ts).
     reconnectMutationError = new Error(
-      'The ACP connection could not be reconnected. Engine exited before handshake',
+      'Could not check OpenCode. OpenCode closed the connection before it finished starting.',
     );
     connectionQueryData = {
       id: 'opencode',
@@ -1214,8 +1240,13 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
-    expect(screen.getByText(/Engine exited before handshake/)).toBeTruthy();
+    refetchAgentConnections.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    expect(
+      screen.getByText(/OpenCode closed the connection before it finished/),
+    ).toBeTruthy();
+    // The status beside it is re-read, so it does not keep claiming Ready.
+    expect(refetchAgentConnections).toHaveBeenCalled();
   });
 
   /*

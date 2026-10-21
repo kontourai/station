@@ -9,33 +9,38 @@ import {
 } from '../ResponsiveDialogSurface';
 import type { ACPConnectionDraft } from './types';
 import type {
+  ACPConnectionSetupAttempt,
   ACPConnectionSetupErrorKind,
   ACPConnectionSetupStage,
 } from './useACPConnectionSetup';
 
 export function ACPConnectionSetupHeader({
   stage,
+  editing = false,
   onClose,
 }: {
   stage: ACPConnectionSetupStage;
+  editing?: boolean;
   onClose: () => void;
 }) {
   const custom = stage === 'custom';
   const subtitle =
-    stage === 'confirm'
-      ? 'Review what connecting this engine changes.'
-      : stage === 'checking'
-        ? 'Station is checking this engine now.'
-        : stage === 'result'
-          ? 'Here is the current readiness result.'
-          : stage === 'error'
-            ? 'Your setup is still here. Try again or edit it.'
-            : 'Choose an engine to set up, or enter a custom command.';
+    editing && stage === 'custom'
+      ? "Change this engine's setup, then check it."
+      : stage === 'confirm'
+        ? 'Review what connecting this engine changes.'
+        : stage === 'checking'
+          ? 'Station is checking this engine now.'
+          : stage === 'result'
+            ? 'Here is the current readiness result.'
+            : stage === 'error'
+              ? 'Your setup is still here. Try again or edit it.'
+              : 'Choose an engine to set up, or enter a custom command.';
   return (
     <div className="acp-add-dialog__header">
       <div>
         <h3 id="add-provider-title">
-          {custom ? 'Custom engine' : 'Add engine'}
+          {editing ? 'Edit engine' : custom ? 'Custom engine' : 'Add engine'}
         </h3>
         <p className="acp-add-dialog__subtitle">{subtitle}</p>
       </div>
@@ -50,12 +55,15 @@ export function ACPConnectionSetupActions({
   isCustom,
   canSubmit,
   ready,
+  canRetryCheck,
+  firstContact = false,
   errorKind,
   confirmLabel,
   onCatalog,
   onCustom,
   onConfirm,
   onRetryMutation,
+  onRetryCheck,
   onSubmit,
   onRetryRefresh,
   onClose,
@@ -65,18 +73,35 @@ export function ACPConnectionSetupActions({
   isCustom: boolean;
   canSubmit: boolean;
   ready: boolean;
+  /** The result failed its probe; re-running the add re-probes it. */
+  canRetryCheck: boolean;
+  /** The engine's first start continues on the server after closing. */
+  firstContact?: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   confirmLabel: string;
   onCatalog: () => void;
   onCustom: () => void;
   onConfirm: () => void;
   onRetryMutation: () => void;
+  /** Retry check on a result; defaults to re-running the add. */
+  onRetryCheck?: () => void;
   onSubmit: () => void;
   onRetryRefresh: () => void;
   onClose: () => void;
 }) {
   return (
     <ResponsiveSurfaceActions className="acp-add-dialog__actions">
+      {stage === 'checking' && (
+        // Closing does not cancel anything: the add's request finishes, and
+        // a first start keeps running on the server while Station runs.
+        <button
+          type="button"
+          className="button button--secondary"
+          onClick={onClose}
+        >
+          {firstContact ? 'Keep checking in background' : 'Close'}
+        </button>
+      )}
       <ACPConnectionSetupEntryActions
         stage={stage}
         hasRegistryEntries={hasRegistryEntries}
@@ -91,10 +116,12 @@ export function ACPConnectionSetupActions({
         stage={stage}
         isCustom={isCustom}
         ready={ready}
+        canRetryCheck={canRetryCheck}
         errorKind={errorKind}
         onCatalog={onCatalog}
         onCustom={onCustom}
         onRetryMutation={onRetryMutation}
+        onRetryCheck={onRetryCheck ?? onRetryMutation}
         onRetryRefresh={onRetryRefresh}
         onClose={onClose}
       />
@@ -178,20 +205,24 @@ function ACPConnectionSetupCompletionActions({
   stage,
   isCustom,
   ready,
+  canRetryCheck,
   errorKind,
   onCatalog,
   onCustom,
   onRetryMutation,
+  onRetryCheck,
   onRetryRefresh,
   onClose,
 }: {
   stage: ACPConnectionSetupStage;
   isCustom: boolean;
   ready: boolean;
+  canRetryCheck: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   onCatalog: () => void;
   onCustom: () => void;
   onRetryMutation: () => void;
+  onRetryCheck: () => void;
   onRetryRefresh: () => void;
   onClose: () => void;
 }) {
@@ -206,6 +237,15 @@ function ACPConnectionSetupCompletionActions({
           onClick={edit}
         >
           {isCustom ? 'Edit setup' : 'Choose another engine'}
+        </button>
+      )}
+      {stage === 'result' && canRetryCheck && (
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={onRetryCheck}
+        >
+          Retry check
         </button>
       )}
       {stage === 'error' && errorKind === 'mutation' && (
@@ -328,16 +368,29 @@ export function ACPConnectionConfirmStage({
   );
 }
 
+/**
+ * A command with whitespace that does not look like a path is most often a
+ * program plus its arguments typed into one field; a path to a program may
+ * itself contain spaces.
+ */
+function commandHasArguments(command: string): boolean {
+  const value = command.trim();
+  return /\s/.test(value) && !/^([~/.]|[A-Za-z]:[\\/])/.test(value);
+}
+
 export function ACPConnectionCustomStage({
   draft,
   advancedOpen,
   nameInputRef,
+  idLocked = false,
   onDraftChange,
   onAdvancedChange,
 }: {
   draft: ACPConnectionDraft;
   advancedOpen: boolean;
   nameInputRef: RefObject<HTMLInputElement | null>;
+  /** A saved connection's id cannot change (it names its engine). */
+  idLocked?: boolean;
   onDraftChange: (field: keyof ACPConnectionDraft, value: string) => void;
   onAdvancedChange: (open: boolean) => void;
 }) {
@@ -349,6 +402,7 @@ export function ACPConnectionCustomStage({
     <label>
       {label}
       <input
+        disabled={field === 'id' && idLocked}
         value={draft[field]}
         onChange={(event) => onDraftChange(field, event.target.value)}
         placeholder={placeholder}
@@ -367,6 +421,12 @@ export function ACPConnectionCustomStage({
         />
       </label>
       {input('Command', 'command', 'gemini')}
+      {commandHasArguments(draft.command) && (
+        <p className="acp-add-dialog__field-note">
+          This looks like a program and its arguments. Put arguments in Advanced
+          → Arguments and keep only the program here.
+        </p>
+      )}
       <details
         className="acp-add-dialog__advanced"
         open={advancedOpen}
@@ -388,6 +448,9 @@ export function ACPConnectionSetupStatus({
   error,
   reason,
   pending,
+  firstContact = false,
+  attempt = 'add',
+  engineName,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
@@ -400,15 +463,29 @@ export function ACPConnectionSetupStatus({
    */
   reason?: { message: string; phase: string } | null;
   pending: boolean;
+  /** The engine's first start is still running in the background. */
+  firstContact?: boolean;
+  /** A first add, a re-check, or a saved edit: they are said differently. */
+  attempt?: ACPConnectionSetupAttempt;
+  engineName?: string;
 }) {
+  const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>Checking</strong>
         <span>
-          {pending
-            ? 'Adding the engine and checking its readiness.'
-            : 'Waiting for the refreshed connection result.'}
+          {firstContact
+            ? attempt === 'add'
+              ? `Starting ${engine} for the first time. A first start can take up to a minute.`
+              : `Starting ${engine}. A first start can take up to a minute.`
+            : !pending
+              ? 'Waiting for the refreshed connection result.'
+              : attempt === 'recheck'
+                ? `Checking ${engine} again.`
+                : attempt === 'edit'
+                  ? `Saving your changes and checking ${engine}.`
+                  : 'Adding the engine and checking its readiness.'}
         </span>
       </div>
     );
@@ -417,7 +494,7 @@ export function ACPConnectionSetupStatus({
     const detail =
       label === 'Ready'
         ? 'This engine is ready to use.'
-        : label === 'Setup needed'
+        : label === 'Setup required'
           ? 'This engine needs more setup before it can run work — its Agent is added when it connects.'
           : label === 'Off'
             ? 'This engine is configured but turned off.'
@@ -429,21 +506,26 @@ export function ACPConnectionSetupStatus({
         {label !== 'Ready' && reason && (
           <>
             <span className="acp-add-dialog__result-reason">
-              {`${reason.phase}: ${reason.message}`}
+              {reason.message}
             </span>
-            <span className="acp-add-dialog__result-action">
-              {/*
-                Derived from the phase the probe actually failed in, not
-                guessed from the message: before `initialize` the command
-                never ran, and after it the command is running and answering.
-                Anything more specific would be a claim about a failure
-                Station cannot classify.
-*/}
-              {reason.phase === 'spawn' ||
-              reason.phase === 'workspace preparation'
-                ? 'Station could not start this engine’s command. Install it and make it runnable on the computer Station runs on, then check it again.'
-                : 'The command started but did not finish connecting. Resolve what it reported above in the engine itself, then check it again.'}
-            </span>
+            {/*
+              Derived from the phase the probe actually failed in, not guessed
+              from the message. A command that never launched is reported by
+              the server with its own remedy (acp-process.ts), so no second
+              hint repeats it; after launch the command is running and
+              answering, so the remedy lies in the engine.
+            */}
+            {reason.phase === 'workspace preparation' ? (
+              <span className="acp-add-dialog__result-action">
+                Station could not prepare a folder for this engine. Check its
+                working directory under Advanced, then check it again.
+              </span>
+            ) : reason.phase !== 'spawn' ? (
+              <span className="acp-add-dialog__result-action">
+                The command started but did not finish connecting. Resolve what
+                it reported above in the engine itself, then check it again.
+              </span>
+            ) : null}
           </>
         )}
       </div>

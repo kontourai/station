@@ -161,6 +161,35 @@ export async function fetchACPConnections(): Promise<ACPConnectionInfo[]> {
   return result.data ?? [];
 }
 
+/**
+ * Live probe status for every connection the server is probing, including a
+ * saved connection whose engine is not registered yet (which
+ * `fetchACPConnections` does not list). `probing` while a first contact is
+ * still running.
+ */
+export interface ACPConnectionProbeStatus {
+  id: string;
+  name: string;
+  status: string;
+  lastError?: { message: string; phase: string };
+}
+
+export async function fetchACPConnectionProbeStatuses(): Promise<
+  ACPConnectionProbeStatus[]
+> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(`${apiBase}/acp/status`);
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: { connections?: ACPConnectionProbeStatus[] };
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to fetch engine status'));
+  }
+  return result.data?.connections ?? [];
+}
+
 export async function fetchACPConnectionRegistry(): Promise<
   ACPConnectionRegistryEntry[]
 > {
@@ -175,6 +204,100 @@ export async function fetchACPConnectionRegistry(): Promise<
     throw new Error(apiErrorMessage(result, 'Failed to fetch ACP registry'));
   }
   return result.data ?? [];
+}
+
+/**
+ * Arguments from the setup form's one-line field; blank means none. Words
+ * split on whitespace; "double" or 'single' quotes keep spaces inside one
+ * argument, and inside double quotes a backslash escapes `"` or `\`.
+ * `joinACPArgs` writes the line this reads back unchanged.
+ */
+export function splitACPArgs(line: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let started = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i] as string;
+    if (
+      quote === '"' &&
+      char === '\\' &&
+      (line[i + 1] === '"' || line[i + 1] === '\\')
+    ) {
+      current += line[i + 1];
+      i += 1;
+    } else if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      started = true;
+    } else if (/\s/.test(char)) {
+      if (started) args.push(current);
+      current = '';
+      started = false;
+    } else {
+      current += char;
+      started = true;
+    }
+  }
+  if (started) args.push(current);
+  return args;
+}
+
+/** The setup form's one-line field for saved arguments (see `splitACPArgs`). */
+export function joinACPArgs(args: readonly string[]): string {
+  return args
+    .map((arg) =>
+      /[\s"']/.test(arg) ? `"${arg.replace(/(["\\])/g, '\\$1')}"` : arg,
+    )
+    .join(' ');
+}
+
+/**
+ * Saved connections whose engine never registered (a failed first add).
+ * Not part of `fetchACPConnections`: they are not installed engines.
+ */
+export async function fetchUnregisteredACPConnections(): Promise<
+  ACPConnectionInfo[]
+> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/connections/unregistered`,
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPConnectionInfo[];
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to fetch engines'));
+  }
+  return result.data ?? [];
+}
+
+/**
+ * Retry check: re-probe a saved connection from its saved config and
+ * register it when it connects. Answers its status (`probing` while a first
+ * start continues on the server).
+ */
+export async function checkACPConnection(
+  id: string,
+): Promise<ACPConnectionInfo | undefined> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/connections/${encodeURIComponent(id)}/check`,
+    { method: 'POST' },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPConnectionInfo;
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to check the engine'));
+  }
+  return result.data;
 }
 
 export async function createACPConnection(data: {
@@ -192,7 +315,7 @@ export async function createACPConnection(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...data,
-      args: typeof data.args === 'string' ? data.args.split(/\s+/) : data.args,
+      args: typeof data.args === 'string' ? splitACPArgs(data.args) : data.args,
     }),
   });
   const result = (await response.json()) as {
@@ -264,8 +387,8 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
     // The route attaches a sanitized, bounded `detail` (acp.ts) beside its
     // generic `error`; the shared helper does not read that field, so the
     // actionable sentence would be dropped and the reader would only ever
-    // see "could not be reconnected".
-    const base = apiErrorMessage(result, 'Failed to reconnect ACP connection');
+    // see "Could not check <engine>".
+    const base = apiErrorMessage(result, 'Could not check the engine.');
     throw new Error(result.detail ? `${base} ${result.detail}` : base);
   }
   return true;
@@ -358,6 +481,20 @@ function acpRegistryInstallErrorMessage(error: unknown): string {
   return 'Failed to connect engine';
 }
 
+/**
+ * The engine's first start is still running on the server (the add answered
+ * `probing`): neither connected nor failed. Station registers the engine and
+ * adds its Agent if that start succeeds while Station keeps running.
+ */
+export class EngineStillStartingError extends Error {
+  constructor(readonly engineName: string) {
+    super(
+      `${engineName} is still starting for the first time. If it connects while Station is running, its Agent is added then; otherwise add it again later.`,
+    );
+    this.name = 'EngineStillStartingError';
+  }
+}
+
 export async function connectAndMaterializeACPRegistryEngine(
   id: string,
 ): Promise<ACPRegistryInstallAgentReceipt> {
@@ -369,6 +506,7 @@ export async function connectAndMaterializeACPRegistryEngine(
   const result = (await response.json()) as {
     success?: boolean;
     error?: unknown;
+    data?: Partial<ACPConnectionInfo>;
     agent?: {
       data?: unknown;
       created?: boolean;
@@ -379,6 +517,17 @@ export async function connectAndMaterializeACPRegistryEngine(
     throw new Error(acpRegistryInstallErrorMessage(result.error));
   }
   if (!result.agent) {
+    if (result.data?.status === 'probing') {
+      throw new EngineStillStartingError(result.data.name ?? id);
+    }
+    // The engine's first probe failed: the route saved the connection but
+    // registered no Agent, and its `data` carries the probe's reason.
+    const failure = result.data?.lastError;
+    if (failure) {
+      throw new Error(
+        `${result.data?.name ?? id} did not connect. ${failure.phase}: ${failure.message}`,
+      );
+    }
     throw new Error(
       'Engine connection was saved, but no Agent receipt was returned.',
     );
@@ -419,6 +568,54 @@ export function useACPConnectionsQuery(
     staleTime: config?.staleTime ?? 5_000,
     gcTime: config?.gcTime,
     enabled: config?.enabled ?? true,
+  });
+}
+
+export function useACPConnectionProbeStatusesQuery(
+  config?: QueryConfig<ACPConnectionProbeStatus[]>,
+) {
+  return useApiQuery(
+    ['acp-connection-probe-status'],
+    () => fetchACPConnectionProbeStatuses(),
+    {
+      staleTime: config?.staleTime ?? 0,
+      gcTime: config?.gcTime,
+      enabled: config?.enabled ?? true,
+      refetchInterval: config?.refetchInterval,
+    },
+  );
+}
+
+export function useUnregisteredACPConnectionsQuery(
+  config?: QueryConfig<ACPConnectionInfo[]>,
+) {
+  return useApiQuery(
+    ['acp-unregistered-connections'],
+    () => fetchUnregisteredACPConnections(),
+    {
+      staleTime: config?.staleTime ?? 5_000,
+      gcTime: config?.gcTime,
+      enabled: config?.enabled ?? true,
+    },
+  );
+}
+
+export function useCheckACPConnectionMutation(
+  options?: MutationOptions<ACPConnectionInfo | undefined, string>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ACPConnectionInfo | undefined, Error, string>({
+    mutationFn: async (id) => checkACPConnection(id),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['acp-connection-registry'] });
+    },
+    onSuccess: (data, variables) => options?.onSuccess?.(data, variables),
+    onError: (error, variables) =>
+      options?.onError?.(error as Error, variables),
   });
 }
 
@@ -468,6 +665,9 @@ export function useCreateACPConnectionMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
+      queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
       options?.onSuccess?.(data, variables);
@@ -486,6 +686,9 @@ export function useInstallACPConnectionRegistryEntryMutation(
     mutationFn: async (id) => installACPConnectionRegistryEntry(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
@@ -512,6 +715,9 @@ export function useUpdateACPConnectionMutation(
     mutationFn: async ({ id, updates }) => updateACPConnection(id, updates),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -529,6 +735,9 @@ export function useDeleteACPConnectionMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
+      queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
       options?.onSuccess?.(data, variables);
@@ -545,8 +754,16 @@ export function useReconnectACPConnectionMutation(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => reconnectACPConnection(id),
+    // Success or failure, the check changed the engine's readiness: the
+    // engine list and its detail read it, not only the ACP list.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

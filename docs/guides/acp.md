@@ -600,7 +600,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side
@@ -608,7 +608,17 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 ### Agent not appearing in the New Chat picker
 
-Every configured connection should surface as one External agent with the same clean ID, even while disabled, unprobed, unavailable, or in error. If it is missing, inspect `config/agent-registry.json` and the connection lifecycle error; probe state should change availability, never Agent existence.
+A connection surfaces as an External agent with the same clean ID once its probe has handshaked at least once. Adding or installing a connection saves its config first and registers the engine and its Agent only when that probe succeeds; a failed first add keeps the config, answers with the probe's `status` and `lastError`, and stays out of `GET /api/acp/connections`. Repeat the same add (the setup dialog's **Retry check**) after fixing the cause: it re-probes and registers on success. Saved connections that never registered are listed by `GET /api/acp/connections/unregistered` (shown as **Not connected yet** cards), and `POST /api/acp/connections/:id/check` re-probes one from its saved config, also after a restart, registering it on success; an edit through `PUT /api/acp/connections/:id` re-probes and registers the same way. When the first probe of a never-connected engine runs out of the request budget (a cold start), the add answers `status: probing` and the same probe continues in the background on the cold first-contact budget, outside the configuration queue; `GET /api/acp/status` reports its progress. A background probe that gives a saved, unregistered connection its first handshake (that continuation or the periodic sweep) registers the engine and its Agent through the configuration queue, and only if the saved config still matches the config it probed; otherwise the result is dropped. A registry reload keeps a continuation that is still running for an unchanged config. Startup probes only registered connections, so after a restart a saved, never-registered connection is not checked until something adds it to the probe set again: adding it again, its **Retry check**, or a registry reload, which re-reads every saved connection (from then on the periodic check can register it). Once registered, probe state changes availability, never Agent existence. If a connection that has handshaked is missing, inspect `config/agent-registry.json` and the connection lifecycle error.
+
+### Sign-in shows as not checked
+
+Station has no sign-in check for a command-backed engine, so its login
+prerequisite reports that sign-in is not checked. That row is optional and
+never blocks a chat. A successful probe proves the engine started a session,
+not that it is signed in: some engines refuse only at the first prompt. The
+check plugs in through `buildCliRuntimePrerequisites`' `detectAuthState`
+(`src-server/providers/auth/cli-auth.ts`), which the engine adapter supplies
+(`src-server/providers/adapters/acp-adapter.ts`).
 
 ### A previous ACP session cannot be restored
 
@@ -671,6 +681,16 @@ before it can refuse: Station does not refuse from the connection list's cached
 model options, because those come from a probe session that can differ from the
 session a start actually creates. A refusal whose process teardown cannot be
 confirmed stays an uncertain start.
+
+An engine that answers `session/new` or `session/load` with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", the ACP SDK's `RequestError.authRequired` shape; any other `-32000`
+stays a generic error) is refused the same settled way, with the
+`engine-sign-in-required` code (kind `auth`): the announced session ends with
+that cause and the thread is not fenced. The same error on a prompt is that
+turn's `runtime.error` with the same code. Chat shows **Sign in to this engine**
+with the engine's own words. Any other `session/new` failure keeps the
+uncertain-start behaviour.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An
