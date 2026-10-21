@@ -28863,8 +28863,10 @@ describe('OrchestrationService', () => {
 
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
+        provider: 'claude',
         threadId: 'thread-recovered-cwd',
         cwd: projectDir,
+        metadata: expect.objectContaining({ confinementRoot: realpathSync.native(projectDir) }),
       }),
     );
   });

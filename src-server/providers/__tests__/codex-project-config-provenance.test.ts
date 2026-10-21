@@ -404,38 +404,44 @@ describe('a canonical confinement root (#3800)', () => {
  * Project) must reach `findUnaccountedCodexConfig` as no root at all, never
  * as the cwd, or a repository planted at the cwd anchors itself.
  */
-describe('the Codex adapter with an empty confinement root (#3800)', () => {
-  test('a self-anchoring repository at the cwd is refused before Codex is spawned', async () => {
-    const dir = realpathSync(makeTempDir('codex-empty-root-'));
-    mkdirSync(join(dir, '.codex'));
-    writeFileSync(join(dir, '.codex', 'config.toml'), '[mcp_servers.x]\n');
-    commitAll(dir);
-    // Anchored at itself, the repository would be trusted.
-    expect(findUnaccountedCodexConfig(dir, { root: dir })).toBeUndefined();
-    let spawned = false;
-    const adapter = new CodexAdapter({
-      processFactory: () => {
-        spawned = true;
-        throw new Error('spawned');
-      },
-    });
-    const outcome = await adapter
-      .startSession({
-        provider: 'codex',
-        threadId: 'empty-root',
-        cwd: dir,
-        confinement: 'workspace',
-        metadata: { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: '' },
-      })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
+describe('the Codex adapter without a trusted confinement root (#3800)', () => {
+  test.each([undefined, 42, ''] as const)(
+    'a self-anchoring repository with root %j is refused before Codex is spawned',
+    async (root) => {
+      const dir = realpathSync(makeTempDir('codex-empty-root-'));
+      mkdirSync(join(dir, '.codex'));
+      writeFileSync(join(dir, '.codex', 'config.toml'), '[mcp_servers.x]\n');
+      commitAll(dir);
+      // Anchored at itself, the repository would be trusted.
+      expect(findUnaccountedCodexConfig(dir, { root: dir })).toBeUndefined();
+      let spawned = false;
+      const adapter = new CodexAdapter({
+        processFactory: () => {
+          spawned = true;
+          throw new Error('spawned');
+        },
+      });
+      const outcome = await adapter
+        .startSession({
+          provider: 'codex',
+          threadId: 'empty-root',
+          cwd: dir,
+          confinement: 'workspace',
+          metadata:
+            root === undefined
+              ? {}
+              : { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(spawned).toBe(false);
+      expect(outcome).toBeInstanceOf(ConfinementRefusedError);
+      expect((outcome as ConfinementRefusedError).code).toBe(
+        'confinement_workspace_incompatible',
       );
-    expect(spawned).toBe(false);
-    expect(outcome).toBeInstanceOf(ConfinementRefusedError);
-    expect((outcome as ConfinementRefusedError).code).toBe(
-      'confinement_workspace_incompatible',
-    );
-    await adapter.stopAll();
-  });
+      await adapter.stopAll();
+    },
+  );
 });

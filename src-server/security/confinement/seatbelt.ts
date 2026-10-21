@@ -267,7 +267,7 @@ export function seatbeltGrants(
         join(common, 'packed-refs'),
         join(common, 'packed-refs.lock'),
       );
-      writeDeniedExact.push(common);
+      writeDeniedExact.push(common, join(common, 'refs'));
     } else {
       writeDenied.push(
         join(input.workspace, '.git'),
@@ -552,10 +552,21 @@ export function seatbeltWriteGrantKinds(
             join(git.gitDir, 'config'),
             join(git.gitDir, 'hooks'),
           ]
-        : [join(git.commonDir, 'worktrees'), join(git.commonDir, 'modules')]),
+        : [
+            join(git.commonDir, 'worktrees'),
+            join(git.commonDir, 'modules'),
+            join(git.commonDir, 'refs', 'remotes'),
+            join(git.commonDir, 'packed-refs'),
+            join(git.commonDir, 'packed-refs.lock'),
+          ]),
     ];
     if (!needed.every((path) => denied.has(path))) return undefined;
-    if (!linked && !(grants.writeDeniedExact ?? []).includes(git.commonDir))
+    if (
+      !linked &&
+      ![git.commonDir, join(git.commonDir, 'refs')].every((path) =>
+        (grants.writeDeniedExact ?? []).includes(path),
+      )
+    )
       return undefined;
   }
   return [...kinds].sort();

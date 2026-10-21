@@ -1808,12 +1808,10 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (input.confinement !== 'host') {
       const cwd = input.cwd ?? process.cwd();
       const stamped = input.metadata?.[SESSION_CONFINEMENT_ROOT_METADATA_KEY];
-      // A start the orchestration service did not stamp (a session recorded
-      // before the stamp, or a direct adapter call) is authorized for its
-      // cwd, as a session with no Project is.
-      // An empty stamp (a folder outside every Project) trusts nothing.
+      // Missing, malformed and explicit empty stamps confer no config trust.
+      // The cwd above is a scan location, never an authority fallback.
       const unaccounted = findUnaccountedCodexConfig(cwd, {
-        root: typeof stamped === 'string' ? stamped : cwd,
+        root: typeof stamped === 'string' ? stamped : '',
         codexHome: process.env.CODEX_HOME,
       });
       if (unaccounted)

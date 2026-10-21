@@ -170,7 +170,7 @@ describe('Seatbelt grants and profile', () => {
       `${dotGit}/packed-refs.lock`,
     ]);
     // `.git` itself cannot be removed, renamed or replaced by a pointer.
-    expect(grants.writeDeniedExact).toEqual([dotGit]);
+    expect(grants.writeDeniedExact).toEqual([dotGit, `${dotGit}/refs`]);
   });
 
   test('rules are ordered so the later, narrower rule wins', () => {
@@ -359,6 +359,27 @@ describe('Seatbelt breadth', () => {
         ...g,
         writeDenied: (g.writeDenied ?? []).filter(
           (p) => p !== `${dotGit}/modules`,
+        ),
+      }),
+    ],
+    ...(['refs/remotes', 'packed-refs', 'packed-refs.lock'] as const).map(
+      (name) =>
+        [
+          name,
+          (g: ReturnType<typeof seatbeltGrants>, dotGit: string) => ({
+            ...g,
+            writeDenied: (g.writeDenied ?? []).filter(
+              (p) => p !== `${dotGit}/${name}`,
+            ),
+          }),
+        ] as const,
+    ),
+    [
+      'the refs ancestor',
+      (g: ReturnType<typeof seatbeltGrants>, dotGit: string) => ({
+        ...g,
+        writeDeniedExact: (g.writeDeniedExact ?? []).filter(
+          (p) => p !== `${dotGit}/refs`,
         ),
       }),
     ],

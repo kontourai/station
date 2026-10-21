@@ -183,6 +183,7 @@ describe.skipIf(!codexBinary)(
         provider: 'codex',
         threadId: `planted-${confinement}`,
         cwd,
+        metadata: { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: workspace },
         modelOptions: { approvalMode: 'auto' },
         confinement,
         confinementPlan: confinement === 'host' ? HOST_PLAN : WORKSPACE_PLAN,

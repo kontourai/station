@@ -12723,16 +12723,22 @@ export class OrchestrationService {
       // sessions whose directory is momentarily unavailable (an unmounted
       // volume, a not-yet-restored worktree) — recovery has always been
       // tolerant there and this fix is not the place to change that.
-      resolveSessionCwd: (input) =>
-        input.cwd
+      resolveSessionCwd: async (input) => {
+        const resolved = input.cwd
           ? input
-          : resolveStartSessionCwd(
+          : await resolveStartSessionCwd(
               input,
               this.options.listProjects,
               this.options.observeCwdShadow,
               undefined,
               this.options.resolveProjectSessionDirectory,
-            ),
+            );
+        return typeof resolved.metadata?.[
+          SESSION_CONFINEMENT_ROOT_METADATA_KEY
+        ] === 'string'
+          ? resolved
+          : withSessionConfinementRoot(resolved, this.options.listProjects);
+      },
     };
   }
 
