@@ -619,6 +619,14 @@ model options, because those come from a probe session that can differ from the
 session a start actually creates. A refusal whose process teardown cannot be
 confirmed stays an uncertain start.
 
+An engine that answers `session/new` or `session/load` with ACP's
+`auth_required` error (`-32000`) is refused the same settled way, with the
+`engine-sign-in-required` code (kind `auth`): the announced session ends with
+that cause and the thread is not fenced. The same error on a prompt is that
+turn's `runtime.error` with the same code. Chat shows **Sign in to this engine**
+with the engine's own words. Any other `session/new` failure keeps the
+uncertain-start behaviour.
+
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An
 initialization timeout can therefore leave Station's model list empty even when
