@@ -42,7 +42,17 @@ const contextSeedSchema = z
 export function readConversationContextSeedPin(
   json: string,
 ): ConversationContextSeedPin {
-  const seed = contextSeedSchema.parse(JSON.parse(json));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    // JSON diagnostics may contain private transcript bytes, before read authorization.
+    throw new Error('The pinned conversation context is invalid.');
+  }
+  const result = contextSeedSchema.safeParse(parsed);
+  if (!result.success)
+    throw new Error('The pinned conversation context is invalid.');
+  const seed = result.data;
   if (
     createHash('sha256').update(seed.text).digest('hex') !== seed.seedDigest ||
     seed.omission.includedMessages + seed.omission.omittedMessages !==

@@ -990,6 +990,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                   method: 'session.configured',
                   provider: target.provider,
                   threadId: input.predecessorSessionId,
+                sessionId: input.predecessorSessionId,
                   createdAt: new Date().toISOString(),
                   metadata: {},
                 });
