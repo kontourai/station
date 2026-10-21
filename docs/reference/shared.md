@@ -11,6 +11,7 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 
 For runtime helpers, use explicit subpaths:
 
+- `@kontourai/station-shared/agent-message-frame` — agent-message framing and its read-side inverse; every message line is quoted under a fixed header. The server-recorded `clientOrigin.sender`, rather than framed text, identifies the sender. This grants no Session read, invocation or person authority.
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`

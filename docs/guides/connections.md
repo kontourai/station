@@ -875,9 +875,7 @@ and the remedy:
   move it to your own Codex configuration, or run the session as `host`.
 - **The reftable ref backend.** Station cannot read its refs safely, so it
   trusts no `.codex` there. Run the session as `host`.
-- **A nested repository or submodule below the Project folder** whose own
-  `.codex` is not on the Project repository's remote-tracking branches. Run
-  the session as `host`, or make that repository a Project of its own.
+- **An unregistered nested repository or submodule below the Project folder.** Its `.codex` is refused even when identical bytes occur on the outer Project repository's remote-tracking branches. A linked worktree must be registered to the trusted repository. Otherwise run the session as `host`, or make the nested repository a Project of its own.
 - **A folder outside every Project.** A session that is not `host` there
   trusts no `.codex` at all. Add the folder as a Project, or run the session
   as `host`.

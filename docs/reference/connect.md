@@ -666,9 +666,7 @@ remain independent. Other scopes, including `approval:full-access`, do not
 confer administration. See [device administration](api.md#administer-paired-device-access).
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that
-does not grant device-inventory or offer-management access. The native desktop's
-local grant, minted using proof of Station-home possession, can manage pairing
-within its current scope. Browser launcher grants do not inherit that authority.
+does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.
 
 The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,

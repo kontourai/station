@@ -242,11 +242,11 @@ jobs:
       queue: max
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
-    # shard runner itself) + actionlint (5) + install (15) + zsh (5) +
-    # Chromium (20) + ~3 minutes of unbounded setup = 63;
+    # The twenty-minute shard budget (FAST_CHECKS_SHARD_BUDGET_MS, enforced
+    # by the shard runner) + actionlint (5) + install (15) + zsh (5) +
+    # Chromium (20) + ~3 minutes of unbounded setup = 68;
     # ci-workflow-contract.test.ts pins the sum.
-    timeout-minutes: 65
+    timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:

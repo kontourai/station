@@ -407,6 +407,7 @@ export function resolveDocumentationFreshness({
       for (const token of git(root, [
         'log',
         '--diff-merges=first-parent',
+        '--no-renames',
         '--diff-filter=A',
         '-z',
         '--format=\u0001%H',

@@ -290,9 +290,10 @@ replay and absence of account IDs in the response. A second HTTP test uses real
 delegation and OrchestrationService with SQLite and a session-tracking controlled
 provider: its positive control starts a session and sends a turn, then revocation
 during target resolution blocks another start and revocation after start blocks
-the initial turn. Revocation after the durable turn enters invocation also
-blocks the provider, retires that turn boundary and permits an explicit
-continuation once authority returns. Only a known authority change uses the
+the initial turn. The current revocation fixture observes the exact durable
+turn boundary in `reserved` state, before immutable intent capture and provider
+invocation. Revocation there blocks the provider, retires the never-invoked
+boundary and permits an explicit continuation once authority returns. Only a known authority change uses the
 clean-refusal classification; storage failures retain their uncertainty.
 It does not run a live model.
 

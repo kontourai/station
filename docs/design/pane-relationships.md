@@ -69,8 +69,13 @@ openers; caption evidence does not qualify an opener's navigation route.
 Review Close watches new owner guards through its locked fresh-read commit;
 an old answer cannot remove a moved or disposed review. Open conversation and
 Up plan the actual reveal from the committed model and ask only owners that
-reveal hides. Phone dismissal asks the layer once. The same checks run after a
-guard delay, including Station, API, relation, source selection and new guards.
+reveal hides. Ordinary phone dismissal asks the layer once. An attached review
+that transfers its unchanged reply skips only that reply guard's exact identity
+and owner; other dirty guards still ask, and new registrations supersede the
+exit. When Coding owns Chat in the centre, the caller requests that Chat page
+before restoring the phone layer. A missing or refusing Chat owner leaves the
+review in place. The same checks run after a guard delay, including Station,
+API, relation, source selection and new guards.
 
 An attached review hands its exact reply to Chat; it cannot adopt a Session
 itself. The Chat reader owns confirmation, adoption and canonical child opening.
@@ -142,8 +147,11 @@ checks mode requirements and current grants, then selects beside/child/sheet/too
 presentation. Results distinguish opened, focused, replaced and unavailable,
 including unsupported, context mismatch and guard cancellation.
 
-Direct plugins remain trusted in-process code; iframe transport is the security
-boundary. Admission, budgets and refusal semantics agree across transports.
+Direct plugins remain trusted in-process code. The iframe transport bounds the
+related-pane message API; it does not qualify isolation from the native app.
+Native plugin frames remain unqualified for protection of app data, native
+features and saved Station credentials, as the loading review discloses.
+Admission, budgets and refusal semantics agree across transports.
 Legacy navigation remains available. No raw URL, React slot, arbitrary Session
 identity or filesystem/process authority crosses the new capability. Declaring
 `docked` is not region admission. Dogfood a plugin-owned report first; built-in

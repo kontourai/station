@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
+  getConfig,
   render,
   screen,
   waitFor,
@@ -983,10 +984,36 @@ test.each(['off', 'dismiss'] as const)(
       y: 100,
       toJSON: () => ({}),
     });
+    const request = bridge.request.getMockImplementation()!;
+    let disclosureFrame: number | undefined;
+    let releaseDisclosure: (() => void) | undefined;
+    // A cold disclosure reply must settle even while this case owns the clock.
+    const disclosureReady = new Promise<void>((resolve) => {
+      releaseDisclosure = resolve;
+      disclosureFrame = requestAnimationFrame(() => resolve());
+    });
+    bridge.request.mockImplementation(
+      async (url: string, init?: RequestInit) => {
+        if (
+          url.endsWith('/disclosure') &&
+          (init?.method === undefined || init.method === 'GET')
+        )
+          await disclosureReady;
+        return request(url, init);
+      },
+    );
     const view = mountChoice(client, vi.fn(), true);
     let resumeChoice: (() => void) | undefined;
     try {
-      await screen.findByRole('dialog');
+      await vi.waitFor(
+        async () => {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(16);
+          });
+          expect(screen.getByRole('dialog')).toBeTruthy();
+        },
+        { timeout: getConfig().asyncUtilTimeout },
+      );
       await vi.waitFor(() => expect(client.isFetching()).toBe(0));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(40);
@@ -1060,6 +1087,9 @@ test.each(['off', 'dismiss'] as const)(
         operator: action === 'off' ? 'off' : 'lite',
       });
     } finally {
+      if (disclosureFrame !== undefined) cancelAnimationFrame(disclosureFrame);
+      releaseDisclosure?.();
+      bridge.request.mockImplementation(request);
       resumeChoice?.();
       view.unmount();
       client.clear();

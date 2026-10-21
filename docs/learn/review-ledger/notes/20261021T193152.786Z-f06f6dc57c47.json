@@ -1,0 +1,7 @@
+{
+  "revision": "8f0a9d43efc826383d8b7e6d8bc161b3059c198a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed only the Android mobile-layout provenance journey correction at 8f0a9d43efc: after actual mobile navigation to Settings and selecting Advanced, the test now clicks the exact Build details summary before querying the lazily mounted connected-server provenance. SystemSection mounts ConnectedBuildDetails only after the details toggle, consistent with the retained failure DOM. All SHA/full-SHA-title, timestamp, instance, single-column and horizontal-containment assertions and original timeout remain unchanged. The full canonical local Android browser suite passes10/10; removing only this click on clean committed source reproduces the exact missing-group failure, and byte-identical restoration passes the targeted journey. E2E types and fixture policy pass. The matrix correctly treats this as controlled browser viewport evidence, not an installed Android app, native shell, live provider or complete surface qualification. No production UI or manifest membership changed; unrelated claims and historical receipts were not requalified.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}
