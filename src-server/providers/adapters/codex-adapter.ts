@@ -41,11 +41,13 @@ import { validateInputRequestContent } from '@kontourai/station-shared/input-req
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   assertRequiredConfinementObserved,
+  ConfinementRefusedError,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -144,9 +146,11 @@ import {
 } from './codex-approval-mode.js';
 import {
   codexConfinementConfigArgs,
+  codexThreadSandboxRequest,
   describeCodexSandboxGap,
   observeCodexSandboxPosture,
   requiredByReportedPolicy,
+  STATION_CODEX_PERMISSION_PROFILE,
 } from './codex-confinement.js';
 import {
   type CodexToolServerSkip,
@@ -154,6 +158,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -514,6 +519,12 @@ function readCodexAdoptionRolloutHeader(
   } catch {
     return null;
   }
+}
+
+/** #3800: the `activePermissionProfile.id` of a thread response, if any. */
+function readActivePermissionProfileId(result: unknown): string | undefined {
+  const profile = record(record(result)?.activePermissionProfile);
+  return typeof profile?.id === 'string' ? profile.id : undefined;
 }
 
 function validateCodexForkExecution(
@@ -1789,6 +1800,28 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // #3800: refused before Codex is spawned, since a project `mcp_servers`
+    // command runs outside the sandbox at thread start (start, resume, fork
+    // and respawn all come through here).
+    // Without a cwd Codex runs in the server's own directory, so that is the
+    // one checked.
+    if (input.confinement !== 'host') {
+      const cwd = input.cwd ?? process.cwd();
+      const stamped = input.metadata?.[SESSION_CONFINEMENT_ROOT_METADATA_KEY];
+      // A start the orchestration service did not stamp (a session recorded
+      // before the stamp, or a direct adapter call) is authorized for its
+      // cwd, as a session with no Project is.
+      // An empty stamp (a folder outside every Project) trusts nothing.
+      const unaccounted = findUnaccountedCodexConfig(cwd, {
+        root: typeof stamped === 'string' ? stamped : cwd,
+        codexHome: process.env.CODEX_HOME,
+      });
+      if (unaccounted)
+        throw new ConfinementRefusedError(
+          'confinement_workspace_incompatible',
+          `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch of the repository containing the session's Project folder with these exact bytes, it is inside another repository below that folder, or there is no such repository, remote or recorded folder), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session).`,
+        );
+    }
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&
@@ -1961,18 +1994,22 @@ export class CodexAdapter implements ProviderAdapterShape {
         (input.confinementPlan?.policyBasis === 'workspace-floor'
           ? ('workspace-write' as const)
           : undefined);
-      const approvalWire = approvalKnobs
-        ? {
-            approvalPolicy: approvalKnobs.approvalPolicy,
-            sandbox: approvalKnobs.sandbox,
-          }
-        : sandboxRequest
-          ? { sandbox: sandboxRequest }
-          : {};
+      // #3800: outside `host`, workspace-write is the permission profile the
+      // spawn selects; sending the mode would replace it.
+      const sandboxWire = codexThreadSandboxRequest(
+        sandboxRequest,
+        input.confinement,
+      );
+      const approvalWire = {
+        ...(approvalKnobs
+          ? { approvalPolicy: approvalKnobs.approvalPolicy }
+          : {}),
+        ...(sandboxWire ? { sandbox: sandboxWire } : {}),
+      };
       const result = adoption
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
-            ...(sandboxRequest ? { sandboxRequest } : {}),
+            ...(sandboxWire ? { sandboxRequest: sandboxWire } : {}),
             serviceTier: modelOptions.fastMode ? 'fast' : null,
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
@@ -2043,11 +2080,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.confinementPlan,
         (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
       );
+      const reportedProfile = readActivePermissionProfileId(result);
       const sandboxEvidence = {
         requested: sandboxRequest,
         reported: reportedSandbox,
         workspace: input.cwd,
         permittedRoots: [engineSpawnTmpDirPath()],
+        // #3800: Station relies on its profile wherever it sent no mode.
+        ...(sandboxRequest && !sandboxWire
+          ? { requestedProfile: STATION_CODEX_PERMISSION_PROFILE }
+          : {}),
+        reportedProfile,
       };
       const confinementRecord = plan
         ? observedConfinementRecord(
@@ -2097,6 +2140,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       record.threadSandbox = reportedCodexThreadSandbox(
         reportedSandbox,
         sandboxRequest,
+        reportedProfile === STATION_CODEX_PERMISSION_PROFILE,
       );
       // #2559 R5: what `session.configured` reports is the sandbox Codex
       // said the thread runs in; the requested mode only when it said
@@ -2336,7 +2380,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption: CodexNativeAdoption,
     execution: {
       approvalKnobs?: CodexExecutionKnobs;
-      /** #2494 D1: the thread-level sandbox asked for when no knobs are sent. */
+      /** The thread-level sandbox mode to send (`codexThreadSandboxRequest`). */
       sandboxRequest?: CodexExecutionKnobs['sandbox'];
       serviceTier: string | null;
       config?: Record<string, unknown>;
@@ -2354,13 +2398,11 @@ export class CodexAdapter implements ProviderAdapterShape {
         cwd: adoption.input.cwd,
         threadSource: adoption.marker,
         ...(execution.approvalKnobs
-          ? {
-              approvalPolicy: execution.approvalKnobs.approvalPolicy,
-              sandbox: execution.approvalKnobs.sandbox,
-            }
-          : execution.sandboxRequest
-            ? { sandbox: execution.sandboxRequest }
-            : {}),
+          ? { approvalPolicy: execution.approvalKnobs.approvalPolicy }
+          : {}),
+        ...(execution.sandboxRequest
+          ? { sandbox: execution.sandboxRequest }
+          : {}),
         serviceTier: execution.serviceTier,
         ...(execution.config ? { config: execution.config } : {}),
         ephemeral: false,
@@ -2666,9 +2708,12 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(sandboxPolicy ? { sandboxPolicy } : {}),
         serviceTier: modelOptions.fastMode ? 'fast' : undefined,
       });
-      // Applies to this turn and every later one (TurnStartParams).
-      if (sandboxPolicy)
-        record.threadSandbox = { ...thread, policy: sandboxPolicy };
+      // Applies to this turn and every later one (TurnStartParams), and
+      // replaces a permission profile (#3800).
+      if (sandboxPolicy) {
+        const { stationProfile: _replaced, ...rest } = thread;
+        record.threadSandbox = { ...rest, policy: sandboxPolicy };
+      }
       providerOps.add(1, {
         operation: 'adapter-model-options',
         provider: this.provider,

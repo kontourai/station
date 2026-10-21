@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -1029,6 +1029,61 @@ describe('OrchestrationService', () => {
       expect(callerRecord('dirless-session')).toMatchObject({
         projectSlug: 'dirless',
       });
+    });
+
+    test('#3800: the confinement root is the Project directory containing the cwd, never the caller value or the cwd', async () => {
+      publishStarts();
+      // Outside every Project (configuredProjects is reset per test): trust
+      // nothing, whatever the caller claimed.
+      await started('outside-session', {
+        userId: 'human:test:alice',
+        confinementRoot: tmp,
+      });
+      expect(
+        service.firstStartedMetadataOfThread('outside-session'),
+      ).toMatchObject({ confinementRoot: '' });
+      const projectRoot = resolve(tmp, '..');
+      configuredProjects.push({
+        slug: 'rooted',
+        workingDirectory: projectRoot,
+        id: 'project-rooted-id',
+      });
+      await started('rooted-session', {
+        userId: 'human:test:alice',
+        projectSlug: 'rooted',
+        confinementRoot: '/forged',
+      });
+      expect(
+        service.firstStartedMetadataOfThread('rooted-session'),
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
+      // A start naming no Project (a station-control dispatch to a plain
+      // folder, say) still belongs to the deepest Project around its cwd.
+      await started('slugless-session', {
+        userId: 'human:test:alice',
+        confinementRoot: tmp,
+      });
+      expect(
+        service.firstStartedMetadataOfThread('slugless-session'),
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
+      // Compared and stamped canonically: a Project configured through a
+      // symlink still contains the cwd (round 6 of the #3962 review).
+      const linked = join(tmp, 'link-to-project');
+      symlinkSync(projectRoot, linked);
+      configuredProjects.push({
+        slug: 'linked',
+        workingDirectory: linked,
+        id: 'project-linked-id',
+      });
+      // Named, the start itself refuses a cwd the link does not lexically
+      // contain; unnamed, the Project around the cwd is found canonically.
+      configuredProjects.splice(
+        configuredProjects.findIndex((project) => project.slug === 'rooted'),
+        1,
+      );
+      await started('linked-session', { userId: 'human:test:alice' });
+      expect(
+        service.firstStartedMetadataOfThread('linked-session'),
+      ).toMatchObject({ confinementRoot: realpathSync.native(projectRoot) });
     });
 
     test('S2: only a session that predates the stamp gets the slug-lookup fallback', async () => {

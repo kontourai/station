@@ -1072,8 +1072,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
   // #3800: starts the real `codex app-server` (when this host has one) with a
   // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
-  // config; skips loudly where no codex binary resolves.
+  // config, and runs short `codex sandbox` probes of Station's permission
+  // profile on macOS; skips loudly where no codex binary resolves.
   'src-server/providers/__tests__/codex-project-config.process.test.ts',
+  // #3800: builds small real Git repositories (init, add, commit) in temp
+  // directories to check which nested `.codex` a non-host start refuses.
+  'src-server/providers/__tests__/codex-project-config-provenance.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.

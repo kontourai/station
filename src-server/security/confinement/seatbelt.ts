@@ -184,20 +184,19 @@ export function seatbeltHiddenPaths(
 }
 
 /**
- * #3800: the project-scoped engine configuration directories at the
- * workspace root, write-denied whole under the profile. Codex merges
- * `.codex/config.toml` over the user's configuration (its writable roots and
- * MCP servers included) and Claude reads `.claude/settings.json`
- * and `settings.local.json` (hooks, MCP approvals) plus agents and commands
- * that can carry hooks of their own. Denying the directory, not its files,
- * also refuses creating, renaming or replacing it, so a directory prepared
- * elsewhere cannot be moved into place. Codex's own sandbox keeps `.codex`
- * read-only the same way. Only the root is covered: a nested one applies
- * only to a session started in that subdirectory.
+ * #3800: the engines' project configuration directories, write-denied at
+ * every depth of every writable grant. Codex merges each `.codex` from the
+ * project root down to the session's cwd over the user's configuration
+ * (writable roots, MCP server commands and approval reviewer included), and
+ * a session may start in a subdirectory, so a nested one is as live as the
+ * root one. Claude reads `.claude/settings.json` and `settings.local.json`
+ * (hooks, MCP approvals) and agents and commands that carry hooks of their
+ * own. Denying the name, not its files, also refuses creating, renaming,
+ * linking or replacing such a directory, and a directory prepared in the
+ * session's temp directory cannot carry one either, because that grant is
+ * covered too.
  */
-export function seatbeltEngineConfigPaths(workspace: string): string[] {
-  return [join(workspace, '.codex'), join(workspace, '.claude')];
-}
+const SEATBELT_ENGINE_CONFIG_NAMES: readonly string[] = ['.codex', '.claude'];
 
 export interface SeatbeltGrantInput {
   /** Every path symlink-resolved. */
@@ -225,11 +224,15 @@ export interface SeatbeltGrantInput {
  * - A checkout whose `.git` is inside the workspace keeps, besides the
  *   above, every other worktree's and submodule's pointers and config
  *   (`worktrees`, `modules`) read-only, and the `.git` directory itself
- *   cannot be removed, renamed or replaced by a pointer file.
- * - Always (#3800): the engines' own project configuration in the workspace
- *   (`seatbeltEngineConfigPaths`). A confined agent that could write it
- *   could widen the next Codex session's sandbox, or plant hooks and MCP
- *   servers that the next unconfined session in this checkout runs.
+ *   cannot be removed, renamed or replaced by a pointer file. Its
+ *   remote-tracking refs (`refs/remotes`, `packed-refs`) are read-only too
+ *   (#3800): a Codex start trusts a nested `.codex` only by them, so `git
+ *   fetch`, `pull` and ref packing are refused there, as in a linked
+ *   worktree.
+ * - Always (#3800): the engines' project configuration directories, at any
+ *   depth (`SEATBELT_ENGINE_CONFIG_NAMES`). A confined agent that could
+ *   write one could widen the next Codex session's sandbox, or plant hooks
+ *   and MCP servers that the next session there runs outside it.
  */
 export function seatbeltGrants(
   input: SeatbeltGrantInput,
@@ -240,7 +243,7 @@ export function seatbeltGrants(
     input.stationConfigDir,
   ];
   const writableFiles: string[] = [];
-  const writeDenied: string[] = seatbeltEngineConfigPaths(input.workspace);
+  const writeDenied: string[] = [];
   const writeDeniedExact: string[] = [];
   const git = input.git;
   if (git) {
@@ -254,7 +257,16 @@ export function seatbeltGrants(
       join(git.gitDir, 'config.worktree'),
     );
     if (within(input.workspace, common)) {
-      writeDenied.push(join(common, 'worktrees'), join(common, 'modules'));
+      // #3800: remote-tracking refs are what a later Codex start trusts a
+      // nested `.codex` by, so a confined session may not write them, here
+      // or packed (a linked worktree never could).
+      writeDenied.push(
+        join(common, 'worktrees'),
+        join(common, 'modules'),
+        join(common, 'refs', 'remotes'),
+        join(common, 'packed-refs'),
+        join(common, 'packed-refs.lock'),
+      );
       writeDeniedExact.push(common);
     } else {
       writeDenied.push(
@@ -280,6 +292,7 @@ export function seatbeltGrants(
     writableFiles,
     writeDenied,
     writeDeniedExact,
+    writeDeniedNames: [...SEATBELT_ENGINE_CONFIG_NAMES],
     hidden: [...input.hidden],
     readable: [...input.readable],
   };
@@ -292,6 +305,29 @@ function sbplPath(path: string): string {
       'A confinement path is not absolute or contains a character the Seatbelt profile cannot express.',
     );
   return `"${path}"`;
+}
+
+/**
+ * A rule denying writes to every path under `root` that has a segment named
+ * `name`, as an SBPL regex. The name is matched case-insensitively, as the
+ * default macOS filesystem resolves it; a name or root it cannot spell
+ * safely is refused.
+ */
+function sbplNamedSegmentDeny(root: string, name: string): string {
+  sbplPath(root);
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name === '.' || name === '..')
+    throw new Error(
+      'A confinement directory name contains a character the Seatbelt profile cannot express.',
+    );
+  const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const caseless = [...name]
+    .map((character) =>
+      /[A-Za-z]/.test(character)
+        ? `[${character.toUpperCase()}${character.toLowerCase()}]`
+        : literal(character),
+    )
+    .join('');
+  return `(deny file-write* (regex #"^${literal(root)}/(.*/)?${caseless}(/|$)"))`;
 }
 
 /**
@@ -330,6 +366,11 @@ export function seatbeltProfile(
     ...rule('allow', 'file-read* file-write*', 'literal', grants.writableFiles),
     ...rule('deny', 'file-write*', 'subpath', grants.writeDenied),
     ...rule('deny', 'file-write*', 'literal', grants.writeDeniedExact),
+    ...grants.writable.flatMap((root) =>
+      (grants.writeDeniedNames ?? []).map((name) =>
+        sbplNamedSegmentDeny(root, name),
+      ),
+    ),
   ].join('\n');
 }
 
@@ -461,12 +502,8 @@ export function seatbeltWriteGrantKinds(
   bounds: SeatbeltBounds,
 ): ConfinementWriteGrant[] | undefined {
   if (seatbeltWorkspaceRefusal(bounds.workspace, bounds)) return undefined;
-  const engineConfigDenied = new Set(grants.writeDenied ?? []);
-  if (
-    !seatbeltEngineConfigPaths(bounds.workspace).every((path) =>
-      engineConfigDenied.has(path),
-    )
-  )
+  const deniedNames = new Set(grants.writeDeniedNames ?? []);
+  if (!SEATBELT_ENGINE_CONFIG_NAMES.every((name) => deniedNames.has(name)))
     return undefined;
   const kinds = new Set<ConfinementWriteGrant>();
   const git = bounds.git;

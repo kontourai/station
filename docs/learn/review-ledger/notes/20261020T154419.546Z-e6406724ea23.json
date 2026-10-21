@@ -1,0 +1,7 @@
+{
+  "revision": "c911cc5ed794468df284ba2ea6aa3f940b7b5589",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3800 round 3: codex-adapter.ts only changes the pre-start .codex refusal text (push to upstream, or run as host) and the check now trusts verified remote-tracking refs instead of HEAD. Searched this document for start-refusal, sandbox, .codex and git-ref claims; nothing it states changed; no prose change needed.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

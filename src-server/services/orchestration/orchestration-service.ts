@@ -448,8 +448,10 @@ import {
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
 import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+  sessionConfinementRoot,
 } from './session-project-identity.js';
 import {
   createSessionQueryModule,
@@ -1653,6 +1655,32 @@ function withSessionLocalProjectId(
       },
     };
   return _untrusted === undefined ? input : { ...input, metadata: rest };
+}
+
+/**
+ * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY`
+ * (`sessionConfinementRoot`) from this Station's own Project list and the
+ * resolved start cwd, replacing whatever the caller sent.
+ */
+function withSessionConfinementRoot(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+  admittedWorkspace?: { threadId: string; cwd: string },
+): ProviderSessionStartInput {
+  const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
+    input.metadata ?? {};
+  const root = sessionConfinementRoot(input.cwd, listProjects?.() ?? [], {
+    ...(typeof input.metadata?.projectSlug === 'string'
+      ? { projectSlug: input.metadata.projectSlug }
+      : {}),
+    ...(admittedWorkspace?.threadId === input.threadId
+      ? { admittedCwd: admittedWorkspace.cwd }
+      : {}),
+  });
+  return {
+    ...input,
+    metadata: { ...rest, [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
+  };
 }
 
 // Runtime composition resolves the current local resource before containment and
@@ -6408,6 +6436,11 @@ export class OrchestrationService {
           // Station #90 lane D (D5): record the Project's local id beside its
           // slug, from this Station's own project list, never from input.
           startInput = withSessionLocalProjectId(
+            startInput,
+            this.options.listProjects,
+            admittedStartWorkspace,
+          );
+          startInput = withSessionConfinementRoot(
             startInput,
             this.options.listProjects,
             admittedStartWorkspace,

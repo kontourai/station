@@ -250,10 +250,20 @@ describe('Codex native attached-session adoption', () => {
       codexThreadId: CHILD_ID,
       sourceAffinity: AFFINITY,
     });
-    // No confinement given: confined, so its writable roots are pinned (#3800).
+    // No confinement given: confined, so it runs under Station's permission
+    // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
       { CODEX_HOME: '/source-home' },
-      ['-c', 'sandbox_workspace_write.writable_roots=[]'],
+      [
+        '-c',
+        'default_permissions="station-workspace"',
+        '-c',
+        'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ],
     );
     const lifecycle = [await nextEvent(events), await nextEvent(events)];
     expect(lifecycle).toContainEqual(
@@ -405,7 +415,7 @@ describe('Codex native attached-session adoption', () => {
     },
   );
 
-  test('#2493: a fork outside a host session asks for workspace-write and refuses a full-access child', async () => {
+  test('#2493: a fork outside a host session sends no sandbox mode over its permission profile and refuses a full-access child', async () => {
     const process = new FakeCodexProcess();
     const created = vi.fn();
     const adapter = new CodexAdapter({
@@ -421,10 +431,9 @@ describe('Codex native attached-session adoption', () => {
     );
     await initialize(process);
     const fork = await waitForCall(process, 'thread/fork');
-    expect(fork.params).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'workspace-write',
-    });
+    expect(fork.params).toMatchObject({ approvalPolicy: 'never' });
+    // #3800: a mode would replace the profile the spawn selects.
+    expect(fork.params).not.toHaveProperty('sandbox');
     // The fixture's default response reports `dangerFullAccess`: a child
     // that came back unconfined is refused, not adopted.
     respond(process, fork, forkResult());
@@ -433,7 +442,7 @@ describe('Codex native attached-session adoption', () => {
     expect(process.killed).toBe(true);
   });
 
-  test('#2494 D1: a workspace fork Station sends no mode to asks for workspace-write only, and records the child confined', async () => {
+  test('#2494 D1: a workspace fork Station sends no mode to leaves approvals to Codex, and records the child confined under its permission profile', async () => {
     const process = new FakeCodexProcess();
     const adapter = new CodexAdapter({
       processFactory: () => process,
@@ -458,10 +467,10 @@ describe('Codex native attached-session adoption', () => {
     );
     await initialize(process);
     const fork = await waitForCall(process, 'thread/fork');
-    expect(fork.params.sandbox).toBe('workspace-write');
+    expect(fork.params).not.toHaveProperty('sandbox');
     expect(fork.params).not.toHaveProperty('approvalPolicy');
-    // The operator's Codex config runs approvals at never; the sandbox
-    // Station asked for is applied.
+    // The operator's Codex config runs approvals at never; the permission
+    // profile the spawn selects is applied.
     respond(
       process,
       fork,
@@ -475,6 +484,10 @@ describe('Codex native attached-session adoption', () => {
             networkAccess: false,
             excludeTmpdirEnvVar: false,
             excludeSlashTmp: false,
+          },
+          activePermissionProfile: {
+            id: 'station-workspace',
+            extends: ':workspace',
           },
         },
       ),
@@ -642,10 +655,20 @@ describe('Codex native attached-session adoption', () => {
       resumeCursor: { codexThreadId: CHILD_ID, sourceAffinity: AFFINITY },
     });
     expect(getAppHomeEnv).not.toHaveBeenCalled();
-    // No confinement given: confined, so its writable roots are pinned (#3800).
+    // No confinement given: confined, so it runs under Station's permission
+    // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
       { CODEX_HOME: '/source-home' },
-      ['-c', 'sandbox_workspace_write.writable_roots=[]'],
+      [
+        '-c',
+        'default_permissions="station-workspace"',
+        '-c',
+        'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ],
     );
     process.stdout.write(
       `${JSON.stringify({
