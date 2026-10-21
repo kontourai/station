@@ -91,6 +91,21 @@ interface QueueRow {
   message: string;
 }
 
+/**
+ * A polite live region that mounts empty and takes its text after mount.
+ * Screen readers announce changes to a region, not what it held when it
+ * appeared, so a list that first appears already failed would stay silent.
+ */
+function PoliteAnnouncement({ text }: { text: string }) {
+  const [announced, setAnnounced] = useState('');
+  useEffect(() => setAnnounced(text), [text]);
+  return (
+    <span className="sr-only" aria-live="polite">
+      {announced}
+    </span>
+  );
+}
+
 export function QueuedMessages({
   sessionId,
   messages,
@@ -464,13 +479,15 @@ export function QueuedMessages({
       </button>
       {/* Outside the collapsible rows, so a send that fails is announced
           while the list is closed. */}
-      <span className="sr-only" aria-live="polite">
-        {needsReview
-          ? notSent
-            ? 'A pending message was not sent'
-            : 'A pending message needs review'
-          : ''}
-      </span>
+      <PoliteAnnouncement
+        text={
+          needsReview
+            ? notSent
+              ? 'A pending message was not sent'
+              : 'A pending message needs review'
+            : ''
+        }
+      />
       {held?.unavailable && (
         <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">

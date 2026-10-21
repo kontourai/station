@@ -223,6 +223,45 @@ describe('one send order and one count across the list', () => {
     expect(live.closest('[hidden]')).toBeNull();
     expect(live.textContent).toBe('A pending message was not sent');
   });
+
+  it('a list that first appears already failed still announces it, once', async () => {
+    const outbox = {
+      count: 1,
+      needsReview: true,
+      notSent: true,
+      node: <div className="queued-message">offline send</div>,
+    };
+    // A screen reader announces a change inside a live region already in
+    // the page, never the text a region arrives with.
+    const changed: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) changed.push(record.target);
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+    try {
+      const { container, rerender } = render(
+        <QueuedMessages sessionId="s1" messages={[]} outbox={outbox} />,
+      );
+      await Promise.resolve();
+      const live = container.querySelector('[aria-live="polite"]')!;
+      expect(live.textContent).toBe('A pending message was not sent');
+      const changesInside = () =>
+        changed.filter((node) => node === live || live.contains(node)).length;
+      expect(changesInside()).toBeGreaterThan(0);
+      const afterFirst = changesInside();
+      rerender(
+        <QueuedMessages sessionId="s1" messages={[]} outbox={{ ...outbox }} />,
+      );
+      await Promise.resolve();
+      expect(changesInside()).toBe(afterFirst);
+    } finally {
+      observer.disconnect();
+    }
+  });
 });
 
 describe('#3157 usage-limit hold', () => {
