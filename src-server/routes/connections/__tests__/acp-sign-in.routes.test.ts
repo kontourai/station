@@ -39,6 +39,10 @@ import {
 import { EngineSignInService } from '../../../services/acp/engine-sign-in.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
 import { createLogger, installLoggerLineSink } from '../../../utils/logger.js';
 import { createACPSignInRoutes } from '../acp-sign-in.js';
 
@@ -201,12 +205,14 @@ async function fixture() {
     method: string,
     path: string,
     body?: unknown,
+    extraHeaders: Record<string, string> = {},
   ) => {
     const res = await app.request(`/acp/connections/${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json',
+        ...extraHeaders,
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -228,6 +234,21 @@ describe.runIf(posix)('engine sign-in route authority', () => {
       methodId: 'pi_terminal_login',
     });
     expect(start.status).toBe(403);
+    // An engine-run sign-in needs no terminal grant, so only engine:login
+    // stands between this device and it: nothing may have started.
+    const agent = await f.call(
+      phone.credential,
+      'POST',
+      'droid/sign-in/start',
+      { methodId: 'device-pairing' },
+    );
+    expect(agent.status).toBe(403);
+    const attempt = await f.call(
+      f.operator.credential,
+      'GET',
+      'droid/sign-in/attempt',
+    );
+    expect(attempt.body.data).toBeNull();
     const key = await f.call(
       phone.credential,
       'PUT',
@@ -281,6 +302,24 @@ describe.runIf(posix)('engine sign-in route authority', () => {
     expect(res.status).toBe(200);
     expect(f.opened).toHaveLength(1);
     expect(f.opened[0].shellArgs).toEqual(['--terminal-login']);
+  });
+
+  test("a request that may be an agent's is refused, even on the operator's credential", async () => {
+    const f = await fixture();
+    const res = await f.call(
+      f.operator.credential,
+      'POST',
+      'droid/sign-in/start',
+      { methodId: 'device-pairing' },
+      { [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL },
+    );
+    expect(res.status).toBe(403);
+    const attempt = await f.call(
+      f.operator.credential,
+      'GET',
+      'droid/sign-in/attempt',
+    );
+    expect(attempt.body.data).toBeNull();
   });
 
   test('the operator in person needs no grant', async () => {
