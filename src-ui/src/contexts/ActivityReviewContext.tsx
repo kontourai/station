@@ -39,6 +39,14 @@ export interface ActivityReviewSource {
   restoreFocus(): void;
 }
 
+interface ActivityRevealOptions {
+  transfer?: {
+    guard: { identity: symbol; owner: string };
+    current: () => boolean;
+  };
+  destination?: { kind: 'center-chat'; reveal: () => boolean };
+}
+
 interface ActivityReviewValue {
   source: ActivityReviewSource | null;
   readSource(): ActivityReviewSource | null;
@@ -52,6 +60,7 @@ interface ActivityReviewValue {
       signal: AbortSignal,
     ) => void | Promise<void>,
     callerCurrent: () => boolean,
+    options?: ActivityRevealOptions,
   ): Promise<boolean>;
 }
 
@@ -183,7 +192,14 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
         signal: AbortSignal,
       ) => void | Promise<void>,
       callerCurrent: () => boolean,
+      options?: ActivityRevealOptions,
     ) => {
+      const transfer = options?.transfer;
+      const transferCurrent = () =>
+        !transfer ||
+        (transfer.guard.owner === instanceId && transfer.current());
+      const centerChat = surface === 'chat' ? options?.destination : undefined;
+      if (!transferCurrent()) return false;
       operation.current?.abort();
       const controller = new AbortController();
       operation.current = controller;
@@ -222,6 +238,7 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
           )
           .sort();
       const hidden = () => {
+        if (centerChat) return [];
         const model = live.current.model;
         const preview = model?.previewOpenSurfaceInRegion(surface);
         if (!model || !preview?.ok) return null;
@@ -230,37 +247,76 @@ export function ActivityReviewProvider({ children }: { children: ReactNode }) {
       };
       let expected = hidden();
       if (!expected) return false;
-      const asked = expected;
+      const closingOwner =
+        initial.model.readPhoneLayer()?.surfaceId === instanceId
+          ? instanceId
+          : undefined;
+      const asked = [
+        ...new Set([...expected, ...(closingOwner ? [closingOwner] : [])]),
+      ];
       const watch = watchGuardRegistrations();
       const current = () =>
         scopeCurrent() &&
         JSON.stringify(hidden()) === JSON.stringify(expected) &&
         asked.every((owner) => !watch.registered.has(owner));
+      let centerAccepted = false;
+      const acceptCenter = () => {
+        if (!centerChat || centerAccepted) return true;
+        centerAccepted = centerChat.reveal();
+        return centerAccepted;
+      };
       const show = () => {
-        live.current.model?.showSurface(surface);
-        expected = hidden();
+        if (!callerCurrent() || !current() || !transferCurrent()) return false;
+        if (centerChat) {
+          if (!acceptCenter()) return false;
+          expected = [];
+        } else {
+          live.current.model?.showSurface(surface);
+          expected = hidden();
+        }
+        return true;
       };
       try {
         if (initial.model.readPhoneLayer()?.surfaceId === instanceId) {
           if (
             !(await guardsAllow(
               expected.filter((owner) => owner !== instanceId),
+              transfer?.guard,
             )) ||
             !callerCurrent() ||
             !current()
           )
             return false;
+          let shown = false;
           const closed = await initial.model.closePhoneLayer(
-            show,
-            () => callerCurrent() && current(),
+            () => {
+              shown = show();
+            },
+            () => callerCurrent() && current() && transferCurrent(),
+            {
+              skipGuard: transfer?.guard,
+              beforeRestore: centerChat
+                ? () =>
+                    callerCurrent() &&
+                    current() &&
+                    transferCurrent() &&
+                    acceptCenter()
+                : undefined,
+            },
           );
-          if (!closed) return false;
+          if (!closed || !shown) return false;
         } else {
-          if (!(await guardsAllow(expected)) || !callerCurrent() || !current())
+          if (
+            !(await guardsAllow(expected, transfer?.guard)) ||
+            !callerCurrent() ||
+            !current() ||
+            !transferCurrent()
+          )
             return false;
-          show();
+          if (!show()) return false;
         }
-        if (!scopeCurrent()) return false;
+        if (!scopeCurrent() || !callerCurrent() || !transferCurrent())
+          return false;
         if (!expected || !scopeCurrent()) return false;
         await commit(current, controller.signal);
         return current();

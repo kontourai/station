@@ -14,6 +14,10 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import {
+  requestCenterChatPage,
+  useLayoutChatPlacement,
+} from '../app-shell/chat-placement';
 import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -67,7 +71,14 @@ function ActivityReviewPane({ id }: { id: string }) {
   const draft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
     state ? chatDraftsStore.getActivityDraft(draftScope, state.threadId) : '',
   );
-  const { DiscardModal } = useUnsavedGuard(draft.trim().length > 0);
+  const { DiscardModal, navigationGuard } = useUnsavedGuard(
+    draft.trim().length > 0,
+  );
+  const placement = useLayoutChatPlacement();
+  const livePlacement = useRef(placement);
+  useLayoutEffect(() => {
+    livePlacement.current = placement;
+  }, [placement]);
   const review = useActivityReview();
   const showSurface = useShowSurface();
   const [pending, setPending] = useState(false);
@@ -182,7 +193,13 @@ function ActivityReviewPane({ id }: { id: string }) {
           revealDock: false,
         });
       },
-      () => mounted.current,
+      () => mounted.current && livePlacement.current === placement,
+      {
+        destination:
+          placement === 'center'
+            ? { kind: 'center-chat', reveal: requestCenterChatPage }
+            : undefined,
+      },
     );
   };
   return (
@@ -296,11 +313,14 @@ function ActivityReviewPane({ id }: { id: string }) {
                 id,
                 'chat',
                 (current) => {
-                  if (!current()) return;
-                  chatDraftsStore.clearActivityDraft(
-                    draftScope,
-                    session.threadId,
-                  );
+                  if (
+                    !current() ||
+                    chatDraftsStore.getActivityDraft(
+                      draftScope,
+                      session.threadId,
+                    ) !== draft
+                  )
+                    return;
                   handOffAttachedContinuation({
                     threadId: session.threadId,
                     draft,
@@ -309,9 +329,39 @@ function ActivityReviewPane({ id }: { id: string }) {
                       apiBase,
                     ),
                   });
+                  if (
+                    chatDraftsStore.getActivityDraft(
+                      draftScope,
+                      session.threadId,
+                    ) === draft
+                  )
+                    chatDraftsStore.clearActivityDraft(
+                      draftScope,
+                      session.threadId,
+                    );
                   showSurface('chat', { session: session.threadId });
                 },
-                () => mounted.current,
+                () => mounted.current && livePlacement.current === placement,
+                {
+                  destination:
+                    placement === 'center'
+                      ? { kind: 'center-chat', reveal: requestCenterChatPage }
+                      : undefined,
+                  transfer:
+                    navigationGuard.owner === id
+                      ? {
+                          guard: {
+                            identity: navigationGuard.identity,
+                            owner: id,
+                          },
+                          current: () =>
+                            chatDraftsStore.getActivityDraft(
+                              draftScope,
+                              session.threadId,
+                            ) === draft,
+                        }
+                      : undefined,
+                },
               );
             }}
             onAdopted={() => {}}

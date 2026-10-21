@@ -244,8 +244,13 @@ export function AttachedSessionDetail({
       : '',
   );
   const draft = draftScope !== undefined ? savedDraft : localDraft;
+  const currentDraft = useRef(draft);
+  useLayoutEffect(() => {
+    currentDraft.current = draft;
+  }, [draft]);
   const setDraft = useCallback(
     (value: string) => {
+      currentDraft.current = value;
       if (draftScope !== undefined)
         chatDraftsStore.setActivityDraft(draftScope, session.threadId, value);
       else setLocalDraft(value);
@@ -528,9 +533,15 @@ export function AttachedSessionDetail({
       const held = handoff;
       setHandoffPending(true);
       try {
-        const result = onContinueInChat(draft);
+        const submittedDraft = draft;
+        const result = onContinueInChat(submittedDraft);
         const accepted = result instanceof Promise ? await result : result;
-        if (held.alive && accepted !== false) setDraft('');
+        const latest =
+          draftScope === undefined
+            ? currentDraft.current
+            : chatDraftsStore.getActivityDraft(draftScope, session.threadId);
+        if (held.alive && accepted !== false && latest === submittedDraft)
+          setDraft('');
       } catch {
         if (held.alive)
           showToast(

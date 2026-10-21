@@ -269,6 +269,7 @@ function noneRegistered(
  */
 export async function guardsAllow(
   owners: readonly (string | null | undefined)[],
+  skipGuard?: { identity: symbol; owner: string },
 ): Promise<boolean> {
   for (const owner of new Set(owners)) {
     if (!owner || !navigationStore.hasNavigationGuard(owner)) continue;
@@ -276,7 +277,7 @@ export async function guardsAllow(
       navigationStore.runNavigationGuards(
         () => resolve(true),
         () => resolve(false),
-        { owner },
+        { owner, skipGuard },
       ),
     );
     if (!allowed) return false;

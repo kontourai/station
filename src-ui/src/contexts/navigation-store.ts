@@ -747,14 +747,22 @@ class NavigationStore {
   runNavigationGuards(
     continuation: () => void,
     cancelled?: () => void,
-    options: { owner?: string } = {},
+    options: {
+      owner?: string;
+      skipGuard?: { identity: symbol; owner: string };
+    } = {},
   ): void {
-    const { owner } = options;
+    const { owner, skipGuard } = options;
     const guards = [...this.navigationGuards.entries()]
       .filter(
         ([identity]) =>
-          owner === undefined ||
-          this.navigationGuardOwners.get(identity) === owner,
+          (owner === undefined ||
+            this.navigationGuardOwners.get(identity) === owner) &&
+          !(
+            skipGuard !== undefined &&
+            identity === skipGuard.identity &&
+            this.navigationGuardOwners.get(identity) === skipGuard.owner
+          ),
       )
       .map(([, guard]) => guard);
     const continueAt = (index: number): void => {

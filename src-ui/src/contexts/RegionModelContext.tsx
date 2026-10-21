@@ -378,6 +378,10 @@ export interface RegionModelValue {
   closePhoneLayer(
     then?: () => void,
     canClose?: () => boolean,
+    options?: {
+      skipGuard?: { identity: symbol; owner: string };
+      beforeRestore?: () => boolean;
+    },
   ): Promise<boolean>;
 }
 
@@ -1472,16 +1476,38 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   }, [registerLayerEntry, restorePhoneLayer]);
   leavePhoneLayerByBackRef.current = leavePhoneLayerByBack;
   const closePhoneLayer = useCallback(
-    (then?: () => void, canClose: () => boolean = () => true) => {
-      return new Promise<boolean>((resolve) => {
+    (
+      then?: () => void,
+      canClose: () => boolean = () => true,
+      options?: {
+        skipGuard?: { identity: symbol; owner: string };
+        beforeRestore?: () => boolean;
+      },
+    ) => {
+      return new Promise<boolean>((resolve, reject) => {
         // No layer, nothing to leave — and no guard to ask. Chat-focus intents
         // call this on every device (`useDismissPhoneLayer`), so asking with no
         // layer would put a "Discard?" in front of an unrelated dirty form
         // whose answer changes nothing.
         if (!phoneLayerRef.current) {
-          const allowed = canClose();
-          if (allowed) then?.();
-          resolve(allowed);
+          let allowed = false;
+          try {
+            allowed =
+              canClose() && (options?.beforeRestore?.() ?? true) && canClose();
+          } catch {
+            resolve(false);
+            return;
+          }
+          if (!allowed) {
+            resolve(false);
+            return;
+          }
+          try {
+            then?.();
+            resolve(true);
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
         const layer = phoneLayerRef.current;
@@ -1491,20 +1517,37 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         });
         navigationStore.runNavigationGuards(
           () => {
-            stop();
-            if (phoneLayerRef.current !== layer || superseded || !canClose()) {
+            const stillCurrent = () =>
+              phoneLayerRef.current === layer && !superseded && canClose();
+            try {
+              if (
+                !stillCurrent() ||
+                !(options?.beforeRestore?.() ?? true) ||
+                !stillCurrent()
+              ) {
+                stop();
+                resolve(false);
+                return;
+              }
+            } catch {
+              stop();
               resolve(false);
               return;
             }
-            restorePhoneLayer();
-            then?.();
-            resolve(true);
+            stop();
+            try {
+              restorePhoneLayer();
+              then?.();
+              resolve(true);
+            } catch (error) {
+              reject(error);
+            }
           },
           () => {
             stop();
             resolve(false);
           },
-          { owner: layer.surfaceId },
+          { owner: layer.surfaceId, skipGuard: options?.skipGuard },
         );
       });
     },
