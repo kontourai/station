@@ -508,6 +508,20 @@ async function seedStationAccess(page: Page) {
           },
         }),
       );
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/projects\/project-ui\/shared-work\/(?:answer-support-ui|pinned-input-ui|pinned-input-revoked)\/publication$/.test(
+        path,
+      )
+    )
+      return route.fulfill({
+        status: 503,
+        ...json({
+          success: false,
+          error:
+            'Shared publication is unavailable in this local Basis fixture',
+        }),
+      });
     // The app shell reads the account's saved preferences before it renders.
     if (route.request().method() === 'GET' && path === '/api/me/preferences')
       return route.fulfill(
@@ -542,7 +556,7 @@ async function seedStationAccess(page: Page) {
     if (
       route.request().method() === 'GET' &&
       (path === '/api/projects/project-ui/layouts' ||
-        /^\/api\/tasks\/(?:answer-support-ui|pinned-input-ui|pinned-input-revoked)\/(?:outputs|user-input-references)$/.test(
+        /^\/api\/tasks\/(?:answer-support-ui|pinned-input-ui|pinned-input-revoked)\/(?:outputs|user-input-references|kept-pull-requests)$/.test(
           path,
         ))
     ) {
@@ -551,7 +565,9 @@ async function seedStationAccess(page: Page) {
     }
     if (
       route.request().method() === 'GET' &&
-      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room$/.test(path)
+      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room(?:\/(?:document|history|events|agent-requests))?$/.test(
+        path,
+      )
     ) {
       await route.fulfill({
         status: 503,
@@ -1110,7 +1126,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeHidden();
-  const openBasis = page.getByRole('button', { name: 'Open Basis' });
+  const openBasis = page.getByRole('button', { name: 'Inspect evidence' });
   await openBasis.scrollIntoViewIfNeeded();
   await expect(
     page.getByRole('tablist', { name: 'Workspace panes' }),
@@ -1119,7 +1135,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeVisible();
-  const nativeBasis = page.locator('.station-basis-pane');
+  const nativeBasis = page.locator('.station-basis-pane:visible');
   await expect(nativeBasis).toBeVisible();
   await expectOpenedPaneRevealed(page, nativeBasis);
   // #3883: with the room's tab strips already in view, Open Basis focuses
@@ -1222,7 +1238,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   // not substitute the later receipt for the exact kept identity.
   flowReevaluated = true;
   const openWholeTask = page.getByRole('button', {
-    name: 'Open Whole Task Basis',
+    name: 'Inspect Task evidence',
   });
   await openWholeTask.scrollIntoViewIfNeeded();
   expect(
@@ -1270,14 +1286,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await finalAnswer.click();
   await expect(finalAnswer).toHaveAttribute('aria-pressed', 'true');
   await expect(wholeTaskBasis.getByRole('status')).toContainText('Policy met');
-  // Scoped to the Task workspace view. The app-shell sidebar and toolbar
-  // are outside this surface; their visible-label mismatches are tracked in
-  // their own issue rather than failing the Basis journey.
-  await expectNoBlockingAccessibilityViolations(
-    page,
-    'whole-task-basis',
-    '.task-workspace',
-  );
+  await expectNoBlockingAccessibilityViolations(page, 'whole-task-basis');
   const wholeTaskPanel = page
     .getByRole('tabpanel', { name: 'Basis', exact: true })
     .filter({ has: wholeTaskBasis });
@@ -1386,7 +1395,9 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await openAnswerDetails(page);
-  const mobileBasisTrigger = page.getByRole('button', { name: 'Open Basis' });
+  const mobileBasisTrigger = page.getByRole('button', {
+    name: 'Inspect evidence',
+  });
   await mobileBasisTrigger.focus();
   await mobileBasisTrigger.click();
   const basisDialog = page.getByRole('dialog', { name: 'Basis' });
@@ -1434,7 +1445,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(mobileBasisTrigger).toBeFocused();
 
   const mobileWholeTaskTrigger = page.getByRole('button', {
-    name: 'Open Whole Task Basis',
+    name: 'Inspect Task evidence',
   });
   noAvailableAnswers = true;
   await mobileWholeTaskTrigger.focus();
@@ -1526,7 +1537,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   // authoritative GET deny access: old policy content must disappear before
   // the error surface renders.
   const reopenAfterPermissionLoss = page.getByRole('button', {
-    name: 'Open Basis',
+    name: 'Inspect evidence',
   });
   await reopenAfterPermissionLoss.click();
   await expect(basisDialog).toBeVisible();

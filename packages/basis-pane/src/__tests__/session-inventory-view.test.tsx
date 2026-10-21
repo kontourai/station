@@ -286,9 +286,18 @@ describe('Session inventory view model', () => {
       scope: empty.scope,
       groupId: 'attention',
     });
-    expect(model.groups.map((group) => group.id)).toEqual(
-      SESSION_INVENTORY_V1_GROUP_IDS,
-    );
+    expect(model.groups.map((group) => group.id)).toEqual([
+      'inputs',
+      'execution',
+      'decisions',
+      'outputs',
+      'verification-delivery',
+      'sources',
+      'kept',
+      'attention',
+      'resources',
+      'live-now',
+    ]);
     expect(model.groups.every((group) => group.count === '0')).toBe(true);
     expect(
       model.groups.find((group) => group.id === 'work-items'),

@@ -797,7 +797,7 @@ fixtureTest.describe('Live work beside the account control', () => {
         const footer = page.locator('.sidebar__footer');
         const liveWork = footer.getByRole('button', { name: /^Who is here:/ });
         const account = footer.getByRole('button', {
-          name: 'Profile and settings',
+          name: /^Profile and settings:/,
         });
         await expect(liveWork).toBeVisible({
           timeout: FIRST_RENDER_TIMEOUT_MS,
@@ -855,7 +855,7 @@ fixtureTest.describe('Live work beside the account control', () => {
         await expect(rail).toBeVisible();
         await expectFooterControlsApart(rail, {
           'Live work': rail.getByRole('button', { name: /^Who is here:/ }),
-          account: rail.getByRole('button', { name: 'Profile and settings' }),
+          account: rail.getByRole('button', { name: /^Profile and settings:/ }),
           utilities: rail.getByRole('button', { name: 'Sidebar utilities' }),
         });
         await expect(rail.getByText('Live work', { exact: true })).toBeHidden();
@@ -872,7 +872,7 @@ fixtureTest.describe('Live work beside the account control', () => {
           const phoneControls = {
             'Live work': drawer.getByRole('button', { name: /^Who is here:/ }),
             account: drawer.getByRole('button', {
-              name: 'Profile and settings',
+              name: /^Profile and settings:/,
             }),
             Schedule: drawer.getByRole('button', {
               name: 'Schedule',

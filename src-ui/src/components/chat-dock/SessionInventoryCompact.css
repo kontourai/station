@@ -113,3 +113,29 @@
   width: 100%;
   border-color: var(--accent-primary);
 }
+
+/* A split needs the transcript's 640px floor plus the inventory's 16rem.
+   Below it, inspection occupies the dock and Close returns to the chat. */
+@container (max-width: 895px) {
+  :is(.chat-dock--left, .chat-dock--right) .session-inventory-compact--aside,
+  :is(.chat-dock--left, .chat-dock--right) .session-inventory-compact--card {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--k-panel);
+    color: var(--k-text);
+  }
+
+  :is(.chat-dock--left, .chat-dock--right)
+    .chat-dock__inventory-mount:has(.session-inventory-compact)
+    ~ .chat-dock__content-area {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

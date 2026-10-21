@@ -195,15 +195,25 @@ describe('ProjectSidebarFooter', () => {
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
-      'Who is here: nobody is publishing live work',
-      'Profile and settings',
+      'Who is here: nobody is publishing live work. Live work',
+      'Profile and settings: AL',
       'Schedule',
       'Customize',
       'Settings',
     ]);
+    for (const button of screen
+      .getAllByRole('button')
+      .filter((item) =>
+        item.matches('.sidebar__presence-trigger, .sidebar__account'),
+      )) {
+      const visible = button.textContent?.replace(/\s+/g, ' ').trim();
+      expect(visible).toBeTruthy();
+      expect(button.getAttribute('aria-label')).toContain(visible);
+    }
     // Two controls, not one: the account is not a row of the presence tray.
     expect(
-      screen.getByRole('button', { name: 'Profile and settings' }).textContent,
+      screen.getByRole('button', { name: /^Profile and settings:/ })
+        .textContent,
     ).toBe('AL');
     expect(
       screen
@@ -222,11 +232,11 @@ describe('ProjectSidebarFooter', () => {
     ]);
     const { container } = renderFooter();
     const trigger = screen.getByRole('button', {
-      name: 'Who is here: 4 participants, 1 agent worker',
+      name: /^Who is here: 4 participants, 1 agent worker/,
     });
     const faces = Array.from(
       trigger.querySelectorAll<HTMLElement>('.sidebar__presence-avatar'),
-    ).map((face) => face.textContent);
+    ).map((face) => face.textContent?.trim());
     expect(faces).toEqual(['AL', 'GH', 'AT', '+1']);
     expect(
       container.querySelector('.sidebar__presence-count')?.textContent,
@@ -252,7 +262,7 @@ describe('ProjectSidebarFooter', () => {
     ]);
     renderFooter();
     expect(
-      screen.getByRole('button', { name: 'Who is here: 1 participant' }),
+      screen.getByRole('button', { name: /^Who is here: 1 participant/ }),
     ).toBeTruthy();
   });
 
@@ -286,7 +296,7 @@ describe('ProjectSidebarFooter', () => {
     openTray();
     expect(screen.getByText('Grace Hopper')).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Who is here: 2 participants' }),
+      screen.getByRole('button', { name: /^Who is here: 2 participants/ }),
     ).toBeTruthy();
 
     // Grace is gone from the next projection — departed, or her lease expired.
@@ -304,7 +314,7 @@ describe('ProjectSidebarFooter', () => {
     expect(screen.queryByText('Grace Hopper')).toBeNull();
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Who is here: 1 participant' }),
+      screen.getByRole('button', { name: /^Who is here: 1 participant/ }),
     ).toBeTruthy();
   });
 
@@ -446,7 +456,7 @@ describe('ProjectSidebarFooter', () => {
     liveActivity.data = projection([], 3);
     const { container } = renderFooter();
     const trigger = screen.getByRole('button', {
-      name: 'Who is here: nobody is publishing live work',
+      name: /^Who is here: nobody is publishing live work/,
     });
     // #2150: a zero roster draws the glyph alone. The count used to render a
     // bare `0` beside it, which read as a bug rather than as "nobody here";
@@ -506,7 +516,9 @@ describe('ProjectSidebarFooter', () => {
       liveActivity.isPending = isPending;
       liveActivity.isError = isError;
       const { container } = renderFooter();
-      expect(screen.getByRole('button', { name })).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: new RegExp(`^${name}`) }),
+      ).toBeTruthy();
       expect(container.querySelector('.sidebar__presence-count')).toBeNull();
       // No roster rows either: none of these three knows who is here.
       expect(
@@ -714,7 +726,7 @@ describe('ProjectSidebarFooter', () => {
     const onAfterNavigate = vi.fn();
     renderFooter({ navigate, isMobile: true, onAfterNavigate });
     const trigger = screen.getByRole('button', {
-      name: 'Profile and settings',
+      name: /^Profile and settings:/,
     });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(trigger);
@@ -748,7 +760,7 @@ describe('ProjectSidebarFooter', () => {
       const onAfterNavigate = vi.fn();
       renderFooter({ navigate, isMobile: true, onAfterNavigate });
       fireEvent.click(
-        screen.getByRole('button', { name: 'Profile and settings' }),
+        screen.getByRole('button', { name: /^Profile and settings:/ }),
       );
       fireEvent.click(
         await screen.findByRole('menuitem', { name: 'Ask Station for help' }),
@@ -764,7 +776,7 @@ describe('ProjectSidebarFooter', () => {
   test('the account control is pressed on the profile route and names Settings as current there', async () => {
     renderFooter({ activePath: '/settings' });
     const trigger = screen.getByRole('button', {
-      name: 'Profile and settings',
+      name: /^Profile and settings:/,
     });
     expect(trigger.className).not.toContain('sidebar__footer-action--active');
     fireEvent.click(trigger);
@@ -813,7 +825,7 @@ test('the collapsed footer keeps utilities reachable and Customize returns to Mo
     // Live work and the account stay on the rail, outside the utilities.
     expect(screen.getByRole('button', { name: /^Who is here:/ })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Profile and settings' }),
+      screen.getByRole('button', { name: /^Profile and settings:/ }),
     ).toBeTruthy();
     const more = screen.getByRole('button', { name: 'Sidebar utilities' });
     more.focus();
@@ -868,7 +880,7 @@ describe('the account menu under StrictMode', () => {
         </StrictMode>,
       );
       const trigger = screen.getByRole('button', {
-        name: 'Profile and settings',
+        name: /^Profile and settings:/,
       });
       trigger.focus();
       fireEvent.click(trigger);
