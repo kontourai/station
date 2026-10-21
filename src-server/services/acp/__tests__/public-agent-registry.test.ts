@@ -10,6 +10,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   PUBLIC_AGENT_REGISTRY_LIMITS,
   PUBLIC_AGENT_REGISTRY_URL,
+  type PublicAgentRegistryLimits,
   PublicAgentRegistrySource,
   parsePublicAgentRegistry,
 } from '../public-agent-registry.js';
@@ -39,7 +40,7 @@ function source(
   options: {
     cacheDir?: string;
     now?: () => number;
-    limits?: Partial<typeof PUBLIC_AGENT_REGISTRY_LIMITS>;
+    limits?: Partial<PublicAgentRegistryLimits>;
   } = {},
 ) {
   return new PublicAgentRegistrySource({

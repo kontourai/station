@@ -25,17 +25,27 @@ export const PUBLIC_AGENT_REGISTRY_URL =
  * The 2026-10-21 index is 60 KB with 43 listings; these leave room for
  * growth and refuse anything an order of magnitude past it.
  */
-export const PUBLIC_AGENT_REGISTRY_LIMITS = {
-  maxBytes: 1024 * 1024,
-  maxAgents: 500,
-  fetchTimeoutMs: 10_000,
-  /** A listing older than this is refreshed when the catalogue is read. */
-  refreshAfterMs: 24 * 60 * 60 * 1000,
-  /** After a failed attempt, the catalogue read waits this long to retry. */
-  retryAfterFailureMs: 15 * 60 * 1000,
-  /** Requested refreshes closer together than this reuse the last result. */
-  minRefreshIntervalMs: 30 * 1000,
-} as const;
+export interface PublicAgentRegistryLimits {
+  maxBytes: number;
+  maxAgents: number;
+  fetchTimeoutMs: number;
+  refreshAfterMs: number;
+  retryAfterFailureMs: number;
+  minRefreshIntervalMs: number;
+}
+
+export const PUBLIC_AGENT_REGISTRY_LIMITS: Readonly<PublicAgentRegistryLimits> =
+  {
+    maxBytes: 1024 * 1024,
+    maxAgents: 500,
+    fetchTimeoutMs: 10_000,
+    /** A listing older than this is refreshed when the catalogue is read. */
+    refreshAfterMs: 24 * 60 * 60 * 1000,
+    /** After a failed attempt, the catalogue read waits this long to retry. */
+    retryAfterFailureMs: 15 * 60 * 1000,
+    /** Requested refreshes closer together than this reuse the last result. */
+    minRefreshIntervalMs: 30 * 1000,
+  };
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/;
@@ -335,7 +345,7 @@ function parseAgent(
 export function parsePublicAgentRegistry(
   body: string,
   limits: Pick<
-    typeof PUBLIC_AGENT_REGISTRY_LIMITS,
+    PublicAgentRegistryLimits,
     'maxBytes' | 'maxAgents'
   > = PUBLIC_AGENT_REGISTRY_LIMITS,
 ): PublicRegistryParseResult {
@@ -445,7 +455,7 @@ export interface PublicAgentRegistrySourceOptions {
   fetch?: typeof fetch;
   now?: () => number;
   url?: string;
-  limits?: Partial<typeof PUBLIC_AGENT_REGISTRY_LIMITS>;
+  limits?: Partial<PublicAgentRegistryLimits>;
   /** Whether a program is on the host's search PATH. */
   commandExists?: (command: string) => boolean;
 }
@@ -455,7 +465,7 @@ export class PublicAgentRegistrySource {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly url: string;
-  private readonly limits: typeof PUBLIC_AGENT_REGISTRY_LIMITS;
+  private readonly limits: PublicAgentRegistryLimits;
   private readonly cacheFile: string;
   private snapshot: {
     agents: PublicRegistryAgent[];
