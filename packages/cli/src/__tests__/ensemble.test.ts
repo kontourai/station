@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import {
-  mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -8,13 +7,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { open } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import {
   ENSEMBLE_MAX_BYTES,
   type EnsemblePreset,
 } from '@kontourai/station-contracts/ensemble';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { runCli } from '../cli.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -53,6 +52,7 @@ const PRESET: EnsemblePreset = {
   ],
 };
 
+const makeTempDir = trackTempDirs();
 let directory: string;
 let originalExitCode: typeof process.exitCode;
 
@@ -62,9 +62,7 @@ beforeEach(async () => {
       'node:fs/promises',
     );
   vi.mocked(open).mockReset().mockImplementation(actual.open);
-  directory = realpathSync(
-    mkdtempSync(join(tmpdir(), 'station-ensemble-cli-')),
-  );
+  directory = realpathSync(makeTempDir('station-ensemble-cli-'));
   originalExitCode = process.exitCode;
   process.exitCode = undefined;
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -72,7 +70,6 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  rmSync(directory, { recursive: true, force: true });
   process.exitCode = originalExitCode;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
