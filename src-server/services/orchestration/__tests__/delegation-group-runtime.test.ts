@@ -342,14 +342,17 @@ async function fixture() {
       body?: unknown,
       credential = local.credential,
     ) =>
-      app.request(`http://127.0.0.1/api/orchestration/groups${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${credential}`,
-          'Content-Type': 'application/json',
+      app.request(
+        `http://127.0.0.1/api/orchestration/groups${path === '/' ? '' : path}`,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
+      ),
     operatorCredential,
     drift: () => {
       current.source.source_state_id = 'different-revision';

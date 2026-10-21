@@ -168,7 +168,6 @@ test('nofollow bounded source witness rejects symlinks, hardlinks, oversized fil
     if (kind === 'oversized')
       writeFileSync(h.path, ' '.repeat(2 * 1024 * 1024 + 1));
     if (kind === 'store-symlink') {
-      mkdirSync(join(h.home, 'security'), { mode: 0o700 });
       mkdirSync(join(h.home, 'elsewhere'), { mode: 0o700 });
       symlinkSync(join(h.home, 'elsewhere'), h.directory);
     }
