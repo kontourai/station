@@ -210,8 +210,18 @@ Boot issuance and managed transport composition remain unwired, and the group
 capability remains disabled. These checks establish neither live consent nor
 provider qualification or billing.
 
-Explicit Flow rounds/continuation and the raw-provider stream repair remain
-isolated candidates. Additive exact-tariff accounting is adopted in the Flow
+The raw JSON/SSE observers, repaired Google terminal-counter assembler and
+reserved provider fetch are adopted. The reserved sealed-SDK attempt joins them
+to durable intent and source authorization. A focused selection passes 41
+SDK/Google cases; 33 observer cases passed separately before the added Google
+regressions. Server-test types pass. Exact tariff usage remains private evidence:
+the installed legacy controller refuses settlement without provider-reported
+dollars and retains the full allocation. AccountingV1 integration and independent
+review of this composition remain required.
+
+Explicit Flow rounds/continuation remains an isolated candidate. Its latest
+independent review ended with a provider failure and supplies no completed
+verdict. Additive exact-tariff accounting is adopted in the Flow
 Agents worktree with its required readiness checks passing, but is unpublished;
 Station still consumes published 9.3.0. Tariff-derived integer micros must retain
 their cost basis and must not be silently converted to provider-reported Relay

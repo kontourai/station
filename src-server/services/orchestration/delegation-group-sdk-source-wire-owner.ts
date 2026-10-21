@@ -478,6 +478,16 @@ export function deliverSdkResponse(
   s.delivered = true;
   s.response.resolve(response);
 }
+/** The bounded response observer may refuse a completed HTTP response before SDK delivery. */
+export function refuseSdkResponse(owner: object, handle: object): void {
+  const s = stateFor(owner, handle);
+  if (!s.started || !s.rawSettled || s.delivered || !s.response)
+    fail('sdk_response_unavailable');
+  s.delivered = true;
+  s.response.reject(new SdkSourceRefusal('sdk_response_unavailable'));
+  s.release = true;
+  finishDisposal(s);
+}
 export function sdkResultPromise(owner: object, handle: object) {
   const s = stateFor(owner, handle);
   s.authorization.assertDisclosureCurrentSync();

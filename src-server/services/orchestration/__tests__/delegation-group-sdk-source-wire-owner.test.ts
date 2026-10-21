@@ -34,7 +34,12 @@ function mockResponse(provider: 'anthropic' | 'google') {
             content: [{ type: 'text', text: 'OK' }],
             stop_reason: 'end_turn',
             stop_sequence: null,
-            usage: { input_tokens: 4, output_tokens: 2 },
+            usage: {
+              input_tokens: 4,
+              output_tokens: 2,
+              cache_read_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+            },
           }
         : {
             modelVersion: 'fixture-revision',
@@ -58,6 +63,7 @@ function mockResponse(provider: 'anthropic' | 'google') {
 async function sdkFixture(
   provider: 'anthropic' | 'google' = 'anthropic',
   path = '/api/orchestration/chat',
+  response: () => Response | Promise<Response> = () => mockResponse(provider),
 ) {
   const f = await fixture();
   const request = f.request(path);
@@ -92,7 +98,7 @@ async function sdkFixture(
     rawFetch: (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       starts++;
       sentBody = String(init?.body);
-      return Promise.resolve(mockResponse(provider));
+      return Promise.resolve(response());
     },
   };
   const owner = createPreparedSdkSourceWireOwner(configuration);
@@ -576,4 +582,153 @@ test('SDK brief and instructions are immutable before SDK serialization and chec
   disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
   await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
   assert.equal(f.starts, 0);
+});
+
+for (const provider of ['anthropic', 'google'] as const)
+  test(`reserved raw observer ${provider} prices sealed wire while legacy settlement remains held`, async () => {
+    const f = await sdkFixture(provider);
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => assert.equal(f.starts, 0),
+      { provider, contract: f.configuration.contract, now: () => 1000 },
+    );
+    await assert.rejects(
+      () => driver.run(),
+      (error: unknown) =>
+        error instanceof AggregateError &&
+        error.errors.some(
+          (e) =>
+            e.code === 'AUTHORIZATION_PERSISTENCE_FAILED' &&
+            e.phase === 'settle',
+        ),
+    );
+    assert.equal(f.starts, 1);
+    assert.equal(driver.intentCount, 1);
+    assert.equal(f.sentBody, wire.body);
+    assert.equal(driver.observed.length, 1);
+    assert.equal(driver.observed[0].usage.inputTokens, 4);
+    assert.equal(driver.observed[0].usage.outputTokens, 2);
+    assert.equal(driver.observed[0].usage.costMicros, 7);
+    assert.equal(driver.observed[0].usage.costBasis, 'tariff-upper-bound');
+    const ledger = await driver.ledger();
+    assert.equal(ledger.invocations[0].usage, null);
+    assert.equal(ledger.invocations[0].terminal, true);
+    await assert.rejects(() => driver.reserveAnother(), {
+      code: 'active_slot_exhausted',
+    });
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  });
+
+test('reserved Google response with empty final counters refuses settlement and releases the completed SDK waiter', async () => {
+  const f = await sdkFixture(
+    'google',
+    '/api/orchestration/chat',
+    () =>
+      new Response(
+        JSON.stringify({
+          modelVersion: 'fixture-revision',
+          candidates: [
+            {
+              finishReason: 'STOP',
+              index: 0,
+              content: { role: 'model', parts: [{ text: 'OK' }] },
+            },
+          ],
+          usageMetadata: {},
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+  );
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const result = sdkResultPromise(f.sdkOwner, prepared.sdkHandle);
+  void result.catch(() => {});
+  const driver = await publicFenceFixture(
+    f,
+    prepared.source,
+    f.sdkOwner,
+    prepared.sdkHandle,
+    wire,
+    () => {},
+    { provider: 'google', contract: f.configuration.contract, now: () => 1000 },
+  );
+  await driver.run();
+  assert.equal(f.starts, 1);
+  assert.equal(driver.intentCount, 1);
+  assert.equal(driver.observed.length, 0);
+  await assert.rejects(result, sdkCode('sdk_attempt_failed'));
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  const ledger = await driver.ledger();
+  assert.equal(ledger.invocations.length, 1);
+  assert.equal(ledger.invocations[0].usage, null);
+  assert.equal(ledger.invocations[0].terminal, false);
+  const next = await f.owner.captureSnapshot(f.context(), subject, selection);
+  f.owner.releaseSnapshot(next.capability);
+});
+
+test('duplicate reserved source entry cannot terminate its original pending HTTP or SDK waiter', async () => {
+  let finish!: (response: Response) => void;
+  let entered!: () => void;
+  const started = new Promise<void>((yes) => {
+    entered = yes;
+  });
+  const pending = new Promise<Response>((yes) => {
+    finish = yes;
+  });
+  const f = await sdkFixture('google', '/api/orchestration/chat', () => {
+    entered();
+    return pending;
+  });
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const driver = await publicFenceFixture(
+    f,
+    prepared.source,
+    f.sdkOwner,
+    prepared.sdkHandle,
+    wire,
+    () => {},
+    { provider: 'google', contract: f.configuration.contract, now: () => 1000 },
+  );
+  const original = driver.run().then(
+    () => undefined,
+    (error) => error,
+  );
+  await started;
+  let disposed = false;
+  void sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle).then(() => {
+    disposed = true;
+  });
+  await assert.rejects(() => driver.repeatAttempt(), /already claimed/);
+  assert.equal(disposed, false);
+  assert.equal(f.starts, 1);
+  finish(mockResponse('google'));
+  assert.ok((await original) instanceof AggregateError);
+  assert.equal(driver.observed.length, 1);
+  assert.equal(
+    (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
+    'OK',
+  );
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
 });

@@ -17,6 +17,12 @@ import {
   type ModelInvocationResult,
   type ModelRuntime,
 } from '@kontourai/relay';
+import type {
+  BoundedApiProvider,
+  ResolvedBoundedApiProviderContract,
+} from '../../../../runtime/conversation/bounded-api-provider-contract.js';
+import type { ReservedProviderEvidence } from '../../../../runtime/conversation/reserved-provider-fetch.js';
+import { runReservedSdkSourceAttempt } from '../../../../runtime/conversation/reserved-sdk-source-attempt.js';
 import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../../../security/runtime-request-security.js';
 import {
   FinalFetchLaunchFence,
@@ -48,6 +54,11 @@ export async function publicFenceFixture(
   handle: object,
   wire: FinalWire,
   beforeInner: () => void = () => {},
+  observation?: {
+    provider: BoundedApiProvider;
+    contract: ResolvedBoundedApiProviderContract;
+    now(): number;
+  },
 ) {
   const current = () =>
     runtimeRequestPrincipalMayAccessHttpRoute(f.req, f.environment, {
@@ -198,6 +209,10 @@ export async function publicFenceFixture(
   await service.issue(root);
   await service.derive(root.authority_id, envelope);
   const invocation = new AsyncLocalStorage<string>();
+  const observed: ReservedProviderEvidence[] = [];
+  let repeatAttempt:
+    | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
+    | undefined;
   const model: ModelRuntime = {
     id: 'installed-sdk-sealed-fixture',
     capabilities: () => ({
@@ -223,20 +238,53 @@ export async function publicFenceFixture(
         allocation: seat.allocation,
         expectedWireDigest: wireIdentityDigest(wire),
       };
-      const begun = await fence.start(
-        binding,
-        wire,
-        new AbortController().signal,
-      );
-      deliverSdkResponse(sdkOwner, handle, await begun.response);
-      const result = await sdkResultPromise(sdkOwner, handle);
+      let result: Awaited<ReturnType<typeof sdkResultPromise>>;
+      if (observation) {
+        const attemptInput: Parameters<typeof runReservedSdkSourceAttempt>[0] =
+          {
+            sdkOwner,
+            sdkHandle: handle,
+            transport: {
+              launch: {
+                groups: persistence.groupStore(finalize),
+                authorities: persistence.authorityStore(finalize),
+                host,
+                intents,
+                finalizeCurrent: finalize,
+              },
+              reservation: binding,
+              contract: observation.contract,
+              provider: observation.provider,
+              now: observation.now,
+              signal: new AbortController().signal,
+              maxResponseBytes: 1024 * 1024,
+            },
+          };
+        repeatAttempt = () => runReservedSdkSourceAttempt(attemptInput);
+        const attempt = await repeatAttempt();
+        observed.push(attempt.evidence);
+        result = attempt.sdkResult;
+      } else {
+        const begun = await fence.start(
+          binding,
+          wire,
+          new AbortController().signal,
+        );
+        deliverSdkResponse(sdkOwner, handle, await begun.response);
+        result = await sdkResultPromise(sdkOwner, handle);
+      }
       return {
         provider: 'synthetic-no-billable-http',
         model: 'fixture-model',
         modelSource: 'provider-reported',
         outputText: result.text,
         toolCalls: [],
-        usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6, costUsd: 0 },
+        usage: {
+          inputTokens: 4,
+          outputTokens: 2,
+          totalTokens: 6,
+          ...(observation ? {} : { costUsd: 0 }),
+        },
         latencyMs: 0,
       } satisfies ModelInvocationResult;
     },
@@ -296,6 +344,19 @@ export async function publicFenceFixture(
     spec,
   });
   return {
+    observed,
+    repeatAttempt: () => {
+      if (!repeatAttempt) throw Error('source attempt not started');
+      return repeatAttempt();
+    },
+    ledger: () => service.inspect(root.authority_id),
+    reserveAnother: () =>
+      service.reserveInvocation(
+        root.authority_id,
+        envelope.envelope_id,
+        'another-physical-attempt',
+        spec.seats[0].allocation,
+      ),
     run: () =>
       controller.run({
         kind: 'run',
