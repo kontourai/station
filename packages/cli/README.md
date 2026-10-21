@@ -196,6 +196,14 @@ Station; see the reference.
 
 ## What this CLI does not do
 
+The local source CLI includes `station group` transport commands for metadata,
+events, raw output, create, run and cancel. They require corresponding server
+support and server-issued preparation. Those routes are not mounted and paid
+group execution is unavailable in this increment. Follow mode stops local
+observation on Ctrl-C without cancelling the group. See
+[group commands](../../docs/reference/cli.md#group); local command presence is
+not evidence of publication or supported execution.
+
 **It does not build or install a backend.** Source-oriented commands such as
 `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and
 `upgrade`, plus `setup local` and service installation, require a Station

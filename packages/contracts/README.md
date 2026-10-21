@@ -63,6 +63,13 @@ produced artifact or permission to read an arbitrary path.
 
 ## Subpaths without a reference section
 
+The local `/delegation-group` export owns Station group transport metadata,
+command inputs, bounded pages, explicit unavailable items and raw JSON output
+references. It does not copy Flow's authority schema or issue a grant. The
+corresponding server routes and paid execution remain unactivated; an exported
+type does not establish runtime support or package publication. See
+[SDK group transport](../../docs/reference/sdk.md#delegation-group-transport).
+
 The [contracts reference](../../docs/reference/contracts.md) documents most
 domains. These subpaths are exported but not described there yet; each line
 names what the module owns. Read the module before depending on it.
