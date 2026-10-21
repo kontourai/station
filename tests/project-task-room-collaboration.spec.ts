@@ -483,8 +483,8 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterInput.panes.find((pane) => pane.paneId === paneId)?.state,
-        ).toBe('paused');
+          stoppedAfterInput.panes.filter((pane) => pane.paneId === paneId),
+        ).toEqual([]);
 
         await Promise.all([
           owner.getByRole('tab', { name: 'Chat', exact: true }).click(),
