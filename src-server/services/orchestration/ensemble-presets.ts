@@ -163,6 +163,7 @@ export interface PrepareEnsembleInput {
 
 export interface EnsemblePreparationHost {
   readonly inventory: ExecutionTargetResolverDependencies;
+  readonly resolutionPurpose?: 'preparation';
   /** Must probe in the final context, not infer authentication from inventory readiness. */
   readonly authenticateMember: (
     request: EnsembleAuthenticationRequest,
@@ -180,8 +181,8 @@ function freeze<T>(value: T): T {
 
 /**
  * Preparation only: existing inventory resolution plus mandatory host authentication.
- * No runtime calls this yet. A prepared snapshot grants no launch authority; adoption
- * must revalidate the final context and consume the published execution contract.
+ * A prepared snapshot grants no launch authority; adoption must revalidate the
+ * final context and consume the published execution contract.
  */
 export async function prepareEnsemble(
   input: PrepareEnsembleInput,
@@ -220,7 +221,9 @@ export async function prepareEnsemble(
       ...binding,
       model: { override: member.model, options },
     });
-    const resolved = await resolveExecutionTarget(target, host.inventory);
+    const resolved = await resolveExecutionTarget(target, host.inventory, {
+      purpose: host.resolutionPurpose,
+    });
     if (
       resolved.provider !== member.engine ||
       resolved.modelId !== member.model

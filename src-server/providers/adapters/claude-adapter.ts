@@ -115,6 +115,8 @@ import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
   ProviderDiscardSessionRecovery,
+  ProviderExecutionAuthInput,
+  ProviderExecutionAuthObservation,
   ProviderInterruptTurnResult,
   ProviderNativeSessionIdentity,
   ProviderSendTurnInput,
@@ -3147,6 +3149,96 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return this.events.iterable(options);
   }
 
+  private freshSpawnEnv(
+    augmentedEnv: Record<string, string | undefined> | undefined,
+    connectionEnv: Record<string, string> | undefined,
+    appHomeEnv: Record<string, string> | undefined,
+    toolServerLoading?: 'always' | 'on-demand',
+  ): NodeJS.ProcessEnv {
+    return scrubBootInternalSecrets({
+      ...(augmentedEnv ?? process.env),
+      ...connectionEnv,
+      ...appHomeEnv,
+      ...(toolServerLoading
+        ? {
+            ENABLE_TOOL_SEARCH:
+              toolServerLoading === 'always' ? 'false' : 'true',
+          }
+        : {}),
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    });
+  }
+
+  async observeExecutionAuthentication(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation> {
+    const context = async () => {
+      const executable = await this.resolveClaudeExecutable();
+      const home = await this.resolveAppHomeEnv(
+        input.credentialProfileRef ?? undefined,
+      );
+      const connection = claudeConnectionEnvForSpawn(
+        await this.resolveConnectionEnv(),
+        true,
+      );
+      const env = this.freshSpawnEnv(
+        await this.resolveAugmentedSpawnEnv(),
+        connection,
+        home?.env,
+      );
+      const overlay = Object.fromEntries(
+        Object.entries(env).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      );
+      const hash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            input,
+            executable,
+            env: Object.entries(overlay).sort(),
+            profile: home?.profileRef,
+          }),
+        )
+        .digest('hex');
+      return { executable, env: overlay, hash };
+    };
+    const before = await context();
+    const executable = before.executable;
+    const supported =
+      input.connectionId === this.metadata.connectionId &&
+      executable.launch === 'installed' &&
+      executable.spawnable &&
+      executable.installedVersion &&
+      compareClaudeCodeVersions(
+        executable.installedVersion,
+        CLAUDE_AUTH_STATUS_MIN_VERSION,
+      ) >= 0;
+    const binary = executable.spawnable;
+    const [command, args] = binary?.toLowerCase().endsWith('.js')
+      ? [process.execPath, [binary, ...CLAUDE_AUTH_STATUS_ARGS]]
+      : [binary, CLAUDE_AUTH_STATUS_ARGS];
+    const result =
+      supported && command
+        ? await runCliCommand(command, args, undefined, before.env, {
+            cwd: input.cwd,
+            timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+            maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+            killSignal: 'SIGKILL',
+          })
+        : null;
+    const after = await context();
+    return {
+      state:
+        before.hash === after.hash ? parseClaudeAuthStatus(result) : 'unknown',
+      contextHash: `sha256:${before.hash}`,
+      checkedAt: Date.now(),
+      modelEntitlement: 'not-checked',
+      outputTokenLimitFidelity: 'unavailable',
+    };
+  }
+
   async getPrerequisites(options?: {
     signal?: AbortSignal;
   }): Promise<Prerequisite[]> {
@@ -3759,18 +3851,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // configHome beats useAppHome because the runtime resolves only one
       // of the two into these layers. TMPDIR stays final even over this
       // layer; the sanitizer refuses a configured TMPDIR outright.
-      env: scrubBootInternalSecrets({
-        ...(augmentedEnv ?? process.env),
-        ...connectionEnv,
-        ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
-        TMPDIR: ensureEngineSpawnTmpDir(),
-      }),
+      env: this.freshSpawnEnv(
+        augmentedEnv,
+        connectionEnv,
+        appHomeEnv,
+        input.agent?.toolServerLoading,
+      ),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.
       spawnClaudeCodeProcess: engineProcess.spawn,

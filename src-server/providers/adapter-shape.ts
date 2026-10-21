@@ -413,6 +413,24 @@ export function isProviderInterruptTurnResult(
   }
 }
 
+/** Server-only fresh-session login observation; it grants no execution authority. */
+export interface ProviderExecutionAuthInput {
+  readonly principalId: string;
+  readonly connectionId: string;
+  readonly cwd: string;
+  readonly model: string;
+  readonly modelOptions: Readonly<Record<string, unknown>>;
+  readonly credentialProfileRef?: string | null;
+}
+
+export interface ProviderExecutionAuthObservation {
+  readonly state: 'authenticated' | 'unauthenticated' | 'unknown';
+  readonly contextHash: string;
+  readonly checkedAt: number;
+  readonly modelEntitlement: 'not-checked';
+  readonly outputTokenLimitFidelity: 'unavailable';
+}
+
 export interface ProviderAdapterShape {
   /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
   readonly adoptionLifecycle?: 'reported';
@@ -547,6 +565,11 @@ export interface ProviderAdapterShape {
    * must treat as possibly started.
    */
   preflightStart?(input: ProviderSessionStartInput): Promise<void>;
+  /** Uses the selected launch context, bypassing readiness and its caches. */
+  observeExecutionAuthentication?(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation>;
+
   /** Reads provider-reported connection quota data when the engine supports it. */
   readQuotaSnapshot?(options: {
     connectionId: string;

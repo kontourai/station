@@ -353,6 +353,7 @@ export async function runCliCommand(
    * launcher (mise/npx) can outlive it, as with the login-shell probe below.
    */
   bounds?: {
+    cwd?: string;
     timeoutMs?: number;
     maxBuffer?: number;
     killSignal?: NodeJS.Signals;
@@ -369,6 +370,7 @@ export async function runCliCommand(
       : augmented;
     const { stdout, stderr } = await execFile(command, args, {
       encoding: 'utf-8',
+      ...(bounds?.cwd ? { cwd: bounds.cwd } : {}),
       // User-managed launchers may resolve the real CLI through mise/npx.
       // Keep the probe bounded, but allow that indirection to finish on a
       // cold cache (observed at ~6s on the media-server dogfood host).

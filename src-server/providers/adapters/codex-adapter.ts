@@ -69,6 +69,8 @@ import {
   type ProviderAdapterShape,
   type ProviderAdoptionHooks,
   type ProviderDiscardSessionRecovery,
+  type ProviderExecutionAuthInput,
+  type ProviderExecutionAuthObservation,
   type ProviderInterruptTurnResult,
   type ProviderNativeSessionIdentity,
   type ProviderSendTurnInput,
@@ -129,6 +131,7 @@ import {
   CodexAdapterTransport,
   createCodexProcess,
   createCodexSessionRecord,
+  resolveCodexSpawnContext,
 } from './codex-adapter-transport.js';
 import {
   type CodexSessionRecord,
@@ -860,6 +863,86 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
     );
+  }
+
+  async observeExecutionAuthentication(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation> {
+    const context = async () => {
+      const home = await this.resolveAppHomeEnv(
+        input.credentialProfileRef ?? undefined,
+      );
+      const launch = await this.resolveConnectionLaunch();
+      const spawn = resolveCodexSpawnContext({ ...launch.env, ...home?.env });
+      const env = Object.fromEntries(
+        Object.entries(spawn.env).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      );
+      const hash = crypto
+        .createHash('sha256')
+        .update(
+          JSON.stringify({
+            input,
+            binary: spawn.binary,
+            env: Object.entries(env).sort(),
+            profile: home?.profileRef,
+            args: launch.args,
+          }),
+        )
+        .digest('hex');
+      return {
+        ...spawn,
+        env,
+        hash,
+        routed: Boolean(launch.route) || launch.args.length > 0,
+      };
+    };
+    const before = await context();
+    // Login status does not authenticate a custom model-provider route.
+    const result =
+      before.routed ||
+      !isAbsolute(before.binary) ||
+      input.connectionId !== this.metadata.connectionId
+        ? null
+        : await runCliCommand(
+            before.binary,
+            ['login', 'status'],
+            undefined,
+            before.env,
+            {
+              cwd: input.cwd,
+              timeoutMs: 10_000,
+              maxBuffer: 16_384,
+              killSignal: 'SIGKILL',
+            },
+          );
+    const after = await context();
+    let state: ProviderExecutionAuthObservation['state'] = 'unknown';
+    if (
+      before.hash === after.hash &&
+      result &&
+      !result.timedOut &&
+      !result.outputTruncated
+    ) {
+      const lines = [result.stdout.trim(), result.stderr.trim()];
+      if (lines.some((line) => /\bnot\b[^.\n]{0,40}logged\s+in/i.test(line)))
+        state = 'unauthenticated';
+      else if (
+        result.code === 0 &&
+        lines.some((line) =>
+          /^Logged in using (ChatGPT|API key)\b[^\r\n]*$/i.test(line),
+        )
+      )
+        state = 'authenticated';
+    }
+    return {
+      state,
+      contextHash: `sha256:${before.hash}`,
+      checkedAt: Date.now(),
+      modelEntitlement: 'not-checked',
+      outputTokenLimitFidelity: 'unavailable',
+    };
   }
 
   async getPrerequisites(options?: {

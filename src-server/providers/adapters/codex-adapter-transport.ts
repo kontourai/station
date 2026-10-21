@@ -1376,11 +1376,26 @@ export class CodexAdapterTransport {
   }
 }
 
+/** The binary and environment owned by every real fresh Codex process. */
+export function resolveCodexSpawnContext(extraEnv?: Record<string, string>): {
+  binary: string;
+  env: NodeJS.ProcessEnv;
+} {
+  return {
+    binary: findCliBinary('codex') ?? 'codex',
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      ...extraEnv,
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
+  };
+}
+
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
 ): ChildProcessWithoutNullStreams {
-  const binary = findCliBinary('codex') ?? 'codex';
+  const { binary, env } = resolveCodexSpawnContext(extraEnv);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
@@ -1419,11 +1434,7 @@ function spawnCodexProcess(
     ['app-server', ...(extraArgs ?? [])],
     {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: childProcessEnvironment({
-        PATH: resolveAugmentedPathSync(),
-        ...extraEnv,
-        TMPDIR: ensureEngineSpawnTmpDir(),
-      }),
+      env,
     },
   );
   releaseOwnedChildAfterGroupExit(proc, release);

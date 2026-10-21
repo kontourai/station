@@ -15,6 +15,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -117,6 +118,10 @@ import {
 import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import {
+  createLocalEnsembleInventory,
+  EnsembleExecutionContext,
+} from '../../services/orchestration/ensemble-execution-context.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
   ProjectMembershipAuthority,
@@ -4935,6 +4940,27 @@ export function configureRuntimeRoutes(
       return undefined;
     }
   })();
+
+  context.app.route(
+    '/api/orchestration/ensembles',
+    createEnsemblePreparationRoutes(
+      new EnsembleExecutionContext({
+        security: context.environmentSecurityService,
+        inventory: createLocalEnsembleInventory({
+          environmentId: () =>
+            context.environmentSecurityService.devicePairing.environmentId(),
+          getAgent: (id) => context.agentService.getAgent(id),
+          listEngineConnectionIdentities: () =>
+            context.connectionService.listEngineConnectionIdentities(),
+          loadAppConfig: () => context.configLoader.loadAppConfig(),
+          getProject: (slug) => context.projectService.getProject(slug),
+          getProviderAdapter: (provider) =>
+            context.orchestrationService.getProviderAdapter(provider),
+        }),
+      }),
+      resolveOrchestrationRequestPrincipal,
+    ),
+  );
 
   context.app.route(
     '/api/orchestration',

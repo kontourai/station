@@ -3192,6 +3192,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Foreground execution has the same authority boundary as durable
     // delegation: both can resolve a target Environment and run an Agent.
     // POST therefore inherits the orchestration family's operate scope.
+    // Login observation only; the handler additionally requires the current local operator.
+    { method: 'POST', path: '/api/orchestration/ensembles/prepare' },
     { method: 'POST', path: '/api/orchestration/chat' },
     {
       method: 'GET',

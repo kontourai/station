@@ -79,6 +79,10 @@ interface ResolvedProjectView {
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
 }
 
+export type ExecutionTargetConnectionView = Omit<ConnectionConfig, 'status'> & {
+  status: ConnectionConfig['status'] | 'unknown';
+};
+
 export interface ExecutionTargetResolverDependencies {
   resolveEnvironmentAccess: (
     target: ExecutionTarget,
@@ -90,7 +94,7 @@ export interface ExecutionTargetResolverDependencies {
   getConnection: (
     access: EnvironmentAccess,
     id: EngineConnectionId,
-  ) => Promise<ConnectionConfig>;
+  ) => Promise<ExecutionTargetConnectionView>;
   getProject: (
     access: EnvironmentAccess,
     slug: string,
@@ -178,7 +182,16 @@ interface ResolvedExecutionTarget {
   receipt: ExecutionResolutionReceipt;
 }
 
-export function assertConnectionReady(connection: ConnectionConfig): void {
+export function assertConnectionReady(
+  connection: ExecutionTargetConnectionView,
+): void {
+  assertConnectionForResolution(connection, 'execution');
+}
+
+function assertConnectionForResolution(
+  connection: ExecutionTargetConnectionView,
+  purpose: 'execution' | 'preparation',
+): void {
   if (connection.kind !== 'agent') {
     throw new Error(
       `Agent binding '${connection.id}' does not resolve to an engine connection`,
@@ -189,8 +202,11 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   }
   // #355: name the failed predicate and its remedy. The status is the same
   // ConnectionConfig.status `station connections list` shows, read now.
-  if (connection.status !== 'ready') {
-    const blockers = describeConnectionBlockers(connection);
+  if (purpose === 'execution' && connection.status !== 'ready') {
+    const blockers =
+      connection.status === 'unknown'
+        ? undefined
+        : describeConnectionBlockers(connection);
     throw new Error(
       `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
         blockers
@@ -208,7 +224,9 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   }
 }
 
-function connectionProvider(connection: ConnectionConfig): EngineId {
+function connectionProvider(
+  connection: ExecutionTargetConnectionView,
+): EngineId {
   if (connection.type === 'acp' || connection.capabilities.includes('acp')) {
     return 'acp';
   }
@@ -553,6 +571,7 @@ function launchCapabilities(
 export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
+  options: { purpose?: 'execution' | 'preparation' } = {},
 ): Promise<ResolvedExecutionTarget> {
   const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
@@ -651,7 +670,7 @@ export async function resolveExecutionTarget(
       access,
       resolvedEngineConnectionId,
     );
-    assertConnectionReady(connection);
+    assertConnectionForResolution(connection, options.purpose ?? 'execution');
     provider = connectionProvider(connection);
   } else {
     engine = { kind: 'station' };
