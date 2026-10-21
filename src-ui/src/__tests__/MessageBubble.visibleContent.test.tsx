@@ -133,4 +133,42 @@ describe('settled assistant rows with no answer text', () => {
     const { container } = renderSettledRow({ role: 'user', content: '' }, true);
     expect(container.querySelector('.message-row--user')).not.toBeNull();
   });
+
+  test('a turn that ended with nothing to show keeps its row: a one-line marker and its anchor', () => {
+    const base = {
+      provider: 'codex',
+      threadId: 'thread-1',
+      createdAt: '2026-10-20T00:00:00.000Z',
+      turnId: 'turn-quiet',
+    };
+    // A completed turn whose only output is reasoning, with reasoning hidden
+    // by the reader: nothing to draw, but the turn ended and has a record.
+    const assistant = projectRuntimeEventsToMessages([
+      { ...base, eventId: 'e1', method: 'turn.started', prompt: 'hi' },
+      {
+        ...base,
+        eventId: 'e2',
+        method: 'content.reasoning-delta',
+        delta: THOUGHT,
+      },
+      { ...base, eventId: 'e3', method: 'turn.completed' },
+    ] as CanonicalRuntimeEvent[]).find((row) => row.role === 'assistant');
+    expect(assistant?.metadata?.provenance?.outcome).toBe('completed');
+    const { container } = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        turnId: 'turn-quiet',
+        contentParts: assistant!.parts.flatMap(conversationPartToContentParts),
+        provenance: assistant!.metadata!.provenance,
+      },
+      false,
+    );
+    expect(screen.getByText('No reply')).toBeTruthy();
+    // Its footer (the turn's record) stays with it.
+    expect(container.querySelector('.turn-footer')).not.toBeNull();
+    expect(
+      container.querySelector('[data-chat-message-key="row-1"]'),
+    ).not.toBeNull();
+  });
 });

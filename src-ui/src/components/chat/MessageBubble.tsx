@@ -326,8 +326,14 @@ function MessageBubbleComponent({
   }
 
   // A user row always draws (its bubble carries delivery state even when
-  // empty of text); an assistant row only once it has content.
-  if (msg.role === 'assistant' && !hasVisibleContent) return null;
+  // empty of text); an assistant row only once it has content, or once its
+  // turn has ended (its provenance is folded only from a terminal event):
+  // a turn that ended with nothing to show still keeps its row, a one-line
+  // marker of how it ended, and the row's footer and anchor.
+  const endedEmpty =
+    msg.role === 'assistant' && !hasVisibleContent && msg.provenance;
+  if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
+    return null;
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
@@ -524,22 +530,26 @@ function MessageBubbleComponent({
   // Gated on exactly what the menu can list (TurnActionsMenu's
   // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
   // would draw a ⋯ that opens an empty menu.
-  const userMessageMenu =
-    msg.role === 'user' &&
+  // The text actions need text; adding the input to a Task does not (an
+  // image-only message is still an input a Task can hold).
+  const textMenuActions = Boolean(
     textContent &&
-    ((userForkSource && onForkFromTurn) ||
-      onNewChatFromMessage ||
-      discardUnsent ||
-      menuTaskTarget) ? (
+      ((userForkSource && onForkFromTurn) ||
+        onNewChatFromMessage ||
+        discardUnsent),
+  );
+  const userMessageMenu =
+    msg.role === 'user' && (textMenuActions || menuTaskTarget) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
-          forkSource: userForkSource,
-          onForkFromTurn,
-          onNewChatFromMessage: onNewChatFromMessage
-            ? () => onNewChatFromMessage(textContent)
-            : undefined,
-          onDiscardUnsent: discardUnsent,
+          forkSource: textContent ? userForkSource : undefined,
+          onForkFromTurn: textContent ? onForkFromTurn : undefined,
+          onNewChatFromMessage:
+            textContent && onNewChatFromMessage
+              ? () => onNewChatFromMessage(textContent)
+              : undefined,
+          onDiscardUnsent: textContent ? discardUnsent : undefined,
           taskTarget: menuTaskTarget,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
@@ -1015,6 +1025,14 @@ function MessageBubbleComponent({
               : undefined
           }
         >
+          {endedEmpty ? (
+            <p className="message__empty-turn">
+              {isSupportedTurnProvenanceEnvelope(msg.provenance) &&
+              msg.provenance.outcome === 'aborted'
+                ? 'Stopped'
+                : 'No reply'}
+            </p>
+          ) : null}
           <MessageContent
             contentParts={
               taskProposal

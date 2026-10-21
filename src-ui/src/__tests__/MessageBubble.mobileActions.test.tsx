@@ -24,6 +24,14 @@ import type { ChatMessage } from '../types';
 
 const { mobile } = vi.hoisted(() => ({ mobile: { current: true } }));
 
+// The file chip reads attachment bytes through the host; this suite asks
+// only which actions a row offers.
+vi.mock('../components/chat/FilePartPreview', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  FilePartPreview: ({ part }: { part: { name?: string } }) => (
+    <span>{part.name}</span>
+  ),
+}));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => mobile.current,
@@ -590,6 +598,41 @@ describe('MessageBubble phone copy and details actions', () => {
         await screen.findByRole('dialog', { name: /Add input to Task/ }),
       ).toBeTruthy();
       expect(menu.hidden).toBe(true);
+    } finally {
+      mobile.current = true;
+    }
+  });
+
+  it('an image-only message keeps its desktop ⋯ with Add input to Task', async () => {
+    mobile.current = false;
+    try {
+      renderRow({
+        role: 'user',
+        content: '',
+        contentParts: [
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            name: 'shot.png',
+          },
+        ],
+        sourceEventId: 'event-2',
+        sessionId: 'thread-1',
+        turnId: 'turn-2',
+      } as never);
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More message actions' }),
+      );
+      const menu = await screen.findByRole('menu', { name: 'Message actions' });
+      expect(
+        await within(menu).findByRole('menuitem', {
+          name: 'Add input to Task',
+        }),
+      ).toBeTruthy();
+      // The text actions need text: none is offered for an image.
+      expect(
+        within(menu).queryByRole('menuitem', { name: /new chat/i }),
+      ).toBeNull();
     } finally {
       mobile.current = true;
     }
