@@ -747,7 +747,7 @@ describe('ConnectionsProvider — injected connection (R1)', () => {
     expect(localStorage.getItem('station-connect-connections')).toBeNull();
   });
 
-  it('keeps an explicit saved selection ahead of a mobile build default', async () => {
+  it('keeps an explicit saved selection ahead of a CLI connection override', async () => {
     const storage = memoryAdapter();
     const store = new ConnectionStore({ storage });
     const saved = store.add(
@@ -762,10 +762,10 @@ describe('ConnectionsProvider — injected connection (R1)', () => {
           store={store}
           seedDefault={false}
           injectedConnection={{
-            id: 'mobile-default-beta',
-            name: 'Station beta',
-            url: 'https://build-default.example.test:8442',
-            source: 'mobile-default',
+            id: 'cli-base',
+            name: 'CLI Station',
+            url: 'https://cli.example.test:8442',
+            source: 'cli-base',
           }}
         >
           {children}
@@ -776,7 +776,7 @@ describe('ConnectionsProvider — injected connection (R1)', () => {
     expect(result.current.activeConnection?.id).toBe(saved.id);
     expect(result.current.apiBase).toBe('https://explicit.example.test');
     expect(result.current.connections.map(({ id }) => id)).toEqual([
-      'mobile-default-beta',
+      'cli-base',
       saved.id,
     ]);
   });

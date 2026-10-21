@@ -226,7 +226,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       'if [ "$LIVE_ACTIVITY" = true ]; then',
     );
     expect(step.run).toContain(
-      'mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT, { liveActivity: process.env.LIVE_ACTIVITY === "true" })',
+      'mobileCargoConfig({ liveActivity: process.env.LIVE_ACTIVITY === "true" })',
     );
     expect(step.run).toContain(
       'grep -Fq \'STATION_IOS_LIVE_ACTIVITY\' "$RUNNER_TEMP/station-ios-mobile-env.toml"',

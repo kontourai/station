@@ -441,30 +441,17 @@ export class ConnectionStore {
     if (this._cacheValid && this._cachedAll !== null) return;
     const snapshot = this.read();
     const { connections, activeId } = snapshot;
-    // The injected connection (if any) is prepended and never persisted. A
-    // mobile default is only a cold-boot routing hint: when a native paired
-    // profile already names the same normalized origin, showing both would
-    // duplicate one Station and hide the profile that owns its credential.
-    // A desktop-managed loopback is different: same-origin profiles can be
-    // distinct paired Stations, so it may coalesce only with the saved local
-    // profile whose host-owned service identity exactly matches the injected
-    // sidecar. That keeps the saved profile (and therefore its native
-    // credential/default selection) as the one visible connection.
+    // Only the saved local profile with the same host-owned service identity
+    // may coalesce with an injected desktop sidecar. Same-origin paired
+    // Stations remain distinct and retain their own credentials and selection.
     const injected = this.injected;
-    const matchingMobileDefault =
-      injected?.injectedSource === 'mobile-default'
-        ? connections.find((connection) =>
-            isSameConnectionOrigin(connection.url, injected.url),
-          )
-        : undefined;
     const matchingManagedLoopback =
       injected?.injectedSource === 'managed-loopback' && injected.ownerId
         ? connections.find(
             (connection) => connection.ownerId === injected.ownerId,
           )
         : undefined;
-    const listedInjected =
-      matchingMobileDefault || matchingManagedLoopback ? null : injected;
+    const listedInjected = matchingManagedLoopback ? null : injected;
     const composed = listedInjected
       ? [listedInjected, ...connections]
       : connections;
@@ -494,7 +481,6 @@ export class ConnectionStore {
     this._cachedActive =
       usableExplicit ??
       injectedActive ??
-      matchingMobileDefault ??
       matchingManagedLoopback ??
       connections.find((connection) => !connection.brokerRoute) ??
       null;

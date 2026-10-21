@@ -26,11 +26,11 @@ describe('pairing endpoint suggestions (#2228 slice 3)', () => {
     const storage = memoryStorage();
     rememberPairingEndpoint(
       apiBase,
-      'https://kontour.python-smelt.ts.net:3773',
+      'https://station.example.ts.net:3773',
       storage,
     );
     expect(suggestPairingEndpoint(apiBase, storage)).toBe(
-      'https://kontour.python-smelt.ts.net:3773',
+      'https://station.example.ts.net:3773',
     );
     expect(
       suggestPairingEndpoint('https://other-station.example.test', storage),
@@ -41,7 +41,7 @@ describe('pairing endpoint suggestions (#2228 slice 3)', () => {
     const storage = memoryStorage();
     rememberPairingEndpoint(
       apiBase,
-      'https://kontour.python-smelt.ts.net:3773',
+      'https://station.example.ts.net:3773',
       storage,
     );
     // The operator chose loopback deliberately: the old tailnet URL must not
@@ -81,7 +81,7 @@ describe('pairing endpoint suggestions (#2228 slice 3)', () => {
     expect(() =>
       rememberPairingEndpoint(
         apiBase,
-        'https://kontour.python-smelt.ts.net:3773',
+        'https://station.example.ts.net:3773',
         throwing,
       ),
     ).not.toThrow();

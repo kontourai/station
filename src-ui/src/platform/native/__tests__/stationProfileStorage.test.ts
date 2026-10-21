@@ -2007,7 +2007,7 @@ describe('NativeStationProfileStorage', () => {
     expect(savedConnectionFromStationProfile(paired).ownerId).toBeUndefined();
   });
 
-  it('dedupes a matching mobile default on cold boot and restores the host-owned profile after authenticated recovery', async () => {
+  it('restores a saved host-owned profile after authenticated recovery', async () => {
     const profileStore = JSON.parse(
       JSON.stringify(PROFILE_STORE),
     ) as StationProfileStore;
@@ -2023,14 +2023,6 @@ describe('NativeStationProfileStorage', () => {
       hostOwnedCredential: true,
     });
 
-    connections.setInjectedConnection({
-      id: 'mobile-default-nightly',
-      name: 'Station Nightly',
-      url: 'https://Station.Example.test:8444/',
-      source: 'mobile-default',
-    });
-    // The injected URL is only a cold-boot routing hint. The paired native
-    // profile owns the credential and is the one row/active subject.
     expect(connections.getAll()).toHaveLength(2);
     expect(connections.getAll()[0].id).toBe('station-profile:kontour');
     expect(connections.getActive()?.id).toBe('station-profile:kontour');
@@ -2051,36 +2043,6 @@ describe('NativeStationProfileStorage', () => {
       credentialState: 'saved',
     });
     expect(connections.getActive()?.lastError).toBeUndefined();
-  });
-
-  it('uses the matching paired profile when no default is selected and an unrelated profile is first', async () => {
-    const profileStore = JSON.parse(
-      JSON.stringify(PROFILE_STORE),
-    ) as StationProfileStore;
-    profileStore.defaultProfile = null;
-    profileStore.profiles = [
-      profileStore.profiles[1],
-      {
-        ...profileStore.profiles[0],
-        endpoint: 'https://station.example.test:8444',
-      },
-    ];
-    const { storage } = storageWithProfileStore(profileStore);
-    await storage.hydrate();
-
-    const connections = new ConnectionStore({ storage });
-    connections.setInjectedConnection({
-      id: 'mobile-default-nightly',
-      name: 'Station Nightly',
-      url: 'https://Station.Example.test:8444/',
-      source: 'mobile-default',
-    });
-
-    expect(connections.getAll().map((connection) => connection.id)).toEqual([
-      'station-profile:station.kontourai.io',
-      'station-profile:kontour',
-    ]);
-    expect(connections.getActive()?.id).toBe('station-profile:kontour');
   });
 
   it('persists a profile only from a verified pairing identity', async () => {
