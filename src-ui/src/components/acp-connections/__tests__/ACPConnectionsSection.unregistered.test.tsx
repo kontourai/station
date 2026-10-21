@@ -234,4 +234,43 @@ describe('saved connections whose engine never registered', () => {
     await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledTimes(2));
     expect(mocks.update).not.toHaveBeenCalled();
   });
+
+  // After an edit is saved, Retry check must re-check what was saved, not
+  // re-send the same update (an unchanged update probes nothing).
+  test('Retry check after a saved edit re-checks rather than re-sending the edit', async () => {
+    mocks.update.mockResolvedValue({
+      ...unregistered[0],
+      command: 'stub-acp-fixed',
+      status: 'unavailable',
+      lastError: { phase: 'initialize', message: 'exited with code 1' },
+    });
+    mocks.check.mockResolvedValue({
+      ...unregistered[0],
+      command: 'stub-acp-fixed',
+      status: 'available',
+      lastError: undefined,
+    });
+    render(<ACPConnectionsSection acpAgents={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Stub Engine' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit engine' });
+    fireEvent.change(within(dialog).getByLabelText('Command'), {
+      target: { value: 'stub-acp-fixed' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Check engine' }),
+    );
+    await vi.waitFor(() =>
+      expect(within(dialog).getByRole('status').textContent).toContain(
+        'Setup required',
+      ),
+    );
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Retry check' }),
+    );
+
+    await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledWith('stub'));
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
 });
