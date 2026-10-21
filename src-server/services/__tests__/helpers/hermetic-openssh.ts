@@ -16,6 +16,7 @@ import {
   utils,
 } from 'ssh2';
 import { WebSocketServer } from 'ws';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   OpenSshCommandResult,
   OpenSshCommandRunner,
@@ -37,6 +38,10 @@ const BOOT_ID = '44444444-4444-4444-8444-444444444444';
 const BUILD_SHA = '3'.repeat(40);
 const MAX_PROCESS_OUTPUT = 512 * 1024;
 const MAX_KEY_GENERATION_ATTEMPTS = 32;
+const makeControlDirectory = trackTempDirs({
+  base: process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+  lifetime: 'file',
+});
 
 type TrustMode = 'trusted' | 'missing' | 'changed';
 
@@ -470,6 +475,9 @@ function createAdapter(input: {
     }),
   );
   return new OpenSshEnvironmentAdapter({
+    // The nested Vitest temp root exceeds macOS's Unix socket path limit.
+    // Keep the owned control directory short; the adapter removes it on stop.
+    createControlDirectory: async () => makeControlDirectory('station-ssh-'),
     run: createRunner(input.sshPath, input.configPath),
     spawn: (args) =>
       spawn(input.sshPath, ['-F', input.configPath, ...args], {

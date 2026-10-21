@@ -1521,8 +1521,8 @@ as given. The Veritas evidence-check default (600 s) lives in the external
 
 ### Shared Vitest worker policy
 
-Ordinary and focused Vitest invocations inherit the checked-in four-worker
-ceiling. `npm run test:full` discovers the complete corpus, validates exact and
+Ordinary Vitest invocations use the checked-in four-worker ceiling; focused
+runs use one worker with file parallelism disabled. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
 seven resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
@@ -1534,7 +1534,10 @@ files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
 aggregate load below the ordinary pool while independent temp-dir and
 dynamically allocated-port fixtures overlap. A test that owns host-global
-leases, fencing, or coordinator capacity belongs in process-exclusive. New
+leases, fencing, or coordinator capacity belongs in process-exclusive. The
+1,026-part model-runtime outbox keeper also uses that group: it owns a fresh
+one-worker lifecycle for its WAL/FULL transactions and one-at-a-time ACKs,
+while retaining the original 30-second bound and complete replay geometry. New
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.
