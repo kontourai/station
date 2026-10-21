@@ -167,3 +167,30 @@ test('switching away preserves delegate bindings and observes completion on retu
     'chat-a',
   );
 });
+
+test('snapshot clearing only the omitted-history flag refreshes the mounted view', () => {
+  for (let index = 0; index < 101; index++)
+    startTool('chat-a', `tool-${index}`);
+  const { result } = renderHook(() => useChatBackgroundTasks('chat-a'));
+  expect(result.current.toolHistoryLimited).toBe(true);
+  // Finish the retained rows; the omitted row still has no terminal evidence.
+  act(() => {
+    for (const entry of result.current.running) {
+      backgroundTasksStore.ingest({
+        ...eventBase,
+        threadId: 'chat-a',
+        method: 'tool.completed',
+        itemId: entry.id,
+        toolCallId: entry.id,
+        toolName: 'bash',
+        status: 'success',
+      });
+    }
+  });
+  const before = result.current;
+  expect(before.toolHistoryLimited).toBe(true);
+  act(() => backgroundTasksStore.reconcileSnapshot({ sessions: [] }));
+  expect(result.current).not.toBe(before);
+  expect(result.current.toolHistoryLimited).toBeUndefined();
+  expect(result.current.finished).toEqual(before.finished);
+});

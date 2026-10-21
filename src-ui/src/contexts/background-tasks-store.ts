@@ -61,6 +61,8 @@ export interface BackgroundTaskEntry {
   chatThreadId: string;
   title: string;
   delegationTitle?: string;
+  /** Closing the last owning chat drops this cache entry only after settlement. */
+  discardWhenSettled?: true;
   detail?: string;
   latestTool?: string;
   /**
@@ -89,10 +91,13 @@ export interface BackgroundTasksState {
   entries: Record<string, BackgroundTaskEntry>;
   /** delegate threadId (taskId) -> parent chat threadId. */
   delegateParents: Record<string, string>;
+  /** Some raw tool cards were dropped; counts describe only retained rows. */
+  limitedToolChats?: Record<string, true>;
 }
 
 /** Finished list is bounded per chat, drop-oldest (by end time), per the plan §3. */
 export const FINISHED_LIMIT_PER_CHAT = 50;
+const RUNNING_TOOL_LIMIT_PER_CHAT = 100;
 
 export function createEmptyBackgroundTasksState(): BackgroundTasksState {
   return { entries: {}, delegateParents: {} };
@@ -243,6 +248,22 @@ function pruneFinished(
   entries: Record<string, BackgroundTaskEntry>,
   chatThreadId: string,
 ): BackgroundTasksState {
+  const retired = Object.values(entries).filter(
+    (entry) =>
+      entry.chatThreadId === chatThreadId &&
+      entry.state !== 'running' &&
+      entry.state !== 'unresolved' &&
+      entry.discardWhenSettled,
+  );
+  if (retired.length) {
+    entries = { ...entries };
+    const delegateParents = { ...state.delegateParents };
+    for (const entry of retired) {
+      delete entries[entry.id];
+      delete delegateParents[entry.id];
+    }
+    state = { ...state, delegateParents };
+  }
   const finishedIds = Object.values(entries)
     .filter((entry) => entry.chatThreadId === chatThreadId)
     .filter((entry) => entry.state !== 'running')
@@ -251,10 +272,32 @@ function pruneFinished(
   const excess = finishedIds.length - FINISHED_LIMIT_PER_CHAT;
   if (excess <= 0) return { ...state, entries };
   const next = { ...entries };
-  for (let i = 0; i < excess; i++) {
-    delete next[finishedIds[i]];
+  for (let i = 0; i < excess; i++) delete next[finishedIds[i]];
+  return pruneUnrepresentedBindings({ ...state, entries: next });
+}
+
+/** Inactive legacy rows have no card to participate in finished-card pruning. */
+function pruneUnrepresentedBindings(
+  state: BackgroundTasksState,
+): BackgroundTasksState {
+  const byParent = new Map<string, string[]>();
+  for (const [threadId, parent] of Object.entries(state.delegateParents)) {
+    if (state.entries[threadId]) continue;
+    const ids = byParent.get(parent) ?? [];
+    ids.push(threadId);
+    byParent.set(parent, ids);
   }
-  return { ...state, entries: next };
+  let delegateParents = state.delegateParents;
+  for (const ids of byParent.values()) {
+    const excess = ids.length - FINISHED_LIMIT_PER_CHAT;
+    if (excess <= 0) continue;
+    if (delegateParents === state.delegateParents)
+      delegateParents = { ...delegateParents };
+    for (const id of ids.slice(0, excess)) delete delegateParents[id];
+  }
+  return delegateParents === state.delegateParents
+    ? state
+    : { ...state, delegateParents };
 }
 
 function foldToolStarted(
@@ -276,7 +319,23 @@ function foldToolStarted(
     startedAt: parseTime(event.createdAt, Date.now()),
     state: 'running',
   };
-  return { ...state, entries: { ...state.entries, [entry.id]: entry } };
+  const entries = { ...state.entries, [entry.id]: entry };
+  const running = Object.values(entries)
+    .filter(
+      (item) =>
+        item.chatThreadId === event.threadId &&
+        item.kind === 'tool' &&
+        item.state === 'running',
+    )
+    .sort((left, right) => (left.startedAt ?? 0) - (right.startedAt ?? 0));
+  const excess = running.length - RUNNING_TOOL_LIMIT_PER_CHAT;
+  if (excess <= 0) return { ...state, entries };
+  for (const item of running.slice(0, excess)) delete entries[item.id];
+  return {
+    ...state,
+    entries,
+    limitedToolChats: { ...state.limitedToolChats, [event.threadId]: true },
+  };
 }
 
 function foldToolProgress(
@@ -321,6 +380,16 @@ function foldToolCompleted(
     [existing.id]: { ...existing, state: nextState, endedAt },
   };
   return pruneFinished(state, entries, existing.chatThreadId);
+}
+
+function clearLimitedToolChat(
+  state: BackgroundTasksState,
+  threadId: string,
+): BackgroundTasksState {
+  if (!state.limitedToolChats?.[threadId]) return state;
+  const limitedToolChats = { ...state.limitedToolChats };
+  delete limitedToolChats[threadId];
+  return { ...state, limitedToolChats };
 }
 
 /** Turn-terminal safety net: closes any still-open TOOL cards on `threadId` as Stopped. */
@@ -459,7 +528,10 @@ function closeDelegate(
   outcome: BackgroundTaskState,
 ): BackgroundTasksState {
   const existing = state.entries[threadId];
-  if (existing?.source !== 'delegate-session' || existing.state !== 'running') {
+  if (
+    existing?.source !== 'delegate-session' ||
+    (existing.state !== 'running' && existing.state !== 'unresolved')
+  ) {
     return state;
   }
   const endedAt = parseTime(atIso, Date.now());
@@ -506,7 +578,7 @@ export function ingestBackgroundTaskEvent(
     case 'turn.aborted':
     case 'session.exited': {
       const next = closeOrphanedToolCards(
-        state,
+        clearLimitedToolChat(state, event.threadId),
         event.threadId,
         event.createdAt,
       );
@@ -604,8 +676,7 @@ export function reconcileBackgroundTasksSnapshot(
       const entry = backgroundTaskEntryFromChildWork(child, {
         chatThreadId: parentTaskId,
         startedAt: parseTime(child.startedAt ?? session.createdAt, Date.now()),
-        // The sheet replaces this reconnect fallback with the persisted first
-        // turn prompt once its bounded session-detail query resolves.
+        // Keep the durable delegation title stable across reconnects.
         title:
           session.delegation?.title ??
           session.displayTitle ??
@@ -627,7 +698,22 @@ export function reconcileBackgroundTasksSnapshot(
       continue;
     }
 
-    if (existing.state === 'running' && !isActive) {
+    if (isActive && existing.state === 'unresolved') {
+      next = {
+        ...next,
+        entries: {
+          ...next.entries,
+          [existing.id]: { ...existing, state: 'running', endedAt: undefined },
+        },
+      };
+      continue;
+    }
+
+    if (
+      !isActive &&
+      (existing.state === 'running' ||
+        (existing.state === 'unresolved' && child.status !== 'unresolved'))
+    ) {
       const endedAt = parseTime(
         child.endedAt ?? session.lastEventAt,
         Date.now(),
@@ -668,19 +754,29 @@ export function reconcileBackgroundTasksSnapshot(
   if (stale.length) {
     const entries = { ...next.entries };
     for (const entry of stale)
-      entries[entry.id] = { ...entry, state: 'stopped', endedAt: Date.now() };
+      entries[entry.id] = {
+        ...entry,
+        state: 'unresolved',
+        endedAt: Date.now(),
+      };
     next = { ...next, entries };
     for (const chatThreadId of new Set(
       stale.map((entry) => entry.chatThreadId),
     ))
       next = pruneFinished(next, next.entries, chatThreadId);
   }
-  return next;
+  for (const threadId of Object.keys(next.limitedToolChats ?? {})) {
+    const session = sessionsByThread.get(threadId);
+    if (!session || session.hasActiveTurn === false)
+      next = clearLimitedToolChat(next, threadId);
+  }
+  return pruneUnrepresentedBindings(next);
 }
 
 export interface ChatBackgroundTasksView {
   running: BackgroundTaskEntry[];
   finished: BackgroundTaskEntry[];
+  toolHistoryLimited?: true;
 }
 
 /**
@@ -735,7 +831,13 @@ export function selectChatBackgroundTasks(
     .filter((entry) => entry.state !== 'running')
     .sort((a, b) => settledAt(b) - settledAt(a));
 
-  return { running, finished };
+  return {
+    running,
+    finished,
+    ...(state.limitedToolChats?.[chatThreadId]
+      ? { toolHistoryLimited: true as const }
+      : {}),
+  };
 }
 
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
@@ -762,6 +864,47 @@ export class BackgroundTasksStore {
 
   reconcileSnapshot(payload: OrchestrationSnapshotPayload) {
     this.commit(reconcileBackgroundTasksSnapshot(this.state, payload));
+  }
+
+  /** Preserve live work when its last chat closes, retiring only presentation history. */
+  forgetChat(chatThreadId: string) {
+    const entries = { ...this.state.entries };
+    const delegateParents = { ...this.state.delegateParents };
+    for (const entry of Object.values(entries)) {
+      if (entry.chatThreadId !== chatThreadId) continue;
+      if (entry.state === 'running' || entry.state === 'unresolved') {
+        if (!entry.discardWhenSettled)
+          entries[entry.id] = { ...entry, discardWhenSettled: true };
+      } else delete entries[entry.id];
+    }
+    for (const [id, parent] of Object.entries(delegateParents)) {
+      if (parent === chatThreadId && !entries[id]) delete delegateParents[id];
+    }
+    const next = clearLimitedToolChat(this.state, chatThreadId);
+    if (
+      next === this.state &&
+      Object.keys(entries).length === Object.keys(this.state.entries).length &&
+      Object.values(entries).every(
+        (entry) => entry === this.state.entries[entry.id],
+      ) &&
+      Object.keys(delegateParents).length ===
+        Object.keys(this.state.delegateParents).length
+    )
+      return;
+    this.commit({ ...next, entries, delegateParents });
+  }
+
+  retainChat(chatThreadId: string) {
+    let entries = this.state.entries;
+    for (const entry of Object.values(entries)) {
+      if (entry.chatThreadId !== chatThreadId || !entry.discardWhenSettled)
+        continue;
+      if (entries === this.state.entries) entries = { ...entries };
+      const retained = { ...entry };
+      delete retained.discardWhenSettled;
+      entries[entry.id] = retained;
+    }
+    if (entries !== this.state.entries) this.commit({ ...this.state, entries });
   }
 
   /** Test-only: clears all tracked entries/bindings between test cases. */

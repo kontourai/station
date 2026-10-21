@@ -138,7 +138,7 @@ export function ChatDockMobileOverflowSheet({
             onClick={() => run(overflow.onOpenBackgroundTasks!)}
           >
             {(overflow.backgroundTasksRunningCount ?? 0) > 0
-              ? `Background tasks — ${overflow.backgroundTasksRunningCount} running`
+              ? `Background tasks — ${overflow.backgroundTasksRunningCount} running${overflow.backgroundTasksLimited ? ' shown' : ''}`
               : 'Background tasks'}
           </button>
         )}

@@ -1022,3 +1022,151 @@ describe('BackgroundTasksStore — the singleton wiring', () => {
     expect(store.getSnapshot().entries['call-1']).toBeDefined();
   });
 });
+
+describe('bounded delegate history and snapshot uncertainty (#88)', () => {
+  test('finished cards and recent resume bindings remain bounded independently', () => {
+    const store = new BackgroundTasksStore();
+    for (let index = 0; index < 160; index++) {
+      const threadId = `retained-delegate-${index}`;
+      store.ingest({
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date(2026, 0, 1, 0, 0, index).toISOString(),
+        metadata: { taskId: threadId, parentTaskId: 'bounded-parent' },
+      });
+      store.ingest({
+        provider: 'claude',
+        threadId,
+        method: 'turn.completed',
+        turnId: `turn-${index}`,
+        createdAt: new Date(2026, 0, 1, 0, 1, index).toISOString(),
+      });
+    }
+    expect(Object.keys(store.getSnapshot().entries)).toHaveLength(50);
+    expect(Object.keys(store.getSnapshot().delegateParents)).toHaveLength(100);
+    expect(
+      store.getSnapshot().delegateParents['retained-delegate-0'],
+    ).toBeUndefined();
+    expect(store.getSnapshot().delegateParents['retained-delegate-159']).toBe(
+      'bounded-parent',
+    );
+  });
+
+  test('snapshot absence is no result, and a later completion corrects that uncertainty', () => {
+    const store = new BackgroundTasksStore();
+    store.ingest({
+      provider: 'claude',
+      threadId: 'missing-delegate',
+      method: 'session.started',
+      sessionId: 'missing-delegate',
+      createdAt: '2026-10-21T00:00:00.000Z',
+      metadata: { taskId: 'missing-delegate', parentTaskId: 'bounded-parent' },
+    });
+    store.reconcileSnapshot({ sessions: [] });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'unresolved',
+    );
+    expect(store.getSnapshot().delegateParents['missing-delegate']).toBe(
+      'bounded-parent',
+    );
+    store.reconcileSnapshot({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'missing-delegate',
+          status: 'running',
+          hasActiveTurn: true,
+          delegation: {
+            taskId: 'missing-delegate',
+            parentTaskId: 'bounded-parent',
+          },
+        },
+      ],
+    });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'running',
+    );
+    store.reconcileSnapshot({ sessions: [] });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'unresolved',
+    );
+
+    store.ingest({
+      provider: 'claude',
+      threadId: 'missing-delegate',
+      method: 'turn.completed',
+      turnId: 'settled-late',
+      createdAt: '2026-10-21T00:00:02.000Z',
+    });
+    expect(store.getSnapshot().entries['missing-delegate'].state).toBe(
+      'completed',
+    );
+  });
+
+  test('idle snapshot bindings without cards have a bounded recovery horizon', () => {
+    const store = new BackgroundTasksStore();
+    store.reconcileSnapshot({
+      sessions: Array.from({ length: 120 }, (_, index) => ({
+        provider: 'claude' as const,
+        threadId: `idle-${index}`,
+        status: 'idle' as const,
+        hasActiveTurn: false,
+        delegation: { taskId: `idle-${index}`, parentTaskId: 'bounded-parent' },
+      })),
+    });
+    expect(Object.keys(store.getSnapshot().entries)).toHaveLength(0);
+    expect(Object.keys(store.getSnapshot().delegateParents)).toHaveLength(50);
+    expect(store.getSnapshot().delegateParents['idle-0']).toBeUndefined();
+    store.ingest({
+      provider: 'claude',
+      threadId: 'idle-119',
+      method: 'turn.started',
+      turnId: 'late-idle-turn',
+      prompt: 'Continue this task',
+      createdAt: '2026-10-21T00:00:03.000Z',
+    });
+    expect(
+      selectChatBackgroundTasks(store.getSnapshot(), 'bounded-parent', [])
+        .running,
+    ).toEqual([
+      expect.objectContaining({ id: 'idle-119', title: 'Continue this task' }),
+    ]);
+  });
+});
+
+test('a burst of unfinished tools retains a bounded recent list and discloses omitted history', () => {
+  const store = new BackgroundTasksStore();
+  for (let index = 0; index < 250; index++) {
+    store.ingest({
+      provider: 'claude',
+      threadId: 'busy-chat',
+      method: 'tool.started',
+      itemId: `item-${index}`,
+      toolCallId: `busy-${index}`,
+      toolName: 'Read',
+      createdAt: new Date(2026, 0, 1, 0, 0, index).toISOString(),
+    });
+  }
+  const view = selectChatBackgroundTasks(store.getSnapshot(), 'busy-chat', []);
+  expect(view.running).toHaveLength(100);
+  expect(view.running[0].id).toBe('busy-150');
+  expect(view.finished).toHaveLength(0);
+  expect(view.toolHistoryLimited).toBe(true);
+  expect(Object.keys(store.getSnapshot().entries)).toHaveLength(100);
+  store.ingest({
+    provider: 'claude',
+    threadId: 'busy-chat',
+    method: 'turn.completed',
+    turnId: 'busy-turn',
+    createdAt: '2026-10-21T00:00:00.000Z',
+  });
+  const settled = selectChatBackgroundTasks(
+    store.getSnapshot(),
+    'busy-chat',
+    [],
+  );
+  expect(settled.running).toHaveLength(0);
+  expect(settled.toolHistoryLimited).toBeUndefined();
+});

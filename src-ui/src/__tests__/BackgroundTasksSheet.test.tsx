@@ -70,6 +70,7 @@ function finishedEntry(
 function renderSheet(view: {
   running: BackgroundTaskEntry[];
   finished: BackgroundTaskEntry[];
+  toolHistoryLimited?: true;
 }) {
   useChatBackgroundTasks.mockReturnValue(view);
   const anchorRef = createRef<HTMLElement>();
@@ -495,4 +496,18 @@ describe('BackgroundTasksSheet', () => {
     fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('35 tokens · 1 tool use')).not.toBeNull();
   });
+});
+
+test('omitted tool history is disclosed beside the retained running count', () => {
+  renderSheet({
+    running: [runningEntry()],
+    finished: [],
+    toolHistoryLimited: true,
+  });
+  expect(screen.getByRole('status').textContent).toContain(
+    'Older tool rows are omitted',
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Running (1 shown)' }),
+  ).toBeTruthy();
 });

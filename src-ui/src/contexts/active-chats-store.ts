@@ -29,6 +29,7 @@ import {
   serializeActiveChats,
 } from './active-chats-state';
 
+import { backgroundTasksStore } from './background-tasks-store';
 import { conversationsStore } from './conversations-store';
 
 export type {
@@ -342,6 +343,13 @@ export class ActiveChatsStore {
       createDefaultChatState(metadata, this.now()),
     );
     this.draftRevisions.set(sessionId, {});
+    for (const id of [
+      sessionId,
+      metadata?.conversationId,
+      metadata?.currentSessionId,
+    ]) {
+      if (id) backgroundTasksStore.retainChat(id);
+    }
     this.notify(true);
   }
 
@@ -374,6 +382,14 @@ export class ActiveChatsStore {
     );
     const next = this.withKnownActivity(chat);
     this.chats[targetSessionId!] = next;
+    if (
+      next.conversationId !== current.conversationId ||
+      next.currentSessionId !== current.currentSessionId
+    ) {
+      for (const id of [next.conversationId, next.currentSessionId]) {
+        if (id) backgroundTasksStore.retainChat(id);
+      }
+    }
     if (
       chat.conversationActivity &&
       chat.conversationActivity !== current.conversationActivity
@@ -453,6 +469,14 @@ export class ActiveChatsStore {
         removed.agentSlug,
         removed.conversationId,
       );
+    for (const id of new Set([
+      sessionId,
+      removed?.conversationId,
+      removed?.currentSessionId,
+    ])) {
+      if (id && !this.getChatKeyForExecutionSession(id))
+        backgroundTasksStore.forgetChat(id);
+    }
     for (const listener of this.chatRemovedListeners) listener(sessionId);
     this.notify(true);
   }
@@ -562,6 +586,7 @@ export class ActiveChatsStore {
     this.chats[sessionId] = this.withKnownActivity(
       assignConversationIdState(chat, conversationId),
     );
+    backgroundTasksStore.retainChat(conversationId);
     // This is the transition from an ephemeral tab to a durable conversation.
     // Persist it synchronously so an immediate reload/navigation cannot lose
     // the session while the ordinary 300 ms coalescing timer is still pending.

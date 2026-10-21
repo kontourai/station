@@ -69,6 +69,7 @@ export interface ChatDockMobileOverflowActions {
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
+  backgroundTasksLimited?: boolean;
   /**
    * The session context sheet (the desktop card's rows). A row of this sheet
    * rather than a third control in the bar: the bar's edge reserve holds two

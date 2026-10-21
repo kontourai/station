@@ -69,6 +69,8 @@ export function useChatBackgroundTasks(
       cached &&
       cached.chatThreadId === chatThreadId &&
       cached.providerTasks === providerTasks &&
+      cached.view.toolHistoryLimited ===
+        tasksState.limitedToolChats?.[chatThreadId] &&
       cached.entries.length === entries.length &&
       cached.entries.every((entry, index) => entry === entries[index])
     ) {

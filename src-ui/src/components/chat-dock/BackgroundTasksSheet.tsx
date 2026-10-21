@@ -63,7 +63,8 @@ export function BackgroundTasksSheet({
   onClose,
 }: BackgroundTasksSheetProps) {
   const agents = useAgents();
-  const { running, finished } = useChatBackgroundTasks(chatThreadId);
+  const { running, finished, toolHistoryLimited } =
+    useChatBackgroundTasks(chatThreadId);
   const [sections, setSections] = useState<SectionState>(readSectionState);
   const [now, setNow] = useState(() => Date.now());
 
@@ -105,11 +106,17 @@ export function BackgroundTasksSheet({
         />
       </header>
       <div className="background-tasks-sheet__body">
+        {toolHistoryLimited && (
+          <p className="background-tasks-sheet__meta" role="status">
+            Older tool rows are omitted. Running counts cover retained rows.
+          </p>
+        )}
         {isEmpty && <Empty variant="compact" label="Nothing here yet" />}
         {running.length > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
-              Running ({running.length})
+              Running ({running.length}
+              {toolHistoryLimited ? ' shown' : ''})
             </h3>
             <ul className="background-tasks-sheet__list">
               {running.map((entry) => (

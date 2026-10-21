@@ -826,6 +826,16 @@ catalog. That kept it out of the original
 dock catalog; the later registry-driven chooser (#2154) does list Agents and
 Activity.
 
+Background-task presentation retains at most 50 settled cards and 100 unfinished
+raw tool rows per conversation. Omitted tool history is disclosed in the sheet
+and conversation Agents pane; entry-point counts say “shown” while limited.
+These are display bounds, not a claim that omitted work stopped. Up to 50
+additional delegate bindings without cards remain available for later resume.
+Closing the last chat drops its settled history while retaining live or
+unresolved delegate routing; a later observed settlement retires that closed
+context unless the chat reopened. Snapshot absence means **No result**, never
+proof of a requested stop. A later terminal event can correct that uncertainty.
+
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
 renders child work — engine subagents and Station delegates — from the
 provider-neutral child-work contract through its own row

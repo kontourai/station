@@ -28,6 +28,7 @@ export interface SessionContextCardProps {
   /** The inbox row's status line for this chat (the ladder), or none yet. */
   status: { text: string; tone: WorkStatusTone } | null;
   backgroundTasksRunning: number;
+  backgroundTasksLimited?: boolean;
   onOpenBackgroundTasks?: () => void;
   /** The composer queue's own count ("N pending messages"). */
   pendingMessages: number;
@@ -158,6 +159,7 @@ export function SessionContextRows({
   onOpenChanges,
   status,
   backgroundTasksRunning,
+  backgroundTasksLimited,
   onOpenBackgroundTasks,
   pendingMessages,
   conversationId,
@@ -241,7 +243,7 @@ export function SessionContextRows({
                 ? [
                     status?.text,
                     backgroundTasksRunning > 0
-                      ? `Background tasks — ${backgroundTasksRunning} running`
+                      ? `Background tasks — ${backgroundTasksRunning} running${backgroundTasksLimited ? ' shown' : ''}`
                       : 'Background tasks',
                   ]
                     .filter(Boolean)
@@ -259,7 +261,7 @@ export function SessionContextRows({
             ) : null}
             <span className="session-context-card__secondary">
               {backgroundTasksRunning > 0
-                ? `Background tasks — ${backgroundTasksRunning} running`
+                ? `Background tasks — ${backgroundTasksRunning} running${backgroundTasksLimited ? ' shown' : ''}`
                 : 'No background tasks running'}
             </span>
             {pendingMessages > 0 ? (

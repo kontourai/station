@@ -403,10 +403,16 @@ export function AgentsWorkspacePane() {
         {readModelPending && !readModelFailed && (
           <SkeletonBlock count={1} label="Loading delegated tasks" />
         )}
+        {tools.toolHistoryLimited && (
+          <p className="agents-pane__note" role="status">
+            Older tool rows are omitted. Running counts cover retained rows.
+          </p>
+        )}
         {runningCount > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
-              Running ({runningCount})
+              Running ({runningCount}
+              {scope === 'chat' && tools.toolHistoryLimited ? ' shown' : ''})
             </h3>
             <ul className="background-tasks-sheet__list">
               {taskRunning.map((entry) => (

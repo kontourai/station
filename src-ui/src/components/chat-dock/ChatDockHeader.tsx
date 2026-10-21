@@ -72,6 +72,7 @@ export interface ChatDockWorkspaceControls {
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
   backgroundTasksRunningCount: number;
+  backgroundTasksLimited?: boolean;
   isBackgroundTasksOpen: boolean;
   /**
    * Whether the row opens the Agents PANE rather than the sheet (#2050).
@@ -241,7 +242,7 @@ export function ChatDockHeader({
             key: 'background-tasks',
             label:
               workspaceControls.backgroundTasksRunningCount > 0
-                ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running`
+                ? `Background tasks — ${workspaceControls.backgroundTasksRunningCount} running${workspaceControls.backgroundTasksLimited ? ' shown' : ''}`
                 : 'Background tasks',
             ...(workspaceControls.backgroundTasksOpensPane
               ? {}
@@ -449,7 +450,7 @@ export function ChatDockHeader({
           workspaceControls.backgroundTasksRunningCount > 0
             ? `${workspaceControls.backgroundTasksRunningCount} background task${
                 workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
-              } running`
+              } running${workspaceControls.backgroundTasksLimited ? ' shown' : ''}`
             : undefined
         }
       />

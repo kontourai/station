@@ -70,7 +70,7 @@ import {
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
-import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
+import { useChatBackgroundTasks } from '../../hooks/useBackgroundTasks';
 import { useCatalogModelLabel } from '../../hooks/useCatalogModelLabel';
 import {
   type OpenConversationOptions,
@@ -859,8 +859,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
-  const backgroundTasksRunningCount =
-    useChatBackgroundTasksRunningCount(activeSessionId);
+  const backgroundTasksView = useChatBackgroundTasks(activeSessionId);
+  const backgroundTasksRunningCount = backgroundTasksView.running.length;
+  const backgroundTasksLimited = backgroundTasksView.toolHistoryLimited;
 
   // #869 / #1298: a maximized dock is opaque and full-height, so navigating
   // to another part of the app changed the view *underneath* it and nothing
@@ -2471,6 +2472,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         : undefined,
       status: sessionContextStatus,
       backgroundTasksRunning: backgroundTasksRunningCount,
+      backgroundTasksLimited,
       onOpenBackgroundTasks: () => actions().showBackgroundTasks(),
       pendingMessages: sessionContextPendingMessages,
       conversationId: sessionContextConversationId,
@@ -2510,6 +2512,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     gitStatus,
     sessionContextStatus,
     backgroundTasksRunningCount,
+    backgroundTasksLimited,
     sessionContextPendingMessages,
     sessionContextConversationId,
     sessionContextDetailsId,
@@ -2822,6 +2825,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     ? showBackgroundTasks
                     : undefined,
                 backgroundTasksRunningCount,
+                backgroundTasksLimited,
                 onOpenSessionContext: sessionContextAvailable
                   ? (returnFocus) => {
                       setSessionContextReturnFocus(returnFocus);
@@ -2996,6 +3000,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 0
                         : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
+                      backgroundTasksLimited:
+                        !importedSessionId && backgroundTasksLimited,
                       backgroundTasksOpensPane,
                       onToggleBackgroundTasks: toggleBackgroundTasks,
                       sessionInventory: sessionInventoryControls,
