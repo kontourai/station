@@ -1295,6 +1295,7 @@ test.each(['full', 'lite'] as const)(
       await service.flush();
       expect(sent).toHaveLength(0);
       view.unmount();
+      bridge.config = await loader.loadAppConfig();
       const status = await service.telemetryStatus();
       settings = render(
         <QueryClientProvider client={client}>
