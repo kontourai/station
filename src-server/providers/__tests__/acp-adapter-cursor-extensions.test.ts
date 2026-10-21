@@ -563,6 +563,8 @@ describe('cursor/create_plan is a plan review', () => {
     const message = inputRequestFromRequestEvent(opened)?.message ?? '';
     expect(message).toContain(plan);
     expect(message).toContain('40 todos, shown on the plan once approved.');
+    // Dropping the list was enough: the plan itself is not cut.
+    expect(message).not.toContain('Plan truncated for display');
     expect(message).not.toContain('Step 0 of the migration');
     await answerForm(session, opened, { review: 'approve' });
     await expect(within(response)).resolves.toEqual({
