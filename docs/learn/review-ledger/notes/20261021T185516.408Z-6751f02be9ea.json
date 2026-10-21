@@ -1,0 +1,57 @@
+{
+  "revision": "2d1df61b02906389f274f9ca1f597ae929603c0f",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No architecture claim affected. No prose change.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1 round 5: acp.ts: duplicate-id and re-check failure responses are now people's sentences naming the engine; NewChatModal shows a still-starting notice ahead of its fallback agent. Ownership unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"L1 round 5: NewChatModal automatic-preparation branch order changed (still-starting notice before the fallback needs-attention agent); composer design unaffected. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"L1 round 5: acp-process.ts not-found message now tells a command-with-arguments where arguments go; AgentConnectionView re-reads readiness after a failed Retry check; NewChatModal still-starting precedence. Consistent with the one-honest-next-action principle. No prose change.","inputs":["docs/design/connections-onboarding.md","src-server/services/acp/acp-process.ts","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"L1 round 5: added that lastError.message is written for people (engine named, time-outs as the wait, launch failures in words) and the raw error is in the server log. Matches probe-messages.ts and acp-probe.ts.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-probe.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 round 5: setup dialog wording changes (re-check/edit/argument note); the agents guide does not describe it. No prose change.","inputs":["docs/guides/agents.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 round 5: Engines page now re-reads readiness after a failed Retry check; setup dialog wording for re-check/edit and the arguments note match the guide's steps. No prose change.","inputs":["docs/guides/connections.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 round 5: unaffected. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). The new field note uses the --warning-text token. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"L1 round 5: AgentConnectionView change is a refetch after a failed check; walkthrough steps unaffected. No prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"L1 round 5: AgentConnectionView refetch after failed check; smoke semantics unchanged. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"L1 round 5: no route added; the reconnect and duplicate-id error strings changed wording only; the reference documents neither. No prose change.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). Not enumerated in the reference, matching the other ACP helpers. No prose change.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"L1 round 5: still-starting sentence remains accurate; New chat now shows it ahead of the built-in Station agent's needs-attention state. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 round 5: unaffected. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"L1 round 5: SDK index gained joinACPArgs and splitACPArgs is now quote-aware (additive behaviour for the setup form's argument line). No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"L1 round 5: viewed this lane: Models tab only; the Engines-page refetch is not depicted. Capture remains accurate.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"L1 round 5: contact sheet viewed this lane: no failed Retry check depicted. Capture remains accurate.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"L1 round 5: viewed: agent selected; automatic preparation states not depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"L1 round 5: viewed: agent selected; automatic preparation states not depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}
