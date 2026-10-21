@@ -1,0 +1,7 @@
+{
+  "revision": "aa8ad62db527e2ea06935c19beeb0226407405f5",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reconciled 71d independent repair review, 4bea responsive delta review and isolated real-component/mock-API browser receipt. Preserved full backend/native/provider/group execution and publication limits; execution integration remains open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
