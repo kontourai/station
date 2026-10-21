@@ -149,6 +149,34 @@ and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-ru
 composition; this reference does not claim hosted, anonymous-public or invited
 participation acceptance.
 
+## Task memory
+
+Task memory (#4003) is a Task's summary and keyed records; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#task-memory). A
+person reads and writes it with the Task room's request authority. These are
+personal-runtime routes; hosted tenancy composes no Task room.
+
+- `GET /api/tasks/:taskId/room/memory` returns `station.task-memory/v1`: the
+  current `summary` (absent until the first write), every key's newest record
+  version in any state, and the limits.
+- `GET /api/tasks/:taskId/room/memory/summary/revisions?limit=1..100` returns
+  the newest summary revisions and the total.
+- `PUT /api/tasks/:taskId/room/memory/summary` takes `{text, baseRevision}`.
+  A stale `baseRevision` is `409` with `code: "task_summary_stale_base"` and
+  the `current` revision; over 4,000 characters is `400`
+  (`task_summary_too_long`).
+- `POST /api/tasks/:taskId/room/memory/records` takes `{kind, key, action?,
+  text?, importance?, reason?}`. An invalid key is `400`
+  (`task_record_key_invalid`); a live-record cap, a missing record or a state
+  that does not allow the action is `409`.
+
+Agents write through Station Control: `task_summary_update` and
+`task_record` (REST sides `POST /api/orchestration/station-control/task-summary`
+and `…/task-record`, internal-only, keyed on the verified caller's own bound
+Task). `GET /api/orchestration/station-control/task-brief` takes an optional
+`include=all_records|summary_history`. `GET /api/tasks` adds
+`openQuestionCount` to a Task with open questions.
+
 ### Keep a declared output
 
 `POST /api/tasks/:taskId/declared-outputs/:sessionId/:eventId/keep` accepts

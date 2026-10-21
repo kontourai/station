@@ -9,8 +9,9 @@ glossary take over.
 ## Thesis
 
 A Station Task is a durable unit of work that several Sessions work on in
-parallel or one after another. They share one memory: what has been decided,
-what is done, what is in progress, and what is still open. A tracker item
+parallel or one after another. They share one memory: what is true now, what
+has been decided, what is still open for a person, and what has already been
+tried and failed. A tracker item
 (a GitHub issue first) is what the team has committed to and how they rank
 it, and it is shared with people who never open Station.
 
@@ -19,7 +20,7 @@ The two systems divide the work as follows:
 | Concern | Owner |
 | --- | --- |
 | What to do, priority, labels, open/closed | The tracker |
-| How the work is going: decisions, progress, questions, Sessions, branch | The Station Task |
+| How the work is going: summary, decisions, questions, dead ends, Sessions, branch | The Station Task |
 | A closed issue | The merged PR's `Closes #N` |
 | A human-readable progress note on the issue | An Agent, at milestones, following the `tracker-hygiene` skill |
 
@@ -47,44 +48,116 @@ for its brief with `get_task_brief`. Nothing polls.
 
 ## Task memory
 
-The Task document (the existing shared Task-room markdown document) is the
-memory. It gains four fixed sections, in this order:
+What a Task knows comes in four layers. Only the third is new here.
 
-```markdown
-## Decisions
-## Done
-## In progress
-## Open questions
-```
+| Layer | What it is | Who writes it |
+| --- | --- | --- |
+| 1. Durability | Monument: Sessions and the Station process survive restarts | Station |
+| 2. Facts | The event store's records: `get_session_digest` and `list_project_activity` ([#3428](https://github.com/kontourai/station/issues/3428)), kept outputs, the observed work item | Station derives them; no agent writes them |
+| 3. Judgment | **Task memory**: what matters, decided by agents and editable by people | Agents and people |
+| 4. Learning | Promotion of durable lessons into project knowledge | A later lane |
 
-Content before the first fixed heading is the brief (seeded from the issue
-or the shaping proposal). People can edit any part of the document. Agents
-append entries through the `task_note` Station Control tool. Each entry
-records the Session that wrote it and the time. `task_note` never rewrites or
-deletes existing text. An "In progress" entry is keyed by Session, so a
-Session replaces its own in-progress line.
+Task memory has two parts. Both are stored in the orchestration database,
+per Task incarnation (a Task re-created under the same id starts empty), in
+two append-only tables (migration 017). Every revision and every version is
+kept.
 
-Agents cannot change a Task's status. Status changes remain person-only, and
-close-on-merge is unchanged.
+**The Task summary** is one bounded text that agents rewrite and never
+append to. It is a runbook: what is true now, what works, what is next, and
+what is risky.
+
+- A write over 4,000 characters is refused with a message telling the
+  writer to prune it. Nothing is cut.
+- Writes use optimistic concurrency: `task_summary_update {text,
+  baseRevision}`. When `baseRevision` is no longer the current revision,
+  nothing is written and the refusal carries the current text and revision
+  so the writer can merge and retry. The same text again writes no new
+  revision.
+- Each revision records its author (a Session or a person) and time. People
+  read and edit it from the Task workspace under the same rules, including
+  the conflict path.
+
+**Task records** are keyed decisions, questions and dead ends:
+`task_record {kind, key, text?, importance?, action?, reason?}`.
+
+- `key` is a short lowercase slug (letters, digits, single hyphens, at most
+  64 characters); anything else is refused. Text is at most 1,000
+  characters.
+- `set` (the default) creates a record, or supersedes the live record with
+  the same kind and key; the earlier version stays in the history.
+- A `question` is open until `answer`, which stores the answer beside the
+  question. `retire` withdraws any record with a required reason and keeps it
+  in the history. `set` on an answered or retired key brings it back.
+- Live records are capped per kind: 40 active decisions, 20 open questions
+  and 30 active dead ends. A new key past the cap is refused with "supersede
+  or retire one". Superseding a live key takes no new slot.
+- `importance` is `standing` (shown in every Task brief) or `on_topic`
+  (counted in the brief, listed on request). Every kind defaults to
+  `standing`. A decision constrains all later work. An open question needs a
+  person whatever its topic. A dead end exists so the next Session does not
+  repeat it, which only works if the brief shows it. A writer marks a record
+  `on_topic` when it matters only to one narrow part of the Task.
+- An open question on a Task that is not done or canceled puts the Task in
+  **Needs you**. The Tasks list carries `openQuestionCount`, and the existing
+  Task fold on Home and in the inbox reads it: the Task's word becomes
+  "Task · Needs answer" in the Needs you lane until the question is answered.
+
+Agents cannot change a Task's status, and memory writes never touch it or the
+Task document. Status changes remain person-only, and close-on-merge is
+unchanged.
+
+### Why not the Task document
+
+An earlier draft kept memory as four fixed headings in the shared Task-room
+document, with agents appending entries. Two findings replaced it.
+
+- **Capacity.** The room document's stored state grows with every character
+  ever typed, not with its current length
+  ([#4007](https://github.com/kontourai/station/issues/4007)). An agent
+  appending at every step would exhaust it, and nothing in an append-only
+  document ever gets shorter. A rewritten summary with its own cap stays the
+  same size however long the Task runs.
+- **Derivation over self-report.** Most of what an "In progress" or "Done"
+  entry said is already recorded as fact: which Sessions ran, what each turn
+  asked, its outcome, the files it changed and the pull requests it declared.
+  Asking agents to restate it costs tokens and invites drift between the
+  record and the claim. The brief derives that layer from the event store
+  instead, and Task memory keeps only what no record holds: judgment.
+
+The Task document stays the person-authored brief that Start Task seeds from
+the issue. Nothing parses memory out of it.
 
 ## Session brief
 
 When a Session is dispatched for a Task, it receives a Task brief before its
-first turn. The brief is a snapshot pinned to a digest and built from:
+first turn. The brief is a snapshot pinned to a digest, composed in this
+order:
 
-1. the Task title, its id, and the document revision;
-2. the linked work item header, re-read at dispatch: state, labels, URL, and
-   comments newer than the last revision the Task recorded;
-3. the other Sessions in the Task and their status words;
-4. the four memory sections, cut to fit the limit (newest first; the brief
-   says how much it left out);
-5. three fixed rules, stated inline because Codex has no skill channel:
-   record decisions, completed work and questions with `task_note`; post to
-   the tracker only at a milestone; never close the tracker item.
+1. the Task (title, id, document revision, goal), its linked work item
+   re-read at dispatch, and the Task document as written;
+2. the Task summary, in full, with its revision and author;
+3. standing decisions;
+4. open questions, each with who asked;
+5. recent dead ends;
+6. a compact line per Session of the Task, from the same facts
+   `get_session_digest` and `list_project_activity` report: the status word,
+   the turn count, and the newest turn's request, outcome, changed-file count
+   and declared pull request;
+7. what was left out, each line naming the call that fetches it;
+
+followed by the rules and, for a Task with a tracker item, the tracker
+guidance. `on_topic` records, answered questions and retired records appear
+only as counts.
 
 The brief reuses the digest-pinned `TaskRoomContextSnapshot` approach from
 [task-room agent requests](task-room-agent-requests.md). A Session that runs
-for a long time re-reads the current memory with `get_task_brief`.
+for a long time re-reads it with `get_task_brief`. That tool also takes
+`include: "all_records"` (every record, both tiers, answered and retired ones
+with their answers and reasons) or `include: "summary_history"` (the newest
+ten summary revisions). These are options of the one tool rather than a
+second tool: the authority is the same (the calling Session's own bound
+Task), the omission notices name one tool, and the Station Control registry
+gains no read entry.
 
 Implementation notes (brief lane), where the build differs from the list
 above:
@@ -100,24 +173,25 @@ above:
   re-apply a stale one. The person's typed text stays the transcript text.
   Station's engine relays ambient context to `/chat`, whose ambient bound
   rises from 4000 to 4000 + 1 + the brief bound for this reason.
-- **Two more parts.** After the title, id and revision the brief adds the
-  Task description as its goal (at most 1000 characters). It also adds the
-  document's preamble, the seeded brief before the first fixed heading (at
-  most 2500). Without them a dispatched Session would not know what the Task
-  is for.
-- **The bound** is the existing 16000-character Task-room bound, applied to
-  the whole rendered brief. Each fixed part has its own cap. The tracker
-  guidance is reserved first. The memory sections fill what is left: newest
-  entries first, taken in turn from each section, with a count of the entries
-  left out.
+- **The bound** is the existing 16,000-character Task-room bound, applied to
+  the whole rendered brief. Each fixed part has its own cap: goal 1,000, the
+  Task document 2,500 (800 once a summary exists, since the summary then
+  carries what is true now), five tracker comments of 400, and a 400-character
+  labels line. The summary is shown whole; its cap is a refusal at write
+  time. With every fixed part at its worst, about 1,800 characters remain for
+  records and Sessions, so the newest record always fits. Records fill that
+  space newest first, taken in turn from each kind, then Session lines
+  (at most eight, newest activity first). Everything left out is counted.
 - **Tracker guidance** goes in the brief whenever the Task has a
   `workItemRef`. It is the `tracker-hygiene` text, embedded as a server
   constant, because Station cannot ship a built-in skill and Codex has no
   skill channel.
-- **Rules follow the link.** Every brief carries the `task_note` rule. The
-  two tracker rules (post only at a milestone; never close the item) are
-  added only when the Task has a `workItemRef`. A Station-only Task's brief
-  has no tracker wording at all.
+- **Rules follow the link.** Every brief carries the two memory rules:
+  update the summary with `task_summary_update` at milestones and before
+  stopping, and record decisions, questions and dead ends with
+  `task_record`. The two tracker rules (post only at a milestone; never close
+  the item) are added only when the Task has a `workItemRef`. A Station-only
+  Task's brief has no tracker wording at all.
 - **"Comments newer than the last revision the Task recorded".** A Task
   records no tracker revision. It records `TaskRecord.workItemObservedAt`,
   the time of the last tracker read that counted. Start Task sets it. A
@@ -135,6 +209,29 @@ above:
   10 s bound and the same one-line failure. It asks for comments since the
   Task's mark but never moves it: the mark records what dispatched Sessions
   were shown, not what one Session caught up on.
+
+### Write authority
+
+`task_summary_update` and `task_record` take no Task argument. The routes
+read the Session from the verified Station Control caller and the Task from
+that Session's immutable room execution binding. The Session must be the
+Task's lead or a recorded independent request of this Task incarnation, and
+the write re-checks that inside its `BEGIN IMMEDIATE` transaction. A person
+writes through the Task room's request authority, the same as document edits.
+
+### Server read API for later lanes
+
+The promotion and lead-wake lanes read Task memory through the store
+(`EventStore.taskMemoryStore()`, in
+[`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts)),
+keyed by Task incarnation `{taskId, taskCreatedAt}`:
+
+- `listStandingRecords(incarnation)` returns `{decisions, deadEnds}`: the
+  active, standing ones.
+- `listOpenQuestions(incarnation)` returns each open question with
+  `askedBySessionId` when a Session asked it.
+- `countOpenQuestions(incarnations)` returns a per-Task count, as the Tasks
+  list uses it.
 
 ## Starting a Task from a tracker item
 
