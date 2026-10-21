@@ -6,7 +6,7 @@
 
 - d6f77de: A message one agent sends to another Session (`send_to_session`) now carries
   who sent it, and never reads as the person's (#3419).
-  
+
   `ClientOrigin` gains an optional `sender` (`ClientOriginSender`, kind
   `agent-session`: the sending Session's id, title, Agent and engine, and the
   call's `requestKey`), stamped by the server beside the unchanged `actor`, with
@@ -19,7 +19,7 @@
   third speaker, with a header, icon and accent derived from the sender, linking
   to the sending Session, and the sender's transcript shows the call as "Sent to
   <Session>" with its outcome.
-  
+
   Engine-opened replies retain their recorded provider cause after settlement
   and reload. Phone widths show a compact cause row with full details behind a
   tap. Delivery links focus the exact request-key record, with bounded lookup
@@ -32,11 +32,11 @@
 - 32f4bb5: Add optional staged client-bundle presence to PluginPreview. It reports the
   previewed bytes independently of the manifest and does not imply runtime readiness.
 - 90be0c7: Session inventory: a current-answer projection now parses whatever the Surface answer state is (unavailable, stale, corrupt, restricted, unsupported-version, not-captured or observed-empty). It still has to be bound to the scope's exact Session and turn. When the answer is available, its reference must still equal the bound answer exactly. When it is not available, the projection may not carry rows bound to an answer (`surface-answer-contribution`). A partial Basis outage therefore keeps the inputs, execution and other groups resolved for the turn instead of discarding the whole inventory.
-  
+
   Current-answer rows may now be turn lineage without `contributed-to`. A row whose relations are only `observed-during` or `produced-by` (both still limited by the per-kind relation table) is admitted when it carries the scope's exact turn: `turnId` for tool results, decisions, delegations and work items, and `output.turnId` for outputs. `contributed-to` remains the only edge meaning support. Kinds with no turn binding, including the Session resource summary, stay out of current-answer lineage.
-  
+
   `station-request-decision` and `station-delegation` rows gain an optional `turnId`. It is required for a lineage-only current-answer row and optional elsewhere. Readers built against an earlier contracts version reject rows that carry it, so writers should emit it only to readers on this version or later.
-  
+
   A current-answer row that carries a turn binding must name the scope turn whatever its relations. Before this change, a contributing output (`output.turnId`) from another turn was accepted. Kinds with no turn field are unchanged.
 - 7ed702d: Add opt-in allowance preferences to account recovery and qualified quota deadlines, while retaining enrollment order when expiry evidence is unavailable.
 - 0742389: Add the optional, occurrence-bound related-pane capability for plugin panes.
@@ -49,20 +49,20 @@
   (`destination` or `tool`), and `LayoutCatalogContribution` an optional,
   server-issued `lifecycleGeneration` that a reinstall or an enablement change
   replaces (identity only; older readers drop it).
-  
+
   Register the dock-only Activity Review descriptor and renderer through the
   shared pane catalog. Reviews remain captured, nonce-keyed occurrences; the
   catalog does not create blank reviews or permit Project placement.
 - 9285574: Send only completed previous-day Lite aggregates, show first-start notices for CLI and unattended services, and classify telemetry write guards as POST routes so startup coverage succeeds. Unknown channel, distribution and layout-customization facts remain explicit unknowns; version fields use the running build.
-  
+
   Scope monthly Full IDs to their publisher. Tier-lowering requests can include one fixed-enum reason before applying the lower choice, including Off; standalone feedback requires a recorded lowering within ten minutes. Inline and standalone reasons share a limit of one per publisher per UTC day. DNT suppresses both paths. Coalesce dropped outbox observations and retain independent age and byte bounds.
-  
+
   Upgrading immediately replaces the permanent `sha256(uuid)` Full `distinct_id` with a per-publisher monthly ID, breaking existing receiver installation continuity without a migration link. Round Full occurrence and admission timestamps down to the minute. Full omits unknown channels and maps beta to preview; Lite retains unknown. Senders validate daily versions as SemVer; receivers retain their configured release lists.
 - 463e2e1: Add telemetry producer tokens for external monitoring producers. The CLI gains `station telemetry producers create|list|revoke` and a `--producer=<name>` filter on `station insights get` and `station insights events`. The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and its Insights response carries `producerActivity` and `applied.producer`, which the `UsageInsights` contract now declares.
 - 1b2d885: Export `TURN_COMPLETION_NOTIFICATION_SOURCE`, the `source` (and envelope `source.subsystem`) of the notification records Station writes when an agent's turn finishes, stops or fails, so clients can tell those records from other writers'.
-  
+
   Export `OPENED_NOTIFICATION_QUERY_PARAM`, the query parameter a Web Push or desktop alert's open link carries to name the record it opens, so the client that loads the link can mark that record read.
-  
+
   `isRelativeStationPath` also refuses a path whose dot segments (plain or percent-encoded, any case) normalize to `//host` or off the Station origin, such as `/..//host` or `/%2e%2e//host`. It also refuses a fragment and a link that carries `openedNotification` (only the server's OS-alert links name a record to mark read).
 
 ### Patch Changes
@@ -83,24 +83,24 @@
   so instead of offering a mode. `PROVIDER_MODEL_OPTION_SUPPORT` is unchanged:
   `approvalMode` stays unsupported for the `acp` provider as a whole, and the
   server admits it only for an ACP connection whose control is `station`.
-  
+
   `provider` adds `ACP_APPROVAL_TAKEOVER_FAILED_CODE`, the `runtime.warning`
   code an ACP adapter publishes when it could not move the engine onto the
   launch rules a picked approval mode needs and the session kept what it ran
   before.
-  
+
   `provider` also adds `ACP_APPROVAL_GOVERNANCE_REFUSED_CODE`, the code on a
   start or send refused because Station cannot apply its approval mode to the
   ACP engine (its resolved rules override Station's, or the chat runs an agent
   Station does not govern). It is not retryable until that changes.
 - b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
-  
+
   Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
 - 8d1d328: Expose the provider-failure contract subpath and optional runtime-error classification for legacy readers. Built-in server writers require engine-neutral kind, computed retryability and effect phase. Preserve existing diagnostic codes and add kind, retryable and failurePhase to SDK HTTP errors.
-  
+
   Distinguish confirmed pre-effect refusal from uncertain invocation and preserve structured insufficient-quota classification across the model-provider SSE relay.
 - f94583e: Remove exports that had no consumer. Import the replacements where one exists.
-  
+
   - Shared: remove the `./guidance-assets`, `./agent-validation` and
     `./mcp-elicitation-form` subpaths and the root re-exports of
     `skillToGuidanceAsset`, `requiresAgentPrompt` and
