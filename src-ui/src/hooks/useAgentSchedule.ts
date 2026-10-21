@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 /**
@@ -84,13 +84,10 @@ export function useAgentSchedule(
   });
   const data = query.data ?? EMPTY;
 
-  // Re-read when the key changes, not when it is first seen: the mount's
-  // own read already covers that, and a refetch then would cancel it.
-  const seenKey = useRef(refreshKey);
+  // Re-read when the key changes. Never cancelling a read in flight: on
+  // mount this joins the query's own first read instead of restarting it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the trigger.
   useEffect(() => {
-    if (refreshKey === seenKey.current) return;
-    seenKey.current = refreshKey;
     if (enabled && refreshKey !== undefined)
       void query.refetch({ cancelRefetch: false });
   }, [refreshKey]);
