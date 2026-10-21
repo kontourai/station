@@ -163,7 +163,8 @@ Session updates, command/turn/delivery receipts and checkpoints, adoption and
 recovery/credential ledgers, native/voice run transitions, attachment quota and
 reference writes, operational-event journals, conversation history and lineage,
 steer inputs, native session bindings, declared outputs, Session work-item
-associations, and source-seal/provider-admission transactions. These writers can still collide with room workers and block the
+associations, Task memory summary revisions and record versions (#4003,
+`EventStore.taskMemoryStore()`, one `BEGIN IMMEDIATE` transaction per write), and source-seal/provider-admission transactions. These writers can still collide with room workers and block the
 event loop; [#3701](https://github.com/kontourai/station/issues/3701) remains open.
 This change does not establish universal deadlock freedom or worker recovery
 after another writer blocks the event loop.

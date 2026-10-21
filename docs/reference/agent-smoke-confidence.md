@@ -319,7 +319,7 @@ Re-audit the handlers before widening this list.
 
 Integration activation uses configuration reload/rollback
 ([tools.ts](../../src-server/routes/agents/tools.ts):268 and
-[station-runtime.ts](../../src-server/runtime/bootstrap/station-runtime.ts):1668),
+[station-runtime.ts](../../src-server/runtime/bootstrap/station-runtime.ts):1678),
 not foreground-message or turn dispatch. MCP probing can connect a tool-server
 process. The setup-channel test stubs those setup side effects and validates
 POST bodies against the real route schemas; all model/control requests still
@@ -522,8 +522,8 @@ outputs are **NOT_VERIFIED** by the deterministic fixture suite.
 
 ### Delivery API route audit
 
-The mounted route owners are `runtime-routes.ts:3135` (`/agents`), `:3167`
-(`/api/skills`) and `:3828` (`/integrations`). Setup requires an operator
+The mounted route owners are `runtime-routes.ts:3219` (`/agents`), `:3251`
+(`/api/skills`) and `:3912` (`/integrations`). Setup requires an operator
 credential with authority to author command-backed integrations; the integration
 management middleware and command-choice gate are not bypassed by a probe.
 `validate()` parses JSON and applies the named schema
@@ -533,11 +533,11 @@ no body schema. The probe sends no PUT requests.
 
 | Probe request | Real route owner | Validation / submitted body |
 | --- | --- | --- |
-| `POST /integrations` | `src-server/routes/agents/tools.ts:422` | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts:212`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
+| `POST /integrations` | `src-server/routes/agents/tools.ts:422` | `integrationSchema`, `src-server/routes/schemas/schema-definitions/runtime.ts:222`; `{ id, kind: 'mcp', transport: 'stdio', command, args }`, or the documented HTTP `endpoint` variant. The route saves it disabled. |
 | `POST /integrations/:id/reconnect` | `src-server/routes/agents/tools.ts:894` | No body schema; `{}` is ignored. `probeIntegration` performs the real handshake and persists inventory. |
 | `GET /integrations` | `src-server/routes/agents/tools.ts:342` | No body; discovered original tool names are projected by the real route. |
-| `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:291`; `{ disabledTools: ['blocked'] }`. |
-| `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:290`; `{ enabled: true }`. |
+| `POST /integrations/:id/tools/apply` | `src-server/routes/agents/tools.ts:999` | `integrationToolsApplySchema`, `runtime.ts:301`; `{ disabledTools: ['blocked'] }`. |
+| `POST /integrations/:id/enabled` | `src-server/routes/agents/tools.ts:908` | `integrationEnabledSchema`, `runtime.ts:300`; `{ enabled: true }`. |
 | `POST /api/skills/local` | `src-server/routes/agents/skills.ts:145` | `localSkillCreateSchema`, `src-server/routes/schemas/schema-definitions/content.ts:76`; string `name`/`body`, description; omitted `global` uses the local package scope. |
 | `GET /api/skills/:name` | `src-server/routes/agents/skills.ts:116` | Required name parameter; `getSkill` resolves the package path. |
 | `POST /agents` | `src-server/routes/agents/agents.ts:362` | `agentCreateSchema`, `content.ts:437`, then `validator.validateAgentSpec` (`src-server/domain/validator.ts:92`, managed prompt guard `:132`); name/slug/model/prompt, execution binding and Auto mode, selected skill and MCP servers. Additional Agent fields pass through to the real service/loader; the route checks selected skill names. |

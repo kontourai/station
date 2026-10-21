@@ -741,6 +741,10 @@ unavailable.
 
 An existing chat can become a Task through **Turn into Task** in its More menu.
 The **Add to Task** picker also offers **New Task from this…** for an answer or input.
+
+On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
+issue's description and latest comments into a new Task and links back to the
+issue; if the issue already has an open Task, Station opens that Task instead.
 **Turn into Task** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or remove the chip. No Task is created until acceptance.
 
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.

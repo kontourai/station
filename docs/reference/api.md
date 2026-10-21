@@ -125,29 +125,24 @@ assistant turn in the same Project (or a conversation without a Project), parses
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
-## Personal Task room agent requests
+## Start a Task from a tracker item
 
-`GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
-request projection. A client must verify `station.task-room-work/v1` before
-sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
-That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
-the normal prompt and execution target remain outside it. Supporting servers
-also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
-Task/shared-document snapshot in the read response. A create can supply only its
-`context: { version, digest }` reference. The server captures and saves that exact
-brief for a new operation; an existing operation reuses its saved snapshot.
-A stale/unavailable context is refused before invocation, and changed context
-under an existing operation conflicts. This initial path
-admits current-Station execution in the exact Task Project, with the existing
-read/operate, readiness and provider-effect authority gates. A request receipt
-does not establish Task completion or result quality.
+`POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
+workspaceBinding?}`, where `workItemRef` is a `github:owner/repo#N` issue the
+Project's board lists. When the issue already has a Task that is not done or
+canceled, the response is `200` with that Task and `existing: true`.
+Otherwise Station re-reads the issue through the host's `gh` login, creates a
+Task seeded with the issue body and its latest comments, and answers `201`
+with `briefSaved` saying whether that copy reached the Task document. A ref
+that is not a github.com issue is `422`, a ref the board does not list is
+`404`, and a failed read is `404` (not found), `422` (unsupported) or `503`
+(no `gh` login, or unavailable).
 
-Ordinary `POST /api/tasks/:taskId/room/messages` can include
-`expectedTaskCreatedAt`; the room's history grant rechecks that incarnation
-before commit. See the [ownership and failure contract](../design/task-room-agent-requests.md)
-and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
-composition; this reference does not claim hosted, anonymous-public or invited
-participation acceptance.
+`GET /api/tasks/:taskId/work-item` re-reads the linked item for the Task
+header, returning comments created after the Task's `workItemObservedAt`.
+Both routes are personal-runtime only (hosted requests get `404`), and no
+Station Control tool names them. See
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
 ## Task memory
 
@@ -176,6 +171,30 @@ and `…/task-record`, internal-only, keyed on the verified caller's own bound
 Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
 `openQuestionCount` to a Task with open questions.
+
+## Personal Task room agent requests
+
+`GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
+request projection. A client must verify `station.task-room-work/v1` before
+sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
+That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
+the normal prompt and execution target remain outside it. Supporting servers
+also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
+Task/shared-document snapshot in the read response. A create can supply only its
+`context: { version, digest }` reference. The server captures and saves that exact
+brief for a new operation; an existing operation reuses its saved snapshot.
+A stale/unavailable context is refused before invocation, and changed context
+under an existing operation conflicts. This initial path
+admits current-Station execution in the exact Task Project, with the existing
+read/operate, readiness and provider-effect authority gates. A request receipt
+does not establish Task completion or result quality.
+
+Ordinary `POST /api/tasks/:taskId/room/messages` can include
+`expectedTaskCreatedAt`; the room's history grant rechecks that incarnation
+before commit. See the [ownership and failure contract](../design/task-room-agent-requests.md)
+and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
+composition; this reference does not claim hosted, anonymous-public or invited
+participation acceptance.
 
 ### Keep a declared output
 
