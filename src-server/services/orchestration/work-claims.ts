@@ -22,6 +22,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import type { WorkClaimScope } from '@kontourai/station-contracts/work-claims';
 import type { OrchestrationService } from './orchestration-service.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
@@ -54,10 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_work_claims_conversation
   ON orchestration_work_claims (conversation_id);
 `;
 
-/** The Project a claim belongs to, or the global space. */
-export type WorkClaimScope =
-  | { readonly kind: 'project'; readonly id: string }
-  | { readonly kind: 'global' };
+export type { WorkClaimScope };
 
 /** Who claims: the verified caller's own Session, and its conversation. */
 export interface WorkClaimant {

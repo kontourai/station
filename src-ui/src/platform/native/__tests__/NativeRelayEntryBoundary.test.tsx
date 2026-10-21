@@ -151,6 +151,9 @@ vi.mock('../../../contexts/ToastContext', () => ({
 vi.mock('../../../contexts/VoiceProviderContext', () => ({
   VoiceProviderContext: Through,
 }));
+vi.mock('../../../contexts/WorkClaimsContext', () => ({
+  WorkClaimsProvider: Through,
+}));
 vi.mock('../../../core/PermissionManager', () => ({
   PermissionManager: Through,
 }));

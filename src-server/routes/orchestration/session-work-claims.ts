@@ -25,6 +25,7 @@ import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import type { WorkClaimView } from '@kontourai/station-contracts/work-claims';
 import { type Context, Hono } from 'hono';
 import { getTenantRequestContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
@@ -81,7 +82,7 @@ export interface SessionWorkClaimRoutesDeps {
 }
 
 /** A claim as a tool or the UI reads it. */
-export function workClaimView(claim: WorkClaimRecord) {
+export function workClaimView(claim: WorkClaimRecord): WorkClaimView {
   return {
     claimId: claim.claimId,
     sessionId: claim.sessionId,
