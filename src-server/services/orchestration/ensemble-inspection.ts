@@ -269,7 +269,7 @@ export class EnsembleInspectionService {
             state: 'configured',
             owner: {
               label: 'Project settings',
-              href: `/projects/${encodeURIComponent(binding.projectSlug)}/settings`,
+              href: `/projects/${encodeURIComponent(binding.projectSlug)}/edit`,
               receipt: `resolution:${member.id}`,
             },
           };

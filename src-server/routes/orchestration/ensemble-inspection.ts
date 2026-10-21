@@ -58,7 +58,16 @@ export function createEnsembleInspectionRoutes(
           { success: false, code: 'ensemble_inspection_invalid' },
           body.status === 'too-large' ? 413 : 400,
         );
-      const parsed = schema.safeParse(JSON.parse(body.body));
+      let value: unknown;
+      try {
+        value = JSON.parse(body.body);
+      } catch {
+        return c.json(
+          { success: false, code: 'ensemble_inspection_invalid' },
+          400,
+        );
+      }
+      const parsed = schema.safeParse(value);
       if (!parsed.success)
         return c.json(
           { success: false, code: 'ensemble_inspection_invalid' },

@@ -257,22 +257,24 @@ test.each([403, 409])(
   'a %s response shows denied/stale guidance and no earlier facts',
   async (status) => {
     navigationStore.navigate('/agents?tab=ensembles');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              success: false,
-              code:
-                status === 403
-                  ? 'ensemble_inspection_authority_required'
-                  : 'ensemble_inspection_stale',
-            }),
-            { status },
-          ),
-      ),
-    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, data: result })),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: false,
+            code:
+              status === 403
+                ? 'ensemble_inspection_authority_required'
+                : 'ensemble_inspection_stale',
+          }),
+          { status },
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
     mount();
     fireEvent.change(
       await screen.findByLabelText('Preset path on This Station'),
@@ -281,10 +283,21 @@ test.each([403, 409])(
     fireEvent.click(
       screen.getByRole('button', { name: 'Inspect configuration' }),
     );
+    await screen.findByRole('table', {
+      name: 'Ensemble configuration and provenance',
+    });
+    expect(screen.getByRole('heading', { name: 'Review team' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Agent settings' })).toBeDefined();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect configuration' }),
+    );
     expect((await screen.findByRole('alert')).textContent).toContain(
       status === 403 ? 'Inspection denied' : 'Inspection is stale',
     );
     expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Review team' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Agent settings' })).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(owner.editorReads).toBe(0);
   },
 );

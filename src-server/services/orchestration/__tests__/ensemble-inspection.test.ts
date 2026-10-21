@@ -213,7 +213,7 @@ async function fixture() {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: typeof body === 'string' ? body : JSON.stringify(body),
     });
   const input = {
     path,
@@ -326,6 +326,40 @@ test('unbound members retain all categories as missing or unavailable, not empty
     expect(body.data.facts).toContainEqual(
       expect.objectContaining({ category, state: 'unavailable' }),
     );
+  expect(f.readIntegration).not.toHaveBeenCalled();
+});
+
+test('workspace and isolation owner links resolve to the selected Project editor', async () => {
+  // Keep the browser's JSX type graph out of the server type lane.
+  const {
+    resolveViewFromPath,
+  }: { resolveViewFromPath: (path: string) => unknown } = await import(
+    new URL('../../../../src-ui/src/app-shell/routing.ts', import.meta.url).href
+  );
+  const f = await fixture();
+  const response = await f.request(f.input);
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { data: EnsembleInspection };
+  for (const id of ['workspace:lead', 'isolation:lead']) {
+    const href = body.data.facts.find((fact) => fact.id === id)?.owner.href;
+    expect(href).toBeDefined();
+    expect(resolveViewFromPath(href ?? '')).toEqual({
+      type: 'project-edit',
+      slug: f.input.bindings.lead.projectSlug,
+    });
+  }
+});
+
+test('malformed JSON is an invalid request before preset reads or owner enumeration', async () => {
+  const f = await fixture();
+  const load = vi.spyOn(presets, 'loadEnsemblePreset');
+  const response = await f.request('{');
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    success: false,
+    code: 'ensemble_inspection_invalid',
+  });
+  expect(load).not.toHaveBeenCalled();
   expect(f.readIntegration).not.toHaveBeenCalled();
 });
 

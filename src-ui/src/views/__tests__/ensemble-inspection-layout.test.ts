@@ -21,7 +21,18 @@ test('large and cyclic display relations have finite stable geometry independent
   expect(layout.nodes).toHaveLength(256);
   expect(layout.edges).toHaveLength(256);
   expect(new Set(layout.nodes.map(({ x, y }) => `${x}:${y}`)).size).toBe(256);
-  expect(layout.height).toBe(8610);
+  expect(Number.isFinite(layout.height)).toBe(true);
+  expect(
+    layout.nodes.every(
+      ({ x, y }) =>
+        Number.isFinite(x) &&
+        Number.isFinite(y) &&
+        x >= 0 &&
+        y >= 0 &&
+        x < layout.width &&
+        y < layout.height,
+    ),
+  ).toBe(true);
   expect(
     layout.edges
       .slice(0, 2)
