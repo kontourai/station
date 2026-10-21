@@ -521,7 +521,8 @@ custom Agent: it cannot be renamed, rebound, imported over, or directly deleted.
   background probe that first handshakes a saved, unregistered connection (that
   continuation, or the periodic sweep) registers it through the queue only if the
   saved config still matches the config it probed. Startup probes only registered
-  connections, so that check does not survive a restart. After registration, readiness
+  connections, so after a restart a never-registered connection is checked again
+  only once it is re-added, re-checked, or re-read by a registry reload. After registration, readiness
   never removes the default: availability is derived separately and returned with
   an actionable typed reason.
 - A namespace/owner collision fails before mutation. Station never suffixes, adopts,

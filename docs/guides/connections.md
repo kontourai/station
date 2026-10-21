@@ -713,8 +713,8 @@ the [ACP guide](acp.md) covers protocol details.
    engine that is starting for the first time can take up to a minute; the
    dialog says so and keeps checking. If it has not finished after about 90
    seconds, the dialog stops waiting; Station keeps checking the engine while
-   it runs. Station does not resume that check after a restart, so add the
-   engine again if it was not ready by then.
+   it runs. Station does not check it at startup after a restart; use its
+   **Retry check** (or add it again) if it was not ready by then.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
    the cause, or edit the setup or choose another engine, before closing. The

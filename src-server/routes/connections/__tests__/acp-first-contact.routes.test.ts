@@ -188,10 +188,14 @@ describe('first-contact continuation of a cold engine add', () => {
     expect(await registered(configLoader)).toEqual([]);
 
     cold.resolve({ ok: true });
-    await vi.waitFor(async () => {
-      expect(await registered(configLoader)).toEqual(['muse']);
-      expect(await configLoader.agentExists('muse')).toBe(true);
-    });
+    // Registration is queued file I/O; allow for a loaded host.
+    await vi.waitFor(
+      async () => {
+        expect(await registered(configLoader)).toEqual(['muse']);
+        expect(await configLoader.agentExists('muse')).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
     expect((await json(await app.request('/connections'))).data).toMatchObject([
       { id: 'muse', status: 'available' },
     ]);
@@ -216,10 +220,37 @@ describe('first-contact continuation of a cold engine add', () => {
     });
 
     cold.resolve({ ok: true });
-    await vi.waitFor(async () => {
-      expect(await registered(configLoader)).toEqual(['muse']);
-      expect(await configLoader.agentExists('muse')).toBe(true);
-    });
+    // Registration is queued file I/O; allow for a loaded host.
+    await vi.waitFor(
+      async () => {
+        expect(await registered(configLoader)).toEqual(['muse']);
+        expect(await configLoader.agentExists('muse')).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
+    await acpBridge.shutdown();
+  });
+
+  // The reload exception lasts only while the continuation runs: once it
+  // settles, a reload re-adds the connection like any other.
+  test('a finished continuation no longer shields its probe from a reload', async () => {
+    const { script, initiators, createProbe } = scriptedProbes();
+    const cold = deferred<Run>();
+    script.request.push({ ok: false, deadline: true });
+    script.background.push(cold.promise);
+    const { ctx, configLoader, acpBridge } = await createContext(createProbe);
+    const app = asOperator(createACPRoutes(ctx));
+    await app.request('/registry/muse/install', { method: 'POST' });
+
+    cold.resolve({ ok: false, message: 'still cold' });
+    await vi.waitFor(() =>
+      expect(acpBridge.getStatus().connections[0]).toMatchObject({
+        status: 'unavailable',
+      }),
+    );
+    await acpBridge.startAll((await configLoader.loadACPConfig()).connections);
+
+    expect(initiators).toEqual(['request', 'background', 'request']);
     await acpBridge.shutdown();
   });
 
@@ -298,9 +329,13 @@ describe('first-contact continuation of a cold engine add', () => {
       vi.mocked(Date.now).mockRestore();
     }
 
-    await vi.waitFor(async () => {
-      expect(await registered(configLoader)).toEqual(['muse']);
-      expect(await configLoader.agentExists('muse')).toBe(true);
-    });
+    // Registration is queued file I/O; allow for a loaded host.
+    await vi.waitFor(
+      async () => {
+        expect(await registered(configLoader)).toEqual(['muse']);
+        expect(await configLoader.agentExists('muse')).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
   });
 });
