@@ -59,6 +59,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useRootThemeVersion } from '../../lib/root-theme';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -635,6 +636,9 @@ function MCPToolUISandbox({
 }) {
   const isTranscript = !!transcriptResult;
   const { theme } = useDeviceSettings();
+  // The host styles are resolved token values, so they are re-sent after any
+  // root theme change (palette, accent, branding), not only light/dark.
+  const rootThemeVersion = useRootThemeVersion();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
   const [height, setHeight] = useState(MCP_UI_DEFAULT_HEIGHT);
@@ -761,6 +765,7 @@ function MCPToolUISandbox({
   const frameContentReady = useDistinctOrigin
     ? !!frameSrc && typeof resource.data?.text === 'string'
     : !!srcDoc;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rootThemeVersion is the trigger; mcpUiHostAppearance reads the resolved tokens it versions.
   useEffect(() => {
     const bridge = bridgeRef.current;
     const iframe = iframeRef.current;
@@ -771,7 +776,7 @@ function MCPToolUISandbox({
       availableDisplayModes: [...currentAllowedHostModes()],
       ...mcpUiHostGeometry(iframe),
     });
-  }, [currentAllowedHostModes, theme]);
+  }, [currentAllowedHostModes, theme, rootThemeVersion]);
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !frameContentReady) return;

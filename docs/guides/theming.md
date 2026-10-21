@@ -185,6 +185,28 @@ replaces it once the branding query answers. A device accent still sets
 `--accent-primary` above the theme's action role. The accepted shape and
 thresholds are in [examples/custom-branding](../../examples/custom-branding/README.md).
 
+## Highlighted code, diffs, terminals and frames
+
+Syntax highlighting does not carry its own palette. Chat code blocks, the File
+Preview and the diff viewer share one Shiki theme,
+[station-syntax-theme.ts](../../src-ui/src/highlight/station-syntax-theme.ts):
+github-dark's scope rules with every colour replaced by a Station variable
+(`--syntax-*` for tokens and the block surface, `--diff-*` for the diff surface
+and its added, removed and modified tones). Highlighted output is therefore the
+same in every mode and follows a mode, accent or branding change through the
+cascade without re-highlighting. The `@pierre/diffs` viewer renders in a shadow
+root, which custom properties cross.
+
+Two consumers cannot read the cascade directly: xterm paints a canvas, and MCP
+App and HTML-reply frames receive resolved token values by message. They re-read
+on [`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
+which reports changes to `data-theme`, the `data-color-theme*` attributes,
+`data-app-channel`, `data-brand-focus`, `class` and the non-geometry inline style
+on `<html>`. The terminal's colours are the `--terminal-*` variables, one set
+per mode in [index.css](../../src-ui/src/index.css); the light mode has a light
+terminal. Monitoring's agent and conversation accents use the `--series-*`
+palette.
+
 ## Components and evidence
 
 Shared package primitives are used in surfaces such as Trust, Readiness and

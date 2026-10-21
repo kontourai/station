@@ -68,6 +68,7 @@ afterEach(() => {
   mockRequestAuthority = undefined;
   deviceSettingsStore.set('theme', 'dark');
   document.documentElement.removeAttribute('data-theme');
+  document.documentElement.removeAttribute('data-color-theme');
   document.querySelector('[data-mcp-host-theme-test]')?.remove();
   delete (window as Window & { __STATION_CSP_NONCE__?: string })
     .__STATION_CSP_NONCE__;
@@ -2061,7 +2062,7 @@ describe('MCPToolUIFrame', () => {
     const hostThemeStyles = document.createElement('style');
     hostThemeStyles.setAttribute('data-mcp-host-theme-test', '');
     hostThemeStyles.textContent =
-      ':root{--bg-primary:rgb(8, 16, 24)}:root[data-theme="light"]{--bg-primary:rgb(255, 252, 241)}';
+      ':root{--bg-primary:rgb(8, 16, 24)}:root[data-theme="light"]{--bg-primary:rgb(255, 252, 241)}:root[data-theme="light"][data-color-theme="latte"]{--bg-primary:rgb(239, 241, 245)}';
     document.head.append(hostThemeStyles);
     document.documentElement.style.setProperty(
       '--text-primary',
@@ -2208,6 +2209,28 @@ describe('MCPToolUIFrame', () => {
         expect.objectContaining({
           method: 'ui/notifications/tool-result',
           params: initialResult,
+        }),
+        '*',
+      ),
+    );
+    // A palette change leaves the light/dark setting alone; the frame must
+    // still receive the newly resolved tokens.
+    postMessage.mockClear();
+    act(() => {
+      document.documentElement.setAttribute('data-color-theme', 'latte');
+    });
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'ui/notifications/host-context-changed',
+          // The bridge sends only what changed: the theme name did not.
+          params: expect.objectContaining({
+            styles: expect.objectContaining({
+              variables: expect.objectContaining({
+                '--color-background-primary': 'rgb(239,241,245)',
+              }),
+            }),
+          }),
         }),
         '*',
       ),
