@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  deriveToolName,
   extractString,
   extractTokenFigure,
   isRecord,
@@ -91,6 +92,7 @@ interface CodexChildFacts {
   depth?: number;
   totalTokens?: number;
   lastAgentMessage?: string;
+  latestToolTurnId?: string;
   stopRequested?: boolean;
   /**
    * The child's OWN stream has ended (`turn/completed` or `thread/closed`).
@@ -842,7 +844,22 @@ function handleKnownChildNotification(
         ? extractString(params.turn.id)
         : null;
       if (turnId) {
+        const previousTurn = facts.activeTurnId;
         facts.activeTurnId = turnId;
+        if (previousTurn && previousTurn !== turnId)
+          facts.lastAgentMessage = undefined;
+        if (facts.latestToolTurnId && facts.latestToolTurnId !== turnId) {
+          facts.latestToolTurnId = undefined;
+          const existing = itemFor(context.record, childId);
+          if (existing?.status === 'running' && existing.latestTool) {
+            // An explicit empty value clears through the contract normalizer;
+            // an omitted update would retain the previous observation.
+            emit(context, {
+              kind: 'upsert',
+              item: { ...existing, latestTool: '' },
+            });
+          }
+        }
         syncChildStopControl(context, childId);
       }
       return;
@@ -868,6 +885,19 @@ function handleKnownChildNotification(
     case 'item/completed': {
       if (!isRecord(params.item)) return;
       const item = params.item;
+      const toolTurn = extractString(params.turnId);
+      const latestTool = deriveToolName(item);
+      const existing = itemFor(context.record, childId);
+      if (
+        notification.method === 'item/started' &&
+        latestTool &&
+        existing?.status === 'running' &&
+        toolTurn &&
+        (!facts.activeTurnId || toolTurn === facts.activeTurnId)
+      ) {
+        facts.latestToolTurnId = toolTurn;
+        emit(context, { kind: 'upsert', item: { ...existing, latestTool } });
+      }
       if (
         notification.method === 'item/completed' &&
         item.type === 'agentMessage'

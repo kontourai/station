@@ -1127,3 +1127,62 @@ describe('#2458 fix round 2: shared thread ids, late child streams, byte order',
     expect(child(events, 'B').usage).toBeUndefined();
   });
 });
+
+test('captured child tool activity is attributed without its command inputs or parent tools', () => {
+  const capture = CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED;
+  const toolIndex = capture.findIndex((line) => {
+    const { msg } = JSON.parse(line);
+    return (
+      msg.method === 'item/started' &&
+      msg.params.threadId === CHILD &&
+      msg.params.item.type === 'fileChange'
+    );
+  });
+  expect(toolIndex).toBeGreaterThan(0);
+  const { events } = replayCodexCapture(capture, { limit: toolIndex + 1 });
+  expect(child(events)).toMatchObject({
+    status: 'running',
+    latestTool: 'apply_patch',
+  });
+  expect(JSON.stringify(child(events))).not.toContain(
+    '/workspace/repo/hello.txt',
+  );
+});
+
+test('child tool activity survives same-turn steer but clears for a new turn and excludes late old tools', () => {
+  const start = (id: string): Msg => ({
+    method: 'turn/started',
+    params: { threadId: CHILD, turn: { id } },
+  });
+  const tool = (turnId: string, name: string): Msg => ({
+    method: 'item/started',
+    params: {
+      threadId: CHILD,
+      turnId,
+      item: {
+        type: 'dynamicToolCall',
+        id: name,
+        tool: name,
+        arguments: { secret: 'not projected' },
+      },
+    },
+  });
+  expect(
+    child(
+      replayCodexCapture(synthetic([spawn(), tool('a', 'Read'), start('a')]))
+        .events,
+    ).latestTool,
+  ).toBe('Read');
+  const first = [spawn(), start('a'), tool('a', 'Read'), start('a')];
+  expect(child(replayCodexCapture(synthetic(first)).events).latestTool).toBe(
+    'Read',
+  );
+  const next = [...first, start('b'), tool('a', 'Stale')];
+  expect(
+    child(replayCodexCapture(synthetic(next)).events).latestTool,
+  ).toBeUndefined();
+  expect(
+    child(replayCodexCapture(synthetic([...next, tool('b', 'Write')])).events)
+      .latestTool,
+  ).toBe('Write');
+});
