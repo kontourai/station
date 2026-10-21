@@ -299,7 +299,7 @@ test('plugin command dispatch uses the core parse refusal and clears the exact D
   await screen.findByRole('button', { name: 'Handled' });
   const state = activeChatsStore.getSnapshot()['sdk-core-test'];
   expect(state.input).toBe('');
-  expect(state.ephemeralMessages.at(-1)?.content).toContain(
+  expect(state.ephemeralMessages?.at(-1)?.content).toContain(
     'Could not read /research',
   );
   expect(closeCommands).toHaveBeenCalledOnce();
