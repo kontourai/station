@@ -477,7 +477,12 @@ describe('persisted telemetry configuration during Agent activation', () => {
       const heldActivation = new Promise<void>((resolve) => {
         releaseActivation = resolve;
       });
+      let activationEntered!: () => void;
+      const activationStarted = new Promise<void>((resolve) => {
+        activationEntered = resolve;
+      });
       runtime.reloadAgentsFromDisk = vi.fn(async () => {
+        activationEntered();
         await heldActivation;
         throw new Error('injected unrelated Agent activation failure');
       });
@@ -577,6 +582,8 @@ describe('persisted telemetry configuration during Agent activation', () => {
         expect(acknowledged.counts.acknowledged).toBe(1);
         expect(acknowledged.lastAcknowledged).not.toBeNull();
         await live.stationStarted();
+        // Held requests test configuration withdrawal, not transport expiry.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         flushing = live.flush();
         await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
         expect(fetch.mock.calls[1][1]?.headers).toMatchObject({
@@ -623,12 +630,10 @@ describe('persisted telemetry configuration during Agent activation', () => {
           saveSettled = true;
           return response;
         });
-        // Persistence uses real filesystem I/O before activation can enter.
-        // This observes entry, not a one-second configuration-save deadline.
-        await vi.waitFor(
-          () => expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
-          { timeout: 10_000 },
-        );
+        // Real filesystem persistence precedes this event; the test timeout
+        // bounds entry without advancing the held transport's expiry clock.
+        await activationStarted;
+        expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1);
         const persisted = await loader.loadAppConfig();
         for (const [key, value] of Object.entries(update)) {
           if (key === 'telemetryEnabled') {
@@ -735,6 +740,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
         await Promise.allSettled([saving, flushing, probing]);
         for (const timer of runtime.timers) clearTimeout(timer);
         await runtime.drainConfigurationQueues();
+        vi.useRealTimers();
         await live.shutdown();
       }
     },
