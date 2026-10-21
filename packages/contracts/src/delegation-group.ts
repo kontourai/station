@@ -166,6 +166,7 @@ export type CliSessionGroupView = {
     };
     outcome?: 'completed' | 'failed' | 'canceled';
     terminalEvent?: { eventId: string; turnId: string };
+    dispatchFailure?: { status: number; code: string };
   }[];
 };
 

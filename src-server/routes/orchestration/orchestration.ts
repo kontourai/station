@@ -129,6 +129,7 @@ import {
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
 import {
+  CliSessionGroupDispatchRefusal,
   type CliSessionGroupHost,
   CliSessionGroups,
   CliSessionGroupUnavailable,
@@ -4241,7 +4242,33 @@ export function createOrchestrationRoutes(
     dispatch: async (input, admission) => {
       assertCurrent();
       const response = await dispatchAuthorizedDelegation(c, input, admission);
-      return groupResponseSchema.parse(await response.json()).data;
+      const payload: unknown = await response.json();
+      const result = groupResponseSchema.safeParse(payload);
+      if (!response.ok || !result.success) {
+        const failure = z
+          .object({
+            code: z
+              .string()
+              .max(128)
+              .regex(/^[a-zA-Z0-9_-]+$/)
+              .optional(),
+            error: z.string().optional(),
+          })
+          .safeParse(payload);
+        const code = failure.success
+          ? (failure.data.code ?? 'delegation_refused')
+          : 'delegation_refused';
+        deps.logger.warn?.('CLI group member dispatch refused', {
+          status: response.status,
+          code,
+          reason: failure.success ? failure.data.error : undefined,
+        });
+        throw new CliSessionGroupDispatchRefusal(
+          response.ok ? 503 : response.status,
+          code,
+        );
+      }
+      return result.data.data;
     },
     observe: async (handle) => {
       assertCurrent();

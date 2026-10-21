@@ -1680,14 +1680,19 @@ Responses disclose `authority: "station-session"` and
 `unavailable`. A session turn can contain hidden retries or other provider work;
 its identity is not a physical-attempt count. Existing session permissions and
 confinement still apply. The deadline stops admission and requests interruption;
-it is not proof of physical termination. Unknown cost is not zero.
+it is not proof of physical termination. With no supervisor running after a restart,
+the deadline does not itself issue interruption requests; use explicit cancel.
+Unknown cost is not zero.
 
-An ambiguous start retains its occupied seat and its reserved identifiers across
+A dispatch refusal retains its HTTP status and closed code as `dispatchFailure`,
+without copying provider diagnostics into the group. A refusal response is not
+by itself proof that no effect occurred. An ambiguous start retains its occupied
+seat and its reserved identifiers across
 restart. Re-running supervision never re-sends that seat. Cancellation is durable,
 and synchronous checks also fence the initial adapter start and turn after
 asynchronous setup. Interrupted supervision can re-observe accepted members;
 it does not manufacture a completion or a stop proof. Requests are bounded to
-256 KiB; the private owner retains at most 128 groups without automatic eviction.
+256 KiB; the runtime retains at most 128 groups across all credential owners without automatic eviction.
 
 ## Ensemble preparation observations
 

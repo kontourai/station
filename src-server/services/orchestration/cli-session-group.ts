@@ -69,6 +69,13 @@ const recordSchema = z
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
             terminalObservedAt: z.string().datetime().optional(),
             terminalEvent: terminalEventSchema.optional(),
+            dispatchFailure: z
+              .object({
+                status: z.number().int().min(400).max(599),
+                code: z.string().max(128),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       )
@@ -97,6 +104,16 @@ export class CliSessionGroupUnavailable extends Error {
   constructor(readonly code: string) {
     super(code);
     this.name = 'CliSessionGroupUnavailable';
+  }
+}
+
+export class CliSessionGroupDispatchRefusal extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super('The delegated session did not return an accepted handle.');
+    this.name = 'CliSessionGroupDispatchRefusal';
   }
 }
 
@@ -340,6 +357,7 @@ export class CliSessionGroups<T> {
           handle,
           outcome,
           terminalEvent,
+          dispatchFailure,
         }) => ({
           seatId,
           needs,
@@ -350,6 +368,7 @@ export class CliSessionGroups<T> {
           handle,
           outcome,
           terminalEvent,
+          dispatchFailure,
         }),
       ),
     };
@@ -575,6 +594,12 @@ export class CliSessionGroups<T> {
       try {
         handle = await awaitWithAbort(dispatched, execution.signal);
       } catch (error) {
+        if (error instanceof CliSessionGroupDispatchRefusal) {
+          await this.mutate(groupId, owner, (record) => {
+            const seat = record.seats.find((s) => s.seatId === seatId)!;
+            seat.dispatchFailure = { status: error.status, code: error.code };
+          });
+        }
         const reserved = launch.seat.reservedSessionId!;
         await this.requestInterrupt(host, {
           taskId: reserved,

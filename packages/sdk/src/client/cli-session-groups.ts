@@ -135,6 +135,13 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
               .strict()
               .optional(),
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
+            dispatchFailure: z
+              .object({
+                status: z.number().int().min(400).max(599),
+                code: z.string().max(128),
+              })
+              .strict()
+              .optional(),
             terminalEvent: z
               .object({ eventId: text, turnId: text })
               .strict()
