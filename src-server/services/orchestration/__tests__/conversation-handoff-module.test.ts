@@ -2,6 +2,7 @@ import { CONVERSATION_HANDOFF_RESET_FIELDS } from '@kontourai/station-contracts/
 import { describe, expect, test, vi } from 'vitest';
 import {
   ConversationHandoffConflictError,
+  createConversationContextSeedPin,
   createConversationHandoffModule,
   readConversationContextSeedPin,
 } from '../conversation-handoff-module.js';
@@ -20,6 +21,34 @@ const handoff = {
 };
 
 describe('ConversationHandoffModule', () => {
+  test.each(['omission', 'cutoff'] as const)(
+    'rejects changed %s facts under an old context seal',
+    (changed) => {
+      const seed = createConversationContextSeedPin({
+        text: 'Only the newest source message fits.',
+        sourceCutoffs: [
+          { sessionId: 'source', afterSequence: 0, throughSequence: 7 },
+        ],
+        omission: {
+          totalMessages: 2,
+          includedMessages: 1,
+          omittedMessages: 1,
+          newestShortened: false,
+          nonTextMessages: 0,
+        },
+      });
+      if (changed === 'omission') {
+        seed.omission.totalMessages = 1;
+        seed.omission.omittedMessages = 0;
+      } else {
+        seed.sourceCutoffs[0]!.throughSequence = 8;
+      }
+      expect(() =>
+        readConversationContextSeedPin(JSON.stringify(seed)),
+      ).toThrow('The pinned conversation context is invalid.');
+    },
+  );
+
   test.each([
     'private-transcript-sentinel{',
     JSON.stringify({ text: 'private-transcript-sentinel' }),

@@ -30,7 +30,10 @@ import type { ConversationMessage } from '@kontourai/station-shared/conversation
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
-import type { ConversationContextSeedPin } from './conversation-handoff-module.js';
+import {
+  type ConversationContextSeedPin,
+  createConversationContextSeedPin,
+} from './conversation-handoff-module.js';
 import {
   type ConversationHistoryPage,
   type ConversationHistoryReadService,
@@ -1047,9 +1050,8 @@ export class ConversationLineage {
       heading,
       ...seedSource,
     });
-    return {
+    return createConversationContextSeedPin({
       text: seed.text,
-      seedDigest: crypto.createHash('sha256').update(seed.text).digest('hex'),
       sourceCutoffs,
       omission: {
         totalMessages: seed.totalMessages,
@@ -1058,7 +1060,7 @@ export class ConversationLineage {
         newestShortened: seed.newestShortened,
         nonTextMessages: seedSource.nonTextMessages,
       },
-    };
+    });
   }
 
   /**

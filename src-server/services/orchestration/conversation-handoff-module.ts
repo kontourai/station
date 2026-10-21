@@ -11,12 +11,50 @@ import { z } from 'zod';
 export interface ConversationContextSeedPin
   extends ConversationContextSeedReceipt {
   text: string;
+  pinDigest: string;
+}
+
+function contextSeedPinDigest(
+  seed: Omit<ConversationContextSeedPin, 'pinDigest'>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        text: seed.text,
+        seedDigest: seed.seedDigest,
+        sourceCutoffs: seed.sourceCutoffs.map((cutoff) => ({
+          sessionId: cutoff.sessionId,
+          afterSequence: cutoff.afterSequence,
+          throughSequence: cutoff.throughSequence,
+        })),
+        omission: {
+          totalMessages: seed.omission.totalMessages,
+          includedMessages: seed.omission.includedMessages,
+          omittedMessages: seed.omission.omittedMessages,
+          newestShortened: seed.omission.newestShortened,
+          nonTextMessages: seed.omission.nonTextMessages,
+        },
+      }),
+    )
+    .digest('hex');
+}
+
+/** Seals source/omission facts together with the text; it grants no authority. */
+export function createConversationContextSeedPin(
+  input: Omit<ConversationContextSeedPin, 'seedDigest' | 'pinDigest'>,
+): ConversationContextSeedPin {
+  const seed = {
+    ...input,
+    seedDigest: createHash('sha256').update(input.text).digest('hex'),
+  };
+  return { ...seed, pinDigest: contextSeedPinDigest(seed) };
 }
 
 const contextSeedSchema = z
   .object({
     text: z.string(),
     seedDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    pinDigest: z.string().regex(/^[a-f0-9]{64}$/),
     sourceCutoffs: z.array(
       z
         .object({
@@ -55,6 +93,7 @@ export function readConversationContextSeedPin(
   const seed = result.data;
   if (
     createHash('sha256').update(seed.text).digest('hex') !== seed.seedDigest ||
+    contextSeedPinDigest(seed) !== seed.pinDigest ||
     seed.omission.includedMessages + seed.omission.omittedMessages !==
       seed.omission.totalMessages ||
     new Set(seed.sourceCutoffs.map((cutoff) => cutoff.sessionId)).size !==
