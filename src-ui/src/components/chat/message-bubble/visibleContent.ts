@@ -94,3 +94,21 @@ export function endedTurnMarker(
   if (outcome === 'aborted') return 'Stopped';
   return outcome === 'completed' ? 'No reply' : undefined;
 }
+
+/**
+ * Whether the row has answer text: the server's Basis read answers only a
+ * turn whose row has non-empty text other than a runtime error
+ * (`answerOnly` in session-query-module.ts), so a row without any gets no
+ * Basis chip rather than one that can only read 404.
+ */
+export function hasAnswerText(
+  msg: Pick<ChatMessage, 'content' | 'contentParts'>,
+): boolean {
+  if (!msg.contentParts?.length) return Boolean(msg.content?.trim());
+  return msg.contentParts.some(
+    (part) =>
+      part.type === 'text' &&
+      part.runtimeError !== true &&
+      Boolean(part.content?.trim()),
+  );
+}

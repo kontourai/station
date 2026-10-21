@@ -205,4 +205,61 @@ describe('settled assistant rows with no answer text', () => {
     );
     expect(open.container.querySelector('.message-row')).toBeNull();
   });
+
+  test('a row without answer text offers no Basis, which could only read as missing', async () => {
+    const base = {
+      provider: 'codex',
+      threadId: 'thread-1',
+      createdAt: '2026-10-20T00:00:00.000Z',
+      turnId: 'turn-basis',
+    };
+    const project = (extra: CanonicalRuntimeEvent[]) =>
+      projectRuntimeEventsToMessages(
+        [
+          { ...base, eventId: 'e1', method: 'turn.started', prompt: 'hi' },
+          ...extra,
+          { ...base, eventId: 'e9', method: 'turn.completed' },
+        ] as CanonicalRuntimeEvent[],
+        { markEndedTurns: true },
+      ).find((row) => row.role === 'assistant')!;
+    const toChat = (
+      row: ReturnType<typeof projectRuntimeEventsToMessages>[number],
+    ): ChatMessage => ({
+      role: 'assistant',
+      content: row.parts
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text ?? '')
+        .join(''),
+      contentParts: row.parts.flatMap(conversationPartToContentParts),
+      turnId: row.metadata?.turnId,
+      sessionId: row.metadata?.sessionId,
+      answerEligible: row.metadata?.answerEligible,
+      provenance: row.metadata?.provenance,
+      turnEnded: row.metadata?.turnEnded,
+    });
+
+    const answered = renderSettledRow(
+      toChat(
+        project([
+          {
+            ...base,
+            eventId: 'e2',
+            method: 'content.text-delta',
+            delta: 'An answer.',
+          },
+        ] as CanonicalRuntimeEvent[]),
+      ),
+      true,
+    );
+    expect(await screen.findByRole('button', { name: 'Basis' })).toBeTruthy();
+    answered.unmount();
+
+    const silent = toChat(project([]));
+    expect(silent.answerEligible).toBe(true);
+    renderSettledRow(silent, true);
+    expect(screen.getByText('No reply')).toBeTruthy();
+    // Give the lazy chip the same chance to appear before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
+  });
 });

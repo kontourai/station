@@ -36,6 +36,7 @@ import {
 } from './message-bubble/utils';
 import {
   endedTurnMarker,
+  hasAnswerText,
   useHasVisibleTranscriptContent,
 } from './message-bubble/visibleContent';
 import { TaskProposalCard } from './TaskProposalCard';
@@ -715,6 +716,7 @@ function MessageBubbleComponent({
     answerSessionId &&
     msg.answerEligible === true &&
     turnCompletedNormally(msg) &&
+    hasAnswerText(msg) &&
     (!isLastMessage || !activeSession.isThinking) ? (
       <LazyBoundary
         load={loadConnectedAnswerBasisAffordance}
