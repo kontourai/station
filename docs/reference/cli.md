@@ -1199,9 +1199,12 @@ JSON. Writes require explicit operation IDs, and run/cancel require an expected
 group revision. A lost response does not authorize another operation or an
 automatic resend. Group-event revisions and member-event sequence numbers are
 different cursor domains. Follow mode uses the SDK's authenticated SSE transport;
-Ctrl-C closes local observation and does not cancel the group. A transport failure
-remains an error. Server refusal, unknown usage, completion, and Flow acceptance
-must remain distinct. Package publication and real group execution are unverified.
+Ctrl-C closes local observation and does not cancel the group. Normal stream
+rotation and transient transport failures reconnect; terminal authority or protocol
+failures end follow mode with an error. With `--json`, HTTP failures retain their
+status and received refusal code in structured output. Server refusal, unknown
+usage, completion, and Flow acceptance must remain distinct. Package publication
+and real group execution are unverified.
 
 A member follow subscription stops explicitly at 4,096 identities or 1 MiB of
 retained identity UTF-8 bytes, rather than forgetting earlier identities. Treat that as an observation

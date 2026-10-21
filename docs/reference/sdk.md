@@ -5130,11 +5130,14 @@ through the shared HTTP owner; mutation timeouts never imply a safe resend.
 
 `subscribeDelegationGroupEvents(apiBase, groupId, afterRevision, callbacks, options?)`
 and `subscribeDelegationGroupMemberEvents(apiBase, groupId, seatId, afterSequence, callbacks, options?)`
-return the existing `FetchSseConnection`. Supply `onPage` and optional `onError`
-and `onOpen`. Pages must match the group/seat and qualified SSE cursor identity;
-checkpoints advance after caller delivery. Reconnect uses `Last-Event-ID` with
-separate group/member cursor domains. Close the handle or abort its signal to
-stop local observation; neither action cancels execution.
+return the existing `FetchSseConnection`. Supply `onPage` and optional `onError`,
+`onOpen`, and `onTerminal`. Transient failures and normal server stream rotation
+reconnect with bounded backoff. Authority loss, malformed pages, cursor-domain
+violations and identity-history limits terminate observation through `onTerminal`;
+they do not retry indefinitely. Pages must match the group/seat and qualified SSE
+cursor identity; checkpoints advance after caller delivery. Reconnect uses
+`Last-Event-ID` with separate group/member cursor domains. Close the handle or
+abort its signal to stop local observation; neither action cancels execution.
 
 One member subscription retains up to 4,096 distinct event identities and 1 MiB
 of their UTF-8 bytes across pages and reconnects. Reusing an identity at a
