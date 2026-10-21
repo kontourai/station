@@ -1,5 +1,9 @@
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  FORCED_STOP_REASON,
+  STALL_FORCED_STOP_REASON,
+  TURN_INTERRUPTED_MESSAGE,
+} from '@kontourai/station-shared/runtime-event-projection';
 import type { ChatMessage } from '../../../types';
 import {
   isToolCallPart,
@@ -113,6 +117,21 @@ const STOP_REASON_LINES: Record<string, string> = {
 };
 
 /**
+ * Who stopped the turn: Station's record, or, for a forced Stop from before
+ * that record existed, the reason the forced Stop wrote (the plain one is
+ * only ever the person's).
+ */
+function stoppedBy(
+  msg: Pick<ChatMessage, 'turnStoppedBy'>,
+  reason: string | undefined,
+): ChatMessage['turnStoppedBy'] {
+  if (msg.turnStoppedBy) return msg.turnStoppedBy;
+  if (reason === FORCED_STOP_REASON) return 'person';
+  if (reason === STALL_FORCED_STOP_REASON) return 'stall';
+  return undefined;
+}
+
+/**
  * Why a stopped turn with nothing to show stopped, when it was not the
  * person's own Stop: a second line under "Stopped". Station's own record of
  * who stopped it wins; otherwise the engine's reason, as a known short line
@@ -121,12 +140,14 @@ const STOP_REASON_LINES: Record<string, string> = {
 export function endedTurnStopDetail(
   msg: Pick<ChatMessage, 'turnEnded' | 'turnEndedReason' | 'turnStoppedBy'>,
 ): { text: string; title?: string } | undefined {
-  if (msg.turnEnded !== 'aborted' || msg.turnStoppedBy === 'person') return;
+  if (msg.turnEnded !== 'aborted') return;
   const reason = msg.turnEndedReason?.trim();
+  const by = stoppedBy(msg, reason);
+  if (by === 'person') return;
   const text =
-    msg.turnStoppedBy === 'stall'
+    by === 'stall'
       ? 'No progress for too long'
-      : msg.turnStoppedBy === 'restart'
+      : by === 'restart'
         ? 'Station restarted mid-turn'
         : reason && !PLAIN_STOP_REASONS.has(reason)
           ? (STOP_REASON_LINES[reason] ?? reason)

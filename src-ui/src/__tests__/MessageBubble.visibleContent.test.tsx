@@ -222,6 +222,47 @@ describe('settled assistant rows with no answer text', () => {
     );
     stalled.unmount();
 
+    // History from before Station recorded who stopped a turn carries only
+    // the forced Stop's reason: the person's needs no second line, and the
+    // stall's reads as the stall's, its reason the tooltip.
+    const personForced = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        contentParts: [],
+        turnId: 'turn-old-forced',
+        turnEnded: 'aborted',
+        turnEndedReason: 'Stopped after the cooperative cancel budget expired.',
+      },
+      true,
+    );
+    expect(screen.getByText('Stopped')).toBeTruthy();
+    expect(
+      personForced.container.querySelector('.message__turn-outcome-detail'),
+    ).toBeNull();
+    personForced.unmount();
+
+    const stallForced = renderSettledRow(
+      {
+        role: 'assistant',
+        content: '',
+        contentParts: [],
+        turnId: 'turn-old-stall',
+        turnEnded: 'aborted',
+        turnEndedReason:
+          'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.',
+      },
+      true,
+    );
+    const oldStall = stallForced.container.querySelector(
+      '.message__turn-outcome-detail',
+    );
+    expect(oldStall?.textContent).toBe('No progress for too long');
+    expect(oldStall?.getAttribute('title')).toBe(
+      'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.',
+    );
+    stallForced.unmount();
+
     const quiet = renderSettledRow(
       {
         role: 'assistant',

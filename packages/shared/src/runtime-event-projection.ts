@@ -103,6 +103,16 @@ export const TURN_INTERRUPTED_MESSAGE =
   'Turn interrupted — the process restarted while this turn was in progress.';
 
 /**
+ * The `turn.aborted` reasons a forced Stop writes (cooperative-stop.ts),
+ * shared so a transcript can tell them apart from an engine's own reason
+ * when the event predates `initiatedBy`.
+ */
+export const FORCED_STOP_REASON =
+  'Stopped after the cooperative cancel budget expired.';
+export const STALL_FORCED_STOP_REASON =
+  'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.';
+
+/**
  * Canonical observed assistant identity for an event-backed turn. The same
  * factory is consumed by the general conversation projection and Basis; a
  * caller must not recreate this tuple from turn position or text.
