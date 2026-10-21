@@ -116,7 +116,49 @@
 
     "src-ui/src/components/DeferredCapabilityBoundary.tsx",
 
-    "src-ui/src/views/RegistryView.tsx"
+    "src-ui/src/views/RegistryView.tsx",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/shared/src/public-network.ts",
+
+    "src-server/services/plugin-telemetry-transport.ts",
+
+    "src-server/security/plugin-pane-context.ts",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.tsx",
+
+    "src-ui/src/components/registry/__tests__/StationExtensionsAccess.test.tsx",
+
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx",
+
+    "src-ui/src/views/plugin-management/PluginModalStack.tsx",
+
+    "src-ui/src/components/registry/StationExtensionsAccess.css",
+
+    "src-ui/src/views/plugin-management/InstallPreviewExtensionAccess.tsx",
+
+    "src-ui/src/core/remotePluginConsentPolicy.ts",
+
+    "src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx",
+
+    "src-ui/src/views/plugin-management/__tests__/PluginModalStack.test.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx",
+
+    "src-ui/src/views/home/HomeRolePane.tsx"
   ],
 
   "checks": [

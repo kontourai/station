@@ -46,6 +46,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['client_turn_in_flight', 'busy', true],
     ['client_turn_input_conflict', 'conflict', false],
     ['client_turn_input_unsupported', 'input_unsupported', false],
+    ['client_turn_settled', 'conflict', false],
     ['confined_full_access_unavailable', 'permission_denied', false],
     ['confinement_mechanism_unavailable', 'permission_denied', false],
     ['confinement_not_observed', 'permission_denied', false],

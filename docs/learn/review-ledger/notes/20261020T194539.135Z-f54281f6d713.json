@@ -1,0 +1,13 @@
+{
+  "revision": "f0f50df6d1f7ed23ae87afa49221188ff84f4131",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Author-side inventory correction review at f0f50df6d1f: removed the single-control StationExtensionsAccess row because it is not an action-surface candidate, as the responsive-surface gate proved. The gate now passes (46 modal-like surfaces, 175 action surfaces). No product, test or CSS bytes changed. Actual iOS7e1 management/review controls measure44px high; local native evidence remains separate. These documents make no claim that every single button belongs in the multi-action inventory. Broader claims were not re-audited.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Author-side inventory correction review at f0f50df6d1f: removed the single-control StationExtensionsAccess row because it is not an action-surface candidate, as the responsive-surface gate proved. The gate now passes (46 modal-like surfaces, 175 action surfaces). No product, test or CSS bytes changed. Actual iOS7e1 management/review controls measure44px high; local native evidence remains separate. These documents make no claim that every single button belongs in the multi-action inventory. Broader claims were not re-audited.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Author-side inventory correction review at f0f50df6d1f: removed the single-control StationExtensionsAccess row because it is not an action-surface candidate, as the responsive-surface gate proved. The gate now passes (46 modal-like surfaces, 175 action surfaces). No product, test or CSS bytes changed. Actual iOS7e1 management/review controls measure44px high; local native evidence remains separate. These documents make no claim that every single button belongs in the multi-action inventory. Broader claims were not re-audited.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Author-side inventory correction review at f0f50df6d1f: removed the single-control StationExtensionsAccess row because it is not an action-surface candidate, as the responsive-surface gate proved. The gate now passes (46 modal-like surfaces, 175 action surfaces). No product, test or CSS bytes changed. Actual iOS7e1 management/review controls measure44px high; local native evidence remains separate. These documents make no claim that every single button belongs in the multi-action inventory. Broader claims were not re-audited.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

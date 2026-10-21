@@ -1,5 +1,13 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -67,5 +75,136 @@ describe('buildSweepReport and validateDatedTodoReport', () => {
     expect(() =>
       validateDatedTodoReport('no marker here', { expectedDate: TODAY }),
     ).toThrow(/marker/);
+  });
+});
+
+const SCRIPT = fileURLToPath(
+  new URL('../dated-todo-sweep.mjs', import.meta.url),
+);
+
+// Runs the workflow's real `--upsert` step as a child process with a fake `gh`
+// on PATH that records each call and answers `issue list` with `listing`.
+function runUpsert({
+  dueEntries,
+  listing,
+}: {
+  dueEntries: number;
+  listing: Array<{ number: number; title: string; state: string }>;
+}) {
+  const root = makeTempRoot('dated-todo-upsert-');
+  const bin = join(root, 'bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(root, 'listing.json'), JSON.stringify(listing));
+  writeFileSync(
+    join(bin, 'gh'),
+    [
+      '#!/bin/sh',
+      'printf "%s\\n" "$*" >> "$0.calls"',
+      'if [ "$1 $2" = "issue list" ]; then exec "$FAKE_GH_NODE" "$FAKE_GH_LIST_JS" "$@"; fi',
+      'if [ "$1 $2" = "issue create" ]; then echo https://example.test/issues/1; fi',
+    ].join('\n') + '\n',
+  );
+  chmodSync(join(bin, 'gh'), 0o755);
+  // Like real `gh`, `issue list` returns only the fields `--json` requested, so
+  // a dropped field reaches the script as undefined rather than fixture data.
+  writeFileSync(
+    join(root, 'list.mjs'),
+    [
+      "import { readFileSync } from 'node:fs';",
+      "const fields = process.argv[process.argv.indexOf('--json') + 1].split(',');",
+      "const listing = JSON.parse(readFileSync(process.env.FAKE_GH_LISTING, 'utf8'));",
+      'console.log(JSON.stringify(listing.map((issue) => Object.fromEntries(fields.map((field) => [field, issue[field]])))));',
+    ].join('\n'),
+  );
+  const entries = Array.from({ length: dueEntries }, (_, index) => ({
+    file: 'a.ts',
+    line: index + 1,
+    date: '2026-01-01',
+    due: true,
+    text: 'x',
+  }));
+  entries.push({
+    file: 'b.ts',
+    line: 1,
+    date: '2099-01-01',
+    due: false,
+    text: 'y',
+  });
+  const reportPath = join(root, 'report.md');
+  writeFileSync(
+    reportPath,
+    buildSweepReport(entries, { today: TODAY, generatedAt: 'now' }),
+  );
+  execFileSync(
+    process.execPath,
+    [SCRIPT, '--upsert', '--report', reportPath, '--date', TODAY],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        FAKE_GH_LISTING: join(root, 'listing.json'),
+        FAKE_GH_LIST_JS: join(root, 'list.mjs'),
+        FAKE_GH_NODE: process.execPath,
+        GITHUB_REPOSITORY: 'owner/repo',
+      },
+      windowsHide: true,
+    },
+  );
+  const callsPath = join(bin, 'gh.calls');
+  const calls = existsSync(callsPath)
+    ? readFileSync(callsPath, 'utf8').trim().split('\n')
+    : [];
+  // The listing query is not a mutation; return only the writes.
+  return calls.filter((call) => !call.startsWith('issue list'));
+}
+
+const ISSUE = { number: 2908, title: 'Dated TODO sweep' };
+
+describe.runIf(process.platform !== 'win32')('upsert step', () => {
+  it('closes an open issue instead of reopening it when nothing is due (known-bad)', () => {
+    const writes = runUpsert({
+      dueEntries: 0,
+      listing: [{ ...ISSUE, state: 'OPEN' }],
+    });
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toMatch(/^issue edit 2908 --body-file /);
+    expect(writes[1]).toMatch(
+      /^issue close 2908 --comment No dated TODOs are due/,
+    );
+  });
+
+  it('leaves a closed issue alone and creates none when nothing is due (known-bad)', () => {
+    expect(
+      runUpsert({ dueEntries: 0, listing: [{ ...ISSUE, state: 'CLOSED' }] }),
+    ).toEqual([]);
+    expect(runUpsert({ dueEntries: 0, listing: [] })).toEqual([]);
+  });
+
+  it('reopens a closed issue when something is due', () => {
+    const writes = runUpsert({
+      dueEntries: 1,
+      listing: [{ ...ISSUE, state: 'CLOSED' }],
+    });
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toMatch(/^issue edit 2908 --body-file /);
+    expect(writes[1]).toBe('issue reopen 2908 --repo owner/repo');
+  });
+
+  it('updates an open issue without reopening it when something is due', () => {
+    const writes = runUpsert({
+      dueEntries: 1,
+      listing: [{ ...ISSUE, state: 'OPEN' }],
+    });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(/^issue edit 2908 --body-file /);
+  });
+
+  it('creates the P2 issue when something is due and none exists', () => {
+    const writes = runUpsert({ dueEntries: 2, listing: [] });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatch(
+      /^issue create --title Dated TODO sweep .* --label P2 /,
+    );
   });
 });

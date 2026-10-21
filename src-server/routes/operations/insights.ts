@@ -14,9 +14,11 @@ import {
   K,
   monitoringAgentName,
   OP,
+  PRODUCER_ID_PREFIX,
   SPAN,
 } from '../../../src-shared/monitoring-keys.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
+import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { insightOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { getCachedUser } from '../system/auth.js';
@@ -179,7 +181,19 @@ export function createInsightsRoutes(
       agent: c.req.query('agent'),
       tool: c.req.query('tool'),
       engine: c.req.query('engine'),
+      producer: c.req.query('producer'),
     };
+    if (
+      filters.producer !== undefined &&
+      !isTelemetryProducerName(filters.producer)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'producer must be a telemetry producer name.',
+        },
+        400,
+      );
     const limitParam = Number.parseInt(c.req.query('limit') ?? '', 10);
     const limit =
       Number.isFinite(limitParam) && limitParam > 0
@@ -226,6 +240,8 @@ export function createInsightsRoutes(
       }
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
+    const producerActivity: NonNullable<UsageInsights['producerActivity']> = {};
+    const producerChatTraces = new Map<string, Set<string>>();
     const agentUsage: UsageInsights['agentUsage'] = {};
     const modelUsage: Record<string, number> = {};
     const chatTraceIds = new Set<string>();
@@ -280,10 +296,12 @@ export function createInsightsRoutes(
           totalOutcomeUnknown: 0,
           totalUnresolved: 0,
           days,
+          ...(filters.producer === undefined ? { producerActivity: {} } : {}),
           coverage: coverage('unknown'),
           ...(filters.agent !== undefined ||
           filters.tool !== undefined ||
           filters.engine !== undefined ||
+          filters.producer !== undefined ||
           limit !== undefined
             ? {
                 applied: {
@@ -293,6 +311,9 @@ export function createInsightsRoutes(
                   ...(filters.tool !== undefined ? { tool: filters.tool } : {}),
                   ...(filters.engine !== undefined
                     ? { engine: filters.engine }
+                    : {}),
+                  ...(filters.producer !== undefined
+                    ? { producer: filters.producer }
                     : {}),
                   ...(limit !== undefined ? { limit } : {}),
                 },
@@ -338,7 +359,13 @@ export function createInsightsRoutes(
       // which is the hazard the export exists to prevent.
       // The same identity the predicate itself keys on, so the memo can never
       // conflate two sessions.
-      const threadKey = monitoringSessionIdentity(event);
+      // A producer row is decided by its owner, not its session: memoising it
+      // under the session id would let a producer-reported id share a
+      // decision with a Station session of the same id, in either direction.
+      const threadKey =
+        K.TELEMETRY_PRODUCER in record
+          ? undefined
+          : monitoringSessionIdentity(event);
       const cached =
         threadKey === undefined ? undefined : perThreadDecision.get(threadKey);
       if (cached !== undefined) return cached;
@@ -383,6 +410,57 @@ export function createInsightsRoutes(
             const spanKind = event[K.SPAN_KIND];
             // Usage-record envelopes have no GenAI operation and are excluded.
             if (typeof operation !== 'string') continue;
+            // An external producer's rows are not Station's activity: whatever
+            // agent, model or tool they name, they never count toward Station's
+            // figures. Unless the request names that producer, they are
+            // tallied apart; when it does, every figure is that producer's.
+            const producer = event[K.TELEMETRY_PRODUCER];
+            if (filters.producer === undefined) {
+              if (typeof producer === 'string') {
+                // Station's agent, tool and engine filters never match a
+                // producer row (the same rule as /monitoring/events), so a
+                // filtered rollup reports no producer activity.
+                if (
+                  filters.agent !== undefined ||
+                  filters.tool !== undefined ||
+                  filters.engine !== undefined
+                )
+                  continue;
+                const tally = producerActivity[producer] ?? {
+                  events: 0,
+                  chats: 0,
+                  toolCalls: 0,
+                };
+                producerActivity[producer] = tally;
+                tally.events++;
+                // Chats counted as Station's are: once per distinct trace,
+                // except that each END on the shared `no-session` sentinel
+                // (namespaced to this producer at ingest) is one chat, and a
+                // row with no trace counts none.
+                const traceId = event[K.TRACE_ID];
+                if (
+                  operation === OP.INVOKE_AGENT &&
+                  traceId === `${PRODUCER_ID_PREFIX}${producer}:no-session`
+                ) {
+                  if (spanKind === SPAN.END) tally.chats++;
+                } else if (
+                  operation === OP.INVOKE_AGENT &&
+                  (spanKind === SPAN.START || spanKind === SPAN.END) &&
+                  typeof traceId === 'string' &&
+                  traceId
+                ) {
+                  const traces = producerChatTraces.get(producer) ?? new Set();
+                  if (!traces.has(traceId)) {
+                    traces.add(traceId);
+                    tally.chats++;
+                  }
+                  producerChatTraces.set(producer, traces);
+                }
+                if (operation === OP.EXECUTE_TOOL && spanKind === SPAN.START)
+                  tally.toolCalls++;
+                continue;
+              }
+            } else if (producer !== filters.producer) continue;
             if (!matchesFilters(event)) continue;
 
             const hour = new Date(ts).getHours();
@@ -535,12 +613,14 @@ export function createInsightsRoutes(
          */
         totalUnresolved,
         days,
+        ...(filters.producer === undefined ? { producerActivity } : {}),
         coverage: coverage(
           scanIssues.size ? (readableRows ? 'partial' : 'unknown') : 'complete',
         ),
         ...(filters.agent !== undefined ||
         filters.tool !== undefined ||
         filters.engine !== undefined ||
+        filters.producer !== undefined ||
         limit !== undefined
           ? {
               // Echo what was applied: a filtered rollup that looks like a
@@ -550,6 +630,9 @@ export function createInsightsRoutes(
                   ? { agent: filters.agent }
                   : {}),
                 ...(filters.tool !== undefined ? { tool: filters.tool } : {}),
+                ...(filters.producer !== undefined
+                  ? { producer: filters.producer }
+                  : {}),
                 ...(filters.engine !== undefined
                   ? { engine: filters.engine }
                   : {}),

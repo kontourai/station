@@ -65,13 +65,9 @@ function renderHeader(showNotifications: boolean, onClose = vi.fn()) {
   const view = render(
     <HeaderActions
       helpPrompts={[]}
-      settingsShortcut="⌘,"
       showHelp={false}
       showNotifications={showNotifications}
       showOverflow={false}
-      showProfileMenu={false}
-      onCloseProfileMenu={vi.fn()}
-      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={onClose}
@@ -81,7 +77,6 @@ function renderHeader(showNotifications: boolean, onClose = vi.fn()) {
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={vi.fn()}
-      onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,
@@ -90,13 +85,9 @@ function renderHeader(showNotifications: boolean, onClose = vi.fn()) {
     view.rerender(
       <HeaderActions
         helpPrompts={[]}
-        settingsShortcut="⌘,"
         showHelp={false}
         showNotifications={next}
         showOverflow={false}
-        showProfileMenu={false}
-        onCloseProfileMenu={vi.fn()}
-        onToggleProfileMenu={vi.fn()}
         userInitials="ST"
         onCloseHelp={vi.fn()}
         onCloseNotifications={onClose}
@@ -106,7 +97,6 @@ function renderHeader(showNotifications: boolean, onClose = vi.fn()) {
         onOpenProfile={vi.fn()}
         onOpenHelp={vi.fn()}
         onOpenNotifications={vi.fn()}
-        onToggleSettings={vi.fn()}
         onToggleOverflow={vi.fn()}
         onViewAllNotifications={vi.fn()}
       />,

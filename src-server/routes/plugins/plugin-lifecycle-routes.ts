@@ -6,6 +6,11 @@ import type {
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import {
+  TELEMETRY_FEEDBACK_REASONS,
+  type TelemetryFeedbackReason,
+  type TelemetryPublisherId,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
   SERVER_EVENTS,
   type ServerEventName,
 } from '@kontourai/station-contracts/runtime-events';
@@ -107,6 +112,10 @@ import {
 } from './plugin-proposal-routes.js';
 
 interface PluginLifecycleRouteDeps {
+  onTelemetryRemoval?: (
+    publisher: TelemetryPublisherId,
+    reason?: TelemetryFeedbackReason,
+  ) => Promise<undefined | (() => void)>;
   /**
    * Caller resolution for the operator-only members of this file (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -1116,6 +1125,15 @@ export function registerPluginLifecycleRoutes(
   });
 
   app.delete('/:name', personOnly('remove a plugin'), async (c) => {
+    const reason = c.req.query('telemetryFeedbackReason');
+    if (
+      reason !== undefined &&
+      !TELEMETRY_FEEDBACK_REASONS.some((value) => value === reason)
+    )
+      return c.json(
+        { success: false, error: 'Invalid telemetry feedback reason' },
+        400,
+      );
     const name = param(c, 'name');
     try {
       assertPluginNameSegment(name);
@@ -1183,6 +1201,11 @@ export function registerPluginLifecycleRoutes(
         applyConfigurationMutation,
         async (beginMutation) => {
           const result = await uninstallInstalledPlugin(installedPluginName, {
+            beforeTelemetryRemoval: (publisher) =>
+              deps.onTelemetryRemoval?.(
+                publisher,
+                reason as TelemetryFeedbackReason | undefined,
+              ) ?? Promise.resolve(undefined),
             agentsDir,
             registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
             packageMcpJournal: deps.packageMcpJournal,

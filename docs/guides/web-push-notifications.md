@@ -58,8 +58,10 @@ push service or displayed on screen.
 
 Subscribe/unsubscribe resolve the request credential to a paired device through
 `identifyDevice`. An operator credential alone is insufficient, and so is a
-personal access token (#3557: it is no device a notification reaches); an
-unidentified caller or a token reaching the route gets
+personal access token (#3557: it is no device a notification reaches). A relay
+alias of a paired device is refused at subscribe too: its read scope fails the
+credential gate first, and the handler refuses it as well. An
+unidentified caller, a token or an alias reaching the route gets
 `403 {error: 'device_pairing_required'}`. The
 outer credential gate can reject earlier with
 `401 {error: {code: 'authentication_required'}}`. Current audit reasons distinguish
@@ -129,10 +131,19 @@ property, not a guarantee of every browser's SSE/toast experience.
 ### Focus, preferences, and escalation
 
 Focus applies within the same principal; unbound owner-device identities are
-grouped, while tailnet-bound people remain distinct. A focused document must
+grouped, while tailnet-bound people remain distinct. A device whose credential
+was minted with home-possession (the desktop app's local grant, the local
+browser UI's bootstrap) reads as the operator for both its focus reports and
+delivery, so its focus quiets the operator's other surfaces. Nothing yet ties a
+tailnet identity to the operator, so the owner's own tailnet-bound phone stays
+a separate person here. A focused document must
 also have its own live event stream. Another tab's stream cannot vouch for it.
 Stream leases expire after 90 seconds without successful keepalive writes; focus
-reports have a 120-second lease. There are caps of 32 documents per device,
+reports have a 120-second lease. The client renews a focused report every 60
+seconds while there was input in the last two minutes or the document shows a
+chat whose turn is running; the second reason renews at most 60 times (one
+hour) since the last input or window focus, counted per document across all
+of its chats and turns, not per turn. There are caps of 32 documents per device,
 32 operator tabs, and 256 device streams overall. A document beyond a cap does
 not qualify as live.
 
@@ -144,6 +155,19 @@ minimum urgency, silent interrupt, current focus, read/dismiss state or expiry
 can still suppress it. Restart loses timers, and eviction beyond the router's
 500 tracked records cancels the oldest pending escalation. Channel `retry`
 outcomes currently have no general retry scheduler consuming them.
+
+Turn-completion records carry an envelope (system source, the session's
+readers, a session target). A client marks one read only when the person
+attends to its chat: on screen in a focused window with input in the last two
+minutes, or the record opened (from the inbox, or by opening its Web Push or
+desktop alert, whose link names the record). A focused window nobody is
+touching does not read it, so an unread failure still escalates. Accepted
+gap: input made just before walking away still counts for two minutes, so a
+failure landing in that window is read. A native Android or iOS alert tap
+opens the session but does not name the record, so it does not read it. Reading cancels a pending
+escalation and retracts alerts already sent for it. Read state is per record,
+not per person: when several people can read a session, the first to read a
+record cancels its escalation for all of them.
 
 The focus check also has a transport limit: successful writes do not prove a
 half-open socket is being read. A closed tab stops reporting focus, bounding its
@@ -179,14 +203,23 @@ joined onto one line with " ⏎ ". A device's hide-content preference
 substitutes generic title/body text. The
 browser still receives category, notification ID and destination URL. For
 routing, Session metadata is tried first (`sessionId` or `conversationId`), then
-a validated relative `metadata.link`, then `/notifications`. Managed Sessions
+a validated relative `metadata.link`, then `/notifications`; the URL also carries
+`openedNotification=<id>`, which the loaded page uses to mark that record read
+and then removes. Managed Sessions
 legitimately use `/?chat=...&dock=open`; the root route with these parameters is
 not an error. The current composed payload does not carry the legacy service
 worker's approval-action fields, so those old action branches are not this
 channel's live payload path.
 
 On a tap, the worker closes that notification and attempts to focus/navigate a
-window or open one. Navigation can fail; there is no replacement-window fallback
+window or open one. It resolves the payload URL against its own origin and opens
+`/notifications` instead for anything off it or not http(s). The server never
+sends one: a link (an agent's included) is admitted only if its normalized path
+stays on Station (`/..//host` and `/%2e%2e//host` are refused) and it carries no
+fragment and no `openedNotification` (only the alert's own open link names a
+record to read); the open link with the record id is rebuilt on Station's
+origin, without a fragment, or falls back to the inbox. Notification action
+requests go only to the worker's own origin, with their ids path-encoded. Navigation can fail; there is no replacement-window fallback
 after a rejected existing-window navigation. Verify the actual destination on
 the target platform rather than claiming the URL alone proves successful display.
 

@@ -28,9 +28,11 @@ import {
   FAST_CHECKS_PLAN_FILE,
   FAST_CHECKS_RECEIPT_FILE,
   FAST_CHECKS_RECEIPT_KIND,
+  FAST_CHECKS_SHARD_BUDGET_MS,
   FAST_CHECKS_SHARD_COUNT,
   fastChecksShardCount,
   isPassingFastChecksStatus,
+  MERGE_QUEUE_REGRESSION_CHECK,
   parseFastChecksShard,
   sliceFastChecksPlan,
   validateFastChecksPlan,
@@ -270,8 +272,7 @@ async function runCommand(
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort('exceeded its fast-checks shard budget'),
-      deadlineMs ??
-        (await import('./verification-lanes.mjs')).CI_FAST_TIMEOUT_MS,
+      deadlineMs ?? FAST_CHECKS_SHARD_BUDGET_MS,
     );
     timer.unref?.();
     // A cancelled job signals the runner; abort so the owned Vitest trees are
@@ -356,7 +357,11 @@ function aggregateCommand(
     needs = undefined;
   }
   const planPath = resolve(cwd, planDir, FAST_CHECKS_PLAN_FILE);
-  const { findings, notes } = verifyFastChecks({
+  const {
+    findings,
+    notes,
+    suiteDeferrals = [],
+  } = verifyFastChecks({
     needs,
     planText: existsSync(planPath) ? readFileSync(planPath, 'utf8') : undefined,
     receipts: receiptFiles(resolve(cwd, receiptsDir)).map((path) => ({
@@ -370,6 +375,19 @@ function aggregateCommand(
   if (findings.length) {
     for (const finding of findings) error(`[fast-checks] FAIL: ${finding}\n`);
     return 1;
+  }
+  if (suiteDeferrals.length) {
+    // #1706: this green is not a full run's green. Say so on the check run
+    // itself, and name who runs the deferred suite.
+    const message = `fast-checks deferred ${suiteDeferrals.join(', ')}: the affected suite did not run in this check; ${MERGE_QUEUE_REGRESSION_CHECK} runs full regression before merge`;
+    if (env.GITHUB_ACTIONS === 'true')
+      report(`::warning title=fast-checks is provisional::${message}\n`);
+    if (env.GITHUB_OUTPUT)
+      appendFileSync(env.GITHUB_OUTPUT, 'provisional=true\n');
+    report(
+      `[fast-checks] PASS (provisional): every part job succeeded and every shard ran its slice of the plan; ${message}\n`,
+    );
+    return 0;
   }
   report(
     '[fast-checks] PASS: every part job succeeded and every shard ran its slice of the plan\n',

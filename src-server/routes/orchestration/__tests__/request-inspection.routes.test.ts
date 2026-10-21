@@ -17,6 +17,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { executeForegroundMessage } from '../../../services/execution-target/execution-target-execution.js';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
@@ -395,6 +396,65 @@ describe('exact attention request route and immediate response guard', () => {
         'expectedInputRequest',
       );
       expect(startSession).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([false, true])(
+    'retained input-request preparation keeps its owned guard when caller removal=%s',
+    async (removeCallerGuard) => {
+      const f = await fixture(false, 'input');
+      let reached!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const adapter: ProviderAdapterShape = f.adapter;
+      adapter.whenSessionReady = () => {
+        reached();
+        return held;
+      };
+      const send = vi.spyOn(f.adapter, 'sendTurn');
+      const input = {
+        threadId: 'session-a',
+        input: 'The requested answer',
+        clientTurnId: 'owned-request-guard',
+        expectedInputRequest: { ...REFERENCE },
+      };
+      const pending = f.service.dispatch(
+        { type: 'sendTurn', input },
+        { userId: 'owner' },
+      );
+      try {
+        await entered;
+        if (removeCallerGuard)
+          Reflect.deleteProperty(input, 'expectedInputRequest');
+      } finally {
+        release();
+      }
+      await expect(pending).resolves.toMatchObject({ threadId: 'session-a' });
+      expect(send).toHaveBeenCalledOnce();
+      expect(send.mock.calls[0][0]).not.toHaveProperty('expectedInputRequest');
+      const retained = f.store['db']
+        .prepare(
+          'SELECT envelope_json FROM orchestration_prepared_turns WHERE client_turn_id = ?',
+        )
+        .get(input.clientTurnId);
+      expect(
+        retained,
+        'the actual preparation must commit its retrievable envelope',
+      ).toBeDefined();
+      if (
+        typeof retained !== 'object' ||
+        retained === null ||
+        !('envelope_json' in retained) ||
+        typeof retained.envelope_json !== 'string'
+      )
+        throw new Error('Expected the actual retained prepared envelope.');
+      const envelope = JSON.parse(retained.envelope_json);
+      expect(envelope.resumeGuard.requiresFreshCompanions).toBe(true);
     },
   );
 

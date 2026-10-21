@@ -4,6 +4,10 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  ConnectionStore,
+  type SavedConnection,
+} from '@kontourai/station-connect';
 import { PAIRING_LINK_REMEDY } from '@kontourai/station-connect/pairing-deep-link';
 import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import { getJson, mutateJson, type SystemStatus } from '@kontourai/station-sdk';
@@ -22,6 +26,7 @@ import {
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
+import { SHARING_LABELS } from '../components/UsageSharingChoices';
 import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
 import type { BundledServerStatus } from '../platform/native';
 
@@ -41,6 +46,9 @@ let lastError:
 let activeConnectionUrl = 'http://localhost:3242';
 let activeConnectionId = 'tailnet-station';
 let connections: unknown[] = [];
+let renderHostConnectionDetails:
+  | ((connection: SavedConnection) => ReactNode)
+  | undefined;
 let configData: any;
 let bundledStatus: BundledServerStatus | null = null;
 let platformProfile = {
@@ -220,6 +228,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
         url: activeConnectionUrl,
       },
       connections,
+      captureSelectionIntent: () => 0,
       credentialAuthorityGeneration: () => 0,
       captureCredentialEvidence: () => null,
       isCredentialEvidenceCurrent: () => false,
@@ -236,16 +245,19 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
       listFooterContent,
       onRestartInjectedConnection,
       onPairingSucceeded,
+      renderConnectionDetails,
     }: {
       isOpen: boolean;
+      renderConnectionDetails?: (connection: SavedConnection) => ReactNode;
       initialPanel?: string;
       initialPairingPayload?: string;
       pairingLinkError?: string;
       listFooterContent?: ReactNode;
       onRestartInjectedConnection?: () => void;
       onPairingSucceeded?: () => void;
-    }) =>
-      isOpen ? (
+    }) => {
+      renderHostConnectionDetails = renderConnectionDetails;
+      return isOpen ? (
         <div data-testid="connection-manager">
           Connection manager: {initialPanel ?? 'list'}
           <output data-testid="connection-manager-pairing-payload">
@@ -272,7 +284,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
             </button>
           )}
         </div>
-      ) : null,
+      ) : null;
+    },
   };
 });
 
@@ -574,12 +587,15 @@ describe('OnboardingGate', () => {
             <PendingReads />
           </RecoveryQueryBoundary>,
         );
-      const label = { off: 'Off', lite: 'Lite', full: 'Full' }[tier];
+      const label = SHARING_LABELS[tier];
+      const disclosureReads = () =>
+        reads.mock.calls.filter(([url]) => String(url).includes('/disclosure'))
+          .length;
       let view = mount();
       fireEvent.click(await screen.findByRole('radio', { name: label }));
       fireEvent.click(
         screen.getByRole('button', {
-          name: `Save operator choice as ${label}`,
+          name: 'Save choice',
         }),
       );
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -593,8 +609,11 @@ describe('OnboardingGate', () => {
       resetUsageTelemetryDisclosureDismissal();
       localStorage.clear();
       for (const [key, value] of persisted) localStorage.setItem(key, value);
+      let priorDisclosureReads = disclosureReads();
       view = mount();
-      await waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(disclosureReads()).toBeGreaterThan(priorDisclosureReads),
+      );
       await waitFor(() =>
         expect(
           screen.getByLabelText('Pending disclosure reads').textContent,
@@ -603,8 +622,11 @@ describe('OnboardingGate', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
       view.unmount();
       dnt = false;
+      priorDisclosureReads = disclosureReads();
       view = mount();
-      await waitFor(() => expect(reads).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(disclosureReads()).toBeGreaterThan(priorDisclosureReads),
+      );
       await waitFor(() =>
         expect(
           screen.getByLabelText('Pending disclosure reads').textContent,
@@ -613,7 +635,7 @@ describe('OnboardingGate', () => {
       if (tier === 'full') {
         expect(screen.getByRole('dialog')).toBeTruthy();
         expect(
-          screen.getByRole('button', { name: 'Allow Full usage telemetry' }),
+          screen.getByRole('button', { name: 'Save choice' }),
         ).toBeTruthy();
       } else {
         expect(screen.queryByRole('dialog')).toBeNull();
@@ -929,6 +951,45 @@ describe('OnboardingGate', () => {
     fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
 
     expect(screen.getByText('Connection manager: list')).toBeTruthy();
+  });
+
+  test('extension management belongs only to the current saved Station row', () => {
+    currentStatus = chatReadyStatus();
+    platformProfile = {
+      ...platformProfile,
+      isTauri: true,
+      isMobile: true,
+      target: 'ios',
+    };
+    const values = new Map<string, string>();
+    const store = new ConnectionStore({
+      storage: {
+        get: (key) => values.get(key) ?? null,
+        set: (key, value) => {
+          values.set(key, value);
+        },
+        remove: (key) => {
+          values.delete(key);
+        },
+      },
+    });
+    const current = store.add('Current', 'https://current.example.test');
+    const other = store.add('Other', 'https://other.example.test');
+    activeConnectionId = current.id;
+    activeConnectionUrl = current.url;
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
+    if (!renderHostConnectionDetails)
+      throw new Error('Station details callback missing');
+    expect(renderHostConnectionDetails(other)).toBeNull();
+    render(renderHostConnectionDetails(current));
+    expect(
+      screen.getByRole('button', { name: 'Review and enable' }),
+    ).toBeTruthy();
   });
 
   test('consumes a connection request emitted before the deferred owner mounts', () => {

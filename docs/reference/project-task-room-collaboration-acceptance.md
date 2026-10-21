@@ -7,11 +7,16 @@ pairs a second browser as a distinct device, and uses the rendered Task
 workspace rather than injected pane props.
 
 When it passes, the lane checks both browsers receive the same server-owned room generation;
-join and durable announce; symmetric published presence; watch, follow, and
-local-input stop; exact revision-bound cursor/selection projection; message and
+implicit join and durable publication; symmetric named presence; autosave;
+watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
 document convergence over the shared SSE connection; revoked-device cached
-read-only behavior; immutable revision-link presentation; and same-home SQLite
+read-only behavior; immutable revision links in Details; and same-home SQLite
 restoration after a full server restart.
+
+Chat and Brief are exercised through normal user actions. Retained watch/follow
+protocol setup uses explicitly named real HTTP fixture commands because those
+controls are not on the primary chat surface. The lane is not a claim that a
+human watch/follow picker is currently shipped there.
 
 The browser contract deliberately does not expose CRDT operations, writer
 epochs, raw live-work receipts, document IDs, channels, recovery state, or

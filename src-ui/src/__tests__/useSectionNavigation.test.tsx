@@ -121,6 +121,42 @@ describe('useSectionNavigation', () => {
     );
   });
 
+  test.each(['aria-modal', 'native-startup'])(
+    'section navigation preserves focus owned by a %s dialog',
+    (kind) => {
+      window.history.replaceState({}, '', '/connections?section=knowledge');
+      const section = document.createElement('section');
+      section.id = 'section-knowledge';
+      section.tabIndex = -1;
+      section.scrollIntoView = vi.fn();
+      const modal = document.createElement(
+        kind === 'native-startup' ? 'dialog' : 'div',
+      );
+      if (kind === 'native-startup') modal.setAttribute('open', '');
+      else {
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+      }
+      const choice = document.createElement('input');
+      choice.type = 'radio';
+      choice.checked = true;
+      modal.append(choice);
+      document.body.append(section, modal);
+      choice.focus();
+      try {
+        const { result } = renderHook(() =>
+          useSectionNavigation(sections, 'models'),
+        );
+        expect(result.current.activeSection).toBe('knowledge');
+        expect(document.activeElement).toBe(choice);
+        expect(section.scrollIntoView).not.toHaveBeenCalled();
+      } finally {
+        section.remove();
+        modal.remove();
+      }
+    },
+  );
+
   test('does not let section focus race a catalog leaf highlight', () => {
     window.history.replaceState(
       {},

@@ -10,6 +10,7 @@ import {
   CloseGlyph,
   EditGlyph,
   HandGlyph,
+  InboxGlyph,
   InfoGlyph,
   LockGlyph,
   MonitorGlyph,
@@ -210,6 +211,7 @@ const CHIP_GLYPHS: Record<
   InboxRowChipKind,
   (props: { className?: string }) => React.ReactElement
 > = {
+  'agent-message': InboxGlyph,
   remote: MonitorGlyph,
   draft: EditGlyph,
   woke: TimeGlyph,

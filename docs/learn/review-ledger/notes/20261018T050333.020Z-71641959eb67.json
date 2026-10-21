@@ -1,0 +1,7 @@
+{
+  "revision": "00741c38e6f5b647ad6717cb58f0e2df042e475b",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed the complete server instructions and their only outstanding input, docs/guides/development.md, at documentation pin 00741c38e6f5b647ad6717cb58f0e2df042e475b. The two guide hunks add the private experimental model-runtime package row and scoped build:agent-runtime/typecheck:agent-runtime commands with TypeScript workspace exports and explicit nonrelease/nonadoption limits. Module-map/development/testing routes, route-versus-service boundaries, lifecycle/security guidance, logger/windowsHide rules, request-scoped batching and yielding integrity policy are unchanged. Product source remains the separately source-only approved 2f15ae2e04fae8c00958876263f4c43a53ad8882. This is a scoped normative instruction review, not new server/runtime compliance or request-cost/performance proof; prior focused runtime evidence stays source-bound and stable/default30s completion remains NOT_VERIFIED. No tests, types, build, readiness, live-provider or release qualification ran for this note. Retain policy/classified status, all historical anchors, limits, checks and citations verbatim.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

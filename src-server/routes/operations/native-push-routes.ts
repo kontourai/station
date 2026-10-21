@@ -35,6 +35,15 @@ interface NativePushRouteDeps {
    */
   deliverable?: boolean;
   identifyDevice: (credential: string) => PairedDevice | null;
+  /**
+   * The relay alias id when the credential is a relay alias of a paired
+   * device, else undefined. An alias is a read-scoped relay bearer for the
+   * same device id that never carries the device's home-possession stamp,
+   * so a registration made with it would be filed under a device whose
+   * other credential may read as the operator: refused, as a personal
+   * access token is.
+   */
+  credentialAliasId: (credential: string) => string | undefined;
   /** Creates the push key on first use; resolves its RFC 7638 thumbprint. */
   loadOrCreateStationKey: () => Promise<string>;
   stationId: () => string;
@@ -89,7 +98,9 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
       (candidate) => deps.identifyDevice(candidate) !== null,
     );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) return c.json({ error: 'device_pairing_required' }, 403);
+    // A relay alias registers nothing (see `credentialAliasId`).
+    if (!device || deps.credentialAliasId(credential!) !== undefined)
+      return c.json({ error: 'device_pairing_required' }, 403);
     // Only a device that could list the sessions a card shows may register:
     // a person's device (not another Station's delegation grant) with
     // orchestration:read, not bound to a deployment account. The publisher

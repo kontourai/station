@@ -696,14 +696,16 @@ describe('color theme cascade', () => {
             document.documentElement.getAttribute('data-color-theme-failed') ===
             'nord',
         );
-        // A manual retry shows as retrying, then failed again.
-        await page.evaluate(() =>
-          (window as unknown as { harness: any }).harness.retryColorTheme(),
-        );
+        // A manual retry shows as retrying, then failed again. The mark is
+        // read in the same task as the retry: the route answers the retried
+        // request at once, so a separate evaluate can already see it fail.
         expect(
-          await page.evaluate(() =>
-            document.documentElement.getAttribute('data-color-theme-failed'),
-          ),
+          await page.evaluate(() => {
+            (window as unknown as { harness: any }).harness.retryColorTheme();
+            return document.documentElement.getAttribute(
+              'data-color-theme-failed',
+            );
+          }),
         ).toBeNull();
         await page.waitForFunction(
           () =>

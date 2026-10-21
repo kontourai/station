@@ -1,0 +1,45 @@
+{
+  "revision": "4ee38095155a6909e358ad054996970f2c6e6d60",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Scoped delta review for 4ee38095155: Re-read Operations/storage and evidence boundaries. The additive local invalid-outbox reason does not alter runtime homes, Project ownership, receipts or the context reading routes. No new full-document, deployment or device qualification is claimed.","inputs":["CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Scoped delta review for 4ee38095155: Re-read the context responsibilities and relationships. A local dropped-feedback reason does not move telemetry ownership or turn observations into governance receipts. No new full-document, deployment or device qualification is claimed.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Scoped delta review for 4ee38095155: Re-read the companion status and artifact boundaries. The new local outbox reason does not change receiver wire contracts, source qualification or the explicit deployment/publication gaps. No new full-document, deployment or device qualification is claimed.","inputs":["deployment/telemetry/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Scoped delta review for 4ee38095155: Re-read the public-configuration findings and source-observation limits. The local invalid reason and earlier agent feedback refusal do not change the retained Agent maxSteps, quick-prompt or date-format findings. No new full-document, deployment or device qualification is claimed.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/design/automations.md","note":"Scoped delta review for 4ee38095155: Re-read the retained-proposal status and authority section. The earlier telemetry feedback refusal does not implement automation intake/dispatch or change default approval authority. No new full-document, deployment or device qualification is claimed.","inputs":["docs/design/automations.md"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Scoped delta review for 4ee38095155: Re-read configuration exclusion and the bounded log-level exception. Feedback validation/refusal ordering adds no revision, idempotency or offline replay permission. No new full-document, deployment or device qualification is claimed.","inputs":["docs/design/offline-outbound-queue.md","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Scoped delta review for 4ee38095155: Re-read S1 telemetry settings ownership and delivery limits. Feedback rejection does not alter instance persistence, destination grants, queue withdrawal or collector restart semantics. No new full-document, deployment or device qualification is claimed.","inputs":["docs/design/settings-architecture.md","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/glossary.md","note":"Scoped delta review for 4ee38095155: Re-read instance/home, Device/client and telemetry-plane vocabulary. Adding a local invalid drop classification changes none of these definitions or wire inventory terms. No new full-document, deployment or device qualification is claimed.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped delta review for 4ee38095155: Re-read the public-contract and disclosed-observation integration rows. Earlier invalid-feedback refusal and the local outbox enum do not change integration authority, Full commit receipts or hosted delivery limits. No new full-document, deployment or device qualification is claimed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Scoped delta review for 4ee38095155: Re-read peer inference and fleet contribution authority. The early agent telemetry-feedback guard does not change inference scope, fleet configuration authority or remote execution/storage ownership. No new full-document, deployment or device qualification is claimed.","inputs":["docs/guides/machine-relationships.md","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Scoped delta review for 4ee38095155: Re-read the disclosed Full/Lite/feedback and receiver distinction. The additive local invalid-outbox reason changes no emitted schema, receiver retention/dedupe, diagnostic store or publication claim. No new full-document, deployment or device qualification is claimed.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/api.md","note":"Scoped delta review for 4ee38095155: Re-read the telemetry-tier API section and traced feedback route and config writer. Updated shared-parser skip rejection (400), the shared inline/standalone daily budget, and value-free agent refusals before reason validation/computed tier comparisons. No new full-document, deployment or device qualification is claimed.","inputs":["docs/reference/api.md","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Scoped delta review for 4ee38095155: Re-read telemetry destinations and request-only feedback metadata. Agent reason attempts now refuse before reason validation; non-agent enum/tier validation, transient metadata, lowering order and destination authority remain as described. No new full-document, deployment or device qualification is claimed.","inputs":["docs/reference/config.md","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Scoped delta review for 4ee38095155: Re-read Product telemetry observations. The only contract delta is the additive invalid local outbox reason; fixed feedback fields, daily catalog, Full envelope and shared-parser ownership remain unchanged. No new full-document, deployment or device qualification is claimed.","inputs":["docs/reference/contracts.md","packages/contracts/src/product-telemetry.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Scoped delta review for 4ee38095155: Re-read consent, daily budget, local ledger and feedback sections; traced service validation, reservation and send, route parsing, and config refusal logging. Documented invalid feedback returning false without reservation or raw content, skip/invalid route 400, and shared daily budget. Generated inventory remains unchanged. No new full-document, deployment or device qualification is claimed.","inputs":["docs/reference/usage-telemetry.md","packages/contracts/src/product-telemetry.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/routes/system/__tests__/config.routes.test.ts","src-server/routes/system/config.ts","src-server/services/__tests__/telemetry-publishers.test.ts","src-server/services/telemetry-publisher-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Scoped delta review for 4ee38095155: Re-read telemetry management authority and status/probe limits. Early agent feedback refusal preserves denial and structured value-free logging without broadening credential, Device, collaborator or destination-grant authority. No new full-document, deployment or device qualification is claimed.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/system/config.ts"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Scoped delta review for 4ee38095155: Re-read current reading routes, historical-status boundary and Fieldwork lifecycle separation. Feedback parsing/refusal and a local outbox enum do not change published sibling contracts or qualify historical delivery claims. No new full-document, deployment or device qualification is claimed.","inputs":["docs/strategy/kontour-integration-surface.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Scoped delta review for 4ee38095155: Re-read the contracts ownership rules. The additive outbox reason remains a domain shape; runtime parsing stays in the shared helper and consumers retain domain subpath imports. No new full-document, deployment or device qualification is claimed.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"packages/contracts/CLAUDE.md","note":"Scoped delta review for 4ee38095155: Re-read the complete paired-file import. It still imports AGENTS.md and adds no separate telemetry runtime rule. No new full-document, deployment or device qualification is claimed.","inputs":["packages/contracts/CLAUDE.md"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"Scoped delta review for 4ee38095155: Re-read Lite observations and strict feedback admission. The sender local invalid-outbox enum does not change the shared wire parser, rejected skip, receiver per-action dedupe, storage or deployment qualification. No new full-document, deployment or device qualification is claimed.","inputs":["packages/telemetry-broker/README.md","packages/contracts/src/product-telemetry.ts"]}
+  ]
+}

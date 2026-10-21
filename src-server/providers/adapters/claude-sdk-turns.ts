@@ -284,6 +284,9 @@ function publishClaudeTurnStart(
     threadId: context.record.session.threadId,
     createdAt: context.createdAt,
     turnId: turn.turnId,
+    ...(turn.startEvent?.invocationId !== undefined
+      ? { invocationId: turn.startEvent.invocationId }
+      : {}),
     method: 'turn.aborted',
     reason: 'interrupted',
   });
@@ -350,13 +353,16 @@ export function withdrawQueuedClaudeTurn(
   const ledger = claudeSdkTurns(context.record);
   const index = ledger.queued.findIndex((turn) => turn.turnId === turnId);
   if (index === -1) return false;
-  ledger.queued.splice(index, 1);
+  const [turn] = ledger.queued.splice(index, 1);
   context.publish({
     eventId: crypto.randomUUID(),
     provider: context.provider,
     threadId: context.record.session.threadId,
     createdAt: context.createdAt,
     turnId,
+    ...(turn.startEvent?.invocationId !== undefined
+      ? { invocationId: turn.startEvent.invocationId }
+      : {}),
     method: 'turn.aborted',
     reason,
   });
@@ -714,6 +720,9 @@ function endQueuedClaudeTurns(context: ClaudeSdkTurnContext): void {
       threadId: context.record.session.threadId,
       createdAt: context.createdAt,
       turnId: turn.turnId,
+      ...(turn.startEvent?.invocationId === undefined
+        ? {}
+        : { invocationId: turn.startEvent.invocationId }),
       method: 'turn.aborted',
       reason: ENGINE_ENDED_BEFORE_START,
     });

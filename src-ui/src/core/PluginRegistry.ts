@@ -18,6 +18,10 @@ import { nativePlatformPromise } from '../platform/native';
 import { resolveCspNonce } from '../utils/csp';
 import { log } from '../utils/logger';
 import { ensurePluginSharedRuntimeReady } from './pluginSharedRuntime';
+import {
+  isLoopbackPluginOrigin,
+  remotePluginConsentRequired,
+} from './remotePluginConsentPolicy';
 
 interface PluginActivationContext {
   readonly apiBase: string;
@@ -185,20 +189,6 @@ function unloadDraftBundle(registrationKey: string): void {
   });
 }
 
-function isLoopbackPluginOrigin(apiBase: string): boolean {
-  try {
-    const url = new URL(apiBase);
-    return (
-      url.protocol === 'http:' &&
-      (url.hostname === 'localhost' ||
-        url.hostname === '127.0.0.1' ||
-        url.hostname === '[::1]')
-    );
-  } catch {
-    return false;
-  }
-}
-
 export class PluginRegistry {
   private layouts = new Map<string, RegisteredPluginLayout>();
   private pluginMeta = new Map<string, any>();
@@ -279,10 +269,12 @@ export class PluginRegistry {
     // root WebView.
     const remoteNativeIsolation = this.nativeHost && this.remoteProfile;
     if (
-      ((!isLoopbackPluginOrigin(apiBase) && !remoteBrowserIsolation) ||
-        remoteNativeIsolation) &&
-      !this.allowRemoteBundles &&
-      !remoteBrowserIsolation
+      remotePluginConsentRequired(
+        apiBase,
+        this.nativeHost,
+        this.remoteProfile,
+      ) &&
+      !this.allowRemoteBundles
     ) {
       // Remote Station bundles execute in this root webview and therefore
       // share its authenticated request and native-bridge authority. Until

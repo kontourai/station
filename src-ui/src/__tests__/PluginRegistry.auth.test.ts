@@ -107,19 +107,23 @@ describe('PluginRegistry remote authentication', () => {
     expect((window as any).__station_ai_plugins).toBeUndefined();
   });
 
-  test('uses the native platform adapter to reject an unapproved remote bundle', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const registry = new PluginRegistry(
-      Promise.resolve({ platform: 'tauri' as const }),
-    );
-    registry.setApiBase('https://station.example.test');
-
-    await expect(registry.reload()).resolves.toBe('degraded');
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(registry.getLoadStatus().failure).toBe('remote-isolation');
-  });
+  test.each([
+    { apiBase: 'https://station.example.test', remoteProfile: false },
+    { apiBase: ORIGIN, remoteProfile: true },
+  ])(
+    'native loading refuses an unapproved Station before reading its inventory: $apiBase',
+    async ({ apiBase, remoteProfile }) => {
+      const fetchMock = vi.fn(async () => Response.json({ plugins: [] }));
+      vi.stubGlobal('fetch', fetchMock);
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' as const }),
+      );
+      registry.setApiBase(apiBase, 'native-station', { remoteProfile });
+      await expect(registry.reload()).resolves.toBe('degraded');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(registry.getLoadStatus().failure).toBe('remote-isolation');
+    },
+  );
 
   test('isolates a consented native remote profile even through loopback', async () => {
     const fetchMock = vi.fn(async () =>

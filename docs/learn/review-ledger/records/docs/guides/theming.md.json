@@ -106,6 +106,10 @@
 
     "src-ui/src/__tests__/startup-presentation.browser.test.tsx",
 
+    "src-ui/src/lib/root-theme.ts",
+
+    "src-ui/src/highlight/station-syntax-theme.ts",
+
     "src-ui/src/lib/color-theme-catalog.ts",
 
     "src-ui/src/lib/color-themes.ts",

@@ -409,3 +409,294 @@ describe('SessionEventReads session window sequence space', () => {
     },
   );
 });
+
+describe('SessionEventReads current-turn tool activity', () => {
+  test('fresh capped windows retain the own latest tool start and reset at the next turn', async () => {
+    const store = createStore();
+    const threadId = 'activity-child';
+    const base = {
+      provider: 'claude' as const,
+      threadId,
+      createdAt: '2026-10-20T00:00:00.000Z',
+    };
+    const options = {
+      authority: INTERNAL_SESSION_READ_SCOPE,
+      direction: 'newest' as const,
+      turnLimit: 1,
+    };
+    try {
+      seedRoot(store, threadId);
+      store.appendEvent({
+        ...base,
+        eventId: 'old-start',
+        turnId: 'old',
+        method: 'turn.started',
+        prompt: 'Previous task',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'old-tool',
+        turnId: 'old',
+        method: 'tool.started',
+        itemId: 'old',
+        toolCallId: 'old',
+        toolName: 'OldTool',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'start',
+        turnId: 'current',
+        method: 'turn.started',
+        prompt: 'Inspect',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'read',
+        turnId: 'current',
+        method: 'tool.started',
+        itemId: 'read',
+        toolCallId: 'read',
+        toolName: 'Read',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'edit',
+        turnId: 'current',
+        method: 'tool.started',
+        itemId: 'edit',
+        toolCallId: 'edit',
+        toolName: 'Edit',
+        arguments: { private: 'must not enter the activity fact' },
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'read-done',
+        turnId: 'current',
+        method: 'tool.completed',
+        itemId: 'read',
+        toolCallId: 'read',
+        toolName: 'Read',
+        status: 'success',
+        output: 'done',
+      });
+      for (let index = 0; index < 160; index++) {
+        store.appendEvent({
+          ...base,
+          eventId: `progress-${index}`,
+          turnId: 'current',
+          method: 'tool.progress',
+          itemId: 'edit',
+          toolCallId: 'edit',
+          message: `step ${index}`,
+        });
+      }
+      for (const other of ['parent', 'sibling']) {
+        seedRoot(store, other);
+        store.appendEvent({
+          ...base,
+          threadId: other,
+          eventId: `${other}-start`,
+          turnId: 'current',
+          method: 'turn.started',
+          prompt: 'Unrelated',
+        });
+        store.appendEvent({
+          ...base,
+          threadId: other,
+          eventId: `${other}-tool`,
+          turnId: 'current',
+          method: 'tool.started',
+          itemId: other,
+          toolCallId: other,
+          toolName: `${other}-tool`,
+        });
+      }
+      const result = await readsFor(store, threadId).readSessionEventWindow(
+        threadId,
+        options,
+      );
+      expect(result).not.toBeNull();
+      expect(result!.hasMore).toBe(true);
+      expect(result!.events.length).toBeLessThanOrEqual(150);
+      expect(
+        result!.events.some(({ event }) => event.method === 'tool.started'),
+      ).toBe(false);
+      expect(result!.latestTool).toEqual({ turnId: 'current', name: 'Edit' });
+      store.appendEvent({
+        ...base,
+        eventId: 'steer-current',
+        turnId: 'current',
+        method: 'turn.started',
+        inputKind: 'steer',
+        prompt: 'Keep inspecting',
+      });
+      expect(
+        (await readsFor(store, threadId).readSessionEventWindow(
+          threadId,
+          options,
+        ))!.latestTool,
+      ).toEqual({ turnId: 'current', name: 'Edit' });
+
+      store.appendEvent({
+        ...base,
+        eventId: 'next-start',
+        turnId: 'next',
+        method: 'turn.started',
+        prompt: 'Next task',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'late-old-tool',
+        turnId: 'current',
+        method: 'tool.started',
+        itemId: 'late',
+        toolCallId: 'late',
+        toolName: 'LateOldTool',
+      });
+      const next = await readsFor(store, threadId).readSessionEventWindow(
+        threadId,
+        options,
+      );
+      expect(next!.latestTool).toBeNull();
+      store.appendEvent({
+        ...base,
+        eventId: 'next-tool',
+        turnId: 'next',
+        method: 'tool.started',
+        itemId: 'next',
+        toolCallId: 'next',
+        toolName: 'NextTool',
+      });
+      expect(
+        (await readsFor(store, threadId).readSessionEventWindow(
+          threadId,
+          options,
+        ))!.latestTool,
+      ).toEqual({ turnId: 'next', name: 'NextTool' });
+      store.appendEvent({
+        ...base,
+        eventId: 'same-id-start',
+        turnId: 'next',
+        method: 'turn.started',
+        prompt: 'New input on the same id',
+      });
+      expect(
+        (await readsFor(store, threadId).readSessionEventWindow(
+          threadId,
+          options,
+        ))!.latestTool,
+      ).toEqual({ turnId: 'next', name: 'NextTool' });
+    } finally {
+      store.close();
+    }
+  });
+
+  test('activity respects the transcript watermark when a newer turn arrives between reads', async () => {
+    const store = createStore();
+    const threadId = 'activity-watermark';
+    const base = {
+      provider: 'claude' as const,
+      threadId,
+      createdAt: '2026-10-20T00:00:00.000Z',
+    };
+    try {
+      seedRoot(store, threadId);
+      store.appendEvent({
+        ...base,
+        eventId: 'start',
+        turnId: 'first',
+        method: 'turn.started',
+        prompt: 'First',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'tool',
+        turnId: 'first',
+        method: 'tool.started',
+        itemId: 'read',
+        toolCallId: 'read',
+        toolName: 'Read',
+      });
+      const window = store.listEventWindowByTurn.bind(store);
+      vi.spyOn(store, 'listEventWindowByTurn').mockImplementationOnce(
+        (id, options) => {
+          const result = window(id, options);
+          store.appendEvent({
+            ...base,
+            eventId: 'next',
+            turnId: 'second',
+            method: 'turn.started',
+            prompt: 'Second',
+          });
+          return result;
+        },
+      );
+      const result = await readsFor(store, threadId).readSessionEventWindow(
+        threadId,
+        {
+          authority: INTERNAL_SESSION_READ_SCOPE,
+          direction: 'newest',
+          turnLimit: 1,
+        },
+      );
+      expect(result!.watermark).toBeLessThan(store.headGlobalSequence());
+      expect(result!.latestTool).toEqual({ turnId: 'first', name: 'Read' });
+    } finally {
+      store.close();
+    }
+  });
+
+  test.each(['é'.repeat(128), 'é'.repeat(129), ''])(
+    'bounds the latest tool name without substituting an earlier tool (%s)',
+    async (name) => {
+      const store = createStore();
+      const threadId = 'activity-bound';
+      const base = {
+        provider: 'claude' as const,
+        threadId,
+        turnId: 'current',
+        createdAt: '2026-10-20T00:00:00.000Z',
+      };
+      try {
+        seedRoot(store, threadId);
+        store.appendEvent({
+          ...base,
+          eventId: 'start',
+          method: 'turn.started',
+          prompt: 'Inspect',
+        });
+        store.appendEvent({
+          ...base,
+          eventId: 'earlier',
+          method: 'tool.started',
+          itemId: 'earlier',
+          toolCallId: 'earlier',
+          toolName: 'EarlierTool',
+        });
+        store.appendEvent({
+          ...base,
+          eventId: 'latest',
+          method: 'tool.started',
+          itemId: 'latest',
+          toolCallId: 'latest',
+          toolName: name,
+        });
+        const result = await readsFor(store, threadId).readSessionEventWindow(
+          threadId,
+          {
+            authority: INTERNAL_SESSION_READ_SCOPE,
+            direction: 'newest',
+            turnLimit: 1,
+          },
+        );
+        expect(result!.latestTool).toEqual(
+          name && Buffer.byteLength(name) <= 256
+            ? { turnId: 'current', name }
+            : null,
+        );
+      } finally {
+        store.close();
+      }
+    },
+  );
+});

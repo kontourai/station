@@ -1,16 +1,55 @@
 .usage-telemetry-disclosure__choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-4);
-  margin: var(--k-space-4) 0;
+  display: grid;
+  grid-auto-rows: 1fr;
+  gap: var(--k-space-2);
+  margin: var(--k-space-4) 0 var(--k-space-2);
   padding: 0;
   border: 0;
 }
 
 .usage-telemetry-disclosure__choices label {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: var(--k-space-2);
   min-height: 44px;
+  margin: 0;
+  padding-block: var(--k-space-2);
   cursor: pointer;
+}
+
+.usage-telemetry-disclosure__choices small {
+  display: block;
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.usage-telemetry-disclosure__included > summary,
+.usage-telemetry-disclosure__technical > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.usage-telemetry-disclosure__included > summary:focus-visible,
+.usage-telemetry-disclosure__technical > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.usage-telemetry-disclosure__choices input {
+  margin: var(--k-space-1) 0 0;
+}
+.usage-telemetry-disclosure__included-content {
+  margin-top: var(--k-space-3);
+}
+.usage-telemetry-disclosure__included-content h3 {
+  margin: 0 0 var(--k-space-2);
+}
+.usage-telemetry-disclosure__included-content li {
+  margin-block: var(--k-space-2);
+}
+
+.usage-telemetry-disclosure__included-content ul {
+  padding-inline-start: var(--k-space-4);
 }

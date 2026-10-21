@@ -1,0 +1,7 @@
+{
+  "revision": "d5a1e18511a7409f461987cc9471386a52c04bd1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Exact-answer Basis seam: Station-built input/Thread result contributions that Surface's parser rejects now make the read unavailable (503) with a logged Station composition invariant instead of Surface's owner-blaming fallback; Whole Task records an unavailable answer gap; session ids are opaque and may contain ':'. Checked against exact-answer-basis-module.ts, task-basis-module.ts, orchestration.ts route, and tasks.routes/orchestration.routes/exact-answer/task-basis module tests.","inputs":["docs/architecture/module-map.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/evidence/exact-answer-basis-module.ts","src-server/services/projects/task-basis-module.ts","src-server/services/projects/task-basis-runtime-composition.ts"]}
+  ]
+}

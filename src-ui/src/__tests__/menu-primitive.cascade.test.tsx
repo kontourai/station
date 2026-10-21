@@ -4,7 +4,7 @@
  * #1552 D4 — ONE MENU PRIMITIVE, proved in a real engine.
  *
  * This shell had five independent menu vocabularies across the six surfaces that
- * predate it — plus the avatar's ProfileMenu, which #1552 D1 added onto the
+ * predate it — plus the account menu (ProfileMenu), which #1552 D1 added onto the
  * shared spec, for seven measured here (the Boards row menu joined later; see
  * the #2113 note at the foot of this block): the dock's placement menu
  * and its More menu (6px radius, 2px padding, 32px rows, no label inset), the
@@ -202,6 +202,8 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The phone overflow's Live work row reads the session inventory.
+  useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
   useProjectLayoutsQuery: () => ({
     data: [
       { slug: 'coding', name: 'Coding', icon: '⌘' },
@@ -340,7 +342,8 @@ const MENUS: readonly {
   {
     name: 'the header’s ⋯ overflow menu',
     selector: '.app-toolbar__overflow-menu:not(.app-toolbar__region-menu)',
-    rowCount: 5,
+    // Connections, Profile, Help, Live work and the region rows.
+    rowCount: 6,
     open: () => {
       // The coarse branch, so the region rows render inside it too — that
       // `fieldset` is the group whose leading hairline D4 replaced with a gap.
@@ -360,17 +363,20 @@ const MENUS: readonly {
     },
   },
   {
-    name: 'the avatar’s profile menu',
+    name: 'the sidebar account menu',
     selector: '.app-toolbar__profile-menu',
     rowCount: 4,
     open: () => {
-      // The fine pointer, where this menu exists at all: on a phone the avatar
-      // that opens it is hidden and the panel closes itself (see ProfileMenu).
+      // Opened from the sidebar footer's account control, which it anchors
+      // above; the spec under test is the panel's, wherever it sits.
       harness.bottomOnly = false;
       harness.isMobile = false;
+      const anchor = document.createElement('button');
+      document.body.append(anchor);
       render(
         <ProfileMenu
           isOpen
+          anchor={anchor}
           isProfileActive={false}
           isSettingsActive={false}
           settingsShortcut="⌘,"
@@ -378,7 +384,7 @@ const MENUS: readonly {
           onClose={() => {}}
           onOpenProfile={() => {}}
           onOpenHelp={() => {}}
-          onToggleSettings={() => {}}
+          onOpenSettings={() => {}}
         />,
       );
     },

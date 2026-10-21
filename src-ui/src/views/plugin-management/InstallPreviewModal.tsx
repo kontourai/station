@@ -1,5 +1,5 @@
 import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { CheckGlyph, WarningGlyph } from '../../components/icons/Glyph';
 import { PluginProposalSummary } from '../../components/plugins/PluginProposalSummary';
@@ -21,6 +21,7 @@ export function InstallPreviewModal({
   onConfirm,
   proposal = null,
   reinstall = null,
+  extensionAccess,
 }: {
   /**
    * #2323 S4: the installed plugin this preview reinstalls from its source
@@ -33,6 +34,7 @@ export function InstallPreviewModal({
    * from one. Provenance only: the confirm button below is the decision.
    */
   proposal?: PluginLifecycleProposal | null;
+  extensionAccess?: ReactNode;
   previewData: PreviewData;
   previewSkips: Set<string>;
   installPending: boolean;
@@ -80,6 +82,7 @@ export function InstallPreviewModal({
             </div>
           )}
         </div>
+        {extensionAccess}
         {reinstall && (
           <ReinstallDelta reinstall={reinstall} previewData={previewData} />
         )}

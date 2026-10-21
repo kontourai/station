@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render as renderTree,
+  screen,
+} from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
 vi.mock('../views/settings/composite-editors', () => ({
@@ -13,6 +17,17 @@ import {
   StationConfigSection,
 } from '../views/settings/StationConfigSection';
 import { SETTINGS_CATALOG } from '../views/settings/settings-catalog';
+
+// These catalog/Advanced tests explicitly expand the controls they exercise.
+function render(tree: Parameters<typeof renderTree>[0]) {
+  const view = renderTree(tree);
+  const summary = view.container.querySelector('details > summary');
+  if (summary?.textContent === 'Advanced' && summary.parentElement) {
+    summary.parentElement.setAttribute('open', '');
+    fireEvent(summary.parentElement, new Event('toggle'));
+  }
+  return view;
+}
 
 /**
  * Every key the single "Station configuration" card rendered before #2182
@@ -356,4 +371,41 @@ test('#2144 slice 6: a stored value is what the row shows', () => {
       }) as HTMLSelectElement
     ).value,
   ).toBe('never');
+});
+
+test('publisher controls render registry publishers without borrowing Kontour identity or choices', () => {
+  const onChange = vi.fn();
+  const onFeedback = vi.fn();
+  render(
+    <StationConfigSection
+      containerScope="station"
+      section="telemetry"
+      config={{}}
+      onChange={onChange}
+      onTelemetryFeedback={onFeedback}
+      telemetryPublishers={{
+        'publisher:example.tools': { tier: 'lite', reason: 'default' },
+      }}
+    />,
+  );
+  expect(
+    screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+  ).toHaveProperty('value', '');
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'example.tools telemetry' }),
+    { target: { value: 'off' } },
+  );
+  expect(
+    screen.getByRole('heading', {
+      name: /Changing sharing with example.tools/,
+    }),
+  ).toBe(document.activeElement);
+  fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+  expect(onFeedback).toHaveBeenCalledWith('publisher:example.tools', 'skip');
+  expect(
+    screen.getByRole('combobox', { name: 'example.tools telemetry' }),
+  ).toBe(document.activeElement);
+  expect(onChange).toHaveBeenCalledWith({
+    telemetryTier: { 'publisher:example.tools': 'off' },
+  });
 });

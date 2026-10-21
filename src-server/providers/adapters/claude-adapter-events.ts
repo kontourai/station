@@ -18,6 +18,7 @@ import type {
   ProviderRuntimeErrorEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
+import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
 import {
@@ -218,6 +219,8 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
+  /** The latest `init` proved the in-process Station browser is the only server of its name (`stationBrowserVerifiedByInit`). */
+  stationBrowserVerified?: boolean;
   /**
    * The turn the SDK is running now, which frames and results attribute to.
    * Derived: only the turn ledger (`sdkTurns`) writes it.
@@ -415,6 +418,26 @@ interface MapClaudeMessageParams {
  * answer forwards a `setMode` update, so Station's view (and the next turn's
  * "has the mode changed" check, and per-turn metadata) matches the engine.
  */
+/**
+ * Whether the engine's `init` report proves the in-process Station browser is
+ * the ONLY server named `station-browser`: exactly one entry of that name, and
+ * its `source` is `sdk`. The SDK documents `source: 'sdk'` as an in-process
+ * server only the host registers ("Key trust on this, not on the name",
+ * `McpServerStatus.source` in sdk.d.ts). The engine's merge order between an
+ * SDK-registered server and a discovered one of the same name (`.mcp.json`,
+ * user config) lives in the compiled CLI and could not be established from
+ * the installed code, so this fails closed: an absent `source` (an older CLI),
+ * a second entry of the name, or a non-`sdk` source all read as unverified.
+ */
+function stationBrowserVerifiedByInit(
+  mcpServers: readonly { name: string; source?: string }[] | undefined,
+): boolean {
+  const named = (mcpServers ?? []).filter(
+    (server) => server.name === STATION_BROWSER_MCP_SERVER_ID,
+  );
+  return named.length === 1 && named[0].source === 'sdk';
+}
+
 export function reportClaudePermissionMode(
   record: Pick<ClaudeMessageState, 'currentPermissionMode' | 'session'>,
   mode: PermissionMode,
@@ -533,6 +556,9 @@ export function mapClaudeSdkMessage({
       : message.session_id;
     record.session.cwd = message.cwd;
     record.session.model = message.model;
+    record.stationBrowserVerified = stationBrowserVerifiedByInit(
+      message.mcp_servers,
+    );
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
     if (message.permissionMode) {
@@ -906,6 +932,7 @@ export function mapClaudeSdkMessage({
         ? target.turn
         : undefined;
     const resultTurnId = resultTurn?.turnId;
+    const resultInvocationId = resultTurn?.startEvent?.invocationId;
     // A send the ledger still holds as queued (no lifecycle messages) gets
     // its start before any fact about its end.
     if (resultTurn) ensureClaudeTurnStartPublished(turnContext, resultTurn);
@@ -979,6 +1006,9 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         turnId: resultTurnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'runtime.error',
         ...providerFailure(
           usageLimit
@@ -1085,6 +1115,9 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         turnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'turn.completed',
         // `'other'` — not `'stop'` and not `'tool-calls'` — for a deferral:
         // the turn did not reach a self-reported outcome, and `'other'`
@@ -1126,6 +1159,9 @@ export function mapClaudeSdkMessage({
           threadId: record.session.threadId,
           createdAt,
           turnId: folded.turnId,
+          ...(folded.startEvent?.invocationId !== undefined
+            ? { invocationId: folded.startEvent.invocationId }
+            : {}),
           method: 'turn.completed',
           finishReason: 'other',
         });
@@ -1162,10 +1198,8 @@ export function mapClaudeSdkMessage({
     // tools that never emit SDK `tool_progress`. Subagent-internal calls
     // (`parent_tool_use_id != null`) stay out of the main transcript; their
     // model is that subagent's own (#3163).
-    if (message.parent_tool_use_id !== null) {
-      observeClaudeSubagentReply(childWorkContext, message);
-      return;
-    }
+    observeClaudeSubagentReply(childWorkContext, message);
+    if (message.parent_tool_use_id !== null) return;
     const content = message.message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {

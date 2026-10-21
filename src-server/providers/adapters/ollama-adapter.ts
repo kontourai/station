@@ -67,6 +67,8 @@ interface OllamaSession extends ProviderSession {
   history: LLMMessage[];
 }
 
+type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
+
 export class OllamaAdapter implements ProviderAdapterShape {
   readonly provider: EngineId = 'ollama';
   readonly metadata: ProviderAdapterShape['metadata'];
@@ -74,7 +76,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
   private sessions = new Map<string, OllamaSession>();
   private readonly activeTurns = new Map<
     string,
-    { turnId: string; controller: AbortController }
+    { turnId: string; controller: AbortController; origin: TurnOrigin }
   >();
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private readonly llm: OllamaLLMProvider;
@@ -232,6 +234,9 @@ export class OllamaAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const invocationId = input.invocationId;
+    const origin: TurnOrigin =
+      invocationId === undefined ? {} : { invocationId };
     const session = this.sessions.get(input.threadId);
     if (!session) {
       throw new Error(
@@ -264,12 +269,13 @@ export class OllamaAdapter implements ProviderAdapterShape {
         threadId: input.threadId,
         createdAt: now,
         turnId: superseded.turnId,
+        ...superseded.origin,
         method: 'turn.aborted',
         reason: 'superseded',
       });
       superseded.controller.abort(new Error('Superseded by a newer turn.'));
     }
-    this.activeTurns.set(input.threadId, { turnId, controller });
+    this.activeTurns.set(input.threadId, { turnId, controller, origin });
 
     // archive#796: a per-turn model override changes the model this session actually
     // runs on, but only `session.configured` carries a model into the read
@@ -321,6 +327,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: now,
       turnId,
+      ...origin,
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
@@ -386,6 +393,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
             threadId: input.threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...origin,
             itemId: contentItemId,
             method: 'content.text-delta',
             delta: chunk.content,
@@ -453,7 +461,12 @@ export class OllamaAdapter implements ProviderAdapterShape {
         // `finishReason: 'other'` unconditionally, which is
         // indistinguishable from an ordinary terminal completion and folded
         // the session to 'completed'.
-        this.publishTurnFailure(input.threadId, turnId, errorMessage(err));
+        this.publishTurnFailure(
+          input.threadId,
+          turnId,
+          origin,
+          errorMessage(err),
+        );
       }
       this.clearCurrentTurn(input.threadId, turnId);
       throw err;
@@ -469,7 +482,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       session.history.push({ role: 'assistant', content: assistantText });
     }
 
-    this.publishCompletion(input.threadId, turnId, assistantText, {
+    this.publishCompletion(input.threadId, turnId, origin, assistantText, {
       finishReason,
       reportedModel,
       usage: turnUsage,
@@ -503,6 +516,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId: interruptedTurnId,
+          ...activeTurn.origin,
           method: 'turn.aborted',
           reason: 'interrupted',
         });
@@ -589,6 +603,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
   private publishCompletion(
     threadId: string,
     turnId: string,
+    origin: TurnOrigin,
     outputText: string | undefined,
     options: {
       // archive#3588: widened from `'stop' | 'cancelled' | 'other'` to
@@ -627,6 +642,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
         threadId,
         createdAt: completedAt,
         turnId,
+        ...origin,
         method: 'token-usage.updated',
         ...reportedUsage,
       });
@@ -637,6 +653,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: completedAt,
       turnId,
+      ...origin,
       method: 'turn.completed',
       finishReason: options.finishReason ?? 'stop',
       outputText,
@@ -665,6 +682,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
   private publishTurnFailure(
     threadId: string,
     turnId: string,
+    origin: TurnOrigin,
     message: string,
   ): void {
     if (!this.isCurrentTurn(threadId, turnId)) return;
@@ -675,6 +693,7 @@ export class OllamaAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: completedAt,
       turnId,
+      ...origin,
       method: 'runtime.error',
       ...providerFailure('provider_error'),
       severity: 'error',

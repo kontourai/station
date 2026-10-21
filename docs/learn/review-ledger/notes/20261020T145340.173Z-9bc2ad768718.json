@@ -1,0 +1,17 @@
+{
+  "revision": "f007777dc335b3081fd8f0fb039fc9f0ae3ff102",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Fix round 2: added Ctrl+Y to the reserved text-editing chords; matches EDITING_RESERVED_CHORDS (editing.redoAlt, ctrl+y) and is tested on Mac and in the off-Mac suite.","inputs":["docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 2: added Ctrl+Y to the reserved chords. The credentials refusal now shows a fixed notice with no URL or Copy action, consistent with the existing 'Station tells the user' wording; render-time placement liveness keeps the documented settle-after-unmount behaviour.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Fix round 2: added Ctrl+Y to the useShortcut reserved list; station-docs-content.ts regenerated and docs:mcp:check passes.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Fix round 2 (transitive via keyboard-shortcuts.md Ctrl+Y addition): the shortcut-hint finding is unaffected. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Fix round 2 (transitive via sdk.md Ctrl+Y addition): routing guide restates no reserved chords. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Fix round 2 (transitive via sdk.md): still routes to the SDK reference. No prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

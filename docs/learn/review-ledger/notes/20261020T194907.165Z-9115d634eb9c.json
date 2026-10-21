@@ -1,0 +1,9 @@
+{
+  "revision": "904ec30a6c8a9096265c8b320b5468c3bd374b47",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the only post-evidence delta: the frame browser context's storageState argument is formatted on three lines instead of one. Runtime semantics, fixture ownership, old-record upgrade and exact Up assertions are unchanged. The prior direct/frame four-test PASS and restored133 owner tests remain behavior evidence; native/hosted remain separate.","inputs":["docs/design/pane-relationships.md","tests/related-panes-frame.spec.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the final frame-spec formatting-only delta after its actual old-kept-record/reopen/Up journey passed. The isolated context uses identical storageState and no test or product behavior changes. Public contracts, permissions, versions and the SDK reference claims remain accurate.","inputs":["docs/reference/sdk.md","tests/related-panes-frame.spec.ts"]}
+  ]
+}

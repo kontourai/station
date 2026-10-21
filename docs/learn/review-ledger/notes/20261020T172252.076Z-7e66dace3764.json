@@ -1,0 +1,7 @@
+{
+  "revision": "c3b9a9f64061869cd8a4c0cd940c0420737372dd",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#3800 round 5: the check now starts from the deepest Project folder around the session's folder even when the start names none, and a folder outside every Project trusts no .codex (remedy: add it as a Project or run as host). Traced to sessionConfinementRoot and findUnaccountedCodexConfig.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

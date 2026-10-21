@@ -1,0 +1,7 @@
+{
+  "revision": "edf79fe334cc5fc2f2afff0d9aa1c67d527d3c24",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Verified source explanation Dialog does not create a browser history entry and Escape restores its explicit trigger. Full mounted Settings regression failed on added history before repair, then97cases passed after repair with initial navigation settled. Phone-width browser Escape returned focus to the info button; no unrelated route/focus owner changed.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/SettingRowStatus.tsx"]}
+  ]
+}

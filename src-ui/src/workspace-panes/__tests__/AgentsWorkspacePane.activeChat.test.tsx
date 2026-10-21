@@ -41,6 +41,7 @@ vi.mock('../../contexts/useShowSurface', () => ({
 vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => () => {},
 }));
+vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -49,6 +50,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
   useQueryClient: () => ({}),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),

@@ -249,16 +249,18 @@ export const TranscriptTurnContext = createContext<
   | undefined
 >(undefined);
 
-export function useTranscriptChildrenForCall(
-  toolCallId: string,
+export function useTranscriptChildrenForCalls(
+  toolCallIds: readonly string[],
 ): TranscriptChild[] {
   const children = useContext(TranscriptChildrenContext);
   const turn = useContext(TranscriptTurnContext);
-  return [...children.values()].filter(
-    (child) =>
-      (child.toolAnchor || !child.spawn?.standalone) &&
-      child.item.parent?.toolCallId === toolCallId &&
-      (!turn?.threadId || child.item.reporterThreadId === turn.threadId),
+  return [...new Set(toolCallIds)].flatMap((toolCallId) =>
+    [...children.values()].filter(
+      (child) =>
+        (child.toolAnchor || !child.spawn?.standalone) &&
+        child.item.parent?.toolCallId === toolCallId &&
+        (!turn?.threadId || child.item.reporterThreadId === turn.threadId),
+    ),
   );
 }
 

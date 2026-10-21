@@ -35,9 +35,18 @@ async function exercise({
   failure = false,
   completed = false,
   fork = false,
+  cancellationStalls = false,
+  forceStalls = false,
+  headChangesAfterCancel = false,
+  attemptChangesAfterCancel = false,
+  activeRunner = false,
+  headChangesDuringJobs = false,
+  badJob = undefined as Record<string, unknown> | undefined,
 } = {}) {
   const cancelled: number[] = [];
+  const forced: number[] = [];
   let reads = 0;
+  let jobsRead = false;
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
     const url = new URL(req.url ?? '', 'http://localhost');
@@ -53,7 +62,12 @@ async function exercise({
           state: 'open',
           base: { ref: 'main' },
           head: {
-            sha: changedHead && reads > 1 ? old : head,
+            sha:
+              (changedHead && reads > 1) ||
+              (headChangesAfterCancel && cancelled.length > 0) ||
+              (headChangesDuringJobs && jobsRead)
+                ? old
+                : head,
             ref: 'feature',
             repo: { full_name: fork ? 'someone/station' : repository },
           },
@@ -67,19 +81,59 @@ async function exercise({
           ),
         }),
       );
+    } else if (/\/actions\/runs\/\d+\/jobs$/.test(url.pathname)) {
+      jobsRead = true;
+      const jobs: Record<string, unknown>[] = activeRunner
+        ? [
+            {
+              id: 10,
+              run_id: Number(url.pathname.split('/').at(-2)),
+              run_attempt: 1,
+              head_sha: old,
+              status: 'in_progress',
+              runner_id: 123,
+            },
+          ]
+        : [];
+      if (badJob)
+        jobs.push({
+          id: 11,
+          run_id: Number(url.pathname.split('/').at(-2)),
+          run_attempt: 1,
+          head_sha: old,
+          ...badJob,
+        });
+      res.end(JSON.stringify({ total_count: jobs.length, jobs }));
     } else if (/\/actions\/runs\/\d+\/cancel$/.test(url.pathname)) {
       expect(req.method).toBe('POST');
       cancelled.push(Number(url.pathname.split('/').at(-2)));
+      res.writeHead(202);
+      res.end();
+    } else if (/\/actions\/runs\/\d+\/force-cancel$/.test(url.pathname)) {
+      expect(req.method).toBe('POST');
+      forced.push(Number(url.pathname.split('/').at(-2)));
       res.writeHead(202);
       res.end();
     } else if (/\/actions\/runs\/\d+$/.test(url.pathname)) {
       const item = runs.find(
         (r) => r.id === Number(url.pathname.split('/').at(-1)),
       );
+      if (!item) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
       res.end(
         JSON.stringify({
           ...item,
-          ...(completed ? { status: 'completed' } : {}),
+          ...(completed ||
+          (cancelled.includes(item.id) && !cancellationStalls) ||
+          (forced.includes(item.id) && !forceStalls)
+            ? { status: 'completed', conclusion: 'cancelled' }
+            : {}),
+          ...(attemptChangesAfterCancel && cancelled.includes(item.id)
+            ? { run_attempt: 2 }
+            : {}),
         }),
       );
     } else {
@@ -114,7 +168,7 @@ async function exercise({
       server.close((error) => (error ? reject(error) : ok())),
     );
   }
-  return { code, cancelled };
+  return { code, cancelled, forced };
 }
 
 describe('obsolete PR CI cancellation through the GitHub API', () => {
@@ -134,21 +188,114 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
           run(9, { path: '.github/workflows/build-ios.yml' }),
         ],
       });
-      expect(result).toEqual({ code: 0, cancelled: [1, 9] });
+      expect(result).toEqual({ code: 0, cancelled: [1, 9], forced: [] });
     },
   );
 
   it.each([{ changedHead: true }, { completed: true }, { fork: true }])(
     'leaves work alone when its cancellation authority disappears: %j',
     async (world) => {
-      expect(await exercise(world)).toEqual({ code: 0, cancelled: [] });
+      expect(await exercise(world)).toEqual({
+        code: 0,
+        cancelled: [],
+        forced: [],
+      });
     },
   );
+
+  it('settles a stuck obsolete pending run through one force-cancel after normal cancellation', async () => {
+    expect(
+      await exercise({
+        runs: [
+          run(1, { status: 'pending' }),
+          run(2, { status: 'pending', head_sha: head }),
+        ],
+        cancellationStalls: true,
+      }),
+    ).toEqual({ code: 0, cancelled: [1], forced: [1] });
+  });
+
+  it.each([
+    { headChangesAfterCancel: true },
+    { attemptChangesAfterCancel: true },
+  ])(
+    'does not force a run after cancellation authority changes: %j',
+    async (change) => {
+      expect(
+        await exercise({
+          runs: [run(1, { status: 'pending' })],
+          cancellationStalls: true,
+          ...change,
+        }),
+      ).toEqual({ code: 0, cancelled: [1], forced: [] });
+    },
+  );
+
+  it('rechecks the PR after job inventory before force-cancel', async () => {
+    expect(
+      await exercise({
+        runs: [run(1, { status: 'pending' })],
+        cancellationStalls: true,
+        headChangesDuringJobs: true,
+      }),
+    ).toEqual({ code: 0, cancelled: [1], forced: [] });
+  });
+
+  it('does not force-cancel while an assigned runner is still unfinished', async () => {
+    expect(
+      await exercise({
+        runs: [run(1, { status: 'pending' })],
+        cancellationStalls: true,
+        activeRunner: true,
+      }),
+    ).toEqual({ code: 1, cancelled: [1], forced: [] });
+  });
+
+  it.each([null, 0])(
+    'accepts explicit unassigned runner identity %j',
+    async (runner_id) => {
+      expect(
+        await exercise({
+          runs: [run(1, { status: 'pending' })],
+          cancellationStalls: true,
+          badJob: { status: 'queued', runner_id },
+        }),
+      ).toEqual({ code: 0, cancelled: [1], forced: [1] });
+    },
+  );
+
+  it.each([
+    { status: 'queued' },
+    { status: 'mystery', runner_id: null },
+    { status: 'queued', runner_id: 'unassigned' },
+  ])(
+    'refuses ambiguous job metadata before force-cancel: %j',
+    async (badJob) => {
+      expect(
+        await exercise({
+          runs: [run(1, { status: 'pending' })],
+          cancellationStalls: true,
+          badJob,
+        }),
+      ).toEqual({ code: 1, cancelled: [1], forced: [] });
+    },
+  );
+
+  it('fails when force-cancel still has no terminal result', async () => {
+    expect(
+      await exercise({
+        runs: [run(1, { status: 'pending' })],
+        cancellationStalls: true,
+        forceStalls: true,
+      }),
+    ).toEqual({ code: 1, cancelled: [1], forced: [1] });
+  });
 
   it('refuses cancellation when the live-head read fails', async () => {
     expect(await exercise({ failure: true })).toEqual({
       code: 1,
       cancelled: [],
+      forced: [],
     });
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "1fe72992fb174df35eb30e366b07f1b89d556c9f",
+
+  "notes": [
+    {"path":"examples/custom-branding/README.md","note":"Reviewed after a one-line SDK change in systemRuntimeRequests.ts: the server update request's body-read fallback now passes request deadlines through (unlessDeadline). No documented API, hook name, parameter or return shape changed; the doc's claims still hold.","inputs":["examples/custom-branding/README.md","packages/sdk/src/query-domains/systemRuntimeRequests.ts"]}
+  ]
+}

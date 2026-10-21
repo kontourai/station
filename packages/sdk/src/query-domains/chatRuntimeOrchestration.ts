@@ -161,6 +161,33 @@ export async function fetchOrchestrationSessionEventWindow(
   return page;
 }
 
+/** Latest turn only; activity reads never paginate or populate session detail. */
+export function useOrchestrationSessionActivityQuery(
+  threadId: string,
+  apiBase?: string,
+  config?: QueryConfig<OrchestrationSessionEventWindow>,
+) {
+  return useApiQuery(
+    ['orchestration-session-activity', apiBase ?? 'default', threadId],
+    (signal) =>
+      fetchOrchestrationSessionEventWindow(
+        threadId,
+        apiBase,
+        { direction: 'newest', turnLimit: 1 },
+        { signal },
+      ),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 0,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount ?? 'always',
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
 export async function fetchOrchestrationConversationEventWindow(
   conversationId: string,
   apiBase?: string,
@@ -1097,6 +1124,8 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
@@ -1114,6 +1143,9 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.sessionGrantScope
+        ? { sessionGrantScope: input.sessionGrantScope }
+        : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
     },
