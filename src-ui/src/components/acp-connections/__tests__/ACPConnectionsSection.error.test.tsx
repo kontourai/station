@@ -13,6 +13,7 @@ const connectionsState = {
   isPending: false,
 };
 const refetchConnections = vi.fn();
+const reconnectMutateAsync = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../hooks/useACPConnections', () => ({
   useACPConnections: () => ({
@@ -20,6 +21,7 @@ vi.mock('../../../hooks/useACPConnections', () => ({
     refetch: refetchConnections,
   }),
   useACPConnectionRegistry: () => ({ data: [] }),
+  useACPConnectionProbeStatuses: () => ({ data: undefined }),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -37,7 +39,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useReconnectACPConnectionMutation: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: reconnectMutateAsync,
   }),
   useUpdateACPConnectionMutation: () => ({
     isPending: false,
@@ -97,5 +99,42 @@ describe('ACPConnectionsSection read failure (review H1)', () => {
     expect(screen.getByLabelText('Loading engines')).toBeTruthy();
     expect(screen.queryByText('Unable to load engines')).toBeNull();
     expect(screen.queryByText('Add an engine to get started')).toBeNull();
+  });
+});
+
+describe('ACPConnectionsSection Retry check on a Setup needed card', () => {
+  // The engine's check failing again is an expected outcome, not an
+  // unhandled rejection; the list is refreshed so the card shows it.
+  test('a failed re-check refreshes the list and rejects nothing', async () => {
+    connectionsState.data = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro-cli',
+        enabled: true,
+        status: 'unavailable',
+        modes: [],
+        sessionId: null,
+        mcpServers: [],
+        currentModel: null,
+        source: 'user',
+      },
+    ];
+    reconnectMutateAsync.mockRejectedValueOnce(
+      new Error('The ACP connection could not be reconnected.'),
+    );
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      render(<ACPConnectionsSection acpAgents={[]} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+
+      await vi.waitFor(() => expect(refetchConnections).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(reconnectMutateAsync).toHaveBeenCalledWith('kiro');
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 });

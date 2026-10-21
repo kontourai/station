@@ -29,6 +29,8 @@ export function ACPAddConnectionModal({
   onCancel,
   returnFocusTarget,
   initialProviderId,
+  probeStatuses,
+  onFirstContactPendingChange,
 }: {
   registryEntries?: ACPConnectionRegistryEntry[];
   connections?: ACPConnectionInfo[];
@@ -42,6 +44,14 @@ export function ACPAddConnectionModal({
   onCancel: () => void;
   returnFocusTarget?: HTMLElement | null;
   initialProviderId?: string | null;
+  /** Live probe status; the owner polls it while a first start runs. */
+  probeStatuses?: Array<{
+    id: string;
+    status: string;
+    lastError?: { message: string; phase: string };
+  }>;
+  /** Tells the owner when to poll `probeStatuses`. */
+  onFirstContactPendingChange?: (pending: boolean) => void;
 }) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const initialProviderHandled = useRef(false);
@@ -49,6 +59,7 @@ export function ACPAddConnectionModal({
     state,
     dispatch,
     resultConnection,
+    awaitingFirstContact,
     submit,
     retryMutation,
     retryRefresh,
@@ -60,7 +71,15 @@ export function ACPAddConnectionModal({
     onAdd,
     onInstallRegistryEntry,
     onRefreshConnections,
+    probeStatuses,
   });
+  useEffect(() => {
+    onFirstContactPendingChange?.(awaitingFirstContact);
+  }, [awaitingFirstContact, onFirstContactPendingChange]);
+  useEffect(
+    () => () => onFirstContactPendingChange?.(false),
+    [onFirstContactPendingChange],
+  );
   const availableEntries = registryEntries.filter((entry) => !entry.installed);
   const readiness =
     resultConnection && getACPConnectionStatusView(resultConnection);
@@ -130,6 +149,7 @@ export function ACPAddConnectionModal({
           error={state.error}
           reason={resultConnection?.lastError ?? null}
           pending={isPending}
+          firstContact={awaitingFirstContact}
         />
       </div>
       <ACPConnectionSetupActions

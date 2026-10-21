@@ -32,6 +32,7 @@ vi.mock('../../../hooks/useACPConnections', () => ({
     refetch: refetchConnections,
   }),
   useACPConnectionRegistry: () => ({ data: registryEntries }),
+  useACPConnectionProbeStatuses: () => ({ data: undefined }),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({

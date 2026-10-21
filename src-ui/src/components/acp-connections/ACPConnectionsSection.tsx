@@ -8,6 +8,7 @@ import {
 import { restoreReturnFocus } from '@kontourai/station-shared/return-focus';
 import { useRef, useState } from 'react';
 import {
+  useACPConnectionProbeStatuses,
   useACPConnectionRegistry,
   useACPConnections,
 } from '../../hooks/useACPConnections';
@@ -44,6 +45,9 @@ export function ACPConnectionsSection({
     refetch: refetchConnections,
   } = useACPConnections();
   const { data: registryEntries = [] } = useACPConnectionRegistry();
+  const [firstContactPending, setFirstContactPending] = useState(false);
+  const { data: probeStatuses } =
+    useACPConnectionProbeStatuses(firstContactPending);
   const createConnectionMutation = useCreateACPConnectionMutation();
   const installRegistryEntryMutation =
     useInstallACPConnectionRegistryEntryMutation();
@@ -163,6 +167,8 @@ export function ACPConnectionsSection({
           onAdd={addConnection}
           onInstallRegistryEntry={installRegistryEntry}
           onRefreshConnections={refetchConnections}
+          probeStatuses={probeStatuses}
+          onFirstContactPendingChange={setFirstContactPending}
           onCancel={() => {
             setShowAddModal(false);
             // Read now, at the moment of closing — not passed as
@@ -185,7 +191,15 @@ export function ACPConnectionsSection({
             onToggle={(enabled) => toggleEnabled(conn.id, enabled)}
             onRemove={() => removeConnection(conn.id)}
             onReconnect={async () => {
-              await reconnectConnectionMutation.mutateAsync(conn.id);
+              // A failed check is shown by the card's refreshed status (and
+              // the details' reason); it is not an unhandled rejection.
+              try {
+                await reconnectConnectionMutation.mutateAsync(conn.id);
+              } catch {
+                await Promise.resolve(refetchConnections()).catch(
+                  () => undefined,
+                );
+              }
             }}
           />
         ))}

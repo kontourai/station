@@ -398,6 +398,7 @@ export function ACPConnectionSetupStatus({
   error,
   reason,
   pending,
+  firstContact = false,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
@@ -410,15 +411,19 @@ export function ACPConnectionSetupStatus({
    */
   reason?: { message: string; phase: string } | null;
   pending: boolean;
+  /** The engine's first start is still running in the background. */
+  firstContact?: boolean;
 }) {
   if (stage === 'checking') {
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>Checking</strong>
         <span>
-          {pending
-            ? 'Adding the engine and checking its readiness.'
-            : 'Waiting for the refreshed connection result.'}
+          {firstContact
+            ? 'Starting this engine for the first time. A first start can take up to a minute.'
+            : pending
+              ? 'Adding the engine and checking its readiness.'
+              : 'Waiting for the refreshed connection result.'}
         </span>
       </div>
     );

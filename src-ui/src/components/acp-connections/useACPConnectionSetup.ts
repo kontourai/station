@@ -165,16 +165,32 @@ function setupError(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+/**
+ * How long the dialog waits on an engine's first start before it stops
+ * saying "Checking". The server's cold first-contact probe is bounded at
+ * about 72s (60s handshake plus cleanup); this outlasts it with room for the
+ * registration that follows a success.
+ */
+export const FIRST_CONTACT_WAIT_MS = 90_000;
+const FIRST_CONTACT_LIST_REFRESH_MS = 2_000;
+
 function useSetupResult(
   state: ACPConnectionSetupState,
-  resultConnection: ACPConnectionInfo | null,
+  listed: ACPConnectionInfo | null,
+  firstContactStatus: string | undefined,
   queryError: unknown,
   queryFetching: boolean | undefined,
   dispatch: (action: SetupAction) => void,
 ) {
   useEffect(() => {
     if (state.stage !== 'checking' || !state.mutationComplete) return;
-    if (resultConnection) dispatch({ type: 'result' });
+    if (listed) dispatch({ type: 'result' });
+    else if (state.addedConnection?.status === 'probing') {
+      // A first start still running in the background. Unavailable is a
+      // result now; available is not yet: the engine registers through the
+      // configuration queue, and Ready waits for the listed connection.
+      if (firstContactStatus === 'unavailable') dispatch({ type: 'result' });
+    } else if (state.addedConnection) dispatch({ type: 'result' });
     else if (queryError && !queryFetching) {
       dispatch({
         type: 'error',
@@ -182,7 +198,39 @@ function useSetupResult(
         kind: 'refresh',
       });
     }
-  }, [queryError, queryFetching, resultConnection, state, dispatch]);
+  }, [queryError, queryFetching, listed, firstContactStatus, state, dispatch]);
+}
+
+/** Bounds the first-start wait and refreshes the list once it connects. */
+function useFirstContactWait(
+  awaiting: boolean,
+  connected: boolean,
+  dispatch: (action: SetupAction) => void,
+  onRefreshConnections: (() => unknown) | undefined,
+) {
+  useEffect(() => {
+    if (!awaiting) return;
+    const timer = setTimeout(
+      () =>
+        dispatch({
+          type: 'error',
+          message:
+            'This engine has not finished its first start. Station keeps checking it in the background.',
+          kind: 'refresh',
+        }),
+      FIRST_CONTACT_WAIT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [awaiting, dispatch]);
+  useEffect(() => {
+    if (!awaiting || !connected) return;
+    const refresh = () => {
+      void Promise.resolve(onRefreshConnections?.()).catch(() => undefined);
+    };
+    refresh();
+    const timer = setInterval(refresh, FIRST_CONTACT_LIST_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [awaiting, connected, onRefreshConnections]);
 }
 
 function useSetupSubmit(
@@ -247,11 +295,18 @@ export function useACPConnectionSetup({
   onAdd,
   onInstallRegistryEntry,
   onRefreshConnections,
+  probeStatuses,
 }: {
   registryEntries: ACPConnectionRegistryEntry[];
   connections: ACPConnectionInfo[];
   queryError?: unknown;
   queryFetching?: boolean;
+  /** Live probe status, polled while a first start runs (GET /acp/status). */
+  probeStatuses?: Array<{
+    id: string;
+    status: string;
+    lastError?: { message: string; phase: string };
+  }>;
   onAdd: (draft: ACPConnectionDraft) => unknown;
   onInstallRegistryEntry?: (id: string) => unknown;
   onRefreshConnections?: () => unknown;
@@ -261,15 +316,44 @@ export function useACPConnectionSetup({
     registryEntries,
     initialState,
   );
-  // The listed connection is fresher when it exists; the add response stands
-  // in when it is not listed (a failed first add).
-  const resultConnection = state.resultConnectionId
+  // The listed connection is fresher when it exists. A first add that is not
+  // listed answers with its own projection, updated by the polled probe
+  // status while its first start runs.
+  const listed = state.resultConnectionId
     ? (connections.find(
         (connection) => connection.id === state.resultConnectionId,
-      ) ?? state.addedConnection)
+      ) ?? null)
     : null;
+  const added = state.addedConnection;
+  const polled =
+    added?.status === 'probing'
+      ? probeStatuses?.find((entry) => entry.id === added.id)
+      : undefined;
+  const resultConnection =
+    listed ??
+    (added && polled
+      ? { ...added, status: polled.status, lastError: polled.lastError }
+      : added);
+  const awaitingFirstContact =
+    state.stage === 'checking' &&
+    state.mutationComplete &&
+    !listed &&
+    added?.status === 'probing';
 
-  useSetupResult(state, resultConnection, queryError, queryFetching, dispatch);
+  useSetupResult(
+    state,
+    listed,
+    polled?.status,
+    queryError,
+    queryFetching,
+    dispatch,
+  );
+  useFirstContactWait(
+    awaitingFirstContact,
+    polled?.status === 'available',
+    dispatch,
+    onRefreshConnections,
+  );
   const submit = useSetupSubmit(state, dispatch, onAdd, onInstallRegistryEntry);
   const retryRefresh = useRefreshRetry(dispatch, onRefreshConnections);
 
@@ -277,6 +361,7 @@ export function useACPConnectionSetup({
     state,
     dispatch,
     resultConnection,
+    awaitingFirstContact,
     submit,
     retryMutation: () => submit(),
     retryRefresh,

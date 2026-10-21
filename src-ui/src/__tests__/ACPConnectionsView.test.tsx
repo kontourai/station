@@ -23,6 +23,7 @@ const installRegistryEntry = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', () => ({
   useACPConnectionsQuery: () => acpConnectionsState,
   useACPConnectionRegistryQuery: () => ({ data: acpRegistryState.data }),
+  useACPConnectionProbeStatusesQuery: () => ({ data: undefined }),
   useCreateACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useInstallACPConnectionRegistryEntryMutation: () => ({
     mutateAsync: installRegistryEntry,

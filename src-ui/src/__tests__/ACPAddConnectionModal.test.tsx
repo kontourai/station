@@ -2,9 +2,16 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ACPAddConnectionModal } from '../components/acp-connections/ACPAddConnectionModal';
+import { FIRST_CONTACT_WAIT_MS } from '../components/acp-connections/useACPConnectionSetup';
 
 const kiro = {
   id: 'kiro',
@@ -335,6 +342,119 @@ describe('ACPAddConnectionModal', () => {
     expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
     expect(screen.getByDisplayValue('Gemini CLI')).toBeTruthy();
+  });
+
+  // A first add whose request-budget probe timed out on a never-connected
+  // engine answers `probing` (acp-first-contact.routes.test.ts): the cold
+  // start continues on the server, and the dialog follows it.
+  describe('a first start that continues in the background', () => {
+    const probingResponse = {
+      ...failedFirstAddResponse,
+      status: 'probing',
+      lastError: undefined,
+    };
+
+    function renderProbing(
+      props: Partial<Parameters<typeof ACPAddConnectionModal>[0]> = {},
+    ) {
+      const onFirstContactPendingChange = vi.fn();
+      const onRefreshConnections = vi.fn();
+      const base = {
+        registryEntries: [kiro],
+        connections: [],
+        onAdd: vi.fn(),
+        onInstallRegistryEntry: vi.fn().mockResolvedValue(probingResponse),
+        onRefreshConnections,
+        onFirstContactPendingChange,
+        onCancel: vi.fn(),
+      };
+      const view = render(<ACPAddConnectionModal {...base} {...props} />);
+      const rerender = (next: Partial<typeof base> & Record<string, unknown>) =>
+        view.rerender(<ACPAddConnectionModal {...base} {...next} />);
+      return { rerender, onFirstContactPendingChange, onRefreshConnections };
+    }
+
+    test('stays on Checking with first-start copy, then lands on Setup needed from the polled status', async () => {
+      const { rerender, onFirstContactPendingChange } = renderProbing();
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+
+      await waitFor(() =>
+        expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(true),
+      );
+      expect(screen.getByRole('status').textContent).toContain(
+        'A first start can take up to a minute.',
+      );
+
+      rerender({
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: {
+              phase: 'initialize',
+              message: 'Timed out after 60000ms',
+            },
+          },
+        ],
+      });
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Setup needed',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).toContain(
+        'initialize: Timed out after 60000ms',
+      );
+      expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
+    });
+
+    test('a connected first start waits for the registered engine, then lands on Ready', async () => {
+      const { rerender, onRefreshConnections } = renderProbing();
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first start'),
+      );
+
+      rerender({ probeStatuses: [{ id: 'kiro', status: 'available' }] });
+      await waitFor(() => expect(onRefreshConnections).toHaveBeenCalled());
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+
+      rerender({
+        probeStatuses: [{ id: 'kiro', status: 'available' }],
+        connections: [connection('available')],
+      });
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('Ready'),
+      );
+    });
+
+    test('never stays on Checking past the first-start bound', async () => {
+      vi.useFakeTimers();
+      try {
+        renderProbing();
+        fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+        await vi.waitFor(() =>
+          expect(screen.getByRole('status').textContent).toContain(
+            'first start',
+          ),
+        );
+
+        await act(async () => {
+          vi.advanceTimersByTime(FIRST_CONTACT_WAIT_MS);
+        });
+
+        expect(screen.getByRole('alert').textContent).toContain(
+          'has not finished its first start',
+        );
+        expect(screen.queryByText('Checking')).toBeNull();
+        expect(
+          screen.getByRole('button', { name: 'Retry refresh' }),
+        ).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   test('recovers a successful mutation when its connection refresh fails', async () => {
