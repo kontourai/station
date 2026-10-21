@@ -1,5 +1,74 @@
 # @kontourai/station-contracts
 
+## 0.12.0
+
+### Minor Changes
+
+- d6f77de: A message one agent sends to another Session (`send_to_session`) now carries
+  who sent it, and never reads as the person's (#3419).
+  
+  `ClientOrigin` gains an optional `sender` (`ClientOriginSender`, kind
+  `agent-session`: the sending Session's id, title, Agent and engine, and the
+  call's `requestKey`), stamped by the server beside the unchanged `actor`, with
+  `clientOriginSender` to read it. `ConversationMessage.metadata.sender` carries
+  it onto the transcript row, and `read_conversation` returns it on the message.
+  The receiving engine is given the text under a fixed header naming the sender
+  and not the person, with every line of the text quoted
+  (`@kontourai/station-shared/agent-message-frame`); the transcript shows the
+  sender's own words. The chat and Activity transcripts show such a message as a
+  third speaker, with a header, icon and accent derived from the sender, linking
+  to the sending Session, and the sender's transcript shows the call as "Sent to
+  <Session>" with its outcome.
+  
+  Engine-opened replies retain their recorded provider cause after settlement
+  and reload. Phone widths show a compact cause row with full details behind a
+  tap. Delivery links focus the exact request-key record, with bounded lookup
+  and explicit unavailable or ambiguous outcomes. Digests include sender
+  provenance; Inbox and Activity mark the latest agent-delivered input.
+  The Home projection adds this marker to its consent field list, so previous
+  Home role grants must be renewed. Automatic settled-child delivery remains a
+  separate prerequisite (#3158).
+- Add an explicit Station browser server scope to session approval responses and typed decision options. Keep per-tool trust separate and recheck browser authenticity on later server-granted calls.
+- 32f4bb5: Add optional staged client-bundle presence to PluginPreview. It reports the
+  previewed bytes independently of the manifest and does not imply runtime readiness.
+- 90be0c7: Session inventory: a current-answer projection now parses whatever the Surface answer state is (unavailable, stale, corrupt, restricted, unsupported-version, not-captured or observed-empty). It still has to be bound to the scope's exact Session and turn. When the answer is available, its reference must still equal the bound answer exactly. When it is not available, the projection may not carry rows bound to an answer (`surface-answer-contribution`). A partial Basis outage therefore keeps the inputs, execution and other groups resolved for the turn instead of discarding the whole inventory.
+  
+  Current-answer rows may now be turn lineage without `contributed-to`. A row whose relations are only `observed-during` or `produced-by` (both still limited by the per-kind relation table) is admitted when it carries the scope's exact turn: `turnId` for tool results, decisions, delegations and work items, and `output.turnId` for outputs. `contributed-to` remains the only edge meaning support. Kinds with no turn binding, including the Session resource summary, stay out of current-answer lineage.
+  
+  `station-request-decision` and `station-delegation` rows gain an optional `turnId`. It is required for a lineage-only current-answer row and optional elsewhere. Readers built against an earlier contracts version reject rows that carry it, so writers should emit it only to readers on this version or later.
+  
+  A current-answer row that carries a turn binding must name the scope turn whatever its relations. Before this change, a contributing output (`output.turnId`) from another turn was accepted. Kinds with no turn field are unchanged.
+- 7ed702d: Add opt-in allowance preferences to account recovery and qualified quota deadlines, while retaining enrollment order when expiry evidence is unavailable.
+- 0742389: Add the optional, occurrence-bound related-pane capability for plugin panes.
+  `PaneRelatedPanesHost` (contracts) lets a pane open its own plugin's registered
+  descriptors as related panes, and reveal or close what it opened, with every
+  outcome a value; `useRelatedPanes` (SDK root only) is the direct-pane hook and
+  `createRelatedPanesPaneHost` (`@kontourai/station-sdk/workspace-pane`) the
+  sandboxed-frame client. A host without the capability answers `unsupported`.
+  `WorkspacePaneDescriptor` gains an optional, reader-compatible `relationRole`
+  (`destination` or `tool`), and `LayoutCatalogContribution` an optional,
+  server-issued `lifecycleGeneration` that a reinstall or an enablement change
+  replaces (identity only; older readers drop it).
+  
+  Register the dock-only Activity Review descriptor and renderer through the
+  shared pane catalog. Reviews remain captured, nonce-keyed occurrences; the
+  catalog does not create blank reviews or permit Project placement.
+- 9285574: Send only completed previous-day Lite aggregates, show first-start notices for CLI and unattended services, and classify telemetry write guards as POST routes so startup coverage succeeds. Unknown channel, distribution and layout-customization facts remain explicit unknowns; version fields use the running build.
+  
+  Scope monthly Full IDs to their publisher. Tier-lowering requests can include one fixed-enum reason before applying the lower choice, including Off; standalone feedback requires a recorded lowering within ten minutes. Inline and standalone reasons share a limit of one per publisher per UTC day. DNT suppresses both paths. Coalesce dropped outbox observations and retain independent age and byte bounds.
+  
+  Upgrading immediately replaces the permanent `sha256(uuid)` Full `distinct_id` with a per-publisher monthly ID, breaking existing receiver installation continuity without a migration link. Round Full occurrence and admission timestamps down to the minute. Full omits unknown channels and maps beta to preview; Lite retains unknown. Senders validate daily versions as SemVer; receivers retain their configured release lists.
+- 463e2e1: Add telemetry producer tokens for external monitoring producers. The CLI gains `station telemetry producers create|list|revoke` and a `--producer=<name>` filter on `station insights get` and `station insights events`. The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and its Insights response carries `producerActivity` and `applied.producer`, which the `UsageInsights` contract now declares.
+- 1b2d885: Export `TURN_COMPLETION_NOTIFICATION_SOURCE`, the `source` (and envelope `source.subsystem`) of the notification records Station writes when an agent's turn finishes, stops or fails, so clients can tell those records from other writers'.
+  
+  Export `OPENED_NOTIFICATION_QUERY_PARAM`, the query parameter a Web Push or desktop alert's open link carries to name the record it opens, so the client that loads the link can mark that record read.
+  
+  `isRelativeStationPath` also refuses a path whose dot segments (plain or percent-encoded, any case) normalize to `//host` or off the Station origin, such as `/..//host` or `/%2e%2e//host`. It also refuses a fragment and a link that carries `openedNotification` (only the server's OS-alert links name a record to mark read).
+
+### Patch Changes
+
+- 9088572: Add independent default-off device settings for experimental Flow, readiness and Trust UI. Allow Coding evidence composition to admit the selected subset of canonical panes.
+
 ## 0.11.0
 
 ### Minor Changes
