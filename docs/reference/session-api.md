@@ -38,6 +38,109 @@ Independent [Task room agent requests](../design/task-room-agent-requests.md)
 use the existing delegation route with a separate durable request journal.
 They do not replace foreground chat or the Task's current-session association.
 
+## External clients using Station tools
+
+The public setup seam is personal-host, loopback-only tool access. Its
+[operator routes](../../src-server/routes/mcp/station-control-external-client-routes.ts)
+compose the existing token registry, server-recorded caller, selected-tool MCP
+server and per-tool authority. They do not create a Session or Environment,
+expose the internal API token, transfer provider sign-in, or turn an external
+client into a Station-managed engine. Remote OAuth/TLS onboarding is outside
+this surface. Station consuming an external MCP server is a different journey.
+
+**Authority.** A request needs a current device credential minted through the
+owner-home local-grant path and `access:manage`; personal tokens are refused.
+UI-bootstrap/browser approval and the internal process credential are not this
+authority. The requested Session must already have a recorded operator owner,
+Conversation and Project ID, and the current Project must still match that ID.
+The caller cannot provide actor, Project, Environment, assurance or server fields.
+Legacy slug-only Project lookup does not authorize issuance.
+
+| Operation | Request | Result |
+| --- | --- | --- |
+| `POST /api/orchestration/station-control/external-clients` | `{sessionId, allowedTools, ttlSeconds}` | `201 {success:true,data:{leaseId,sessionId,project,allowedTools,expiresAt,lifetime,config}}` |
+| `DELETE /api/orchestration/station-control/external-clients/:leaseId` | Exact lease ID; no bearer needed in the body | `{success:true,data:{revoked:true,leaseId}}`, or non-disclosing `lease_not_found` |
+
+The request is bounded to 4096 bytes. Tools and TTL are required: choose one or
+more of `read_conversation`, `board_read`, and `board_pin`, without duplicates,
+and an integer lifetime from 60 through 3600 seconds. `config` contains the
+actually bound loopback URL and an `Authorization` header with a separate scoped
+bearer. It is returned once with `Cache-Control: no-store`; do not log it, put it
+in argv or a URL, or commit it. The [CLI](cli.md#mcp-clients) stores this response
+in a new private file and prints only metadata.
+
+Each lease has independent identity. Runtime token refresh and other client
+setup do not replace it. Explicit lease revocation leaves other credentials
+alone; Session revocation removes its runtime and client credentials. The
+registry is in memory, so process restart loses all leases. The issuing device
+must still hold access administration and valid account standing under the
+existing grant owner; revocation or narrowing refuses descendant leases. This
+check retains only server-side device identity/time, not its bearer. Replacing
+that operator grant can therefore invalidate its existing client leases.
+Owner/Project/Conversation binding is rechecked from current Session records on each request
+and call, including current Project identity; changes refuse instead of silently
+rebinding the client. Initial tools retain their existing data scopes:
+conversation reads use owner/reference rules, and Board tools address the
+operator's own Boards. Recorded Project context does not turn self-owned Boards
+into a Project partition. These tokens
+are header-only and retain `delegated-custody` assurance. They never acquire the
+`bound` assurance required by browser tools, nor replace their approval flow.
+
+### Configure an existing local client
+
+Select an already-created operator-owned Session in the intended Project. Run
+`station mcp-clients authorize` for the saved installed local profile when it
+needs a file-proven grant, then create a private configuration as shown in the
+CLI reference. Do not create a fictitious Session or export the process-wide
+internal credential to make setup succeed.
+
+For Codex CLI, use the returned URL and an environment-backed bearer, preserving
+client-side mutation approval. The following starts a fresh Codex client under
+its own existing sign-in; it does not resume or take control of Station's native
+thread. Only run it when you intend to start that client:
+
+```bash
+node --input-type=module - /absolute/private/path/station-client.json <<'JS'
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+const lease = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const token = lease.config.headers.Authorization.slice('Bearer '.length);
+const child = spawnSync('codex', [
+  '-c', `mcp_servers.station.url=${JSON.stringify(lease.config.url)}`,
+  '-c', 'mcp_servers.station.bearer_token_env_var="STATION_CLIENT_TOKEN"',
+  '-c', 'mcp_servers.station.default_tools_approval_mode="prompt"',
+  '-c', `mcp_servers.station.enabled_tools=${JSON.stringify(lease.allowedTools)}`,
+], {
+  stdio: 'inherit', windowsHide: true,
+  env: { ...process.env, STATION_CLIENT_TOKEN: token },
+});
+if (child.error) throw new Error('Could not launch Codex.');
+process.exitCode = child.status ?? 1;
+JS
+```
+
+The command uses the client configuration described by the [official OpenAI MCP
+documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli); installed
+`codex mcp add --help` also exposes `--bearer-token-env-var`. This recipe avoids
+writing a plaintext token into Codex's global configuration. The scoped bearer
+is intentionally entrusted to the client process; that is not in-process caller
+assurance or protection from the client itself.
+
+Verify the selected tools are visible before asking for a scoped conversation
+read. Obtain the client's approval before a Board mutation and verify the
+result separately. Configuration success is not operation success. A disconnected
+client may still have an unexpired lease; revoke it explicitly when done. A lost
+mutation acknowledgement remains unknown and must not be automatically replayed.
+Expired, revoked, restarted or changed-authority leases refuse and require a new
+explicit setup; this endpoint does not provide an OAuth login or silent renewal.
+
+**Evidence limit.** Scripted API/CLI tests cover issuance/refusal, selected MCP
+catalog delivery, private-file handling, token isolation, revocation, expiry and
+restart. The earlier independently maintained Codex consumer receipt used the
+private lab SPI. It does not qualify this new public onboarding path. A fresh
+operator/client journey, actual mutation approval and independent persisted
+result check remain required before claiming that journey qualified.
+
 ---
 
 Execution summaries can include `modelRoute: {connectionId, label, endpoint}`.

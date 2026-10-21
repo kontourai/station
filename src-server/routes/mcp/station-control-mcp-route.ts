@@ -138,6 +138,8 @@ interface StationControlMcpRouteOptions {
   hostedTenantRegistry?: HostedTenantRegistry;
   /** Station #90 lane D: the server's own records for a verified session. */
   resolveCallerRecord?: StationControlCallerRecordResolver;
+  /** External leases additionally require current Project identity, never slug reuse. */
+  resolveExternalClientProjectId?: (slug: string) => string | undefined;
   /** Test seam only: production always serves the real registrations. */
   createServer?: typeof createStationControlMcpServer;
 }
@@ -165,7 +167,26 @@ export function createStationControlMcpRoutes(
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
       serverId,
     });
-    if (!verified) {
+    const resolveCallerRecord: StationControlCallerRecordResolver | undefined =
+      verified?.externalClientLeaseId
+        ? (sessionId) => {
+            const record = options.resolveCallerRecord?.(sessionId);
+            if (
+              !record?.localProjectId ||
+              !record.projectSlug ||
+              options.resolveExternalClientProjectId?.(record.projectSlug) !==
+                record.localProjectId
+            )
+              return undefined;
+            return record;
+          }
+        : options.resolveCallerRecord;
+    if (
+      !verified ||
+      (verified.externalClientLeaseId && url.searchParams.has('token')) ||
+      (verified.externalClientLeaseId &&
+        !resolveStationControlCallerFromToken(candidate, resolveCallerRecord))
+    ) {
       stationControlMcpHttpAuth.add(1, { result: 'rejected' });
       tenantExecutionContextOutcomes.add(
         1,
@@ -252,7 +273,7 @@ export function createStationControlMcpRoutes(
                 resolve: () =>
                   resolveStationControlCallerFromToken(
                     candidate,
-                    options.resolveCallerRecord,
+                    resolveCallerRecord,
                   ),
               },
               () => handler.fetch(c.req.raw),
@@ -265,6 +286,11 @@ export function createStationControlMcpRoutes(
             return (
               current !== undefined &&
               current.sessionId === verified.sessionId &&
+              (!current.externalClientLeaseId ||
+                resolveStationControlCallerFromToken(
+                  candidate,
+                  resolveCallerRecord,
+                ) !== null) &&
               JSON.stringify(current.tenantExecutionContext) ===
                 JSON.stringify(verified.tenantExecutionContext)
             );

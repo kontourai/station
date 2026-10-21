@@ -977,6 +977,20 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'get', 'create', 'update', 'delete', 'reconnect'],
   },
+  'mcp-clients': {
+    group: 'Core Workspace',
+    summary: 'Connect an external client to selected local Station tools',
+    targets: true,
+    actions: ['authorize', 'create', 'revoke'],
+    detail: [
+      'authorize explicitly uses the existing owner-home local grant for the selected installed profile; it prints no credential and starts no service.',
+      'create requires --session=<id> --tools=<comma-separated names> --ttl-seconds=<60..3600> --output=<absolute new path>.',
+      'Uses a file-proven local operator profile; remote, browser and internal-process credentials cannot issue leases.',
+      'The private output contains the scoped bearer; stdout contains metadata only. Restart, Session revocation, expiry or explicit revoke invalidates it.',
+      'revoke <lease-id> revokes only that external-client lease. Creation has no automatic retry and does not start an engine.',
+      'Initial private-file creation supports POSIX hosts; it does not claim Windows ACL qualification.',
+    ],
+  },
   'secret-bindings': {
     group: 'Core Workspace',
     summary: 'Manage operator-owned MCP secret bindings',

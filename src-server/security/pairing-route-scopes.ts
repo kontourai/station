@@ -569,6 +569,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
 
+  // Issuing or revoking external bearer custody is access administration.
+  // Native file-proven operator enforcement also remains inside both handlers.
+  {
+    id: '/api/orchestration/station-control/external-clients:issue',
+    method: 'POST',
+    prefix: '/api/orchestration/station-control/external-clients',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/orchestration/station-control/external-clients/:leaseId:revoke',
+    method: 'DELETE',
+    prefix: '/api/orchestration/station-control/external-clients/:leaseId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/home-authority/channels/:channelId/owner:administration',
     method: 'POST',

@@ -915,6 +915,40 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
 
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
 ### `agents`
 
 ```

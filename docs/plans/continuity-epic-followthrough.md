@@ -116,3 +116,32 @@ This is a bounded failure-path repair, not completion of #3570. Durable seed
 pinning, accepted-through projection, repeated-cycle/omission/restart coverage,
 fork integration, live account qualification and the external-client recipe
 remain unfinished. No live provider or hosted result is implied.
+
+## External-client setup increment
+
+Verified all twelve source-body bindings in the bounded onboarding handoff
+against initial published base `d96f5488`; none of those bodies had changed in
+this branch before this increment. The implementation adds independently
+revocable header leases through existing MCP transport and caller policy,
+public personal-host operator routes, and `mcp-clients authorize/create/revoke`.
+It requires file-proven device authority, explicit access administration,
+recorded actor/Project identity, a selected starter tool set and a bounded TTL.
+It preserves browser-bound assurance/approval and does not rotate runtime or
+other client credentials. The CLI stores private configuration without printing
+the bearer and does not automatically retry uncertain issuance.
+
+The API/CLI tests and types are local evidence only. The original private-lab
+consumer receipt remains separate; the new public setup still needs a fresh
+real operator/client journey. POSIX private-file creation is the current CLI
+scope; Windows creation refuses rather than claiming ACL qualification.
+At the initial master base, the full pairing-route scanner also reports an
+unrelated undeclared `POST /api/telemetry/panes` leaf. The new lease leaves have
+explicit stronger scope rules; do not edit or waive the inherited master leaf
+in this lane. Merge its owner's subsequent published repair normally.
+
+The external-client issuer authority model is under the existing grant owner's
+source/policy review before a public-readiness claim. Scoped custody clearance
+is not approval. The issuer uses the maintained credential-by-ID scope check
+for revocation/narrowing/account standing, without retaining its bearer, and
+current Project identity is rechecked on each new-client request/call. This
+review does not authorize a live token, login, provider call or deployment.

@@ -314,6 +314,7 @@ import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-so
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
+import { createStationControlExternalClientRoutes } from '../../routes/mcp/station-control-external-client-routes.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
@@ -2676,6 +2677,13 @@ export function configureRuntimeRoutes(
     conversationForSession: (sessionId) =>
       context.orchestrationEventStore?.conversationForSession(sessionId),
   });
+  const currentLocalProjectId = (slug: string): string | undefined => {
+    try {
+      return context.storageAdapter.getProject(slug).id;
+    } catch {
+      return undefined;
+    }
+  };
   const resolveAgentDispatchActor = createAgentDispatchActorResolver(
     resolveStationControlCallerRecord,
   );
@@ -2712,6 +2720,7 @@ export function configureRuntimeRoutes(
       port: context.port,
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
+      resolveExternalClientProjectId: currentLocalProjectId,
     }),
   );
   context.app.route(
@@ -2721,6 +2730,16 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
       serverId: 'station-knowledge',
+    }),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createStationControlExternalClientRoutes({
+      port: context.port,
+      isHosted: isHostedTenantExecutionRequired,
+      resolveRecord: resolveStationControlCallerRecord,
+      currentProjectId: currentLocalProjectId,
+      issuerAuthority: context.environmentSecurityService.devicePairing,
     }),
   );
   context.app.route(

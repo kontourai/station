@@ -21,6 +21,7 @@
  * here reads a session id from tool input or from any header other than the
  * credential.
  */
+import { createHash } from 'node:crypto';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -48,6 +49,33 @@ export interface StationControlCallerRecord {
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
   readonly conversationId?: string;
+}
+
+/** Exact recorded identity/scope for a separately issued external-client lease. */
+export function stationControlExternalClientRecordBinding(
+  record: StationControlCallerRecord | undefined,
+): string | undefined {
+  if (
+    record?.principal?.source !== 'session-owner' ||
+    !record.principal.id ||
+    record.projectIdSource !== 'session-record' ||
+    !record.localProjectId ||
+    !record.projectSlug ||
+    !record.conversationId
+  )
+    return undefined;
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        record.principal.id,
+        record.principal.source,
+        record.localProjectId,
+        record.projectIdSource,
+        record.projectSlug,
+        record.conversationId,
+      ]),
+    )
+    .digest('hex');
 }
 
 /** Reads the server's own records for a verified session. */
@@ -195,6 +223,12 @@ function resolveVerifiedStationControlCaller(
   } catch {
     return null;
   }
+  if (
+    verified.callerRecordBinding &&
+    stationControlExternalClientRecordBinding(record) !==
+      verified.callerRecordBinding
+  )
+    return null;
   const caller: StationControlCaller = Object.freeze({
     sessionId: verified.sessionId,
     assurance,
