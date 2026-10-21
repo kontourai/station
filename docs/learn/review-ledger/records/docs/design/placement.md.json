@@ -154,7 +154,15 @@
 
     "src-ui/src/hooks/orchestration/childWorkHandlers.ts",
 
-    "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"
+    "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx",
+
+    "src-ui/src/lib/layout-panels-record.ts",
+
+    "src-ui/src/hooks/useLayoutSessionPanels.ts",
+
+    "src-ui/src/hooks/__tests__/useLayoutSessionPanels.test.tsx",
+
+    "src-ui/src/lib/__tests__/layout-panels-record.test.ts"
   ],
 
   "checks": [
