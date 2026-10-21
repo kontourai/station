@@ -18,6 +18,7 @@ import {
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { stationControlMcpTokenMinted } from '../../../telemetry/metrics.js';
 import { STATION_CONTROL_OPERATOR_PRINCIPAL_ID } from '../../../tools/station-control-policy.js';
 import { createStationControlExternalClientRoutes } from '../station-control-external-client-routes.js';
 import { createStationControlMcpRoutes } from '../station-control-mcp-route.js';
@@ -148,6 +149,41 @@ afterEach(() => {
 });
 
 describe('operator-issued external Station Control clients', () => {
+  test('refuses issuance when an admitted issuer loses authority while its request body is pending', async () => {
+    const f = fixture();
+    let reading!: () => void;
+    const bodyReadStarted = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          streamController = controller;
+        },
+        pull() {
+          reading();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const init = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: stream,
+      duplex: 'half',
+    };
+    const count = vi.mocked(stationControlMcpTokenMinted.add).mock.calls.length;
+    const pending = f.app.request(path, init);
+    await bodyReadStarted;
+    f.state.issuerCurrent = false;
+    streamController.enqueue(new TextEncoder().encode(JSON.stringify(request)));
+    streamController.close();
+    expect((await pending).status).toBe(403);
+    expect(vi.mocked(stationControlMcpTokenMinted.add).mock.calls).toHaveLength(
+      count,
+    );
+  });
   test('issuance and revocation require explicit access administration and refuse personal tokens', () => {
     for (const [method, route] of [
       ['POST', path],

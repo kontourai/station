@@ -56,6 +56,14 @@ Conversation and Project ID, and the current Project must still match that ID.
 The caller cannot provide actor, Project, Environment, assurance or server fields.
 Legacy slug-only Project lookup does not authorize issuance.
 
+The Session may be stopped or historical: it is an existing recorded context,
+not a liveness claim or an execution grant. Issuance does not start, resume or
+revive its engine. An earlier stop is not replayed as revocation of a newly
+authorized lease. A subsequent Session-token revocation hook removes leases
+then bound to that Session; expiry, explicit lease revocation, issuer standing,
+current scope and process restart remain independent invalidation paths. This
+is the precise meaning of `process-and-session-bound` in the response.
+
 | Operation | Request | Result |
 | --- | --- | --- |
 | `POST /api/orchestration/station-control/external-clients` | `{sessionId, allowedTools, ttlSeconds}` | `201 {success:true,data:{leaseId,sessionId,project,allowedTools,expiresAt,lifetime,config}}` |

@@ -27,6 +27,7 @@ export interface StationControlExternalClientLease {
   project: { id: string; slug: string };
   allowedTools: readonly StationControlExternalClientTool[];
   expiresAt: string;
+  /** Recorded context/revocation group, not evidence that an engine is active. */
   lifetime: 'process-and-session-bound';
   config: { url: string; headers: { Authorization: string } };
 }
