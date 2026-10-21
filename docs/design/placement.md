@@ -826,6 +826,9 @@ catalog. That kept it out of the original
 dock catalog; the later registry-driven chooser (#2154) does list Agents and
 Activity.
 
+The [remaining child-work epic](../plans/child-work-epic.md) tracks acceptance
+and the Flow group dependency separately from this implemented presentation.
+
 Background-task presentation retains at most 50 settled cards and 100 unfinished
 raw tool rows per conversation. Omitted tool history is disclosed in the sheet
 and conversation Agents pane; entry-point counts say “shown” while limited.
