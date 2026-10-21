@@ -1,0 +1,7 @@
+{
+  "revision": "91cc1f4bd441ff351f21e3e5f1d3539bcc733ae6",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"#4003 review: the capture shows a person-saved shared Task document and its revision history. This change adds Task-memory headings when a proposal is accepted, task_note entries, shorter room edit ids and a named capacity refusal. None of these changes the document editor or history rendering in the captured flow; it starts from a plain Task, which is still seeded empty. No recapture.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts"]}
+  ]
+}
