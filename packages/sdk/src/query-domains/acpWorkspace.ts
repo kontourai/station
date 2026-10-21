@@ -189,10 +189,52 @@ export async function fetchACPConnectionRegistry(): Promise<
   return result.data ?? [];
 }
 
-/** Command-line words from the setup form; blank means no arguments. */
-export function splitACPArgs(args: string): string[] {
-  const trimmed = args.trim();
-  return trimmed ? trimmed.split(/\s+/) : [];
+/**
+ * Arguments from the setup form's one-line field; blank means none. Words
+ * split on whitespace; "double" or 'single' quotes keep spaces inside one
+ * argument, and inside double quotes a backslash escapes `"` or `\`.
+ * `joinACPArgs` writes the line this reads back unchanged.
+ */
+export function splitACPArgs(line: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let started = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i] as string;
+    if (
+      quote === '"' &&
+      char === '\\' &&
+      (line[i + 1] === '"' || line[i + 1] === '\\')
+    ) {
+      current += line[i + 1];
+      i += 1;
+    } else if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      started = true;
+    } else if (/\s/.test(char)) {
+      if (started) args.push(current);
+      current = '';
+      started = false;
+    } else {
+      current += char;
+      started = true;
+    }
+  }
+  if (started) args.push(current);
+  return args;
+}
+
+/** The setup form's one-line field for saved arguments (see `splitACPArgs`). */
+export function joinACPArgs(args: readonly string[]): string {
+  return args
+    .map((arg) =>
+      /[\s"']/.test(arg) ? `"${arg.replace(/(["\\])/g, '\\$1')}"` : arg,
+    )
+    .join(' ');
 }
 
 /**

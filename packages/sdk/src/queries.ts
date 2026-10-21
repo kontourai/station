@@ -29,6 +29,7 @@ export {
   fetchACPConnections,
   fetchUnregisteredACPConnections,
   installACPConnectionRegistryEntry,
+  joinACPArgs,
   reconnectACPConnection,
   splitACPArgs,
   updateACPConnection,

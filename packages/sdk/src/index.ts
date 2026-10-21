@@ -604,6 +604,7 @@ export {
   isProjectIdentityNotPrepared,
   isProvablyNotSent,
   isStationAccessUnavailable,
+  joinACPArgs,
   type KitExperience,
   type KitLayoutProjection,
   type KitProjectLayoutConfig,

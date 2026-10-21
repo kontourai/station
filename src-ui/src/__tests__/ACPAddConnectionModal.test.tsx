@@ -767,6 +767,29 @@ describe('ACPAddConnectionModal', () => {
     });
   });
 
+  // Saved arguments are shown as one line; one containing a space is quoted
+  // so saving the form unchanged sends the same arguments back.
+  test('Edit setup quotes a saved argument that contains a space', () => {
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[]}
+        connections={[]}
+        editConnection={{
+          ...failedFirstAddResponse,
+          id: 'stub',
+          name: 'Stub Engine',
+          command: 'stub-acp',
+          args: ['--prompt', 'a b'],
+        }}
+        onAdd={vi.fn()}
+        onUpdate={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Advanced'));
+    expect(screen.getByDisplayValue('--prompt "a b"')).toBeTruthy();
+  });
+
   // `node /tmp/x.mjs` typed into Command is a program and its argument; the
   // engine would be reported "not installed" under that whole name.
   test('a command with arguments in it says where arguments go', () => {

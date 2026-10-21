@@ -1,3 +1,4 @@
+import { joinACPArgs } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useReducer } from 'react';
 import type {
   ACPConnectionInfo,
@@ -165,7 +166,7 @@ function draftFor(connection: ACPConnectionInfo): ACPConnectionDraft {
     id: connection.id,
     name: connection.name ?? '',
     command: connection.command ?? '',
-    args: (connection.args ?? []).join(' '),
+    args: joinACPArgs(connection.args ?? []),
     icon: connection.icon ?? '',
     cwd: connection.cwd ?? '',
   };

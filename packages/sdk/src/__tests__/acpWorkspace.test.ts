@@ -13,6 +13,8 @@ const {
   createACPConnection,
   EngineStillStartingError,
   fetchUnregisteredACPConnections,
+  joinACPArgs,
+  splitACPArgs,
 } = await import('../query-domains/acpWorkspace');
 
 describe('connectAndMaterializeACPRegistryEngine', () => {
@@ -176,5 +178,29 @@ describe('custom engine connections', () => {
       ['http://station.test/acp/connections/stub/check', 'POST'],
       ['http://station.test/acp/connections/unregistered', undefined],
     ]);
+  });
+});
+
+// Edit setup shows saved arguments as one line and splits the edited line
+// back: an argument containing a space must survive the round trip.
+describe('argument line round trip', () => {
+  test.each([
+    [['--acp'], '--acp'],
+    [['--prompt', 'a b'], '--prompt "a b"'],
+    [['say "hi"'], '"say \\"hi\\""'],
+    [['C:\\Program Files\\x'], '"C:\\\\Program Files\\\\x"'],
+    [[], ''],
+  ])('%j joins to %s and splits back', (args, line) => {
+    expect(joinACPArgs(args)).toBe(line);
+    expect(splitACPArgs(line)).toEqual(args);
+  });
+
+  test('single quotes group too, and blank means no arguments', () => {
+    expect(splitACPArgs(`--name 'my engine' -v`)).toEqual([
+      '--name',
+      'my engine',
+      '-v',
+    ]);
+    expect(splitACPArgs('   ')).toEqual([]);
   });
 });

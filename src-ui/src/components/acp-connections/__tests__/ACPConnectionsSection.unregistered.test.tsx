@@ -81,8 +81,14 @@ vi.mock('../../../hooks/useACPConnections', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', async (importActual) => ({
-  splitACPArgs: (await importActual<typeof import('@kontourai/station-sdk')>())
-    .splitACPArgs,
+  ...(await (async () => {
+    const actual =
+      await importActual<typeof import('@kontourai/station-sdk')>();
+    return {
+      splitACPArgs: actual.splitACPArgs,
+      joinACPArgs: actual.joinACPArgs,
+    };
+  })()),
   useCreateACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useDeleteACPConnectionMutation: () => ({ mutateAsync: mocks.remove }),
   useInstallACPConnectionRegistryEntryMutation: () => ({

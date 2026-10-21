@@ -474,6 +474,30 @@ describe('first-contact continuation of a cold engine add', () => {
       });
     });
 
+    // Edit setup sends the folder and icon even when cleared.
+    test('an edit that clears the folder and icon stores none and the default', async () => {
+      const { script, createProbe } = scriptedProbes();
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      const { ctx, configLoader } = await createContext(createProbe);
+      await configLoader.saveACPConfig({
+        connections: [
+          { ...custom, args: [], icon: 'S', cwd: '/srv/stub', enabled: true },
+        ],
+      });
+      const app = asOperator(createACPRoutes(ctx));
+
+      await app.request('/connections/stub', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: '', icon: '' }),
+      });
+
+      const [saved] = (await configLoader.loadACPConfig()).connections;
+      expect(saved).not.toHaveProperty('cwd');
+      expect(saved?.icon).toBe('🔌');
+    });
+
     // An earlier custom add stored blank arguments as one empty string.
     test('a saved empty-string argument reads as no arguments', async () => {
       const { createProbe } = scriptedProbes();
