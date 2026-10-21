@@ -470,6 +470,15 @@ function createAdapter(input: {
     }),
   );
   return new OpenSshEnvironmentAdapter({
+    // The nested Vitest temp root exceeds macOS's Unix socket path limit.
+    // Keep the owned control directory short; the adapter removes it on stop.
+    createControlDirectory: async () =>
+      mkdtemp(
+        join(
+          process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+          'station-ssh-',
+        ),
+      ),
     run: createRunner(input.sshPath, input.configPath),
     spawn: (args) =>
       spawn(input.sshPath, ['-F', input.configPath, ...args], {
