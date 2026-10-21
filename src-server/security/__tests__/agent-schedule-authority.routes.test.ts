@@ -776,6 +776,44 @@ describe('a due wake-up goes to the caller’s own conversation, as its recorded
     }
   });
 
+  test('a step of the timer maximum that ends before the due time arms again, then sends at due', async () => {
+    const created = await agent('bound', nextSession(), 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'stepped',
+    });
+    const id = created.body.data.id as string;
+    const dueAtMs = store.wakeUp(id)!.dueAtMs;
+    const maxStep = 2 ** 31 - 1; // setTimeout's maximum delay
+    const rest = 10 * 60_000;
+    let now = dueAtMs - maxStep - rest;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const stepped = newDelivery(() => now);
+    // Reconcile re-arms every pending wake-up in the store; read only this one.
+    const sent = () =>
+      submitted.filter(
+        (entry) => entry.clientTurnId === wakeUpClientTurnId(id),
+      );
+    try {
+      stepped.reconcile();
+      now += maxStep;
+      vi.advanceTimersByTime(maxStep);
+      // The first step ended 10 minutes early: nothing sent. It armed
+      // again, or nothing would send at due below.
+      expect(sent()).toEqual([]);
+      expect(store.wakeUp(id)?.state).toBe('pending');
+      now += rest - 1;
+      vi.advanceTimersByTime(rest - 1);
+      expect(sent()).toEqual([]);
+      now += 1;
+      vi.advanceTimersByTime(1);
+      expect(sent()).toHaveLength(1);
+      expect(store.wakeUp(id)?.state).toBe('sent');
+    } finally {
+      stepped.stop();
+      vi.useRealTimers();
+    }
+  });
+
   test('one more than a day late after a restart is expired, not sent', async () => {
     const created = await agent('bound', nextSession(), 'POST', WAKE_UPS, {
       delayMs: FIVE_MINUTES,
