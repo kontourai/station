@@ -289,7 +289,7 @@ export async function refreshACPPublicRegistrySource(): Promise<ACPPublicRegistr
     `${apiBase}/acp/registry/source/refresh`,
     { method: 'POST' },
   );
-  const result = (await response.json().catch(() => ({}))) as {
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
     success?: boolean;
     data?: ACPPublicRegistrySourceStatus;
     error?: string | { code?: string };

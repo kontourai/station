@@ -65,6 +65,9 @@ export const STATION_HOME_ROOTS: Readonly<
   // #2494: Seatbelt-confined engine config homes and any credential enrolled
   // for confined use; like app-homes, product state.
   'confined-homes': 'state',
+  // Copies Station can download again (the public agent registry index,
+  // public-agent-registry.ts): small, so restored like any state.
+  cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',

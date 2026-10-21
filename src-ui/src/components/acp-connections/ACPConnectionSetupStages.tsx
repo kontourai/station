@@ -317,7 +317,7 @@ export function ACPConnectionCatalogStage({
                   {listing?.hostLaunch
                     ? `By ${listing.publishers.join(', ')} · version ${listing.version}`
                     : (listing?.unavailableReason ??
-                      'Not available on this computer.')}
+                      'Station cannot connect it.')}
                 </span>
               </button>
             );
