@@ -101,7 +101,16 @@ function streamReply() {
   );
 }
 
-const physical = vi.fn<typeof fetch>(async (_input, init) => {
+const physical = vi.fn<typeof fetch>(async (input, init) => {
+  const url =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url;
+  if (new URL(url).pathname.endsWith('/models')) {
+    return Response.json({ data: [{ id: 'fixture', object: 'model' }] });
+  }
   const body = JSON.parse(String(init?.body));
   return body.stream ? streamReply() : jsonReply();
 });
@@ -252,6 +261,13 @@ test.each(['volt', 'strands'] as const)(
         memoryAdapter: new FileMemoryAdapter({ projectHomeDir }),
       },
     );
+    expect(physical).toHaveBeenCalledWith(
+      'https://physical.invalid/v1/models',
+      expect.any(Object),
+    );
+    expect((await bundle.agent.generateText('Hi')).text).toBe('OK');
+    await drain((await bundle.agent.streamText('Hi')).fullStream);
+    physical.mockClear();
     await refused(() => bundle.agent.generateText('Hi'));
     await refused(async () => {
       await drain((await bundle.agent.streamText('Hi')).fullStream);
@@ -325,6 +341,12 @@ test.each(['fallback', 'fleet'] as const)(
         ...(kind === 'fleet' ? { fleetRouting } : {}),
       },
     );
+    const generated = await model.doGenerate(calls);
+    expect(generated.content).toContainEqual({ type: 'text', text: 'OK' });
+    expect(
+      physical.mock.calls.some(([, init]) => init?.method === 'POST'),
+    ).toBe(true);
+    physical.mockClear();
     await refused(() => model.doGenerate(calls));
     await refused(() => model.doStream(calls));
   },

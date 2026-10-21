@@ -230,7 +230,7 @@ describe('buildAiSdkLanguageModel — requestBodyDefaults wiring (station#1994)'
   // config.modelRequestOptions — this is the wiring the live proof used, and
   // deleting the resolveModelRequestOptions call in
   // createManagedLanguageModel must turn this red.
-  test('managed path resolves modelRequestOptions from the provider connection config', () => {
+  test('managed path resolves modelRequestOptions from the provider connection config', async () => {
     createOpenAICompatible.mockClear();
     createAiSdkManagedModel({
       providerConnection: {
@@ -269,6 +269,23 @@ describe('buildAiSdkLanguageModel — requestBodyDefaults wiring (station#1994)'
     const plainCall = createOpenAICompatible.mock.calls.at(-1) as unknown as [
       Record<string, unknown>,
     ];
-    expect(plainCall[0].fetch).toBeUndefined();
+    const plainFetch = plainCall[0].fetch;
+    if (typeof plainFetch !== 'function')
+      throw new Error('Expected provider transport');
+    const upstream = vi.fn<typeof fetch>(async () => new Response('{}'));
+    vi.stubGlobal('fetch', upstream);
+    try {
+      const init = {
+        method: 'POST',
+        body: '{"model":"claude-haiku","messages":[]}',
+      };
+      await plainFetch('http://127.0.0.1:9/v1/chat/completions', init);
+      expect(upstream).toHaveBeenCalledExactlyOnceWith(
+        'http://127.0.0.1:9/v1/chat/completions',
+        init,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
