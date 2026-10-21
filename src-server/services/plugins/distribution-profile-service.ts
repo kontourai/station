@@ -713,6 +713,9 @@ export class DistributionProfileService {
       icon: definition.icon,
       description: definition.description,
       type: definition.type,
+      ...(definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: definition.workspaceBinding }),
       id,
       sourceIdentity: {
         id: pluginName,

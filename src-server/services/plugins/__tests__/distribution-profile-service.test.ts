@@ -476,6 +476,7 @@ describe('DistributionProfileService', () => {
         name: 'typed-layout',
         slug: 'typed',
         type: 'session-board',
+        workspaceBinding: 'repository',
         tabs: [],
       }),
     );
@@ -488,6 +489,16 @@ describe('DistributionProfileService', () => {
     expect(
       service.resolveForApply('plugin:typed-layout:typed').definition.type,
     ).toBe('session-board');
+    expect(
+      service.resolveForCatalog('plugin:typed-layout:typed').item
+        .workspaceBinding,
+    ).toBe('repository');
+    expect(
+      service
+        .listLayouts()
+        .find((item) => item.id === 'plugin:typed-layout:typed')
+        ?.workspaceBinding,
+    ).toBe('repository');
   });
 
   test.each([null, '', 'none', 'terminal', true, {}])(
