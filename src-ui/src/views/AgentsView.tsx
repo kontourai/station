@@ -1,9 +1,11 @@
 import { useAgentsQuery } from '@kontourai/station-sdk';
+import { Button } from '../components/Button';
 import { AgentGlyph } from '../components/icons/Glyph';
 import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { AGENTS_PANE_ID } from '../components/split-pane-metrics';
 import { type AgentData } from '../contexts/AgentsContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { dispatchNewChatIntent } from '../lib/newChatIntent';
 import type { NavigationView } from '../types';
 import { AgentsViewEditorPane } from './agent-editor/AgentsViewEditorPane';
@@ -20,6 +22,7 @@ interface AgentsViewProps {
 }
 
 export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
+  const { navigate } = useNavigationActions();
   const { isLoading: agentsLoading, isError: agentsLoadFailed } =
     useAgentsQuery();
   const {
@@ -87,6 +90,12 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
 
   return (
     <>
+      <Button
+        variant="secondary"
+        onClick={() => navigate('/agents?tab=ensembles')}
+      >
+        Inspect an Ensemble
+      </Button>
       {/* empty-state action: creation and filter reset are adjacent */}
       <SplitPaneLayout
         paneId={AGENTS_PANE_ID}

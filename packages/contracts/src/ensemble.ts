@@ -2,6 +2,59 @@ export const ENSEMBLE_PRESET_VERSION = 'station.ensemble/v1' as const;
 export const ENSEMBLE_MAX_BYTES = 128 * 1024;
 export const ENSEMBLE_MAX_MEMBERS = 16;
 
+export const ENSEMBLE_INSPECTION_LIMITS = {
+  requestBytes: 16 * 1024,
+  responseBytes: 256 * 1024,
+  facts: 512,
+  toolsPerMember: 8,
+} as const;
+
+/** Receiver-owned selections only; the model always belongs to the preset. */
+export interface EnsembleInspectionInput {
+  path: string;
+  expectedPresetHash?: string;
+  bindings: Record<string, { agent: string; projectSlug: string }>;
+}
+
+export type EnsembleInspectionCategory =
+  | 'members/models'
+  | 'routing/triggers'
+  | 'tools/services'
+  | 'workspace'
+  | 'memory'
+  | 'schedules/webhooks'
+  | 'output destinations';
+
+export interface EnsembleInspectionFact {
+  id: string;
+  memberId?: string;
+  category: EnsembleInspectionCategory;
+  label: string;
+  value: string;
+  origin: 'authored' | 'default' | 'runtime-derived' | 'unknown';
+  state: 'configured' | 'unknown' | 'unavailable' | 'missing';
+  owner: { label: string; href?: string; receipt?: string };
+}
+
+/** A configuration observation, never a preparation or launch capability. */
+export interface EnsembleInspection {
+  version: 'station.ensemble.inspection/v1';
+  source: {
+    sha256: string;
+    presetId: string;
+    name: string;
+    stationmaster: string;
+  };
+  environmentId: string;
+  observedAt: string;
+  facts: readonly EnsembleInspectionFact[];
+  resolutions: readonly {
+    memberId: string;
+    receipt: import('./execution-target.js').ExecutionResolutionReceipt;
+  }[];
+  limits: 'Authentication, entitlement, execution limits and live group bindings are unverified.';
+}
+
 export interface EnsembleModelOptions {
   readonly fastMode?: boolean;
   readonly thinking?: boolean;
@@ -47,7 +100,8 @@ function object(value: unknown): Record<string, unknown> {
 function closed(value: Record<string, unknown>, keys: readonly string[]): void {
   if (
     Object.keys(value).length !== keys.length ||
-    keys.some((key) => !Object.hasOwn(value, key))
+    // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers retain ES2020 library compatibility.
+    keys.some((key) => !Object.prototype.hasOwnProperty.call(value, key))
   ) {
     throw new Error('Ensemble: missing or unknown field');
   }

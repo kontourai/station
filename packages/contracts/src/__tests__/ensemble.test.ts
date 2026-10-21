@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   composeEnsembleBrief,
   ENSEMBLE_MAX_BYTES,
@@ -41,6 +41,28 @@ function declaration() {
 }
 
 describe('Ensemble JSON contract', () => {
+  test('closed-field validation supports null prototypes and refuses inherited or shadowed fields', () => {
+    const value = declaration();
+    Object.setPrototypeOf(value, null);
+    for (const member of value.members) Object.setPrototypeOf(member, null);
+    const parse = vi.spyOn(JSON, 'parse');
+    try {
+      parse.mockReturnValueOnce(value);
+      expect(parseEnsemblePreset('{}').id).toBe('review-team');
+      const inherited: Record<string, unknown> = Object.assign(
+        Object.create({ version: value.version }),
+        value,
+      );
+      delete inherited.version;
+      inherited.hasOwnProperty = () => true;
+      parse.mockReturnValueOnce(inherited);
+      expect(() => parseEnsemblePreset('{}')).toThrow(
+        'missing or unknown field',
+      );
+    } finally {
+      parse.mockRestore();
+    }
+  });
   test('composes exact prompt appends and a deterministic, escaped roster for every member', () => {
     const preset = parseEnsemblePreset(JSON.stringify(declaration()));
     const roster = [

@@ -1819,3 +1819,12 @@ test('minting a plugin telemetry pane capability requires an access-management c
     ),
   ).resolves.toBe(true);
 });
+
+test('Ensemble inspection retains the operate floor and has an inventoried POST leaf', () => {
+  expect(
+    requiredPairingScope('POST', '/api/orchestration/ensembles/inspect'),
+  ).toBe('orchestration:operate');
+  expect(
+    isLeafScopeDeclared('POST', '/api/orchestration/ensembles/inspect'),
+  ).toBe(true);
+});

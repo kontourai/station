@@ -238,3 +238,12 @@ describe('routeSurfaceIdentity', () => {
     expect(routeSurfaceIdentity(acpNew)).toBe(routeIdentity(acpNew));
   });
 });
+
+test('Ensemble inspection changes the Agents view identity while retaining its destination', () => {
+  expect(routeIdentity({ type: 'agents', tab: 'ensembles' })).not.toBe(
+    routeIdentity({ type: 'agents' }),
+  );
+  expect(routeSurfaceIdentity({ type: 'agents', tab: 'ensembles' })).toBe(
+    'agents',
+  );
+});

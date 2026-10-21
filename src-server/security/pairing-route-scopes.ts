@@ -3194,6 +3194,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // POST therefore inherits the orchestration family's operate scope.
     // Login observation only; the handler additionally requires the current local operator.
     { method: 'POST', path: '/api/orchestration/ensembles/prepare' },
+    { method: 'POST', path: '/api/orchestration/ensembles/inspect' },
     { method: 'POST', path: '/api/orchestration/chat' },
     {
       method: 'GET',

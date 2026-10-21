@@ -1,0 +1,67 @@
+.ensemble-inspection {
+  overflow: auto;
+  min-height: 0;
+  padding: var(--k-space-6);
+  color: var(--k-text);
+}
+.ensemble-inspection form,
+.ensemble-inspection label {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.ensemble-inspection form {
+  max-width: 100%;
+  gap: var(--k-space-4);
+}
+.ensemble-inspection input {
+  min-height: 44px;
+  background: var(--k-panel);
+  color: var(--k-text);
+  border: 1px solid var(--k-line);
+  padding: var(--k-space-2);
+}
+.ensemble-inspection fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-4);
+  border: 1px solid var(--k-line);
+}
+.ensemble-inspection a {
+  color: var(--k-action);
+}
+.ensemble-inspection :focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.ensemble-inspection__table,
+.ensemble-inspection__diagram {
+  overflow: auto;
+  max-width: 100%;
+}
+.ensemble-inspection table {
+  border-collapse: collapse;
+  text-align: left;
+  width: 100%;
+}
+.ensemble-inspection th,
+.ensemble-inspection td {
+  padding: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.ensemble-inspection code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.ensemble-inspection svg rect {
+  fill: var(--k-panel);
+  stroke: var(--k-line-strong);
+}
+.ensemble-inspection svg path {
+  fill: none;
+  stroke: var(--k-text-muted);
+}
+.ensemble-inspection svg text {
+  fill: var(--k-text);
+}

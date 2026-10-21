@@ -36,6 +36,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'devicePairingRequests',
   'diffComments',
   'featurePreviews',
+  'ensembles',
   'flowRuns',
   'peerCredentials',
   'peerEnrollments',

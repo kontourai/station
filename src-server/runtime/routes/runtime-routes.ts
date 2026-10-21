@@ -15,6 +15,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createEnsembleInspectionRoutes } from '../../routes/orchestration/ensemble-inspection.js';
 import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
@@ -122,6 +123,7 @@ import {
   createLocalEnsembleInventory,
   EnsembleExecutionContext,
 } from '../../services/orchestration/ensemble-execution-context.js';
+import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
   ProjectMembershipAuthority,
@@ -4940,6 +4942,43 @@ export function configureRuntimeRoutes(
       return undefined;
     }
   })();
+
+  context.app.route(
+    '/api/orchestration/ensembles',
+    createEnsembleInspectionRoutes(
+      new EnsembleInspectionService({
+        readIntegration: (id) =>
+          context.configLoader.readIntegrationAppDefinition(id),
+        security: context.environmentSecurityService,
+        inventory: createLocalEnsembleInventory({
+          captureAgentConfigurationFence: (ids) =>
+            context.agentService.capturePreparationConfigurationFence(
+              ids,
+              context.getAgentConfigurationRevision,
+            ),
+          getProjectRevision: (slug) =>
+            context.storageAdapter.projectRevision(slug),
+          getProviderRevision: () =>
+            context.providerService.getLaunchabilityRevision(),
+          environmentId: () =>
+            context.environmentSecurityService.devicePairing.environmentId(),
+          getAgent: (id) => context.agentService.getAgent(id),
+          listEngineConnectionIdentities: async () => {
+            const identities =
+              await context.connectionService.listEngineConnectionIdentities();
+            if (identities.length > 256)
+              throw new Error('Inspection inventory exceeds its limit');
+            return identities;
+          },
+          loadAppConfig: () => context.configLoader.loadAppConfig(),
+          getProject: (slug) => context.projectService.getProject(slug),
+          getProviderAdapter: (provider) =>
+            context.orchestrationService.getProviderAdapter(provider),
+        }),
+      }),
+      resolveOrchestrationRequestPrincipal,
+    ),
+  );
 
   context.app.route(
     '/api/orchestration/ensembles',

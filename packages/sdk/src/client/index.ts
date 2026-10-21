@@ -42,6 +42,7 @@ export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';
 export * from './conversations';
 export * from './delegations';
+export * from './ensembles';
 export * from './execution';
 export * from './fleet-routing';
 export type {
