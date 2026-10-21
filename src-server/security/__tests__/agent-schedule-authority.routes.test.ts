@@ -1331,7 +1331,15 @@ describe('Approve claims the proposal before the job is created', () => {
       proposalId: id,
     });
     expect(response.status).toBe(500);
-    expect(store.jobProposal(id)?.state).toBe('open');
+    // Raw state: an Approve in flight also reads `open` to the chat.
+    expect(store.jobProposalState(id)).toBe('open');
+    // So the person can try again.
+    const again = await personRequest('POST', '/scheduler/jobs', {
+      ...PROPOSED,
+      proposalId: id,
+    });
+    expect(again.status).toBe(200);
+    expect(store.jobProposalState(id)).toBe('approved');
   });
 });
 
