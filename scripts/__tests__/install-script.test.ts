@@ -967,6 +967,7 @@ describe('one-line Station installer', {
       '#!/bin/sh\nif [ "$1 $2" = "auth token" ]; then echo test_private_token; exit 0; fi\nexit 42\n',
     );
     executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
+    // Getting started owns the install steps; the README links to this section.
     const guide = readFileSync(
       join(repoRoot, 'docs/user/getting-started.md'),
       'utf8',
