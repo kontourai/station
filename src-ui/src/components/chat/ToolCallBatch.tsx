@@ -226,6 +226,11 @@ function LiveCallSlot({ call }: { call?: LiveCall }) {
   if (key !== shown.key) {
     if (key !== undefined && shown.key !== undefined && shown.call) {
       setLeaving({ key: shown.key, call: shown.call });
+    } else if (key === undefined && leaving) {
+      // Closing before an outgoing row's fade ended: that row is no longer
+      // rendered, so its animationend never comes. Dropped now, it cannot
+      // reappear as a ghost under the slot's next call.
+      setLeaving(undefined);
     }
     setShown({ key, call: call ?? shown.call });
   }

@@ -142,6 +142,70 @@ describe('ToolCallBatch — live child rows', () => {
     expect(slot.querySelector('.tool-call-batch__child--leaving')).toBeNull();
   });
 
+  test('a slot that closes mid-crossfade leaves no ghost under its next call (a → c fast → closed → d)', () => {
+    const view = render(
+      <ToolCallBatch
+        run={runFor([command('a', 'running'), command('c', 'call')])}
+        renderCall={renderCall}
+      />,
+    );
+    // c replaces a before a's fade ends: a is the outgoing row.
+    view.rerender(
+      <ToolCallBatch
+        run={runFor([command('a', 'completed'), command('c', 'running')])}
+        renderCall={renderCall}
+      />,
+    );
+    expect(
+      document
+        .querySelector('.tool-call-batch__child--leaving')
+        ?.getAttribute('data-tool-call-id'),
+    ).toBe('a');
+    // The slot closes before that fade ended (its animationend never fires).
+    view.rerender(
+      <ToolCallBatch
+        run={runFor([command('a', 'completed'), command('c', 'completed')])}
+        renderCall={renderCall}
+      />,
+    );
+    // The next call arrives in the same slot.
+    view.rerender(
+      <ToolCallBatch
+        run={runFor([
+          command('a', 'completed'),
+          command('c', 'completed'),
+          command('d', 'running'),
+        ])}
+        renderCall={renderCall}
+      />,
+    );
+    const slot = document.querySelector('.tool-call-batch__slot')!;
+    expect(slot.getAttribute('data-open')).toBe('true');
+    expect(slot.querySelector('.tool-call-batch__child--leaving')).toBeNull();
+    expect(
+      [...slot.querySelectorAll('.tool-call-batch__child')].map((row) =>
+        row.getAttribute('data-tool-call-id'),
+      ),
+    ).toEqual(['d']);
+  });
+
+  test('a single running call shows its elapsed time after ten seconds too', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
+    render(
+      <ToolCallDisplay
+        toolCall={
+          command('solo', 'running', {
+            startedAt: '2026-10-20T11:59:45.000Z',
+          }) as never
+        }
+      />,
+    );
+    expect(document.querySelector('.tool-call__elapsed')?.textContent).toBe(
+      '15s',
+    );
+  });
+
   test('a settled batch reads in the past tense and its live rows close', () => {
     const view = render(
       <ToolCallBatch
@@ -210,7 +274,9 @@ describe('ToolCallBatch — live child rows', () => {
       document
         .querySelector(`.tool-call-batch__child[data-tool-call-id="${id}"]`)
         ?.querySelector('.tool-call__elapsed')?.textContent ?? null;
-    expect(elapsed('a')).toBeNull();
+    // Under ten seconds the column is already there, empty, so the time
+    // appearing does not widen the row.
+    expect(elapsed('a')).toBe('');
     expect(elapsed('b')).toBe('30s');
     act(() => {
       vi.advanceTimersByTime(8_000);

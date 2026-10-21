@@ -54,6 +54,7 @@ import {
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { ToolCallElapsed } from './ToolCallElapsed';
 import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
@@ -96,6 +97,8 @@ export interface ToolCallData {
   stationControlRefusal?: StationControlRefusalView;
   state?: string;
   progressMessage?: string;
+  /** When the call started (ISO), for a running row's elapsed time. */
+  startedAt?: string;
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
@@ -342,6 +345,10 @@ function ToolCallDisplayComponent({
           Output truncated
         </span>
       )}
+      {running && !awaitingApproval ? (
+        // The same elapsed time a batch's running rows show.
+        <ToolCallElapsed startedAt={toolCall.startedAt} />
+      ) : null}
       {awaitingApproval && (
         <span
           className="tool-call__awaiting"

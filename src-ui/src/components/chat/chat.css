@@ -3521,6 +3521,10 @@
 
 .tool-call__elapsed {
   flex-shrink: 0;
+  /* Its column from the start ("1h 59m" at most), so the time appearing at
+     ten seconds, and growing after, never changes the row's width. */
+  min-width: 6ch;
+  text-align: end;
   margin-inline-start: auto;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
