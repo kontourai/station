@@ -168,13 +168,29 @@ The documented client launcher carries only explicitly selected environment
 settings and the scoped lease, excluding inherited Station credentials and
 provider API keys. None of these results is a real client onboarding receipt.
 
-The handoff qualification owner now passes eight cases, including a second
+The earlier handoff qualification increment passed eight cases, including a second
 complete A→B→A→B→A cycle and persisted history after restart. Disabling native
 return beyond three lineage Sessions makes only the new case fail on missing
 matched native identity; exact restoration returns all eight to passing.
 This does not cover restart between reservation and dispatch or immutable seed
 pinning. Fork seed delivery/copied-history integration remains under caller
 investigation, not established as repaired.
+
+The next native-return increment pins exact catch-up bytes, their digest,
+Session-local cutoffs and omission facts in the existing handoff reservation.
+Status projects delivery from the correlated invocation/turn; complete text
+ranges are acknowledged only with matched identity, observed completion and no
+omission/shortening. Retries retain the pin and recheck authority; unpinned legacy
+reservations refuse. A source high-water check inside the reservation transaction
+refuses intervening appends before successor creation. The owner now passes ten
+cases; three focused owners pass 26 tests, including budget disclosure, no full
+acknowledgement after failure/truncation, and delivery receipts reloaded from disk.
+Bypassing the snapshot fence produces one intended failure/nine passes; exact
+restoration returns ten passes. The receipt is
+`/private/tmp/station-continuity-context-snapshot-mutation-receipt-20261021.json`.
+This increment does not complete generic context-boundary/fork pinning, a
+per-native-identity aggregate accepted-through view, or reservation-to-start
+restart qualification. No live provider result is implied.
 
 The external-client increment's readiness attempt failed documentation truth
 because affected source/document claims still need review. Governance and lint

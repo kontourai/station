@@ -26,6 +26,26 @@ has no observed completion, including a failed or uncertain turn. Acceptance of
 the native Session start alone does not confirm delivery of its catch-up context.
 This refusal does not automatically resend the seed or reopen the start boundary.
 
+New native-return reservations pin the exact catch-up text and its SHA-256 digest
+alongside ordered source Session cutoffs and omission facts in the existing event
+store. Each cutoff is an exclusive `afterSequence` and inclusive `throughSequence`
+within that Session; sequence numbers from different Sessions are not comparable.
+An intervening source append refuses reservation before a successor is created.
+A retry rechecks source authorization and native ownership and uses the pinned
+text. A legacy reservation with no pin refuses rather than reconstructing new
+context under its old identity.
+
+The authorized handoff status projection exposes `contextDelivery` for these
+reservations: `seedDigest`, `sourceCutoffs`, `omission` and observed `status`,
+without the seed text. `acceptedTextThrough` appears only after the correlated
+seed-bearing turn completes with a matched native identity and no omitted or
+shortened text messages. Non-text rows remain counted and excluded by the text
+projection. Failed, pending or uncertain delivery and truncated seeds never
+acknowledge the complete text range. These are Station observations, not proof
+that a provider retains its transcript indefinitely. Context-start consumption
+remains a separate boundary; ordinary context replacement and fork delivery are
+not qualified by this native-return receipt.
+
 The compact conversation reader used by `read_conversation` and the SDK's
 `readConversation` preserves message Session attribution. Versioned `provenance`
 reports the ordered Sessions, providers, handoffs, requested native returns and
