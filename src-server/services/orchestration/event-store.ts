@@ -6566,6 +6566,8 @@ export class EventStore {
       // receipt; later configuration events can restate runtime state.
       this.firstEventByMethod(threadId, 'session.configured', bounded),
       this.latestEventByMethod(threadId, 'session.configured', bounded),
+      // Initiation provenance belongs to the actual first turn, even without a prompt.
+      this.firstEventByMethod(threadId, 'turn.started', bounded),
       this.firstTurnStartedWithPrompt(threadId, bounded),
       // archive#3524: the CURRENT turn's own announcement. Neither existing
       // slot guarantees this fact stays visible — `firstTurnStartedWithPrompt`
@@ -7311,6 +7313,7 @@ export class EventStore {
         methodFacts?.get('session.started')?.latest,
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
+        methodFacts?.get('turn.started')?.first,
         firstPromptedTurnByThread.get(threadId),
         latestObservedStart,
         positiveStart,
