@@ -284,17 +284,72 @@ function unchanged(image: RecordImage | undefined, record: object): boolean {
   if (image.probe !== undefined) return image.probe === JSON.stringify(record);
   return canonical(JSON.parse(image.text)) === canonical(record);
 }
+function freshRowSchemas() {
+  const refs = new Map<string, z.infer<typeof bodyRef>>();
+  const ref = z.transform((value: z.input<typeof bodyRef>) => {
+    let key: string | undefined;
+    if (
+      value &&
+      typeof value === 'object' &&
+      Object.getPrototypeOf(value) === Object.prototype &&
+      Reflect.ownKeys(value).length === 3
+    ) {
+      const codec = Object.getOwnPropertyDescriptor(value, 'codec');
+      const digest = Object.getOwnPropertyDescriptor(value, 'digest');
+      const byteLength = Object.getOwnPropertyDescriptor(value, 'byteLength');
+      if (
+        codec?.enumerable &&
+        'value' in codec &&
+        typeof codec.value === 'string' &&
+        digest?.enumerable &&
+        'value' in digest &&
+        typeof digest.value === 'string' &&
+        byteLength?.enumerable &&
+        'value' in byteLength &&
+        typeof byteLength.value === 'number'
+      ) {
+        key = JSON.stringify([codec.value, digest.value, byteLength.value]);
+        const known = refs.get(key);
+        if (known) return { ...known };
+      }
+    }
+    const parsed = bodyRef.parse(value);
+    if (key !== undefined) refs.set(key, { ...parsed });
+    return { ...parsed };
+  });
+  const pin = runRecordSchema.shape.pins.element;
+  const attempt = pin.shape.attempts.element;
+  return {
+    run: runRecordSchema.safeExtend({
+      pins: z.array(
+        pin.safeExtend({
+          attempts: z.array(
+            attempt.safeExtend({
+              partials: z.array(ref),
+              tape: ref.nullable(),
+            }),
+          ),
+        }),
+      ),
+    }),
+    outbox: outboxRecordSchema.safeExtend({
+      projection: projectionSchema.safeExtend({ body: ref.nullable() }),
+    }),
+  };
+}
+
 function loadState(
   database: DatabaseSync,
   before?: BeforeImage,
   captureProbe = true,
 ): ModelState {
   const result = emptyState();
+  const rows = freshRowSchemas();
   for (const row of database
     .prepare('SELECT id,record FROM agent_runtime_runs')
     .all()) {
     const value = stored.parse(row);
-    const record = runRecordSchema.parse(
+    const record = rows.run.parse(
       decode(new TextEncoder().encode(value.record)),
     );
     if (value.id !== keyOf(record.spec.key))
@@ -330,7 +385,7 @@ function loadState(
     .prepare('SELECT id,record FROM agent_runtime_outbox')
     .all()) {
     const value = stored.parse(row);
-    const record = outboxRecordSchema.parse(JSON.parse(value.record));
+    const record = rows.outbox.parse(JSON.parse(value.record));
     if (
       record.projection.id !== value.id ||
       projectionId(record.projection) !== value.id
