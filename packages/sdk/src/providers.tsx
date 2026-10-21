@@ -11,8 +11,11 @@ import type { PluginApiIdentity } from './api-core';
 import type {
   SDKAgentsContext,
   SDKAuthContext,
+  SDKConfigContext,
+  SDKModelsContext,
   SDKNavigationContext,
   SDKToastContext,
+  SDKToolApprovalHandler,
 } from './host-contexts';
 
 /**
@@ -33,8 +36,8 @@ export interface SDKContextValue {
     layouts?: any;
     conversations?: any;
     activeChats?: any;
-    models?: any;
-    config?: any;
+    models?: SDKModelsContext;
+    config?: SDKConfigContext;
     navigation?: SDKNavigationContext;
     toast?: SDKToastContext;
     stats?: any;
@@ -47,7 +50,7 @@ export interface SDKContextValue {
   hooks: {
     slashCommandHandler?: () => any;
     slashCommands?: () => any;
-    toolApproval?: () => any;
+    toolApproval?: () => SDKToolApprovalHandler;
     keyboardShortcut?: (
       key: string,
       callback: () => void,

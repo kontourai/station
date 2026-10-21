@@ -18,6 +18,19 @@ Trusted server modules may also import the re-exported
 event observation. The host retains consumer identity, grants, projection, and
 settlement authority; see the plugin guide's durable operational-event section.
 
+## Build on the core
+
+In Station's default in-process plugin host, `useConfig`, `useModels`,
+`useAvailableModels`, `useConversations(agentSlug)`, and `useActiveChatState(dockId)`
+read the same core query cache and chat store used by the application.
+Navigation, chat launch/send, command dispatch and tool-approval callbacks
+reuse core behavior. A host binding is not a permission grant.
+
+See [default host bindings](../../docs/reference/sdk.md#default-host-bindings-and-custom-hosts)
+for exact return shapes, error-aware query alternatives, remaining optional
+slots and isolated-frame limits. A callable SDK export alone does not establish
+that a custom host supplies its context.
+
 ## Choose an SDK surface
 
 Use the root and documented UI subpaths for plug-in hooks, components, and host

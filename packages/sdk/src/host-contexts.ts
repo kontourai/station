@@ -8,7 +8,9 @@
  * statement; the host adapter implements them and is type-checked against
  * them.
  */
+
 import type { AuthStatus } from '@kontourai/station-contracts/auth';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { AgentSummary } from './types';
 
 /** The four toast tones Station renders. */
@@ -107,3 +109,33 @@ export interface SDKToastContext {
 export interface SDKAuthContext {
   useAuth: () => SDKAuthState;
 }
+
+/** The text-model catalog shared with Station's model picker. */
+export interface SDKModel {
+  id: string;
+  name: string;
+  originalId: string;
+  isInferenceProfile?: boolean;
+  profileType?: string;
+}
+
+export interface SDKModelsContext {
+  useModels: () => SDKModel[];
+  useAvailableModels: () => SDKModel[];
+}
+
+export interface SDKConfigContext {
+  useApiBase: () => { apiBase: string };
+  /** The host configuration snapshot; null before a successful read. */
+  useConfig?: () => Partial<AppConfig> | null;
+}
+
+export type SDKToolApprovalHandler = (
+  sessionId: string,
+  agentSlug: string,
+  approvalId: string,
+  toolName: string,
+  action: 'once' | 'trust' | 'deny',
+  approvalThreadId?: string,
+  approvalEventId?: string,
+) => Promise<'answered' | 'already-settled'>;

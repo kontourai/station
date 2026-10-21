@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act, render, screen } from '@testing-library/react';
-import { memo } from 'react';
+import { memo, useSyncExternalStore } from 'react';
 import { expect, test, vi } from 'vitest';
 
 const inputs = vi.hoisted(() => ({
+  listeners: new Set<() => void>(),
   agents: [],
   layouts: [],
   conversations: [
@@ -26,7 +27,15 @@ vi.mock('@kontourai/station-sdk', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk')>()),
   useProjectLayoutsQuery: () => ({ data: inputs.layouts }),
   useProjectLayoutQuery: () => ({ data: undefined }),
-  useConversationsQuery: () => ({ data: inputs.conversations }),
+  useConversationsQuery: () => ({
+    data: useSyncExternalStore(
+      (listener) => {
+        inputs.listeners.add(listener);
+        return () => inputs.listeners.delete(listener);
+      },
+      () => inputs.conversations,
+    ),
+  }),
 }));
 vi.mock('../../contexts/AgentsContext', () => ({
   useAgents: () => inputs.agents,
@@ -40,6 +49,7 @@ vi.mock('../../contexts/ToastContext', () => ({
 }));
 vi.mock('../../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => inputs.actions,
+  useActiveChatState: () => null,
 }));
 vi.mock('../../hooks/useActiveChatSessionMessaging', () => ({
   useSendMessage: () => inputs.send,
@@ -103,10 +113,13 @@ test('mounted plugin consumers ignore parent and non-SDK navigation changes whil
   act(() => navigationStore.setDockState(true));
   const afterDock = renders;
   expect(screen.getByTestId('plugin').textContent).toBe('1:open');
-  inputs.conversations = [
-    ...inputs.conversations,
-    { ...inputs.conversations[0], id: 'conv-2' },
-  ];
+  act(() => {
+    inputs.conversations = [
+      ...inputs.conversations,
+      { ...inputs.conversations[0], id: 'conv-2' },
+    ];
+    for (const listener of inputs.listeners) listener();
+  });
   view.rerender(<Harness tick={6} />);
   expect(screen.getByTestId('plugin').textContent).toBe('2:open');
   const afterData = renders;
