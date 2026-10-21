@@ -64,7 +64,6 @@
   }
 }
 
-
 .session-context-chip:hover,
 .session-context-chip[aria-expanded="true"] {
   border-color: var(--accent-primary);
