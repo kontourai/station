@@ -382,10 +382,11 @@ describe('ACPAddConnectionModal', () => {
         expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(true),
       );
       expect(screen.getByRole('status').textContent).toContain(
-        'A first start can take up to a minute.',
+        'Starting Kiro CLI for the first time. A first start can take up to a minute.',
       );
 
       rerender({
+        probeStatusesUpdatedAt: Date.now(),
         probeStatuses: [
           {
             id: 'kiro',
@@ -409,6 +410,45 @@ describe('ACPAddConnectionModal', () => {
       expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
     });
 
+    // Retry check after a Setup needed result: the section still holds the
+    // last poll, which says `unavailable` for this id. That answer is about
+    // the previous attempt and must not end the new wait.
+    test('a poll from before this add does not end its first-start wait', async () => {
+      const { rerender } = renderProbing({
+        probeStatusesUpdatedAt: Date.now() - 60_000,
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: { phase: 'initialize', message: 'the OLD failure' },
+          },
+        ],
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first time'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+      expect(screen.queryByText(/the OLD failure/)).toBeNull();
+
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: { phase: 'initialize', message: 'the NEW failure' },
+          },
+        ],
+      });
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'initialize: the NEW failure',
+        ),
+      );
+    });
+
     test('a connected first start waits for the registered engine, then lands on Ready', async () => {
       const { rerender, onRefreshConnections } = renderProbing();
       fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
@@ -416,11 +456,15 @@ describe('ACPAddConnectionModal', () => {
         expect(screen.getByRole('status').textContent).toContain('first start'),
       );
 
-      rerender({ probeStatuses: [{ id: 'kiro', status: 'available' }] });
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [{ id: 'kiro', status: 'available' }],
+      });
       await waitFor(() => expect(onRefreshConnections).toHaveBeenCalled());
       expect(screen.getByRole('status').textContent).toContain('Checking');
 
       rerender({
+        probeStatusesUpdatedAt: Date.now(),
         probeStatuses: [{ id: 'kiro', status: 'available' }],
         connections: [connection('available')],
       });

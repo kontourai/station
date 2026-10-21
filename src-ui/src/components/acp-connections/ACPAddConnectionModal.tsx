@@ -30,6 +30,7 @@ export function ACPAddConnectionModal({
   returnFocusTarget,
   initialProviderId,
   probeStatuses,
+  probeStatusesUpdatedAt,
   onFirstContactPendingChange,
 }: {
   registryEntries?: ACPConnectionRegistryEntry[];
@@ -50,6 +51,8 @@ export function ACPAddConnectionModal({
     status: string;
     lastError?: { message: string; phase: string };
   }>;
+  /** When `probeStatuses` was fetched (epoch ms). */
+  probeStatusesUpdatedAt?: number;
   /** Tells the owner when to poll `probeStatuses`. */
   onFirstContactPendingChange?: (pending: boolean) => void;
 }) {
@@ -72,6 +75,7 @@ export function ACPAddConnectionModal({
     onInstallRegistryEntry,
     onRefreshConnections,
     probeStatuses,
+    probeStatusesUpdatedAt,
   });
   useEffect(() => {
     onFirstContactPendingChange?.(awaitingFirstContact);
@@ -150,6 +154,7 @@ export function ACPAddConnectionModal({
           reason={resultConnection?.lastError ?? null}
           pending={isPending}
           firstContact={awaitingFirstContact}
+          engineName={resultConnection?.name}
         />
       </div>
       <ACPConnectionSetupActions

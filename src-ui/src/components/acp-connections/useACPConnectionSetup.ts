@@ -29,6 +29,8 @@ interface ACPConnectionSetupState {
    * serves it; this is then the only result the dialog can show.
    */
   addedConnection: ACPConnectionInfo | null;
+  /** When the add answered (epoch ms); polls fetched before it are stale. */
+  completedAt: number | null;
   mutationComplete: boolean;
   error: string | null;
   errorKind: ACPConnectionSetupErrorKind | null;
@@ -46,7 +48,11 @@ type SetupAction =
   | { type: 'draft'; field: keyof ACPConnectionDraft; value: string }
   | { type: 'submit'; entry: ACPConnectionRegistryEntry | null; id: string }
   | { type: 'refresh' }
-  | { type: 'complete'; connection: ACPConnectionInfo | null }
+  | {
+      type: 'complete';
+      connection: ACPConnectionInfo | null;
+      completedAt: number;
+    }
   | { type: 'result' }
   | { type: 'error'; message: string; kind: ACPConnectionSetupErrorKind };
 
@@ -105,6 +111,7 @@ function reduceACPConnectionSetup(
         selectedEntry: action.entry,
         resultConnectionId: action.id,
         addedConnection: null,
+        completedAt: null,
         mutationComplete: false,
         error: null,
         errorKind: null,
@@ -122,6 +129,7 @@ function reduceACPConnectionSetup(
         ...state,
         mutationComplete: true,
         addedConnection: action.connection,
+        completedAt: action.completedAt,
       };
     case 'result':
       return { ...state, stage: 'result' };
@@ -141,6 +149,7 @@ function initialState(entries: ACPConnectionRegistryEntry[]) {
     selectedEntry: null,
     resultConnectionId: null,
     addedConnection: null,
+    completedAt: null,
     mutationComplete: false,
     error: null,
     errorKind: null,
@@ -256,6 +265,7 @@ function useSetupSubmit(
         dispatch({
           type: 'complete',
           connection: addedConnectionFor(response, id),
+          completedAt: Date.now(),
         });
       } catch (error) {
         dispatch({
@@ -296,6 +306,7 @@ export function useACPConnectionSetup({
   onInstallRegistryEntry,
   onRefreshConnections,
   probeStatuses,
+  probeStatusesUpdatedAt,
 }: {
   registryEntries: ACPConnectionRegistryEntry[];
   connections: ACPConnectionInfo[];
@@ -307,6 +318,8 @@ export function useACPConnectionSetup({
     status: string;
     lastError?: { message: string; phase: string };
   }>;
+  /** When `probeStatuses` was fetched (epoch ms). */
+  probeStatusesUpdatedAt?: number;
   onAdd: (draft: ACPConnectionDraft) => unknown;
   onInstallRegistryEntry?: (id: string) => unknown;
   onRefreshConnections?: () => unknown;
@@ -325,8 +338,14 @@ export function useACPConnectionSetup({
       ) ?? null)
     : null;
   const added = state.addedConnection;
+  // A poll fetched before this add answered describes an earlier attempt
+  // (Retry check reuses the id), so only a newer poll may end the wait.
+  const pollIsCurrent =
+    probeStatusesUpdatedAt !== undefined &&
+    state.completedAt !== null &&
+    probeStatusesUpdatedAt >= state.completedAt;
   const polled =
-    added?.status === 'probing'
+    added?.status === 'probing' && pollIsCurrent
       ? probeStatuses?.find((entry) => entry.id === added.id)
       : undefined;
   const resultConnection =

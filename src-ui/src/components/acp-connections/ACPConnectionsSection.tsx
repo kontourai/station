@@ -46,7 +46,7 @@ export function ACPConnectionsSection({
   } = useACPConnections();
   const { data: registryEntries = [] } = useACPConnectionRegistry();
   const [firstContactPending, setFirstContactPending] = useState(false);
-  const { data: probeStatuses } =
+  const { data: probeStatuses, dataUpdatedAt: probeStatusesUpdatedAt } =
     useACPConnectionProbeStatuses(firstContactPending);
   const createConnectionMutation = useCreateACPConnectionMutation();
   const installRegistryEntryMutation =
@@ -168,6 +168,7 @@ export function ACPConnectionsSection({
           onInstallRegistryEntry={installRegistryEntry}
           onRefreshConnections={refetchConnections}
           probeStatuses={probeStatuses}
+          probeStatusesUpdatedAt={probeStatusesUpdatedAt}
           onFirstContactPendingChange={setFirstContactPending}
           onCancel={() => {
             setShowAddModal(false);
