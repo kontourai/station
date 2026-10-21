@@ -613,7 +613,25 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
     configKeys: ['confirmConversationDelete'],
   },
-  { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
+  // The theme and accent controls moved to the Appearance page. These two rows
+  // stay, as links there, so Settings search, the palette's Settings targets
+  // and recorded `highlight=theme` / `highlight=accent-color` links still land
+  // on a row that answers them. Each row's `configKeys` is only the key that
+  // row itself writes (Theme's mode toggle, the custom accent). "Use default"
+  // already reset only a row's first account key, so this changes what the
+  // rows claim (scope, search corpus, the key-to-row lookup), not what the
+  // button does. The color-theme keys are found through `searchKeywords`;
+  // nothing looks them up by key (only Station registry rows call
+  // `settingsCatalogEntryForConfigKey`), and they are reset on the Appearance
+  // page by choosing Station.
+  {
+    id: 'theme',
+    title: 'Theme',
+    section: 'appearance',
+    configKeys: ['theme'],
+    keywords: ['mode', 'dark', 'light', 'catppuccin'],
+    searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
+  },
   {
     id: 'haptic-feedback',
     title: 'Haptic feedback',
@@ -626,6 +644,7 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Accent color',
     section: 'appearance',
     configKeys: ['accentColor'],
+    searchKeywords: ['named accent', 'theme accent', 'appearance'],
   },
   {
     id: 'keyboard-shortcuts',

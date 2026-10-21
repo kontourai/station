@@ -65,7 +65,6 @@ import {
   answerDeliveryModeOf,
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
-import { AccentColorPicker } from './settings/AccentColorPicker';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -75,6 +74,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
 import { PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
@@ -1486,9 +1486,17 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
+                    {/* Mode stays one click away here (and keeps ⌘H on this
+                    page); color themes and accents live on Appearance. */}
                     <PageRow
                       {...settingsRow('theme')}
-                      control={<ThemeToggle />}
+                      description="Switch light and dark here. Color themes are on the Appearance page."
+                      control={
+                        <span className="settings__appearance-controls">
+                          <ThemeToggle />
+                          <OpenAppearanceButton forRow="Theme" />
+                        </span>
+                      }
                     />
                     {isMobile && (
                       <PageRow
@@ -1505,7 +1513,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
-                    <AccentColorPicker />
+                    <PageRow
+                      {...settingsRow('accent-color')}
+                      description="Choose an accent on the Appearance page."
+                      control={<OpenAppearanceButton forRow="Accent color" />}
+                    />
                   </Section>
                 )}
 

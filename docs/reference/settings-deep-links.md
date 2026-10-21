@@ -71,6 +71,11 @@ Moves so far:
   controls that previously had no Settings row at all
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
+- Color themes: the theme and accent controls moved to the Appearance page
+  (`/appearance`, listed in Customize). The `theme` and `accent-color` rows
+  stay in `appearance` with their ids, as links to that page (Theme also keeps
+  the light/dark toggle), so `highlight=theme` and `highlight=accent-color`
+  still reveal a row and Settings search still finds them.
 - #2182: `agent-defaults` is now `agent-runs`, and `station-config` is gone
   entirely — its sixteen controls moved to `host-runtime`, `sources` (new),
   `telemetry` (new), `permissions` (new), `agent-runs` and `chat`. The retired

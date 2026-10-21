@@ -305,8 +305,13 @@ above that row while an update is available, downloading or ready to install
 (#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
 in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
 no longer appear in Appearance; existing device values remain compatible.
-Customize opens Agents, Skills, Connections, and Plugins at their existing
-routes. Developer joins that chooser when enabled. The footer replaces its
+Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
+at their existing routes. Developer joins that chooser, before Settings, when
+enabled. Settings stays reachable from the footer gear, its keyboard shortcut
+and the command palette. The Appearance page owns light/dark mode, the color
+theme, its flavor and its accent; Settings' Appearance topic keeps the mode
+toggle, the phone-only haptics row, and Theme and Accent color rows that link
+to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings

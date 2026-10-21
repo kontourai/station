@@ -103,6 +103,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     // naming rule), and the tiers are each box's own caption to state.
     width: 'narrow',
   },
+  appearance: {
+    title: 'Appearance',
+    subtitle: 'Mode, color theme and accent.',
+    width: 'narrow',
+  },
   profile: {
     title: 'Profile',
     subtitle: 'Your account, usage, and achievements on this Station',

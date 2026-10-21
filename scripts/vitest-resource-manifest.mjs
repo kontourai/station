@@ -1296,6 +1296,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
+  // Owns Chromium to drive the Appearance page's native radio groups with real
+  // arrow keys and Tab, and to read the focus ring on the visible card.
+  'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
   // #90: owns Chromium to measure the held page-dialog card's action row
   // (the icon-only Open in pane beside OK and Cancel) against the real
   // cascade, in the float's compact card and the pane's card.

@@ -154,6 +154,22 @@ white-label branding, a custom accent and islands. A picker lists
 (load it lazily: it carries the full catalog) and writes the `colorTheme`,
 `colorThemeFlavor` and `colorThemeAccent` device settings.
 
+The picker is the Appearance page (`/appearance`, listed in Customize and the
+command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
+holds the light/dark mode, a gallery of every theme drawn from the catalog
+swatches for the current mode, the family's dark flavors, and its named
+accents (Station's own presets and custom color when Station is selected).
+Choosing a family resets flavor and accent to that family's defaults, and
+choosing a named accent clears a custom `accentColor`, which would otherwise
+win. A different family's sheet loads first, so until the applier names it
+on the root the chosen card reads "Loading…" with no tick. A sheet that fails
+leaves the card reading "Not loaded" under a warning with Try again, which
+applies the selection once more; rapid choices end on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
+and with real delayed sheets in
+[appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).
+Settings keeps its Theme and Accent color rows as links to the page, so
+their search terms and `highlight=` links still land.
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by

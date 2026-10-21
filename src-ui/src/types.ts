@@ -537,6 +537,7 @@ export type NavigationView =
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
+  | { type: 'appearance' }
   | { type: 'profile' }
   | { type: 'notifications' }
   | { type: 'task'; taskId: string }
