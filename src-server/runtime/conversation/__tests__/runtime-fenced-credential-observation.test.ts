@@ -661,6 +661,7 @@ test('actual StationRuntime read queue refuses an aborted queued observation and
   try {
     await started;
     const denied = refused(() => owner.observe(h.request, h.input));
+    void denied.catch(() => {});
     await queueEntered;
     assert.equal(h.records().length, 0);
     h.controller.abort();
