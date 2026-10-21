@@ -5114,6 +5114,12 @@ checkpoints advance after caller delivery. Reconnect uses `Last-Event-ID` with
 separate group/member cursor domains. Close the handle or abort its signal to
 stop local observation; neither action cancels execution.
 
+One member subscription retains up to 4,096 distinct event identities across
+pages and reconnects. Reusing an identity at a different sequence or exceeding
+that history bound stops observation with a protocol error. The client does not
+evict old identities and silently accept reuse. This bound is local to one
+subscription; it is not a durable group-event ledger or terminal group evidence.
+
 Owners: `packages/sdk/src/client/delegation-groups.ts` and
 `packages/sdk/src/__tests__/delegation-groups.test.ts`. Mock-transport tests cover
 request projection, authority refusal, byte bounds, page delivery, reader cleanup
