@@ -102,6 +102,85 @@ function source(rows: ReturnType<typeof row>[]) {
 }
 
 describe('SessionOutputsModule', () => {
+  test('filters declarations at the durable turn owner and binds restart-safe cursors to that turn', async () => {
+    const home = makeTempDir('station-output-exact-turn-');
+    const path = join(home, 'orchestration.sqlite');
+    let store = new EventStore(path);
+    try {
+      for (let index = 0; index < 6; index += 1) {
+        const candidate = row(index);
+        const turnId = index % 2 === 0 ? 'turn-a' : 'turn-b';
+        store.appendEvent(
+          {
+            eventId: candidate.eventId,
+            provider: 'station-agent',
+            threadId: 'session-a',
+            turnId,
+            createdAt: candidate.declaredAt,
+            method: 'turn.completed',
+            finishReason: 'stop',
+          },
+          [
+            {
+              handle: `handle-${index}`,
+              declaration: {
+                version: 'declared-output/v1',
+                declarationId: candidate.declarationId,
+                sessionId: 'session-a',
+                eventId: candidate.eventId,
+                turnId,
+                toolCallId: candidate.toolCallId,
+                declaredAt: candidate.declaredAt,
+                descriptor: {
+                  kind: 'workspace-file',
+                  relativePath: `reports/${index}.txt`,
+                  digest: 'a'.repeat(64),
+                  length: 2,
+                },
+              },
+            },
+          ],
+        );
+      }
+      const create = () =>
+        createSessionOutputsModule({
+          eventStore: store,
+          canReadSession: () => true,
+          workspaceForSession: () => undefined,
+        });
+      const request = {
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+        limit: 2,
+        authority,
+        current: () => true,
+      };
+      const first = await create().list(request);
+      expect(first.status).toBe('found');
+      if (first.status !== 'found') throw new Error('Expected output page');
+      expect(first.page.items.map((item) => item.ref.eventId)).toEqual([
+        'event-0',
+        'event-2',
+      ]);
+      expect(first.page.cursor).toBeDefined();
+      store.close();
+      store = new EventStore(path);
+      const module = create();
+      const last = await module.list({ ...request, cursor: first.page.cursor });
+      expect(last).toMatchObject({
+        status: 'found',
+        page: { items: [{ ref: { eventId: 'event-4' } }] },
+      });
+      for (const turnId of [undefined, 'turn-b']) {
+        await expect(
+          module.list({ ...request, turnId, cursor: first.page.cursor }),
+        ).resolves.toEqual({ status: 'unavailable' });
+      }
+    } finally {
+      store.close();
+    }
+  });
+
   test('real admitted declaration identity reaches the immutable Task output store', async () => {
     const home = makeTempDir('station-output-producer-');
     const workspace = join(home, 'workspace');

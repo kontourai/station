@@ -2662,6 +2662,11 @@ export function configureRuntimeRoutes(
     canReadSession: (threadId, authority) =>
       context.orchestrationService.canUserReadSession(threadId, authority),
     readExactAnswerBasis: exactAnswerBasis.read,
+    readAnswerLineage: (sessionId, turnId) =>
+      context.orchestrationEventStore?.readAnswerInventoryLineage(
+        sessionId,
+        turnId,
+      ) ?? { status: 'corrupt' },
     readAnswerBasis: (threadId, turnId, authority) =>
       context.orchestrationService.sessionQueries.readAnswerBasis?.(
         { type: 'answer-basis', threadId, turnId },

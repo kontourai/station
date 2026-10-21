@@ -1073,6 +1073,85 @@ describe('EventStore', () => {
     );
   });
 
+  test('exact-answer lineage selects only its turn and explicit child Session handles', () => {
+    const threadId = 'station:inventory-lineage';
+    const base = {
+      provider: 'station-agent' as const,
+      threadId,
+      createdAt: '2026-10-20T00:00:00.000Z',
+    };
+    for (const turnId of ['turn-a', 'turn-b']) {
+      store.appendEvent({
+        ...base,
+        eventId: `decision-${turnId}`,
+        turnId,
+        method: 'request.resolved',
+        requestId: `request-${turnId}`,
+        status: 'approved',
+        response: { secret: 'not a descriptor' },
+      });
+      store.appendEvent({
+        ...base,
+        eventId: `child-${turnId}`,
+        turnId,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            childId: `engine-${turnId}`,
+            status: 'completed',
+            parent: { turnId, toolCallId: `spawn-${turnId}` },
+            result: {
+              summary: 'not a descriptor',
+              handle: { kind: 'session', threadId: `child-session-${turnId}` },
+            },
+          },
+        },
+      });
+    }
+    store.appendEvent({
+      ...base,
+      eventId: 'child-without-session',
+      turnId: 'turn-a',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'opaque-provider-id',
+          status: 'running',
+          parent: { turnId: 'turn-a', toolCallId: 'spawn-unknown' },
+        },
+      },
+    });
+    const result = store.readAnswerInventoryLineage(threadId, 'turn-a');
+    expect(result).toEqual({
+      status: 'found',
+      decisions: [
+        {
+          eventId: 'decision-turn-a',
+          requestId: 'request-turn-a',
+          status: 'accepted',
+        },
+      ],
+      delegations: [
+        {
+          eventId: 'child-turn-a',
+          toolCallId: 'spawn-turn-a',
+          childSessionId: 'child-session-turn-a',
+        },
+      ],
+      partialDelegations: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('not a descriptor');
+    expect(
+      store.readAnswerInventoryLineage('another-session', 'turn-a'),
+    ).toMatchObject({ status: 'found', decisions: [], delegations: [] });
+  });
+
   test('reads complete Session inventory descriptors in bounded stable pages', () => {
     const threadId = 'inventory-paging';
     for (let index = 0; index < 45; index += 1) {

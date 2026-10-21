@@ -70,6 +70,7 @@ export type SessionAnswerBasisQueryOutcome =
       /** The event id stays separate so reused toolCallId results never fold. */
       results: readonly {
         eventId: string;
+        toolCallId?: string;
         result: SafeToolResultProjection;
       }[];
     }
@@ -764,7 +765,13 @@ export function createSessionQueryModule<Session>(
           }
           const projected = projectToolCompletedDescriptor(event.tool);
           return projected?.state === 'available'
-            ? [{ eventId: event.eventId, result: projected.result }]
+            ? [
+                {
+                  eventId: event.eventId,
+                  toolCallId: event.tool.toolCallId,
+                  result: projected.result,
+                },
+              ]
             : [];
         });
         const projectSlug = source.projectSlugForSession?.(
