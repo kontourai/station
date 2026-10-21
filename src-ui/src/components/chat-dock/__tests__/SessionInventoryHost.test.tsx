@@ -12,8 +12,8 @@ import {
   closeSessionInventoryOccurrence,
   openSessionInventoryOccurrence,
   readSessionInventoryHostRegistration,
-  useSessionInventoryOccurrence,
   useSessionInventoryHostRegistration,
+  useSessionInventoryOccurrence,
 } from '../sessionInventoryOccurrence';
 
 const hooks = vi.hoisted(() => ({
