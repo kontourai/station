@@ -928,7 +928,11 @@ export {
   useFlowRunsQuery,
   useForceRefetchSystemStatus,
   useGenerateSessionSummaryMutation,
+  useGitBranchesQuery,
+  useGitCheckoutMutation,
+  useGitCommitMutation,
   useGitLogQuery,
+  useGitPushMutation,
   useGitStatusQuery,
   useGlobalKnowledgeStatusQuery,
   useImportAppHomeSnapshotMutation,
@@ -1051,6 +1055,7 @@ export {
   useRenameConversationMutation,
   useRenewAuthMutation,
   useReorderProjectsMutation,
+  useReposQuery,
   useResetUsageStatsMutation,
   useResolveDiffCommentMutation,
   useResolveIndeterminateJobMonitor,
@@ -1263,8 +1268,15 @@ export {
 // of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
 export type {
+  DiscoveredRepo,
+  GitBranch,
+  GitCheckoutResult,
+  GitCommitResult,
+  GitPushResult,
   GitReadLocation,
   GitStatusResult,
+  ReposLocation,
+  ReposResult,
 } from './query-domains/projectData.js';
 export {
   adoptCommittedProjectTaskRoomDocument,

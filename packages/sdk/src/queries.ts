@@ -469,7 +469,11 @@ export {
   useSetPluginVisibilityMutation,
 } from './query-domains/pluginVisibility';
 export {
+  useGitBranchesQuery,
+  useGitCheckoutMutation,
+  useGitCommitMutation,
   useGitLogQuery,
+  useGitPushMutation,
   useGitStatusQuery,
   useKnowledgeBulkDeleteMutation,
   useKnowledgeDeleteMutation,
@@ -484,6 +488,7 @@ export {
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
   useProjectConversationsQuery,
+  useReposQuery,
 } from './query-domains/projectData';
 export {
   adoptCommittedProjectTaskRoomDocument,
