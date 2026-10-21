@@ -10,14 +10,14 @@
  * Codex and Station adapters do. What is asserted is the input the engine
  * adapter is actually handed for the first turn.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecordWrite } from '@kontourai/station-contracts/task-memory';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -152,6 +152,9 @@ const MEMORY: TaskRecordWrite[] = [
 ];
 
 describe('Task dispatch delivers the Task brief with the first turn', () => {
+  // Created before the afterEach below, so the directory outlives the
+  // service and event store that hook closes (after-hooks run in reverse).
+  const makeTempDir = trackTempDirs();
   let tmp: string;
   let eventStore: EventStore;
   let adapters: RecordingAdapter[];
@@ -159,7 +162,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   let graph: TaskGraphService;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'task-brief-dispatch-'));
+    tmp = makeTempDir('task-brief-dispatch-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     adapters = (['claude', 'codex', 'station-agent'] as const).map(
       (provider) => new RecordingAdapter(provider),
@@ -194,7 +197,6 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   afterEach(async () => {
     await service.shutdown();
     eventStore.close?.();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   async function dispatch(
@@ -253,6 +255,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       taskBrief: composeTaskBriefSource({
         taskGraph: graph,
         eventStore,
+        sessionReadModel: service,
         roomRuntime: () => ({
           readTaskDocumentForBrief: async () => ({
             kind: 'available',
@@ -439,6 +442,66 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     expect(observe).toHaveBeenLastCalledWith(ref, {
       commentsSince: observedAt,
     });
+  });
+
+  test("each Session's line in the brief shows its active Task-scoped claims, and only those", async () => {
+    const first = await dispatch('codex');
+    const claims = eventStore.createWorkClaimStore({
+      maxActivePerClaimant: 10,
+    });
+    const claim = (input: {
+      taskId: string;
+      workItemRef?: string;
+      paths: string[];
+    }) => {
+      const outcome = claims.claim({
+        claimant: { sessionId: first.sessionId },
+        scope: { kind: 'project', id: 'brief-project' },
+        ttlSeconds: 1800,
+        ...input,
+      });
+      if (outcome.kind !== 'claimed') throw new Error(outcome.kind);
+      return outcome.claim;
+    };
+    const held = claim({
+      taskId: first.task.id,
+      workItemRef: 'github:owner/repo#7',
+      paths: ['src/brief.ts'],
+    });
+    const released = claim({ taskId: first.task.id, paths: ['src/gone.ts'] });
+    expect(
+      claims.release(released.claimId, { sessionId: first.sessionId }).kind,
+    ).toBe('released');
+    // Another Task's claim, by the same Session, is not this Task's.
+    claim({ taskId: 'task-elsewhere', paths: ['src/other-task.ts'] });
+
+    await graph.updateTaskStatus(first.task.id, 'blocked');
+    await graph.updateTaskStatus(first.task.id, 'ready');
+    const second = await dispatch('claude', { taskId: first.task.id });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: second.sessionId, input: 'Go.' },
+    });
+    const input = adapters.find((a) => a.provider === 'claude')!.sendTurn.mock
+      .calls[0]![0].input as string;
+    const sessions = input.slice(
+      input.indexOf('## Sessions in this Task'),
+      input.indexOf('\n\n', input.indexOf('## Sessions in this Task')),
+    );
+    const lines = sessions.split('\n');
+    const firstLine = lines.findIndex((line) =>
+      line.startsWith(`- ${first.sessionId} `),
+    );
+    expect(firstLine).toBeGreaterThan(0);
+    expect(lines[firstLine + 1]).toBe(
+      `  claimed: github:owner/repo#7, src/brief.ts (until ${held.expiresAt.replace(/\.\d+Z$/, 'Z')})`,
+    );
+    expect(sessions).not.toContain('src/gone.ts');
+    expect(sessions).not.toContain('src/other-task.ts');
+    // One Session holds claims, so there is one claims line.
+    expect(lines.filter((line) => line.startsWith('  claimed:'))).toHaveLength(
+      1,
+    );
   });
 
   test('a Task with no linked work item gets a brief with no tracker wording', async () => {

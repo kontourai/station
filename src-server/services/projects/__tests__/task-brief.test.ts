@@ -288,6 +288,12 @@ describe('buildTaskBrief', () => {
             sessionId: `session-${i}`,
             status: 'Running',
             lastTurn: turn({ request: 'r'.repeat(240) }),
+            // A Session's most: ten active claims of twenty long paths.
+            claims: Array.from({ length: 10 }, (_, c) => ({
+              workItemRef: `github:owner/repo#${c}`,
+              paths: Array.from({ length: 20 }, () => 'p'.repeat(512)),
+              expiresAt: '2026-10-21T10:00:00.000Z',
+            })),
           }),
         ),
       }),
@@ -321,6 +327,48 @@ describe('buildTaskBrief', () => {
     expect(brief.text).toMatch(
       /- Standing records that did not fit: \d+ decisions, \d+ open questions, \d+ dead ends; call `get_task_brief` with `include: "all_records"`\./,
     );
+  });
+
+  test("a Session's active claims follow its line, on one bounded line", () => {
+    const brief = buildTaskBrief(
+      input({
+        sessions: [
+          sessionFacts({
+            sessionId: 'session-claims',
+            status: 'Running',
+            claims: [
+              {
+                workItemRef: 'github:owner/repo#7',
+                paths: ['src/a.ts', 'src/b/'],
+                expiresAt: '2026-10-21T10:00:00.000Z',
+              },
+              { paths: ['docs/x.md'], expiresAt: '2026-10-21T11:30:00.000Z' },
+            ],
+          }),
+          sessionFacts({ sessionId: 'session-none', status: 'Done' }),
+          sessionFacts({
+            sessionId: 'session-many',
+            status: 'Running',
+            claims: Array.from({ length: 10 }, () => ({
+              paths: Array.from({ length: 20 }, () => 'q'.repeat(512)),
+              expiresAt: '2026-10-21T10:00:00.000Z',
+            })),
+          }),
+        ],
+      }),
+    );
+    const lines = brief.text.split('\n');
+    const lineAfter = (sessionId: string) =>
+      lines[lines.findIndex((line) => line.startsWith(`- ${sessionId}:`)) + 1];
+    expect(lineAfter('session-claims')).toBe(
+      '  claimed: github:owner/repo#7, src/a.ts, src/b/ (until 2026-10-21T10:00:00Z); docs/x.md (until 2026-10-21T11:30:00Z)',
+    );
+    expect(lineAfter('session-none')).not.toMatch(/^ {2}claimed:/);
+    const many = lineAfter('session-many')!;
+    expect(many.startsWith('  claimed: ')).toBe(true);
+    // Pinned beside the constant it is derived from (SESSION_CLAIMS_LINE_MAX).
+    expect(many.length).toBeLessThanOrEqual(400);
+    expect(many.endsWith('…(cut)')).toBe(true);
   });
 
   test('records fill newest first, round-robin, with an ordinary brief keeping the Sessions', () => {

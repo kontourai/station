@@ -1,8 +1,8 @@
 /**
  * Gathers what a Task brief is built from (epic #4003): the Task record, the
  * Task document (the person-authored brief it was seeded with), Task memory
- * (summary and records), the Task's Sessions with their digest facts, and a
- * fresh read of the linked tracker item. The builder itself is pure
+ * (summary and records), the Task's Sessions with their digest facts and
+ * active claims, and a fresh read of the linked tracker item. The builder itself is pure
  * (`task-brief.ts`); this module owns the reads and their failure words.
  *
  * Both dispatch and `get_task_brief` re-read the item through the runtime's
@@ -26,12 +26,17 @@ import type {
   TaskSummaryRevision,
 } from '@kontourai/station-contracts/task-memory';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import type { EventStore } from '../orchestration/event-store.js';
 import {
   type DigestTurn,
   readSessionDigestHead,
 } from '../orchestration/session-digest.js';
 import type { TaskMemoryIncarnation } from '../orchestration/task-memory-store.js';
+import {
+  type ActiveWorkClaimReader,
+  composeActiveWorkClaimReader,
+} from '../orchestration/work-claims.js';
 import type { WorkItemObserver } from '../work-item-providers/github-work-item-observer.js';
 import {
   buildTaskBrief,
@@ -74,6 +79,11 @@ export interface TaskBriefSourceDeps {
   readDocument(taskId: string): Promise<TaskBriefInput['document']>;
   /** Absent: the Task memory store is not running. */
   memory?: TaskBriefMemoryReader;
+  /**
+   * The Task's active claims (`work-claims.ts`). Absent: no claim store is
+   * running, and Session lines carry no claims.
+   */
+  workClaims?: Pick<ActiveWorkClaimReader, 'listActiveClaims'>;
   /** Recorded facts per Session; a Session it cannot read is absent. */
   sessionFacts?(
     sessionIds: readonly string[],
@@ -126,6 +136,10 @@ export interface TaskBriefSource {
   ): Promise<TaskBriefListingForSession>;
 }
 
+type WorkClaimRecordLike = Awaited<
+  ReturnType<ActiveWorkClaimReader['listActiveClaims']>
+>[number];
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -164,11 +178,48 @@ export function createTaskBriefSource(
     }
   };
 
+  /** Active claims by claiming Session; a failed read leaves lines bare. */
+  const claimsBySession = async (
+    task: TaskRecord,
+  ): Promise<Map<string, WorkClaimRecordLike[]>> => {
+    const bySession = new Map<string, WorkClaimRecordLike[]>();
+    if (!deps.workClaims) return bySession;
+    try {
+      const claims = await deps.workClaims.listActiveClaims({
+        projectId: task.projectId,
+        taskId: task.id,
+      });
+      for (const claim of claims) {
+        const list = bySession.get(claim.sessionId) ?? [];
+        list.push(claim);
+        bySession.set(claim.sessionId, list);
+      }
+    } catch (error) {
+      deps.logger?.warn('Task brief work-claims read failed', {
+        taskId: task.id,
+        error: errorText(error),
+      });
+    }
+    return bySession;
+  };
+
   const sessions = async (
-    taskId: string,
+    task: TaskRecord,
     sessionId: string,
   ): Promise<TaskBriefSessionFacts[]> => {
-    const dispatched = deps.listTaskSessions(taskId);
+    const taskId = task.id;
+    const claims = await claimsBySession(task);
+    const dispatched = [...deps.listTaskSessions(taskId)];
+    // A claim's Session was bound to this Task when it claimed (the Task id is
+    // stamped from that binding), so a claimant missing from the dispatch
+    // list is still one of the Task's Sessions: give it a line rather than
+    // drop what it is on.
+    for (const [claimant, held] of claims)
+      if (!dispatched.some((session) => session.sessionId === claimant))
+        dispatched.push({
+          sessionId: claimant,
+          createdAt: held[held.length - 1]!.claimedAt,
+        });
     let facts: ReadonlyMap<string, TaskBriefSessionFactsRead> = new Map();
     try {
       facts =
@@ -185,6 +236,7 @@ export function createTaskBriefSource(
     }
     return dispatched.map((session) => {
       const read = facts.get(session.sessionId);
+      const held = claims.get(session.sessionId);
       return {
         sessionId: session.sessionId,
         createdAt: session.createdAt,
@@ -193,6 +245,17 @@ export function createTaskBriefSource(
         ...(read?.turnCount !== undefined ? { turnCount: read.turnCount } : {}),
         ...(read?.lastTurn ? { lastTurn: read.lastTurn } : {}),
         ...(session.sessionId === sessionId ? { self: true } : {}),
+        ...(held
+          ? {
+              claims: held.map((claim) => ({
+                ...(claim.workItemRef
+                  ? { workItemRef: claim.workItemRef }
+                  : {}),
+                ...(claim.paths.length ? { paths: claim.paths } : {}),
+                expiresAt: claim.expiresAt,
+              })),
+            }
+          : {}),
       };
     });
   };
@@ -261,7 +324,7 @@ export function createTaskBriefSource(
       const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
-        sessions(task.id, sessionId),
+        sessions(task, sessionId),
       ]);
       const brief = buildTaskBrief({
         task,
@@ -285,7 +348,7 @@ export function createTaskBriefSource(
       const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
-        sessions(task.id, sessionId),
+        sessions(task, sessionId),
       ]);
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
@@ -358,6 +421,7 @@ export function composeTaskBriefSource(input: {
         | 'conversationForSession'
         | 'conversationSessions'
         | 'readTurnDigestFacts'
+        | 'createWorkClaimStore'
       > & {
         readProjectTaskRoomExecutionBinding(
           sessionId: string,
@@ -366,15 +430,18 @@ export function composeTaskBriefSource(input: {
       })
     | undefined;
   /**
-   * The Session read model `list_project_activity` words its status from.
-   * Read with the internal scope: every Session read here was dispatched
-   * for the one Task the caller is bound to (or is dispatching).
+   * The Session read model `list_project_activity` words its status from,
+   * and that decides whether a claim's claimant has ended. Read with the
+   * internal scope: every Session read here was dispatched for the one Task
+   * the caller is bound to (or is dispatching). Absent, the brief reads no
+   * claims: without the claimant's state it cannot tell an active one.
    */
   sessionReadModel?: {
     listSessionReadModel(
       authority: typeof INTERNAL_SESSION_READ_SCOPE,
       options: { threadIds: readonly string[] },
     ): Promise<OrchestrationSessionSummary[]>;
+    currentConversationSessionId(conversationId: string): string;
   };
   /** Read lazily: the room runtime is composed after the dispatcher. */
   roomRuntime: () =>
@@ -399,6 +466,18 @@ export function composeTaskBriefSource(input: {
         : { kind: 'unavailable', reason: 'the Task room is not running' };
     },
     ...(store ? { memory: store.taskMemoryStore() } : {}),
+    // The read API the claims routes and `list_project_activity` share.
+    // Reads never reach the per-claimant bound; it is the store's write rule.
+    ...(store && input.sessionReadModel
+      ? {
+          workClaims: composeActiveWorkClaimReader({
+            store: store.createWorkClaimStore({
+              maxActivePerClaimant: WORK_CLAIM_MAX_ACTIVE_PER_SESSION,
+            }),
+            orchestrationService: input.sessionReadModel,
+          }),
+        }
+      : {}),
     sessionFacts: async (sessionIds) => {
       const facts = new Map<string, TaskBriefSessionFactsRead>();
       if (!sessionIds.length) return facts;

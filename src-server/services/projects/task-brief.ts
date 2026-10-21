@@ -10,7 +10,8 @@
  *    keyed Task records; `on_topic` ones are only counted);
  * 6. a compact line per Session of the Task, from the same recorded facts
  *    `get_session_digest` and `list_project_activity` report (derived, never
- *    agent-written);
+ *    agent-written), with what the Session has claimed (`claim_work`) while
+ *    the claim is active;
  * 7. what was left out, naming the tool that fetches it.
  *
  * Pure: no I/O. The caller gathers the Task record, the Task document (the
@@ -29,6 +30,7 @@ import {
   type TaskRecordKind,
   type TaskSummaryRevision,
 } from '@kontourai/station-contracts/task-memory';
+import { workClaimSubjectDetail } from '@kontourai/station-contracts/work-claims';
 import type { WorkItemObservationResult } from '@kontourai/station-contracts/work-item-provider';
 import type { DigestTurn } from '../orchestration/session-digest.js';
 import { TRACKER_GUIDANCE } from './task-brief-tracker-guidance.js';
@@ -62,6 +64,8 @@ const LABELS_MAX = 20;
 const LABELS_LINE_MAX = 400;
 const SESSIONS_MAX = 8;
 const SESSION_LINE_MAX = 360;
+/** A Session's claims line; a Session holds at most ten active claims. */
+const SESSION_CLAIMS_LINE_MAX = 400;
 const RECORD_LINE_MAX = TASK_MEMORY_LIMITS.recordTextChars + 160;
 
 /** The listings `get_task_brief` returns when asked for more than the brief. */
@@ -102,6 +106,18 @@ export interface TaskBriefSessionFacts {
   self?: boolean;
   /** When this Session was dispatched for the Task. */
   createdAt: string;
+  /**
+   * Its active claims (`claim_work`): unreleased, unexpired, and its
+   * claimant not ended. Newest first.
+   */
+  claims?: readonly TaskBriefSessionClaim[];
+}
+
+/** What a Session claimed, as the brief shows it. */
+export interface TaskBriefSessionClaim {
+  workItemRef?: string;
+  paths?: readonly string[];
+  expiresAt: string;
 }
 
 export interface TaskBriefMemory {
@@ -342,10 +358,18 @@ function sessionLine(session: TaskBriefSessionFacts): string {
         `PR ${pr.repository}#${pr.ref}${(turn.pullRequestsTotal ?? 1) > 1 ? ` (+${(turn.pullRequestsTotal ?? 1) - 1})` : ''}`,
       );
   }
-  return cut(
+  const line = cut(
     `- ${cut(oneLine(session.sessionId), 128)}${who.length ? ` (${who.join(', ')})` : ''}: ${parts.join('; ')}`,
     SESSION_LINE_MAX,
   );
+  const claims = (session.claims ?? []).map(
+    (claim) =>
+      `${oneLine(workClaimSubjectDetail(claim))} (until ${stamp(claim.expiresAt)})`,
+  );
+  // Its own line, so the Session line's cut never hides what it is on.
+  return claims.length
+    ? `${line}\n${cut(`  claimed: ${claims.join('; ')}`, SESSION_CLAIMS_LINE_MAX)}`
+    : line;
 }
 
 /** Newest activity first: the last turn's start, else the dispatch time. */
