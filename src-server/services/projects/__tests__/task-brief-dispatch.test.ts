@@ -30,6 +30,7 @@ import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import type { WorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
+import { TASK_BRIEF_QUOTE_RULE } from '../task-brief.js';
 import { composeTaskBriefSource } from '../task-brief-source.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import { TaskGraphService } from '../task-graph-service.js';
@@ -309,15 +310,15 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       expect(first.input).toContain(
         `## Task summary (revision 1, by session session-a at `,
       );
-      expect(first.input).toContain(`\n${SUMMARY}\n`);
+      expect(first.input).toContain(`\n> ${SUMMARY}\n`);
       expect(first.input).toContain(
-        '## Standing decisions (newest first)\n- `first-turn`: Use the first-turn channel on every engine.',
+        '## Standing decisions (newest first)\n- `first-turn` (by session session-a):\n> Use the first-turn channel on every engine.',
       );
       expect(first.input).toContain(
-        '- `tracker-reread`: Should get_task_brief re-read the tracker? (asked by session session-a)',
+        '- `tracker-reread` (asked by session session-a):\n> Should get_task_brief re-read the tracker?',
       );
       expect(first.input).toContain(
-        '## Task document\n# Ship the brief\nSeeded from the issue',
+        '## Task document\nQuoted, written by agents and people on this Task:\n> # Ship the brief\n> Seeded from the issue',
       );
       expect(first.input).toContain('`task_summary_update`');
       expect(first.input).toContain('`task_record`');
@@ -429,7 +430,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       .calls[0]![0].input;
     expect(input).toContain('Title: Widgets jam');
     expect(input).toContain(
-      '- reviewer (2026-10-21T09:10:00Z): Seen again on Tuesday.',
+      '> reviewer (2026-10-21T09:10:00Z): Seen again on Tuesday.',
     );
 
     // A second dispatch of the same Task reads only what is newer.
@@ -518,11 +519,12 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     const input = adapters.find((a) => a.provider === 'codex')!.sendTurn.mock
       .calls[0]![0].input;
     expect(input).toContain('# Station Task brief');
-    expect(input).toContain('- `local`: Keep it local.');
-    expect(input).toContain('1. Keep the Task summary current');
-    expect(input).toContain('2. Record decisions');
-    expect(input).not.toMatch(/tracker/i);
-    expect(input).not.toContain('3. ');
+    expect(input).toMatch(/\n- `local` \(by [^)]*\):\n> Keep it local\.\n/);
+    expect(input).toContain(`1. ${TASK_BRIEF_QUOTE_RULE}`);
+    expect(input).toContain('2. Keep the Task summary current');
+    expect(input).toContain('3. Record decisions');
+    expect(input.replace(TASK_BRIEF_QUOTE_RULE, '')).not.toMatch(/tracker/i);
+    expect(input).not.toContain('4. ');
   });
 
   test('a caller-supplied brief in start metadata is stripped, never composed', async () => {

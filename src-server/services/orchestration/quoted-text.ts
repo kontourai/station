@@ -25,6 +25,11 @@ export function cutText(value: string, max: number, marker = CUT_MARKER) {
     : `${value.slice(0, Math.max(0, max - marker.length))}${marker}`;
 }
 
+/** `text` split at every line terminator. */
+export function splitLines(text: string): string[] {
+  return text.split(LINE_TERMINATORS);
+}
+
 /** `value` collapsed to one line: no terminator survives. */
 export function singleLine(value: string): string {
   return value.replace(ANY_BREAK_OR_SPACE, ' ').trim();
@@ -41,9 +46,9 @@ export function quotedLines(
 ): string[] {
   const trimmed = text.trim();
   const bounded = max === undefined ? trimmed : cutText(trimmed, max, marker);
-  return bounded
-    .split(LINE_TERMINATORS)
-    .map((line) => (line.length === 0 ? '>' : `> ${line}`));
+  return splitLines(bounded).map((line) =>
+    line.length === 0 ? '>' : `> ${line}`,
+  );
 }
 
 /** One quoted line: `text` collapsed to a single line and prefixed `> `. */

@@ -12,6 +12,7 @@
  * re-reads the item at dispatch, so nothing here needs to be complete.
  */
 import type { WorkItemObservation } from '@kontourai/station-contracts/work-item-provider';
+import { splitLines } from '../orchestration/quoted-text.js';
 
 /** How many of the item's newest comments the seed carries. */
 export const WORK_ITEM_BRIEF_COMMENTS = 2;
@@ -24,10 +25,10 @@ export const WORK_ITEM_BRIEF_MAX_CHARS = 1200;
 const BRIEF_COMMENT_CHARS = 200;
 const BODY_CUT_MARKER = '…\n\n[Cut here: the full description is on the item.]';
 
+// Every line terminator, not only `\n`: a lone `\r` or U+2028 in tracker
+// text must not start an unquoted line (review F3).
 const quote = (text: string) =>
-  text
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
+  splitLines(text)
     .map((line) => (line ? `> ${line}` : '>'))
     .join('\n');
 

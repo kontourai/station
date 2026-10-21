@@ -356,27 +356,27 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       expect(json.success).toBe(true);
       expect(json.data.taskId).toBe('task-bound');
       expect(json.data.version).toBe('station.task-brief/v1');
-      expect(json.data.text).toContain('Task: The bound Task');
+      expect(json.data.text).toContain('\n> Title: The bound Task\n');
       expect(json.data.text).not.toContain('Somebody else');
       // Every Session of the Task, with the status word and digest facts
       // the activity and digest reads report; the caller is marked.
       expect(json.data.text).toMatch(
-        /- op-sibling-bound \(claude\): [A-Z][a-z ]+; 1 turn; last turn completed: "Request of op-sibling-bound"/,
+        /- op-sibling-bound \(claude\): [A-Z][a-z ]+; 1 turn; last turn completed\n> last request: Request of op-sibling-bound\n/,
       );
       expect(json.data.text).toContain(
-        '- op-caller-bound (codex, this session): status unknown; 1 turn; last turn completed: "Request of op-caller-bound"',
+        '- op-caller-bound (codex, this session): status unknown; 1 turn; last turn completed\n> last request: Request of op-caller-bound',
       );
       // get_task_brief re-reads the linked item, for comments after the
       // Task's recorded observation only.
       expect(json.data.text).toContain('Title: The bound issue');
       expect(json.data.text).toContain(
-        '- commenter2 (2026-10-20T06:00:00Z): Posted after the dispatch.',
+        '> commenter2 (2026-10-20T06:00:00Z): Posted after the dispatch.',
       );
       expect(json.data.text).not.toContain('Already seen at dispatch.');
       expect(json.data.text).not.toContain('linked item not re-read');
       expect(json.data.text).toContain('## Tracker guidance');
       expect(json.data.text).toContain(
-        '## Task summary (revision 3, by session op-sibling-bound at 2026-10-20T05:00:00Z)\nRead the bound Task only.',
+        '## Task summary (revision 3, by session op-sibling-bound at 2026-10-20T05:00:00Z)\nQuoted, written by agents and people on this Task:\n> Read the bound Task only.',
       );
       expect(json.data.summaryRevision).toBe(3);
     },
@@ -411,7 +411,7 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
     const { status, json } = await get(base, as('op-caller-free'));
     expect(status).toBe(409);
     expect(json).toMatchObject({ success: false, code: 'no_task_binding' });
-    expect(JSON.stringify(json)).not.toContain('Task:');
+    expect(JSON.stringify(json)).not.toContain('Task id:');
   });
 
   test('an internal request with no verified caller is refused', async () => {
