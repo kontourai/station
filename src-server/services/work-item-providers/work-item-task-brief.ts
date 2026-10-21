@@ -1,26 +1,27 @@
 /**
  * The Task document a tracker item seeds on Start Task (#4003,
  * docs/design/tracker-backed-tasks.md "Starting a Task from a tracker item"):
- * the item's body and its last few comments, with a link back.
+ * the person-authored brief only, an excerpt of the item's body and its last
+ * comments, with a link back. Task memory lives in its own log, never here.
  *
- * Tracker text is quoted (`> `), never pasted as document structure. The
- * Task document's memory is keyed by its fixed `##` headings, and an issue
- * body that contains `## Done` must not become one of them.
+ * Tracker text is quoted (`> `), never pasted as document structure.
+ *
+ * The excerpt is short on purpose. The Task room document stores every
+ * character ever typed into it against a fixed bound (#4007), so the seed
+ * leaves people most of that room for their own edits. A Session's brief
+ * re-reads the item at dispatch, so nothing here needs to be complete.
  */
 import type { WorkItemObservation } from '@kontourai/station-contracts/work-item-provider';
 
-/** How many of the item's newest comments the brief carries. */
-export const WORK_ITEM_BRIEF_COMMENTS = 3;
+/** How many of the item's newest comments the seed carries. */
+export const WORK_ITEM_BRIEF_COMMENTS = 2;
 /**
- * The whole seeded brief, in UTF-16 code units. The Task room commits a new
- * document in one batch, and on 2026-10-21 a batch of about 3,650 or more
- * characters failed with "Room unavailable" (probed through
- * `POST /api/tasks/:taskId/room/batches` on an isolated Station). The brief
- * stays well under that, leaving room for the memory headings.
+ * The seeded brief, in UTF-16 code units, not counting the one link back to
+ * the item.
  */
-export const WORK_ITEM_BRIEF_MAX_CHARS = 3000;
+export const WORK_ITEM_BRIEF_MAX_CHARS = 1200;
 /** Each comment's share of the brief. */
-const BRIEF_COMMENT_CHARS = 400;
+const BRIEF_COMMENT_CHARS = 200;
 const BODY_CUT_MARKER = '…\n\n[Cut here: the full description is on the item.]';
 
 const quote = (text: string) =>
@@ -58,29 +59,18 @@ export function workItemTaskBrief(observation: WorkItemObservation): string {
           ),
         ]
       : []),
-    `Read the whole item, with every comment, at ${link}.`,
+    'Read the whole item, with every comment, on the tracker.',
   ];
   const compose = (body: string) => [head, body, ...tail].join('\n\n');
   if (!observation.body) return compose('_The item has no description._');
   // Quoting adds two characters a line, so cut the raw body until the quoted
-  // brief fits the budget.
-  let budget = WORK_ITEM_BRIEF_MAX_CHARS - compose('').length;
+  // brief fits the budget. The link is not counted against it.
+  const limit = WORK_ITEM_BRIEF_MAX_CHARS + link.length;
+  let budget = limit - compose('').length;
   let brief = compose(quote(cut(observation.body, budget, BODY_CUT_MARKER)));
-  while (brief.length > WORK_ITEM_BRIEF_MAX_CHARS && budget > 0) {
-    budget -= brief.length - WORK_ITEM_BRIEF_MAX_CHARS;
+  while (brief.length > limit && budget > 0) {
+    budget -= brief.length - limit;
     brief = compose(quote(cut(observation.body, budget, BODY_CUT_MARKER)));
   }
   return brief;
-}
-
-/**
- * The single call site that turns the brief into the full Task document.
- *
- * TODO(lane `notes`, epic #4003): append the four Task memory headings
- * (`## Decisions`, `## Done`, `## In progress`, `## Open questions`) here
- * with the helper the notes lane exports. Until it lands the document is the
- * brief alone.
- */
-export function workItemTaskDocument(observation: WorkItemObservation): string {
-  return workItemTaskBrief(observation);
 }

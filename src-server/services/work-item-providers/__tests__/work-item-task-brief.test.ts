@@ -20,9 +20,11 @@ const observation = (
 
 describe('workItemTaskBrief', () => {
   test('keeps a long issue within the brief budget, says where it was cut, and keeps the link', () => {
-    // 3,000 is pinned here as well as derived: the Task room refused a
-    // one-batch document of about 3,650 characters.
-    expect(WORK_ITEM_BRIEF_MAX_CHARS).toBe(3000);
+    // 1,200 is pinned here as well as derived: the seed must leave most of
+    // the Task room document's lifetime capacity to people (#4007).
+    expect(WORK_ITEM_BRIEF_MAX_CHARS).toBe(1200);
+    const link =
+      '[github:acme/widgets#42](<https://github.com/acme/widgets/issues/42>)';
     const brief = workItemTaskBrief(
       observation({
         body: 'line of the issue body\n'.repeat(400),
@@ -33,13 +35,17 @@ describe('workItemTaskBrief', () => {
         })),
       }),
     );
-    expect(brief.length).toBeLessThanOrEqual(3000);
-    expect(brief.length).toBeGreaterThan(2900);
+    expect(brief.length - link.length).toBeLessThanOrEqual(1200);
+    expect(brief.length - link.length).toBeGreaterThan(1100);
+    expect(brief.split(link)).toHaveLength(2);
+    expect(brief.startsWith(`Started from ${link}.`)).toBe(true);
     expect(brief).toContain('[Cut here: the full description is on the item.]');
-    expect(brief).toContain(
-      'Read the whole item, with every comment, at [github:acme/widgets#42](<https://github.com/acme/widgets/issues/42>).',
-    );
-    expect(brief).toContain(`> ${'x'.repeat(400)}…`);
+    // The two newest comments, each cut to 200 characters.
+    expect(brief).not.toContain('**@c1**');
+    expect(brief).toContain('**@c2**');
+    expect(brief).toContain(`> ${'x'.repeat(200)}…`);
+    expect(brief).not.toContain('x'.repeat(201));
+    expect(brief).not.toMatch(/^## /m);
   });
 
   test('a short issue is copied whole, quoted', () => {
@@ -50,7 +56,7 @@ describe('workItemTaskBrief', () => {
       [
         'Started from [github:acme/widgets#42](<https://github.com/acme/widgets/issues/42>).',
         '> ## Done\n> Nothing yet.',
-        'Read the whole item, with every comment, at [github:acme/widgets#42](<https://github.com/acme/widgets/issues/42>).',
+        'Read the whole item, with every comment, on the tracker.',
       ].join('\n\n'),
     );
   });

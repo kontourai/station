@@ -169,14 +169,14 @@ test('Start Task creates the Task from the observed item and seeds its brief', a
     [
       `Started from ${link}.`,
       '> Steps to reproduce.\n>\n> ## Done\n> A heading inside the issue.',
-      'Latest 3 comments on the item:',
-      '**@commenter2**, 2026-10-02T00:00:00Z:\n> comment 2',
+      'Latest 2 comments on the item:',
       '**@commenter3**, 2026-10-03T00:00:00Z:\n> comment 3',
       '**@commenter4**, 2026-10-04T00:00:00Z:\n> comment 4',
-      `Read the whole item, with every comment, at ${link}.`,
+      'Read the whole item, with every comment, on the tracker.',
     ].join('\n\n'),
   );
-  // The issue's own `## Done` stays quoted, never a document heading.
+  // The issue's own `## Done` stays quoted, never a document heading, and
+  // the seed is the brief only: no Task-memory headings.
   expect(seeded.text).not.toMatch(/^## /m);
 });
 

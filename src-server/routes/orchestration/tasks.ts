@@ -87,7 +87,7 @@ import {
   type TaskToolResultReferenceRead,
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import type { WorkItemObserver } from '../../services/work-item-providers/github-work-item-observer.js';
-import { workItemTaskDocument } from '../../services/work-item-providers/work-item-task-brief.js';
+import { workItemTaskBrief } from '../../services/work-item-providers/work-item-task-brief.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { refuseUngrantedRuntimeCwd } from '../working-directory-authority.js';
@@ -885,7 +885,7 @@ export function createTaskRoutes(
         (await options.seedProposalBrief?.({
           taskId: created.task.id,
           request: c.req.raw,
-          text: workItemTaskDocument(observation),
+          text: workItemTaskBrief(observation),
         })) ?? false;
     } catch {
       briefSaved = false;
