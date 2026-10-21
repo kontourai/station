@@ -31,7 +31,10 @@ export interface EngineProfile {
     configOptions?: Array<{ id: string }>;
   };
   permissionOptions?: Array<{ optionId: string; kind: string }>;
-  vendorNotifications?: Array<{ method: string }>;
+  vendorNotifications?: Array<{
+    method: string;
+    params?: Record<string, unknown>;
+  }>;
 }
 
 /** The fake's permission options when a profile declares none. */

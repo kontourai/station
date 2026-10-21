@@ -45,8 +45,8 @@ const DEFAULT_PERMISSION_OPTIONS = [
   { optionId: 'reject', kind: 'reject_once', name: 'Reject' },
 ];
 
-/** The default turn: text, a plan, a permission-gated tool call, the
- * profile's vendor notifications, then closing text. */
+/** Every turn: text, a plan, a permission-gated tool call, the profile's
+ * vendor notifications, then closing text. */
 function defaultSteps() {
   return [
     { kind: 'text', text: 'Working on it. ' },
@@ -171,6 +171,8 @@ const app = acp
       await new Promise((resolve) => setTimeout(resolve, initializeDelayMs));
     return profile.initialize;
   })
+  // authenticate, set_mode and set_config_option are not driven by the
+  // qualification test yet; they are kept for the sign-in and mode/model lanes.
   .onRequest('authenticate', ({ params }) => {
     record({ method: 'authenticate', methodId: params.methodId });
     return {};
@@ -180,12 +182,6 @@ const app = acp
     if (fail === 'auth-required-on-session-new') throw authRequired();
     const sessionId = `fake-${profile.engine}-${process.pid}-${++state.sessions}`;
     return { sessionId, ...sessionShape(sessionId) };
-  })
-  .onRequest('session/load', ({ params }) => {
-    record({ method: 'session/load' });
-    if (profile.initialize?.agentCapabilities?.loadSession !== true)
-      throw acp.RequestError.methodNotFound('session/load');
-    return sessionShape(params.sessionId);
   })
   .onRequest('session/set_mode', ({ params }) => {
     record({ method: 'session/set_mode', modeId: params.modeId });
@@ -202,12 +198,9 @@ const app = acp
   .onRequest('session/prompt', async ({ params, client }) => {
     record({ method: 'session/prompt' });
     if (fail === 'auth-required-on-prompt') throw authRequired();
-    for (const step of profile.prompt?.steps ?? defaultSteps())
+    for (const step of defaultSteps())
       await runStep(step, params.sessionId, client);
     return { stopReason: 'end_turn' };
-  })
-  .onNotification('session/cancel', () => {
-    record({ method: 'session/cancel' });
   });
 
 app.connect(

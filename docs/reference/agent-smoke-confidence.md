@@ -89,21 +89,27 @@ two contact the engine or spend allowance.
      options;
    - an engine that requires authentication fails with the engine's reason,
      at the probe, at session start and on the first prompt;
-   - an engine that exits on start or answers slowly fails at `initialize`
-     with a reason.
+   - an engine that exits on start fails at `initialize` with a reason;
+   - a slow `initialize` fails a check the user requested, while a
+     background first contact waits up to 60 seconds for it.
 
    Other suites can launch the same profiles, including their failure modes,
    through `acp-engine-qualification-harness.ts`. This step proves how
    Station handles the profile's shapes. It does not prove the engine sends
-   them.
+   them. Nothing in Station reads a profile's `authMethods` or `agentInfo`
+   yet. Most profiles therefore exercise the same path, and they differ only
+   in their capabilities, session answer, permission options and vendor
+   notifications.
 3. **Live smoke.** Add the engine as a connection on an isolated Station, then
    run **Check connection** or `npm run dogfood:agent-smoke` against that
    connection, as described above. One billable turn writes a receipt.
 4. **Tier.** The connection's `readinessEvidence.level` becomes
    `smoke-passed` while the receipt is fresh (24 hours) and it matches the
    connection's current configuration fingerprint. For an engine connection,
-   that fingerprint covers the saved command, arguments and environment. The
-   receipt does not record the engine's version. An engine upgraded in place
+   that fingerprint covers the whole saved connection configuration, including
+   its name, command, arguments, environment and enabled state. Any edit to
+   it, a rename included, drops the tier until the next smoke. The receipt
+   does not record the engine's version. An engine upgraded in place
    at the same command therefore keeps its tier until the receipt expires.
 
 ## Source and checks

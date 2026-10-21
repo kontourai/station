@@ -12,8 +12,10 @@ Provenance labels:
   (`registry` block: id, pinned version, distribution, command basename,
   args, env).
 - **doc**: the vendor's published documentation, cited in the row.
-- **researched-initialize**: an `initialize` run on 2026-10-21 against the
-  version pinned in the registry. Nothing after `initialize` was checked.
+- **researched-initialize**: an `initialize` run on 2026-10-21. It ran
+  against the registry-pinned version, except for hermes, which is not in
+  the registry, so the version that was probed is not recorded. Nothing after
+  `initialize` was checked.
 - **repo-observed**: a runtime observation already recorded in this
   repository, cited in the row.
 - **recorded**: copied from a recorded wire exchange.
@@ -41,7 +43,7 @@ Provenance labels:
 | cursor | `cursor` 2026.10.19, `cursor-agent acp` | `cursor_login` (researched-initialize; doc) | modes `agent`, `plan` and `ask` with their descriptions, permission option ids `allow-once`, `allow-always` and `reject-once`, and the `cursor/update_todos` notification with the doc's example params (doc: cursor.com/docs/cli/acp). `currentModeId` and the option kinds and names are assumed |
 | factory-droid | `factory-droid` 0.245.1, npx `droid exec --output-format acp-daemon`, env from the registry | `device-pairing`, `factory-api-key` (researched-initialize) | none |
 | hermes | not in the registry | `openai-codex`, `hermes-setup` (researched-initialize) | none |
-| antigravity | `antigravity-acp` 1.4.1, `agy_acp_server.par` | `oauth-personal`, `oauth-business`, `gemini-api-key`, `agent-platform` (researched-initialize) | none |
+| antigravity | `antigravity-acp` 1.4.1, `agy_acp_server.par` (`args: []` is the darwin entry; the registry's linux entries pass `--uid=`, and its windows entries run `agy_acp_server.exe`) | `oauth-personal`, `oauth-business`, `gemini-api-key`, `agent-platform` (researched-initialize) | none |
 | pi-acp | `pi-acp` 0.0.34, npx | `pi_terminal_login` (researched-initialize) | none |
 | kimi | `kimi` 1.52.0, `kimi acp` (no darwin-x86_64 build) | `login` is **assumed**. The research found only "terminal `kimi login`" | none |
 | devin | `devin` 3000.11.92, `devin acp` | `browser-login` is **assumed**. The research found only "browser login" | none |
@@ -50,6 +52,17 @@ Provenance labels:
 | kiro | not in the registry | `[]` is assumed | `_kiro.dev/metadata` method name (repo-observed, station#1935 in `src-shared/extension-notification-bindings.ts`). Params are assumed |
 | grok-build | `grok-build` 1.0.66, npx `grok agent stdio` | `[]` is assumed | `_x.ai/models/update` method name (repo-observed, station#1935). Params are assumed |
 | opencode | `opencode` 1.19.3, `opencode acp` | `opencode-login` (recorded) | initialize, `sessionNew.configOptions` and permission option ids are recorded from OpenCode **1.18.18**, the same recording as `../fake-opencode-acp.mjs`. That is older than the registry pin |
+
+## Fake handlers no test drives yet
+
+The fake answers `authenticate`, `session/set_mode` and
+`session/set_config_option`, but the qualification test does not call them
+yet. They are kept for the sign-in and mode/model lanes. Treat their
+behavior as unverified until a test drives them. The fake does not implement
+`session/load` or `session/cancel`.
+
+Every profile also runs the same fixed turn script (see the shared-fields
+table). A profile has no per-engine prompt script.
 
 ## Relation to `fake-opencode-acp.mjs`
 

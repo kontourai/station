@@ -156,31 +156,38 @@ describe.skipIf(process.platform === 'win32')(
         const notifications = accepted.events
           .filter((event) => event.method === 'extension.notification')
           .map((event) => {
-            const { namespace, type } = event as {
+            const { namespace, type, payload } = event as {
               namespace: string;
               type: string;
+              payload: unknown;
             };
-            return `${namespace}/${type}`;
+            return { method: `${namespace}/${type}`, params: payload };
           });
         expect(notifications).toEqual(
-          (profile.vendorNotifications ?? []).map(({ method }) => method),
+          (profile.vendorNotifications ?? []).map(({ method, params }) => ({
+            method,
+            params: params ?? {},
+          })),
         );
 
         const declined = await turn(h, 'turn', 'decline');
         expect(declined.completed).toBeDefined();
-        // The engine received one of its own allow options, then one of its
-        // own reject options: the answer is mapped onto the offered ids.
+        // A one-time accept and decline reach the engine as exactly its own
+        // once options; an "always" option would outlive this request.
         const options = profile.permissionOptions ?? DEFAULT_PERMISSION_OPTIONS;
-        const outcomes = h
-          .engineRecord()
-          .filter((entry) => 'permission' in entry)
-          .map((entry) => {
-            const { optionId } = entry.permission as { optionId?: string };
-            return options.find((option) => option.optionId === optionId)?.kind;
-          });
-        expect(outcomes).toEqual([
-          expect.stringMatching(/^allow_/),
-          expect.stringMatching(/^reject_/),
+        const once = (kind: 'allow_once' | 'reject_once') => {
+          const option = options.find((candidate) => candidate.kind === kind);
+          if (!option) throw new Error(`${profile.engine} offers no ${kind}`);
+          return option.optionId;
+        };
+        expect(
+          h
+            .engineRecord()
+            .filter((entry) => 'permission' in entry)
+            .map((entry) => entry.permission),
+        ).toEqual([
+          { outcome: 'selected', optionId: once('allow_once') },
+          { outcome: 'selected', optionId: once('reject_once') },
         ]);
       });
     });
