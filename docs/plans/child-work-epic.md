@@ -135,9 +135,14 @@ non-probing local-operator inspection route, SDK transport and category table/di
 The implementer reports 384 focused passes, scoped types/lint and a compiling UI
 branch mutation caught before byte-identical restoration. Independent review passed
 37 selected tests and additional route/hook/parser probes, but found a broken Project
-owner link (P2) and malformed JSON classified as unavailable (P3). Repairs and stronger
-prior-success stale-response tests are underway; fresh review and browser proof remain
-pending. Configuration relations do not establish live group
+owner link (P2) and malformed JSON classified as unavailable (P3). Repair `71d6449c`
+passed fresh independent review with 16 tests, before/fixed route controls and retention/layout
+mutations. An isolated browser fixture exercised the real inspector/SDK hook against mocked
+API responses in light/dark themes and desktop/narrow viewports. It exposed compressed narrow
+table columns; `4beaa914` preserves readable columns in a named keyboard-scrollable region,
+with five focused tests and a bounded independent review pass. Browser evidence establishes
+component rendering and interaction only: no complete Station backend, native phone/shell,
+provider credentials or live group execution was exercised. Configuration relations do not establish live group
 edges, shared memory, scheduler/webhook membership, provider entitlement or bounded
 execution; unavailable facts remain visible. This does not complete #453.
 
