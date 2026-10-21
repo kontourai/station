@@ -1162,7 +1162,13 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         );
 
         const graph = Reflect.get(runtime, 'taskGraphService') as {
-          createTask(input: object): Promise<{ id: string; createdAt: string }>;
+          createTask(
+            input: object,
+            clientOrigin?: undefined,
+            taskId?: undefined,
+            authorize?: undefined,
+            options?: { workItemProvenance?: 'project-board' },
+          ): Promise<{ id: string; createdAt: string }>;
           readTaskView(id: string): { workItemObservedAt?: string } | null;
         };
         const projects = Reflect.get(runtime, 'projectService') as {
@@ -1173,12 +1179,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           slug: 'tracker-project',
           workingDirectory: home,
         });
-        const task = await graph.createTask({
-          projectId: project.slug,
-          title: 'Unjam the widgets',
-          sourceProvider: 'github',
-          workItemRef: ref,
-        });
+        // As a board-checked `POST /api/tasks` records it (#4003 review F4).
+        const task = await graph.createTask(
+          {
+            projectId: project.slug,
+            title: 'Unjam the widgets',
+            sourceProvider: 'github',
+            workItemRef: ref,
+          },
+          undefined,
+          undefined,
+          undefined,
+          { workItemProvenance: 'project-board' },
+        );
         const dispatcher = Reflect.get(runtime, 'taskDispatcher') as {
           dispatch(taskId: string, input: object): Promise<{ kind: string }>;
         };

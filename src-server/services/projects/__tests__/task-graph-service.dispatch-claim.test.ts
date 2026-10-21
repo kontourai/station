@@ -940,18 +940,10 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
       });
       const subjectId = 'github:kontourai/station#597';
 
-      // Task A: dispatched, genuinely holds the live claim, still active
-      // ('ready' — the task-dispatch path never advances past it).
-      const taskA = await service.createTask({
-        projectId: 'project-alpha',
-        title: 'Active task A',
-        workItemRef: subjectId,
-      });
-      const dispatchA = await dispatchTaskForTest(service, taskA.id, {});
-      expect(dispatchA.dispatch.claim?.outcome).toBe('claimed');
-
-      // Task B: a SEPARATE local task that happens to reference the SAME
-      // subject and is already terminal — it never held the claim itself.
+      // Task B: a SEPARATE local task that references the SAME subject and
+      // is already terminal; it never held the claim itself. It is created
+      // first: a work item is the primary item of at most one open Task
+      // (#4003), so the sibling must be done before Task A names it.
       const taskB = await service.createTask({
         projectId: 'project-alpha',
         title: 'Unrelated terminal task B, same subject',
@@ -966,6 +958,16 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
         taskGraphPath,
         JSON.stringify(persisted, null, 2),
       );
+
+      // Task A: dispatched, genuinely holds the live claim, still active
+      // ('ready' — the task-dispatch path never advances past it).
+      const taskA = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Active task A',
+        workItemRef: subjectId,
+      });
+      const dispatchA = await dispatchTaskForTest(service, taskA.id, {});
+      expect(dispatchA.dispatch.claim?.outcome).toBe('claimed');
 
       const artifactRoot = join(workspace, '.kontourai', 'flow-agents');
       expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);

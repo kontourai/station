@@ -79,6 +79,7 @@ const TASKS = {
     updatedAt: '2026-10-20T00:00:00.000Z',
     workItemRef: 'github:owner/repo#7',
     sourceProvider: 'github',
+    workItemProvenance: 'project-board',
     // The last dispatch's read: the re-read asks for comments after it.
     workItemObservedAt: '2026-10-20T05:00:00.000Z',
   },

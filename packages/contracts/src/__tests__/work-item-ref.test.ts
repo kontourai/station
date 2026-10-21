@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalGitHubWorkItemRef,
   formatGitHubWorkItemRef,
   gitHubIssueUrlFromWorkItemRef,
+  isGitHubNamespacedWorkItemRef,
   parseGitHubWorkItemRef,
   workItemRefFromGitHubIssueUrl,
+  workItemRefKey,
 } from '../work-item-provider.js';
 
 describe('GitHub work-item ref <-> issue URL', () => {
   it.each([
     ['github:kontourai/station#4003', 'kontourai', 'station', 4003],
     ['github:a/b#1', 'a', 'b', 1],
-    ['github:Kontour-AI/my.repo_name-2#99', 'Kontour-AI', 'my.repo_name-2', 99],
+    ['github:kontour-ai/my.repo_name-2#99', 'kontour-ai', 'my.repo_name-2', 99],
   ])(
     'parses %s and round-trips through its issue URL',
     (ref, owner, repo, number) => {
@@ -21,6 +24,28 @@ describe('GitHub work-item ref <-> issue URL', () => {
       expect(formatGitHubWorkItemRef({ owner, repo, number })).toBe(ref);
     },
   );
+
+  it('lowercases owner and repository at parse time: one item, one spelling (review F5)', () => {
+    expect(parseGitHubWorkItemRef('github:Kontour-AI/My.Repo#99')).toEqual({
+      owner: 'kontour-ai',
+      repo: 'my.repo',
+      number: 99,
+    });
+    expect(canonicalGitHubWorkItemRef('github:Kontour-AI/My.Repo#99')).toBe(
+      'github:kontour-ai/my.repo#99',
+    );
+    expect(
+      workItemRefFromGitHubIssueUrl(
+        'https://github.com/Kontour-AI/My.Repo/issues/99',
+      ),
+    ).toBe('github:kontour-ai/my.repo#99');
+    expect(workItemRefKey('github:A/B#1')).toBe(workItemRefKey('github:a/b#1'));
+    // Anything else is compared as written.
+    expect(workItemRefKey('Flow-Slug')).toBe('Flow-Slug');
+    expect(canonicalGitHubWorkItemRef('github:a/b')).toBeNull();
+    expect(isGitHubNamespacedWorkItemRef(' GitHub:a/b')).toBe(true);
+    expect(isGitHubNamespacedWorkItemRef('gitlab:a/b#1')).toBe(false);
+  });
 
   it.each([
     '',

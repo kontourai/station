@@ -2809,9 +2809,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
     // #4003 Start Task on a board item, and the Task's linked-item header.
-    // Both read one tracker item through the Station host's own `gh` login,
-    // the same tracker the Project's board already lists for this tier; the
-    // POST creates a Task like `POST /api/tasks` and takes its operate tier.
+    // Both read one tracker item through the Station host's own `gh` login.
+    // The POST reads only a ref the Project's board offers when it is
+    // called, and creates a Task like `POST /api/tasks` at its operate tier.
+    // The GET reads only a Task ref that entered through such a board check
+    // (`TaskRecord.workItemProvenance`), and answers `unsupported` for any
+    // other. The board check is a membership test on the board's current
+    // listing, not proof the requester may see that repository on GitHub.
     // No station-control tool names either route.
     { method: 'POST', path: '/api/tasks/from-work-item' },
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },

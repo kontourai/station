@@ -552,6 +552,14 @@ export interface TaskRecord {
    */
   workItemObservedAt?: string;
   /**
+   * How `workItemRef` entered the Task (#4003 review F4). `project-board`:
+   * the create checked that the Project's board offered exactly this ref
+   * (Start Task, or `POST /api/tasks` with a `github:` ref). Station reads
+   * the tracker for a Task's ref only when this is set; a ref without it is
+   * shown, never observed with the host's tracker login.
+   */
+  workItemProvenance?: 'project-board';
+  /**
    * A person's opt-in (#3161): move this Task to `done` once every pull
    * request kept on it is merged at its provider. Only a person sets it
    * (`PUT /api/tasks/:taskId/close-on-merge`); no agent tool does, and the

@@ -1,5 +1,6 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { resolveWorkflowTaskMatch } from '@kontourai/station-contracts/workflow';
 import {
   type GitStatusResult,
@@ -93,7 +94,7 @@ function externalProviderItems(
       isNamespacedWorkItemRef(task.workItemRef) &&
       task.status !== 'done' &&
       task.status !== 'canceled'
-        ? [task.workItemRef]
+        ? [workItemRefKey(task.workItemRef)]
         : [],
     ),
   );
@@ -104,7 +105,8 @@ function externalProviderItems(
       (item) =>
         !item.workItemRef ||
         !isNamespacedWorkItemRef(item.workItemRef) ||
-        !localWorkItemRefs.has(item.workItemRef),
+        // GitHub refs compare case-insensitively (#4003 review F5).
+        !localWorkItemRefs.has(workItemRefKey(item.workItemRef)),
     );
 }
 

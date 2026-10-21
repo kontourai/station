@@ -41,6 +41,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
 import {
   acquireFileMutationLockAsync,
@@ -320,19 +321,41 @@ function normalizeText(value: string | undefined): string {
   return value?.trim() ?? '';
 }
 
-/** Cardinality (#4003): the one Task, not done or canceled, whose primary
- * work item is `workItemRef`. Refs compare as exact strings, as the Tasks
- * board's join does. */
+/**
+ * Cardinality (#4003): the one Task, not done or canceled, whose primary
+ * work item is `workItemRef`. Refs compare by `workItemRefKey` (a GitHub
+ * ref's lowercase spelling, anything else exactly). A namespaced ref names
+ * one item everywhere, so it is unique across Projects; a bare ref (a Flow
+ * sidecar slug) means something only inside its Project, so it is unique
+ * there.
+ */
 function openTaskForWorkItem(
   tasks: readonly TaskRecord[],
   workItemRef: string,
+  projectId?: string,
 ): TaskRecord | undefined {
+  const key = workItemRefKey(workItemRef);
+  const global = isNamespacedWorkItemRef(workItemRef);
   return tasks.find(
     (task) =>
-      task.workItemRef === workItemRef &&
+      task.workItemRef !== undefined &&
+      workItemRefKey(task.workItemRef) === key &&
+      (global || task.projectId === projectId) &&
       task.status !== 'done' &&
       task.status !== 'canceled',
   );
+}
+
+/**
+ * A create naming a work item that already has an open Task (review F5).
+ * Carries only the open Task's id and Project: the caller may not be able
+ * to read a Task in another Project.
+ */
+export class TaskWorkItemTakenError extends Error {
+  constructor(readonly existing: { id: string; projectId: string }) {
+    super('This work item already has an open Task.');
+    this.name = 'TaskWorkItemTakenError';
+  }
 }
 
 function metricSourceSurface(value: unknown): string {
@@ -515,6 +538,7 @@ const TASK_RECORD_KEYS = [
   'sourceProvider',
   'workItemRef',
   'workItemObservedAt',
+  'workItemProvenance',
   'closeOnMerge',
   'dispatchReservation',
 ] as const;
@@ -840,6 +864,13 @@ function validateTaskGraphStoreData(
         task.workItemObservedAt,
         `${at}.workItemObservedAt`,
         problems,
+      );
+    if (
+      task.workItemProvenance !== undefined &&
+      task.workItemProvenance !== 'project-board'
+    )
+      problems.push(
+        `${at}.workItemProvenance: must be 'project-board' when present`,
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
@@ -1701,14 +1732,30 @@ export class TaskGraphService {
     };
   }
 
+  /**
+   * A create that names a work item already the primary item of an open
+   * Task (see `openTaskForWorkItem`) throws `TaskWorkItemTakenError`,
+   * decided under the store's mutation lock. `workItemProvenance` is the
+   * caller's statement that it checked the Project's board offered the ref
+   * (`TaskRecord.workItemProvenance`).
+   */
   async createTask(
     input: TaskCreateInput,
     clientOrigin?: ClientOrigin,
     taskId: string = crypto.randomUUID(),
     authorize?: () => boolean,
+    options: { workItemProvenance?: 'project-board' } = {},
   ): Promise<TaskRecord> {
-    return (await this.createTaskRecord(input, clientOrigin, taskId, authorize))
-      .task;
+    const created = await this.createTaskRecord(
+      input,
+      clientOrigin,
+      taskId,
+      authorize,
+      options.workItemProvenance
+        ? { provenance: options.workItemProvenance, onTaken: 'refuse' }
+        : { onTaken: 'refuse' },
+    );
+    return created.task;
   }
 
   /**
@@ -1726,18 +1773,29 @@ export class TaskGraphService {
   ): Promise<{ task: TaskRecord; existing: boolean }> {
     if (!normalizeText(input.workItemRef))
       throw new Error('workItemRef is required');
+    // Start Task observed only a ref the Project's board offered.
     return this.createTaskRecord(
       input,
       clientOrigin,
       crypto.randomUUID(),
       undefined,
-      { workItemObservedAt },
+      {
+        workItemObservedAt,
+        provenance: 'project-board',
+        onTaken: 'return-existing',
+      },
     );
   }
 
   /** The open Task whose primary work item is `workItemRef`, if any. */
-  findOpenTaskForWorkItem(workItemRef: string): TaskRecord | null {
-    return openTaskForWorkItem(this.readStore().tasks, workItemRef) ?? null;
+  findOpenTaskForWorkItem(
+    workItemRef: string,
+    projectId?: string,
+  ): TaskRecord | null {
+    return (
+      openTaskForWorkItem(this.readStore().tasks, workItemRef, projectId) ??
+      null
+    );
   }
 
   private async createTaskRecord(
@@ -1745,7 +1803,12 @@ export class TaskGraphService {
     clientOrigin: ClientOrigin | undefined,
     taskId: string,
     authorize: (() => boolean) | undefined,
-    workItem?: { workItemObservedAt: string },
+    workItem: {
+      workItemObservedAt?: string;
+      provenance?: 'project-board';
+      /** An open Task for the ref: return it, or throw `TaskWorkItemTakenError`. */
+      onTaken: 'return-existing' | 'refuse';
+    },
   ): Promise<{ task: TaskRecord; existing: boolean }> {
     const sourceSurface = metricSourceSurface(
       input.workspaceBinding?.sourceSurface,
@@ -1788,14 +1851,15 @@ export class TaskGraphService {
       workspaceBinding,
       sourceProvider: normalizeText(input.sourceProvider) || undefined,
       workItemRef: normalizeText(input.workItemRef) || undefined,
-      ...(workItem ? { workItemObservedAt: workItem.workItemObservedAt } : {}),
+      ...(workItem.workItemObservedAt
+        ? { workItemObservedAt: workItem.workItemObservedAt }
+        : {}),
+      ...(workItem.provenance && normalizeText(input.workItemRef)
+        ? { workItemProvenance: workItem.provenance }
+        : {}),
     };
 
     const persisted = await this.mutateStore((data) => {
-      if (workItem) {
-        const open = openTaskForWorkItem(data.tasks, task.workItemRef!);
-        if (open) return { data, result: { task: open, existing: true } };
-      }
       const source = input.shapingSource;
       const acceptedTaskId = source
         ? data.links.find(
@@ -1821,6 +1885,19 @@ export class TaskGraphService {
       }
       if (prior) {
         throw new Error(`Task '${task.id}' already exists`);
+      }
+      // At most one open Task per work item, for every create that names
+      // one (review F5), decided here under the mutation lock.
+      const open = task.workItemRef
+        ? openTaskForWorkItem(data.tasks, task.workItemRef, task.projectId)
+        : undefined;
+      if (open) {
+        if (workItem.onTaken === 'return-existing')
+          return { data, result: { task: open, existing: true } };
+        throw new TaskWorkItemTakenError({
+          id: open.id,
+          projectId: open.projectId,
+        });
       }
       return {
         data: {

@@ -265,6 +265,13 @@ export function createTaskBriefSource(
   ): Promise<TaskBriefObservation | undefined> => {
     const ref = task.workItemRef;
     if (!ref) return undefined;
+    // Review F4: the host's tracker login reads only a ref that entered
+    // through a board check (Start Task, or a board-checked create).
+    if (task.workItemProvenance !== 'project-board')
+      return {
+        status: 'not-read',
+        reason: "the ref was not checked against the Project's board",
+      };
     // Comments newer than the last time a dispatch read the item, or than
     // the Task's creation when none has (Start Task records its own read).
     const commentsSince = task.workItemObservedAt ?? task.createdAt;

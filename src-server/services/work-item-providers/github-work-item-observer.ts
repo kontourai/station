@@ -15,8 +15,13 @@
  *   do not parse (`parseGitHubWorkItemRef`) and are `unsupported`.
  * - Issues only. GitHub's issues API also answers for a pull request number;
  *   such an item is `unsupported`.
- * - Callers observe only refs read from a `TaskRecord` or a provider item on
- *   the Project's board, never a ref taken from free text.
+ * - This class reads whatever ref it is given. Its callers limit that: Start
+ *   Task observes a ref only after the Project's board offered it, and the
+ *   Task header, dispatch and `get_task_brief` observe a Task's ref only when
+ *   `TaskRecord.workItemProvenance` says it entered through such a board
+ *   check (Start Task, or `POST /api/tasks` with a `github:` ref). A board
+ *   check is membership in the board's listing at that moment; it does not
+ *   prove what the requester may see on GitHub.
  */
 import {
   formatGitHubWorkItemRef,

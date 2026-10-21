@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import type {
-  ProviderWorkItem,
-  WorkItemObservation,
-  WorkItemObservationResult,
+import {
+  type ProviderWorkItem,
+  type WorkItemObservation,
+  type WorkItemObservationResult,
+  workItemRefKey,
 } from '@kontourai/station-contracts/work-item-provider';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -70,14 +71,16 @@ async function fixture(
   }),
   board: ProviderWorkItem[] = [boardItem],
   hosted = false,
+  /** Each Project's board; defaults to `board` for every Project. */
+  boardFor?: (projectId: string) => ProviderWorkItem[],
 ) {
   const directory = temp('station-from-work-item-');
   const service = new TaskGraphService(directory, {
     projectService: {
-      getProject: () => ({
-        id: 'alpha',
-        slug: 'alpha',
-        name: 'Alpha',
+      getProject: (id: string) => ({
+        id,
+        slug: id,
+        name: id,
         workingDirectory: directory,
         createdAt: '2026-10-15T00:00:00Z',
         updatedAt: '2026-10-15T00:00:00Z',
@@ -110,9 +113,20 @@ async function fixture(
     store.close();
   });
   const observer: WorkItemObserver = { observeWorkItem: vi.fn(observe) };
+  // As the runtime's resolver: the Project's board, refs compared by key.
   const resolveProviderWorkItem = vi.fn(
-    async ({ workItemRef }: { projectId: string; workItemRef: string }) =>
-      board.find((item) => item.workItemRef === workItemRef),
+    async ({
+      projectId,
+      workItemRef,
+    }: {
+      projectId: string;
+      workItemRef: string;
+    }) =>
+      (boardFor?.(projectId) ?? board).find(
+        (item) =>
+          item.workItemRef !== undefined &&
+          workItemRefKey(item.workItemRef) === workItemRefKey(workItemRef),
+      ),
   );
   const app = createTaskRoutes(service, {
     taskDispatcher: { dispatch: vi.fn() },
@@ -125,11 +139,17 @@ async function fixture(
     workItemObserver: observer,
     resolveProviderWorkItem,
   });
-  const start = (workItemRef = REF) =>
+  const start = (workItemRef = REF, projectId = 'alpha') =>
     app.request('/from-work-item', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'alpha', workItemRef }),
+      body: JSON.stringify({ projectId, workItemRef }),
+    });
+  const create = (body: Record<string, unknown>) =>
+    app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: 'alpha', title: 'Typed', ...body }),
     });
   const document = async (taskId: string) =>
     room.document({ taskId, request: new Request('http://station.test') });
@@ -137,6 +157,7 @@ async function fixture(
     app,
     service,
     start,
+    create,
     document,
     observer,
     resolveProviderWorkItem,
@@ -318,4 +339,126 @@ test('Start Task is a person action: no station-control caller may reach it, as 
     authorizeStationControlRequest('POST', '/api/tasks/from-work-item', context)
       ?.code,
   ).toBe('station_control_route_unmapped');
+});
+
+test('POST / accepts a github: ref only when it parses and the Project board offers it, and records that (review F4)', async () => {
+  const { service, create, observer, resolveProviderWorkItem } =
+    await fixture();
+  // Not on the board: refused, nothing created, the tracker never read.
+  const off = await create({ workItemRef: 'github:someorg/private-repo#7' });
+  expect(off.status).toBe(404);
+  // Not a github.com issue ref: refused before any lookup.
+  resolveProviderWorkItem.mockClear();
+  const bad = await create({ workItemRef: 'github:someorg/private-repo' });
+  expect(bad.status).toBe(422);
+  expect(resolveProviderWorkItem).not.toHaveBeenCalled();
+  expect(service.listTasks()).toEqual([]);
+  // On the board, in any spelling: stored canonical and board-checked.
+  const on = await create({ workItemRef: 'github:ACME/Widgets#42' });
+  expect(on.status, await on.clone().text()).toBe(201);
+  expect(service.listTasks()).toMatchObject([
+    { workItemRef: REF, workItemProvenance: 'project-board' },
+  ]);
+  // A ref outside the github: namespace is stored as before, unchecked.
+  await service.updateTaskStatus(service.listTasks()[0]!.id, 'canceled');
+  const slug = await create({ workItemRef: 'flow-slug' });
+  expect(slug.status).toBe(201);
+  expect(
+    service.listTasks().find((task) => task.workItemRef === 'flow-slug'),
+  ).not.toHaveProperty('workItemProvenance');
+  expect(observer.observeWorkItem).not.toHaveBeenCalled();
+});
+
+test('the Task header never reads a ref that did not enter through a board check (review F4)', async () => {
+  const { app, service, observer } = await fixture();
+  // As any create without the board check (an older Task, a service caller).
+  const task = await service.createTask({
+    projectId: 'alpha',
+    title: 'Typed ref',
+    workItemRef: 'github:someorg/private-repo#7',
+  });
+  const response = await app.request(`/${task.id}/work-item`);
+  expect(response.status).toBe(200);
+  expect((await json(response)).data).toEqual({
+    status: 'unsupported',
+    reason:
+      "This Task's work item was not checked against the Project's board, so Station does not read it from the tracker.",
+  });
+  expect(observer.observeWorkItem).not.toHaveBeenCalled();
+});
+
+test('every ref-bearing create keeps one open Task per item, comparing GitHub owner and repo case-insensitively (review F5)', async () => {
+  const { service, create, start } = await fixture();
+  const first = await create({ workItemRef: REF });
+  expect(first.status).toBe(201);
+  const firstId = (await json(first)).data.id;
+  // POST / again, in another spelling, and concurrently: refused with the
+  // open Task's id.
+  const again = await Promise.all([
+    create({ workItemRef: 'github:Acme/WIDGETS#42' }),
+    create({ workItemRef: REF }),
+  ]);
+  for (const response of again) {
+    expect(response.status).toBe(409);
+    expect(await json(response)).toMatchObject({
+      success: false,
+      data: { taskId: firstId, projectId: 'alpha' },
+    });
+  }
+  // Start Task in another spelling opens it.
+  const started = await json(await start('github:ACME/widgets#42'));
+  expect(started.data).toMatchObject({ existing: true, task: { id: firstId } });
+  // A service create is held to the same rule under the store lock.
+  await expect(
+    Promise.all([
+      service.createTask({ projectId: 'beta', title: 'x', workItemRef: REF }),
+      service.createTask({ projectId: 'beta', title: 'y', workItemRef: REF }),
+    ]),
+  ).rejects.toThrow('This work item already has an open Task.');
+  expect(service.listTasks()).toHaveLength(1);
+  // A bare slug is unique within its Project only.
+  expect(
+    await service.createTask({
+      projectId: 'alpha',
+      title: 's',
+      workItemRef: 'slug',
+    }),
+  ).toMatchObject({ workItemRef: 'slug' });
+  await expect(
+    service.createTask({ projectId: 'alpha', title: 't', workItemRef: 'slug' }),
+  ).rejects.toThrow('This work item already has an open Task.');
+  expect(
+    await service.createTask({
+      projectId: 'beta',
+      title: 'u',
+      workItemRef: 'slug',
+    }),
+  ).toMatchObject({ projectId: 'beta' });
+});
+
+test("Start Task checks this Project's board before the open-Task lookup, and names another Project's Task by id only (review F6)", async () => {
+  let betaBoard: ProviderWorkItem[] = [];
+  const { start, observer } = await fixture(
+    undefined,
+    [boardItem],
+    false,
+    (id) => (id === 'beta' ? betaBoard : [boardItem]),
+  );
+  const alpha = (await json(await start())).data.task;
+  expect(alpha.projectId).toBe('alpha');
+  // Beta's board does not offer it: beta learns nothing about alpha's Task.
+  const hidden = await start(REF, 'beta');
+  expect(hidden.status).toBe(404);
+  expect(JSON.stringify(await json(hidden))).not.toContain(alpha.id);
+  // Beta's board offers it: the open Task in alpha, by id and Project only.
+  betaBoard = [boardItem];
+  const shown = await start(REF, 'beta');
+  expect(shown.status).toBe(200);
+  expect((await json(shown)).data).toEqual({
+    task: { id: alpha.id, projectId: 'alpha' },
+    existing: true,
+    elsewhere: true,
+    briefSaved: false,
+  });
+  expect(observer.observeWorkItem).toHaveBeenCalledTimes(1);
 });

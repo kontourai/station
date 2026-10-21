@@ -1312,6 +1312,20 @@ describe('Task routes', () => {
         },
         resolveProjectWorkspace: () => '/tmp/project-alpha',
       }),
+      {
+        taskDispatcher: { dispatch: vi.fn() },
+        // #4003 review F4: a github: ref must be on the Project's board.
+        resolveProviderWorkItem: async ({ workItemRef }) =>
+          workItemRef === 'github:kontourai/station#584'
+            ? {
+                id: workItemRef,
+                title: 'Provider-backed task',
+                status: 'ready',
+                provider: { kind: 'flow-agents-github', id: 'p', label: 'p' },
+                workItemRef,
+              }
+            : undefined,
+      },
     );
 
     const createRes = await app.request('/', {

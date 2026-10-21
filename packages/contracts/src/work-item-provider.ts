@@ -203,12 +203,21 @@ export type TaskWorkItemObservationResponse = WorkItemObservationResult & {
 
 /** `POST /api/tasks/from-work-item` result. `existing` means the item already
  * had an open Task, which is returned unchanged. `briefSaved` is false when
- * the new Task's document could not be seeded from the item. */
-export interface StartTaskFromWorkItemResult {
-  task: TaskRecord;
-  existing: boolean;
-  briefSaved: boolean;
-}
+ * the new Task's document could not be seeded from the item. When that open
+ * Task is in another Project, only its id and Project are returned
+ * (`elsewhere: true`). */
+export type StartTaskFromWorkItemResult =
+  | {
+      task: TaskRecord;
+      existing: boolean;
+      briefSaved: boolean;
+    }
+  | {
+      task: Pick<TaskRecord, 'id' | 'projectId'>;
+      existing: true;
+      elsewhere: true;
+      briefSaved: false;
+    };
 
 /** Bounds an observation's free text, so a long issue cannot become an
  * unbounded Task brief. */
@@ -247,20 +256,46 @@ function gitHubIdentity(
   )
     return null;
   const parsed = Number(number);
-  return Number.isSafeInteger(parsed) ? { owner, repo, number: parsed } : null;
+  // GitHub compares owner and repository names case-insensitively, so the
+  // canonical identity is lowercase (review F5): `Org/Repo#1` and
+  // `org/repo#1` are one item.
+  return Number.isSafeInteger(parsed)
+    ? { owner: owner.toLowerCase(), repo: repo.toLowerCase(), number: parsed }
+    : null;
 }
 
 /**
  * Parses exactly `github:owner/repo#N`. Anything else, including GitHub
  * Enterprise hosts, surrounding whitespace and a bare `#N`, is `null`, which
- * a caller reports as `unsupported`. Owner and repository case is kept: the
- * ref is compared as a string, as `ProviderWorkItem.workItemRef` is.
+ * a caller reports as `unsupported`. Owner and repository come back
+ * lowercase, GitHub's case-insensitive identity; see
+ * {@link canonicalGitHubWorkItemRef}.
  */
 export function parseGitHubWorkItemRef(
   ref: string,
 ): GitHubWorkItemIdentity | null {
   const match = GITHUB_WORK_ITEM_REF.exec(ref);
   return match ? gitHubIdentity(match[1], match[2], match[3]) : null;
+}
+
+/** The canonical (lowercase) spelling of a GitHub ref, or `null` when
+ * {@link parseGitHubWorkItemRef} refuses it. */
+export function canonicalGitHubWorkItemRef(ref: string): string | null {
+  const identity = parseGitHubWorkItemRef(ref);
+  return identity ? formatGitHubWorkItemRef(identity) : null;
+}
+
+/**
+ * The key two work-item refs are compared by: a GitHub ref's canonical
+ * spelling, and any other ref exactly as written.
+ */
+export function workItemRefKey(ref: string): string {
+  return canonicalGitHubWorkItemRef(ref) ?? ref;
+}
+
+/** A ref in the `github:` namespace, whether or not it parses. */
+export function isGitHubNamespacedWorkItemRef(ref: string): boolean {
+  return /^\s*github:/i.test(ref);
 }
 
 export function formatGitHubWorkItemRef(

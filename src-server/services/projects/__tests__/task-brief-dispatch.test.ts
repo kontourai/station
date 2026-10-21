@@ -204,6 +204,8 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     provider: EngineProvider,
     options: {
       workItemRef?: string;
+      /** How the ref entered; defaults to a board-checked create. */
+      unchecked?: boolean;
       observeWorkItem?: WorkItemObserver['observeWorkItem'];
       document?: string;
       memory?: TaskRecordWrite[];
@@ -213,14 +215,23 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   ) {
     const task = options.taskId
       ? graph.readTaskView(options.taskId)!
-      : await graph.createTask({
-          projectId: 'brief-project',
-          title: 'Ship the Task brief',
-          description: 'Dispatched Sessions start with the Task memory.',
-          ...(options.workItemRef
-            ? { sourceProvider: 'github', workItemRef: options.workItemRef }
-            : {}),
-        });
+      : await graph.createTask(
+          {
+            projectId: 'brief-project',
+            title: 'Ship the Task brief',
+            description: 'Dispatched Sessions start with the Task memory.',
+            ...(options.workItemRef
+              ? { sourceProvider: 'github', workItemRef: options.workItemRef }
+              : {}),
+          },
+          undefined,
+          undefined,
+          undefined,
+          // As `POST /api/tasks` records a ref the Project's board offered.
+          options.workItemRef && !options.unchecked
+            ? { workItemProvenance: 'project-board' }
+            : {},
+        );
     if (!options.taskId) {
       const write = {
         projectId: task.projectId,
@@ -371,6 +382,29 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       'linked item not re-read: unauthenticated (gh is not signed in)',
     );
     expect(input).toContain('## Tracker guidance');
+  });
+
+  test("a ref that never went through a board check is not read with the host's tracker login (review F4)", async () => {
+    const observe = vi.fn<WorkItemObserver['observeWorkItem']>(async () => ({
+      status: 'not-found',
+      reason: 'should never be asked',
+    }));
+    const { task, sessionId } = await dispatch('codex', {
+      workItemRef: 'github:someorg/private-repo#7',
+      unchecked: true,
+      observeWorkItem: observe,
+    });
+    expect(task.workItemProvenance).toBeUndefined();
+    expect(observe).not.toHaveBeenCalled();
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: sessionId, input: 'Go.' },
+    });
+    const input = adapters.find((a) => a.provider === 'codex')!.sendTurn.mock
+      .calls[0]![0].input;
+    expect(input).toContain(
+      "linked item not re-read: not-read (the ref was not checked against the Project's board)",
+    );
   });
 
   test('a tracker read that throws still dispatches, and says the item was not re-read', async () => {

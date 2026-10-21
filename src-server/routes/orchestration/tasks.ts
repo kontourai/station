@@ -46,8 +46,9 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import {
+  canonicalGitHubWorkItemRef,
+  isGitHubNamespacedWorkItemRef,
   type ProviderWorkItem,
-  parseGitHubWorkItemRef,
   type StartTaskFromWorkItemResult,
   type TaskWorkItemObservationResponse,
   type WorkItemObservationResult,
@@ -80,6 +81,7 @@ import {
   TaskReferenceAuthorizationError,
   type TaskReferenceCommitAuthorization,
   TaskReferenceRejectedError,
+  TaskWorkItemTakenError,
 } from '../../services/projects/task-graph-service.js';
 import {
   createTaskGateEvaluationReferenceReadAdapter,
@@ -140,6 +142,28 @@ const taskFromWorkItemSchema = taskCreateSchema
   .pick({ projectId: true, agentId: true, workspaceBinding: true })
   .extend({ workItemRef: z.string().min(1).max(512) })
   .strict();
+
+/** Why a Task's ref is not read: it never went through a board check. */
+export const UNCHECKED_WORK_ITEM_REASON =
+  "This Task's work item was not checked against the Project's board, so Station does not read it from the tracker.";
+
+/**
+ * Start Task's answer for an item that already has an open Task. In another
+ * Project, only that Task's id and Project (review F6).
+ */
+function existingTaskResult(
+  task: TaskRecord,
+  projectId: string,
+): StartTaskFromWorkItemResult {
+  return task.projectId === projectId
+    ? { task, existing: true, briefSaved: false }
+    : {
+        task: { id: task.id, projectId: task.projectId },
+        existing: true,
+        elsewhere: true,
+        briefSaved: false,
+      };
+}
 
 /** HTTP status for an observation that did not observe the item. A missing
  * gh login is the Station host's state, not the caller's credential, so it is
@@ -786,11 +810,55 @@ export function createTaskRoutes(
           );
         }
       }
+      // Review F4: a `github:` ref is read with the Station host's tracker
+      // login, so it is accepted only when it parses and the Project's
+      // board offers it now, as Start Task requires. It is stored in its
+      // canonical spelling, marked as board-checked.
+      let workItemProvenance: 'project-board' | undefined;
+      let createInput = input;
+      if (
+        input.workItemRef !== undefined &&
+        isGitHubNamespacedWorkItemRef(input.workItemRef)
+      ) {
+        const workItemRef = canonicalGitHubWorkItemRef(input.workItemRef);
+        if (!workItemRef)
+          return c.json(
+            {
+              success: false,
+              error:
+                'A GitHub work item must be a github.com issue (github:owner/repo#N).',
+            },
+            422,
+          );
+        if (hostedRequest(c.req.raw) || !options.resolveProviderWorkItem)
+          return c.json(
+            {
+              success: false,
+              error: 'Linking a GitHub work item is unavailable here.',
+            },
+            422,
+          );
+        const offered = await options.resolveProviderWorkItem({
+          projectId: input.projectId,
+          workItemRef,
+        });
+        if (!offered)
+          return c.json(
+            {
+              success: false,
+              error: "This work item is not on the Project's board.",
+            },
+            404,
+          );
+        createInput = { ...input, workItemRef };
+        workItemProvenance = 'project-board';
+      }
       const data = await service.createTask(
-        input,
+        createInput,
         resolveClientOriginForRequest(c.req.raw),
         undefined,
         authorize,
+        workItemProvenance ? { workItemProvenance } : {},
       );
       if (input.shapingSource) {
         let seeded = false;
@@ -823,6 +891,19 @@ export function createTaskRoutes(
       }
       return c.json({ success: true, data }, 201);
     } catch (error) {
+      if (error instanceof TaskWorkItemTakenError)
+        return c.json(
+          {
+            success: false,
+            code: 'work_item_has_open_task',
+            error: error.message,
+            data: {
+              taskId: error.existing.id,
+              projectId: error.existing.projectId,
+            },
+          },
+          409,
+        );
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
   });
@@ -836,8 +917,8 @@ export function createTaskRoutes(
   app.post('/from-work-item', validate(taskFromWorkItemSchema), async (c) => {
     if (hostedRequest(c.req.raw)) return hostedNotFound(c);
     const input: z.infer<typeof taskFromWorkItemSchema> = getBody(c);
-    const workItemRef = input.workItemRef;
-    if (!parseGitHubWorkItemRef(workItemRef))
+    const workItemRef = canonicalGitHubWorkItemRef(input.workItemRef);
+    if (!workItemRef)
       return c.json(
         {
           success: false,
@@ -846,16 +927,6 @@ export function createTaskRoutes(
         },
         422,
       );
-    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef);
-    if (existing)
-      return c.json({
-        success: true,
-        data: {
-          task: existing,
-          existing: true,
-          briefSaved: false,
-        } satisfies StartTaskFromWorkItemResult,
-      });
     if (!options.workItemObserver || !options.resolveProviderWorkItem)
       return c.json(
         {
@@ -864,6 +935,8 @@ export function createTaskRoutes(
         },
         503,
       );
+    // Review F6: the board check comes first, so a ref this Project's board
+    // does not offer learns nothing, not even whether it has a Task.
     const item = await options.resolveProviderWorkItem({
       projectId: input.projectId,
       workItemRef,
@@ -876,6 +949,12 @@ export function createTaskRoutes(
         },
         404,
       );
+    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef);
+    if (existing)
+      return c.json({
+        success: true,
+        data: existingTaskResult(existing, input.projectId),
+      });
     const observed = await options.workItemObserver.observeWorkItem(
       workItemRef,
       {},
@@ -911,11 +990,7 @@ export function createTaskRoutes(
     if (created.existing)
       return c.json({
         success: true,
-        data: {
-          task: created.task,
-          existing: true,
-          briefSaved: false,
-        } satisfies StartTaskFromWorkItemResult,
+        data: existingTaskResult(created.task, input.projectId),
       });
     let briefSaved = false;
     try {
@@ -956,6 +1031,16 @@ export function createTaskRoutes(
         { success: false, error: 'This Task has no linked work item' },
         404,
       );
+    // Review F4: only a ref that entered through a board check is read
+    // with the Station host's tracker login.
+    if (task.workItemProvenance !== 'project-board')
+      return c.json({
+        success: true,
+        data: {
+          status: 'unsupported',
+          reason: UNCHECKED_WORK_ITEM_REASON,
+        } satisfies TaskWorkItemObservationResponse,
+      });
     if (!options.workItemObserver)
       return c.json({
         success: true,

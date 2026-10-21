@@ -225,6 +225,7 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
@@ -4242,10 +4243,18 @@ export function configureRuntimeRoutes(
           projectId,
           workingDirectory,
         });
-        return board.providers
-          .filter((provider) => provider.identity.kind !== 'local')
-          .flatMap((provider) => provider.items)
-          .find((item) => item.workItemRef === workItemRef);
+        return (
+          board.providers
+            .filter((provider) => provider.identity.kind !== 'local')
+            .flatMap((provider) => provider.items)
+            // GitHub refs compare case-insensitively (review F5).
+            .find(
+              (item) =>
+                item.workItemRef !== undefined &&
+                workItemRefKey(item.workItemRef) ===
+                  workItemRefKey(workItemRef),
+            )
+        );
       },
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
