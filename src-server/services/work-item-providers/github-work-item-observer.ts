@@ -22,6 +22,11 @@
  *   check (Start Task, or `POST /api/tasks` with a `github:` ref). A board
  *   check is membership in the board's listing at that moment; it does not
  *   prove what the requester may see on GitHub.
+ * - Bounded cost (review F8): a caller's `signal` stops the gh process, and
+ *   an observed answer is kept in process for `cacheTtlMs` (30 s), keyed by
+ *   the exact ref and `commentsSince`, so a Session calling
+ *   `get_task_brief` in a loop does not spend the host's GitHub quota. A
+ *   failure is never kept: a person who signs gh in sees it at once.
  */
 import {
   formatGitHubWorkItemRef,
@@ -38,6 +43,8 @@ import { execGitContextCommand } from '../../utils/git-exec.js';
 export interface WorkItemObserveOptions {
   /** Return only comments created after this instant (ISO 8601). */
   commentsSince?: string;
+  /** Aborting stops the read and its gh process. */
+  signal?: AbortSignal;
 }
 
 /** The one server seam for reading a tracker item by its exact identity. */
@@ -57,6 +64,8 @@ export interface GitHubWorkItemObserverOptions {
   /** Extra environment for gh (tests only). */
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
+  /** How long an observed answer is reused; 0 turns the cache off. */
+  cacheTtlMs?: number;
 }
 
 const GITHUB_HOST = 'github.com';
@@ -67,6 +76,9 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * JSON around them, fits; anything larger is refused, not cut. */
 const DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const REASON_CHARS = 300;
+const DEFAULT_CACHE_TTL_MS = 30_000;
+/** Distinct reads kept at once; the oldest is dropped past it. */
+const CACHE_MAX_ENTRIES = 100;
 
 type Failure = Exclude<WorkItemObservationResult, { status: 'observed' }>;
 
@@ -102,6 +114,11 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
   private readonly maxOutputBytes: number;
   private readonly env: NodeJS.ProcessEnv;
   private readonly now: () => Date;
+  private readonly cacheTtlMs: number;
+  private readonly cache = new Map<
+    string,
+    { readonly at: number; readonly result: WorkItemObservationResult }
+  >();
 
   constructor(options: GitHubWorkItemObserverOptions = {}) {
     this.command = options.command ?? 'gh';
@@ -109,11 +126,31 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
     this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     this.env = options.env ?? {};
     this.now = options.now ?? (() => new Date());
+    this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   }
 
   async observeWorkItem(
     workItemRef: string,
     options: WorkItemObserveOptions = {},
+  ): Promise<WorkItemObservationResult> {
+    const key = `${workItemRef}\u0000${options.commentsSince ?? ''}`;
+    const at = this.now().getTime();
+    const kept = this.cache.get(key);
+    if (kept && at - kept.at < this.cacheTtlMs && at >= kept.at)
+      return kept.result;
+    this.cache.delete(key);
+    const result = await this.read(workItemRef, options);
+    if (result.status === 'observed' && this.cacheTtlMs > 0) {
+      this.cache.set(key, { at, result });
+      if (this.cache.size > CACHE_MAX_ENTRIES)
+        this.cache.delete(this.cache.keys().next().value!);
+    }
+    return result;
+  }
+
+  private async read(
+    workItemRef: string,
+    options: WorkItemObserveOptions,
   ): Promise<WorkItemObservationResult> {
     const identity = parseGitHubWorkItemRef(workItemRef);
     if (!identity)
@@ -128,7 +165,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
       return failure('unsupported', 'commentsSince must be an ISO timestamp.');
     const issuePath = `repos/${identity.owner}/${identity.repo}/issues/${identity.number}`;
     try {
-      const issue = await this.api(issuePath);
+      const issue = await this.api(issuePath, options.signal);
       if (!isRecord(issue))
         throw new ObservationFailure(
           failure('unavailable', 'GitHub returned an unreadable issue.'),
@@ -149,6 +186,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
         issuePath,
         commentCount,
         options.commentsSince,
+        options.signal,
       );
       return {
         status: 'observed',
@@ -218,6 +256,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
     issuePath: string,
     count: number,
     since: string | undefined,
+    signal: AbortSignal | undefined,
   ): Promise<WorkItemObservedComment[] | undefined> {
     if (count === 0) return since === undefined ? undefined : [];
     const lastPage = Math.ceil(count / COMMENT_PAGE_SIZE);
@@ -228,6 +267,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
     for (const page of pages) {
       const listed = await this.api(
         `${issuePath}/comments?per_page=${COMMENT_PAGE_SIZE}&page=${page}`,
+        signal,
       );
       if (!Array.isArray(listed))
         throw new ObservationFailure(
@@ -261,7 +301,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
       .slice(-COMMENT_PAGE_SIZE);
   }
 
-  private async api(path: string): Promise<unknown> {
+  private async api(path: string, signal?: AbortSignal): Promise<unknown> {
     const { stdout } = await execGitContextCommand(
       this.command,
       [
@@ -275,6 +315,7 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
       {
         timeout: this.timeoutMs,
         maxBuffer: this.maxOutputBytes,
+        ...(signal ? { signal } : {}),
         encoding: 'utf8',
         windowsHide: true,
         env: {

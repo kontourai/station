@@ -199,7 +199,7 @@ export function installFakeGh(dir: string): string {
       '#!/bin/sh',
       `dir="\${FAKE_GH_DIR:-${dir}}"`,
       'printf \'%s|%s|%s|%s\\n\' "$(pwd -P)" "$GH_PROMPT_DISABLED" "$GH_HOST" "$*" >> "$dir/calls.log"',
-      'if [ -f "$dir/sleep" ]; then sleep 5; fi',
+      'if [ -f "$dir/sleep" ]; then echo $$ > "$dir/sleep.pid"; sleep 5; fi',
       'if [ -f "$dir/nologin" ]; then',
       "  echo 'To get started with GitHub CLI, please run:  gh auth login' >&2",
       "  echo 'Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.' >&2",

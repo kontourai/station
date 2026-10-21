@@ -50,7 +50,11 @@ import {
   type TaskBriefSnapshot,
 } from './task-brief.js';
 
-/** A tracker read longer than this is abandoned; dispatch never waits on it. */
+/**
+ * Dispatch and `get_task_brief` wait at most this long for the tracker read.
+ * Past it the read is aborted, which stops its gh process, and the brief says
+ * the item was not re-read; the dispatch goes ahead.
+ */
 export const TASK_BRIEF_OBSERVE_TIMEOUT_MS = 10_000;
 
 export interface TaskBriefSessionFactsRead {
@@ -276,14 +280,20 @@ export function createTaskBriefSource(
     // the Task's creation when none has (Start Task records its own read).
     const commentsSince = task.workItemObservedAt ?? task.createdAt;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = new AbortController();
     try {
       const result = await Promise.race([
-        deps.workItemObserver.observeWorkItem(ref, { commentsSince }),
+        deps.workItemObserver.observeWorkItem(ref, {
+          commentsSince,
+          signal: stop.signal,
+        }),
         new Promise<TaskBriefObservation>((resolve) => {
-          timer = setTimeout(
-            () => resolve({ status: 'not-read', reason: 'timed out' }),
-            deps.observeTimeoutMs ?? TASK_BRIEF_OBSERVE_TIMEOUT_MS,
-          );
+          timer = setTimeout(() => {
+            // Settle as timed out first, then stop the read itself, not
+            // only the wait for it (review F8).
+            resolve({ status: 'not-read', reason: 'timed out' });
+            stop.abort();
+          }, deps.observeTimeoutMs ?? TASK_BRIEF_OBSERVE_TIMEOUT_MS);
           timer.unref?.();
         }),
       ]);

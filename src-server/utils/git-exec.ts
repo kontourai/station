@@ -247,6 +247,8 @@ interface GroupRunOptions {
   /** Written to the child's stdin, which is then closed. Without it the
    * child's stdin is the null device. */
   input?: Buffer | string;
+  /** Aborting stops the process group, as the deadline does. */
+  signal?: AbortSignal;
 }
 
 type GroupRunError = Error & {
@@ -309,6 +311,10 @@ function runInProcessGroup(
       options.timeout && options.timeout > 0
         ? setTimeout(stop, options.timeout)
         : undefined;
+    const signal = options.signal;
+    if (signal?.aborted) stop();
+    else signal?.addEventListener('abort', stop, { once: true });
+    const unlisten = () => signal?.removeEventListener('abort', stop);
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout.push(chunk);
       stdoutBytes += chunk.length;
@@ -329,6 +335,7 @@ function runInProcessGroup(
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      unlisten();
       reject(error);
     });
     // The LEADER's exit is the command's outcome. A process it started that
@@ -348,6 +355,7 @@ function runInProcessGroup(
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      unlisten();
       const code = exited ? exited.code : closeCode;
       const signal = exited ? exited.signal : closeSignal;
       const out = Buffer.concat(stdout).toString('utf8');
@@ -882,7 +890,7 @@ export async function execGit(
 export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: Omit<GitRunOptions, 'cwd' | 'input'> = {},
+  opts: Omit<GitRunOptions, 'cwd' | 'input'> & { signal?: AbortSignal } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
   try {
@@ -890,6 +898,7 @@ export async function execGitContextCommand(
       cwd: neutral,
       timeout: opts.timeout,
       maxBuffer: opts.maxBuffer,
+      ...(opts.signal ? { signal: opts.signal } : {}),
       env: appendConfigPairs(
         hardenedGitEnv(opts.env),
         hardeningSettings({}, true),

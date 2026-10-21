@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type { TaskRecordWrite } from '@kontourai/station-contracts/task-memory';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -31,7 +32,10 @@ import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import type { WorkItemObserver } from '../../work-item-providers/github-work-item-observer.js';
 import { TASK_BRIEF_QUOTE_RULE } from '../task-brief.js';
-import { composeTaskBriefSource } from '../task-brief-source.js';
+import {
+  composeTaskBriefSource,
+  createTaskBriefSource,
+} from '../task-brief-source.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import { TaskGraphService } from '../task-graph-service.js';
 
@@ -369,6 +373,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     });
     expect(observe).toHaveBeenCalledWith('github:owner/repo#12', {
       commentsSince: task.createdAt,
+      signal: expect.any(AbortSignal),
     });
     // An unobserved read never advances the Task's "comments since" mark.
     expect(graph.readTaskView(task.id)!.workItemObservedAt).toBeUndefined();
@@ -452,6 +457,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     });
     expect(observe).toHaveBeenLastCalledWith(ref, {
       commentsSince: first.task.createdAt,
+      signal: expect.any(AbortSignal),
     });
     expect(graph.readTaskView(first.task.id)!.workItemObservedAt).toBe(
       observedAt,
@@ -476,6 +482,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     });
     expect(observe).toHaveBeenLastCalledWith(ref, {
       commentsSince: observedAt,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -592,4 +599,43 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
         .input,
     ).toBe('Hi.');
   });
+});
+
+test("the brief's tracker deadline aborts the read itself, so its gh process stops (review F8)", async () => {
+  let seen: AbortSignal | undefined;
+  const source = createTaskBriefSource({
+    readTask: () => null,
+    listTaskSessions: () => [],
+    readDocument: async () => ({ kind: 'available', revision: 'r', text: '' }),
+    readBinding: () => undefined,
+    observeTimeoutMs: 30,
+    workItemObserver: {
+      // A read that never answers unless it is told to stop.
+      observeWorkItem: (_ref, options) =>
+        new Promise((resolve) => {
+          seen = options?.signal;
+          options?.signal?.addEventListener('abort', () =>
+            resolve({ status: 'unavailable', reason: 'stopped' }),
+          );
+        }),
+    },
+  });
+  const { brief } = await source.forDispatch(
+    {
+      id: 'task-1',
+      projectId: 'p',
+      title: 'T',
+      description: '',
+      priority: 'normal',
+      status: 'ready',
+      createdBy: 'user',
+      createdAt: '2026-10-21T00:00:00.000Z',
+      updatedAt: '2026-10-21T00:00:00.000Z',
+      workItemRef: 'github:o/r#1',
+      workItemProvenance: 'project-board',
+    } as TaskRecord,
+    'session-1',
+  );
+  expect(seen?.aborted).toBe(true);
+  expect(brief.text).toContain('linked item not re-read: not-read (timed out)');
 });

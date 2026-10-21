@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { WORK_ITEM_OBSERVATION_LIMITS } from '@kontourai/station-contracts/work-item-provider';
 import { beforeEach, describe, expect, test } from 'vitest';
@@ -23,7 +23,12 @@ const fail = (endpoint: string, status: number, message: string) =>
 const calls = () => fakeGh.calls(dir);
 
 const observer = (
-  options: { timeoutMs?: number; maxOutputBytes?: number } = {},
+  options: {
+    timeoutMs?: number;
+    maxOutputBytes?: number;
+    cacheTtlMs?: number;
+    now?: () => Date;
+  } = {},
 ) =>
   new GitHubWorkItemObserver({
     command: gh,
@@ -147,6 +152,52 @@ describe.skipIf(process.platform === 'win32')('GitHubWorkItemObserver', () => {
       status: 'unavailable',
       reason: 'GitHub did not answer within 200 ms.',
     });
+  });
+
+  test("a caller's abort stops the gh process, not only the wait for it (review F8)", async () => {
+    writeFileSync(join(dir, 'sleep'), '');
+    const stop = new AbortController();
+    const started = Date.now();
+    const read = observer({ timeoutMs: 20_000 }).observeWorkItem(REF, {
+      signal: stop.signal,
+    });
+    const pidFile = join(dir, 'sleep.pid');
+    for (let i = 0; i < 200 && !existsSync(pidFile); i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    stop.abort();
+    const result = await read;
+    expect(result.status).toBe('unavailable');
+    // Well before the fake's five-second sleep, and the process is gone.
+    expect(Date.now() - started).toBeLessThan(4_000);
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  test('an observed answer is reused for 30 s per ref and commentsSince; a failure never is (review F8)', async () => {
+    answer(ISSUE, issue({ comments: 0 }));
+    let clock = Date.parse('2026-10-21T10:00:00.000Z');
+    const reader = observer({ now: () => new Date(clock) });
+    const first = await reader.observeWorkItem(REF);
+    expect(first.status).toBe('observed');
+    clock += 29_000;
+    expect(await reader.observeWorkItem(REF)).toEqual(first);
+    expect(calls()).toHaveLength(1);
+    // Another commentsSince is another read.
+    await reader.observeWorkItem(REF, {
+      commentsSince: '2026-10-20T00:00:00Z',
+    });
+    expect(calls()).toHaveLength(2);
+    // Pinned beside DEFAULT_CACHE_TTL_MS: at 30 s the answer is read again.
+    clock += 1_000;
+    await reader.observeWorkItem(REF);
+    expect(calls()).toHaveLength(3);
+    // A failure is not kept.
+    fail(ISSUE, 404, 'Not Found');
+    clock += 31_000;
+    expect((await reader.observeWorkItem(REF)).status).toBe('not-found');
+    expect((await reader.observeWorkItem(REF)).status).toBe('not-found');
+    expect(calls()).toHaveLength(5);
   });
 
   test('an answer over the output bound is refused, not cut', async () => {
