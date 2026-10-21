@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   ConversationHandoffConflictError,
   createConversationHandoffModule,
+  readConversationContextSeedPin,
 } from '../conversation-handoff-module.js';
 
 const handoff = {
@@ -19,6 +20,30 @@ const handoff = {
 };
 
 describe('ConversationHandoffModule', () => {
+  test.each([
+    'private-transcript-sentinel{',
+    JSON.stringify({ text: 'private-transcript-sentinel' }),
+    JSON.stringify({
+      text: 'private-transcript-sentinel',
+      seedDigest: 'a'.repeat(64),
+      sourceCutoffs: [],
+      omission: {
+        totalMessages: 0,
+        includedMessages: 0,
+        omittedMessages: 0,
+        newestShortened: false,
+        nonTextMessages: 0,
+      },
+    }),
+  ])(
+    'rejects corrupt stored context with a content-free diagnostic (%#)',
+    (json) => {
+      expect(() => readConversationContextSeedPin(json)).toThrow(
+        'The pinned conversation context is invalid.',
+      );
+    },
+  );
+
   test('returns an immutable marker with exact carry/reset disclosure', () => {
     const observe = vi.fn();
     const module = createConversationHandoffModule({
