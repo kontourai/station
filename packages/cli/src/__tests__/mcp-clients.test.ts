@@ -1,14 +1,13 @@
 import {
   existsSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
@@ -48,7 +47,7 @@ const lease = {
   },
 };
 const endpoint = '/api/orchestration/station-control/external-clients';
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 let stdout: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -64,12 +63,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const path of roots.splice(0))
-    rmSync(path, { recursive: true, force: true });
 });
 function outputPath() {
-  const root = mkdtempSync(join(tmpdir(), 'station-external-client-cli-'));
-  roots.push(root);
+  const root = makeTempDir('station-external-client-cli-');
   return join(root, 'client.json');
 }
 function args(path: string) {

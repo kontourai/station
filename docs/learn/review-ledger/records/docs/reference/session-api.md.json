@@ -120,7 +120,15 @@
 
     "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
 
-    "docs/guides/self-configuring-agent.md"
+    "docs/guides/self-configuring-agent.md",
+
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
+    "packages/cli/src/commands/mcp-clients.ts",
+
+    "src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts"
   ],
 
   "checks": [

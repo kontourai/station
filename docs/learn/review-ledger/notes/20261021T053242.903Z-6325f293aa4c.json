@@ -1,0 +1,7 @@
+{
+  "revision": "0faf37272b9e2155c7b7979610ad31b5bff8c24f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed the branch-local external-client setup contract against the operator routes, token registry, caller binding, route scope declarations and CLI. Explicit tools and TTL, recorded ownership/current Project, issuer currentness, header-only transport, independent revoke and historical Session semantics match source. The pending-body authority race has 22 passing owner tests and a retained two-failure injected-check bypass followed by exact restoration. The Codex launcher uses an explicit environment list, excluding inherited Station credentials and provider API keys. Live public onboarding, client mutation approval and provider qualification remain NOT_VERIFIED; unrelated session API claims are not reapproved.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts","src-server/routes/mcp/station-control-external-client-routes.ts","packages/contracts/src/station-control-external-client.ts","packages/cli/src/commands/mcp-clients.ts","src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts"]}
+  ]
+}
