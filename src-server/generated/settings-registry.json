@@ -54,7 +54,7 @@
     },
     {
       "id": "deployed-build",
-      "label": "Deployed Build",
+      "label": "Build details",
       "scope": "informational",
       "section": "system",
       "route": "/settings?view=system&highlight=deployed-build"
@@ -99,11 +99,38 @@
     {
       "id": "enable-developer-tools",
       "label": "Enable developer tools",
-      "help": "The Developer surface appears in your sidebar and command palette.",
+      "help": "Show Developer navigation and the opt-ins for experimental project tools.",
       "scope": "account",
       "section": "developer-tools",
       "route": "/settings?view=developer-tools&highlight=enable-developer-tools",
       "configKey": "developerToolsEnabled"
+    },
+    {
+      "id": "experimental-flow",
+      "label": "Flow delivery preview",
+      "help": "Opt in to experimental Flow delivery plans and setup tools in Coding.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-flow",
+      "configKey": "experimentalFlowEnabled"
+    },
+    {
+      "id": "experimental-readiness",
+      "label": "Veritas readiness preview",
+      "help": "Opt in to experimental Veritas readiness and setup tools in Coding.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-readiness",
+      "configKey": "experimentalReadinessEnabled"
+    },
+    {
+      "id": "experimental-trust",
+      "label": "Trust preview",
+      "help": "Opt in to experimental Trust panels and evidence-import settings.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-trust",
+      "configKey": "experimentalTrustEnabled"
     },
     {
       "id": "shared-answers",
@@ -135,7 +162,7 @@
     },
     {
       "id": "host-runtime",
-      "label": "Station host",
+      "label": "Host diagnostics",
       "scope": "informational",
       "section": "host-runtime",
       "route": "/settings?view=host-runtime&highlight=host-runtime"
@@ -214,7 +241,7 @@
     },
     {
       "id": "usage-telemetry",
-      "label": "Usage telemetry",
+      "label": "Usage sharing",
       "help": "Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.",
       "scope": "station",
       "section": "telemetry",
@@ -351,7 +378,7 @@
     {
       "id": "default-max-turns",
       "label": "Default max turns",
-      "help": "Station stops an agent run once it has taken this many steps.",
+      "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-max-turns",

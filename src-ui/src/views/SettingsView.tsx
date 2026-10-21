@@ -5,9 +5,12 @@ import type {
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { SectionNavigation } from '../components/SectionNavigation';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
+import { DeveloperFeatures } from './settings/DeveloperFeatures';
+import { SettingsScopeBadge } from './settings/SettingsScopeBadge';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -247,6 +250,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  const developerFeatures = useDeveloperFeatures();
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
@@ -383,37 +387,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     operatorSectionsSelectable || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
-      ? matchingSettingsRows(searchQuery, { isOperator }).map(
-          (entry) => entry.section,
-        )
+      ? matchingSettingsRows(searchQuery, {
+          isOperator,
+          developerToolsEnabled,
+          experimentalTrustEnabled: developerFeatures.trust,
+        }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
         : settingsSectionsForView(activeSection).filter(operatorMayView),
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
-  /**
-   * Whether a scope group has anything to show (#2182, review L7).
-   *
-   * Each `.settings__scope-group` opens with the storage rule its sections
-   * are saved under. Three of the four rendered that caption unconditionally,
-   * so a `?view=` naming one section — or a search matching rows in one
-   * group — printed "Saved to this Station", "Saved to this Station — what
-   * agents may do…" and "Saved to this device only" over nothing at all: a
-   * promise about a box with no contents, twice over.
-   *
-   * Derived from the catalog rather than listed, so a new section joins its
-   * group's visibility the day it is added. It can be a plain `some` over
-   * `sectionVisible` because that set already carries the search filter, the
-   * active `?view=`, and the operator gate on all three paths (search,
-   * overview, direct view — the last since review M-b).
-   *
-   * What it does NOT know is whether a selected section will render anything.
-   * It counts SELECTION, not content: a selected section whose component
-   * returns null (for instance while its own data loads) still makes its
-   * group visible, so the caption can precede it for that interval. That
-   * transient is accepted; this function claims only what it computes.
-   */
+  /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
       (section) => section.group === group && sectionVisible(section.id),
@@ -452,6 +437,18 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           formatSettingsMessage('targetUnavailable', locale),
         );
       }
+      return;
+    }
+    if (
+      (entry.conditional === 'developer' && !developerToolsEnabled) ||
+      (entry.conditional === 'experimental-trust' && !developerFeatures.trust)
+    ) {
+      setHighlightAnnouncement(
+        'This experimental tool is off. Enable it in Advanced → Developer tools.',
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState(window.history.state, '', url);
       return;
     }
     if (entry.conditional === 'mobile' && !isMobile) {
@@ -580,7 +577,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
       pulsedTarget?.classList.remove('settings__highlight-pulse');
     };
-  }, [highlightRequest, isMobile, isDesktop, locale]);
+  }, [
+    highlightRequest,
+    isMobile,
+    isDesktop,
+    locale,
+    developerToolsEnabled,
+    developerFeatures.trust,
+  ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
   // not about values: a just-invalidated query can still hold the pre-save
@@ -1096,12 +1100,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     <>
       <div className="settings">
         {highlightNotice}
-        {/* archive#1826: the three-card "This device / Station / Defaults"
-            legend is gone. It restated the taxonomy the grouped nav below
-            already shows, in implementation vocabulary, and treated
-            "Defaults" (a precedence rule) as a peer of two storage
-            locations. Each scope group's caption states the persistence
-            fact where it applies instead. */}
         {error && (
           <PageCallout
             calloutId="settings-save-error"
@@ -1185,9 +1183,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="This Station settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('system') && (
                   <>
@@ -1423,9 +1421,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Control settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('permissions') && (
                   <StationConfigSection
@@ -1479,11 +1477,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Personal and device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Personal choices follow your account on this Station. Device
-                  settings stay here.
-                </p>
-
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
                     {/* Mode stays one click away here (and keeps ⌘H on this
@@ -1547,12 +1540,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               for decoration. A speech bubble would have. */}
                 {sectionVisible('chat') && (
                   <Section icon="◇" title="Chat" id="section-chat">
-                    {/* This slider writes the DEVICE key only. The Station
-                  default it falls back to (`defaultChatFontSize`) has its own
-                  row, immediately below — the catalog entry used to
-                  claim both keys while nothing here wrote the Station one. */}
+                    {/* The personal override falls back to the saved Station default below. */}
                     <PageRow
                       {...settingsRow('chat-font-size')}
+                      resetHandledByControl
                       // `savedConfig`, not `config`, in all three places below: this
                       // row reports what this device falls back to, which is the
                       // STORED Station default. An unsaved draft of
@@ -1584,13 +1575,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
                           </span>
                           {chatFontSize != null && (
-                            <button
-                              type="button"
-                              className="settings__secondary-btn"
+                            <Button
+                              size="sm"
+                              variant="link"
+                              aria-label="Reset Chat font size to default"
+                              title="Use the Station’s default chat font size."
                               onClick={() => resetDeviceSetting('chatFontSize')}
                             >
-                              Use Station default
-                            </button>
+                              Reset
+                            </Button>
                           )}
                         </div>
                       }
@@ -1790,7 +1783,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette."
+                      description="Show Developer navigation and experimental feature opt-ins."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
@@ -1801,6 +1794,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         />
                       }
                     />
+                    <DeveloperFeatures />
                   </Section>
                 )}
               </section>
@@ -1817,9 +1811,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Knowledge settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
                 <KnowledgeStoreSection />
               </section>
             )}

@@ -20,7 +20,9 @@
 
     "src-ui/src/views/settings/settings-deep-link.ts",
 
-    "src-ui/src/hooks/useSectionNavigation.ts"
+    "src-ui/src/hooks/useSectionNavigation.ts",
+
+    "src-ui/src/hooks/useDeveloperFeatures.ts"
   ],
 
   "checks": [

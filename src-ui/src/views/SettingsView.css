@@ -215,46 +215,8 @@
 }
 
 /* ── Host runtime (de-emphasized host diagnostics) ── */
-.host-runtime__alert {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--error-border);
-  border-left: 3px solid var(--error-text);
-  border-radius: 0.5rem;
-  font-size: var(--k-text-sm);
-}
-.host-runtime__alert-title {
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.4rem;
-}
 .host-runtime__disclosure {
   font-size: var(--k-text-sm);
-}
-.host-runtime__summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.4rem 0;
-  list-style: revert;
-  user-select: none;
-}
-.host-runtime__summary-status {
-  font-size: var(--k-text-sm);
-  line-height: 1;
-  flex-shrink: 0;
-}
-.host-runtime__summary-status--ok {
-  color: var(--success-text);
-}
-.host-runtime__summary-status--warn {
-  color: var(--warning-text);
-}
-.host-runtime__summary-label {
-  font-weight: 600;
-  color: var(--text-primary);
 }
 .host-runtime__panel {
   margin-top: 0.5rem;
@@ -1037,13 +999,6 @@
 }
 
 /* ── Mobile touch targets ── */
-.settings__section .page-row__aside {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--k-space-2);
-  max-width: 50%;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .settings__section .page-row {
     flex-direction: column;
@@ -1051,12 +1006,48 @@
   }
   .settings__section .page-row__aside,
   .settings__section .page-row__control {
+    width: auto;
+    max-width: 100%;
+    align-self: flex-start;
+  }
+  .settings__section .page-row__aside:has(input, select, textarea),
+  .settings__section .page-row__control:has(input, select, textarea) {
     width: 100%;
   }
-
-  .settings__section .page-row__aside {
-    max-width: none;
-    justify-content: space-between;
+  .settings__section .page-row:has(.page-row__control [role="switch"]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    row-gap: var(--k-space-1);
+  }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__content {
+    display: contents;
+  }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__heading {
+    grid-column: 1 / -1;
+  }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__description {
+    grid-column: 1;
+    margin-top: 0;
+  }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__aside {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 44px;
+  }
+  .settings__section
+    .page-row:has(.page-row__control [role="switch"])
+    .page-row__control {
+    display: flex;
+    align-self: center;
   }
   .settings__range-row {
     flex-wrap: wrap;
@@ -1295,8 +1286,7 @@
   min-width: 0;
   max-width: 100%;
 }
-.settings__section .page-row__status,
-.settings__row-scope {
+.settings__section .page-row__status {
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
@@ -1370,4 +1360,68 @@
 }
 .settings__notification-sound input[type="checkbox"] {
   accent-color: var(--k-action);
+}
+
+.settings__section .page-row__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+.settings__section .page-row__heading .page-row__status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.settings__section .page-row__aside {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings__section .page-row__control > button:not([role="switch"]) {
+  width: auto;
+}
+
+.settings__scope-pill.badge {
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-1) var(--k-space-2);
+  font-size: var(--k-text-xs);
+  font-weight: 500;
+  line-height: var(--k-leading-normal);
+  white-space: nowrap;
+}
+.settings__scope-pill--account.badge {
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-action) 10%, var(--k-panel));
+  border-color: color-mix(in srgb, var(--k-action) 24%, var(--k-line));
+}
+.settings__scope-pill--device.badge {
+  color: var(--k-text-muted);
+  background: var(--k-panel);
+  border-color: var(--k-line);
+}
+.settings__scope-pill--station.badge {
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-brand) 10%, var(--k-panel));
+  border-color: color-mix(in srgb, var(--k-brand) 24%, var(--k-line));
+}
+.settings__row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.settings__experimental-features {
+  margin-top: var(--k-space-4);
+}
+.settings__experimental-features > h3 {
+  margin: 0;
+}
+
+.settings__row-controls > :not(button) {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
 }

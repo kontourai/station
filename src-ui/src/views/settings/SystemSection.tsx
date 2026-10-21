@@ -44,10 +44,7 @@ export function SystemSection({
    */
   hasUnsavedChanges?: boolean;
 }) {
-  const { data: systemStatus } = useSystemStatusForApiBaseQuery(
-    apiBase,
-    60_000,
-  );
+  const [buildDetailsOpen, setBuildDetailsOpen] = useState(false);
   const platformProfile = usePlatformProfile();
   // #2144 slice 6 item F. Local state and local hooks: unlike the Station
   // reset, this needs neither the draft config nor a server request, so
@@ -130,15 +127,20 @@ export function SystemSection({
         </span>
       </div>
 
-      <div {...settingsRow('deployed-build')} tabIndex={-1}>
+      <details
+        {...settingsRow('deployed-build')}
+        tabIndex={-1}
+        onToggle={(event) => setBuildDetailsOpen(event.currentTarget.open)}
+      >
+        <summary>Build details</summary>
         {platformProfile.isTauri ? (
           <InstalledAppBuildProvenance
             build={platformProfile.clientBuild}
             development={platformProfile.isDevBuild}
           />
         ) : null}
-        <BuildProvenance build={systemStatus?.build} />
-      </div>
+        {buildDetailsOpen && <ConnectedBuildDetails apiBase={apiBase} />}
+      </details>
 
       <div
         className="settings__field"
@@ -280,4 +282,9 @@ export function SystemSection({
       </div>
     </SettingsSection>
   );
+}
+
+function ConnectedBuildDetails({ apiBase }: { apiBase: string }) {
+  const { data } = useSystemStatusForApiBaseQuery(apiBase, 60_000);
+  return <BuildProvenance build={data?.build} />;
 }

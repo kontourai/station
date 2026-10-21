@@ -529,9 +529,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'Station stops an agent run once it has taken this many steps.',
+    help: 'Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.',
     description:
-      'How many steps an agent may take in one run before Station stops it. Raise it for long-running work; lower it to rein in runaway agents.',
+      'Fallback step limit for VoltAgent runs when the Agent has no maxSteps or guardrails.maxSteps override. Strands and native engines do not apply this setting.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10

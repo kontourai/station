@@ -2,6 +2,7 @@ import type {
   LocalAccountAction,
   LocalAccountView,
 } from '@kontourai/station-contracts/local-accounts';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   changeLocalAccount,
   getLocalAccounts,
@@ -14,6 +15,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function LocalAccountsSection() {
@@ -31,6 +33,7 @@ function AccountControls({
   authority: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 }) {
   const client = useQueryClient();
+  const { observation } = useAuthorityPersistence();
   const key = ['operator-accounts', authority.apiBase, authority.authorityKey];
   const query = useQuery({
     queryKey: key,
@@ -86,10 +89,19 @@ function AccountControls({
       {query.isPending ? (
         <SkeletonList count={2} />
       ) : query.isError ? (
-        <ErrorState
-          title="Account administration unavailable"
-          description={userFacingErrorMessage(query.error)}
-        />
+        query.error instanceof StationHttpError &&
+        query.error.status === 403 ? (
+          <p className="settings__field-hint" role="status">
+            {observation?.grant.kind === 'operator'
+              ? 'This operator connection could not be authorized. Reconnect to this Station and try again.'
+              : 'This connection does not have operator account-management access. A paired device can use Station without being allowed to manage sign-in. Open these controls from an operator session on the Station host.'}
+          </p>
+        ) : (
+          <ErrorState
+            title="Account administration unavailable"
+            description={userFacingErrorMessage(query.error)}
+          />
+        )
       ) : query.data.kind === 'none' ? (
         <p>Local accounts are not enabled on this Station.</p>
       ) : query.data.kind === 'external' ? (

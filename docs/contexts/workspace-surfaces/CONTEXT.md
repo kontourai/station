@@ -141,7 +141,10 @@ layout's navigation stack (`CodingWorkbench`, see
 occurrence gets `CodingChatPane`: the Chat position's effects and the Browser
 launcher. Files, diff, terminal, plan, readiness, trust and Flow run console
 are separate registered Pane renderers that a workspace can compose; they are
-not all children of one monolithic Coding pane.
+not all children of one monolithic Coding pane. Plan/Flow delivery, Veritas
+readiness and Trust UI are independent, default-off device previews under
+Settings → Advanced → Developer tools; Coding, files, diff, terminal and chat
+remain available without them. See [Settings](../../design/settings-architecture.md#experimental-project-tools).
 _Avoid_: IDE
 
 **File Preview pane**:

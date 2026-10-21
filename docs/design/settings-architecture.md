@@ -63,6 +63,44 @@ sound choices open under **Notification sounds** and still save and preview on
 this device. These presentation changes do not change settings persistence,
 permissions, or runtime defaults.
 
+Scope indicators use short **Account**, **This device**, and **Station** pills.
+Account and Station pills use quiet theme tints; the written label carries the
+meaning. Account means this person’s preferences on the connected Station, not
+cross-Station cloud sync. Scope details are available on hover. Reset actions
+sit with value controls, separate from the scope label; boolean preferences use
+only their on/off switch. Font size uses its own
+single reset in both account and device modes. The mixed personal/device
+group no longer repeats a paragraph explaining storage. Experimental switches
+have their own **Developer previews** heading and spacing within Developer tools.
+On phones, toggle labels and scope pills have the full row width; the description
+and compact switch sit beneath them.
+
+## Experimental project tools
+
+Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
+and Trust preview switches. All three default off on each device; enabling
+Developer tools alone enables none of them. Disabling it withdraws previews
+without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
+and chat remain available. Pane discovery omits disabled previews, and restored
+or direct Flow console renderers show an off state before reading Flow data.
+The Trust evidence setting also leaves Settings search and the command palette
+until Trust is enabled. These are UI gates, not authorization or backend feature
+switches; stored evidence and server configuration remain intact. Withdrawing a
+preview removes that pane while preserving unrelated panes, grouping and the
+selection of a retained pane.
+
+Host options retain their editable settings. **Host diagnostics** is a collapsed,
+on-demand troubleshooting disclosure; build provenance is also under **Build
+details**. Settings does not request the host-status report until one of those
+disclosures is opened. Setting source information opens in a responsive dialog
+rather than
+a viewport-dependent popover. It no longer occupies a separate mobile row.
+Closing it leaves the Settings location unchanged and returns focus to its trigger.
+
+The [launch triage](settings-launch-triage.md) records the complete Settings
+inventory, value questions, and remaining qualification work. It is not a claim
+that every listed option has passed a live workflow.
+
 ## Account preferences and device settings
 
 Personal display choices now belong to the authenticated person on this Station:
@@ -111,7 +149,7 @@ General → Your account. It copies only portable choices that remain unset unde
 the server's mutation lock. It keeps the old device record and never imports
 execution permissions, grants, hardware selection or geometry. Device reset
 excludes account preferences while an account is active. Per-setting resets
-use **Use default** to remove the account value and use the registry default,
+use **Reset** beside the control to remove the account value and use the registry default,
 including both fields of Answer delivery. Approval defaults offer **Use inherited
 default**, which resumes the Agent → Station → engine chain.
 

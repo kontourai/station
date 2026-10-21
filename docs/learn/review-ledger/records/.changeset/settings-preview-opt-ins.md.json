@@ -1,0 +1,21 @@
+{
+  "path": ".changeset/settings-preview-opt-ins.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Patch release note for optional default-off device preview fields and subset Coding evidence admission.",
+
+  "limits": "Describes public contract additions; does not claim npm publication or live feature qualification.",
+
+  "sources": [
+    "packages/contracts/src/device-settings.ts",
+
+    "packages/contracts/src/workspace-coding-evidence-composition.ts"
+  ],
+
+  "checks": [
+    "Reviewed the named optional fields/defaults and preserved canonical pane/grant checks; focused contract and mounted consumer tests are diagnostic."
+  ]
+}

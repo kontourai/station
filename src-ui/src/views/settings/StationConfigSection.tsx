@@ -1,3 +1,4 @@
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 /**
  * The registry-driven rows of the Station document, rendered under whichever
  * settings section owns each one.
@@ -217,9 +218,12 @@ export function StationConfigSection({
   telemetryNoticeError?: boolean;
   onTelemetryDetailedIntent?: (publisher?: 'kontour' | 'operator') => void;
 }) {
+  const developerFeatures = useDeveloperFeatures();
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
   ).map((key) => {
+    if (key === 'surfaceTrustFromVeritasEvidence' && !developerFeatures.trust)
+      return null;
     if (key === 'telemetryTier') return null;
     const definition = REGISTRY_BY_KEY.get(key);
     if (!definition) return null;

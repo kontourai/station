@@ -18,6 +18,7 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
 import {
   matchingSettingsRows,
   OPERATOR_ONLY_SECTION_IDS,
@@ -49,6 +50,7 @@ vi.mock('@kontourai/station-connect', () => ({
   describeDeviceGrant: () => 'full device access',
   requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
+const systemStatusRead = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -218,21 +220,24 @@ vi.mock('@kontourai/station-sdk', async () => {
       );
     },
     useInvalidateQuery: () => invalidateQuery,
-    useSystemStatusForApiBaseQuery: () => ({
-      data: {
-        build: {},
-        prerequisites: [
-          {
-            id: 'node',
-            name: 'Node',
-            description: 'ready',
-            status: 'installed',
-            category: 'required',
-          },
-        ],
-      },
-      isLoading: false,
-    }),
+    useSystemStatusForApiBaseQuery: () => {
+      systemStatusRead();
+      return {
+        data: {
+          build: {},
+          prerequisites: [
+            {
+              id: 'node',
+              name: 'Node',
+              description: 'ready',
+              status: 'installed',
+              category: 'required',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    },
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -543,6 +548,7 @@ describe('settings catalog completeness', () => {
     pluginVisibilityRefused = false;
     pluginVisibilityFailed = false;
     updateConfig.mockReset();
+    systemStatusRead.mockClear();
     exerciseModelSelection = false;
     modelConnections = [];
     updateAppLogLevel.mockReset();
@@ -735,7 +741,7 @@ describe('settings catalog completeness', () => {
       container.querySelector(
         '[aria-label="This Station settings"] .settings__scope-caption',
       )?.textContent,
-    ).toContain('Saved to this Station');
+    ).toContain('Station');
   });
 
   /**
@@ -791,7 +797,7 @@ describe('settings catalog completeness', () => {
     );
     const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
       (key) => idForKey.get(key as string) as string,
-    );
+    ).filter((id) => id !== 'surface-trust');
     expect(expected.filter(Boolean)).toHaveLength(expected.length);
     const domOrder = () =>
       [...container.querySelectorAll('[data-catalog-id]')]
@@ -808,11 +814,9 @@ describe('settings catalog completeness', () => {
    * promises over nothing. A caption is a claim about contents; with no
    * contents it is a claim about nothing.
    */
-  describe('scope-group captions', () => {
-    const CONTROL_CAPTION = 'Saved to this Station.';
-    const STATION_CAPTION = 'Saved to this Station.';
-    const DEVICE_CAPTION =
-      'Personal choices follow your account on this Station. Device settings stay here.';
+  describe('scope-group indicators', () => {
+    const CONTROL_CAPTION = 'Station';
+    const STATION_CAPTION = 'Station';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -832,14 +836,19 @@ describe('settings catalog completeness', () => {
       expect(captions(container)).toEqual([CONTROL_CAPTION]);
     });
 
-    test('a This device view shows only the device caption', async () => {
+    test('personal preferences show their scope beside the row instead of an explanatory caption', async () => {
       window.history.replaceState({}, '', '/settings?view=chat');
       const { container } = await renderSettings();
 
       await waitFor(() =>
         expect(container.querySelector('#section-chat')).toBeTruthy(),
       );
-      expect(captions(container)).toEqual([DEVICE_CAPTION]);
+      expect(captions(container)).toEqual([]);
+      expect(
+        within(container.querySelector('#section-chat')!).getAllByText(
+          'This device',
+        ).length,
+      ).toBeGreaterThan(0);
     });
 
     test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
@@ -847,7 +856,11 @@ describe('settings catalog completeness', () => {
       await waitFor(() =>
         expect(container.querySelector('#section-knowledge')).toBeTruthy(),
       );
-      expect(captions(container).length).toBeGreaterThanOrEqual(4);
+      expect(captions(container)).toEqual([
+        STATION_CAPTION,
+        CONTROL_CAPTION,
+        STATION_CAPTION,
+      ]);
     });
 
     /**
@@ -1745,14 +1758,14 @@ describe('settings catalog completeness', () => {
     ).toBeNull();
   });
 
-  test('the developer-tools row points to Customize', async () => {
+  test('the developer-tools row explains navigation and experimental opt-ins', async () => {
     window.history.replaceState({}, '', '/settings?view=developer-tools');
     const { container } = await renderSettings();
     expect(
       container.querySelector(
         '[data-catalog-id="enable-developer-tools"] .page-row__description',
       )?.textContent,
-    ).toContain('Customize');
+    ).toContain('experimental feature opt-ins');
   });
 
   test('opens General by default and switches topics without leaving Settings', async () => {
@@ -2025,6 +2038,22 @@ describe('settings catalog completeness', () => {
     }
   });
 
+  test('Advanced defers the host-status request until diagnostics or build details are opened', async () => {
+    window.history.replaceState({}, '', '/settings?view=advanced');
+    await renderSettings();
+    expect(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Build details', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(systemStatusRead).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    );
+    await waitFor(() => expect(systemStatusRead).toHaveBeenCalled());
+  });
+
   test('can reveal the persistent host-runtime status row', async () => {
     window.history.replaceState(
       {},
@@ -2112,19 +2141,50 @@ describe('settings catalog completeness', () => {
   });
 
   /**
-   * The Appearance slider writes a DEVICE value that then shadows the
-   * Station default for this browser alone. "Use Station default" is the
-   * only way back, and it is meaningless before a device value exists — so
-   * the row offers it only then.
+   * Clearing the personal override resumes the shared Station font default.
    */
-  describe('Use Station default', () => {
+  describe('Reset Chat font size to default', () => {
+    test('an account font override offers one reset action', async () => {
+      deviceChatFontSize = 18;
+      const { SettingsView } = await import('../views/SettingsView');
+      const view = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <AccountPreferencesContext.Provider
+            value={{
+              status: 'account',
+              saving: false,
+              waitingForConnection: false,
+              error: false,
+              conflict: false,
+              data: { schemaVersion: 1, values: { chatFontSize: 18 } },
+              save: vi.fn(),
+              retry: vi.fn(),
+            }}
+          >
+            <SettingsView onBack={vi.fn()} />
+          </AccountPreferencesContext.Provider>
+        </QueryClientProvider>,
+      );
+      const slider = await screen.findByRole('slider', {
+        name: 'Chat font size',
+      });
+      const row = slider.closest<HTMLElement>('[data-catalog-id]')!;
+      const resetActions = within(row).getAllByRole('button');
+      expect(resetActions).toHaveLength(1);
+      fireEvent.click(resetActions[0]!);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      view.unmount();
+    });
+
     test('is absent while this device follows the Station default', async () => {
       deviceChatFontSize = null;
       const { container } = await renderSettings();
 
       expect(container.querySelector('#chatFontSize')).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Use Station default' }),
+        screen.queryByRole('button', {
+          name: 'Reset Chat font size to default',
+        }),
       ).toBeNull();
     });
 
@@ -2133,7 +2193,7 @@ describe('settings catalog completeness', () => {
       await renderSettings();
 
       const button = screen.getByRole('button', {
-        name: 'Use Station default',
+        name: 'Reset Chat font size to default',
       });
       fireEvent.click(button);
 
@@ -3522,7 +3582,7 @@ describe('settings catalog completeness', () => {
       expect(updateProjectAsync).not.toHaveBeenCalled();
     });
 
-    test('an unsaved override makes the row’s own popover say so', async () => {
+    test('an unsaved override makes the row’s source explanation say so', async () => {
       // The whole path, once: SettingsView derives the pending map,
       // StationConfigSection routes it per key, registry-row hands it to the
       // status strip, and the lazily-loaded layer list withholds its "in
@@ -3537,6 +3597,9 @@ describe('settings catalog completeness', () => {
         defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
       };
       await renderSettings();
+      await waitFor(() =>
+        expect(document.activeElement?.id).toBe('section-overview'),
+      );
 
       selectAtlas();
       const workspace = screen.getByLabelText(
@@ -3549,12 +3612,21 @@ describe('settings catalog completeness', () => {
         { name: `Where ${WORKSPACE_ROW} comes from` },
       );
 
+      const closeSources = async () => {
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
+      };
+      const historyLength = window.history.length;
       // Saved state first: the project layer is claimed as in effect.
+      trigger.focus();
       fireEvent.click(trigger);
       expect(await screen.findByText('in effect')).toBeTruthy();
-      fireEvent.click(trigger);
+      expect(window.history.length).toBe(historyLength);
+      await closeSources();
 
       fireEvent.change(workspace, { target: { value: 'shared' } });
+      trigger.focus();
       fireEvent.click(trigger);
       expect(
         await screen.findByText(
@@ -3562,6 +3634,7 @@ describe('settings catalog completeness', () => {
         ),
       ).toBeTruthy();
       expect(screen.queryByText('in effect')).toBeNull();
+      await closeSources();
     });
   });
 
