@@ -3,23 +3,21 @@
  *
  * A failed first add leaves a saved connection whose engine never
  * registered. GET /acp/connections does not list it (it is not an installed
- * engine, station#1548), so the section lists it from its own read with the
- * repairs it needs, and never as an engine Station has.
+ * engine, station#1548); the Engines page lists it beside the engines and its
+ * page offers the repairs it needs, never the controls of an engine Station
+ * has.
  */
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import {
-  openOverflow,
-  overflowItems,
-} from '../../../__tests__/helpers/overflow-menu';
+import { openOverflow, overflowItems } from './helpers/overflow-menu';
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   remove: vi.fn(),
   update: vi.fn(),
-  refetchConnections: vi.fn(),
-  refetchUnregistered: vi.fn(),
+  startChat: vi.fn(),
 }));
 
 /** What GET /acp/connections/unregistered answers after two failed adds. */
@@ -53,31 +51,24 @@ const unregistered = [
   },
 ];
 
-vi.mock('../../../hooks/useACPConnections', () => ({
+vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({
     data: [],
     error: null,
     isError: false,
     isFetching: false,
-    isPending: false,
-    refetch: mocks.refetchConnections,
+    refetch: vi.fn(),
   }),
-  useUnregisteredACPConnections: () => ({
-    data: unregistered,
-    refetch: mocks.refetchUnregistered,
-  }),
-  useACPConnectionRegistry: () => ({
-    data: [
-      {
-        id: 'kiro',
-        name: 'Kiro CLI',
-        command: 'kiro-cli',
-        installed: false,
-        detected: true,
-      },
-    ],
-  }),
+  useACPConnectionRegistry: () => ({ data: [] }),
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
+}));
+
+vi.mock('../components/acp-connections/useStartChatWithEngine', () => ({
+  useStartChatWithEngine: () => ({
+    start: mocks.startChat,
+    pending: false,
+    notice: null,
+  }),
 }));
 
 vi.mock('@kontourai/station-sdk', async (importActual) => ({
@@ -94,76 +85,95 @@ vi.mock('@kontourai/station-sdk', async (importActual) => ({
   useInstallACPConnectionRegistryEntryMutation: () => ({
     mutateAsync: vi.fn(),
   }),
-  useReconnectACPConnectionMutation: () => ({ mutateAsync: vi.fn() }),
   useCheckACPConnectionMutation: () => ({ mutateAsync: mocks.check }),
   useUpdateACPConnectionMutation: () => ({ mutateAsync: mocks.update }),
 }));
 
-import { ACPConnectionsSection } from '../ACPConnectionsSection';
+import { NotConnectedEngineDetail } from '../views/NotConnectedEngineDetail';
 
 afterEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
 });
 
-function card(name: string) {
-  return screen
-    .getByRole('button', { name: `Open ${name} connection details` })
-    .closest('.acp-connection-card') as HTMLElement;
+/** The owner's half, as `AgentConnectionView` keeps it. */
+function Page({ index, custom }: { index: number; custom: boolean }) {
+  const [repairing, setRepairing] = useState<'recheck' | 'edit' | null>(null);
+  return (
+    <NotConnectedEngineDetail
+      engine={{ connection: unregistered[index], custom }}
+      repairing={repairing}
+      onRepairingChange={setRepairing}
+      onRemoved={vi.fn()}
+    />
+  );
 }
 
-describe('saved connections whose engine never registered', () => {
-  test('are listed as Not connected yet, not as engines Station has', () => {
-    render(<ACPConnectionsSection acpAgents={[]} />);
+describe('a saved engine that never connected', () => {
+  test('reads as Not connected yet with the reason, not as an engine Station has', () => {
+    render(<Page index={0} custom />);
 
-    for (const name of ['Stub Engine', 'Kiro CLI']) {
-      expect(
-        within(card(name)).getByRole('status', {
-          name: 'Readiness: Not connected yet',
-        }),
-      ).toBeTruthy();
-    }
-    expect(screen.queryByText('Add an engine to get started')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Stub Engine' })).toBeTruthy();
+    expect(screen.getByText('Not connected yet', { selector: 'strong' }));
+    expect(screen.getByText('spawn stub-acp ENOENT')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Check connection' }),
+    ).toBeNull();
   });
 
-  test('Retry check re-checks the saved connection', async () => {
-    mocks.check.mockResolvedValue({ id: 'stub', status: 'available' });
-    render(<ACPConnectionsSection acpAgents={[]} />);
+  test('Retry check re-checks the saved connection in place and shows its result', async () => {
+    mocks.check.mockResolvedValue({
+      ...unregistered[0],
+      status: 'unavailable',
+      lastError: { phase: 'spawn', message: 'still missing' },
+    });
+    render(<Page index={0} custom />);
 
-    fireEvent.click(
-      within(card('Stub Engine')).getByRole('button', { name: 'Retry check' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
 
     await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledWith('stub'));
-  });
-
-  test('a failed re-check rejects nothing and refreshes the list', async () => {
-    mocks.check.mockRejectedValue(new Error('Failed to check the engine'));
-    render(<ACPConnectionsSection acpAgents={[]} />);
-
-    fireEvent.click(
-      within(card('Stub Engine')).getByRole('button', { name: 'Retry check' }),
-    );
-
     await vi.waitFor(() =>
-      expect(mocks.refetchUnregistered).toHaveBeenCalled(),
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      ),
     );
+    expect(screen.getByRole('status').textContent).toContain('still missing');
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  test('a custom engine can be edited or removed; a built-in one only removed', async () => {
-    render(<ACPConnectionsSection acpAgents={[]} />);
+  test('a re-check that connects offers a chat with the engine', async () => {
+    mocks.check.mockResolvedValue({
+      ...unregistered[0],
+      status: 'available',
+      lastError: undefined,
+    });
+    render(<Page index={0} custom />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    const start = await screen.findByRole('button', {
+      name: 'Start a chat with Stub Engine',
+    });
+    fireEvent.click(start);
+
+    expect(mocks.startChat).toHaveBeenCalledWith('stub', 'Stub Engine');
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+  });
+
+  test('a custom engine can be edited or removed; a built-in one only checked or removed', async () => {
+    mocks.remove.mockResolvedValue(undefined);
+    const { unmount } = render(<Page index={1} custom={false} />);
+    expect(screen.queryByRole('button', { name: 'Edit setup' })).toBeNull();
     expect(overflowItems(openOverflow('Manage Kiro CLI'))).toEqual([
       { name: 'Remove', danger: true },
     ]);
-    fireEvent.keyDown(document.activeElement ?? document.body, {
-      key: 'Escape',
-    });
+    unmount();
 
-    expect(overflowItems(openOverflow('Manage Stub Engine'))).toEqual([
-      { name: 'Edit setup', danger: false },
-      { name: 'Remove', danger: true },
-    ]);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+    render(<Page index={0} custom />);
+    expect(screen.getByRole('button', { name: 'Edit setup' })).toBeTruthy();
+    fireEvent.click(
+      within(openOverflow('Manage Stub Engine')).getByRole('menuitem', {
+        name: 'Remove',
+      }),
+    );
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Remove',
@@ -179,18 +189,14 @@ describe('saved connections whose engine never registered', () => {
       status: 'available',
       lastError: undefined,
     });
-    render(<ACPConnectionsSection acpAgents={[]} />);
+    render(<Page index={0} custom />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Stub Engine' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
-
-    const dialog = screen.getByRole('dialog', { name: 'Edit engine' });
-    fireEvent.change(within(dialog).getByLabelText('Command'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    expect(screen.getByRole('heading', { name: 'Edit engine' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Command'), {
       target: { value: 'stub-acp-fixed' },
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Check engine' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await vi.waitFor(() =>
       expect(mocks.update).toHaveBeenCalledWith({
@@ -216,17 +222,13 @@ describe('saved connections whose engine never registered', () => {
       status: 'unavailable',
       lastError: { phase: 'spawn', message: 'spawn stub-acp ENOENT' },
     });
-    render(<ACPConnectionsSection acpAgents={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Stub Engine' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
-    const dialog = screen.getByRole('dialog', { name: 'Edit engine' });
+    render(<Page index={0} custom />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Check engine' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await vi.waitFor(() =>
-      expect(within(dialog).getByRole('status').textContent).toContain(
+      expect(screen.getByRole('status').textContent).toContain(
         'Setup required',
       ),
     );
@@ -234,9 +236,7 @@ describe('saved connections whose engine never registered', () => {
     expect(mocks.update).not.toHaveBeenCalled();
 
     // Retry check re-checks the saved engine too, not a re-sent update.
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Retry check' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledTimes(2));
     expect(mocks.update).not.toHaveBeenCalled();
   });
@@ -256,25 +256,19 @@ describe('saved connections whose engine never registered', () => {
       status: 'available',
       lastError: undefined,
     });
-    render(<ACPConnectionsSection acpAgents={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Stub Engine' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit setup' }));
-    const dialog = screen.getByRole('dialog', { name: 'Edit engine' });
-    fireEvent.change(within(dialog).getByLabelText('Command'), {
+    render(<Page index={0} custom />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    fireEvent.change(screen.getByLabelText('Command'), {
       target: { value: 'stub-acp-fixed' },
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Check engine' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
     await vi.waitFor(() =>
-      expect(within(dialog).getByRole('status').textContent).toContain(
+      expect(screen.getByRole('status').textContent).toContain(
         'Setup required',
       ),
     );
 
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Retry check' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
 
     await vi.waitFor(() => expect(mocks.check).toHaveBeenCalledWith('stub'));
     expect(mocks.update).toHaveBeenCalledTimes(1);

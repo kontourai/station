@@ -7,13 +7,12 @@ import type {
 import type { ACPConnectionDraft } from './types';
 
 export type ACPConnectionSetupStage =
-  | 'catalog'
   | 'custom'
   /**
    * CI-R8: a hub card reading "Cursor — Found, not connected — Connect this
    * provider" reads as informational, and one click used to create a
-   * persistent connection outright. A provider arriving from that card stops
-   * here first, so the durable write follows an explicit yes.
+   * persistent connection outright. Every catalogue choice now stops here
+   * first, so the durable write follows an explicit yes.
    */
   | 'confirm'
   | 'checking'
@@ -47,8 +46,6 @@ export type ACPConnectionSetupAttempt = 'add' | 'recheck' | 'edit';
 
 type SetupAction =
   | { type: 'custom' }
-  | { type: 'catalog' }
-  | { type: 'confirm'; entry: ACPConnectionRegistryEntry }
   | { type: 'advanced'; open: boolean }
   | { type: 'draft'; field: keyof ACPConnectionDraft; value: string }
   | {
@@ -94,16 +91,6 @@ function reduceACPConnectionSetup(
         ...state,
         stage: 'custom',
         selectedEntry: null,
-        error: null,
-        errorKind: null,
-      };
-    case 'catalog':
-      return { ...state, stage: 'catalog', error: null, errorKind: null };
-    case 'confirm':
-      return {
-        ...state,
-        stage: 'confirm',
-        selectedEntry: action.entry,
         error: null,
         errorKind: null,
       };
@@ -172,23 +159,20 @@ function draftFor(connection: ACPConnectionInfo): ACPConnectionDraft {
   };
 }
 
+/**
+ * A catalogue entry starts on its confirm step; no entry starts on the custom
+ * form (empty, or a saved connection's values for Edit setup).
+ */
 function initialState({
-  entries,
+  entry,
   editConnection,
 }: {
-  entries: ACPConnectionRegistryEntry[];
+  entry?: ACPConnectionRegistryEntry | null;
   editConnection?: ACPConnectionInfo;
 }): ACPConnectionSetupState {
-  if (editConnection) {
-    return {
-      ...initialState({ entries }),
-      stage: 'custom',
-      draft: draftFor(editConnection),
-    };
-  }
   return {
-    stage: entries.length === 0 ? ('custom' as const) : ('catalog' as const),
-    selectedEntry: null,
+    stage: entry && !editConnection ? 'confirm' : 'custom',
+    selectedEntry: (!editConnection && entry) || null,
     resultConnectionId: null,
     addedConnection: null,
     completedAt: null,
@@ -197,7 +181,7 @@ function initialState({
     error: null,
     errorKind: null,
     advancedOpen: false,
-    draft: EMPTY_DRAFT,
+    draft: editConnection ? draftFor(editConnection) : EMPTY_DRAFT,
   };
 }
 
@@ -372,7 +356,7 @@ function useRefreshRetry(
 }
 
 export function useACPConnectionSetup({
-  registryEntries,
+  entry,
   connections,
   queryError,
   queryFetching,
@@ -385,7 +369,8 @@ export function useACPConnectionSetup({
   onUpdate,
   onCheck,
 }: {
-  registryEntries: ACPConnectionRegistryEntry[];
+  /** The catalogue choice being connected; absent for a custom engine. */
+  entry?: ACPConnectionRegistryEntry | null;
   connections: ACPConnectionInfo[];
   queryError?: unknown;
   queryFetching?: boolean;
@@ -409,7 +394,7 @@ export function useACPConnectionSetup({
 }) {
   const [state, dispatch] = useReducer(
     reduceACPConnectionSetup,
-    { entries: registryEntries, editConnection },
+    { entry, editConnection },
     initialState,
   );
   // The listed connection is fresher when it exists. A first add that is not

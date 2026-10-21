@@ -56,6 +56,8 @@ const deleteProfileMutate = vi.fn();
 const resetMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
+/** What a successful save answers; null leaves the save unanswered. */
+let saveResult: unknown = null;
 const checkConnection = vi.fn();
 let modelConnections: unknown[] = [];
 /**
@@ -201,7 +203,41 @@ let acpBridgeConnections: unknown[] = [];
 const reconnectMutate = vi.fn();
 let reconnectMutationError: Error | null = null;
 
+const acpCheck = vi.fn();
+const acpInstall = vi.fn();
+const startChat = vi.fn();
+let unregisteredConnections: unknown[] = [];
+vi.mock('../components/acp-connections/useStartChatWithEngine', () => ({
+  useStartChatWithEngine: () => ({
+    start: startChat,
+    pending: false,
+    notice: null,
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
+  splitACPArgs: (value: string) => value.split(' ').filter(Boolean),
+  joinACPArgs: (args: string[]) => args.join(' '),
+  useCreateACPConnectionMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useInstallACPConnectionRegistryEntryMutation: () => ({
+    mutateAsync: acpInstall,
+    isPending: false,
+  }),
+  useUpdateACPConnectionMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useCheckACPConnectionMutation: () => ({
+    mutateAsync: acpCheck,
+    isPending: false,
+  }),
+  useDeleteACPConnectionMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useSkillsQuery: () => ({
     data: [
       { name: 'pizza-skill', description: 'Bakes a pizza' },
@@ -218,10 +254,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   useAgentConnectionQuery: () => ({ data: connectionQueryData }),
   useSaveAgentConnectionMutation: (options: {
     onError?: (error: Error) => void;
+    onSuccess?: (saved: unknown) => void;
   }) => ({
     mutate: (variables: unknown) => {
       save(variables);
       if (saveFailure) options.onError?.(saveFailure);
+      else if (saveResult) options.onSuccess?.(saveResult);
     },
     isPending: false,
     variables: undefined,
@@ -349,6 +387,8 @@ const recheckRegistry = vi.fn(
 vi.mock('../hooks/useACPConnections', () => ({
   recheckACPConnectionRegistry: () => recheckRegistry(),
   useACPConnections: () => ({ data: acpBridgeConnections }),
+  useUnregisteredACPConnections: () => ({ data: unregisteredConnections }),
+  useACPConnectionProbeStatuses: () => ({ data: undefined }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
     refetch: refetchRegistry,
@@ -414,10 +454,15 @@ describe('AgentConnectionView', () => {
     deleteProfileMutate.mockReset();
     importProfileMutate.mockReset();
     saveFailure = null;
+    saveResult = null;
     agentConnections = DEFAULT_AGENT_CONNECTIONS;
     agentCatalog = DEFAULT_AGENT_CATALOG;
     acpRegistryEntries = [];
     acpBridgeConnections = [];
+    unregisteredConnections = [];
+    acpCheck.mockReset();
+    acpInstall.mockReset();
+    startChat.mockReset();
     reconnectMutate.mockReset();
     reconnectMutationError = null;
     connectionQueryData = null;
@@ -624,11 +669,45 @@ describe('AgentConnectionView', () => {
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
+    // Choosing it opens its confirm step in place; nothing is saved yet.
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
+    expect(save).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('heading', { name: 'Add Claude Code' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
     expect(save).toHaveBeenCalledWith({
       connection: expect.objectContaining({ id: 'claude' }),
       isNew: false,
     });
+  });
+
+  // One journey: a native engine's confirm, Checking and result all stay in
+  // the Add pane, and Ready offers a chat with that engine.
+  test('a native engine added from the catalogue lands on its result in place and offers a chat', async () => {
+    saveResult = {
+      ...(DEFAULT_AGENT_CATALOG[0] as object),
+      status: 'ready',
+      prerequisites: [],
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    const onNavigate = vi.fn();
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
+
+    expect(screen.getByRole('status').textContent).toContain('Ready');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start a chat with Claude Code' }),
+    );
+    expect(startChat).toHaveBeenCalledWith('claude', 'Claude Code');
+    // No route jump on the way: the result is in the add pane.
+    expect(onNavigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
   });
 
   // A native row the catalogue labels "Setup required" still adds the engine
@@ -643,17 +722,18 @@ describe('AgentConnectionView', () => {
     );
 
     expect(screen.getByText('Setup required')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Add and set up Muse Code' }),
-    );
-    expect(save).toHaveBeenCalledWith({
-      connection: expect.objectContaining({ id: 'muse' }),
-      isNew: false,
-    });
     // The found, ready-to-connect row keeps its plain Add.
     expect(
       screen.getByRole('button', { name: 'Add Claude Code' }),
     ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add and set up Muse Code' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add Muse Code' }));
+    expect(save).toHaveBeenCalledWith({
+      connection: expect.objectContaining({ id: 'muse' }),
+      isNew: false,
+    });
   });
 
   // #592 slice 2, review M1: the catalog endpoint is not
@@ -697,7 +777,7 @@ describe('AgentConnectionView', () => {
   // is now this same list's second population, sharing its readiness
   // vocabulary and continuing into the existing ACP setup route rather than
   // a second catalogue.
-  test('the merged catalogue offers both populations and routes an ACP choice into its setup route', async () => {
+  test('the merged catalogue offers both populations and opens an ACP choice on its confirm step in place', async () => {
     acpRegistryEntries = [
       {
         id: 'kiro',
@@ -743,19 +823,60 @@ describe('AgentConnectionView', () => {
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
 
-    // #592 slice 2 review M3: bare "Connect"/"Set up" are ambiguous across
-    // rows — the accessible name carries the engine's own name too.
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-engine-new',
-      providerId: 'kiro',
-    });
+    // An engine that is not installed is installed first: its row offers
+    // the install hint and Check again, never a way to connect it.
+    expect(
+      screen.getByRole('button', { name: 'Check again for OpenCode' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Set up OpenCode' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Connect OpenCode' }),
+    ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set up OpenCode' }));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-engine-new',
-      providerId: 'opencode',
-    });
+    // #592 slice 2 review M3: bare "Connect" is ambiguous across rows — the
+    // accessible name carries the engine's own name too. Choosing it opens
+    // its confirm step in this pane: no route, no second catalogue.
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Saves a connection to Kiro CLI/)).toBeTruthy();
+    expect(screen.queryByText('Custom engine')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(acpInstall).toHaveBeenCalledWith('kiro');
+
+    // Leaving while it checks cancels nothing and returns to the list.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+  });
+
+  test('a deep link to one entry opens its confirm step in the same pane', async () => {
+    acpRegistryEntries = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro',
+        installed: false,
+        detected: true,
+      },
+    ];
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="kiro"
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
   });
 
   test('an undetected catalogue engine shows its host install recipe and re-checks on demand; a detected one does not', async () => {
@@ -923,7 +1044,7 @@ describe('AgentConnectionView', () => {
     ).toBeNull();
   });
 
-  test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', async () => {
+  test('the trailing custom entry opens the custom form in place', async () => {
     const onNavigate = vi.fn();
 
     await render(
@@ -934,10 +1055,9 @@ describe('AgentConnectionView', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Set up custom engine' }),
     );
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-engine-new',
-      providerId: 'custom',
-    });
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Custom engine' })).toBeTruthy();
+    expect(screen.getByLabelText('Command')).toBeTruthy();
   });
 
   test('reports Add catalog save failures in place', async () => {
@@ -947,8 +1067,12 @@ describe('AgentConnectionView', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
 
-    expect(screen.getByText('Could not add Claude Code')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Could not add Claude Code',
+    );
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test.each([
@@ -1185,7 +1309,8 @@ describe('AgentConnectionView', () => {
       capabilities: ['agent-runtime'],
       prerequisites: [],
       config: {},
-      setup: { state: 'ready', detected: true, configured: true },
+      // What `runtimeSetupState` writes for a saved engine that is not ready.
+      setup: { state: 'configured', detected: true, configured: true },
     };
 
     await render(
@@ -1194,6 +1319,88 @@ describe('AgentConnectionView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     expect(reconnectMutate).toHaveBeenCalledWith('opencode');
+  });
+
+  // A Ready engine has one check action. Retry check is the repair for a
+  // failed check; beside Check connection it was a second button for the
+  // same question.
+  test('a Ready command engine offers Check connection, not Retry check', async () => {
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    connectionQueryData = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Check connection' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
+
+  /** What GET /acp/connections/unregistered answers after a failed add. */
+  const failedAdd = {
+    id: 'lab',
+    name: 'Lab Engine',
+    command: '/opt/lab/engine',
+    args: [],
+    enabled: true,
+    status: 'unavailable',
+    modes: [],
+    sessionId: null,
+    mcpServers: [],
+    currentModel: null,
+    lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+  };
+
+  test('a saved engine that never connected is listed on the Engines page and opens its repairs', async () => {
+    unregisteredConnections = [failedAdd];
+    const { rerender } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Lab Engine')).toBeTruthy();
+    expect(screen.getByText('Not connected yet')).toBeTruthy();
+
+    rerender(
+      <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByRole('heading', { name: 'Lab Engine' })).toBeTruthy();
+    expect(screen.getByText('Timed out after 10000ms')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
+    // A custom engine (no catalogue entry names it) can be edited too.
+    expect(screen.getByRole('button', { name: 'Edit setup' })).toBeTruthy();
+  });
+
+  test('Add engine lists a saved engine that never connected, and Retry check runs in place', async () => {
+    unregisteredConnections = [failedAdd];
+    acpCheck.mockReturnValue(new Promise(() => {}));
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    const catalogue = screen.getByRole('list', { name: 'Engines to add' });
+    expect(within(catalogue).getByText('Lab Engine')).toBeTruthy();
+    expect(within(catalogue).getByText('Not connected yet')).toBeTruthy();
+    fireEvent.click(
+      within(catalogue).getByRole('button', { name: 'Retry check Lab Engine' }),
+    );
+
+    await waitFor(() => expect(acpCheck).toHaveBeenCalledWith('lab'));
+    expect(screen.getByRole('status').textContent).toContain(
+      'Checking Lab Engine again.',
+    );
   });
 
   test('an engine the ACP bridge does not manage offers no reconnect', async () => {
@@ -1233,7 +1440,8 @@ describe('AgentConnectionView', () => {
       capabilities: ['agent-runtime'],
       prerequisites: [],
       config: {},
-      setup: { state: 'ready', detected: true, configured: true },
+      // What `runtimeSetupState` writes for a saved engine that is not ready.
+      setup: { state: 'configured', detected: true, configured: true },
     };
 
     await render(

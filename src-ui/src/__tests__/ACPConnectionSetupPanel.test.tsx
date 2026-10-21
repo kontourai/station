@@ -9,9 +9,23 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
-import { ACPAddConnectionModal } from '../components/acp-connections/ACPAddConnectionModal';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
 import { FIRST_CONTACT_WAIT_MS } from '../components/acp-connections/useACPConnectionSetup';
+
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
+
+const registry = vi.hoisted(() => ({ entries: [] as unknown[] }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnectionRegistry: () => ({
+    data: registry.entries,
+    refetch: vi.fn(),
+    isFetching: false,
+  }),
+  recheckACPConnectionRegistry: vi.fn(),
+}));
 
 const kiro = {
   id: 'kiro',
@@ -63,52 +77,151 @@ const failedFirstAddResponse = {
   lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
 };
 
-describe('ACPAddConnectionModal', () => {
-  test('keeps every unconfigured choice behind the named accessible dialog', () => {
+describe('ACPConnectionSetupPanel', () => {
+  afterEach(() => {
+    registry.entries = [];
+  });
+
+  // CI-R8: every catalogue choice stops on a confirm step that says what
+  // connecting writes; nothing is installed or probed until it is accepted.
+  test('a catalogue choice opens on its confirm step and writes nothing yet', () => {
+    const onInstallRegistryEntry = vi.fn();
     render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro, { ...kiro, id: 'installed', installed: true }]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
-        onInstallRegistryEntry={vi.fn()}
-        onCancel={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('dialog', { name: 'Add engine' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /Kiro CLI/i })).toHaveLength(
-      1,
+    expect(
+      screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Saves a connection to Kiro CLI/)).toBeTruthy();
+    expect(onInstallRegistryEntry).not.toHaveBeenCalled();
+    expect(screen.queryByText(/\bACP\b/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('kiro');
+  });
+
+  // An engine the host lookup did not find cannot be connected yet: the step
+  // offers how to install it, and Connect once a re-check finds it.
+  test('a not-installed choice offers its install command, not Connect, until a re-check finds it', () => {
+    const missing = {
+      ...kiro,
+      detected: false,
+      hostInstall: { command: 'npm i -g kiro-cli' },
+    };
+    registry.entries = [missing];
+    const view = render(
+      <ACPConnectionSetupPanel
+        entry={missing}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/is not installed on the computer/)).toBeTruthy();
+    expect(screen.getByText('npm i -g kiro-cli')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Check again for Kiro CLI' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Connect Kiro CLI' }),
+    ).toBeNull();
+
+    // The live lookup now finds it.
+    registry.entries = [{ ...missing, detected: true }];
+    view.rerender(
+      <ACPConnectionSetupPanel
+        entry={missing}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi.fn()}
+        onDone={vi.fn()}
+      />,
     );
     expect(
-      screen.getByText(
-        'Found on the computer Station runs on — not yet connected.',
-      ),
+      screen.getByRole('button', { name: 'Connect Kiro CLI' }),
     ).toBeTruthy();
-    expect(screen.queryByText(/\bACP\b/i)).toBeNull();
+    expect(screen.queryByText('npm i -g kiro-cli')).toBeNull();
+  });
+
+  test('a Ready result offers a chat with the engine, and Done', async () => {
+    const onStartChat = vi.fn();
+    const onDone = vi.fn();
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi
+          .fn()
+          .mockResolvedValue({
+            ...failedFirstAddResponse,
+            status: 'available',
+            lastError: undefined,
+          })}
+        onDone={onDone}
+        onStartChat={onStartChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start a chat with Kiro CLI' }),
+    );
+    expect(onStartChat).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'kiro', status: 'available' }),
+    );
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test('a result that is not Ready offers no chat', async () => {
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi
+          .fn()
+          .mockResolvedValue(failedFirstAddResponse)}
+        onDone={vi.fn()}
+        onStartChat={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    await screen.findByRole('button', { name: 'Retry check' });
+    expect(screen.queryByRole('button', { name: /Start a chat/ })).toBeNull();
   });
 
   test('shows Checking until the refreshed connection result reports Ready', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     expect(screen.getByRole('status').textContent).toContain('Checking');
     expect(onInstallRegistryEntry).toHaveBeenCalledWith('kiro');
 
     rerender(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[connection('available')]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -121,22 +234,22 @@ describe('ACPAddConnectionModal', () => {
   test('renders a finite non-ready query result and never upgrades it to Ready', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     rerender(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[connection('unavailable')]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -146,9 +259,7 @@ describe('ACPAddConnectionModal', () => {
       );
     });
     expect(screen.queryByText('Ready')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Choose another engine' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
   });
 
   // CI-R8 — the result panel said only "This provider needs more setup before
@@ -157,18 +268,18 @@ describe('ACPAddConnectionModal', () => {
   test('a non-ready result names the observed failure and the action that fixes it', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     rerender(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[
           {
             ...connection('unavailable'),
@@ -182,7 +293,7 @@ describe('ACPAddConnectionModal', () => {
         ]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -206,18 +317,18 @@ describe('ACPAddConnectionModal', () => {
   test('a post-spawn failure points at the provider, not at installing it', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     rerender(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[
           {
             ...connection('unavailable'),
@@ -229,7 +340,7 @@ describe('ACPAddConnectionModal', () => {
         ]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -248,18 +359,18 @@ describe('ACPAddConnectionModal', () => {
   test('a ready result carries no failure line', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     rerender(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[
           {
             ...connection('available'),
@@ -268,7 +379,7 @@ describe('ACPAddConnectionModal', () => {
         ]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -287,16 +398,16 @@ describe('ACPAddConnectionModal', () => {
       .mockResolvedValueOnce(failedFirstAddResponse)
       .mockResolvedValueOnce({ ...connected, status: 'available' });
     render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[]}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     await waitFor(() => {
       expect(screen.getByRole('status').textContent).toContain(
         'Setup required',
@@ -306,9 +417,7 @@ describe('ACPAddConnectionModal', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'Timed out after 10000ms',
     );
-    expect(
-      screen.getByRole('button', { name: 'Choose another engine' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     await waitFor(() => {
@@ -328,11 +437,10 @@ describe('ACPAddConnectionModal', () => {
       lastError: { phase: 'spawn', message: 'spawn gemini ENOENT' },
     });
     render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
+      <ACPConnectionSetupPanel
         connections={[]}
         onAdd={onAdd}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -359,7 +467,7 @@ describe('ACPAddConnectionModal', () => {
 
   // A first add whose request-budget probe timed out on a never-connected
   // engine answers `probing` (acp-first-contact.routes.test.ts): the cold
-  // start continues on the server, and the dialog follows it.
+  // start continues on the server, and the setup follows it.
   describe('a first start that continues in the background', () => {
     const probingResponse = {
       ...failedFirstAddResponse,
@@ -368,28 +476,28 @@ describe('ACPAddConnectionModal', () => {
     };
 
     function renderProbing(
-      props: Partial<Parameters<typeof ACPAddConnectionModal>[0]> = {},
+      props: Partial<Parameters<typeof ACPConnectionSetupPanel>[0]> = {},
     ) {
       const onFirstContactPendingChange = vi.fn();
       const onRefreshConnections = vi.fn();
       const base = {
-        registryEntries: [kiro],
+        entry: kiro,
         connections: [] as ReturnType<typeof connection>[],
         onAdd: vi.fn(),
         onInstallRegistryEntry: vi.fn().mockResolvedValue(probingResponse),
         onRefreshConnections,
         onFirstContactPendingChange,
-        onCancel: vi.fn(),
+        onDone: vi.fn(),
       };
-      const view = render(<ACPAddConnectionModal {...base} {...props} />);
+      const view = render(<ACPConnectionSetupPanel {...base} {...props} />);
       const rerender = (next: Partial<typeof base> & Record<string, unknown>) =>
-        view.rerender(<ACPAddConnectionModal {...base} {...next} />);
+        view.rerender(<ACPConnectionSetupPanel {...base} {...next} />);
       return { rerender, onFirstContactPendingChange, onRefreshConnections };
     }
 
     test('stays on Checking with first-start copy, then lands on Setup required from the polled status', async () => {
       const { rerender, onFirstContactPendingChange } = renderProbing();
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
 
       await waitFor(() =>
         expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(true),
@@ -423,12 +531,12 @@ describe('ACPAddConnectionModal', () => {
       expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
     });
 
-    // The dialog is not a trap while a first start runs: it can be closed,
+    // The setup is not a trap while a first start runs: it can be closed,
     // and saying what happens next is the action's own label.
     test('a first start can be left to finish in the background', async () => {
-      const onCancel = vi.fn();
-      renderProbing({ onCancel });
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      const onDone = vi.fn();
+      renderProbing({ onDone });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toContain('first time'),
       );
@@ -436,24 +544,24 @@ describe('ACPAddConnectionModal', () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Keep checking in background' }),
       );
-      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledTimes(1);
     });
 
     test('the short check before an answer can be closed too', async () => {
-      const onCancel = vi.fn();
+      const onDone = vi.fn();
       render(
-        <ACPAddConnectionModal
-          registryEntries={[kiro]}
+        <ACPConnectionSetupPanel
+          entry={kiro}
           connections={[]}
           onAdd={vi.fn()}
           onInstallRegistryEntry={() => new Promise(() => {})}
-          onCancel={onCancel}
+          onDone={onDone}
         />,
       );
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       expect(screen.getByRole('status').textContent).toContain('Checking');
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledTimes(1);
     });
 
     // Retry check after a Setup required result: the section still holds the
@@ -470,7 +578,7 @@ describe('ACPAddConnectionModal', () => {
           },
         ],
       });
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toContain('first time'),
       );
@@ -497,7 +605,7 @@ describe('ACPAddConnectionModal', () => {
 
     test('a connected first start waits for the registered engine, then lands on Ready', async () => {
       const { rerender, onRefreshConnections } = renderProbing();
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toContain('first start'),
       );
@@ -523,7 +631,9 @@ describe('ACPAddConnectionModal', () => {
       vi.useFakeTimers();
       try {
         renderProbing();
-        fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Connect Kiro CLI' }),
+        );
         await vi.waitFor(() =>
           expect(screen.getByRole('status').textContent).toContain(
             'first start',
@@ -551,26 +661,24 @@ describe('ACPAddConnectionModal', () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const onRefreshConnections = vi.fn().mockResolvedValue(undefined);
     render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connectionQueryError={new Error('Connection refresh failed')}
         onAdd={vi.fn()}
         onInstallRegistryEntry={onInstallRegistryEntry}
         onRefreshConnections={onRefreshConnections}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain(
         'Could not refresh this engine’s status.',
       );
     });
     expect(screen.queryByText('Checking')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Choose another engine' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry refresh' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
 
@@ -580,16 +688,8 @@ describe('ACPAddConnectionModal', () => {
 
   test('keeps custom setup simple until Advanced and derives the draft id', async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
-        onAdd={onAdd}
-        onInstallRegistryEntry={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Custom engine/i }));
     expect(screen.getByText('Advanced').parentElement).not.toHaveProperty(
       'open',
       true,
@@ -638,13 +738,13 @@ describe('ACPAddConnectionModal', () => {
     });
     const onAdd = vi.fn();
     render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
+      <ACPConnectionSetupPanel
+        entry={kiro}
         connections={[]}
         editConnection={saved}
         onAdd={onAdd}
         onUpdate={onUpdate}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
 
@@ -683,15 +783,15 @@ describe('ACPAddConnectionModal', () => {
         .mockResolvedValueOnce(failedFirstAddResponse)
         .mockReturnValueOnce(new Promise(() => {}));
       render(
-        <ACPAddConnectionModal
-          registryEntries={[kiro]}
+        <ACPConnectionSetupPanel
+          entry={kiro}
           connections={[]}
           onAdd={vi.fn()}
           onInstallRegistryEntry={onInstallRegistryEntry}
-          onCancel={vi.fn()}
+          onDone={vi.fn()}
         />,
       );
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       fireEvent.click(
         await screen.findByRole('button', { name: 'Retry check' }),
       );
@@ -714,15 +814,15 @@ describe('ACPAddConnectionModal', () => {
           lastError: undefined,
         });
       render(
-        <ACPAddConnectionModal
-          registryEntries={[kiro]}
+        <ACPConnectionSetupPanel
+          entry={kiro}
           connections={[]}
           onAdd={vi.fn()}
           onInstallRegistryEntry={onInstallRegistryEntry}
-          onCancel={vi.fn()}
+          onDone={vi.fn()}
         />,
       );
-      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
       fireEvent.click(
         await screen.findByRole('button', { name: 'Retry check' }),
       );
@@ -739,8 +839,8 @@ describe('ACPAddConnectionModal', () => {
 
     test('Edit setup speaks of changing and saving, not choosing or adding', async () => {
       render(
-        <ACPAddConnectionModal
-          registryEntries={[kiro]}
+        <ACPConnectionSetupPanel
+          entry={kiro}
           connections={[]}
           editConnection={{
             ...failedFirstAddResponse,
@@ -750,7 +850,7 @@ describe('ACPAddConnectionModal', () => {
           }}
           onAdd={vi.fn()}
           onUpdate={() => new Promise(() => {})}
-          onCancel={vi.fn()}
+          onDone={vi.fn()}
         />,
       );
       expect(
@@ -772,8 +872,7 @@ describe('ACPAddConnectionModal', () => {
   // so saving the form unchanged sends the same arguments back.
   test('Edit setup quotes a saved argument that contains a space', () => {
     render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
+      <ACPConnectionSetupPanel
         connections={[]}
         editConnection={{
           ...failedFirstAddResponse,
@@ -784,7 +883,7 @@ describe('ACPAddConnectionModal', () => {
         }}
         onAdd={vi.fn()}
         onUpdate={vi.fn()}
-        onCancel={vi.fn()}
+        onDone={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByText('Advanced'));
@@ -794,13 +893,7 @@ describe('ACPAddConnectionModal', () => {
   // `node /tmp/x.mjs` typed into Command is a program and its argument; the
   // engine would be reported "not installed" under that whole name.
   test('a command with arguments in it says where arguments go', () => {
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
-        onAdd={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
+    render(<ACPConnectionSetupPanel onAdd={vi.fn()} onDone={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Command'), {
       target: { value: 'node /tmp/x.mjs' },
     });
@@ -817,23 +910,12 @@ describe('ACPAddConnectionModal', () => {
     expect(screen.queryByText(/Put arguments in Advanced/)).toBeNull();
   });
 
-  test('focuses the first custom field and contains Tab at the shared dialog boundary', () => {
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
-        onAdd={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-
-    const name = screen.getByLabelText('Name');
-    const cancel = screen.getByRole('button', { name: 'Cancel' });
-    expect(document.activeElement).toBe(name);
-
-    cancel.focus();
-    fireEvent.keyDown(cancel, { key: 'Tab' });
+  // The choice that opened the setup leaves the page, so focus moves to the
+  // setup rather than dropping to the document.
+  test('takes focus when it opens', () => {
+    render(<ACPConnectionSetupPanel onAdd={vi.fn()} onDone={vi.fn()} />);
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Close add engine' }),
+      screen.getByRole('region', { name: 'Engine setup' }),
     );
   });
 
@@ -842,13 +924,7 @@ describe('ACPAddConnectionModal', () => {
       .fn()
       .mockRejectedValueOnce(new Error('Command could not start'))
       .mockResolvedValueOnce(undefined);
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
-        onAdd={onAdd}
-        onCancel={vi.fn()}
-      />,
-    );
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Gemini CLI' },
@@ -869,23 +945,13 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('status').textContent).toContain('Checking');
-
-    // A successful retry waits for a result from the connection query. Start
-    // over to prove the same safe draft also survives an explicit edit.
-    fireEvent.click(screen.getByRole('button', { name: 'Close add engine' }));
   });
 
   test('preserves the custom draft when a mutation error is edited', async () => {
     const onAdd = vi
       .fn()
       .mockRejectedValueOnce(new Error('Command could not start'));
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[]}
-        onAdd={onAdd}
-        onCancel={vi.fn()}
-      />,
-    );
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Gemini CLI' },
@@ -899,23 +965,5 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
     expect(screen.getByDisplayValue('Gemini CLI')).toBeTruthy();
     expect(screen.getByDisplayValue('gemini')).toBeTruthy();
-  });
-
-  test('uses the shared dialog lifecycle for Escape and backdrop dismissal', () => {
-    const onCancel = vi.fn();
-    render(
-      <ACPAddConnectionModal
-        registryEntries={[kiro]}
-        onAdd={vi.fn()}
-        onInstallRegistryEntry={vi.fn()}
-        onCancel={onCancel}
-      />,
-    );
-
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    fireEvent.pointerDown(
-      document.querySelector<HTMLElement>('.responsive-surface-overlay')!,
-    );
-    expect(onCancel).toHaveBeenCalledTimes(2);
   });
 });

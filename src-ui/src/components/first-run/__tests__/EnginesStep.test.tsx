@@ -58,8 +58,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => devicePresentation,
 }));
+const refetchStatus = vi.fn();
+const recheck = vi.fn();
 vi.mock('../../../hooks/useSystemStatus', () => ({
-  useSystemStatus: () => statusState,
+  useSystemStatus: () => ({ ...statusState, refetch: refetchStatus }),
+}));
+vi.mock('../../../hooks/useACPConnections', () => ({
+  recheckACPConnectionRegistry: () => recheck(),
 }));
 
 import {
@@ -263,7 +268,7 @@ describe('the checklist', () => {
     ).toBeNull();
   });
 
-  test('an uninstalled catalogue engine is listed under "also works with" with how to install it', () => {
+  test('an uninstalled catalogue engine is listed under "also works with" with how to install it', async () => {
     // The exact row `/api/system/status` writes for a catalogue engine whose
     // command the host lookup did not find.
     const GOOSE = {
@@ -291,10 +296,18 @@ describe('the checklist', () => {
     expect(
       within(hint).getByRole('link', { name: 'Goose install guide' }),
     ).toBeTruthy();
-    // First run cannot re-run the host lookup on demand, so it offers none.
-    expect(
-      within(hint).queryByRole('button', { name: /Check again/ }),
-    ).toBeNull();
+    // Installed while the chapter is open, it can be found without leaving:
+    // Check again re-reads the host's PATH, then the engine list.
+    const order: string[] = [];
+    recheck.mockImplementationOnce(async () => {
+      order.push('recheck');
+      return { status: 'rechecked', entries: [] };
+    });
+    refetchStatus.mockImplementationOnce(() => order.push('refetch'));
+    fireEvent.click(
+      within(hint).getByRole('button', { name: 'Check again for Goose' }),
+    );
+    await waitFor(() => expect(order).toEqual(['recheck', 'refetch']));
     // Nothing to connect: confirming creates nothing for it.
     fireEvent.click(screen.getByRole('button', { name: /Set up|Continue/ }));
     expect(connectAndMaterializeEngine).not.toHaveBeenCalled();
@@ -302,6 +315,28 @@ describe('the checklist', () => {
       'goose',
       expect.anything(),
     );
+  });
+
+  // With nothing to pick, the install hints are the way forward, so they are
+  // not folded behind a disclosure.
+  test('opens the other engines when none is installed', () => {
+    renderChapter([OPENCODE]);
+    expect(
+      screen
+        .getByText('Station also works with')
+        .closest('details')
+        ?.hasAttribute('open'),
+    ).toBe(true);
+  });
+
+  test('keeps the other engines folded beside an installed one', () => {
+    renderChapter([CODEX, OPENCODE]);
+    expect(
+      screen
+        .getByText('Station also works with')
+        .closest('details')
+        ?.hasAttribute('open'),
+    ).toBe(false);
   });
 
   test('says nothing about other engines when there are none', () => {
