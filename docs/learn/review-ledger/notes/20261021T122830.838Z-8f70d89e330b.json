@@ -1,0 +1,7 @@
+{
+  "revision": "f465de4c8e5a0d61cb04c76fba88b526778986f5",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed 9df426d7 preparation caller, synchronous CLI finalizer, ConfigLoader and AgentService owner fences and runtime composition. Recorded implementer-reported 496-test and mutation evidence separately from pending independent R3 review. Preserved native guarantees, atomic custody, publication and full group acceptance limits.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
