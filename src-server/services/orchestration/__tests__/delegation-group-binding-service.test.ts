@@ -52,14 +52,22 @@ async function reserve() {
 
 test('real physical restriction refuses before model resolution with durable launch intent', async () => {
   const input = await reserve();
-  const currentStates: string[] = [];
+  const authorizations: {
+    state: string;
+    revision: number;
+    required: boolean;
+  }[] = [];
   const service = new DelegationGroupBindingService(store, {
     async assertCurrent(record) {
-      currentStates.push(record.state);
-      if (record.state === 'launch-intent') {
-        expect(currentBoundedApiTurnCompanion()).toBeDefined();
+      const companion = currentBoundedApiTurnCompanion();
+      authorizations.push({
+        state: record.state,
+        revision: record.revision,
+        required: companion !== undefined,
+      });
+      if (companion) {
         await Promise.resolve();
-        expect(currentBoundedApiTurnCompanion()).toBeDefined();
+        expect(currentBoundedApiTurnCompanion()).toBe(companion);
         expect(
           await new FileDelegationGroupBindingStore(dir).findTurn(
             binding.scope,
@@ -75,7 +83,10 @@ test('real physical restriction refuses before model resolution with durable lau
     code: 'bounded_api_execution_unavailable',
     surface: 'delegation-group-binding',
   });
-  expect(currentStates).toEqual(['reserved', 'launch-intent']);
+  expect(authorizations).toEqual([
+    { state: 'reserved', revision: 1, required: false },
+    { state: 'launch-intent', revision: 2, required: true },
+  ]);
   expect(resolveModel).not.toHaveBeenCalled();
   expect(currentBoundedApiTurnCompanion()).toBeUndefined();
   expect(() =>
@@ -84,6 +95,14 @@ test('real physical restriction refuses before model resolution with durable lau
   await expect(service.execute(input, resolveModel)).rejects.toThrow(
     'revision_conflict',
   );
+  expect(authorizations).toEqual([
+    { state: 'reserved', revision: 1, required: false },
+    { state: 'launch-intent', revision: 2, required: true },
+    { state: 'launch-intent', revision: 2, required: false },
+  ]);
+  expect(
+    await store.findTurn(binding.scope, 'session', 'client-turn'),
+  ).toMatchObject({ state: 'launch-intent', revision: 2 });
   expect(resolveModel).not.toHaveBeenCalled();
 });
 
