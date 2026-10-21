@@ -338,4 +338,102 @@ describe('first-contact continuation of a cold engine add', () => {
       { timeout: 5_000 },
     );
   });
+
+  // A failed first add is saved but not registered, so GET /connections
+  // (the installed projection, station#1548) does not list it. It still
+  // needs a handle: its own read, a re-check that registers on success, and
+  // removal.
+  describe('saved connections that never registered', () => {
+    const custom = { id: 'stub', name: 'Stub Engine', command: 'stub-acp' };
+    const create = (app: Hono) =>
+      app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(custom),
+      });
+
+    test('are listed on their own read, never as installed', async () => {
+      const { script, createProbe } = scriptedProbes();
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      const { ctx } = await createContext(createProbe);
+      const app = asOperator(createACPRoutes(ctx));
+      await create(app);
+
+      expect((await json(await app.request('/connections'))).data).toEqual([]);
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toMatchObject([
+        {
+          id: 'stub',
+          name: 'Stub Engine',
+          command: 'stub-acp',
+          status: 'unavailable',
+          lastError: { message: 'spawn stub-acp ENOENT' },
+        },
+      ]);
+    });
+
+    test('a re-check that connects registers the engine and its Agent', async () => {
+      const { script, createProbe } = scriptedProbes();
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      script.request.push({ ok: true });
+      const { ctx, configLoader } = await createContext(createProbe);
+      const app = asOperator(createACPRoutes(ctx));
+      await create(app);
+
+      const body = await json(
+        await app.request('/connections/stub/check', { method: 'POST' }),
+      );
+
+      expect(body).toMatchObject({
+        success: true,
+        data: { id: 'stub', status: 'available' },
+      });
+      expect(await registered(configLoader)).toEqual(['stub']);
+      expect(await configLoader.agentExists('stub')).toBe(true);
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toEqual([]);
+    });
+
+    test('a re-check works after a restart, when nothing is probing it', async () => {
+      const first = scriptedProbes();
+      first.script.request.push({
+        ok: false,
+        message: 'spawn stub-acp ENOENT',
+      });
+      const { ctx, configLoader } = await createContext(first.createProbe);
+      await create(asOperator(createACPRoutes(ctx)));
+
+      // A fresh bridge over the same home: startup probes nothing unregistered.
+      const restarted = scriptedProbes();
+      restarted.script.request.push({ ok: true });
+      ctx.acpBridge = new ACPManager(
+        { warn: () => {}, info: () => {}, debug: () => {} },
+        configLoader.getProjectHomeDir(),
+        undefined,
+        restarted.createProbe,
+      );
+      const app = asOperator(createACPRoutes(ctx));
+
+      const body = await json(
+        await app.request('/connections/stub/check', { method: 'POST' }),
+      );
+
+      expect(body.data).toMatchObject({ status: 'available' });
+      expect(await registered(configLoader)).toEqual(['stub']);
+    });
+
+    test('a re-check of an id with no saved connection is not found', async () => {
+      const { createProbe } = scriptedProbes();
+      const { ctx } = await createContext(createProbe);
+      const app = asOperator(createACPRoutes(ctx));
+
+      const response = await app.request('/connections/nope/check', {
+        method: 'POST',
+      });
+
+      expect(response.status).toBe(404);
+    });
+  });
 });

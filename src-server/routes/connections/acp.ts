@@ -398,6 +398,57 @@ export function createACPRoutes(ctx: RuntimeContext) {
     return c.json({ success: true, data: connections });
   });
 
+  // Saved user connections whose engine never registered (a failed first
+  // add). Kept off GET /connections and every installed projection
+  // (station#1548); this read is their repair handle.
+  app.get('/connections/unregistered', async (c) => {
+    const registeredIds = await registeredRuntimeConnectionIds(
+      ctx.configLoader,
+    );
+    if (registeredIds === null) return c.json({ success: true, data: [] });
+    const config = await ctx.configLoader.loadACPConfig();
+    const status = ctx.acpBridge.getStatus();
+    const data = config.connections
+      .filter((connection) => !registeredIds.has(connection.id))
+      .map((connection) => connectionStatusView(connection, status));
+    return c.json({ success: true, data });
+  });
+
+  // Retry check for a saved connection, registered or not, whether or not
+  // the bridge holds a probe for it (after a restart it does not hold
+  // unregistered ones): the same probe-then-register as a repeated add, from
+  // the saved config, so it chooses no command.
+  app.post('/connections/:id/check', async (c) => {
+    return configurationMutationResponse(
+      await captureConfigurationMutation(
+        ctx.applyAgentConfigurationMutation,
+        async (beginMutation) => {
+          const id = param(c, 'id');
+          const saved = (
+            await ctx.configLoader.loadACPConfig()
+          ).connections.find((connection) => connection.id === id);
+          if (!saved) {
+            return c.json(
+              { success: false, error: 'Connection not found' },
+              404,
+            );
+          }
+          beginMutation();
+          const connected = await connectNewACPConnection(ctx, saved);
+          if (connected) {
+            await registerPersistedACPConnection(ctx, saved.id, saved.name);
+          } else {
+            ctx.acpBridge.continueFirstContact?.(saved.id);
+          }
+          return c.json({
+            success: true,
+            data: connectionStatusView(saved, ctx.acpBridge.getStatus()),
+          });
+        },
+      ),
+    );
+  });
+
   app.get('/registry', async (c) => {
     const entries = await detectedRegistryEntries(ctx.configLoader);
     return c.json({ success: true, data: entries });
