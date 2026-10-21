@@ -17,6 +17,7 @@ import {
   useTaskGraphQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
+import { taskBasisQueries } from '@kontourai/station-sdk/task-basis';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   lazy,
@@ -38,7 +39,10 @@ import {
   SkeletonBlock,
   SkeletonList,
 } from '../components/state';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
@@ -695,6 +699,14 @@ function TaskRoomWorkspaceSection({
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
+  const queryClient = useQueryClient();
+  const requestScope = useHostRequestAuthorityScope();
+  const refreshBasis = useCallback(() => {
+    if (requestScope)
+      void queryClient.invalidateQueries({
+        queryKey: taskBasisQueries.scope(task.id, requestScope),
+      });
+  }, [queryClient, requestScope, task.id]);
   const roomRef = useRef<HTMLElement>(null);
   // #3883: Results can open a pane while its Details host is hidden. The
   // page-published action selects the pane, focuses its tab after Details is
@@ -748,18 +760,24 @@ function TaskRoomWorkspaceSection({
           ...action,
           open(instance, preparation, placement) {
             const outcome = action.open(instance, preparation, placement);
-            if (outcome.ok && action.focusExisting?.(instance.instanceId))
-              revealFocusedPane();
+            if (outcome.ok) {
+              refreshBasis();
+              if (action.focusExisting?.(instance.instanceId))
+                revealFocusedPane();
+            }
             return outcome;
           },
           focusExisting(instanceId) {
             const found = action.focusExisting?.(instanceId) ?? false;
-            if (found) revealFocusedPane();
+            if (found) {
+              refreshBasis();
+              revealFocusedPane();
+            }
             return found;
           },
         },
       ),
-    [onOpenActionChange, revealFocusedPane],
+    [onOpenActionChange, refreshBasis, revealFocusedPane],
   );
   const runtime = useRef<WorkspacePaneHostRuntime | null>(null);
   if (!runtime.current) runtime.current = new WorkspacePaneHostRuntime();

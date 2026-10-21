@@ -1298,6 +1298,7 @@ describe('TaskWorkspaceView', () => {
     const basisQueryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
+    const invalidations = starterQueryClient.invalidateQueries;
     render(
       <QueryClientProvider client={basisQueryClient}>
         <TaskWorkspaceView taskId="task-alpha" />
@@ -1319,6 +1320,28 @@ describe('TaskWorkspaceView', () => {
       ).toBeTruthy(),
     );
     expect(screen.queryByRole('dialog', { name: 'Basis' })).toBeNull();
+    expect(invalidations).toHaveBeenCalledWith({
+      queryKey: [
+        'task-basis',
+        'task-alpha',
+        taskWorkspaceAuthorityScope.apiBase,
+        taskWorkspaceAuthorityScope.authorityKey,
+      ],
+    });
+    invalidations.mockClear();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect Task evidence' }),
+    );
+    await waitFor(() =>
+      expect(invalidations).toHaveBeenCalledWith({
+        queryKey: [
+          'task-basis',
+          'task-alpha',
+          taskWorkspaceAuthorityScope.apiBase,
+          taskWorkspaceAuthorityScope.authorityKey,
+        ],
+      }),
+    );
     Object.defineProperty(window.navigator, 'locks', {
       configurable: true,
       value: undefined,
