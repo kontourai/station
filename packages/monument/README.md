@@ -213,7 +213,9 @@ For a session terminal and a fenced row, the decision retires the row only
 when `terminalSequence(thread, eventId)` returns a persisted sequence strictly
 above the fence. A missing terminal retains fenced rows. Rows with no fence
 and turn-scoped terminals retain the timestamp generation check; lifecycle
-and task-dispatch rows retain their separate settlement owners.
+and task-dispatch rows retain their separate settlement owners. A terminal's
+optional `retainBoundaryIdPrefixes` keeps the rows whose id starts with one of
+them and retires the rest as usual.
 
 A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
 open (the SQLite binding receives `database` first). Only

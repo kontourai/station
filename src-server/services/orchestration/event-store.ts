@@ -282,6 +282,7 @@ import {
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryRecord,
+  SHUTDOWN_RETAINED_BOUNDARY_PREFIXES,
 } from './session-turn-boundary.js';
 import {
   createSessionWorkItemAdmissionRegistry,
@@ -367,9 +368,14 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state != 'lifecycle' AND pur
                    (
                      ((event.method = 'session.exited'
                        -- Station's own shutdown leaves an in-flight turn's
-                       -- row for the next boot's recovery (see the constant).
-                       AND COALESCE(json_extract(event.payload, '$.reason'), '')
-                         != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}')
+                       -- row for the next boot's recovery (see the constant);
+                       -- every other row, a session start among them, retires.
+                       AND (COALESCE(json_extract(event.payload, '$.reason'), '')
+                              != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
+                            OR NOT (${SHUTDOWN_RETAINED_BOUNDARY_PREFIXES.map(
+                              (prefix) =>
+                                `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
+                            ).join(' OR ')})))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
                      AND (

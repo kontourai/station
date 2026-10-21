@@ -221,6 +221,9 @@ export function decideTurnBoundaryObserveTerminal(
         (row) =>
           row.state !== 'lifecycle' &&
           row.purpose !== 'task-dispatch' &&
+          !command.retainBoundaryIdPrefixes?.some((prefix) =>
+            row.boundaryId.startsWith(prefix),
+          ) &&
           (command.sessionTerminal && row.createdSequence != null
             ? terminalSequence !== undefined &&
               row.createdSequence < terminalSequence

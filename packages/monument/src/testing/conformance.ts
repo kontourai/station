@@ -1097,6 +1097,22 @@ const turnBoundary: KernelConformanceCase[] = [
             .map((row) => row.boundaryId),
           ['d1', 'l1', 'u2'],
         );
+        // A retained prefix keeps its rows; the rest of the thread retires.
+        await session.run(recordAccepted('keep:w1', 'w', 's1', a, at(1)));
+        await session.run(recordAccepted('drop:w2', 'w', 's2', a, at(1)));
+        await session.run({
+          type: 'turnBoundary.observeTerminal',
+          threadId: 'w',
+          sessionTerminal: true,
+          terminalCreatedAt: at(5),
+          retainBoundaryIdPrefixes: ['keep:'],
+        });
+        assert.deepEqual(
+          (await boundaries(session))
+            .filter((row) => row.threadId === 'w')
+            .map((row) => row.boundaryId),
+          ['keep:w1'],
+        );
         // `retire: false` records the fact and retires nothing.
         await session.run({
           type: 'turnBoundary.observeTerminal',
