@@ -12070,6 +12070,8 @@ export class OrchestrationService {
     const session = deriveReadModelSession({
       event: projectedEvent,
       sessionReadModel: this.sessionReadModel,
+      readPersistedSession: (threadId) =>
+        eventStore?.readSessionByThread(threadId),
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' && projectedEvent.turnId
