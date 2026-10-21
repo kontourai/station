@@ -445,10 +445,19 @@ describe('session-terminal boundary ordering', () => {
       const path = databasePath();
       const store = open(path);
       invoking(store);
-      const event: CanonicalRuntimeEvent = {
-        ...terminal('session.exited'),
-        reason: 'orchestration_shutdown',
-      };
+      const exited = (
+        eventId: string,
+        reason: string,
+      ): CanonicalRuntimeEvent => ({
+        eventId,
+        provider: 'claude',
+        threadId: 'thread',
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: 'thread',
+        reason,
+      });
+      const event = exited('terminal', 'orchestration_shutdown');
       store.appendEvent(event);
       const current = settle(store, path, event, mode);
       expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
@@ -457,11 +466,7 @@ describe('session-terminal boundary ordering', () => {
           current.takeInterruptedTurnBoundaries().map((row) => row.threadId),
         ).toEqual(['thread']);
       // Any other exit still ends the turn's possible effect.
-      const crashed = {
-        ...terminal('session.exited'),
-        eventId: 'engine-exit',
-        reason: 'process_exited',
-      };
+      const crashed = exited('engine-exit', 'process_exited');
       current.appendEvent(crashed);
       expect(current.sessionTurnBoundaryAuthority().observe(crashed)).toEqual({
         kind: 'applied',
