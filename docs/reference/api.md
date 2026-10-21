@@ -3312,8 +3312,10 @@ read as the calling Session's owner.
 The list returns `{sessions, nextCursor}`: the Sessions of the caller's own
 Project (or the global space), newest activity first, one per conversation, each
 `{sessionId, conversationId?, title?, projectSlug?, engine, agent?, status,
-turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
-the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
+turnRunning, lastActivityAt, workingDirectory?, worktree?, self?, claims?}`.
+`status` is the status ladder's word. `claims` (present only when there are
+any) are the Session's active work claims, below: `{claimId, workItemRef?,
+paths?, note?, taskId?, claimedAt, expiresAt}`. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
 `project_activity_cursor_invalid`. The caller's own conversation (its current
 Session, marked `self`) is listed whatever its scope, as its digest is read.
@@ -3337,6 +3339,52 @@ A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
+
+### Station Control Work Claims
+
+`POST /api/orchestration/work-claims` with `{workItemRef?, paths?, note?,
+ttlSeconds?}`, `POST /api/orchestration/work-claims/:claimId/renew` with
+`{ttlSeconds?}` and `POST /api/orchestration/work-claims/:claimId/release` with
+`{note?}` are the routes behind the station-control `claim_work`, `renew_claim`
+and `release_claim` tools. Each answers only a station-control tool call with a
+verified caller (anything else gets `403` `station_control_caller_required`), and
+each answers `{claim}`: `{claimId, sessionId, conversationId?, scope, taskId?,
+workItemRef?, paths?, note?, claimedAt, renewedAt, expiresAt, releasedAt?,
+releaseNote?}`
+([`WorkClaimView`](../../packages/contracts/src/work-claims.ts)).
+
+A claim is a Session's declaration of what it is on, so other Sessions in its
+Project do not duplicate it; it locks nothing, and two Sessions may claim the
+same item. The claimant is the calling Session (and its conversation): a body
+naming any other field, such as a Session, is refused (`400`
+`invalid_request`). A claim names a work item (`workItemRef`, one line of at
+most 200 characters), paths (at most 20, each at most 512 characters,
+`work_claim_too_many_paths` past that), or both (neither is
+`work_claim_subject_required`), with an optional one-line `note` of at most 500
+characters. It lasts `ttlSeconds` (60 to 14400, default 1800) and is active
+until it expires, its claimant releases it, or the claimant Session ends
+(Station closed it, its runtime is gone, or it completed); none of that is
+stored, it is decided when read. Claiming a work item the claimant already
+holds renews that claim and replaces its note and paths. A Session holds at most
+10 active claims (`409` `work_claim_limit_reached`).
+
+A claim belongs to the claimant's scope: its Project, or the global space. A
+caller whose Project Station cannot confirm is refused (`409`
+`work_claim_scope_unreadable`), and claiming answers the same scope rule as
+every Session-aimed call (`403` `station_control_out_of_scope` for a caller
+that is not a bound operator in a Session that runs unconfined). A Session
+dispatched for a Task in that Project stamps the Task id on its claims. Only
+the claimant, or a later Session of its conversation, renews or releases a
+claim; anyone else's claim id answers `404` `claim_not_found`. Renewing a
+released or expired claim, or releasing a released one, is `409`
+`claim_not_active`.
+
+`GET /api/orchestration/work-claims` is the Station UI's read: `{claims}`, the
+active claims of the Sessions the requesting person may read, refused for a
+station-control caller. More than 500 active claims is `422`
+`work_claims_too_many`. See the
+[routes](../../src-server/routes/orchestration/session-work-claims.ts) and the
+[store](../../src-server/services/orchestration/work-claims.ts).
 
 ### Agent Conversation Title
 

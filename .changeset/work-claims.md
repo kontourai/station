@@ -3,8 +3,9 @@
 ---
 
 `@kontourai/station-contracts/work-claims` is new: `WorkClaimView`, the work
-claim Station's routes answer with, its `parseWorkClaimView` boundary parser
-and `workClaimSubjectLabel`.
+claim Station's routes answer with, its `parseWorkClaimView` boundary parser,
+`workClaimSubjectLabel` (the short label a row shows) and
+`workClaimSubjectDetail` (everything a claim names).
 
 Station Control gains `claim_work`, `renew_claim` and `release_claim`
 (station#3413). A Session says what it is on (a work item reference, paths, or

@@ -1595,6 +1595,51 @@ pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
 
+## WorkClaimStore
+
+A Session in a Project says what it is on so peers do not duplicate it.
+[WorkClaimStore](../../src-server/services/orchestration/work-claims.ts) holds
+those claims in the orchestration database for Station Control's `claim_work`,
+`renew_claim` and `release_claim`, the claims `list_project_activity` shows per
+row, and the UI's Session-row chip.
+
+**Interface.** `EventStore.createWorkClaimStore({ maxActivePerClaimant })`
+returns `claim`, `renew`, `release` and `listUnexpired(query)`, where a query
+narrows by scope, Task and claimant Sessions or conversations.
+`createActiveWorkClaimReader` and `composeActiveWorkClaimReader` add the
+claimant's liveness, read from the runtime's Session state
+(`readWorkClaimantStates`), and expose `listActiveClaims({ projectId, taskId? })`
+(`projectId: null` is the global space), the read a Task brief composes. It
+applies no caller's authority; a route that answers a caller decides that
+caller's reach first.
+
+**Invariants.** A claim is information, not exclusion: no claim refuses
+another. The claimant is the verified caller's Session and its conversation,
+never an argument, and only that claimant renews or releases it. "Active" is
+derived when read and never stored: unreleased, unexpired, and its claimant
+(the conversation's current Session) not ended (`workClaimSessionEnded`:
+closed, dead or completed, or no record). A claim keeps the scope its claimant
+had when it claimed. Bounds are refusals: a claimant's active claims, the paths
+of a claim and the UI's read each have a maximum.
+
+**Composition and evidence.** The
+[routes](../../src-server/routes/orchestration/session-work-claims.ts) take the
+claimant and scope from the verified station-control caller and stamp the Task
+from the Session's room execution binding; the
+[activity route](../../src-server/routes/orchestration/session-project-activity.ts)
+attaches each row's claims in the caller's scope. Claims are Station-local
+because the pinned Flow Agents assignment contract is exclusive, has no renewal,
+and stores its record beside the repository, and host-provider selection is
+still open upstream (kontourai/flow-agents#1436); this store is the seam a
+Flow-backed one would stand behind. The
+[mounted tests](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-work-claims.test.ts)
+drive every caller kind against same-Project, other-Project, global and
+other-owner targets, and the
+[store tests](../../src-server/services/orchestration/__tests__/work-claims.test.ts)
+pin expiry, renewal, release, the bound and the Task scope. See
+[agent configuration](../guides/self-configuring-agent.md#work-claims) for the
+tool-level behavior.
+
 ## ConversationSessionLineage
 
 A conversation is the continuing human thread; an execution Session is the engine instance serving part of it. [Lineage](../../src-server/services/orchestration/conversation-session-lineage.ts) records their immutable order. [Continuation policy](../../src-server/services/orchestration/conversation-lineage.ts) decides whether to reuse the current Session or reserve a successor.

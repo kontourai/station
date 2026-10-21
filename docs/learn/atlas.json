@@ -49,6 +49,7 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "WorkClaimStore",
         "AdoptionLedger",
         "RecoveryLedger and private CredentialApplicationFactory/Handle",
         "CredentialRecoveryModule",
