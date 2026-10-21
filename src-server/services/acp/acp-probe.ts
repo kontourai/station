@@ -941,8 +941,19 @@ export class ACPProbe {
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
       this.cachedProviderRouting = initResult.providerRouting ?? null;
       this.cachedDeclaredHandshake = projectAcpDeclaredHandshake(initResult);
+      const sessionModels = parseAcpSessionModelState(sessionResult.models);
       this.cachedSessionModels =
-        parseAcpSessionModelState(sessionResult.models) ?? null;
+        sessionModels.kind === 'listed' ? sessionModels.state : null;
+      const refused = [
+        ...(this.cachedDeclaredHandshake.refused ?? []),
+        ...(sessionModels.kind === 'refused' ? ['models'] : []),
+      ];
+      if (refused.length > 0) {
+        this.logger.warn(
+          'ACPProbe refused engine-declared facts beyond Station bounds',
+          { id: this.config.id, refused },
+        );
+      }
       this.providerRoutingObservationGeneration = providerObservationGeneration;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;

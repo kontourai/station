@@ -70,6 +70,11 @@ export interface ACPConnectionInfo {
     options?: Array<string | { value: string; name?: string }>;
   }>;
   /**
+   * The model catalog Station offers for this connection: its model config
+   * option when it has one, else `sessionModels` (#352).
+   */
+  advertisedModels?: Array<{ id: string; name: string }>;
+  /**
    * #352: the session's `models` list, for an engine that offers no model
    * config option and switches with `session/set_model`.
    */

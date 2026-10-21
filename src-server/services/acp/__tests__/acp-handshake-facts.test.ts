@@ -7,6 +7,7 @@ import {
   acpRuntimeCatalogStatus,
   buildACPCapabilityInventory,
 } from '../../connections/connection-service-helpers.js';
+import { ACP_DECLARED_FACT_BOUNDS } from '../acp-handshake-facts.js';
 import { getACPManagerStatus } from '../acp-manager-view.js';
 import { ACPProbe } from '../acp-probe.js';
 import { ACPProcess } from '../acp-process.js';
@@ -144,11 +145,8 @@ async function probeConnection(
     cwd: agent.directory,
     enabled: true,
   };
-  const probe = new ACPProbe(
-    config,
-    { warn: vi.fn(), debug: vi.fn() },
-    agent.directory,
-  );
+  const logger = { warn: vi.fn(), debug: vi.fn() };
+  const probe = new ACPProbe(config, logger, agent.directory);
   try {
     await expect(probe.probe()).resolves.toBe(true);
   } finally {
@@ -159,7 +157,7 @@ async function probeConnection(
     new Map([[config.id, config]]),
     0,
   );
-  return { config, connection: status.connections[0]! };
+  return { config, connection: status.connections[0]!, logger };
 }
 
 describe('declared handshake facts reach the connection inventory', () => {
@@ -313,5 +311,218 @@ describe('#352 session models dialect', () => {
       method: 'session/set_model',
       params: { sessionId: 'session-1', modelId: 'grok-4.5' },
     });
+  });
+});
+
+describe('what is served of declared facts is projected and bounded', () => {
+  function inventoryOf(
+    connection: Parameters<typeof buildACPCapabilityInventory>[0]['connection'],
+  ) {
+    return buildACPCapabilityInventory({
+      connection,
+      displayName: 'Engine',
+      configuredCount: 1,
+      connectedCount: 1,
+      enabled: true,
+    });
+  }
+
+  test('a terminal sign-in method is served without its arguments, environment or _meta', async () => {
+    const agent = fakeAgent({
+      initialize: {
+        ...OPENCODE_INITIALIZE,
+        authMethods: [
+          {
+            type: 'terminal',
+            id: 'terminal-login',
+            name: 'Sign in',
+            description: 'Opens a terminal',
+            args: ['login', '--token-file', '/secret/path'],
+            env: { LOGIN_SECRET: 'do-not-serve' },
+            _meta: { vendor: 'do-not-serve' },
+          },
+        ],
+      },
+    });
+    const { connection } = await probeConnection(agent, 'Engine');
+
+    const inventory = inventoryOf(connection);
+    expect(inventory.declaredHandshake?.authMethods).toEqual([
+      {
+        id: 'terminal-login',
+        name: 'Sign in',
+        description: 'Opens a terminal',
+        type: 'terminal',
+      },
+    ]);
+    const served = JSON.stringify({ connection, inventory });
+    expect(served).not.toContain('do-not-serve');
+    expect(served).not.toContain('/secret/path');
+  });
+
+  test('the bounds are the documented values', () => {
+    expect(ACP_DECLARED_FACT_BOUNDS).toEqual({
+      label: 256,
+      description: 1024,
+      authMethods: 32,
+      extensionMethods: 256,
+      availableModels: 1024,
+    });
+  });
+
+  test('a fact at its bound is served; one past it is refused whole and logged, and the probe still succeeds', async () => {
+    const atBound = 'a'.repeat(256);
+    const pastBound = 'a'.repeat(257);
+    const methods = (count: number) =>
+      Array.from({ length: count }, (_, index) => `_acme/m${index}`);
+    const authMethods = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `m${index}`,
+        name: 'M',
+      }));
+    const handshake = (overrides: {
+      name: string;
+      methods: string[];
+      auth: unknown[];
+    }) => ({
+      ...OPENCODE_INITIALIZE,
+      agentInfo: { name: overrides.name, version: '1' },
+      agentCapabilities: {
+        ...OPENCODE_INITIALIZE.agentCapabilities,
+        _meta: { acme: { extensionMethods: overrides.methods } },
+      },
+      authMethods: overrides.auth,
+    });
+
+    const within = await probeConnection(
+      fakeAgent({
+        initialize: handshake({
+          name: atBound,
+          methods: methods(256),
+          auth: authMethods(32),
+        }),
+      }),
+      'Engine',
+    );
+    expect(within.connection.declaredHandshake).toMatchObject({
+      agentInfo: { name: atBound },
+    });
+    expect(within.connection.declaredHandshake?.extensionMethods).toHaveLength(
+      256,
+    );
+    expect(within.connection.declaredHandshake?.authMethods).toHaveLength(32);
+    expect(within.connection.declaredHandshake).not.toHaveProperty('refused');
+    expect(within.logger.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('refused'),
+      expect.anything(),
+    );
+
+    const beyond = await probeConnection(
+      fakeAgent({
+        initialize: handshake({
+          name: pastBound,
+          methods: methods(257),
+          auth: authMethods(33),
+        }),
+      }),
+      'Engine',
+    );
+    const declared = beyond.connection.declaredHandshake;
+    expect(declared?.refused).toEqual([
+      'agentInfo',
+      'authMethods',
+      'extensionMethods',
+    ]);
+    expect(declared).not.toHaveProperty('agentInfo');
+    expect(declared).not.toHaveProperty('authMethods');
+    expect(declared).not.toHaveProperty('extensionMethods');
+    expect(beyond.connection.status).toBe('available');
+    expect(beyond.logger.warn).toHaveBeenCalledWith(
+      'ACPProbe refused engine-declared facts beyond Station bounds',
+      {
+        id: 'engine',
+        refused: ['agentInfo', 'authMethods', 'extensionMethods'],
+      },
+    );
+    expect(JSON.stringify(inventoryOf(beyond.connection))).not.toContain(
+      pastBound,
+    );
+  });
+
+  test('an oversized models list is refused, not shortened, and offers no catalog', async () => {
+    const { config, connection, logger } = await probeConnection(
+      fakeAgent({
+        initialize: OPENCODE_INITIALIZE,
+        sessionNew: {
+          models: {
+            currentModelId: 'm0',
+            availableModels: Array.from({ length: 1025 }, (_, index) => ({
+              modelId: `m${index}`,
+            })),
+          },
+        },
+      }),
+      'Engine',
+    );
+    expect(connection).not.toHaveProperty('sessionModels');
+    expect(connection.currentModel).toBeNull();
+    expect(acpRuntimeCatalogStatus(connection, config).models).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'ACPProbe refused engine-declared facts beyond Station bounds',
+      { id: 'engine', refused: ['models'] },
+    );
+  });
+});
+
+describe('one model-option rule', () => {
+  test('an option without an id is not a model selector, so the models list is the catalog', async () => {
+    const { config, connection } = await probeConnection(
+      fakeAgent({
+        initialize: OPENCODE_INITIALIZE,
+        sessionNew: {
+          ...MODELS_ONLY_SESSION,
+          configOptions: [
+            {
+              category: 'model',
+              currentValue: 'idless',
+              options: [{ value: 'idless', name: 'Idless' }],
+            },
+          ],
+        },
+      }),
+      'Engine',
+    );
+    expect(connection.currentModel).toBe('grok-4.6');
+    expect(acpRuntimeCatalogStatus(connection, config).models).toEqual([
+      { id: 'grok-4.6', name: 'Grok 4.6', originalId: 'grok-4.6' },
+      { id: 'grok-4.5', name: 'Grok 4.5', originalId: 'grok-4.5' },
+    ]);
+    expect(connection.advertisedModels).toEqual([
+      { id: 'grok-4.6', name: 'Grok 4.6' },
+      { id: 'grok-4.5', name: 'Grok 4.5' },
+    ]);
+  });
+
+  test('the current model falls back to the list when the option reports none', async () => {
+    const { connection } = await probeConnection(
+      fakeAgent({
+        initialize: OPENCODE_INITIALIZE,
+        sessionNew: {
+          ...MODELS_ONLY_SESSION,
+          configOptions: [
+            {
+              id: 'model',
+              category: 'model',
+              options: [{ value: 'grok-4.6', name: 'Grok 4.6' }],
+            },
+          ],
+        },
+      }),
+      'Engine',
+    );
+    expect(connection.currentModel).toBe('grok-4.6');
+    expect(connection.advertisedModels).toEqual([
+      { id: 'grok-4.6', name: 'Grok 4.6' },
+    ]);
   });
 });

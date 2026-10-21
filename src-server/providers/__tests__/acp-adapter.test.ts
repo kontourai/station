@@ -4533,6 +4533,29 @@ describe('station#1182: runtime-reported model', () => {
       expect(processes[0].setModelCalls).toEqual(['grok-4.5']);
     });
 
+    test('a models list beyond the bounds refuses a requested model without calling set_model', async () => {
+      const { processes, started } = startWithModels(
+        'thread-set-model-oversized',
+        'm1',
+        {
+          newSessionConfigOptions: [],
+          onProcess: (proc) => {
+            proc.newSessionModels = {
+              availableModels: Array.from({ length: 1025 }, (_, index) => ({
+                modelId: `m${index}`,
+              })),
+            };
+          },
+        },
+      );
+      await expect(started).rejects.toMatchObject({
+        name: 'SessionStartRefusedError',
+        code: 'model_not_advertised',
+        message: expect.stringContaining('ACP model list refused'),
+      });
+      expect(processes[0].setModelCalls).toEqual([]);
+    });
+
     test('a model config option outranks the models list', async () => {
       const { adapter, processes, iterator, started } = startWithModels(
         'thread-both-dialects',

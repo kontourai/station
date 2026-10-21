@@ -55,8 +55,8 @@ export const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     observed: 'kiro-cli 2.33.0 `--v3 acp`',
   },
   {
-    // Grok sends no agentInfo. `x.ai/interject` answered -32601 there and is
-    // kept for earlier releases; a miss degrades to cancel + re-prompt.
+    // Grok sends no agentInfo. `x.ai/interject`, tried second as before this
+    // table, answered -32601 on 1.0.50; a miss degrades to cancel + re-prompt.
     identity: { initializeMetaFlag: 'grokShell' },
     channel: 'interject',
     methods: ['_x.ai/interject', 'x.ai/interject'],

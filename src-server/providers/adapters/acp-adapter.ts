@@ -68,7 +68,11 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
-import { parseAcpSessionModelState } from '../../services/acp/acp-handshake-facts.js';
+import {
+  acpAdvertisedModelCatalog,
+  findAcpModelConfigOption,
+  parseAcpSessionModelState,
+} from '../../services/acp/acp-handshake-facts.js';
 import {
   type AcpInboundExtensionRefusalReason,
   createAcpInboundExtensionRequestHandler,
@@ -136,7 +140,6 @@ import {
 import {
   type AcpExtensionErrorNotification,
   type AcpMapperContext,
-  extractReportedModelFromConfigOptions,
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
@@ -429,48 +432,6 @@ interface AcpSlashCommand {
   name: string;
   description: string;
   argumentHint?: string;
-}
-
-type AcpModelConfigOption = {
-  id: string;
-  category: 'model';
-  currentValue?: string;
-  options: Array<{ value: string }>;
-};
-
-function findAcpModelConfigOption(
-  configOptions: unknown,
-): AcpModelConfigOption | undefined {
-  if (!Array.isArray(configOptions)) return undefined;
-  for (const option of configOptions) {
-    if (!option || typeof option !== 'object') continue;
-    const candidate = option as Record<string, unknown>;
-    if (
-      candidate.category !== 'model' ||
-      typeof candidate.id !== 'string' ||
-      !candidate.id.trim()
-    ) {
-      continue;
-    }
-    const options = Array.isArray(candidate.options)
-      ? candidate.options.flatMap((entry) =>
-          entry &&
-          typeof entry === 'object' &&
-          typeof (entry as { value?: unknown }).value === 'string'
-            ? [{ value: (entry as { value: string }).value }]
-            : [],
-        )
-      : [];
-    return {
-      id: candidate.id,
-      category: 'model',
-      ...(typeof candidate.currentValue === 'string'
-        ? { currentValue: candidate.currentValue }
-        : {}),
-      options,
-    };
-  }
-  return undefined;
 }
 
 /**
@@ -1696,14 +1657,31 @@ export class AcpAdapter implements ProviderAdapterShape {
         }
         // #352: a `model` config option is preferred; an agent without one
         // may still list models on the session and switch with set_model.
-        const sessionModels = parseAcpSessionModelState(sessionResult.models);
-        reportedModel =
-          extractReportedModelFromConfigOptions(sessionResult.configOptions) ??
-          sessionModels?.currentModelId;
+        const sessionModelsObservation = parseAcpSessionModelState(
+          sessionResult.models,
+        );
+        const sessionModels =
+          sessionModelsObservation.kind === 'listed'
+            ? sessionModelsObservation.state
+            : undefined;
+        reportedModel = acpAdvertisedModelCatalog(
+          sessionResult.configOptions,
+          sessionModels,
+        ).currentModelId;
         const requestedModel = input.modelId?.trim();
         const modelOption = requestedModel
           ? findAcpModelConfigOption(sessionResult.configOptions)
           : undefined;
+        if (
+          requestedModel &&
+          !modelOption &&
+          sessionModelsObservation.kind === 'refused'
+        ) {
+          throw new SessionStartRefusedError(
+            `ACP model list refused: connection '${config.id}' listed models beyond Station's bounds for this session.`,
+            MODEL_NOT_ADVERTISED_CODE,
+          );
+        }
         if (requestedModel && !modelOption && sessionModels) {
           if (
             !sessionModels.availableModels.some(

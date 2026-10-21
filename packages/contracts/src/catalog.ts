@@ -448,6 +448,20 @@ export interface ProviderSessionSurfaceEvidence {
   sessionResume?: boolean;
 }
 
+/** A sign-in method an engine declared, reduced to what may be shown. */
+export interface ProviderDeclaredAuthMethod {
+  id: string;
+  name: string;
+  description?: string;
+  type?: string;
+}
+
+/** A declared fact Station refused to serve because it exceeded its bounds. */
+export type ProviderDeclaredHandshakeFact =
+  | 'agentInfo'
+  | 'authMethods'
+  | 'extensionMethods';
+
 /**
  * ADR 0013: what one engine connection declared about itself at its protocol
  * handshake (ACP `initialize`). Self-reported by the engine: a declaration,
@@ -460,10 +474,15 @@ export interface ProviderDeclaredHandshake {
   agentInfo?: { name: string; title?: string; version?: string };
   /** Core session lifecycle methods the engine named. */
   sessionCapabilities: Array<'list' | 'resume' | 'close' | 'fork' | 'delete'>;
-  /** Sign-in methods exactly as the engine sent them. */
-  authMethods: unknown[];
+  /** Sign-in methods; launch arguments, environment and `_meta` are not served. */
+  authMethods?: ProviderDeclaredAuthMethod[];
   /** Extension methods the engine listed in its capability `_meta`. */
-  extensionMethods: string[];
+  extensionMethods?: string[];
+  /**
+   * Facts the engine declared beyond Station's bounds. Each is absent above,
+   * never shortened, so a refused list cannot read as a complete one.
+   */
+  refused?: ProviderDeclaredHandshakeFact[];
 }
 
 export interface ProviderCapabilityInventory {

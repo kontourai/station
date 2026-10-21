@@ -12,14 +12,22 @@ distinction and no-credential-bridging decision remain; completion of every
 other proposed binding and live vendor interoperability require their own
 evidence. The investigation and alternatives are preserved below.
 
-**2026-10-21 note (steer):** the third falsifier below has one observed case.
-Kiro (`kiro-cli 2.33.0`, both `acp` and `--v3 acp`) answers `_session/steer`
-and Grok (`grok 1.0.50`) answers `_x.ai/interject` without declaring either.
-The adapter's steer selection uses a declared method first, then a
-vendor-attributed data table keyed on exact handshake facts (agentInfo name,
-`_meta` keys), never the launch command; a `-32601` still degrades to
-cancel + re-prompt. The per-connection handshake facts are recorded as
-`declaredHandshake` on the connection status
+**2026-10-21 note (steer):** the third falsifier below now has evidence from
+two vendors. Kiro (`kiro-cli 2.33.0`, both `acp` and `--v3 acp`) answers
+`_session/steer` and Grok (`grok 1.0.50`) answers `_x.ai/interject`, and
+neither declares the method. That also outdates the falsifier's "v2 declares
+nothing and answers nothing" (observed on 2.16.0): 2.33.0 `acp` still
+declares nothing, but answers. The adapter's steer selection uses a declared
+method first, then a vendor-attributed data table keyed on exact facts the
+live handshake states about the engine (agentInfo name, `_meta` keys), never
+the launch command; a `-32601` still degrades to cancel + re-prompt. This is
+not rejected alternative 1: that alternative calls documented vendor
+constants on any connection, while each table entry names the one method an
+identity was observed answering, applies only when this session's handshake
+carries that identity, and records the version it was observed on. The
+falsifier's per-connection opt-in list was not adopted because it would turn
+working steering off by default for both engines. The per-connection
+handshake facts are recorded as `declaredHandshake` on the connection status
 ([acp-handshake-facts.ts](../../src-server/services/acp/acp-handshake-facts.ts)).
 
 ## Context

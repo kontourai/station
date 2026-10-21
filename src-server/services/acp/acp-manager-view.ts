@@ -5,7 +5,10 @@ import {
   ACPStatus,
   type ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
-import type { AcpDeclaredHandshake } from './acp-handshake-facts.js';
+import {
+  type AcpDeclaredHandshake,
+  acpAdvertisedModelCatalog,
+} from './acp-handshake-facts.js';
 import type { AcpSessionModelState } from './acp-process.js';
 
 /** archive#895 wave B: per-connection session-surface evidence projected from a
@@ -144,6 +147,11 @@ export function getACPManagerStatus(
      */
     sessionModels?: AcpSessionModelState;
     /**
+     * The model catalog the composer offers, by the same rule a session start
+     * applies (`acpAdvertisedModelCatalog`).
+     */
+    advertisedModels: Array<{ id: string; name: string }>;
+    /**
      * Why the connection is unavailable, from the probe's most recent
      * failure. Absent whenever the connection is available or no probe has
      * failed.
@@ -156,9 +164,6 @@ export function getACPManagerStatus(
     connections: Array.from(probes.entries()).map(([id, probe]) => {
       const config = configs.get(id);
       const configOptions = probe.getConfigOptions();
-      const modelConfig = configOptions.find(
-        (option) => option.category === 'model',
-      );
 
       const capabilities = projectAgentCapabilities(
         probe.getAgentCapabilities?.(),
@@ -167,6 +172,10 @@ export function getACPManagerStatus(
       const providerRouting = probe.getProviderRouting?.() ?? null;
       const declaredHandshake = probe.getDeclaredHandshake?.() ?? undefined;
       const sessionModels = probe.getSessionModels?.() ?? undefined;
+      const modelCatalog = acpAdvertisedModelCatalog(
+        configOptions,
+        sessionModels,
+      );
       const providerRoutingCurrent =
         probe.getProviderRoutingCurrent?.() ?? true;
 
@@ -201,9 +210,8 @@ export function getACPManagerStatus(
         sessionId: null,
         mcpServers: [],
         configOptions,
-        currentModel: modelConfig
-          ? modelConfig.currentValue || null
-          : sessionModels?.currentModelId || null,
+        currentModel: modelCatalog.currentModelId ?? null,
+        advertisedModels: modelCatalog.models,
         capabilities,
         providerRouting:
           providerRouting === null

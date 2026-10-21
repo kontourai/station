@@ -88,17 +88,14 @@ export interface ACPSelectionConnection {
     /** ACP select options are { value, name } objects; bare strings tolerated. */
     options?: Array<string | { value: string; name?: string }>;
   }>;
-  /** #352: the session's model list, for an engine without a model option. */
-  sessionModels?: {
-    currentModelId?: string;
-    availableModels: Array<{ modelId: string; name?: string }>;
-  };
+  /** The served model catalog (config option, else the `models` list). */
+  advertisedModels?: Array<{ id: string; name: string }>;
 }
 
 /**
- * #3028: an ACP engine's model catalog arrives on the connection's config
- * options (category "model"), a channel neither the runtime catalog nor
- * `agent.modelOptions` carries. Exported pure so the contract — an engine
+ * #3028: an ACP engine's model catalog arrives on the connection's served
+ * `advertisedModels` (its model config option, else its `models` list), a
+ * channel neither the runtime catalog nor `agent.modelOptions` carries. Exported pure so the contract — an engine
  * advertising models yields selectable models — is directly testable.
  */
 export function acpCatalogModelOptions(

@@ -46,7 +46,10 @@ import {
   providerCatalogModelCount,
   providerCatalogOps,
 } from '../../telemetry/metrics.js';
-import type { AcpDeclaredHandshake } from '../acp/acp-handshake-facts.js';
+import {
+  type AcpDeclaredHandshake,
+  acpAdvertisedModelCatalog,
+} from '../acp/acp-handshake-facts.js';
 import type { AcpSessionModelState } from '../acp/acp-process.js';
 import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
 import {
@@ -98,6 +101,7 @@ export type ACPConnectionStatus = {
    * so the connection view can project a runtimeCatalog from it.
    */
   configOptions?: Array<{
+    id?: string;
     category?: string;
     currentValue?: string;
     options?: Array<string | { name?: string; value?: string }>;
@@ -764,10 +768,7 @@ export function buildACPCapabilityInventory({
       configuredCount === 0
         ? 'Configure a command-backed engine connection to expose external runtime capabilities.'
         : undefined,
-    models: acpAdvertisedModelEntries(connection).map((entry) => ({
-      id: entry.value,
-      name: entry.name,
-    })),
+    models: acpAdvertisedModels(connection),
     skills: [],
     slashCommands,
     sessionSurfaces: projectSessionSurfaces(connection),
@@ -777,32 +778,14 @@ export function buildACPCapabilityInventory({
   };
 }
 
-/**
- * The models a connection advertised: its `model` config option when it has
- * one, else the session's `models` list (#352, the set_model dialect). The
- * adapter applies a selection through the same precedence.
- */
-function acpAdvertisedModelEntries(
+/** The connection's catalog, by the rule a session start applies. */
+function acpAdvertisedModels(
   liveStatus: ACPConnectionStatus | undefined,
-): Array<{ value: string; name: string }> {
-  const modelOption = liveStatus?.configOptions?.find(
-    (option) => option.category === 'model',
-  );
-  if (!modelOption) {
-    return (liveStatus?.sessionModels?.availableModels ?? []).map((model) => ({
-      value: model.modelId,
-      name: model.name ?? model.modelId,
-    }));
-  }
-  return (modelOption.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string' ? { value: entry, name: entry } : entry,
-    )
-    .flatMap((entry) =>
-      typeof entry?.value === 'string' && entry.value.length > 0
-        ? [{ value: entry.value, name: entry.name ?? entry.value }]
-        : [],
-    );
+): Array<{ id: string; name: string }> {
+  return acpAdvertisedModelCatalog(
+    liveStatus?.configOptions,
+    liveStatus?.sessionModels,
+  ).models;
 }
 
 /**
@@ -860,14 +843,14 @@ export function acpRuntimeCatalogStatus(
   /** The connection's current configuration, to reject a stale per-model cache. */
   config?: ACPConnectionConfig,
 ): RuntimeCatalogStatus {
-  const models = acpAdvertisedModelEntries(liveStatus).map((entry) => ({
-    id: entry.value,
+  const models = acpAdvertisedModels(liveStatus).map((entry) => ({
+    id: entry.id,
     name: entry.name,
-    originalId: entry.value,
+    originalId: entry.id,
     // OpenCode's per-model image input, read from the cache the
     // post-handshake listing fills. Memory only; never spawns here.
     ...imageInputCapability(
-      openCodeModelImageInput(liveStatus?.id, entry.value, config),
+      openCodeModelImageInput(liveStatus?.id, entry.id, config),
     ),
   }));
   if (models.length === 0) {
