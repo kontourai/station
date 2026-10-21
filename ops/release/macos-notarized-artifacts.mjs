@@ -409,6 +409,30 @@ export function isRetryableTimestampOrNotaryTransportFailure(error, args = []) {
   );
 }
 
+function isRetryableStaplerTicketTransportFailure(error, args) {
+  if (
+    !(error instanceof ReleaseCommandError) ||
+    error.program !== 'xcrun' ||
+    error.status !== 68 ||
+    error.signal ||
+    error.timedOut ||
+    error.outputTruncated ||
+    args[0] !== 'stapler' ||
+    !['staple', 'validate'].includes(args[1])
+  )
+    return false;
+  const diagnostics = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
+  return (
+    /NSErrorFailingURLKey=https:\/\/api\.apple-cloudkit\.com\/database\/1\/com\.apple\.gk\.ticket-delivery\/production\/public\/records\/lookup(?:[,\s]|$)/.test(
+      diagnostics,
+    ) &&
+    /_kCFStreamErrorDomainKey\s*=\s*4\b/.test(diagnostics) &&
+    !/no ticket|ticket.*invalid|signature.*invalid|certificate|authentication|not notarized|unsupported/i.test(
+      diagnostics,
+    )
+  );
+}
+
 export async function retryRetryableTransportFailure(
   phase,
   args,
@@ -421,7 +445,8 @@ export async function retryRetryableTransportFailure(
     } catch (error) {
       if (
         attempt === MAX_RETRY_ATTEMPTS ||
-        !isRetryableTimestampOrNotaryTransportFailure(error, args)
+        (!isRetryableTimestampOrNotaryTransportFailure(error, args) &&
+          !isRetryableStaplerTicketTransportFailure(error, args))
       ) {
         throw error;
       }
@@ -429,7 +454,7 @@ export async function retryRetryableTransportFailure(
         logger,
         'warn',
       )(
-        `[macOS release] ${phase}: retrying once after a retryable timestamp/notary transport failure.`,
+        `[macOS release] ${phase}: retrying once after a retryable Apple transport failure.`,
       );
     }
   }
@@ -923,12 +948,17 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
+    const stapler = (phase, action, artifact) => {
+      const args = ['stapler', action, artifact];
+      return retryRetryableTransportFailure(
+        phase,
+        args,
+        () => command(phase, 'xcrun', args),
+        logger,
+      );
+    };
     const validateAndAssessApp = async () => {
-      await command('application staple validation', 'xcrun', [
-        'stapler',
-        'validate',
-        app,
-      ]);
+      await stapler('application staple validation', 'validate', app);
       await command('application Gatekeeper assessment', 'spctl', [
         '--assess',
         '--type',
@@ -938,11 +968,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       ]);
     };
     const stapleAndAdmitApp = async () => {
-      await command('application stapling', 'xcrun', [
-        'stapler',
-        'staple',
-        app,
-      ]);
+      await stapler('application stapling', 'staple', app);
       await validateAndAssessApp();
     };
     // Each `notarytool submit --wait` costs the release five to six minutes,
@@ -1066,12 +1092,8 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     // Only an overlapped run still owes the application its staple; the
     // default already joined and stapled it before the disk image was staged.
     if (pendingAppNotarization !== undefined) await stapleAndAdmitApp();
-    await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
-    await command('DMG staple validation', 'xcrun', [
-      'stapler',
-      'validate',
-      dmg,
-    ]);
+    await stapler('DMG stapling', 'staple', dmg);
+    await stapler('DMG staple validation', 'validate', dmg);
     await command('DMG Gatekeeper assessment', 'spctl', [
       '--assess',
       '--type',
