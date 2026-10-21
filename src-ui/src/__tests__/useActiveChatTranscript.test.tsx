@@ -1167,6 +1167,13 @@ describe('useActiveChatTranscript', () => {
           reason: TURN_INTERRUPTED_MESSAGE,
           recoveryTerminal: true,
         }),
+        // Recovery's marker decides it, not the reason's wording.
+        event('e13a', 'turn.started', { turnId: 'turn-5b', prompt: 'crash 2' }),
+        event('e13b', 'turn.aborted', {
+          turnId: 'turn-5b',
+          reason: 'interrupted',
+          recoveryTerminal: true,
+        }),
         // An engine's own token.
         event('e14', 'turn.started', { turnId: 'turn-6', prompt: 'early' }),
         event('e15', 'turn.aborted', {
@@ -1181,7 +1188,7 @@ describe('useActiveChatTranscript', () => {
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
-    await waitFor(() => expect(result.current.messages).toHaveLength(13));
+    await waitFor(() => expect(result.current.messages).toHaveLength(15));
     const { endedTurnMarker, endedTurnStopDetail } = await import(
       '../components/chat/message-bubble/visibleContent'
     );
@@ -1206,11 +1213,12 @@ describe('useActiveChatTranscript', () => {
         { text: 'No progress for too long', title: stallText },
       ],
       ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-5b', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
       ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
     ]);
     expect(
       result.current.messages.filter((message) => message.role === 'user'),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
