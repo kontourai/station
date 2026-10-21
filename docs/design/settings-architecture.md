@@ -52,8 +52,8 @@ The earlier description of the flag as inert is obsolete.
 
 `layoutPanels` is device-local direct-manipulation state, keyed by Project/Layout
 host scope and conversation. It remembers generic side/lower-panel slots,
-dimensions and inbox fold choices. Coding uses the same store and hook as other
-layout hosts. The record is bounded to 32 layouts and 32 sessions per layout;
+dimensions and inbox fold choices. Coding uses the generic record and hook; other layout hosts can use the same
+state owner. The record is bounded to 32 layouts and 32 sessions per layout;
 unknown pairs start closed. Updates read the fresh persisted record so a local
 interaction preserves another tab's latest layout choices.
 

@@ -77,6 +77,25 @@ test('the parser drops malformed sessions and prototype names remain ordinary id
     CLOSED_LAYOUT_SESSION_PANELS,
   );
   expect(parseLayoutPanelsRecord({ version: 7, layouts: {} })).toBeNull();
+  expect(parseLayoutPanelsRecord(null)).toBeNull();
+  expect(parseLayoutPanelsRecord({ version: 1, layouts: [] })).toBeNull();
+  const validated = parseLayoutPanelsRecord({ version: 1, layouts: { research: { sessions: {
+    good: { side: 'sources', sideWidth: 400, lowerOpen: true, at: 5 },
+    sparse: {}, folded: { inbox: 'layout' },
+    'bad-side': { side: 42 }, 'bad-width': { sideWidth: -1 },
+    'bad-open': { lowerOpen: 'yes' }, 'null-open': { lowerOpen: null },
+    'bad-inbox': { inbox: 'yes' }, 'bad-at': { at: 'now' }, '': { side: 'sources' },
+  } } } });
+  expect(validated?.layouts.research?.sessions).toEqual({
+    good: { side: 'sources', sideWidth: 400, lowerOpen: true, lowerHeight: null, inbox: null, at: 5 },
+    sparse: CLOSED_LAYOUT_SESSION_PANELS,
+    folded: { ...CLOSED_LAYOUT_SESSION_PANELS, inbox: 'layout' },
+  });
+  const imported = parseLayoutPanelsRecord({ version: 1, layouts: { research: { sessions:
+    Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`session-${index}`, { side: 'sources', at: index === 6 ? 0 : index + 1 } })),
+  } } });
+  expect(Object.keys(imported?.layouts.research?.sessions ?? {})).toHaveLength(32);
+  expect(imported?.layouts.research?.sessions['session-6']).toBeUndefined();
 });
 
 test('bounded retention follows touch time rather than insertion order for sessions and layouts', () => {
