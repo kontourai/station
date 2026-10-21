@@ -837,6 +837,28 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── basis + session inventory (MCP App tools) ──────────────────────────
   // Each reads its sessions and Tasks with the owner's session authority.
+  get_answer_assessment_target: {
+    ...SELF_READ,
+    routes: [
+      get(
+        '/api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target',
+      ),
+    ],
+  },
+  publish_answer_assessment: {
+    ...SELF_READ,
+    toolClass: 'mutating',
+    routes: [
+      put('/api/orchestration/sessions/:sessionId/turns/:turnId/assessment'),
+    ],
+  },
+  remove_answer_assessment: {
+    ...SELF_READ,
+    toolClass: 'mutating',
+    routes: [
+      del('/api/orchestration/sessions/:sessionId/turns/:turnId/assessment'),
+    ],
+  },
   get_basis: {
     ...SELF_READ,
     routes: [

@@ -3512,6 +3512,14 @@ are also exported from `@kontourai/station-sdk/client`.
 
 An assessment producer uses the existing authenticated orchestration routes;
 the SDK intentionally provides no convenience client for this write protocol.
+Station Control exposes `get_answer_assessment_target`,
+`publish_answer_assessment`, and `remove_answer_assessment` over the same routes.
+These tools act as the caller's recorded owner; publication and removal are
+mutating operations. A producer copies the exact target/profile into its
+frozen bundle, publishes with `expectedRevision`, and rereads the target after
+a conflict. Removal retains the historical answer and frozen source artifact;
+it does not remove an explicit Task curation override. Tool completion is
+never a substitute for Surface assessment.
 All requests address one exact `StationAnswerBinding` (`sessionId`, `turnId`,
 and its answer identity), and route responses are private and non-cacheable.
 The current producer module rejects hosted authority and requires a readable

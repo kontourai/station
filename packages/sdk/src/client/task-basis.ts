@@ -1,12 +1,20 @@
 import {
+  isStationBasisId,
   parseStationBasisProjection,
   parseStationTaskBasisCollection as parseStationCollectionEnvelope,
   STATION_TASK_BASIS_COLLECTION_VERSION,
   type StationBasisProjection,
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
+import { encodeTaskTurnReference } from '@kontourai/station-contracts/task-graph';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson } from './http';
+import {
+  type ApiRequestScope,
+  type ClientRequestOptions,
+  getJson,
+  isApiRequestScope,
+  mutateJson,
+} from './http';
 import { rethrowDeadline } from './request-deadline';
 
 export type { StationTaskBasisCollection };
@@ -113,6 +121,66 @@ export async function getTaskBasis(
     )
       throw new TaskBasisRequestError(answered(response, body));
     return result;
+  } catch (error) {
+    if (error instanceof TaskBasisRequestError) throw error;
+    throw new TaskBasisRequestError(0);
+  }
+}
+
+/** Keep an exact completed answer using the connection captured by its inspector. */
+export async function keepAnswerInTask(
+  taskId: string,
+  input: { sessionId: string; turnId: string },
+  requestScope: ApiRequestScope,
+): Promise<{ referenceId: string }> {
+  if (
+    !isApiRequestScope(requestScope) ||
+    !isStationBasisId(taskId) ||
+    !isStationBasisId(input.sessionId) ||
+    !isStationBasisId(input.turnId)
+  )
+    throw new TaskBasisRequestError(0);
+  try {
+    const response = await mutateJson(
+      `${requestScope.apiBase}/api/tasks/${encodeURIComponent(taskId)}/references`,
+      'POST',
+      { requestScope },
+      {
+        kind: 'turn',
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        sourceSurface: 'nativeBasis',
+      },
+    );
+    const body: unknown = await response.json();
+    const data =
+      body &&
+      typeof body === 'object' &&
+      'success' in body &&
+      body.success === true &&
+      'data' in body
+        ? body.data
+        : null;
+    if (
+      !response.ok ||
+      !data ||
+      typeof data !== 'object' ||
+      !('id' in data) ||
+      typeof data.id !== 'string' ||
+      !data.id ||
+      !('sourceType' in data) ||
+      data.sourceType !== 'task' ||
+      !('targetType' in data) ||
+      data.targetType !== 'turn' ||
+      !('relationType' in data) ||
+      data.relationType !== 'references_turn' ||
+      !('sourceId' in data) ||
+      data.sourceId !== taskId ||
+      !('targetId' in data) ||
+      data.targetId !== encodeTaskTurnReference(input.sessionId, input.turnId)
+    )
+      throw new TaskBasisRequestError(response.status);
+    return { referenceId: data.id };
   } catch (error) {
     if (error instanceof TaskBasisRequestError) throw error;
     throw new TaskBasisRequestError(0);

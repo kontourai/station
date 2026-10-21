@@ -12,6 +12,7 @@ import {
   useRef,
 } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { KeepAnswerInTask } from '../../workspace-panes/KeepAnswerInTask';
 import type { SessionInventorySelection } from '../../workspace-panes/sessionInventorySelection';
 import {
   commitSessionInventorySelection,
@@ -216,6 +217,16 @@ export function SessionInventoryCompact({
           ×
         </button>
       </div>
+      {scope.kind === 'current-answer' &&
+      requestScope &&
+      inventory.data?.basisBinding ? (
+        <KeepAnswerInTask
+          key={JSON.stringify([requestScope, scope])}
+          sessionId={scope.sessionId}
+          turnId={scope.turnId}
+          requestScope={requestScope}
+        />
+      ) : null}
       <p className="session-inventory-compact__intro">
         Highlights from this scope. Open full Basis to browse every group and
         exact detail.
