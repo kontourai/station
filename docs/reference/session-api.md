@@ -46,6 +46,18 @@ that a provider retains its transcript indefinitely. Context-start consumption
 remains a separate boundary; ordinary context replacement and fork delivery are
 not qualified by this native-return receipt.
 
+New seed-backed ordinary continuations and `continue-from-history` context starts
+also pin their exact text and source cutoffs before the replacement provider
+starts. Retries recheck source access and use that pin, even if a cursor becomes
+available later. Ordinary reuse requires the seed-bearing invocation's exact
+completion witness and, where required, its current native identity. Failed or
+ambiguous delivery refuses further ordinary turns rather than silently dropping
+history. The start boundary remains consumed by its accepted start receipt; that
+is separate from seed delivery and is not reopened by a failed first turn.
+`empty-next-cold-start` deliberately carries no prior transcript, while retaining
+Agent instructions. Native cursor and structured native-memory paths retain
+their own contracts and do not acquire a literal-seed acknowledgement by inference.
+
 Saved forks reserve their selected copied context in the same EventStore before
 creating the file transcript. The first native turn carries that saved seed; an
 ordinary follow-up refuses if the seed-bearing turn failed or has uncertain

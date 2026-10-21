@@ -166,3 +166,49 @@ export async function observeConversationSeedTurn(input: {
     ...(nativeBinding ? { nativeBinding } : {}),
   };
 }
+
+/** Synchronous provider-effect fence; it never waits between authority checks and invocation. */
+export function hasCompletedConversationSeedTurn(
+  input: Pick<
+    Parameters<typeof observeConversationSeedTurn>[0],
+    | 'store'
+    | 'threadId'
+    | 'clientTurnId'
+    | 'expected'
+    | 'requiresNativeIdentity'
+  >,
+): boolean {
+  const { store, threadId, clientTurnId, expected } = input;
+  const witness = store.conversationSeedWitness(threadId, clientTurnId);
+  if (
+    !witness ||
+    !expected ||
+    witness.kind !== expected.kind ||
+    witness.contextId !== expected.contextId ||
+    witness.contextDigest !== expected.contextDigest ||
+    witness.seedDigest !== expected.seedDigest ||
+    store.preparedInvocationForClientTurn(threadId, clientTurnId) !==
+      witness.invocationId
+  )
+    return false;
+  const terminal = store.readInvocationTerminal(
+    threadId,
+    witness.invocationId,
+    witness.providerTurnId,
+  );
+  if (
+    terminal.kind !== 'found' ||
+    terminal.fact.terminalEventId !== witness.terminalEventId
+  )
+    return false;
+  const event = store.eventById(threadId, witness.terminalEventId);
+  if (
+    event?.payload.method !== 'turn.completed' ||
+    event.turnId !== witness.providerTurnId ||
+    event.payload.invocationId !== witness.invocationId
+  )
+    return false;
+  return witness.nativeIdentityKey !== undefined
+    ? store.contextSeedWitnessHasCurrentNativeBinding(witness)
+    : input.requiresNativeIdentity !== true;
+}

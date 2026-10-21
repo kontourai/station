@@ -3715,7 +3715,8 @@ describe('OrchestrationService', () => {
     );
     expect(first).toMatchObject({
       sessionId: incompatibleProvider.sessionId,
-      resumeCursor: { nativeSession: 'turn-one' },
+      transcriptSeed: incompatibleProvider.transcriptSeed,
+      contextSeed: incompatibleProvider.contextSeed,
     });
     const incompatibleConnection =
       await service.resolveConversationContinuation(
@@ -3736,6 +3737,25 @@ describe('OrchestrationService', () => {
     expect(first).toMatchObject({ startRequired: true });
     expect(concurrent).toEqual(first);
     expect(first.sessionId).not.toBe('conversation-continuation');
+    const firstSeed = first.contextSeed;
+    if (!firstSeed) throw new Error('expected the reserved continuation seed');
+    expect(first).not.toHaveProperty('resumeCursor');
+    const startChild = claude.startSession.getMockImplementation();
+    if (!startChild)
+      throw new Error('expected the scripted start implementation');
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session = await startChild(input);
+      claude.events.push({
+        eventId: 'continuation-child-started',
+        method: 'session.started',
+        provider: 'claude',
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        createdAt: new Date().toISOString(),
+        metadata: input.metadata,
+      });
+      return session;
+    });
     const child = await service.sessionCommands.execute(
       {
         type: 'start-session',
@@ -3746,12 +3766,22 @@ describe('OrchestrationService', () => {
             userId: 'owner-user',
             conversationId: 'conversation-continuation',
             connectionId: 'connection-a',
+            conversationStartSeedCarrier: {
+              pinDigest: firstSeed.pinDigest,
+              seedDigest: firstSeed.seedDigest,
+              clientTurnId: 'continuation-first-turn',
+            },
           },
         },
       },
       { userId: 'owner-user' },
     );
     if (child.status !== 'accepted') throw new Error(child.message);
+    await vi.waitFor(() =>
+      expect(eventStore.latestEventByMethod(first.sessionId, 'session.started')?.payload).toMatchObject({
+        metadata: { conversationStartSeedCarrier: { pinDigest: firstSeed.pinDigest } },
+      }),
+    );
     // Supervision is intentionally read-only: it follows the active child
     // without reserving another one, and therefore never treats the durable
     // Conversation id as though it were an execution Session id.
@@ -3766,23 +3796,55 @@ describe('OrchestrationService', () => {
     expect(
       eventStore.conversationSessions('conversation-continuation'),
     ).toHaveLength(2);
-    await service.dispatch({
-      type: 'sendTurn',
-      input: {
-        threadId: first.sessionId,
-        input: 'What was the token from the first turn?',
-      },
+    let seedInvocationId: string | undefined;
+    claude.sendTurn.mockImplementationOnce(async (input) => {
+      seedInvocationId = input.invocationId;
+      return { threadId: input.threadId, turnId: 'continuation-seed-turn' };
     });
+    await service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: first.sessionId,
+          ambientContext: first.transcriptSeed,
+          clientTurnId: 'continuation-first-turn',
+          input: 'What was the token from the first turn?',
+        },
+      },
+      { userId: 'owner-user' },
+    );
     expect(claude.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: first.sessionId }),
     );
-    await expect(
-      service.resolveConversationContinuation(
-        'conversation-continuation',
-        INTERNAL_SESSION_READ_SCOPE,
-        { provider: 'claude', connectionId: 'connection-a' },
-      ),
-    ).resolves.toEqual({ sessionId: first.sessionId, startRequired: false });
+    if (!seedInvocationId) throw new Error('expected the captured invocation');
+    const seedTurn = {
+      provider: 'claude' as const,
+      threadId: first.sessionId,
+      turnId: 'continuation-seed-turn',
+      invocationId: seedInvocationId,
+      createdAt: new Date().toISOString(),
+    };
+    claude.events.push({
+      ...seedTurn,
+      eventId: 'continuation-seed-started',
+      method: 'turn.started',
+      prompt: 'What was the token from the first turn?',
+    });
+    claude.events.push({
+      ...seedTurn,
+      eventId: 'continuation-seed-completed',
+      method: 'turn.completed',
+      outputText: 'continued',
+    });
+    await vi.waitFor(async () => {
+      await expect(
+        service.resolveConversationContinuation(
+          'conversation-continuation',
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: 'claude', connectionId: 'connection-a' },
+        ),
+      ).resolves.toEqual({ sessionId: first.sessionId, startRequired: false });
+    });
     eventStore.appendEvent({
       eventId: 'conversation-root-user-turn',
       provider: 'claude',

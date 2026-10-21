@@ -256,3 +256,45 @@ seven. UI typechecking now reports only the unused private
 `restartCredentialProfileRecoverySession` forwarder, verified unchanged from the
 published d96f base. This is an unresolved typecheck failure, not a waiver.
 No login/provider call, publication or readiness claim is added by this increment.
+
+
+### Cold continuation and context-boundary source checkpoint
+
+A real foreground cold-continuation probe reproduced an ordinary message
+skipping context after the first seed-bearing replacement turn failed. The
+repair pins literal continuation/history-boundary seeds in the same EventStore
+before provider start, validates source high-waters inside the reservation,
+retains the pin on retry, and checks exact invocation/terminal/native-identity
+witnesses before ordinary reuse. Provider-effect checks stay synchronous; no
+wait was introduced after the current authority check. Prepared-resume fencing
+also runs before marking its invocation begun. Thread deletion removes these
+private pins and completion witnesses.
+
+The fork-based qualification owner now passes eleven cases, including both
+completed and failed cold continuations, completed and failed explicit
+continue-from-history boundaries, and deliberate empty context retaining Agent
+instructions. The boundary remains consumed after a failed first turn, while
+ordinary reuse refuses. An earlier three-owner run passed 80 tests before the
+three explicit-policy cases were added. Server-test typechecking passes.
+The scripted adapter now preserves the actual persistSession input and reads
+reserved ordinary/boundary binding from the recorded predecessor, matching the
+production binding reader instead of pretending the child already exists.
+
+Baseline failure: /private/tmp/station-continuity-cold-seed-before-20261021.log.
+Expanded policy evidence: /private/tmp/station-continuity-context-boundary-20261021.log.
+These are local scripted results. Full readiness, published-base reconciliation,
+independent full-branch review, live onboarding, and real two-account acceptance
+remain unfinished. The last UI typecheck still fails the unchanged published-base
+unused recovery forwarder. No account sign-in or provider call was started.
+
+The corrected broad orchestration owner now passes all 602 tests. Its old mock
+had not emitted session.started; it now publishes the actual start metadata
+and correlated completion through the adapter queue. It verifies that a pinned
+seed does not switch to a newly available cursor, then qualifies ordinary
+continuation through the captured seed invocation. The new reservation-race case
+passes at the real foreground caller: an intervening source append refuses the
+pin before any replacement adapter start. The focused qualification owner now
+passes twelve tests. The previous failing 684/685 run remains in
+/private/tmp/station-continuity-cold-full-owners-after-20261021.log; the successful
+602-owner result is in
+/private/tmp/station-continuity-pinned-reservation-owner-after-20261021.log.

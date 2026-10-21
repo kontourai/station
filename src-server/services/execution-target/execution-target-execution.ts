@@ -48,6 +48,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
+import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -463,6 +464,7 @@ export interface ExecutionTargetExecutionDependencies
     resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
+    contextSeed?: ConversationContextSeedPin;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
     /** A never-ran predecessor to stop once this start succeeds. */
@@ -1024,7 +1026,9 @@ export async function executeForegroundMessage(
     effectiveClientTurnId ??
     (initialContext && transcriptSeed
       ? initialContext.fallbackClientTurnId
-      : undefined);
+      : continuation?.contextSeed && transcriptSeed
+        ? `context:${createHash('sha256').update(sessionId).digest('hex')}`
+        : undefined);
   // A fresh or successor session records `userId` as its owner, and a
   // session with no recorded owner is readable by no caller. Refuse the start
   // here, before its approval-mode receipt, a boundary claim, a worktree or
@@ -1224,6 +1228,15 @@ export async function executeForegroundMessage(
             : {}),
           environmentId: resolved.access.environmentId,
           conversationId,
+          ...(continuation?.contextSeed && transcriptSeed
+            ? {
+                conversationStartSeedCarrier: {
+                  pinDigest: continuation.contextSeed.pinDigest,
+                  seedDigest: continuation.contextSeed.seedDigest,
+                  clientTurnId: sendClientTurnId,
+                },
+              }
+            : {}),
           ...(initialContext
             ? {
                 forkContextOrigin: {

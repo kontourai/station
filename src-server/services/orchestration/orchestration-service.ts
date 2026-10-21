@@ -326,6 +326,11 @@ import {
   type ConversationOpenResolver,
   createConversationOpenResolver,
 } from './conversation-open-resolver.js';
+import {
+  assertConversationStartSeedStart,
+  assertConversationStartSeedTurn,
+  ConversationStartContextError,
+} from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
@@ -2800,6 +2805,9 @@ export class OrchestrationService {
       },
       nativeMemoryOwnsTranscriptFor: (provider) =>
         provider === 'station-agent' && this.supportsNativeMemoryContinuity(),
+      nativeIdentityRequiredFor: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.continuity
+          ?.resumeIdentity === 'require-match',
       readForkContextDelivery: (id, scope) =>
         this.forkContexts.delivery(id, scope),
       ...(this.turnDeduplicator
@@ -4986,6 +4994,7 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    contextSeed?: import('./conversation-handoff-module.js').ConversationContextSeedPin;
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
@@ -5893,8 +5902,12 @@ export class OrchestrationService {
   ): void {
     try {
       this.forkContexts.assertStart(input, actor);
+      assertConversationStartSeedStart(this.options.eventStore, input);
     } catch (error) {
-      if (error instanceof ConversationForkContextError)
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
         throw new SessionStartRefusedError(
           error.message,
           CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
@@ -5918,8 +5931,22 @@ export class OrchestrationService {
           actor?.tenantExecutionContext ??
           this.sessionAuthz.tenantContextFor(input.threadId),
       });
+      const provider = this.options.eventStore?.readSessionByThread(
+        input.threadId,
+      )?.provider;
+      assertConversationStartSeedTurn(
+        this.options.eventStore,
+        input,
+        this.readLatestSessionStartMetadata(input.threadId),
+        provider !== undefined &&
+          this.options.adapterRegistry.get(provider)?.metadata.continuity
+            ?.resumeIdentity === 'require-match',
+      );
     } catch (error) {
-      if (error instanceof ConversationForkContextError)
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
         throw new ConversationSeedTurnRefusedError(error.message);
       throw error;
     }
@@ -8184,6 +8211,10 @@ export class OrchestrationService {
                             }
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            this.assertForkContextAtProviderTurn(
+                              turnInput,
+                              context,
+                            );
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
@@ -8218,10 +8249,6 @@ export class OrchestrationService {
                             } else {
                               ownedClientTurnClaim?.beginInvocation();
                             }
-                            this.assertForkContextAtProviderTurn(
-                              turnInput,
-                              context,
-                            );
                             const begun = boundary.beginInvocation(
                               new Date().toISOString(),
                             );
@@ -13367,6 +13394,7 @@ export class OrchestrationService {
       threadId,
       async () => {
         if (!current()) throw unavailable();
+        this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
           new Date().toISOString(),
@@ -13383,7 +13411,6 @@ export class OrchestrationService {
           stored.capture.intent.invocationId,
         );
         try {
-          this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
           const result = await adapter.sendTurn(stored.capture.adapterInput);
           if (
             owned.claim.accepted(result.turnId, new Date().toISOString())

@@ -122,7 +122,10 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
       createdAt: now,
       updatedAt: now,
       ...(this.nativeReturn
-        ? { resumeCursor: { nativeSessionId: nativeId }, persistSession: true }
+        ? {
+            resumeCursor: { nativeSessionId: nativeId },
+            persistSession: input.persistSession ?? true,
+          }
         : {}),
     };
     this.sessions.set(input.threadId, session);
@@ -249,11 +252,13 @@ export function continuityBinding(
 ): ExecutionSessionBinding | null {
   const current = store.conversationSessions(conversationId).at(-1);
   if (!current) return null;
-  const reservation = store.readSessionByThread(current.sessionId)
+  const materialized = store.readSessionByThread(current.sessionId);
+  const reservation = materialized
     ? undefined
     : store.conversationHandoffForSession(current.sessionId);
-  const bindingSessionId =
-    reservation?.predecessorSessionId ?? current.sessionId;
+  const bindingSessionId = materialized
+    ? current.sessionId
+    : (current.predecessorSessionId ?? current.sessionId);
   const configured = store
     .listEvents(bindingSessionId)
     .map((item) => item.payload)

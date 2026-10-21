@@ -123,6 +123,7 @@ import {
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
 import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
+import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/021-conversation-start-context.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -227,6 +228,10 @@ import {
   createConversationSessionLineageModule,
   isSameConversationSessionLineage,
 } from './conversation-session-lineage.js';
+import {
+  ConversationStartContextError,
+  readConversationStartSeedCarrier,
+} from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
   type CredentialApplicationHandle,
@@ -2310,6 +2315,7 @@ export class EventStore {
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
+      this.db.exec(CONVERSATION_START_CONTEXT_MIGRATION);
       this.db.exec(CONVERSATION_FORK_CONTEXT_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
@@ -3999,7 +4005,8 @@ export class EventStore {
       | { conversation_id: string; idempotency_key: string }
       | undefined;
     const reference = this.conversationForkContextReference(event.threadId);
-    if (!handoffKey && reference?.state !== 'ready') return;
+    const startSeed = this.conversationStartContext(event.threadId);
+    if (!handoffKey && reference?.state !== 'ready' && !startSeed) return;
     const capturedKey = this.db
       .prepare(`SELECT client_turn_id FROM orchestration_prepared_turns
       WHERE thread_id = ? AND invocation_id = ?`)
@@ -4038,6 +4045,16 @@ export class EventStore {
         start?.payload.method === 'session.started'
           ? start.payload.metadata
           : undefined;
+      const startCarrier = startSeed
+        ? readConversationStartSeedCarrier(metadata, startSeed)
+        : undefined;
+      if (startSeed && startCarrier?.clientTurnId === clientTurnId)
+        context = {
+          kind: 'boundary',
+          contextId: event.threadId,
+          contextDigest: startSeed.pinDigest,
+          seed: startSeed,
+        };
       const carrier = metadata?.forkSeedCarrier;
       if (
         reference?.state === 'ready' &&
@@ -10642,6 +10659,65 @@ export class EventStore {
     return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
+  conversationStartContext(
+    sessionId: string,
+  ):
+    | import('./conversation-handoff-module.js').ConversationContextSeedPin
+    | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT seed_pin_json FROM orchestration_conversation_start_context WHERE session_id = ?',
+      )
+      .get(sessionId) as { seed_pin_json: string } | undefined;
+    return row ? readConversationContextSeedPin(row.seed_pin_json) : undefined;
+  }
+
+  reserveConversationStartContext(
+    sessionId: string,
+    pin: import('./conversation-handoff-module.js').ConversationContextSeedPin,
+  ): import('./conversation-handoff-module.js').ConversationContextSeedPin {
+    const validated = readConversationContextSeedPin(JSON.stringify(pin));
+    this.db.exec('SAVEPOINT reserve_start_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = this.conversationStartContext(sessionId);
+      if (existing) {
+        this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+        return existing;
+      }
+      const lineage = this.conversationForSession(sessionId);
+      if (!lineage?.predecessorSessionId || this.readSessionByThread(sessionId))
+        throw new ConversationStartContextError(
+          'Continuation context must be reserved before its child starts.',
+        );
+      for (const cutoff of validated.sourceCutoffs) {
+        const source = this.conversationForSession(cutoff.sessionId);
+        if (
+          !source ||
+          source.conversationId !== lineage.conversationId ||
+          source.ordinal >= lineage.ordinal ||
+          this.readSessionInventoryHighWater(cutoff.sessionId) !==
+            cutoff.throughSequence
+        )
+          throw new ConversationStartContextError(
+            'Conversation context changed before its continuation reservation.',
+          );
+      }
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_conversation_start_context(session_id, seed_pin_json) VALUES (?, ?)',
+        )
+        .run(sessionId, JSON.stringify(validated));
+      this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+      return validated;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_start_context; RELEASE SAVEPOINT reserve_start_context',
+      );
+      throw error;
+    }
+  }
+
   reserveNextConversationSession(input: {
     conversationId: string;
     predecessorSessionId: string;
@@ -13787,6 +13863,16 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_conversation_start_context WHERE session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+        )
+        .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
         .run(threadId);

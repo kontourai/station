@@ -31,7 +31,10 @@ import type { ConversationMessage } from '@kontourai/station-shared/conversation
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
-import { observeConversationSeedTurn } from './conversation-context-seed-witness.js';
+import {
+  hasCompletedConversationSeedTurn,
+  observeConversationSeedTurn,
+} from './conversation-context-seed-witness.js';
 import {
   ConversationForkContextError,
   type ConversationForkContextModule,
@@ -47,6 +50,10 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import {
+  ConversationStartContextError,
+  readConversationStartSeedCarrier,
+} from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
   buildTranscriptSeed,
@@ -183,6 +190,7 @@ interface ConversationLineageDeps {
   perTurnModelOverride?: (provider: EngineId) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
+  nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
   readForkContextDelivery?: (
     threadId: string,
     authority: SessionReadScope,
@@ -241,6 +249,7 @@ export class ConversationLineage {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    contextSeed?: ConversationContextSeedPin;
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
@@ -289,7 +298,7 @@ export class ConversationLineage {
           startRequired: true,
           contextBoundary: projectConversationContextBoundary(contextBoundary),
           ...(contextBoundary.policy === 'continue-from-history' && predecessor
-            ? continuationLaunchContext(
+            ? await this.pinnedContinuationLaunchContext(
                 predecessor,
                 requested,
                 this.readConversationTranscriptMessages(
@@ -297,6 +306,8 @@ export class ConversationLineage {
                   authority,
                 ),
                 resumeSupported,
+                current.sessionId,
+                authority,
               )
             : {}),
         };
@@ -312,7 +323,7 @@ export class ConversationLineage {
         sessionId: current.sessionId,
         startRequired: true,
         ...(predecessor
-          ? continuationLaunchContext(
+          ? await this.pinnedContinuationLaunchContext(
               predecessor,
               requested,
               this.readConversationTranscriptMessages(
@@ -320,6 +331,8 @@ export class ConversationLineage {
                 authority,
               ),
               resumeSupported,
+              current.sessionId,
+              authority,
             )
           : {}),
       };
@@ -331,6 +344,39 @@ export class ConversationLineage {
       throw new Error(
         'This conversation is not writable under its current control state.',
       );
+    }
+    const startSeed = store.conversationStartContext(current.sessionId);
+    if (
+      startSeed &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider)
+    ) {
+      const started = [...detail.events]
+        .reverse()
+        .find((event) => event.method === 'session.started');
+      const carrier = readConversationStartSeedCarrier(
+        started?.method === 'session.started' ? started.metadata : undefined,
+        startSeed,
+      );
+      const delivered = carrier
+        ? hasCompletedConversationSeedTurn({
+            store,
+            threadId: current.sessionId,
+            clientTurnId: carrier.clientTurnId,
+            expected: {
+              kind: 'boundary',
+              contextId: current.sessionId,
+              contextDigest: startSeed.pinDigest,
+              seedDigest: startSeed.seedDigest,
+            },
+            requiresNativeIdentity:
+              this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
+              true,
+          })
+        : undefined;
+      if (!delivered)
+        throw new ConversationStartContextError(
+          'Continuation context delivery has not completed. Reconcile the context before continuing.',
+        );
     }
     const handoff = store.conversationHandoffForSession(current.sessionId);
     const forkDelivery = await this.deps.readForkContextDelivery?.(
@@ -414,12 +460,14 @@ export class ConversationLineage {
       ...(needsModelRestart && !hasTurnFacts(detail)
         ? { retirePredecessorSessionId: current.sessionId }
         : {}),
-      ...continuationLaunchContext(
+      ...(await this.pinnedContinuationLaunchContext(
         detail,
         requested,
         this.readConversationTranscriptMessages(conversationId, authority),
         resumeSupported,
-      ),
+        child.lineage.sessionId,
+        authority,
+      )),
     };
   }
 
@@ -1050,6 +1098,60 @@ export class ConversationLineage {
       CONTINUATION_TRANSCRIPT_HEADING,
     );
     return { transcriptSeed: contextSeed.text, contextSeed };
+  }
+
+  private async pinnedContinuationLaunchContext(
+    detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
+    requested: Parameters<typeof continuationLaunchContext>[1],
+    messages: readonly ConversationMessage[],
+    resumeSupported: boolean | undefined,
+    targetSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<
+    ReturnType<typeof continuationLaunchContext> & {
+      contextSeed?: ConversationContextSeedPin;
+    }
+  > {
+    const launch = continuationLaunchContext(
+      detail,
+      requested,
+      messages,
+      resumeSupported,
+    );
+    if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
+      return launch;
+    const store = this.deps.eventStore!;
+    let pin = store.conversationStartContext(targetSessionId);
+    if (!pin && !launch.transcriptSeed) return launch;
+    if (pin) {
+      for (const source of pin.sourceCutoffs)
+        if (!(await this.deps.readSession(source.sessionId, authority)))
+          throw new ConversationStartContextError(
+            'Conversation context is not authorized.',
+          );
+    } else {
+      const target = store.conversationForSession(targetSessionId);
+      if (!target)
+        throw new ConversationStartContextError(
+          'Continuation context has no reserved child.',
+        );
+      const sources = store
+        .conversationSessions(target.conversationId)
+        .filter((entry) => entry.ordinal < target.ordinal);
+      pin = store.reserveConversationStartContext(
+        targetSessionId,
+        await this.captureTranscriptContext(
+          sources,
+          authority,
+          CONTINUATION_TRANSCRIPT_HEADING,
+        ),
+      );
+    }
+    return {
+      ...(launch.resumeModel ? { resumeModel: launch.resumeModel } : {}),
+      transcriptSeed: pin.text,
+      contextSeed: pin,
+    };
   }
 
   private async captureTranscriptContext(

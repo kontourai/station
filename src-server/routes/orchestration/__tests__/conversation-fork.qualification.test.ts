@@ -253,15 +253,37 @@ describe('scripted fork delivery and canonical history qualification', () => {
         service.retireHandoffPredecessor(id, authority),
       retireNativeReturnSource: async (_access, id) =>
         service.retireNativeReturnSource(id, authority),
+      claimConversationContextBoundaryColdStart: (_access, id, commandId) =>
+        service.claimConversationContextBoundaryColdStart(id, commandId),
+      consumeConversationContextBoundary: (_access, id, commandId) =>
+        service.consumeConversationContextBoundary(id, commandId),
+      releaseConversationContextBoundaryFailedClaim: (
+        _access,
+        id,
+        indeterminate,
+      ) =>
+        service.releaseConversationContextBoundaryFailedClaim(
+          id,
+          indeterminate,
+        ),
       startSession: async (_access, input) => {
         const conversation = input.metadata?.conversationId;
         const environment = input.metadata?.environmentId;
         if (typeof conversation !== 'string' || typeof environment !== 'string')
           throw new Error('Foreground start omitted its identity.');
+        const boundary = input.metadata?.contextBoundary;
+        const commandId =
+          boundary &&
+          typeof boundary === 'object' &&
+          'startCommandId' in boundary &&
+          typeof boundary.startCommandId === 'string'
+            ? boundary.startCommandId
+            : undefined;
         const started = await service.startSessionInternal(
           { type: 'start-session', input },
           { userId: OWNER },
           {
+            ...(commandId ? { commandId } : {}),
             conversationIdentity: {
               conversationId: conversation,
               environmentId: environment,
@@ -272,7 +294,10 @@ describe('scripted fork delivery and canonical history qualification', () => {
         await vi.waitFor(() =>
           expect(continuityBinding(store, conversation)).not.toBeNull(),
         );
-        return undefined;
+        return {
+          commandId: started.receipt.commandId,
+          sessionId: started.session.threadId,
+        };
       },
       sendTurn: async (_access, input, context) => {
         const receipt = await service.dispatchWithReceipt(
@@ -289,6 +314,7 @@ describe('scripted fork delivery and canonical history qualification', () => {
       selected: 'codex' | 'claude',
       message: string,
       handoffKey?: string,
+      ephemeral = false,
     ) =>
       executeForegroundMessage(
         {
@@ -299,6 +325,7 @@ describe('scripted fork delivery and canonical history qualification', () => {
           conversationId,
           message,
           userId: OWNER,
+          ...(ephemeral ? { ephemeral: true } : {}),
           ...(handoffKey
             ? { handoffIntent: createConversationHandoffIntent(handoffKey) }
             : {}),
@@ -315,6 +342,31 @@ describe('scripted fork delivery and canonical history qualification', () => {
       other: provider === 'codex' ? claude : codex,
       execute,
     };
+  }
+
+  async function stoppedNonpersistentFork() {
+    const f = await fixture('codex');
+    await f.execute('codex', FIRST_MESSAGE, undefined, true);
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            f.conversationId,
+            authority,
+          )
+        )?.session.hasActiveTurn,
+      ).toBe(false),
+    );
+    await f.service.dispatch(
+      { type: 'stopSession', threadId: f.conversationId },
+      { userId: OWNER },
+    );
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(f.conversationId)?.status).toBe(
+        'closed',
+      ),
+    );
+    return f;
   }
 
   test.each(['codex', 'claude'] as const)(
@@ -374,6 +426,106 @@ describe('scripted fork delivery and canonical history qualification', () => {
       f.execute('codex', 'Continue after the failed first turn.'),
     ).rejects.toThrow('Fork context delivery has not completed.');
     expect(f.receiver.turns).toHaveLength(1);
+  });
+
+  test.each([
+    { mode: 'continuation', outcome: 'completed' },
+    { mode: 'continuation', outcome: 'failed' },
+    { mode: 'continue-from-history', outcome: 'completed' },
+    { mode: 'continue-from-history', outcome: 'failed' },
+    { mode: 'empty-next-cold-start', outcome: 'completed' },
+  ] as const)(
+    '$mode cold context gates ordinary reuse by observed delivery ($outcome)',
+    async ({ mode, outcome }) => {
+      const f = await stoppedNonpersistentFork();
+      const boundary =
+        mode !== 'continuation'
+          ? await f.service.reserveConversationContextBoundary(
+              f.conversationId,
+              authority,
+              {
+                policy: mode,
+                idempotencyKey: 'cold-context-boundary',
+                expectedCurrentSessionId: f.conversationId,
+                actorId: OWNER,
+              },
+            )
+          : undefined;
+      f.receiver.failNextTranscriptSeed = outcome === 'failed';
+      await f.execute('codex', 'Continue in a replacement process.');
+      await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(2));
+      if (mode === 'empty-next-cold-start') {
+        expect(f.receiver.turns[1]?.ambientContext).not.toContain(PARENT_ONLY);
+        expect(f.receiver.turns[1]?.ambientContext).toContain(
+          'Instructions for codex',
+        );
+      } else expect(f.receiver.turns[1]?.ambientContext).toContain(PARENT_ONLY);
+      if (boundary)
+        expect(
+          await f.service.readConversationContextBoundaryStatus(
+            f.conversationId,
+            'cold-context-boundary',
+            authority,
+          ),
+        ).toMatchObject({ status: 'consumed' });
+      await vi.waitFor(async () =>
+        expect(
+          (
+            await f.service.readCurrentConversationSession(
+              f.conversationId,
+              authority,
+            )
+          )?.session.hasActiveTurn,
+        ).toBe(false),
+      );
+      if (outcome === 'failed') {
+        await expect(
+          f.execute('codex', 'Ordinary follow-up after that failure.'),
+        ).rejects.toThrow('Continuation context delivery has not completed.');
+        expect(f.receiver.turns).toHaveLength(2);
+      } else {
+        await f.execute(
+          'codex',
+          'Ordinary follow-up after completed delivery.',
+        );
+        await vi.waitFor(() => expect(f.receiver.turns).toHaveLength(3));
+        expect(f.receiver.turns[2]?.ambientContext).toBeUndefined();
+      }
+    },
+  );
+
+  test('an intervening source append refuses the continuation pin before a replacement starts', async () => {
+    const f = await stoppedNonpersistentFork();
+    const reserve = f.store.reserveConversationStartContext.bind(f.store);
+    const raced = vi
+      .spyOn(f.store, 'reserveConversationStartContext')
+      .mockImplementationOnce((id, pin) => {
+        f.store.appendEvent({
+          eventId: 'continuation-source-raced',
+          provider: 'codex',
+          threadId: f.conversationId,
+          sessionId: f.conversationId,
+          method: 'session.configured',
+          createdAt: new Date().toISOString(),
+          metadata: {},
+        });
+        return reserve(id, pin);
+      });
+    try {
+      await expect(
+        f.execute('codex', 'Continue with a source racing reservation.'),
+      ).rejects.toThrow('context changed before its continuation reservation');
+    } finally {
+      raced.mockRestore();
+    }
+    expect(f.receiver.starts).toHaveLength(1);
+    expect(f.receiver.turns).toHaveLength(1);
+    const pending = f.store.conversationSessions(f.conversationId).at(-1);
+    expect(pending?.predecessorSessionId).toBe(f.conversationId);
+    expect(f.store.readSessionByThread(pending!.sessionId)).toBeUndefined();
+    expect(
+      f.store.conversationStartContext(pending!.sessionId),
+    ).toBeUndefined();
   });
 
   test('an owned unstarted fork opens with copied context and no invented provider Session', async () => {
