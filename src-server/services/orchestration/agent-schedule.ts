@@ -669,6 +669,9 @@ export interface AgentWakeUpDeliveryPorts {
   readonly now?: () => number;
 }
 
+/** The longest delay `setTimeout` honours (2^31 - 1 ms, about 24.8 days). */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
 /** Arms the in-memory timers for the durable wake-ups, and sends them. */
 export class AgentWakeUpDelivery {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -783,10 +786,18 @@ export class AgentWakeUpDelivery {
     if (this.stopped) return;
     this.clearTimer(record.id);
     const delay = Math.max(0, record.dueAtMs - this.now());
-    const timer = setTimeout(() => {
-      this.timers.delete(record.id);
-      this.fire(record.id);
-    }, delay);
+    // Node runs a delay above its timer maximum after 1ms. A clock far
+    // behind the due time waits in steps of the maximum instead, and a
+    // step that ends early only arms again: it never sends.
+    const capped = delay > MAX_TIMER_DELAY_MS;
+    const timer = setTimeout(
+      () => {
+        this.timers.delete(record.id);
+        if (capped) this.arm(record);
+        else this.fire(record.id);
+      },
+      capped ? MAX_TIMER_DELAY_MS : delay,
+    );
     timer.unref?.();
     this.timers.set(record.id, timer);
   }

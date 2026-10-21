@@ -759,6 +759,23 @@ describe('a due wake-up goes to the caller’s own conversation, as its recorded
     }
   });
 
+  test('a restart on a clock a month behind does not send a pending one early', async () => {
+    const created = await agent('bound', nextSession(), 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'not yet',
+    });
+    const id = created.body.data.id as string;
+    const behind = newDelivery(() => clock.now - 30 * 24 * 60 * 60_000);
+    try {
+      behind.reconcile();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(submitted).toEqual([]);
+      expect(store.wakeUp(id)?.state).toBe('pending');
+    } finally {
+      behind.stop();
+    }
+  });
+
   test('one more than a day late after a restart is expired, not sent', async () => {
     const created = await agent('bound', nextSession(), 'POST', WAKE_UPS, {
       delayMs: FIVE_MINUTES,
@@ -1144,6 +1161,26 @@ describe('owner decision: a check-back in an unconfined session waits for one cl
       expect(approve.body.error).toBe('Its time has passed.');
     } finally {
       early.stop();
+    }
+  });
+
+  test('a clock a month behind its due time waits, without spinning or settling', async () => {
+    const { id } = await hostCheckBack();
+    const dueAtMs = store.wakeUp(id)!.dueAtMs;
+    let reads = 0;
+    // Past setTimeout's 2^31-1 ms maximum, which Node runs after 1ms.
+    const behind = newDelivery(() => {
+      reads += 1;
+      return dueAtMs - 30 * 24 * 60 * 60_000;
+    });
+    try {
+      behind.fire(id);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      // One read to decide it is early, one to arm: nothing re-fired.
+      expect(reads).toBe(2);
+      expect(store.wakeUp(id)?.state).toBe('needs_approval');
+    } finally {
+      behind.stop();
     }
   });
 
