@@ -124,7 +124,7 @@ describe('ACPConnectionsSection Retry check on a Setup required card', () => {
       },
     ];
     reconnectMutateAsync.mockRejectedValueOnce(
-      new Error('The ACP connection could not be reconnected.'),
+      new Error('Could not check Kiro CLI.'),
     );
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);

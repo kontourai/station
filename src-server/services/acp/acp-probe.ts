@@ -26,6 +26,7 @@ import {
   type InitializeResult,
 } from './acp-process.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
+import { engineFacingProbeMessage } from './probe-messages.js';
 
 /**
  * The minimum shape needed to destroy a process with escalation. `ACPProcess`
@@ -111,7 +112,11 @@ function isLaunchFailure(error: unknown): boolean {
 }
 
 class ACPProbeDeadlineError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** The handshake budget that ran out; people are told this wait. */
+    readonly budgetMs: number,
+  ) {
     super(message);
     this.name = 'ACPProbeDeadlineError';
   }
@@ -416,8 +421,13 @@ export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
  * scrubbed answers nothing. So this is a weaker guarantee than the log's, by
  * choice: secrets out, operator-owned paths kept.
  */
-function probeErrorMessage(err: unknown): string {
-  return redactSecrets(errorMessage(err));
+function probeErrorMessage(
+  err: unknown,
+  engine?: { name: string; command: string },
+): string {
+  return redactSecrets(
+    engine ? engineFacingProbeMessage(err, engine) : errorMessage(err),
+  );
 }
 
 /**
@@ -829,7 +839,7 @@ export class ACPProbe {
       this.lastProbeAt = Date.now();
       this.lastSuccess = false;
       this.lastError = {
-        message: probeErrorMessage(error),
+        message: probeErrorMessage(error, this.config),
         phase: 'workspace preparation',
       };
       this.lastFailureWasDeadline = false;
@@ -865,7 +875,7 @@ export class ACPProbe {
       this.lastProbeAt = Date.now();
       this.lastSuccess = false;
       this.lastError = {
-        message: probeErrorMessage(err),
+        message: probeErrorMessage(err, this.config),
         phase: probePhase,
       };
       this.lastFailureWasDeadline = false;
@@ -985,7 +995,7 @@ export class ACPProbe {
         return false;
       }
       this.lastError = {
-        message: probeErrorMessage(err),
+        message: probeErrorMessage(err, this.config),
         // `process.start()` both launches and initializes; a command that
         // never launched failed at spawn, not while initializing.
         phase: isLaunchFailure(err) ? 'spawn' : probePhase,
@@ -1109,6 +1119,7 @@ export class ACPProbe {
               // after `remainingMs`, and the reason it had only that much is
               // the `budgetMs` total the earlier phase drew from.
               `ACP probe ${phase} did not settle within its ${remainingMs}ms share of the ${budgetMs}ms probe budget.`,
+              budgetMs,
             ),
           ),
         remainingMs,

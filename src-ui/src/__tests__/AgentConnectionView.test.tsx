@@ -1038,8 +1038,9 @@ describe('AgentConnectionView', () => {
 
   test('a refused reconnect reports the engine observation in place', async () => {
     acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    // The route's own words for a failed re-check (acp.ts).
     reconnectMutationError = new Error(
-      'The ACP connection could not be reconnected. Engine exited before handshake',
+      'Could not check OpenCode. OpenCode closed the connection before it finished starting.',
     );
     connectionQueryData = {
       id: 'opencode',
@@ -1058,8 +1059,13 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
+    refetchAgentConnections.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
-    expect(screen.getByText(/Engine exited before handshake/)).toBeTruthy();
+    expect(
+      screen.getByText(/OpenCode closed the connection before it finished/),
+    ).toBeTruthy();
+    // The status beside it is re-read, so it does not keep claiming Ready.
+    expect(refetchAgentConnections).toHaveBeenCalled();
   });
 
   /*

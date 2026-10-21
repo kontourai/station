@@ -737,7 +737,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
       c.json(
         {
           success: false,
-          error: 'The ACP connection could not be reconnected.',
+          // Retry check's own words; the engine's name, never the protocol.
+          error: `Could not check ${connection.name || id}.`,
           ...(phase ? { phase } : {}),
           ...(detail ? { detail: sanitizeFreeText(detail) } : {}),
         },

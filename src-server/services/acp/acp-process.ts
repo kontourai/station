@@ -131,7 +131,11 @@ export interface InitializeResult {
 export class ACPCommandNotFoundError extends Error {
   constructor(command: string) {
     super(
-      `Station could not start ${command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.`,
+      // A command with whitespace that is not a path to a program is most
+      // often a program plus its arguments typed into one field.
+      /\s/.test(command.trim())
+        ? `Station could not find a program named "${command}". If that includes arguments, put them in Advanced → Arguments and keep only the program in Command.`
+        : `Station could not start ${command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.`,
     );
     this.name = 'ACPCommandNotFoundError';
   }

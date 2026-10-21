@@ -2404,7 +2404,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await expect(pending).resolves.toBe(false);
       expect(proc.destroy).toHaveBeenCalled();
       expect(probe.lastError?.phase).toBe('initialize');
-      expect(probe.lastError?.message).toContain('60000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within a minute.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2453,7 +2455,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await vi.advanceTimersByTimeAsync(1_001);
       expect(procs[1].proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2514,7 +2518,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
 
       await vi.advanceTimersByTimeAsync(1_001);
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('60000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within a minute.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2540,7 +2546,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       // test timeout rather than naming the guard that failed.
       expect(proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2586,12 +2594,11 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       expect(proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
       expect(probe.lastError?.phase).toBe('session creation');
-      expect(probe.lastError?.message).toContain('probe budget');
-      const remaining = Number(
-        /within its (\d+)ms share/.exec(probe.lastError?.message ?? '')?.[1],
+      // The reason people read names the whole budget; the teardown at
+      // 1,001ms above is what proves the deadline was shared.
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
       );
-      expect(remaining).toBeGreaterThan(0);
-      expect(remaining).toBeLessThan(1_000);
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2683,7 +2690,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await vi.advanceTimersByTimeAsync(1_001);
       expect(spawned[3].destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();

@@ -1175,7 +1175,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Kiro.');
     expect(body.phase).toBe('spawn');
     // Secret-redacted and path-stripped: the raw credential shape and the
     // absolute path from the probe failure never reach the client.
@@ -1236,7 +1236,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     expect(await json(response)).toEqual({
       success: false,
-      error: 'The ACP connection could not be reconnected.',
+      error: 'Could not check Kiro.',
     });
   });
 
@@ -1274,7 +1274,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Muse.');
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('sk-test1234');
   });

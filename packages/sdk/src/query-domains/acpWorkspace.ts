@@ -328,8 +328,8 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
     // The route attaches a sanitized, bounded `detail` (acp.ts) beside its
     // generic `error`; the shared helper does not read that field, so the
     // actionable sentence would be dropped and the reader would only ever
-    // see "could not be reconnected".
-    const base = apiErrorMessage(result, 'Failed to reconnect ACP connection');
+    // see "Could not check <engine>".
+    const base = apiErrorMessage(result, 'Could not check the engine.');
     throw new Error(result.detail ? `${base} ${result.detail}` : base);
   }
   return true;
@@ -654,6 +654,11 @@ export function useReconnectACPConnectionMutation(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => reconnectACPConnection(id),
+    // Success or failure, the check changed the engine's readiness: the
+    // engine list and its detail read it, not only the ACP list.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({

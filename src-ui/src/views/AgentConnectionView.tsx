@@ -266,6 +266,9 @@ export function AgentConnectionView({
     },
     onError: (mutationError: Error) => {
       setError(mutationError.message);
+      // A failed check changed the engine's readiness too; re-read it so the
+      // status beside this message does not keep saying Ready.
+      void refetchRuntimes();
     },
   });
   const selectedAcpConnectionId =
