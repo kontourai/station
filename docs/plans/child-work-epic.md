@@ -24,6 +24,18 @@ normally before publication. Open one PR when the combined work is ready.
   through the shared activity UI. The inspected Muse protocol has no child
   tool stream; its missing value stays absent.
 
+At `3669442358f`, the existing audited Agents-pane browser journey passes both
+desktop and 390px phone-width cases against a built isolated Station. It checks
+CLI provenance, engine identity and live child activity, single Stop controls,
+No result after exit, scope persistence across reload, and the phone action note
+and Background tasks sheet. Orchestration events/read models are mocked at the
+named fixture seam. E2E types and fixture policy pass. This is browser-fixture
+evidence, not alternate-theme, independent visual, native-device, provider or
+group-serving acceptance. The runner removes successful screenshots at cleanup.
+An initial run stopped before tests because the invocation supplied DNT, which
+correctly refused its disclosure acknowledgement; the corrected run unsets DNT
+and keeps telemetry Off in its isolated runtime.
+
 The compact roster, logos, animation, sender provenance, delegated result
 delivery, and phone transfer guards already contained in #3991 remain master
 work. Source containment is not final runtime/native/provider acceptance.
