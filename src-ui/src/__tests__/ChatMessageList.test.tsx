@@ -883,7 +883,7 @@ describe('ChatMessageList', () => {
     const view = (source?: {
       threadId: string;
       delegation?: { taskId: string; mode?: string };
-      controlMode?: 'station-owned' | 'read-only-attached';
+      controlMode: 'station-owned' | 'read-only-attached';
     }) => (
       <QueryClientProvider client={queryClient}>
         <ChatMessageList
@@ -898,12 +898,19 @@ describe('ChatMessageList', () => {
     const { rerender } = render(
       view({
         threadId: session.id,
+        controlMode: 'station-owned',
         delegation: { taskId: 'child', mode: 'isolated-child' },
       }),
     );
     expect(screen.getByText('Delegated worker')).toBeTruthy();
     expect(screen.queryByText('Read only')).toBeNull();
-    rerender(view({ threadId: session.id, delegation: { taskId: 'child' } }));
+    rerender(
+      view({
+        threadId: session.id,
+        controlMode: 'station-owned',
+        delegation: { taskId: 'child' },
+      }),
+    );
     expect(screen.getByText('Delegated task')).toBeTruthy();
     expect(screen.queryByText('Delegated worker')).toBeNull();
     rerender(
