@@ -32,6 +32,7 @@ function lineageFor(current: OrchestrationSessionDetail) {
   const reserveNextConversationSession = vi.fn();
   const lineage = new ConversationLineage({
     eventStore: {
+      conversationHandoffForSession: () => undefined,
       conversationSessions: () => [
         {
           conversationId: 'conversation-policy',
@@ -246,6 +247,7 @@ describe('#749 shared continuation control eligibility', () => {
     function restartLineage(current: OrchestrationSessionDetail) {
       const lineage = new ConversationLineage({
         eventStore: {
+          conversationHandoffForSession: () => undefined,
           conversationSessions: () => [
             {
               conversationId: 'conversation-policy',

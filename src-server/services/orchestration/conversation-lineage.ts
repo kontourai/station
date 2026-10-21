@@ -309,6 +309,22 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
+    const handoff = store.conversationHandoffForSession(current.sessionId);
+    if (handoff?.nativeReturnSourceSessionId) {
+      const delivery = await this.readConversationHandoffStatus(
+        conversationId,
+        handoff.idempotencyKey,
+        authority,
+      );
+      // An accepted native start does not establish delivery of its catch-up.
+      // Ordinary reuse must not turn a failed or uncertain seeded turn into a
+      // continuation that silently forgets the intervening conversation.
+      if (delivery?.status !== 'completed') {
+        throw new Error(
+          'Native-return context delivery has not completed. Reconcile the handoff before continuing.',
+        );
+      }
+    }
     // #2540: a turn's outcome does not end its session. After a finished
     // (`idle`), failed or stopped (`canceled`) turn the follow-up runs in the
     // same session — its engine is still resident, or dispatch restarts it in

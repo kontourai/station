@@ -21,6 +21,11 @@ native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
 bounded replay. An explicit fork creates a separate Conversation.
 
+An ordinary follow-up is refused while the native return's seed-bearing turn
+has no observed completion, including a failed or uncertain turn. Acceptance of
+the native Session start alone does not confirm delivery of its catch-up context.
+This refusal does not automatically resend the seed or reopen the start boundary.
+
 The compact conversation reader used by `read_conversation` and the SDK's
 `readConversation` preserves message Session attribution. Versioned `provenance`
 reports the ordered Sessions, providers, handoffs, requested native returns and

@@ -101,3 +101,18 @@ The baseline currently reserved by the plugin owner is outside this lane.
 No live provider call, browser run, heavyweight allocation or publication is
 implied by recording this plan. Required account/provider evidence remains
 NOT_VERIFIED until its actual receipt exists.
+
+## First implementation increment
+
+The scripted native-return qualification adapter can now fail the seed-bearing
+turn before processing its context. Before the repair, its ordinary follow-up
+was accepted; the new refusal assertion failed while the six existing cases
+passed. The repaired continuation policy refuses that follow-up using the exact
+handoff's observed terminal status. The four focused handoff, route, native
+ownership and continuation-eligibility owners pass 28 tests. Server-test types
+pass after building this worktree's required Connect export.
+
+This is a bounded failure-path repair, not completion of #3570. Durable seed
+pinning, accepted-through projection, repeated-cycle/omission/restart coverage,
+fork integration, live account qualification and the external-client recipe
+remain unfinished. No live provider or hosted result is implied.

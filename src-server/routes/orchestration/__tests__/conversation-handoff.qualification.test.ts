@@ -67,6 +67,7 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
   readonly stopped = new Set<string>();
+  failNextNativeReturn = false;
   private readonly nativeIds = new Map<string, string>();
   private readonly sessions = new Map<string, ProviderSession>();
 
@@ -179,16 +180,6 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     this.turns.push(input);
     const ordinal = this.turns.length;
     const turnId = `${this.provider}-handoff-turn-${ordinal}`;
-    const token =
-      /HANDOFF-CARRY-[0-9]+/.exec(
-        `${input.ambientContext ?? ''}\n${input.input}`,
-      )?.[0] ??
-      this.memory.get(this.nativeIds.get(input.threadId) ?? input.threadId);
-    if (token)
-      this.memory.set(
-        this.nativeIds.get(input.threadId) ?? input.threadId,
-        token,
-      );
     const base = {
       provider: this.provider,
       threadId: input.threadId,
@@ -202,6 +193,30 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
       method: 'turn.started',
       prompt: input.displayInput ?? input.input,
     });
+    if (
+      this.failNextNativeReturn &&
+      input.ambientContext?.includes('Conversation while this engine was away')
+    ) {
+      this.failNextNativeReturn = false;
+      this.events.push({
+        ...base,
+        eventId: `${turnId}:failed`,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'Scripted failure before processing the native-return seed.',
+      });
+      return { threadId: input.threadId, turnId };
+    }
+    const token =
+      /HANDOFF-CARRY-[0-9]+/.exec(
+        `${input.ambientContext ?? ''}\n${input.input}`,
+      )?.[0] ??
+      this.memory.get(this.nativeIds.get(input.threadId) ?? input.threadId);
+    if (token)
+      this.memory.set(
+        this.nativeIds.get(input.threadId) ?? input.threadId,
+        token,
+      );
     this.events.push({
       ...base,
       eventId: `${turnId}:completed`,
@@ -372,9 +387,23 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: true,
       nativeReturn: true,
     },
+    {
+      label: 'Codex failed native return fences an ordinary follow-up',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      failReturnSeed: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
-    async ({ source, target, preserveProfile, nativeReturn }) => {
+    async ({
+      source,
+      target,
+      preserveProfile,
+      nativeReturn,
+      failReturnSeed = false,
+    }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
         ? {
@@ -917,6 +946,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             )?.session.hasActiveTurn,
           ).toBe(false);
         });
+        sourceAdapter.failNextNativeReturn = failReturnSeed;
         const returned = await post(
           `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
           {
@@ -948,6 +978,29 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(sourceAdapter.turns.at(-1)?.ambientContext).not.toContain(
           `Remember ${CONTEXT_TOKEN}.`,
         );
+        if (failReturnSeed) {
+          try {
+            await eventually(async () => {
+              const status = await service.readConversationHandoffStatus(
+                conversationId,
+                'return-to-earlier-engine',
+                INTERNAL_SESSION_READ_SCOPE,
+              );
+              expect(status?.status).toBe('failed');
+            });
+            await expect(
+              execute(source, {
+                conversationId,
+                message: 'Continue after the failed return.',
+              }),
+            ).rejects.toThrow(/native.return.*context|context.*native.return/i);
+            expect(sourceAdapter.turns).toHaveLength(2);
+          } finally {
+            await service.shutdown();
+            store.close();
+          }
+          return;
+        }
         const marker = store.conversationHandoffForSession(returnedSessionId!);
         expect(marker?.nativeReturnSourceSessionId).toBe(conversationId);
         expect(marker?.nativeReturnSourceEventId).toBe(
