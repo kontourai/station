@@ -174,11 +174,11 @@ rail collapsed opens the new Board without focusing an invisible rename.
 The expanded footer gives live work and the account control (the signed-in
 person's initials, opening My access, Profile, Ask Station for help and Open
 settings) a row of their own, so neither runs under the other at 216px, with
-Schedule, Customize and Settings on the row below. The collapsed rail stacks live work
-and the account control above **Sidebar utilities**, which holds Schedule,
-Customize and Settings. In the desktop app, an
-update control sits above that row only while a desktop update is available,
-downloading or ready to install; collapsed, it is icon-only (#3851). The presence tray
+Schedule, Customize and Settings on the row below. The collapsed rail stacks
+live work and the account control above **Sidebar utilities**, which holds
+Schedule, Customize and Settings. In the desktop app, an update control sits
+above the footer rows only while a desktop update is available, downloading
+or ready to install; collapsed, it is icon-only (#3851). The presence tray
 continues to distinguish published participants, live work, pending reads,
 failed reads and unsupported publication. Notifications stay in the header.
 

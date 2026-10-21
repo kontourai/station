@@ -1820,8 +1820,9 @@ Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistry
 [Extensions view](../../src-ui/src/views/RegistryView.tsx),
 [shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
-These presentation changes do not enable bundles or alter consent storage,
-origin binding, plugin permissions or native bridge authority.
+Loading rules, consent storage and origin binding stay unchanged. These
+controls do not grant server-side plugin permissions or narrow the native
+bridge authority explained by the consent dialog.
 
 
 ## Publisher analytics
