@@ -57,11 +57,6 @@ function failure(error: unknown): {
 } {
   if (error instanceof Error && error.message === 'group_stream_cursor_invalid')
     return { code: 'group_stream_cursor_invalid', status: 400 };
-  if (
-    error instanceof Error &&
-    error.message === 'group_metadata_fence_unavailable'
-  )
-    return { code: 'group_metadata_fence_unavailable', status: 503 };
   if (error instanceof z.ZodError || error instanceof SyntaxError)
     return { code: 'group_invalid', status: 400 };
   if (error instanceof DelegationGroupRuntimeRefusal) {

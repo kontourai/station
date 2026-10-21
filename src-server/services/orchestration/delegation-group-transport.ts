@@ -62,11 +62,6 @@ export function belongsToAcceptedGroupTurn(
   );
 }
 
-/** Restriction only. No current shared mutation fence exists in the committed store API. */
-export function assertGroupMetadataMutationAvailable(): never {
-  throw new Error('group_metadata_fence_unavailable');
-}
-
 export async function awaitWithAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal,

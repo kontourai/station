@@ -216,7 +216,6 @@ class PrivateDomain {
  * One exclusive root per host. Never mix this domain with upstream local-store writers.
  * Lock order is group -> authority; authority callbacks must not re-enter group storage.
  */
-// UNWIRED(#91): runtime composition requires managed Flow 9.3.0 adoption.
 export class StationDelegationPersistence {
   readonly #authorities: PrivateDomain;
   readonly #groups: PrivateDomain;
