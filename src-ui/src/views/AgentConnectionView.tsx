@@ -1067,6 +1067,13 @@ function EngineAddCatalog({
             description: connection.description,
             href: '',
           });
+          // Add enables the engine and opens it; when the row still needs
+          // setup, that is where it continues, so the label says so.
+          const addLabel =
+            presentation.readiness === 'Ready' ||
+            presentation.readiness === 'Found, not connected'
+              ? 'Add'
+              : 'Add and set up';
           return (
             <div className="plugins__registry-item" key={connection.id}>
               <BrandIcon
@@ -1094,10 +1101,10 @@ function EngineAddCatalog({
                 aria-label={
                   pendingId === connection.id
                     ? `Adding ${connection.name}`
-                    : `Add ${connection.name}`
+                    : `${addLabel} ${connection.name}`
                 }
               >
-                {pendingId === connection.id ? 'Adding…' : 'Add'}
+                {pendingId === connection.id ? 'Adding…' : addLabel}
               </button>
             </div>
           );

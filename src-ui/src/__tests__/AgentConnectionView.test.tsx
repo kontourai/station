@@ -613,6 +613,52 @@ describe('AgentConnectionView', () => {
     });
   });
 
+  // A native row the catalogue labels "Setup required" still adds the engine
+  // and opens it, where setup continues; a bare "Add" beside that label
+  // promised a usable engine.
+  test('a native row that still needs setup says Add and set up', async () => {
+    agentCatalog = [
+      ...DEFAULT_AGENT_CATALOG,
+      {
+        id: 'muse',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse Code',
+        enabled: true,
+        status: 'missing_prerequisites',
+        capabilities: ['agent-runtime'],
+        prerequisites: [
+          {
+            id: 'muse-cli',
+            name: 'Muse Code CLI',
+            description: 'Required to launch the Muse Code runtime.',
+            status: 'missing',
+            category: 'required',
+          },
+        ],
+        config: { executionClass: 'connected' },
+        setup: { state: 'available', detected: false, configured: false },
+      },
+    ];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Setup required')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add and set up Muse Code' }),
+    );
+    expect(save).toHaveBeenCalledWith({
+      connection: expect.objectContaining({ id: 'muse' }),
+      isNew: false,
+    });
+    // The found, ready-to-connect row keeps its plain Add.
+    expect(
+      screen.getByRole('button', { name: 'Add Claude Code' }),
+    ).toBeTruthy();
+  });
+
   // #592 slice 2, review M1: the catalog endpoint is not
   // registration-authoritative (`AgentConnectionView.tsx`'s own
   // `isAddedEngine` doc comment) — it can carry a row this Station already

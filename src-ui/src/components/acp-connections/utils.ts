@@ -14,7 +14,7 @@ type ACPConnectionStatusTone =
   | 'unavailable'
   | 'off';
 
-type RecommendedAction = 'Enable' | 'Reconnect' | null;
+type RecommendedAction = 'Enable' | 'Reconnect' | 'Retry check' | null;
 
 export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
   const isConnected = conn.status === 'available';
@@ -36,11 +36,13 @@ export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
     ? null
     : !conn.enabled
       ? 'Enable'
-      : isError ||
-          isDisconnected ||
-          (!isConnected && !isConnecting && !isUnavailable)
-        ? 'Reconnect'
-        : null;
+      : isUnavailable
+        ? // Setup needed: the engine ran its check and failed; re-running
+          // it after fixing the cause is the next step.
+          'Retry check'
+        : isError || isDisconnected || (!isConnected && !isConnecting)
+          ? 'Reconnect'
+          : null;
   const statusTone: ACPConnectionStatusTone =
     statusLabel === 'Ready'
       ? 'ready'

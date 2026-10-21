@@ -164,12 +164,13 @@ test('hides raw command details until Advanced is opened', () => {
 test.each([
   ['available', true, 'Ready', null],
   ['probing', true, 'Checking', null],
-  ['unavailable', true, 'Setup needed', null],
+  ['unavailable', true, 'Setup needed', 'Retry check'],
   ['error', true, 'Unavailable', 'Reconnect'],
   ['available', false, 'Off', 'Enable'],
 ] as const)(
   'renders one readiness label and action for %s / enabled=%s',
   (status, enabled, label, action) => {
+    const onReconnect = vi.fn();
     render(
       <ACPConnectionCard
         conn={{ ...connection, status, enabled }}
@@ -177,7 +178,7 @@ test.each([
         onClick={vi.fn()}
         onToggle={vi.fn()}
         onRemove={vi.fn()}
-        onReconnect={vi.fn()}
+        onReconnect={onReconnect}
       />,
     );
 
@@ -193,10 +194,13 @@ test.each([
     } else {
       expect(screen.queryByRole('button', { name: 'Enable' })).toBeNull();
     }
-    if (action === 'Reconnect') {
-      expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
-    } else {
-      expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    for (const probeAction of ['Reconnect', 'Retry check'] as const) {
+      if (action === probeAction) {
+        fireEvent.click(screen.getByRole('button', { name: probeAction }));
+        expect(onReconnect).toHaveBeenCalledTimes(1);
+      } else {
+        expect(screen.queryByRole('button', { name: probeAction })).toBeNull();
+      }
     }
   },
 );

@@ -138,7 +138,9 @@ export function ACPConnectionCard({
               >
                 Enable
               </button>
-            ) : recommendedAction === 'Reconnect' && conn.enabled ? (
+            ) : (recommendedAction === 'Reconnect' ||
+                recommendedAction === 'Retry check') &&
+              conn.enabled ? (
               <button
                 type="button"
                 className="button button--small button--secondary"
@@ -147,7 +149,7 @@ export function ACPConnectionCard({
                   onReconnect();
                 }}
               >
-                Reconnect
+                {recommendedAction}
               </button>
             ) : null
           }
