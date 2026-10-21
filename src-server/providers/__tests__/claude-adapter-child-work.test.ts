@@ -379,6 +379,34 @@ describe('#2457 Claude child work, replayed from real captures', () => {
     expect(item?.usageProvisional).toBeUndefined();
   });
 
+  test('native task_updated failure text retains provider-error provenance', () => {
+    const { events } = replayClaudeTaskCapture('background-agent', {
+      rewrite: (lines) =>
+        lines.map((line) => {
+          const message = line.message;
+          if (message?.type !== 'system' || message.subtype !== 'task_updated')
+            return line;
+          return {
+            message: {
+              ...message,
+              patch: {
+                ...message.patch,
+                status: 'failed',
+                error: 'Native task failure',
+              },
+            },
+          };
+        }),
+    });
+    const item = itemsOf(events).find(
+      (candidate) => candidate.result?.summary === 'Native task failure',
+    );
+    expect(item?.result).toMatchObject({
+      summary: 'Native task failure',
+      source: 'provider-error',
+    });
+  });
+
   test('#1878 stop-task: Query.stopTask settles the child cancelled, never completed', () => {
     const { events } = replayClaudeTaskCapture('stop-task');
     const [childId] = agentTaskIds('stop-task');
