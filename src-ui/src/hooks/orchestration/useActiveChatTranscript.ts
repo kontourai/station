@@ -649,6 +649,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(message.metadata?.stationCheckBack
           ? { stationCheckBack: true }
           : {}),
+        ...(message.metadata?.sender
+          ? { sender: message.metadata.sender }
+          : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
         turnEnded: message.metadata?.turnEnded,

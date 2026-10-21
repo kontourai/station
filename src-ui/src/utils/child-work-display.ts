@@ -3,6 +3,8 @@ import type {
   ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
+import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
  * The words every child-work surface (the Agents pane's row, the transcript's
@@ -61,3 +63,35 @@ export const CHILD_WORK_MODEL_SOURCE_TEXT: Record<
   'spawn-result': 'Reported by the engine when it spawned the subagent',
   'child-thread': "Reported by the subagent's own thread",
 };
+
+/** Most recent tool started by this execution in its current loaded turn. */
+export function latestChildTool(
+  events: readonly CanonicalRuntimeEvent[],
+  threadId: string,
+  latestTool?: OrchestrationSessionEventWindow['latestTool'],
+): string | undefined {
+  if (latestTool !== undefined) return latestTool?.name;
+  let turnId: string | undefined;
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.threadId === threadId && event.method === 'turn.started') {
+      turnId = event.turnId;
+      break;
+    }
+  }
+  let crossedStart = false;
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event.threadId !== threadId) continue;
+    if (
+      event.method === 'tool.started' &&
+      (event.turnId ? !turnId || event.turnId === turnId : !crossedStart)
+    )
+      return event.toolName;
+    if (event.method === 'turn.started') {
+      crossedStart = true;
+      if (event.turnId !== turnId) return undefined;
+    }
+  }
+  return undefined;
+}

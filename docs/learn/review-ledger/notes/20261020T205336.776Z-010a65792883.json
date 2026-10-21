@@ -1,0 +1,7 @@
+{
+  "revision": "06d05e70b0cc8c5bef88158d7f29881712949740",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Moved the primary late-Close registration assertion from the list-owner suite with a SessionDetail read stub into the real RegionActivityReviewPane -> SessionDetail -> MutableSessionDetail composer. Actual typing registers its draft guard, Close opens the real unsaved dialog, another owner registers while it waits, and Discard must preserve the arrangement, reply, state, immutable fence and relation. Removing the close watch makes that exact real-caller assertion fail; restored two suites22 tests pass13.48s. The list-owner suite retains only distinct moved/unmounted cases. A first fixture run retained an in-memory draft between tests; the fixture now clears only its exact draft scope before each case. No product bytes changed after78eab3b42d6; browser3 PASS26.7s remains exact-source evidence. Native/hosted/independent acceptance is separate.","inputs":["docs/design/pane-relationships.md","src-ui/src/__tests__/ActivityReview.chatExit.test.tsx","src-ui/src/views/activity/__tests__/ActivityReview.test.tsx"]}
+  ]
+}

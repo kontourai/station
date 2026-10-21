@@ -191,7 +191,7 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     fireEvent.click(
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     const card = await screen.findByLabelText(
       'Answer provenance for turn turn-live-1',
     );
@@ -221,7 +221,7 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     );
     expect(
       await screen.findByRole('menuitem', {
-        name: 'Add this answer to a Task (turn turn-live-1)',
+        name: 'Add to Task: answer',
       }),
     ).toBeTruthy();
 
@@ -376,7 +376,7 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     fireEvent.click(
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     expect(
       await screen.findByText(
         /cannot read\. Nothing about this answer is being claimed/,

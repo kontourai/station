@@ -56,7 +56,15 @@
 
     "src-ui/src/components/review/ReviewLayout.tsx",
 
-    "src-ui/src/contexts/MonitoringContext.tsx"
+    "src-ui/src/contexts/MonitoringContext.tsx",
+
+    ".github/workflows/nightly.yml",
+
+    ".github/workflows/main-qualification.yml",
+
+    ".github/workflows/release.yml",
+
+    "docs/guides/testing.md"
   ],
 
   "checks": [

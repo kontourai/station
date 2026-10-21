@@ -117,13 +117,9 @@ function renderHeader(
   render(
     <HeaderActions
       helpPrompts={[]}
-      settingsShortcut="⌘,"
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
-      showProfileMenu={false}
-      onCloseProfileMenu={vi.fn()}
-      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={vi.fn()}
@@ -133,7 +129,6 @@ function renderHeader(
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={onOpenNotifications}
-      onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,

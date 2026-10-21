@@ -180,6 +180,12 @@
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
+/* The native picker glyph follows color-scheme; an unconditional `dark`
+   painted a light glyph on the light theme's light field. */
+[data-theme="light"] .notifications-page__date-input {
+  color-scheme: light;
+}
+
 .notifications-page__date-input:focus {
   border-color: var(--accent-primary);
 }

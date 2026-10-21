@@ -1,0 +1,7 @@
+{
+  "revision": "60495923799adb2d42443a8200adebfbcd06037e",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Re-reviewed the sole post-capture fixture change: tests/screenshots.spec.ts now obtains its direct API origin from resolveE2EApiBase rather than process.env, preserving mandatory explicit origin while checking scoped STATION_PORT and matching UI host. All20telemetry poses, validated owned snapshots, row spacing, DNT endpoint configuration, readable summary/Technical details and strict Save clearance assertions are unchanged. This adds target safety to evidence setup and changes no user-facing or server consent behavior; existing usage telemetry reference remains accurate. Verification policy,25target/manifest tests and E2E typecheck passed; new capture and hosted/native/receiver qualification are separate results.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

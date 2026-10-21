@@ -1,0 +1,7 @@
+{
+  "revision": "d1ed05f71be9bde7a217f283dda209c0cb72f9aa",
+
+  "notes": [
+    {"path":"docs/user/sharing-answers.md","note":"Reviewed merge with the new sharing guide against TurnActionsMenu and ShareAnswerButton: overflow now says Answer details, opens the same Provenance dialog, and still exposes Share answer only for readable provenance. Corrected only that menu label in the guide; dialog title, sharing prerequisites, expiry and revocation claims are unchanged. The regenerated Docs MCP and eight focused owner files passed211 tests; pinned Corpus check passed. This is a narrow source/documentation integration review, not new public-share/runtime or release qualification.","inputs":["docs/user/sharing-answers.md","src-ui/src/components/chat/ShareAnswerButton.tsx","src-ui/src/views/settings/AnswerSharesSection.tsx","src-ui/src/components/chat/TurnActionsMenu.tsx"]}
+  ]
+}

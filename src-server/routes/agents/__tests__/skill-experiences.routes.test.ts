@@ -415,6 +415,7 @@ class ExperienceAdapter extends GateTestAdapter {
     const turnId = `turn:${this.turns.length}`;
     this.events.push({
       eventId: `${input.threadId}:${turnId}`,
+      invocationId: input.invocationId,
       provider: this.provider,
       threadId: input.threadId,
       turnId,
@@ -683,6 +684,7 @@ test('changed sources block ordinary send and accepting a request while cancella
     expect(fixture.adapter.turns).toHaveLength(1);
     fixture.adapter.events.push({
       eventId: 'request-event',
+      invocationId: fixture.adapter.turns[0]!.invocationId,
       provider: 'claude',
       threadId: 'experience-session',
       turnId: 'turn:1',
@@ -946,6 +948,7 @@ test('rich actions bind the exact invocation and fresh plugin grant while ordina
     ).rejects.toThrow(/changed/);
     fixture.adapter.events.push({
       eventId: 'rich-question-event',
+      invocationId: fixture.adapter.turns[0]!.invocationId,
       provider: 'claude',
       threadId: 'experience-session',
       turnId: 'turn:1',
@@ -1287,6 +1290,7 @@ test('declared stage selection follows canonical child Session lineage and prese
       fixture.store.listSkillExperienceEvents('experience-session')[0]!;
     fixture.adapter.events.push({
       eventId: 'first-completed',
+      invocationId: fixture.adapter.turns[0]!.invocationId,
       provider: 'claude',
       threadId: 'experience-session',
       turnId: 'turn:1',

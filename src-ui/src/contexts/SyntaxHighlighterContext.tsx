@@ -15,7 +15,13 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { escapeHtml, fnv1a, HighlightCache, THEME } from '../highlight/shared';
+import {
+  escapeHtml,
+  fnv1a,
+  HighlightCache,
+  plainCodeBlockHtml,
+  THEME,
+} from '../highlight/shared';
 
 // ── Interface ─────────────────────────────────────────────────────
 
@@ -85,7 +91,7 @@ class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
       this.cache.set(cacheKey, html);
       return html;
     } catch {
-      const fallback = `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:6px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`;
+      const fallback = plainCodeBlockHtml(code);
       this.cache.set(cacheKey, fallback);
       return fallback;
     }

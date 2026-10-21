@@ -79,6 +79,8 @@ function legacy(
 ) {
   switch (command.type) {
     case 'turnBoundary.create':
+      if (command.state === 'reserved')
+        throw new Error('Reserved creation is not a legacy oracle operation.');
       return coordinator.create({
         ...record(command),
         state: command.state,

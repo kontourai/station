@@ -370,6 +370,46 @@
   --syntax-function: #b392f0;
   --syntax-tag: #85e89d;
   --syntax-variable: #ffab70;
+  /* The rest of the Shiki theme (highlight/station-syntax-theme.ts): code
+     blocks and diffs are highlighted against these variables instead of
+     github-dark's literals, so the light theme and palette themes reach
+     them. Dark keeps github-dark's own block surface and text. Comments
+     follow the muted text rung, which the File Preview already used. */
+  --syntax-foreground: #e1e4e8;
+  --syntax-background: #24292e;
+  --syntax-comment: var(--text-muted);
+  --syntax-deleted: #fdaeb7;
+
+  /* Diff surface and change tones (@pierre/diffs, through the same
+     variables theme). The tones are the shared status scale, so a palette
+     that retints --k-positive / --k-negative retints the diff with it. */
+  --diff-background: var(--bg-primary);
+  --diff-addition: var(--k-positive);
+  --diff-deletion: var(--k-negative);
+  --diff-modified: var(--k-active);
+
+  /* Terminal (xterm paints a canvas, so TerminalPanel reads these from the
+     computed style and re-reads them when the root theme changes). */
+  --terminal-background: #1a1a2e;
+  --terminal-foreground: #e0e0e0;
+  --terminal-cursor: #7ec8e3;
+  --terminal-selection: #3a3a5e;
+  --terminal-black: #1a1a2e;
+  --terminal-red: #f44336;
+  --terminal-green: #4caf50;
+  --terminal-yellow: #ffeb3b;
+  --terminal-blue: #2196f3;
+  --terminal-magenta: #9c27b0;
+  --terminal-cyan: #7ec8e3;
+  --terminal-white: #e0e0e0;
+  --terminal-bright-black: #4a4a6e;
+  --terminal-bright-red: #ef5350;
+  --terminal-bright-green: #66bb6a;
+  --terminal-bright-yellow: #fff176;
+  --terminal-bright-blue: #42a5f5;
+  --terminal-bright-magenta: #ab47bc;
+  --terminal-bright-cyan: #80deea;
+  --terminal-bright-white: #ffffff;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -411,6 +451,16 @@
      (station#3305). Mixing into the panel keeps the step visible in both
      themes. */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* Mix target for a surface or border that sits a step ABOVE its base (a
+     modal sheen, a card on a panel, that card's edge):
+     `color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)`.
+     Those call sites mixed in literal `white`, which ignores the palette.
+     Dark lifts toward the palette's own text colour; light lifts toward its
+     panel, which is white for the built-in palette, so light renders as it
+     did with the literal. For the lifted border (--border-primary 82% /
+     lift 18%) dark lands about 4% below the white mix's contrast and light
+     matches it; absolute ratios depend on how the layers are composited. */
+  --surface-lift: var(--k-text);
 
   --accent-light: color-mix(in srgb, var(--k-brand) 25%, transparent);
   --accent-medium: color-mix(in srgb, var(--k-brand) 15%, transparent);
@@ -505,6 +555,8 @@
   --bg-highlight: color-mix(in srgb, var(--k-text) 16%, var(--k-bg));
   /* Same derivation as the dark block above (operands resolve per theme). */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* See the dark block: a light surface lifts toward the panel, not the text. */
+  --surface-lift: var(--k-panel);
   --bg-modal: var(--k-panel);
 
   /* Text */
@@ -639,6 +691,43 @@
   --syntax-function: #6639ba;
   --syntax-tag: #116329;
   --syntax-variable: #953800;
+  /* github-light's text and deletion hues; the block surface is the panel.
+     The aliases are repeated from the dark block on purpose: a custom
+     property's var() resolves where it is declared, so a light island under
+     a dark root would otherwise inherit the dark resolution. */
+  --syntax-foreground: #24292f;
+  --syntax-background: var(--bg-secondary);
+  --syntax-comment: var(--text-muted);
+  --syntax-deleted: #82071e;
+
+  --diff-background: var(--bg-secondary);
+  --diff-addition: var(--k-positive);
+  --diff-deletion: var(--k-negative);
+  --diff-modified: var(--k-active);
+
+  /* A light terminal: GitHub light's ANSI set, each hue at least 3:1 on the
+     white surface ("white" is a mid grey, as light terminal themes do, so
+     text a program prints in white stays visible). */
+  --terminal-background: var(--bg-secondary);
+  --terminal-foreground: #24292f;
+  --terminal-cursor: #0969da;
+  --terminal-selection: #cce1ff;
+  --terminal-black: #24292f;
+  --terminal-red: #cf222e;
+  --terminal-green: #116329;
+  --terminal-yellow: #4d2d00;
+  --terminal-blue: #0969da;
+  --terminal-magenta: #8250df;
+  --terminal-cyan: #1b7c83;
+  --terminal-white: #6e7781;
+  --terminal-bright-black: #57606a;
+  --terminal-bright-red: #a40e26;
+  --terminal-bright-green: #1a7f37;
+  --terminal-bright-yellow: #633c01;
+  --terminal-bright-blue: #218bff;
+  --terminal-bright-magenta: #a475f9;
+  --terminal-bright-cyan: #3192aa;
+  --terminal-bright-white: #8c959f;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -941,7 +1030,8 @@ button:hover {
      commit action can never fall below the fold on a long form. */
   max-height: min(92vh, 880px);
   background: var(--bg-secondary);
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: var(--radius-overlay);
   box-shadow: var(--elevation-overlay);
 }
@@ -2529,6 +2619,26 @@ button:hover {
   min-height: 0;
 }
 
+/* #3882: the Chat inventory portals into this mount through its own wrapper
+   div. Neither may box the inventory: as block boxes they made a flex item
+   twice the aside's width, a dead gutter beside a narrowed transcript. Both
+   step aside so the inventory is a flex item of the surface and takes its
+   own clamped width (SessionInventoryCompact.css). That file's rule for a
+   wrapper directly in the surface does not reach this one: the mount sits
+   between them. */
+.chat-dock__inventory-mount,
+.chat-dock__inventory-mount > div:has(> .session-inventory-compact) {
+  display: contents;
+}
+
+/* With the inventory aside open the transcript keeps its 640px floor
+   (TRANSCRIPT_MIN_WIDTH): the aside shrinks toward its own minimum first.
+   The session context card gives way to both (sessionContextCardModel.ts). */
+.chat-dock__conversation-surface:has(.session-inventory-compact--aside)
+> .chat-dock__content-area {
+  min-width: min(640px, calc(100% - 16rem));
+}
+
 .chat-dock__modal-background {
   display: contents;
 }
@@ -3836,7 +3946,9 @@ button:hover {
   border: none;
   border-radius: 50%;
   background: var(--color-primary, var(--accent-primary));
-  color: #fff;
+  /* The accent's own contrast partner: literal white failed on a light
+     accent (dark brand-contrast channels, custom accent presets). */
+  color: var(--text-on-accent);
   font-size: 20px;
   font-weight: bold;
   cursor: pointer;
@@ -7237,7 +7349,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-xs);
   padding: 1px 8px;
   border-radius: 10px;
-  color: #fff;
+  /* Was white text with no fill of its own, so it vanished on the light
+     theme's modal surface. */
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   font-weight: 500;
   text-transform: lowercase;
 }
@@ -9117,7 +9232,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      (true of a rejected credential, a mismatched identity, and a pending
      approval alike — none of the three is a dead connection). */
   color: var(--text-primary);
-  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  background: color-mix(in srgb, var(--health-warning) 18%, transparent);
 }
 
 /* archive#4512: `max-width` + ellipsis is a BELT, not the primary fit

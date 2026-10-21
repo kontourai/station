@@ -1,0 +1,7 @@
+{
+  "revision": "1cf1c356065fd35ee766475bd2499723f4d5040c",
+
+  "notes": [
+    {"path":"docs/guides/store-entry.md","note":"Reviewed after a .gitignore change that only adds /.proof-guardrails-negative-*/ (a transient test copy of the guardrails proof). No ignored release, store, signing or build artifact rule this guide relies on changed; its claims still hold.","inputs":["docs/guides/store-entry.md",".gitignore"]}
+  ]
+}

@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 0 });
+export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 1 });
 
 export interface ProtocolVersion {
   major: number;
@@ -287,7 +287,8 @@ export type ControlServerMessage =
   | EventMessage;
 
 // ---------------------------------------------------------------------------
-// Generation IPC: core -> supervisor. A handle accompanies `listener.bound`.
+// Generation IPC: core -> supervisor. A handle accompanies `listener.bound`
+// and `listener.spare`.
 
 /**
  * Sent with the listening handle as the second argument of `process.send`.
@@ -306,9 +307,37 @@ export interface ListenerBoundMessage {
   port: number;
 }
 
+/**
+ * Answers `listener.spares` (protocol 1.1): one more copy of the named
+ * listener's raw handle, sent as `listener.bound` sends one.
+ */
+export interface ListenerSpareMessage {
+  type: 'listener.spare';
+  name: string;
+}
+
+/**
+ * Protocol 1.1: this generation now listens on the named adopted listener.
+ * Connections the supervisor held for it during a handoff go to the first
+ * generation that says so, as the kernel backlog would hand them to the
+ * first one that accepts.
+ */
+export interface ListenerListeningMessage {
+  type: 'listener.listening';
+  name: string;
+}
+
 /** Code is loaded; the home has not been touched. */
 export interface ParkedMessage {
   type: 'parked';
+  /**
+   * Protocol 1.1: this core speaks connection catching. It answers
+   * `listener.spares` while listening, reports `listener.listening`, and
+   * serves `connection.adopt` (see `ListenerSparesMessage`). A supervisor catches during a handoff only when
+   * both the generation it drains and the trial said so; a 1.0 core ignores
+   * `listener.spares` and closes an adopted connection as a stray handle.
+   */
+  adoptsConnections?: boolean;
 }
 
 export interface ReadyMessage {
@@ -337,6 +366,8 @@ export interface CoreHandoffRequestMessage {
 
 export type CoreToSupervisorMessage =
   | ListenerBoundMessage
+  | ListenerSpareMessage
+  | ListenerListeningMessage
   | ParkedMessage
   | ReadyMessage
   | DrainProgressMessage
@@ -344,7 +375,8 @@ export type CoreToSupervisorMessage =
   | CoreHandoffRequestMessage;
 
 // ---------------------------------------------------------------------------
-// Generation IPC: supervisor -> core. A handle accompanies `listener.adopt`.
+// Generation IPC: supervisor -> core. A handle accompanies `listener.adopt`
+// and `connection.adopt`.
 
 /**
  * Leave the parked state and boot. `listeners` names every handle that follows
@@ -358,6 +390,48 @@ export interface PromoteMessage {
 
 export interface ListenerAdoptMessage {
   type: 'listener.adopt';
+  name: string;
+}
+
+/**
+ * Protocol 1.1, sent when the supervisor catches connections (it decides:
+ * on Windows only, unless a test forces it), to a generation that listens on
+ * the named listener, before it is drained: answer with `count` (1 to
+ * MAX_LISTENER_SPARES) `listener.spare` messages for that listener, then,
+ * when the drain comes, close it only once no connection has reached it for
+ * a short quiet window.
+ *
+ * Why: libuv on Windows keeps accepts (`AcceptEx`) posted on a listening
+ * socket, and Windows completes a new connection into one as soon as its
+ * handshake ends. Closing the listener closes those accepts, resetting any
+ * connection already completed into one; POSIX leaves such connections in
+ * the shared backlog. Windows hands a connection to the most recently posted
+ * accept, so once the supervisor listens on the spares, connections go to it
+ * instead of the generation about to close. The supervisor holds what it
+ * accepts, unread, and passes it with `connection.adopt` to the next
+ * generation that reports the listener listening (`listener.listening`) or,
+ * failing that, ready: the trial, or the generation a rollback starts. Once
+ * no connection has reached the spares for a quiet window, it closes them. A
+ * 1.0 core ignores this message.
+ */
+export interface ListenerSparesMessage {
+  type: 'listener.spares';
+  name: string;
+  count: number;
+}
+
+/** Most spares one `listener.spares` may ask for. */
+export const MAX_LISTENER_SPARES = 32;
+
+/**
+ * Protocol 1.1: a connection the supervisor accepted during a handoff, sent
+ * with the connected socket; nothing has been read from it. Serve it on the
+ * named listener as if that listener had accepted it. A core that has no
+ * such listener closes it: a connection held for a listener the adopting
+ * generation never binds is lost.
+ */
+export interface ConnectionAdoptMessage {
+  type: 'connection.adopt';
   name: string;
 }
 
@@ -383,6 +457,8 @@ export interface CoreHandoffRefusedMessage {
 export type SupervisorToCoreMessage =
   | PromoteMessage
   | ListenerAdoptMessage
+  | ListenerSparesMessage
+  | ConnectionAdoptMessage
   | DrainMessage
   | CoreHandoffRefusedMessage;
 

@@ -34,6 +34,11 @@ import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import {
+  PaneRelationsProvider,
+  type PaneRelationsValue,
+  usePaneRelations,
+} from '../../../contexts/PaneRelationsContext';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
@@ -260,6 +265,12 @@ function renderDockedPane() {
   );
 }
 
+let relations: PaneRelationsValue | undefined;
+function CaptureRelations() {
+  relations = usePaneRelations();
+  return null;
+}
+
 function renderInProviders(pane: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -272,8 +283,11 @@ function renderInProviders(pane: ReactNode) {
             <ConversationsProvider>
               <ActiveChatsProvider>
                 <RegionModelProvider>
-                  <CaptureShowSurface />
-                  {pane}
+                  <PaneRelationsProvider>
+                    <CaptureShowSurface />
+                    <CaptureRelations />
+                    {pane}
+                  </PaneRelationsProvider>
                 </RegionModelProvider>
               </ActiveChatsProvider>
             </ConversationsProvider>
@@ -795,4 +809,31 @@ test('a Personal Board draft opens one projectless chat picker and stays unsent 
     }),
   );
   expect(sendMessage).not.toHaveBeenCalled();
+});
+
+/**
+ * The real docked pane publishes the conversation it shows as its pane-opener
+ * selection (docs/design/pane-relationships.md), so a preview it opened for
+ * one conversation hides while another is on screen. Outside a region pane
+ * the opener occurrence is the workspace Chat. Removing the pane's
+ * `usePublishOpenerSelection` call fails both assertions.
+ */
+test('the docked pane publishes the conversation it shows, and follows the selection', async () => {
+  dockProbe.sessions = [
+    { ...chatSession('chat-a'), conversationId: 'conversation-a' },
+    { ...chatSession('chat-b'), conversationId: 'conversation-b' },
+  ];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await waitFor(() =>
+    expect(relations?.currentSelection('chat-workspace')).toBe(
+      'conversation:conversation-a',
+    ),
+  );
+  act(() => navigationStore.setActiveChat('chat-b'));
+  await waitFor(() =>
+    expect(relations?.currentSelection('chat-workspace')).toBe(
+      'conversation:conversation-b',
+    ),
+  );
 });

@@ -42,6 +42,7 @@ describe('DestinationRegistry', () => {
       'activity',
       'schedule',
       'feature-previews',
+      'appearance',
       'settings',
       'settings-station',
       'settings-defaults',
@@ -65,6 +66,7 @@ describe('DestinationRegistry', () => {
       'feature-previews',
       'developer',
       'monitoring',
+      'appearance',
       'settings',
       'settings-station',
       'settings-defaults',
@@ -166,6 +168,23 @@ describe('DestinationRegistry', () => {
         order: 40,
         label: 'Plugins',
         route: '/plugins',
+      },
+      // The owner's ask: themes and their gallery live in Customize, and
+      // Settings is listed there too without losing its other doors; its
+      // palette entry is pinned in the inventory test above.
+      {
+        id: 'appearance',
+        group: 'this-station',
+        order: 90,
+        label: 'Appearance',
+        route: '/appearance',
+      },
+      {
+        id: 'settings',
+        group: 'this-station',
+        order: 110,
+        label: 'Settings',
+        route: '/settings',
       },
     ]);
     // Registry is deliberately absent: #2144 decision 4 folds it into Plugins,

@@ -33,7 +33,10 @@ import {
   type SurfaceDeliveryFeed,
 } from '@kontourai/station-contracts/notification-preferences';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import { resolveNotificationOpenHref } from '../notification-deep-link.js';
+import {
+  resolveNotificationOpenHref,
+  withOpenedNotification,
+} from '../notification-deep-link.js';
 import {
   osNotificationBody,
   osNotificationTitle,
@@ -105,7 +108,10 @@ export class DesktopHostChannel implements DeliveryChannel {
     envelope: NotificationEnvelopeV1,
     to: ChannelTarget[],
   ): Promise<DeliveryOutcome[]> {
-    const link = resolveNotificationTargetLink(notification, envelope);
+    const link = withOpenedNotification(
+      resolveNotificationTargetLink(notification, envelope),
+      notification.id,
+    );
     return to.map(({ surface, ref, hideContent }) => {
       const feed = this.#feeds.get(surface);
       if (!feed) return { ref, result: 'gone' };

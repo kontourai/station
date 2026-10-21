@@ -11,9 +11,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const checkoutMutate = vi.fn();
 const commitMutate = vi.fn();
 const pushMutate = vi.fn();
-// What the toolbar handed the commit/push hooks (#2363: the Project, then
-// the active repository inside it).
-const mutationArgs = { commit: [] as unknown[], push: [] as unknown[] };
+// What the toolbar handed each git hook (#2363, #2412: the Project and the
+// active repository inside it).
+const hookArgs = {
+  repos: [] as unknown[],
+  branches: [] as unknown[],
+  checkout: [] as unknown[],
+  commit: [] as unknown[],
+  push: [] as unknown[],
+};
 
 interface RepoLike {
   root: string;
@@ -72,20 +78,26 @@ vi.mock('../hooks/useGitStatus', () => ({
   },
 }));
 
-vi.mock('../hooks/useGitActions', () => ({
-  useReposQuery: () => state.repos,
-  useGitBranchesQuery: () => state.branches,
-  useGitCheckoutMutation: () => ({
-    mutate: checkoutMutate,
-    isPending: false,
-    error: null,
-  }),
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useReposQuery: (...args: unknown[]) => {
+    hookArgs.repos = args;
+    return state.repos;
+  },
+  useGitBranchesQuery: (...args: unknown[]) => {
+    hookArgs.branches = args;
+    return state.branches;
+  },
+  useGitCheckoutMutation: (...args: unknown[]) => {
+    hookArgs.checkout = args;
+    return { mutate: checkoutMutate, isPending: false, error: null };
+  },
   useGitCommitMutation: (...args: unknown[]) => {
-    mutationArgs.commit = args;
+    hookArgs.commit = args;
     return { mutate: commitMutate, isPending: false, error: null };
   },
   useGitPushMutation: (...args: unknown[]) => {
-    mutationArgs.push = args;
+    hookArgs.push = args;
     return { mutate: pushMutate, isPending: false, error: null };
   },
 }));
@@ -175,10 +187,25 @@ describe('BranchToolbar', () => {
     expect(checkoutMutate).toHaveBeenCalledWith({ branch: 'feature/x' });
   });
 
-  test('commit and push are bound to the Project and the active repository (#2363)', () => {
-    render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
-    expect(mutationArgs.commit).toEqual(['acme', '/repo']);
-    expect(mutationArgs.push).toEqual(['acme', '/repo']);
+  test('every git hook is bound to the Project and the active repository, not the workspace (#2363)', () => {
+    state.repos = { data: MULTI_REPO, isLoading: false, error: null };
+    render(
+      <BranchToolbar
+        projectSlug="acme"
+        workingDir="/workspace"
+        activeFile="/workspace/repo-b/lib/util.ts"
+      />,
+    );
+    // Discovery looks across the whole workspace…
+    expect(hookArgs.repos).toEqual([
+      { projectSlug: 'acme', workingDir: '/workspace' },
+    ]);
+    // …and every read and write acts on the repository holding the file.
+    const repoB = [{ projectSlug: 'acme', workingDir: '/workspace/repo-b' }];
+    expect(hookArgs.branches).toEqual(repoB);
+    expect(hookArgs.checkout).toEqual(repoB);
+    expect(hookArgs.commit).toEqual(repoB);
+    expect(hookArgs.push).toEqual(repoB);
   });
 
   test('Commit fires commit with the message', () => {

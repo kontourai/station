@@ -1,0 +1,7 @@
+{
+  "revision": "e3943527bd498dbd3f28c27432342c30c016723a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#3800 fix round: added that an uncommitted, changed, nested-repository or out-of-repository .codex from the repository root to the session folder stops a non-host Codex session, naming it; traced to findUnaccountedCodexConfig and the adapter start path.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

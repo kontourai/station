@@ -5,6 +5,28 @@ import type {
   WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
 import { DEFAULT_RETAINED_WORKING_STATE_OPERATIONS } from '../../domain/shared-working-state.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'project-task-room-working-state' });
+type UnavailableReason =
+  | 'response-deadline'
+  | 'worker-error'
+  | 'worker-exit'
+  | 'malformed-response'
+  | 'post-message-failed'
+  | 'worker-unavailable-reply'
+  | 'closed';
+
+function reportUnavailable(operation: string, reason: UnavailableReason) {
+  // Diagnostics must not interrupt settlement of the unavailable result.
+  try {
+    logger.warn('Task room working state unavailable', {
+      event: 'project-task-room-working-state-unavailable',
+      operation,
+      reason,
+    });
+  } catch {}
+}
 
 export interface ProjectTaskRoomWorkingState {
   read(input: {
@@ -179,21 +201,25 @@ export function createProjectTaskRoomWorkingState(
   });
   let closed = false;
   let terminal = false;
+  let terminalReason: UnavailableReason = 'closed';
   let closeSettlement: Promise<void> | undefined;
   let sequence = 0;
   const pending = new Map<
     number,
     {
       resolve: (value: any) => void;
+      operation: string;
       timer: ReturnType<typeof setTimeout>;
       beforeCommit?: () => Promise<boolean>;
     }
   >();
   const watchers = new Set<() => void>();
-  const fail = () => {
+  const fail = (reason: UnavailableReason) => {
+    if (!terminal) terminalReason = reason;
     terminal = true;
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
+      reportUnavailable(entry.operation, terminalReason);
       entry.resolve({ kind: 'unavailable' });
     }
     pending.clear();
@@ -228,32 +254,38 @@ export function createProjectTaskRoomWorkingState(
         });
       return;
     }
-    if (!value || !Number.isSafeInteger(value.id)) return fail();
+    if (!value || !Number.isSafeInteger(value.id))
+      return fail('malformed-response');
     const entry = pending.get(value.id);
     if (entry) {
       pending.delete(value.id);
       clearTimeout(entry.timer);
+      if (value.result?.kind === 'unavailable')
+        reportUnavailable(entry.operation, 'worker-unavailable-reply');
       entry.resolve(value.result);
     }
   });
-  worker.on('error', fail);
-  worker.on('exit', fail);
+  worker.on('error', () => fail('worker-error'));
+  worker.on('exit', () => fail('worker-exit'));
   const request = <T>(
-    value: unknown,
+    value: { type: string },
     beforeCommit?: () => Promise<boolean>,
   ): Promise<T> =>
     new Promise((resolve) => {
-      if (closed || terminal) return resolve({ kind: 'unavailable' } as T);
+      if (closed || terminal) {
+        reportUnavailable(value.type, closed ? 'closed' : terminalReason);
+        return resolve({ kind: 'unavailable' } as T);
+      }
       const id = ++sequence;
       const timer = setTimeout(() => {
-        fail();
+        fail('response-deadline');
         void worker.terminate().catch(() => {});
       }, responseTimeoutMs);
-      pending.set(id, { resolve, timer, beforeCommit });
+      pending.set(id, { resolve, timer, beforeCommit, operation: value.type });
       try {
         worker.postMessage({ id, value });
       } catch {
-        fail();
+        fail('post-message-failed');
       }
     });
   return Object.freeze({
@@ -370,7 +402,7 @@ export function createProjectTaskRoomWorkingState(
     close: async () => {
       if (closeSettlement) return closeSettlement;
       closed = true;
-      fail();
+      fail('closed');
       closeSettlement = worker
         .terminate()
         .catch(() => undefined)

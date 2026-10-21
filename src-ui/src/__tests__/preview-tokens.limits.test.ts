@@ -61,9 +61,9 @@ describe('tokenizeForPreview', () => {
     const highlighter = {
       codeToTokensBase: () => [
         [
-          { content: 'con', color: '#ff7b72' },
-          { content: 'st', color: '#FF7B72' },
-          { content: ' x', color: '#c9d1d9' },
+          { content: 'con', color: 'var(--syntax-keyword)' },
+          { content: 'st', color: 'var(--syntax-keyword)' },
+          { content: ' x', color: 'var(--syntax-variable)' },
           { content: ' = 1' },
         ],
       ],
@@ -77,8 +77,8 @@ describe('tokenizeForPreview', () => {
       ),
     ).toEqual([
       [
-        { content: 'const', color: '#FF7B72' },
-        { content: ' x', color: '#C9D1D9' },
+        { content: 'const', color: 'var(--syntax-keyword)' },
+        { content: ' x', color: 'var(--syntax-variable)' },
         { content: ' = 1' },
       ],
     ]);

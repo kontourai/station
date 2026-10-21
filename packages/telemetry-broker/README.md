@@ -99,9 +99,10 @@ Set Station's `STATION_PRODUCT_TELEMETRY_ENDPOINT` to the full
 The legacy aliases `STATION_TELEMETRY_ENDPOINT` and
 `STATION_USAGE_TELEMETRY_KEY` remain supported until a separate release decision;
 valid nonempty canonical values win. Neither resolves an OTLP key.
-Station still requires telemetry enablement and acknowledgement of the current
-inventory. These settings do not configure OTel or authorize personal receipt
-sync.
+The Full stream requires the publisher Full choice and acknowledgement of the current
+inventory. This address accepts the Full envelope; Lite pings and feedback use
+separate public source addresses described in [Lite observations](#lite-observations).
+These settings do not configure OTel or authorize personal receipt sync.
 
 An explicit Settings connection check sends
 `{protocol: "station-product-probe/v1", inventoryRevision: "<current revision>"}`

@@ -11,7 +11,7 @@
  *    (`listener.bound`) when the supervisor holds none yet;
  * 3. reports `ready` once every listener is bound;
  * 4. on `drain`, stops accepting (new connections wait in the supervisor's
- *    backlog), marks every response `Connection: close`, ends event streams,
+ *    backlog or, on Windows, in its spare listeners), marks every response `Connection: close`, ends event streams,
  *    and waits for requests already in progress, bounded by the drain
  *    deadline; then it shuts down and exits. A request still running past
  *    that bound is cut off when the process exits.
@@ -26,9 +26,10 @@ import type {
   IncomingMessage,
   ServerResponse,
 } from 'node:http';
-import { Server as NetServer, type Socket } from 'node:net';
+import { Server as NetServer, Socket } from 'node:net';
 import {
   type CoreToSupervisorMessage,
+  MAX_LISTENER_SPARES,
   SUPERVISOR_ENV,
 } from '@kontourai/station-supervisor/protocol';
 
@@ -52,6 +53,17 @@ const DRAIN_IDLE_GRACE_MS = 1_000;
 const DRAIN_SWEEP_INTERVAL_MS = 100;
 /** A drain stops waiting for requests this long before its deadline. */
 const DRAIN_DEADLINE_MARGIN_MS = 2_000;
+/**
+ * A drain that follows `listener.spares` (a Windows handoff) closes this
+ * generation's listeners only once no connection has reached them for
+ * DRAIN_QUIET_CLOSE_MS, or DRAIN_QUIET_CAP_MS after the drain began. Closing
+ * a listener on Windows resets a connection already completed into one of
+ * its pending accepts; the supervisor's spares take new connections, but one
+ * can complete here just before they do. Without this wait a Windows host
+ * saw such a reset in 3 of 700 handoffs; with it, in none of 700.
+ */
+const DRAIN_QUIET_CLOSE_MS = 50;
+const DRAIN_QUIET_CAP_MS = 1_000;
 /** After `promote`, every named handle must arrive within this time. */
 const ADOPT_TIMEOUT_MS = 10_000;
 /** After the supervisor disconnects, graceful shutdown gets this long. */
@@ -220,7 +232,11 @@ function boundPort(server: NetServer, fallback: number): number {
  * Closes a stable listener on shutdown without throwing or hanging when it is
  * already closed, as it is after a supervisor drain. A listening server
  * closes as `server.close()` always has; one that no longer listens only has
- * its idle connections closed.
+ * its idle connections closed. Its promise does not wait for a connection
+ * served with `connection.adopt`, which net.Server does not count; a drain
+ * waits for those through the link's own connection set before shutdown
+ * reaches here, but a shutdown without a drain (SIGINT, or the supervisor
+ * gone) does not.
  */
 export function closeStableListener(server: NetServer): Promise<void> {
   if (!server.listening) {
@@ -256,7 +272,13 @@ export class SupervisorLink implements ListenerLink {
   private expected: Set<string> | null = null;
   private parkSettled = false;
   private readonly adopted = new Map<string, unknown>();
+  /** The server listening as each stable listener. */
+  private readonly named = new Map<SupervisorListenerName, NetServer>();
   private readonly servers = new Set<NetServer>();
+  /** When a tracked server last accepted a connection. */
+  private lastAcceptAt = 0;
+  /** Spares went to the supervisor: the next drain closes listeners when quiet. */
+  private sparesSent = false;
   /** Open HTTP connections on tracked servers; upgraded sockets are not HTTP. */
   private readonly connections = new Set<Socket>();
   private readonly responses = new Set<ServerResponse>();
@@ -299,7 +321,7 @@ export class SupervisorLink implements ListenerLink {
       this.resolvePark = resolve;
       this.rejectPark = reject;
     });
-    this.send({ type: 'parked' });
+    this.send({ type: 'parked', adoptsConnections: true });
     return parked;
   }
 
@@ -348,6 +370,7 @@ export class SupervisorLink implements ListenerLink {
       );
     }
     this.track(server);
+    this.named.set(name, server);
     const handle = this.adopted.get(name);
     if (handle !== undefined) {
       this.adopted.delete(name);
@@ -360,6 +383,8 @@ export class SupervisorLink implements ListenerLink {
         closeQuietly(handle);
         throw error;
       }
+      // Connections the supervisor held for this listener come here now.
+      this.send({ type: 'listener.listening', name });
       const bound = server.address();
       if (typeof bound === 'object' && bound) {
         // The held socket wins: say so when configuration asks for another.
@@ -508,7 +533,11 @@ export class SupervisorLink implements ListenerLink {
   private track(server: NetServer): void {
     if (this.servers.has(server)) return;
     this.servers.add(server);
+    // Also sees connections served with `connection.adopt`, which net.Server
+    // itself does not count: its close callback can fire while they are open,
+    // so a drain waits on this set, never on that callback.
     server.on('connection', (socket: Socket) => {
+      this.lastAcceptAt = Date.now();
       this.connections.add(socket);
       socket.once('close', () => this.connections.delete(socket));
     });
@@ -540,6 +569,45 @@ export class SupervisorLink implements ListenerLink {
     }
   }
 
+  /**
+   * Stops accepting on this generation's copy of each listener. The
+   * supervisor still holds the sockets, so new connections wait in the kernel
+   * backlog for the next generation. net.Server's close, not http.Server's:
+   * the latter closes idle connections at once, racing a keep-alive client
+   * whose next request is already on its way.
+   */
+  private async closeListeners(): Promise<void> {
+    for (const server of this.servers) {
+      if (server.listening) NetServer.prototype.close.call(server);
+    }
+  }
+
+  /**
+   * Closes the listeners once none has accepted for DRAIN_QUIET_CLOSE_MS (see
+   * there), or after `capMs`. Until then this generation still answers new
+   * connections, each response marked `Connection: close`.
+   */
+  private async closeListenersWhenQuiet(
+    started: number,
+    capMs: number,
+  ): Promise<void> {
+    for (;;) {
+      const now = Date.now();
+      const quietFor = now - this.lastAcceptAt;
+      if (quietFor >= DRAIN_QUIET_CLOSE_MS) break;
+      if (now - started >= capMs) {
+        this.log(
+          `drain: still accepting after ${capMs}ms; closing listeners anyway`,
+        );
+        break;
+      }
+      await sleep(
+        Math.min(DRAIN_QUIET_CLOSE_MS - quietFor, capMs - (now - started)),
+      );
+    }
+    await this.closeListeners();
+  }
+
   private closeIdleConnections(): void {
     // Node closes only connections with no request in progress: one whose
     // next request has started arriving, even partially, is left to finish.
@@ -553,8 +621,13 @@ export class SupervisorLink implements ListenerLink {
       closeQuietly(handle);
       return;
     }
-    // Only listener.adopt carries a handle; close one sent with anything else.
-    if (handle !== undefined && message.type !== 'listener.adopt') {
+    // Only listener.adopt and connection.adopt carry a handle; close one sent
+    // with anything else.
+    if (
+      handle !== undefined &&
+      message.type !== 'listener.adopt' &&
+      message.type !== 'connection.adopt'
+    ) {
       this.log(`closed a stray handle sent with ${message.type}`);
       closeQuietly(handle);
     }
@@ -564,6 +637,12 @@ export class SupervisorLink implements ListenerLink {
         return;
       case 'listener.adopt':
         this.onAdopt(message.name, handle);
+        return;
+      case 'listener.spares':
+        this.onSpares(message.name, message.count);
+        return;
+      case 'connection.adopt':
+        this.onConnectionAdopt(message.name, handle);
         return;
       case 'drain':
         this.startDrain(
@@ -633,6 +712,55 @@ export class SupervisorLink implements ListenerLink {
     this.settleParkIfComplete();
   }
 
+  /** Sends the supervisor `count` copies of a listener's raw handle. */
+  private onSpares(name: unknown, count: unknown): void {
+    const server =
+      typeof name === 'string' && isListenerName(name)
+        ? this.named.get(name)
+        : undefined;
+    const raw: unknown = server ? Reflect.get(server, '_handle') : undefined;
+    if (
+      !server?.listening ||
+      raw === undefined ||
+      this.draining ||
+      typeof count !== 'number' ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > MAX_LISTENER_SPARES
+    ) {
+      this.log(
+        `ignored listener.spares for ${String(name)} (${String(count)})`,
+      );
+      return;
+    }
+    this.sparesSent = true;
+    for (let i = 0; i < count; i += 1) {
+      this.send({ type: 'listener.spare', name: name as string }, raw);
+    }
+  }
+
+  /** Serves a connection the supervisor held during a handoff. */
+  private onConnectionAdopt(name: unknown, handle: unknown): void {
+    if (!(handle instanceof Socket)) {
+      this.log(`ignored connection.adopt for ${String(name)}: no socket`);
+      closeQuietly(handle);
+      return;
+    }
+    const server =
+      typeof name === 'string' && isListenerName(name)
+        ? this.named.get(name)
+        : undefined;
+    if (!server) {
+      this.log(
+        `closed an adopted connection for ${String(name)}: no such listener`,
+      );
+      handle.destroy();
+      return;
+    }
+    server.emit('connection', handle);
+    handle.resume();
+  }
+
   private settleParkIfComplete(): void {
     if (this.parkSettled || this.expected === null || this.expected.size > 0) {
       return;
@@ -653,18 +781,17 @@ export class SupervisorLink implements ListenerLink {
 
   private startDrain(deadlineMs: number, source: DrainRequest['source']): void {
     if (this.drainRequest) return;
-    // Stop accepting on this generation's copy of each listener. The
-    // supervisor still holds the sockets, so new connections wait in the
-    // kernel backlog for the next generation. net.Server's close, not
-    // http.Server's: the latter closes idle connections at once, racing a
-    // keep-alive client whose next request is already on its way.
-    for (const server of this.servers) {
-      if (server.listening) NetServer.prototype.close.call(server);
-    }
     const started = Date.now();
     const bound = drainWaitBoundMs(deadlineMs, this.drainIdleGraceMs);
+    const listenersClosed = this.sparesSent
+      ? this.closeListenersWhenQuiet(
+          started,
+          Math.min(DRAIN_QUIET_CAP_MS, bound),
+        )
+      : this.closeListeners();
     const connectionsSettled = (async () => {
       this.endEventStreams();
+      await listenersClosed;
       // From here every response says Connection: close, so busy keep-alive
       // connections close after their response. Wait the grace before closing
       // idle ones, then keep closing connections as they go idle until none

@@ -39,6 +39,7 @@ import { Empty, ErrorState } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
+import { KERNEL_RESERVED_SHORTCUTS } from './contexts/kernelReservedShortcuts';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import {
@@ -93,14 +94,6 @@ const loadCoreUpdateLaunchCheck = () =>
     default: module.CoreUpdateLaunchCheck,
   }));
 
-// The desktop shell's own self-update (station#575), distinct from the
-// connected-Station check above. Same reasoning for staying out of the
-// entry chunk: asynchronous chrome, never first-paint content.
-const loadDesktopUpdateLaunchCheck = () =>
-  import('./components/DesktopUpdateLaunchCheck').then((module) => ({
-    default: module.DesktopUpdateLaunchCheck,
-  }));
-
 // A connected server older than this app (#2675): same reasoning.
 const loadServerOlderLaunchCheck = () =>
   import('./components/ServerOlderLaunchCheck').then((module) => ({
@@ -120,6 +113,7 @@ import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
+import { useTurnNotificationReads } from './hooks/useTurnNotificationReads';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
 import type { NavigationView } from './types';
 
@@ -178,6 +172,10 @@ function App() {
   // archive#1912: point the operator at anything blocking on them, at the OS
   // level, on desktop hosts. In-app surfaces are unchanged.
   useNotificationOsAlerts();
+  // A turn ending the person attends to (chat on screen, focused window,
+  // recent input) is read: its failure must not escalate to their other
+  // devices minutes later.
+  useTurnNotificationReads();
   // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
   // #2585: tell Station whether this document is being looked at, so
@@ -517,9 +515,9 @@ function App() {
   );
 
   useKeyboardShortcut(
-    'app.settings',
-    ',',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.settings.id,
+    KERNEL_RESERVED_SHORTCUTS.settings.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.settings.binding.modifiers],
     'Toggle settings',
     useCallback(() => {
       if (displayCurrentView.type === 'settings') {
@@ -542,9 +540,9 @@ function App() {
   );
 
   useKeyboardShortcut(
-    'app.shortcuts',
-    '/',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.shortcuts.id,
+    KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.shortcuts.binding.modifiers],
     'Show keyboard shortcuts',
     useCallback(() => {
       setShowShortcutsCheatsheet(true);
@@ -658,11 +656,6 @@ function App() {
               componentProps={{ apiBase: API_BASE }}
             />
             <LazyBoundary
-              load={loadDesktopUpdateLaunchCheck}
-              pending={null}
-              componentProps={{}}
-            />
-            <LazyBoundary
               load={loadServerOlderLaunchCheck}
               pending={null}
               componentProps={{}}
@@ -703,14 +696,6 @@ function App() {
                 <Header
                   currentView={displayCurrentView}
                   onNavigate={navigateToView}
-                  onToggleSettings={() => {
-                    if (displayCurrentView.type === 'settings') {
-                      // The gear is a toggle: back to the outlet's occupant.
-                      returnToOutlet();
-                    } else {
-                      navigateToView({ type: 'settings' });
-                    }
-                  }}
                 />
                 <ConnectionBannerSource />
                 <BannerHost connectionSlot />

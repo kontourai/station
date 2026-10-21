@@ -643,6 +643,7 @@ export function RegionChromeBar({
   trailingSlotRef,
   onBackToChat,
   regionActionsAbsorbed = false,
+  backLabel = 'Chat',
 }: {
   chrome: DockShellChrome;
   groupId: string;
@@ -672,6 +673,11 @@ export function RegionChromeBar({
    * (`RegionMenu`): the bar then renders no Move, "+" or maximize button.
    */
   regionActionsAbsorbed?: boolean;
+  /**
+   * What the way back names: the conversation the layer's pane was opened
+   * from (its relation's opener), else Chat.
+   */
+  backLabel?: string;
 }) {
   const barRef = useRef<HTMLDivElement | null>(null);
   // ONE open move menu for the whole bar, whichever trigger opened it (#2160).
@@ -782,12 +788,12 @@ export function RegionChromeBar({
             type="button"
             className="region-chrome__back"
             onClick={onBackToChat}
-            aria-label="Back to Chat"
+            aria-label={`Back to ${backLabel}`}
           >
             <span aria-hidden="true" className="region-chrome__back-glyph">
               ‹
             </span>
-            <span>Chat</span>
+            <span className="region-chrome__back-label">{backLabel}</span>
           </button>
         ) : null}
         <DockPlacementControl

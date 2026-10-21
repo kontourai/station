@@ -26,7 +26,10 @@ import {
   isToolCallPart,
   splitToolCallRuns,
 } from '../tool-call-runs';
-import { useTranscriptChildBlocks } from '../transcript-child-work';
+import {
+  useTranscriptChildBlocks,
+  useTranscriptChildrenForCalls,
+} from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 import { uiBlockIdentity } from '../ui-block-identity';
 import { blockHasVisibleContent } from './visibleContent';
@@ -61,7 +64,7 @@ interface MessageContentProps {
   foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
-    action: 'once' | 'trust' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }
 
@@ -82,16 +85,22 @@ function MessageContentComponent({
   // breaks the run, so the agent's words between tool calls are never
   // buried inside a collapsed summary. Only the structural split runs
   // eagerly here; classification/summary happens inside the lazy chunk.
+  const anchoredChildren = useTranscriptChildrenForCalls(
+    contentParts?.flatMap((part) =>
+      part.toolCallId ? [part.toolCallId] : [],
+    ) ?? [],
+  );
+  const keepChildAnchors = anchoredChildren.length > 0;
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork
+    return foldWork && !keepChildAnchors
       ? foldTurnWork(parts, appTools)
       : splitToolCallRuns(parts, appTools);
-  }, [contentParts, textContent, foldWork, appTools]);
+  }, [contentParts, textContent, foldWork, keepChildAnchors, appTools]);
   const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),

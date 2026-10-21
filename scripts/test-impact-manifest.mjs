@@ -202,6 +202,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     tests: Object.freeze([
       'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
       'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-append-statements.test.ts',
       'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
       'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
       'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
@@ -807,6 +808,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  // Walks tests/ to refuse a whole-URL glob for the server update check (#3851).
+  'scripts/__tests__/core-update-route.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/docs-index-reachability.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
@@ -961,6 +964,37 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
 ]);
 
 export const TEST_IMPACT_MANIFEST = Object.freeze([
+  {
+    pattern: 'packages/agent-runtime/**',
+    tests: [
+      'packages/agent-runtime/src/__tests__/frameworks.test.ts',
+      'packages/agent-runtime/src/__tests__/journal.test.ts',
+      'packages/agent-runtime/src/__tests__/stream.test.ts',
+      'packages/agent-runtime/src/__tests__/bodies.test.ts',
+      'packages/agent-runtime/src/__tests__/body-process.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-ownership.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-first-template.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-stream.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-public-cancel.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-pinned-equality.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-codecs.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-retention.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-native-controls.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-admission.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-retention.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-receipts.test.ts',
+      'packages/agent-runtime/src/__tests__/r3-ready.test.ts',
+      'packages/agent-runtime/src/__tests__/r4-replay.test.ts',
+    ],
+    reason:
+      'model runtime protocol, immutable body and actual framework consumers',
+  },
+  {
+    pattern: 'scripts/agent-runtime-import-boundary-gate.mjs',
+    tests: ['scripts/__tests__/agent-runtime-import-boundary-gate.test.ts'],
+    reason: 'experimental package import isolation',
+  },
   {
     pattern: 'src-desktop/Cargo.toml',
     tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
@@ -1536,6 +1570,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       'scripts/__tests__/public-doc-contract-examples.test.ts',
+      'scripts/__tests__/install-script.test.ts',
     ],
     reason: 'getting-started runtime source contract',
   },
@@ -1724,6 +1759,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     whenAll: ['packages/contracts/src/operational-event.ts'],
     tests: ['packages/contracts/src/__tests__/operational-event.test.ts'],
     reason: 'operational event root export',
+  },
+  {
+    // A manifest must never reach Vitest related discovery: Vitest's default
+    // forceRerunTriggers match every `package.json`, so a hosted checkout
+    // selects the whole corpus while a checkout under a dot-directory selects
+    // nothing (#3860's queue runs exceeded the shard budget that way).
+    pattern: 'packages/basis-pane/package.json',
+    tests: [
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ],
+    reason: 'published Basis pane exports and dependency floor',
   },
   {
     pattern: 'packages/sdk/package.json',

@@ -25,7 +25,6 @@ function preview(overrides: Partial<PreviewData> = {}): PreviewData {
       name: 'pulse',
       displayName: 'Connected Pulse',
       version: '1.1.0',
-      hasBundle: true,
     },
     components: [],
     conflicts: [],

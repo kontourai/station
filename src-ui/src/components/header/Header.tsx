@@ -15,15 +15,10 @@ import './Header.css';
 
 interface HeaderProps {
   currentView?: NavigationView;
-  onToggleSettings: () => void;
   onNavigate: (view: NavigationView) => void;
 }
 
-export function Header({
-  currentView,
-  onToggleSettings,
-  onNavigate,
-}: HeaderProps) {
+export function Header({ currentView, onNavigate }: HeaderProps) {
   const agents = useAgents();
   const isMobile = useIsMobile();
   const { projectSidebarCollapsed } = useDeviceSettings();
@@ -35,21 +30,17 @@ export function Header({
     closeHelp,
     closeNotifications,
     closeOverflow,
-    closeProfileMenu,
     goHome,
     handleHelpPrompt,
     helpPrompts,
     openConnectionModal,
     openProfile,
-    settingsShortcut,
     showHelp,
     showNotifications,
     showOverflow,
-    showProfileMenu,
     openHelp,
     openNotifications,
     toggleOverflow,
-    toggleProfileMenu,
     userInitials,
   } = useHeaderViewModel({ currentView, agents, onNavigate });
 
@@ -160,31 +151,26 @@ export function Header({
 
       <div className="app-toolbar__spacer" />
 
-      <RegionToolbarControls />
-
       <HeaderActions
-        currentViewType={currentView?.type}
         helpPrompts={helpPrompts}
-        settingsShortcut={settingsShortcut}
         showHelp={showHelp}
         showNotifications={showNotifications}
         showOverflow={showOverflow}
-        showProfileMenu={showProfileMenu}
         userInitials={userInitials}
         onCloseHelp={closeHelp}
         onCloseNotifications={closeNotifications}
         onCloseOverflow={closeOverflow}
-        onCloseProfileMenu={closeProfileMenu}
         onHelpPrompt={handleHelpPrompt}
         onOpenConnections={openConnectionModal}
         onOpenProfile={openProfile}
         onOpenHelp={openHelp}
         onOpenNotifications={openNotifications}
-        onToggleSettings={onToggleSettings}
         onToggleOverflow={toggleOverflow}
-        onToggleProfileMenu={toggleProfileMenu}
         onViewAllNotifications={() => onNavigate({ type: 'notifications' })}
       />
+      {/* Last in the row: the Tools and Related glyphs sit at the far right,
+          where the account menu was before it moved to the sidebar footer. */}
+      <RegionToolbarControls />
     </header>
   );
 }

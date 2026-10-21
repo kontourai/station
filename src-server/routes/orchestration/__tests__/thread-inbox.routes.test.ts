@@ -88,7 +88,9 @@ class ScriptedAdapter implements ProviderAdapterShape {
   holdNextSend = false;
   releaseHeldSend: (() => void) | undefined;
   private readonly sessions = new Set<string>();
-  private open: { threadId: string; turnId: string } | undefined;
+  private open:
+    | Readonly<{ threadId: string; turnId: string; invocationId?: string }>
+    | undefined;
 
   async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
@@ -121,6 +123,11 @@ class ScriptedAdapter implements ProviderAdapterShape {
       throw new ProviderTurnInProgressError();
     }
     this.turns.push(input);
+    const request = Object.freeze({
+      threadId: input.threadId,
+      turnId: `inbox-turn-${this.turns.length}`,
+      invocationId: input.invocationId,
+    });
     if (this.hangNextSend) {
       this.hangNextSend = false;
       return new Promise<never>(() => {});
@@ -131,18 +138,19 @@ class ScriptedAdapter implements ProviderAdapterShape {
         this.releaseHeldSend = resolve;
       });
     }
-    const turnId = `inbox-turn-${this.turns.length}`;
+    const { threadId, turnId, invocationId } = request;
     this.events.push({
       provider: this.provider,
-      threadId: input.threadId,
+      threadId,
       turnId,
+      invocationId,
       createdAt: new Date().toISOString(),
       eventId: `${turnId}:started`,
       method: 'turn.started',
       prompt: input.input,
     });
-    if (this.holdTurns) this.open = { threadId: input.threadId, turnId };
-    else this.end(input.threadId, turnId);
+    if (this.holdTurns) this.open = request;
+    else this.end(request);
     return { threadId: input.threadId, turnId };
   }
 
@@ -150,16 +158,24 @@ class ScriptedAdapter implements ProviderAdapterShape {
   complete() {
     const open = this.open;
     this.open = undefined;
-    if (open) this.end(open.threadId, open.turnId);
+    if (open) this.end(open);
   }
 
-  private end(threadId: string, turnId: string) {
+  private end(
+    request: Readonly<{
+      threadId: string;
+      turnId: string;
+      invocationId?: string;
+    }>,
+  ) {
+    const { threadId, turnId, invocationId } = request;
     this.events.push({
       provider: this.provider,
       threadId,
       turnId,
       createdAt: new Date().toISOString(),
       eventId: `${turnId}:completed`,
+      invocationId,
       method: 'turn.completed',
       outputText: 'ok',
     });
@@ -459,7 +475,13 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             })),
         headSequence: (threadId) =>
           store.readSessionInventoryHighWater(threadId),
+        readInputlessTurnDisposition: (threadId) =>
+          store.readInputlessTurnDisposition(threadId),
+        readInvocationTerminal: (threadId, invocationId, turnId) =>
+          store.readInvocationTerminal(threadId, invocationId, turnId),
         coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        hasPossibleEffect: (threadId) =>
+          store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
         conversationOf: (threadId) =>
           store.conversationForSession(threadId)?.conversationId ?? threadId,
         currentSessionId: (conversationId) =>
@@ -1258,24 +1280,48 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(world.inbox.list(CONVERSATION)).toEqual([]);
   });
 
-  test('a send refused because the engine opened a turn itself is held instead, and goes once', async () => {
-    const world = station();
-    const first = await world.send('first', 'read the file');
-    expect(first.status).toBe(200);
-    await eventually(() =>
-      expect(world.inbox.mustQueue(CONVERSATION)).toBe(false),
-    );
-    world.adapter.refuseNextAsBusy = true;
-    const raced = await world.send('raced', 'then summarize', {
-      whenBusy: 'queue',
-    });
-    expect(raced.status, await raced.clone().text()).toBe(202);
-    await eventually(() =>
-      expect(world.prompts()).toEqual(['read the file', 'then summarize']),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(world.prompts()).toEqual(['read the file', 'then summarize']);
-  });
+  test.each([undefined, 'queue'] as const)(
+    'a begun engine-busy refusal closes its key with typed 409 (whenBusy=%s)',
+    async (whenBusy) => {
+      const world = station();
+      expect((await world.send('first', 'read the file')).status).toBe(200);
+      await eventually(() =>
+        expect(world.inbox.mustQueue(CONVERSATION)).toBe(false),
+      );
+      world.adapter.refuseNextAsBusy = true;
+      const options = whenBusy === undefined ? {} : { whenBusy };
+      const raced = await world.send('raced', 'then summarize', options);
+      expect(raced.status, await raced.clone().text()).toBe(409);
+      expect(await raced.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_settled',
+        disposition: 'definitively-refused',
+        error:
+          'This turn was definitively refused. A new request requires a new turn key.',
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      expect(world.prompts()).toEqual(['read the file']);
+      const retry = await world.send('raced', 'then summarize', options);
+      expect(retry.status, await retry.clone().text()).toBe(409);
+      expect(await retry.json()).toMatchObject({
+        code: 'client_turn_settled',
+        disposition: 'definitively-refused',
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      expect(world.prompts()).toEqual(['read the file']);
+      const fresh = await world.send(
+        'explicit-new-key',
+        'then summarize',
+        options,
+      );
+      expect(fresh.status, await fresh.clone().text()).toBe(200);
+      await eventually(() =>
+        expect(world.prompts()).toEqual(['read the file', 'then summarize']),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(world.prompts()).toEqual(['read the file', 'then summarize']);
+    },
+  );
 
   test('a reused key with a different message is refused 409, and the held message is kept', async () => {
     const world = station();

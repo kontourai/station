@@ -43,6 +43,42 @@ const assessment = {
 };
 
 describe('ExactAnswerBasisModule', () => {
+  test('maps a Station-built contribution Surface rejects to unavailable and reports the invariant', async () => {
+    // Lone surrogate: inside Station's id bound, outside Surface's opaque id.
+    const unrepresentable = {
+      ...answer,
+      inputs: [
+        {
+          eventId: 'input-\ud800',
+          kind: 'initial' as const,
+          prompt: 'ask',
+          attachments: [],
+        },
+      ],
+    };
+    const reported: { code: string }[] = [];
+    const module = createExactAnswerBasisModule({
+      hosted: () => false,
+      canReadSession: () => true,
+      readAnswer: (async () => unrepresentable) as never,
+      readAssessment: async () => assessment,
+      readNarrative: (async () => undefined) as never,
+      readReviewedSource: async () => undefined,
+      reportCompositionInvariant: (error) => reported.push(error.surfaceGap),
+    });
+    await expect(
+      module.read({
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+        authority,
+        current: () => true,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    expect(reported).toEqual([
+      expect.objectContaining({ code: 'hostile-input' }),
+    ]);
+  });
+
   test('reads every exact owner once and refuses a revoked publication', async () => {
     let current = true;
     const readAssessment = vi.fn(async () => assessment);

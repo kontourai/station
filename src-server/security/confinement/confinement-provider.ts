@@ -36,6 +36,9 @@ import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
  * - `writeDeniedExact`: paths denied exactly, not as a tree (a directory
  *   that may not be removed, renamed or replaced while its contents stay
  *   writable).
+ * - `writeDeniedNames`: directory names (a single path segment, matched
+ *   case-insensitively) that may not be created, written, renamed or
+ *   replaced at any depth inside any writable grant.
  * - `hidden`: trees or files the process may not read at all.
  * - `readable`: trees inside a hidden one that stay readable (the writable
  *   grants are readable without being listed here).
@@ -51,6 +54,7 @@ export interface ConfinementSpawnSpec {
     writableFiles?: readonly string[];
     writeDenied?: readonly string[];
     writeDeniedExact?: readonly string[];
+    writeDeniedNames?: readonly string[];
     hidden?: readonly string[];
   };
   network: 'none' | 'loopback' | 'full';

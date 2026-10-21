@@ -10,7 +10,7 @@
  * pane showing another conversation's work under this one's tab.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { BackgroundTaskEntry } from '../../contexts/background-tasks-store';
 
@@ -45,6 +45,7 @@ vi.mock('../../contexts/useShowSurface', () => ({
 vi.mock('../../hooks/orchestration/ensureOrchestrationEventStream', () => ({
   ensureOrchestrationEventStream: () => () => {},
 }));
+vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -53,6 +54,7 @@ vi.mock('@tanstack/react-query', async (importOriginal) => ({
   useQueryClient: () => ({}),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({ data: [] }),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
@@ -151,6 +153,7 @@ test('a task the provider reported no tokens for shows no token clause', () => {
     running: [entry({ delegateThreadId: 'delegate-1' })],
     finished: [],
   });
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
   // The two zeroes are not the same zero. Tool uses are counted by Station
   // from `tool.completed`, so zero there is a measurement and prints;
   // `totalTokens` is absent from the fold entirely, so no token figure

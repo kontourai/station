@@ -136,6 +136,7 @@ export function ActionOverflowMenu({
   inlineSingle = false,
   triggerClassName = 'action-overflow__trigger',
   triggerText,
+  triggerGlyph,
   reserveGlyphColumn = false,
 }: {
   actions: readonly OverflowAction[];
@@ -185,6 +186,7 @@ export function ActionOverflowMenu({
    * has to appear in `label`.
    */
   triggerText?: string;
+  triggerGlyph?: React.ReactNode;
   /**
    * Keep the 16px glyph slot on every row even when no row has a glyph. The
    * dock passes this: its menu sits beside the header's menus, and the slot
@@ -434,7 +436,7 @@ export function ActionOverflowMenu({
       <button
         ref={setTrigger}
         type="button"
-        className={`${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : triggerClassName}${open ? ' is-active' : ''}`}
+        className={`${triggerClassName} ${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}
         // The count is part of the NAME, not only a painted badge: the badge is
         // `aria-hidden` (it is a glyph for the same fact), so without this a
         // screen reader would hear no difference between an idle dock and one
@@ -462,7 +464,7 @@ export function ActionOverflowMenu({
         }}
       >
         {triggerText}
-        <span aria-hidden="true">⋯</span>
+        <span aria-hidden="true">{triggerGlyph ?? '⋯'}</span>
         {badgeCount > 0 ? (
           <span className="chat-dock__more-badge" aria-hidden="true">
             {badgeCount}

@@ -1,3 +1,4 @@
+import { WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -32,6 +33,7 @@ export const REGION_BUILTIN_DESCRIPTORS: ReadonlyMap<
   WorkspacePaneDescriptor
 > = new Map(
   [
+    WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
     WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
     WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
     WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,

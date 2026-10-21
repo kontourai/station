@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: rgba(7, 10, 16, 0.68);
+  background: var(--overlay-modal);
   backdrop-filter: blur(6px);
 }
 
@@ -18,10 +18,11 @@
   overflow: hidden;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--bg-primary) 92%, white 8%),
+    color-mix(in srgb, var(--bg-primary) 92%, var(--surface-lift) 8%),
     var(--bg-primary)
   );
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: 16px;
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.4),

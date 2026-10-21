@@ -1,0 +1,7 @@
+{
+  "revision": "be8d0c0bcc619a2ab93f2978d411489db60ae09e",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"#1706 delta: changed-test diagnostic completeness now derives from ci-fast/test-full deferral and zero executions; the hosted fast-checks aggregate reports a deferred plan as a provisional pass with a warning naming Merge-queue regression, and refuses a shard reporting completed for a deferred plan. Checked this document's claims against those changes; none contradicts them.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

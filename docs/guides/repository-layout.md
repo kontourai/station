@@ -12,7 +12,7 @@ interfaces and composition rules.
 | `src-ui/` | React application, workspace navigation, product UI |
 | `src-desktop/` | Tauri shell and native platform integration |
 | `src-shared/` | Checkout-level shared source |
-| `packages/` | Contracts, SDK, shared helpers, pairing, CLI, pane packages, the optional product telemetry receiver, the Monument durability kernel, and the process supervisor |
+| `packages/` | Contracts, SDK, shared helpers, pairing, CLI, pane packages, the optional product telemetry receiver, the Monument durability kernel, the [experimental model runtime](development.md#packages), and the process supervisor |
 | `examples/` | Documented plugin and integration examples |
 
 New cross-package types belong in their owning module in `packages/contracts/`.

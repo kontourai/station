@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,
   InputRequestRecord,
@@ -24,7 +25,10 @@ import type { ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
-import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
@@ -179,6 +183,12 @@ export interface ChatMessage {
    * as the person, written by nobody. The bubble shows it as Station's.
    */
   stationCheckBack?: boolean;
+  /**
+   * #3419: the agent that sent this user-role row, from the server's own
+   * record. Its presence is what makes the row an incoming agent message
+   * rather than the person's; `content` is the sender's own words.
+   */
+  sender?: ClientOriginSender;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:
@@ -223,6 +233,8 @@ export interface ChatMessage {
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
+    /** See `MessagePart.approvalServerGrant`. */
+    approvalServerGrant?: ToolRequestServerGrant;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
@@ -548,6 +560,7 @@ export type NavigationView =
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
+  | { type: 'appearance' }
   | { type: 'profile' }
   | { type: 'notifications' }
   | { type: 'task'; taskId: string }

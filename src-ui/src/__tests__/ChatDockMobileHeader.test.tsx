@@ -87,6 +87,7 @@ function renderHeader(
     onTurnIntoTask?: () => void;
     onNewChat?: ReturnType<typeof vi.fn<() => void>>;
     onOpenTaskSwitcher?: ReturnType<typeof vi.fn<() => void>>;
+    sessionProjectMismatchLabel?: string | null;
     projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
@@ -109,6 +110,7 @@ function renderHeader(
       showDrawerToggle={false}
       showConnection={overrides.showConnection ?? true}
       sessionTitle="New chat"
+      sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
       projectScope={
         overrides.projectScope === null
           ? undefined
@@ -206,8 +208,9 @@ describe('mobile conversation focus', () => {
     fireEvent.click(identity);
     expect(onOpenTaskSwitcher).toHaveBeenCalledOnce();
     expect(
-      screen.getByRole('button', { name: 'Switch project — Kontour AI' })
-        .textContent,
+      screen.getByRole('button', {
+        name: 'Switch project — New chats, Kontour AI',
+      }).textContent,
     ).toContain('Kontour AI');
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
     expect(
@@ -256,7 +259,7 @@ describe('mobile conversation focus', () => {
       });
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'Switch project — Choose a project',
+          name: 'Switch project — New chats, Choose a project',
         }),
       );
       fireEvent.click(
@@ -359,9 +362,29 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Chats and tasks' }).textContent,
+      screen.getByRole('button', { name: 'Chats and tasks — New chat' })
+        .textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
+  });
+});
+
+/** WCAG 2.5.3: each switcher's name contains the words it shows, in order. */
+describe('mobile switcher names include their visible text', () => {
+  const words = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  test.each([
+    ['the project switcher', /^Switch project/],
+    ['the chats and tasks switcher', /^Chats and tasks/],
+  ])('%s', (_label, name) => {
+    renderHeader({ sessionProjectMismatchLabel: 'This chat: Alpha' });
+    const button = screen.getByRole('button', { name });
+    const visible = words(button.textContent ?? '');
+    expect(visible.length).toBeGreaterThan(0);
+    expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
   });
 });
 
@@ -371,8 +394,8 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     renderHeader();
     for (const name of [
       'Collapse chat',
-      'Switch project — Kontour AI',
-      'Chats and tasks — Codex',
+      'Switch project — New chats, Kontour AI',
+      'Chats and tasks — New chat, Codex',
       'Chat actions',
     ]) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
@@ -509,13 +532,15 @@ describe('the ⋯ sheet’s copy rows (mobile parity)', () => {
   });
 });
 
-test('the phone chat actions offer Turn into Task and dismiss the sheet before shaping', async () => {
+test('the phone chat actions offer New Task from this and dismiss the sheet before shaping', async () => {
   const turnIntoTask = vi.fn();
   renderHeader({ onTurnIntoTask: turnIntoTask });
   await openActions();
   fireEvent.click(
-    await screen.findByRole('menuitem', { name: 'Turn into Task' }),
+    await screen.findByRole('menuitem', { name: 'New Task from this' }),
   );
   expect(turnIntoTask).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole('menuitem', { name: 'Turn into Task' })).toBeNull();
+  expect(
+    screen.queryByRole('menuitem', { name: 'New Task from this' }),
+  ).toBeNull();
 });

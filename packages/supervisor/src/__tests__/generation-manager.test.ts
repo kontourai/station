@@ -10,10 +10,22 @@ import {
   FAILED_TRIAL_TERM_GRACE_MS,
   type GenerationLauncher,
   GenerationManager,
+  type GenerationManagerOptions,
   type GenerationProcess,
+  type HeldConnection,
   type ListenerHandle,
 } from '../generation-manager.ts';
 import type { SupervisorToCoreMessage } from '../protocol.ts';
+
+type CatcherFactory = NonNullable<
+  GenerationManagerOptions['catchConnections']
+>['createCatcher'];
+/** The manager's catching timings (not exported). */
+const SPARE_ANSWER_TIMEOUT_MS = 2_000;
+const CATCH_QUIET_MS = 50;
+const CATCH_QUIET_CAP_MS = 1_000;
+const HOLD_LIMIT_PER_LISTENER = 511;
+const HOLD_DEADLINE_MS = 60_000;
 
 const clock: Clock = {
   now: () => Date.now(),
@@ -28,6 +40,8 @@ type Behavior = {
   ready?: boolean;
   /** Exit when drained. Default true. */
   exitOnDrain?: boolean;
+  /** Exit this long after `drain` instead (a live call keeping it). */
+  exitAfterDrainMs?: number;
   /** Ignore SIGTERM (only SIGKILL ends it). */
   ignoreTerm?: boolean;
   voiceSessions?: number;
@@ -35,13 +49,25 @@ type Behavior = {
   exitAfterReadyMs?: number;
   /** The listener.bound handle to send on a first boot. */
   boundHandle?: () => unknown;
+  /** Park saying it speaks connection catching (protocol 1.1). Default false. */
+  adoptsConnections?: boolean;
+  /** As a 1.1 core, answer listener.spares. Default true. */
+  answerSpares?: boolean;
+  /** The handle to send with each listener.spare. */
+  spareHandle?: () => unknown;
+  /** As a 1.1 core, report each adopted listener listening. Default true. */
+  reportsListening?: boolean;
+  /** On promote, report its listeners listening but never `ready`. */
+  listenWithoutReady?: boolean;
+  /** With listenWithoutReady: exit(1) this long after reporting listening. */
+  exitAfterListeningMs?: number;
 };
 
 class FakeGeneration implements GenerationProcess {
   readonly pid: number;
   readonly sent: Array<{
     message: SupervisorToCoreMessage;
-    handle?: ListenerHandle;
+    handle?: ListenerHandle | HeldConnection;
   }> = [];
   readonly signals: string[] = [];
   exited = false;
@@ -68,14 +94,54 @@ class FakeGeneration implements GenerationProcess {
     this.log = log;
     this.pid = 1000 + generation;
     if (behavior.park !== false)
-      queueMicrotask(() => this.emit({ type: 'parked' }));
+      queueMicrotask(() =>
+        this.emit(
+          behavior.adoptsConnections
+            ? { type: 'parked', adoptsConnections: true }
+            : { type: 'parked' },
+        ),
+      );
   }
 
-  send(message: SupervisorToCoreMessage, handle?: ListenerHandle): void {
+  send(
+    message: SupervisorToCoreMessage,
+    handle?: ListenerHandle | HeldConnection,
+  ): void {
     this.sent.push({ message, handle });
     this.log.push(`${this.generation}<-${message.type}`);
+    if (
+      message.type === 'listener.spares' &&
+      this.behavior.adoptsConnections &&
+      this.behavior.answerSpares !== false
+    ) {
+      queueMicrotask(() => {
+        for (let i = 0; i < message.count; i += 1) {
+          this.emit(
+            { type: 'listener.spare', name: message.name },
+            (this.behavior.spareHandle ?? fakeHandle)(),
+          );
+        }
+      });
+    }
+    const reportsListening =
+      this.behavior.adoptsConnections &&
+      this.behavior.reportsListening !== false;
+    if (message.type === 'promote' && this.behavior.listenWithoutReady) {
+      queueMicrotask(() => {
+        for (const name of message.listeners) {
+          this.emit({ type: 'listener.listening', name });
+        }
+        const after = this.behavior.exitAfterListeningMs;
+        if (after !== undefined) setTimeout(() => this.exit(1, null), after);
+      });
+    }
     if (message.type === 'promote' && this.behavior.ready !== false) {
       queueMicrotask(() => {
+        if (reportsListening) {
+          for (const name of message.listeners) {
+            this.emit({ type: 'listener.listening', name });
+          }
+        }
         if (message.listeners.length === 0) {
           this.emit(
             { type: 'listener.bound', name: 'api', port: 45_000 },
@@ -99,7 +165,9 @@ class FakeGeneration implements GenerationProcess {
           type: 'drain.progress',
           voiceSessions: this.behavior.voiceSessions ?? 0,
         });
-        if (this.behavior.exitOnDrain !== false) this.exit(0, null);
+        const after = this.behavior.exitAfterDrainMs;
+        if (after !== undefined) setTimeout(() => this.exit(0, null), after);
+        else if (this.behavior.exitOnDrain !== false) this.exit(0, null);
       });
     }
   }
@@ -160,6 +228,7 @@ class Server extends EventEmitter {
 
 function setup(
   behaviorFor: (generation: number, entry: string) => Behavior = () => ({}),
+  extra: Partial<GenerationManagerOptions> = {},
 ) {
   const log: string[] = [];
   const generations: FakeGeneration[] = [];
@@ -182,6 +251,7 @@ function setup(
     launcher,
     clock,
     onGiveUp: (failures) => giveUps.push(failures),
+    ...extra,
   });
   const launchTimes: number[] = [];
   const origLaunch = launcher.launch.bind(launcher);
@@ -747,6 +817,491 @@ describe('GenerationManager', () => {
     expect(await manager.handoff({})).toEqual({
       outcome: 'refused',
       reason: 'stopping',
+    });
+  });
+
+  describe('catching connections during a handoff (Windows)', () => {
+    class FakeConnection implements HeldConnection {
+      destroyed = false;
+      destroy(): void {
+        this.destroyed = true;
+      }
+    }
+    interface FakeCatcher {
+      name: string;
+      handle: ListenerHandle;
+      held: FakeConnection[];
+      closed: boolean;
+      stopped: boolean;
+      lastCaughtAt: number;
+      /** Accepts one more connection, as a real catcher would. */
+      catchOne(): void;
+    }
+    /**
+     * Each catcher holds one connection; `log` records when one listens.
+     * With `caughtAt`, each starts as if it had just accepted then.
+     */
+    function catching(log: () => string[], caughtAt?: () => number) {
+      const catchers: FakeCatcher[] = [];
+      const createCatcher: CatcherFactory = (name, handle, now, onCatch) => {
+        const entry: FakeCatcher = {
+          name,
+          handle,
+          held: [new FakeConnection()],
+          closed: false,
+          stopped: false,
+          lastCaughtAt: caughtAt?.() ?? 0,
+          catchOne() {
+            entry.held.push(new FakeConnection());
+            entry.lastCaughtAt = now();
+            onCatch();
+          },
+        };
+        catchers.push(entry);
+        log().push(`catcher ${name}`);
+        return {
+          name,
+          get lastCaughtAt() {
+            return entry.lastCaughtAt;
+          },
+          get heldCount() {
+            return entry.held.filter((c) => !c.destroyed).length;
+          },
+          stop: () => {
+            entry.stopped = true;
+          },
+          close: () => {
+            entry.stopped = true;
+            entry.closed = true;
+            log().push(`catcher ${name} closed`);
+            return entry.held;
+          },
+        };
+      };
+      return {
+        catchers,
+        extra: { catchConnections: { spares: 2, createCatcher } },
+      };
+    }
+    function setupCatching(
+      behaviorFor: (generation: number, entry: string) => Behavior = () => ({}),
+      catchConnections = true,
+      caughtAt?: () => number,
+    ) {
+      let logRef: string[] = [];
+      /** What the manager logs. */
+      const lines: string[] = [];
+      const { catchers, extra } = catching(() => logRef, caughtAt);
+      const harness = setup(
+        (generation, entry) => ({
+          adoptsConnections: true,
+          ...behaviorFor(generation, entry),
+        }),
+        {
+          ...(catchConnections ? extra : {}),
+          log: (line) => lines.push(line),
+        },
+      );
+      logRef = harness.log;
+      return { ...harness, catchers, lines };
+    }
+    const adopted = (gen: FakeGeneration | undefined) =>
+      (gen?.sent ?? [])
+        .filter(({ message }) => message.type === 'connection.adopt')
+        .map(({ message, handle }) => ({ message, handle }));
+    const heldConnections = (catchers: FakeCatcher[]) =>
+      catchers.flatMap(({ held }) => held);
+
+    it('listens on spares before draining, then passes what it held to the generation that listens', async () => {
+      const { manager, log, generations, catchers } = setupCatching();
+      await manager.start();
+      log.length = 0;
+      const result = await settle(manager.handoff({ entry: '/core/b.js' }));
+      expect(result).toMatchObject({ outcome: 'committed', generation: 2 });
+      expect(log).toEqual([
+        'launch 2',
+        '1<-listener.spares',
+        'catcher api',
+        'catcher api',
+        '1<-drain',
+        '1 exited',
+        '2<-promote',
+        '2<-listener.adopt',
+        'catcher api closed',
+        '2<-connection.adopt',
+        'catcher api closed',
+        '2<-connection.adopt',
+      ]);
+      expect(
+        generations[0]?.sent.find(
+          ({ message }) => message.type === 'listener.spares',
+        )?.message,
+      ).toEqual({ type: 'listener.spares', name: 'api', count: 2 });
+      expect(adopted(generations[1])).toEqual(
+        heldConnections(catchers).map((handle) => ({
+          message: { type: 'connection.adopt', name: 'api' },
+          handle,
+        })),
+      );
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      // The next handoff catches again, from generation 2.
+      log.length = 0;
+      expect(
+        await settle(manager.handoff({ entry: '/core/c.js' })),
+      ).toMatchObject({ outcome: 'committed', generation: 3 });
+      expect(log.slice(0, 2)).toEqual(['launch 3', '2<-listener.spares']);
+      expect(adopted(generations[2])).toHaveLength(2);
+      await manager.stop();
+    });
+
+    it('passes what it held to the generation a rollback starts, not the failed trial', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js' ? { ready: false } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 5_000,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      expect(adopted(generations[1])).toEqual([]);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      await manager.stop();
+    });
+
+    for (const [label, oldGeneration] of [
+      ['serving generation', 1],
+      ['trial', 2],
+    ] as const) {
+      it(`catches nothing, and drains at once, when the ${label} is a 1.0 core`, async () => {
+        const { manager, log, generations, catchers } = setupCatching(
+          (generation) =>
+            generation === oldGeneration ? { adoptsConnections: false } : {},
+        );
+        await manager.start();
+        log.length = 0;
+        const handoff = manager.handoff({ entry: '/core/b.js' });
+        // No wait for spares: the drain goes out in the same turn as parking.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(log).toEqual([
+          'launch 2',
+          '1<-drain',
+          '1 exited',
+          '2<-promote',
+          '2<-listener.adopt',
+        ]);
+        expect(await settle(handoff)).toMatchObject({
+          outcome: 'committed',
+          generation: 2,
+        });
+        expect(catchers).toEqual([]);
+        expect(adopted(generations[1])).toEqual([]);
+        await manager.stop();
+      });
+    }
+
+    it('catches nothing when not asked to (POSIX), even between 1.1 cores', async () => {
+      const { manager, log, catchers } = setupCatching(undefined, false);
+      await manager.start();
+      log.length = 0;
+      expect(
+        await settle(manager.handoff({ entry: '/core/b.js' })),
+      ).toMatchObject({ outcome: 'committed', generation: 2 });
+      expect(log).not.toContain('1<-listener.spares');
+      expect(catchers).toEqual([]);
+    });
+
+    it('drains anyway when the serving generation never answers, and closes spares nobody asked for', async () => {
+      const { manager, log, generations, catchers } = setupCatching(
+        (generation) => (generation === 1 ? { answerSpares: false } : {}),
+      );
+      await manager.start();
+      const stray = fakeHandle();
+      generations[0]?.emit({ type: 'listener.spare', name: 'api' }, stray);
+      expect(stray.closed).toBe(true);
+      log.length = 0;
+      const handoff = manager.handoff({ entry: '/core/b.js' });
+      await vi.advanceTimersByTimeAsync(SPARE_ANSWER_TIMEOUT_MS - 1);
+      expect(log).toEqual(['launch 2', '1<-listener.spares']);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(log.slice(2, 3)).toEqual(['1<-drain']);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'committed',
+        generation: 2,
+      });
+      expect(catchers).toEqual([]);
+      await manager.stop();
+    });
+
+    it('refuses a spare that is not a raw listening handle, or for a listener it does not hold', async () => {
+      const server = new Server();
+      const { manager, generations, catchers } = setupCatching((generation) =>
+        generation === 1 ? { spareHandle: () => server } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({ entry: '/core/b.js' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(server.closed).toBe(true);
+      const other = fakeHandle();
+      generations[0]?.emit({ type: 'listener.spare', name: 'voice' }, other);
+      expect(other.closed).toBe(true);
+      expect(catchers).toEqual([]);
+      expect(await settle(handoff)).toMatchObject({ outcome: 'committed' });
+      await manager.stop();
+    });
+
+    it('closes what it holds when it stops before any generation is ready again', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js' ? { ready: false } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(catchers).toHaveLength(2);
+      expect(catchers.some(({ closed }) => closed)).toBe(false);
+      await settle(manager.stop());
+      await settle(handoff);
+      expect(catchers.every(({ closed }) => closed)).toBe(true);
+      expect(heldConnections(catchers).every((c) => c.destroyed)).toBe(true);
+      expect(generations.flatMap((gen) => adopted(gen))).toEqual([]);
+    });
+
+    it('passes what it held to the first generation listening even if it never becomes ready, and catches again while that trial drains', async () => {
+      const { manager, log, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js'
+            ? { ready: false, listenWithoutReady: true }
+            : {},
+      );
+      await manager.start();
+      log.length = 0;
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 5_000,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      // As the backlog would have: the trial accepted them, and was drained.
+      const [first, second] = [catchers.slice(0, 2), catchers.slice(2)];
+      expect(adopted(generations[1]).map(({ handle }) => handle)).toEqual(
+        heldConnections(first),
+      );
+      expect(generations[1]?.signals).toEqual([]);
+      // Its drain was caught too, for the generation the rollback started.
+      expect(log).toContain('2<-listener.spares');
+      expect(log.indexOf('2<-listener.spares')).toBeLessThan(
+        log.indexOf('2<-drain'),
+      );
+      expect(second).toHaveLength(2);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(second),
+      );
+      await manager.stop();
+    });
+
+    it('passes what it held at ready to a generation that never reported the listener listening', async () => {
+      const { manager, generations, catchers } = setupCatching((generation) =>
+        generation === 2 ? { reportsListening: false } : {},
+      );
+      await manager.start();
+      expect(
+        await settle(manager.handoff({ entry: '/core/b.js' })),
+      ).toMatchObject({ outcome: 'committed', generation: 2 });
+      expect(adopted(generations[1]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      await manager.stop();
+    });
+
+    it('keeps catchers open until none has accepted for the quiet window, or until the cap', async () => {
+      for (const busy of [false, true]) {
+        const { manager, log, catchers } = setupCatching(undefined, true, () =>
+          Date.now(),
+        );
+        await manager.start();
+        log.length = 0;
+        // When busy, the catchers keep accepting after generation 2 listens.
+        const busyTimer = busy
+          ? setInterval(() => {
+              for (const catcher of catchers) catcher.lastCaughtAt = Date.now();
+            }, 10)
+          : null;
+        const handoff = manager.handoff({ entry: '/core/b.js' });
+        await vi.advanceTimersByTimeAsync(0);
+        // Generation 1 drained into the spares and generation 2 listens.
+        expect(catchers).toHaveLength(2);
+        expect(log).toContain('2<-listener.adopt');
+        expect(catchers.some(({ closed }) => closed)).toBe(false);
+        const closesAt = busy ? CATCH_QUIET_CAP_MS : CATCH_QUIET_MS;
+        await vi.advanceTimersByTimeAsync(closesAt - 1);
+        expect(catchers.some(({ closed }) => closed)).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(catchers.every(({ closed }) => closed)).toBe(true);
+        if (busyTimer) clearInterval(busyTimer);
+        await settle(handoff);
+        await manager.stop();
+      }
+    });
+
+    it('keeps holding for the rollback when the trial exits during the release quiet window', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js'
+            ? {
+                ready: false,
+                listenWithoutReady: true,
+                exitAfterListeningMs: 10,
+              }
+            : {},
+        true,
+        () => Date.now(),
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 5_000,
+      });
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      expect(generations[1]?.exited).toBe(true);
+      expect(adopted(generations[1])).toEqual([]);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      await manager.stop();
+    });
+
+    it('keeps holding for the rollback when the trial is being ended during the release quiet window', async () => {
+      const { manager, generations, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js'
+            ? { ready: false, listenWithoutReady: true, answerSpares: false }
+            : {},
+        true,
+        () => Date.now(),
+      );
+      await manager.start();
+      // The catchers keep accepting, so the release waits out its cap, and
+      // the trial's readiness timeout passes inside that wait.
+      const busy = setInterval(() => {
+        for (const catcher of catchers) catcher.lastCaughtAt = Date.now();
+      }, 10);
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: CATCH_QUIET_CAP_MS / 2,
+      });
+      await vi.advanceTimersByTimeAsync(CATCH_QUIET_CAP_MS * 2);
+      clearInterval(busy);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'rolled-back',
+        generation: 3,
+      });
+      expect(adopted(generations[1])).toEqual([]);
+      expect(adopted(generations[2]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      await manager.stop();
+    });
+
+    it('stops a listener catching once it holds the limit, leaving new connections to the backlog', async () => {
+      const { manager, lines, catchers } = setupCatching(
+        (_generation, entry) =>
+          entry === '/core/bad.js' ? { ready: false } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({
+        entry: '/core/bad.js',
+        readinessTimeoutMs: 30_000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      // Each catcher starts holding one; bring the listener to one short.
+      const [a, b] = catchers as [FakeCatcher, FakeCatcher];
+      for (let held = 2; held < HOLD_LIMIT_PER_LISTENER - 1; held += 1) {
+        (held % 2 ? a : b).catchOne();
+      }
+      expect(catchers.some(({ stopped }) => stopped)).toBe(false);
+      a.catchOne();
+      expect(catchers.every(({ stopped }) => stopped)).toBe(true);
+      expect(catchers.some(({ closed }) => closed)).toBe(false);
+      expect(lines.join('\n')).toContain(
+        `holding ${HOLD_LIMIT_PER_LISTENER} connection(s) for api, the limit`,
+      );
+      // What it holds is still passed on, to the rollback generation.
+      expect(await settle(handoff)).toMatchObject({ outcome: 'rolled-back' });
+      expect(heldConnections(catchers)).toHaveLength(HOLD_LIMIT_PER_LISTENER);
+      expect(heldConnections(catchers).every((c) => !c.destroyed)).toBe(true);
+      await manager.stop();
+    });
+
+    it('holds through a drain a live call extends past the hold deadline, and delivers after promotion', async () => {
+      const drainMs = HOLD_DEADLINE_MS + 30_000;
+      const { manager, generations, catchers } = setupCatching((generation) =>
+        generation === 1 ? { voiceSessions: 1, exitAfterDrainMs: drainMs } : {},
+      );
+      await manager.start();
+      const handoff = manager.handoff({ entry: '/core/b.js' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(drainMs - 1);
+      // Past the deadline, generation 1 still draining: nothing dropped.
+      expect(generations[0]?.exited).toBe(false);
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      expect(await settle(handoff)).toMatchObject({
+        outcome: 'committed',
+        generation: 2,
+      });
+      expect(adopted(generations[1]).map(({ handle }) => handle)).toEqual(
+        heldConnections(catchers),
+      );
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      await manager.stop();
+    });
+
+    it('closes what it holds at the deadline once the handoff has ended with no generation to take it', async () => {
+      // The trial fails, and so does every generation after it: the handoff
+      // ends in crash restarts with the connections still held.
+      const { manager, lines, catchers } = setupCatching((generation) =>
+        generation >= 2 ? { ready: false } : {},
+      );
+      await manager.start();
+      void manager.handoff({ entry: '/core/b.js', readinessTimeoutMs: 5_000 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(catchers).toHaveLength(2);
+      // At the first deadline the rollback generation is still on its way.
+      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS);
+      expect(manager.status().state).toBe('handoff');
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      // It fails its readiness (60 s): crash restarts, and the next deadline
+      // closes what is held.
+      await vi.advanceTimersByTimeAsync(HOLD_DEADLINE_MS - 1);
+      expect(manager.status().state).toBe('restarting');
+      expect(heldConnections(catchers).some((c) => c.destroyed)).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(catchers.every(({ closed }) => closed)).toBe(true);
+      expect(heldConnections(catchers).every((c) => c.destroyed)).toBe(true);
+      expect(lines).toContain(
+        `closed 2 connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
+      );
+      await settle(manager.stop());
     });
   });
 });

@@ -35,6 +35,7 @@ import {
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
+import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
   stationControlRefusal,
   stationControlRefusalBody,
@@ -414,8 +415,21 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         tool: c.req.query('tool'),
         engine: c.req.query('engine'),
         conversation: c.req.query('conversation'),
+        producer: c.req.query('producer'),
       };
       const toolsOnly = c.req.query('tools') === 'true';
+      if (
+        dimension.producer !== undefined &&
+        !isTelemetryProducerName(dimension.producer)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'producer must be a telemetry producer name.',
+          },
+          400,
+        );
+      }
       // Limits are opt-in. The UI requests a bounded window and discloses
       // truncation; CLI/SDK export callers may still request all matching rows.
       // Apply the cap only after both authorization layers and content filters.
@@ -441,6 +455,24 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         deps,
       ).filter((event) => {
         const record = event as Record<string, unknown>;
+        // A Station filter (agent, engine, tool, conversation, tools-only)
+        // never matches an external producer's row, whatever names it
+        // reported; naming the producer selects only its rows. Unfiltered
+        // reads list everything. `tools` is a Station filter because its
+        // callers compare the rows with Station's own tool totals.
+        const producer = record[K.TELEMETRY_PRODUCER];
+        if (dimension.producer !== undefined) {
+          if (producer !== dimension.producer) return false;
+        } else if (
+          typeof producer === 'string' &&
+          (toolsOnly ||
+            dimension.agent !== undefined ||
+            dimension.tool !== undefined ||
+            dimension.engine !== undefined ||
+            dimension.conversation !== undefined)
+        ) {
+          return false;
+        }
         if (toolsOnly && record[K.OP_NAME] !== OP.EXECUTE_TOOL) return false;
         if (
           dimension.agent !== undefined &&
@@ -609,8 +641,25 @@ export function canReadMonitoringEvent(
   // A partial hosted composition must not turn into an authorization bypass.
   // Generic non-session telemetry has no session/content identifier and stays
   // available; session-bearing rows require both pieces of central policy.
-  const sessionId = monitoringSessionIdentity(event);
   const hosted = authority && isHostedSessionReadAuthority(authority);
+  // A row a telemetry producer delivered belongs to the principal who owns
+  // that token, whatever session id its producer reported: an external
+  // agent's session is not a Station session, so the session predicate below
+  // refused every such row. The owner key is written by the ingest receiver
+  // from the admitted token, never copied from a body. Producer rows are
+  // personal-mode only; hosted readers never see them.
+  if (event && typeof event === 'object' && K.TELEMETRY_PRODUCER in event) {
+    const owner = (event as Record<string, unknown>)[
+      K.TELEMETRY_PRODUCER_OWNER
+    ];
+    return (
+      !hosted &&
+      typeof owner === 'string' &&
+      owner.length > 0 &&
+      authority?.userId === owner
+    );
+  }
+  const sessionId = monitoringSessionIdentity(event);
   if (sessionId) {
     // In hosted mode an identity is necessary but not sufficient: route
     // composition must also supply the central session predicate.

@@ -1,0 +1,7 @@
+{
+  "revision": "dffd6e9a20153d719244a8f4f257b1390f06523a",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Re-read the highlighted-code/terminals/frames section against root-theme.ts after dffd6e9a201: the watched attribute list is unchanged, and 'non-geometry inline style' still describes the filter, which now also treats exponent-notation lengths (e.g. 1.1368683772161603e-13px) as geometry; the last unsubscribe still disconnects. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/root-theme.ts"]}
+  ]
+}

@@ -67,8 +67,9 @@ import {
   useCodingStackSelection,
 } from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
-import { useNavigationActions } from '../contexts/NavigationContext';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
 import {
@@ -105,6 +106,7 @@ import {
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
+import { relatedPaneCaller } from '../workspace-panes/relatedPanesHost';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { WorkspacePaneFrame } from '../workspace-panes/WorkspacePaneFrame';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
@@ -133,6 +135,7 @@ import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTeleme
 import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
+import { reconcileCodingWorkspaceDocument } from './codingWorkspaceDocument';
 import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
 import {
@@ -411,15 +414,30 @@ const NO_INSTANCES: readonly WorkspacePaneInstance[] = [];
 
 function retainWorkspacePaneHostDocument(
   published: {
-    current: { content: string; document: WorkspacePaneHostDocumentV1 } | null;
+    current: {
+      content: string;
+      document: WorkspacePaneHostDocumentV1;
+      baseline: WorkspacePaneHostDocumentV1;
+    } | null;
   },
   next: WorkspacePaneHostDocumentV1 | null,
+  live: WorkspacePaneHostDocumentV1 | null,
+  admitInstance: (candidate: unknown) => WorkspacePaneInstance | null,
 ): WorkspacePaneHostDocumentV1 | null {
   if (!next) return next;
   const content = JSON.stringify(next);
   if (published.current?.content === content) return published.current.document;
-  published.current = { content, document: next };
-  return next;
+  const document =
+    published.current && live
+      ? reconcileCodingWorkspaceDocument(
+          published.current.baseline,
+          next,
+          live,
+          admitInstance,
+        )
+      : next;
+  published.current = { content, document, baseline: next };
+  return document;
 }
 
 /** The one admitted current-layout bridge: exact builtin catalog identity only. */
@@ -454,7 +472,7 @@ function BuiltinCodingLayoutHost({
   if (!workspacePaneRuntime.current)
     workspacePaneRuntime.current = new WorkspacePaneHostRuntime();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
-  const { navigate } = useNavigationActions();
+  const developerFeatures = useDeveloperFeatures();
   const projectId = catalog.projectId;
   const compact = useIsMobile();
   const popOut = useBuiltinCodingPanePopOut({
@@ -712,6 +730,7 @@ function BuiltinCodingLayoutHost({
   const publishedDocument = useRef<{
     content: string;
     document: WorkspacePaneHostDocumentV1;
+    baseline: WorkspacePaneHostDocumentV1;
   } | null>(null);
   const captureHostOpen = useCallback(
     (action: WorkspacePaneHostOpenAction | null) => setHostOpen(action),
@@ -891,7 +910,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspaceCodingTerminalPaneInstance(candidate.instance) &&
       isCanonicalBuiltinCodingTerminalDescriptor(candidate.descriptor),
   );
-  const planEntry = catalog.entries.find(
+  const planEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_PLAN_PANE_DESCRIPTOR_ID &&
@@ -899,7 +918,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspacePlanPaneInstance(candidate.instance) &&
       isCanonicalBuiltinPlanDescriptor(candidate.descriptor),
   );
-  const readinessEntry = catalog.entries.find(
+  const readinessEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_READINESS_PANE_DESCRIPTOR_ID &&
@@ -907,7 +926,7 @@ function BuiltinCodingLayoutHost({
       isCanonicalWorkspaceReadinessPaneInstance(candidate.instance) &&
       isCanonicalBuiltinReadinessDescriptor(candidate.descriptor),
   );
-  const trustEntry = catalog.entries.find(
+  const trustEntry = catalog.registeredEntries.find(
     (candidate) =>
       candidate.instance &&
       candidate.descriptor.id === WORKSPACE_TRUST_PANE_DESCRIPTOR_ID &&
@@ -998,10 +1017,8 @@ function BuiltinCodingLayoutHost({
           'Station could not find an available Coding pane for this Project.'
         }
         action={
-          unavailablePresentation?.reviewInRegistry ? (
-            <button type="button" onClick={() => navigate('/registry')}>
-              Review in Registry
-            </button>
+          unavailablePresentation?.reviewExtensions ? (
+            <StationExtensionsAccess onlyWhenOff />
           ) : (
             <button type="button" onClick={() => void catalog.refetch()}>
               Retry
@@ -1147,18 +1164,26 @@ function BuiltinCodingLayoutHost({
   }
   const selectedDiffInstance = diffComposition?.instance ?? diffInstance;
   const evidenceEntries = [
-    ['plan', planEntry],
-    ['readiness', readinessEntry],
-    ['trust', trustEntry],
+    ['plan', planEntry, developerFeatures.flow],
+    ['readiness', readinessEntry, developerFeatures.readiness],
+    ['trust', trustEntry, developerFeatures.trust],
   ] as const;
-  const evidenceComposition =
+  const enabledEvidenceEntries = evidenceEntries.filter(
+    ([, , enabled]) => enabled,
+  );
+  const admittedEvidenceEntries = enabledEvidenceEntries.filter(
+    ([, candidate]) => candidate?.instance,
+  );
+  const evidenceCompositionActive =
     evidenceCompositionControl !== 'legacy' &&
-    evidenceEntries.every(([, candidate]) => candidate?.instance)
+    enabledEvidenceEntries.length > 0;
+  const evidenceComposition =
+    evidenceCompositionActive && admittedEvidenceEntries.length > 0
       ? selectCodingEvidenceComposition({
           control: evidenceCompositionControl,
           projectId,
           layoutId: layout.id,
-          panes: evidenceEntries.map(([category, candidate]) => ({
+          panes: admittedEvidenceEntries.map(([category, candidate]) => ({
             category,
             descriptor: candidate!.descriptor,
             catalogInstance:
@@ -1178,53 +1203,42 @@ function BuiltinCodingLayoutHost({
           })),
         })
       : null;
-  const evidenceCompositionReceipts =
-    evidenceComposition?.receipts ??
-    (evidenceCompositionControl !== 'legacy'
-      ? [
-          {
-            category: 'evidence' as const,
+  const evidenceCompositionReceipts = [
+    ...(evidenceComposition?.receipts ?? []),
+    ...(evidenceCompositionActive
+      ? enabledEvidenceEntries
+          .filter(([, candidate]) => !candidate?.instance)
+          .map(([category]) => ({
+            category,
             control: evidenceCompositionControl,
             outcome: 'unavailable' as const,
             restorationIdentityMatched: false,
             fallbackUsed: false as const,
             reason: 'descriptor-incompatible' as const,
-          },
-        ]
-      : []);
-  if (
-    evidenceCompositionControl !== 'legacy' &&
-    !evidenceComposition?.document
-  ) {
-    return chatOnly(
-      <>
-        {evidenceCompositionReceipts.map((receipt) => (
-          <CodingEvidenceCompositionReceiptTracker
-            key={`${receipt.category}:${receipt.outcome}:${receipt.reason ?? 'none'}`}
-            receipt={receipt}
-          />
-        ))}
-        <ErrorState
-          title="Coding evidence workspace unavailable"
-          description="The Workspace Composition evidence panes could not be admitted. Station did not fall back to the legacy Coding host."
-        />
-      </>,
-    );
-  }
+          }))
+      : []),
+  ];
+  const evidenceCompositionUnavailable =
+    evidenceCompositionActive &&
+    (!evidenceComposition?.document ||
+      admittedEvidenceEntries.length !== enabledEvidenceEntries.length);
   const selectedEvidence = (descriptorId: string) =>
     evidenceComposition?.instances.find(
       (instance) => instance.descriptorId === descriptorId,
     );
-  const selectedPlanInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedPlanInstance = !developerFeatures.flow
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? planInstance
       : selectedEvidence(WORKSPACE_PLAN_PANE_DESCRIPTOR_ID);
-  const selectedReadinessInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedReadinessInstance = !developerFeatures.readiness
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? readinessInstance
       : selectedEvidence(WORKSPACE_READINESS_PANE_DESCRIPTOR_ID);
-  const selectedTrustInstance =
-    evidenceCompositionControl === 'legacy'
+  const selectedTrustInstance = !developerFeatures.trust
+    ? undefined
+    : evidenceCompositionControl === 'legacy'
       ? trustInstance
       : selectedEvidence(WORKSPACE_TRUST_PANE_DESCRIPTOR_ID);
   // The Coding occurrence gates the host (above) but is not one of its panes:
@@ -1255,6 +1269,22 @@ function BuiltinCodingLayoutHost({
             hostScope,
             drillInInstances,
           ),
+          liveHostDocument.current,
+          (candidate) => {
+            const parsed = parseWorkspacePaneInstance(candidate);
+            const current =
+              parsed &&
+              catalog.entries.find(
+                (entry) =>
+                  entry.instance?.instanceId === parsed.instanceId &&
+                  entry.descriptor.id === parsed.descriptorId &&
+                  entry.availability.state === 'available',
+              );
+            return current?.instance &&
+              isWorkspacePaneInstanceOwnedByProject(current.instance, projectId)
+              ? current.instance
+              : admitRestoredInstance(candidate);
+          },
         )
       : null;
   if (drillInInstances.length > 0 && !document) {
@@ -1365,6 +1395,11 @@ function BuiltinCodingLayoutHost({
         <Empty
           label={`${paneEntry.descriptor.name} unavailable`}
           description={`${presentation.reasonLabel}${presentation.actionLabel ? ` Next: ${presentation.actionLabel}.` : ''}`}
+          action={
+            presentation.reviewExtensions ? (
+              <StationExtensionsAccess onlyWhenOff />
+            ) : undefined
+          }
         />
       );
     }
@@ -1453,11 +1488,24 @@ function BuiltinCodingLayoutHost({
         slug: instance.instanceId,
         tabs: [selectedTab],
       };
+      // The tab as a related-pane opener: Up from a pane it opens returns to
+      // this Project layout.
+      const related = projectId
+        ? relatedPaneCaller({
+            occurrenceId: String(instance.instanceId),
+            instance,
+            projectId,
+            projectSlug: catalog.projectSlug,
+            layoutSlug,
+            label: descriptor.name,
+          })
+        : null;
       return (
         <PluginWorkspacePaneSDKBoundary
           layout={paneLayout}
           projectSlug={catalog.projectSlug}
           pluginName={pluginName}
+          related={related}
         >
           <LayoutRenderer
             componentId={pluginComponent}
@@ -1549,15 +1597,32 @@ function BuiltinCodingLayoutHost({
       {diffCompositionReceipt ? (
         <CodingDiffCompositionReceiptTracker receipt={diffCompositionReceipt} />
       ) : null}
+      {evidenceCompositionUnavailable && (
+        <ErrorState
+          title="Experimental evidence panes unavailable"
+          description="Some opted-in tools could not be admitted. Your Coding workspace remains available."
+        />
+      )}
       {evidenceCompositionReceipts.map((receipt) => (
         <CodingEvidenceCompositionReceiptTracker
           key={`${receipt.category}:${receipt.outcome}:${receipt.reason ?? 'none'}`}
           receipt={receipt}
         />
       ))}
-      {(evidenceComposition?.unavailablePanes ?? []).map((entry) => (
-        <Empty key={entry.category} {...codingEvidenceUnavailableCopy(entry)} />
-      ))}
+      {(evidenceComposition?.unavailablePanes ?? [])
+        .filter((entry) =>
+          entry.category === 'plan'
+            ? developerFeatures.flow
+            : entry.category === 'readiness'
+              ? developerFeatures.readiness
+              : developerFeatures.trust,
+        )
+        .map((entry) => (
+          <Empty
+            key={entry.category}
+            {...codingEvidenceUnavailableCopy(entry)}
+          />
+        ))}
       {document ? (
         <WorkspacePaneHost
           document={document}

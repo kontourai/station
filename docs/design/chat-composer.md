@@ -40,9 +40,14 @@ today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-The chip reads an answer's standing only while it is on screen, cancels a read
-that scrolls off screen unanswered, does not re-read a standing it holds while it
-stays mounted, and refreshes on an assessment or narrative update. A long
+In a narrow dock or phone row, Surface's label is cut short with an ellipsis
+after a whole **Basis ·**, and the full label stays in the chip's accessible
+name and tooltip.
+The chip reads an answer's standing only after the answer has stayed on screen
+for about 150ms, so a fling through history sends no read for answers it only
+passes. It cancels a read that scrolls off screen unanswered, does not re-read a
+standing it holds while it stays mounted, and refreshes on an assessment or
+narrative update. A long
 transcript unmounts far-off answers; one that returns is read again, because the
 Basis read re-checks access for each new chip. Pending or failed, it stays
 **Basis** and still opens.
@@ -336,14 +341,16 @@ holds its column from the start, so its appearing never widens it. A call is sho
 the turn the server reports open. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
-On a phone, a settled answer shows its tool work as one row. Every call from
+On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
 original order. Files, UI blocks, MCP app preview candidates, runtime errors
 and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
-with. In the summary, a failure is counted as **retried** rather than
+with. Messages with anchored subagents keep their original tool runs at every
+width, preserving each child card's expansion and keyboard focus during resizing.
+In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not
 start a new exchange. Under each settled answer, a muted time beside the copy
@@ -394,7 +401,9 @@ message row starts a turn.
   the composer. The ticks are one tab stop: arrow keys move between turns
   (jumping as they go), Home and End reach the ends. The rail is hidden when
   the transcript column is narrower than 560px or shorter than 200px
-  (measured on the column, not the viewport).
+  (measured on the column, not the viewport); a hidden rail unmounts its
+  preview, so no Escape is spent on a preview nobody can see. A chat switch
+  starts the rail over, dropping any hover, focus or dismissed preview.
 - **Markers.** A tick carries at most one marker, from facts the rows already
   hold: a reply carrying the projected runtime error (`runtimeError`) marks
   the turn as ended with an error; otherwise a standalone sub-agent row marks
@@ -402,12 +411,23 @@ message row starts a turn.
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Two steps sit beside Scroll to bottom
   whenever that control shows, at every width; on a phone they are the turn
-  navigation. Previous goes to the start of the turn in view when its prompt
-  is above the screen, otherwise to the turn before. The steps stay focusable
-  at either end, and announce the turn they reached (its position and prompt)
-  in a polite status region. Only a step announces; the region empties before
-  each announcement, so a repeat step is said again, and it is cleared on a
-  chat switch or when the loaded history changes.
+  navigation. At the latest message, where Scroll to bottom is absent, a
+  column too narrow for the rail keeps Previous turn alone in the same
+  composer slot (#3862). It needs no row of its own: in a narrow composer it
+  ends the settings row, which scrolls sideways and gives up the step's
+  width; while the status pill holds the activity row, it sits beside the
+  pill. The phone header is not used: its edge reserve holds only its two
+  44px controls. A transcript host with no composer slot (the floating
+  variant) shows no step at the latest message. Pressing it scrolls away from
+  the end, so the group grows to Previous, Next and Scroll to bottom around
+  the same Previous button, which keeps focus. Previous goes to the start of
+  the turn in view when its prompt is above the screen, otherwise to the turn
+  before. The steps stay focusable at either end, and announce the turn they
+  reached (its position and prompt) in a polite status region. Only a step
+  announces; the region empties before each announcement, so a repeat step
+  is said again. It is cleared on a chat switch, when older history finishes
+  loading, and when the number of loaded turns changes (another page of
+  older history, or a new turn).
 - **Positions.** A turn is named "Turn N of M". While older history is not
   loaded, the map covers only the loaded window, so it is named "Loaded turn
   N of M" instead, and the numbers change as earlier history loads.
@@ -769,7 +789,7 @@ orchestration command union is broader than the public `/commands` schema:
 | Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
 | Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
 | Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
-| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser) |
 
 The [Session API](../reference/session-api.md) owns request details and refusal
 behavior. `POST /api/agents/:id/chat` is the Station-engine route; an
@@ -829,12 +849,12 @@ names the project. This revises the earlier independent-sidebar/default behavior
 
 **New Task** opens the shared start composer inside the chat dock, focused, with a compact, removable **Shaping a Task** chip and **Describe the idea…** placeholder. The existing Project and Agent chips retain their normal defaults; the global entry uses the same Project chip. The chat retains shaping mode across clarification turns and reloads, sending the instructions as model context on each turn until acceptance or mode removal. The dock is titled **New Task** with a **Shape a Task** heading; on phones it covers the page composer.
 
-Chat actions offers **Turn into Task** for a writable Station conversation,
+Chat actions offers **New Task from this** for a writable Station conversation,
 sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
 agent shapes a proposal; only **Create Task** on its card accepts the brief
 and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one. A seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
 the person's idea as the visible message. The answer/input **Add to Task**
-picker offers **New Task from this…** even with an empty Task catalog.
+picker offers **New Task from this** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**

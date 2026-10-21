@@ -4,6 +4,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createMCPToolProvenanceGeneration } from '../mcp-tool-provenance.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import {
   mintWorkItemResultProjectorProvenanceForReviewedLoader,
   WorkItemResultProjector,
@@ -204,3 +205,92 @@ for (const failOuter of [false, true]) {
     expect(notices).toEqual([{ deferred: false }]);
   });
 }
+
+test.each(['ABORT', 'ROLLBACK'] as const)(
+  'pending acceptance %s during provider-start cleanup cannot commit outside the owning append',
+  (failure) => {
+    const store = open(':memory:');
+    closes.push(() => {
+      store.close();
+    });
+    const db = store['db'];
+    const authority = store.sessionTurnBoundaryAuthority();
+    store.appendEvent({
+      eventId: 'older-A',
+      provider: 'claude',
+      threadId: 'cleanup-t',
+      turnId: 'A',
+      invocationId: 'older-A',
+      method: 'turn.completed',
+      createdAt: at(0),
+    });
+    const owned = authority.reserve!('cleanup-t', at(1));
+    if (owned.kind !== 'owner') throw new Error('cleanup reserve prerequisite');
+    const capture = captureTurnIntent(
+      { threadId: 'cleanup-t', clientTurnId: 'B-key', input: 'B' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    const keyed = store
+      .createTurnDeduplicator()
+      .claim({ threadId: 'cleanup-t', clientTurnId: 'B-key' });
+    if (keyed.kind !== 'owner') throw new Error('cleanup dedup prerequisite');
+    expect(owned.claim.prepareIntent!(capture, keyed.claim, at(2))).toEqual({
+      kind: 'applied',
+    });
+    expect(owned.claim.beginInvocation(at(3))).toEqual({ kind: 'applied' });
+    db.exec(
+      "CREATE TRIGGER fail_accept BEFORE UPDATE ON orchestration_turn_boundaries WHEN NEW.state='accepted' AND OLD.invocation_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'queued acceptance abort'); END",
+    );
+    expect(owned.claim.accepted('N', at(4))).toEqual({ kind: 'unavailable' });
+    const prepared = authority.prepareProviderTurn('cleanup-t', 'P', at(5));
+    db.exec('DROP TRIGGER fail_accept');
+    db.exec(
+      `CREATE TRIGGER fail_accept BEFORE UPDATE ON orchestration_turn_boundaries WHEN NEW.state='accepted' AND OLD.invocation_id IS NOT NULL BEGIN SELECT RAISE(${failure},'cleanup transaction loss'); END`,
+    );
+    const before = {
+      boundary: db.prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+      audit: db.prepare('SELECT * FROM orchestration_prepared_turns').all(),
+      dedup: db.prepare('SELECT * FROM orchestration_turn_dedup').all(),
+    };
+    const event: CanonicalRuntimeEvent = {
+      eventId: 'provider-P-start',
+      provider: 'claude',
+      threadId: 'cleanup-t',
+      turnId: 'P',
+      method: 'turn.started',
+      prompt: 'engine opened',
+      createdAt: at(6),
+    };
+    if (failure === 'ROLLBACK') {
+      expect(() =>
+        store.appendEvent(event, [], () => {
+          expect(prepared.record()).toEqual({ kind: 'applied' });
+        }),
+      ).toThrow();
+      expect(store.hasEventId(event.eventId)).toBe(false);
+      expect(
+        db.prepare('SELECT * FROM orchestration_turn_boundaries').all(),
+      ).toEqual(before.boundary);
+      expect(
+        db.prepare('SELECT * FROM orchestration_prepared_turns').all(),
+      ).toEqual(before.audit);
+      expect(
+        db.prepare('SELECT * FROM orchestration_turn_dedup').all(),
+      ).toEqual(before.dedup);
+    } else {
+      expect(() =>
+        store.appendEvent(event, [], () => {
+          expect(prepared.record()).toEqual({ kind: 'applied' });
+        }),
+      ).not.toThrow();
+      expect(store.hasEventId(event.eventId)).toBe(true);
+      expect(
+        db
+          .prepare(
+            "SELECT provider_turn_id FROM orchestration_turn_boundaries WHERE provider_turn_id='P'",
+          )
+          .get(),
+      ).toEqual({ provider_turn_id: 'P' });
+    }
+  },
+);

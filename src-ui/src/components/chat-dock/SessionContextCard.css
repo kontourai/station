@@ -254,8 +254,10 @@
   cursor: default;
 }
 
-/* Behind the chip on a desktop dock: anchored under the chip, from its right
-   edge, like the dock's other header popovers. */
+/* Behind the chip on a desktop dock: anchored to the chip, like the dock's
+   other header popovers. It opens on the side with more room, which
+   ResponsiveDialogSurface measures (`data-anchor-side`), and is capped to
+   that room: a bottom dock's chip sits low in the window (#3888). */
 .session-context-sheet-overlay {
   position: fixed;
   inset: 0;
@@ -280,15 +282,25 @@
 
 .session-context-sheet-overlay[data-anchored] .session-context-sheet-panel {
   position: fixed;
-  top: calc(var(--responsive-anchor-top, 0px) + 36px);
+  top: calc(var(--responsive-anchor-bottom, 0px) + 8px);
   left: clamp(
     12px,
     var(--responsive-anchor-left, 12px),
     calc(100vw - min(320px, calc(100vw - 24px)) - 12px)
   );
-  max-height: max(
-    160px,
-    calc(100dvh - var(--responsive-anchor-top, 0px) - 64px)
+  max-height: min(
+    520px,
+    max(160px, calc(100dvh - var(--responsive-anchor-bottom, 0px) - 20px))
+  );
+}
+
+.session-context-sheet-overlay[data-anchored][data-anchor-side="above"]
+  .session-context-sheet-panel {
+  top: auto;
+  bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 8px);
+  max-height: min(
+    520px,
+    max(160px, calc(var(--responsive-anchor-top, 100dvh) - 20px))
   );
 }
 

@@ -128,8 +128,10 @@ request returns the same typed `403` and no engine starts.
 An Agent that messages, interrupts, or waits on an existing Session uses
 station-control's [Session control](../guides/self-configuring-agent.md#session-control)
 tools, which call their own agent-only routes under
-`/api/orchestration/session-control` rather than the routes above. Its
-read-only companions, `list_project_activity` and `get_session_digest`, call
+`/api/orchestration/session-control` rather than the routes above. That guide
+also distinguishes ordinary idle from a verified requested-work settlement,
+including the history-dependent limit on untagged terminal acknowledgement.
+Its read-only companions, `list_project_activity` and `get_session_digest`, call
 `/api/orchestration/session-activity` (see
 [Station Control Project Activity](api.md#station-control-project-activity)) and
 read as the calling Session's owner within the caller's Project.
@@ -190,7 +192,7 @@ GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTur
 
 The lookup is read-only: it never sends, claims or releases anything. An empty
 id, a `conversationId` over 512 characters or a `clientTurnId` over 200 is
-refused with `400`; any other lookup answers `200` with `data.outcome`:
+refused with `400`. A successful lookup answers `200` with `data.outcome`:
 
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
@@ -202,8 +204,32 @@ refused with `400`; any other lookup answers `200` with `data.outcome`:
 | `expired` | The turn was sent and retention evicted its record. | No. |
 | `unknown` | Nothing here holds the key, and this Station forwards the conversation's sends to another Station or Environment, so it can prove nothing: the Project named by `projectSlug` defaults to another Environment, or this Station process forwarded a keyed send for the conversation (also when the conversation began here). | No — treat it like `indeterminate`. |
 
+An authorized lookup that finds an explicitly settled prepared turn instead
+answers `409` with this error envelope, not a successful delivery outcome:
+
+```json
+{
+  "success": false,
+  "error": "This turn was cancelled. A new request requires a new turn key.",
+  "code": "client_turn_settled",
+  "disposition": "cancelled"
+}
+```
+
+The actual disposition is `cancelled` or `definitively-refused`. For the latter,
+the fixed message is `This turn was definitively refused. A new request requires
+a new turn key.` Neither case invents a provider turn ID or represents settlement
+as `started`, `expired` or `indeterminate`. An ordinary POST that retries the
+retained settled key is also refused with `client_turn_settled`; a deliberate
+new request must use a new `clientTurnId`. The successful foreground handle and
+lookup DTO are unchanged. This compatibility contract adds no HTTP operation
+for preparing, cancelling or resuming a turn.
+
 A conversation you may not read answers like a key nothing holds, so the
-lookup reveals nothing about other callers' conversations. `received` comes
+lookup reveals nothing about other callers' conversations. Read authorization
+precedes claim inspection: an unreadable local conversation still answers
+`200` with `not-received`, without a settlement code or disposition. The existing
+forwarding rules above still apply to an absence answer. `received` comes
 from the request being handled in this Station process, so a Station that
 restarted answers from the turn ledger alone; pass `projectSlug` when the send
 named a Project, so a Project that runs elsewhere answers `unknown` rather than
@@ -265,7 +291,11 @@ another device and a restart.
   with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
   once, with the usual receipt. A send refused because the engine opened a turn
   itself (`provider_turn_in_progress`) or is still starting
-  (`provider_session_starting`) is held too.
+  (`provider_session_starting`) can be held before its keyed dispatch begins.
+  If the keyed dispatch has begun and is definitively refused, it closes that
+  key: HTTP `409`, `success: false`, `code: "client_turn_settled"`, and the
+  actual `disposition`. It is never queued again under that key. A new explicit
+  user request needs a new key; clients must not generate one automatically.
 - The same body sent again under the same key, while the conversation is still
   busy or holds other messages, answers the same entry (`sent`, with its
   `turnId`, once Station sent it). Sent when the conversation is idle and
@@ -466,8 +496,10 @@ error that carries no code.
 A start or send that Station cannot run under the chat's approval mode on
 OpenCode is refused before any engine effect with
 `code: "acp_approval_governance_refused"`: OpenCode's resolved rules override
-Station's, or the chat runs an agent Station does not govern
-([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+Station's, the chat runs an agent Station does not govern
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
+the project's OpenCode configuration declares code OpenCode runs at launch
+([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
 The message names the setting and says what picking Default would do in that
 chat. A refused start keeps that code: it is checked before Station claims the
 start, so it is never reported as a start that may have happened
@@ -524,7 +556,8 @@ requests through simulated process streams; they are not a live Codex receipt.
   "type": "respondToRequest",
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
-  "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'"
+  "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
+  "sessionGrantScope": "'server', optional, only with acceptForSession"
 }
 ```
 
@@ -623,11 +656,39 @@ this command, and that Station applies the same rule. Where nothing can be
 forwarded, for a file edit in plan mode or under full access, and for
 `ExitPlanMode`, `acceptForSession` counts as `accept` (#2915, #2916). In an
 ACP Session it also counts as `accept` for a plan exit (a `switch_mode` tool
-call or `ExitPlanMode`), which mints no Station session grant (#2933).
+call or `ExitPlanMode`), which mints no Station session grant (#2933). On an
+OpenCode Session Station governs, `acceptForSession` on a file edit is sent to
+the engine as `accept`, and Station keeps the grant itself, because OpenCode's
+"always" for an edit covers every later edit. Station's grant never covers an
+edit of OpenCode configuration or outside the project (#3924).
 The ACP response mapper prefers the agent's `allow_once` option. If the
 agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the
 agent. Claude's own plan exit uses its separate response mapping (#2916).
+
+`sessionGrantScope: 'server'` widens an `acceptForSession` answer from the one
+tool to every later call to the built-in `station-browser` server in that
+Session. A Claude Session offers it only on a request whose `request.opened`
+payload carries `stationBrowserServer: true`, which the adapter sets only for an
+authentic call: the engine-generated `mcp__station-browser__<tool>` name, the
+built-in in-process server delivered to that Session, and no authored tool
+server using the id, and an engine `init` report listing exactly one
+`station-browser` server whose source is `sdk` (fail closed when the source is
+absent or the name is shared; the grant also covers subagents in the Session).
+A server merely named like it, an ACP-reported name or a
+Session without the built-in server never gets the flag. The grant lives with
+the Session record, as the per-tool grant does: it is not shared with another
+Session or server, and a stopped or restarted Session starts with none. It
+covers only plain calls, so an escalation still prompts. The server choice
+does not mint an independent tool-name grant or SDK permission rule: every
+later call still passes the current browser authenticity check. It does not change
+the #90 N2 policy: auto mode and `tools.autoApprove` patterns such as `*` or
+`station-*` still never cover a sensitive browser tool. A request without the
+flag, an answer that omits the field (every older client) and every other
+decision keep the per-tool `acceptForSession` behaviour; an engine that does
+not read the field, and a Station that predates it, grant the one tool. The
+inbox offers it as the `acceptForSessionServer` action, which sends the same
+typed decision. The delegated-task respond route does not accept the field.
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
@@ -885,6 +946,19 @@ included; it deletes no imported event, search entry or read grant. A hosted run
 (`STATION_HOSTED_TENANT_REGISTRY_FILE` set) never follows unattributed
 transcripts. It does follow attributed ones, but without a tenant binding no
 account can read them.
+
+A poll that finds no new event and no change to the stored attachment writes
+nothing. A real change (new events, cursor, source handle, affinity, completed
+turn boundary) stamps `updatedAt` with the latest imported source-event time,
+or the creation time when there is none, never the poll time. Server-owned
+facts on the row (model, persistence posture, tenant and lineage) are kept only
+while the source subject (provider, kind, native id and source-home affinity)
+is unchanged. A transcript new to a thread id, or a changed subject, is
+imported only after startup session recovery has finished, and never under a
+thread that is quarantined, failed recovery, or holds a tenant binding. If
+recovery fails, no new subject is imported until restart, while existing
+attachments keep following; each refusal counts as a `rejected_candidate`
+discovery outcome.
 
 `adoptSession` decides where the child runs from the transcript's cwd at
 adoption time, not from the stored attribution
@@ -1266,8 +1340,9 @@ usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is
 past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
 or more than 1,000 session records naming one level's parents) and is refused rather
-than cut. Each level's parent lookup scans session start records; there is no
-index on the JSON fields it matches.
+than cut. Each level resolves parent naming through the indexed session-parent-mentions
+projection, maintained with canonical event writes and backfilled from retained
+start and configured events. Naming and provenance grant no read or lifecycle authority.
 
 ### Reading assistant turn content programmatically
 

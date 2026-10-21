@@ -171,7 +171,11 @@ import {
   ReceiverExecutionRefusal,
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
-import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  composeAuthorizedSessionAnswerBasis,
+  StationBasisCompositionInvariantError,
+} from '../../services/projects/task-basis-module.js';
+import { formatTaskRoomPrompt } from '../../services/projects/task-room-context.js';
 import {
   type TaskRoomInvocationAdmission,
   TaskRoomWorkAuthorityChangedError,
@@ -179,6 +183,7 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
+import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -494,6 +499,10 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  // Typed, optional: an older client omits it and keeps the per-tool grant.
+  // Only an `acceptForSession` answer reads it, and only an authentic
+  // Station browser request honours it (the adapter's grant computation).
+  sessionGrantScope: z.literal('server').optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
   // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
@@ -1091,6 +1100,15 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  taskRoomReply: z
+    .object({
+      taskId: z.string().min(1).max(256),
+      taskCreatedAt: z.string().max(40).datetime(),
+      operationId: z.string().min(1).max(128),
+      attachBrief: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   attachmentRefs: z.never().optional(),
   attachments: z.never().optional(),
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -1157,6 +1175,8 @@ const sessionEventWindowQuerySchema = z.object({
 interface DelegateTaskRequest {
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
+  /** Human-authored room title, before the provider brief is appended. */
+  title?: string;
   target: ExecutionTarget;
   parentTaskId?: string;
   sessionId?: string;
@@ -1339,6 +1359,7 @@ type DelegatedTaskEventsRequest = z.infer<
 type ContinueDelegatedTaskRequest = z.infer<
   typeof continueDelegatedTaskBodySchema
 > & {
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1852,7 +1873,36 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      holdPublication?(taskId: string): () => void;
+      beforeInvocation?(taskId: string): Promise<void>;
+      continued?(taskId: string): Promise<void>;
+      admitReply?(
+        input: {
+          taskId: string;
+          taskCreatedAt: string;
+          sessionId: string;
+          operationId: string;
+        },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomInvocationAdmission | undefined>;
       module: TaskRoomWorkModule;
+      onRecorded?(
+        record: import('@kontourai/station-contracts/task-room-work').TaskRoomWorkRecord,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<void>;
+      onReply?(
+        input: {
+          taskId: string;
+          sessionId: string;
+          taskCreatedAt: string;
+          operationId: string;
+          message: string;
+        },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<boolean>;
       resolveContext?(
         taskId: string,
         request: Request,
@@ -2073,9 +2123,9 @@ export function createOrchestrationRoutes(
     hostedTenantRegistry?: HostedTenantRegistry;
     /**
      * archive#1225: per-user live-subscriber presence for the `/events`
-     * stream, shared with the push-on-completion gate
-     * (`turn-completion-notifications.ts`) so it knows whether the owning
-     * user is actually watching before scheduling a push. Optional and
+     * stream, read back by `/presence/summary` below (the runtime shares
+     * one instance). Turn-completion notifications no longer consult it:
+     * the delivery router decides per surface. Optional and
      * defaulted to a private, route-local instance so every existing test
      * that constructs this route without one keeps working unchanged — a
      * route-local fallback still tracks connect/disconnect correctly within
@@ -2474,6 +2524,19 @@ export function createOrchestrationRoutes(
     // #3568: set once this send may wait in its conversation's inbox; a
     // busy refusal from the dispatch below then queues it instead.
     let queueOnBusyRefusal: (() => Response | undefined) | undefined;
+    let inspectBusySettlement: (() => unknown) | undefined;
+    const settledRefusal = (error: unknown) =>
+      error instanceof TurnIdempotencySettledError
+        ? c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          )
+        : undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2712,6 +2775,18 @@ export function createOrchestrationRoutes(
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
+      if (body.conversationId && body.clientTurnId) {
+        const conversationId = body.conversationId;
+        const clientTurnId = body.clientTurnId;
+        inspectBusySettlement = () =>
+          orchestrationService.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          );
+      }
       // #3568: a follow-up to a busy conversation waits in its inbox rather
       // than being refused. Only for a caller that may read the conversation,
       // whose body names exactly the binding the inbox will continue through,
@@ -2737,7 +2812,6 @@ export function createOrchestrationRoutes(
         ))
       ) {
         const inbox = deps.threadInbox!;
-        const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
         if (
           orchestrationService.inspectTurnDelivery(
             followUp.conversationId,
@@ -2844,14 +2918,27 @@ export function createOrchestrationRoutes(
           { outcome: 'queued', entry: error.entry },
           error.entry,
         );
+      const settled = settledRefusal(error);
+      if (settled) return settled;
       const busyCode = errorCode(error);
-      if (
-        queueOnBusyRefusal &&
-        busyCode &&
-        INBOX_BUSY_REFUSAL_CODES.has(busyCode)
-      ) {
-        const held = queueOnBusyRefusal();
-        if (held) return held;
+      if (busyCode && INBOX_BUSY_REFUSAL_CODES.has(busyCode)) {
+        try {
+          inspectBusySettlement?.();
+        } catch (inspectionError) {
+          const closed = settledRefusal(inspectionError);
+          if (closed) return closed;
+          // An unavailable or unauthorized inspection supplies no settlement.
+        }
+        if (queueOnBusyRefusal) {
+          try {
+            const held = queueOnBusyRefusal();
+            if (held) return held;
+          } catch (queueError) {
+            const closed = settledRefusal(queueError);
+            if (closed) return closed;
+            throw queueError;
+          }
+        }
       }
       const refused =
         delegationRefusal(c, error) ??
@@ -3131,11 +3218,26 @@ export function createOrchestrationRoutes(
         );
       const answer = (data: TurnDeliveryInspection) =>
         c.json({ success: true, data });
-      const durable = orchestrationService.inspectTurnDelivery(
-        conversationId,
-        clientTurnId,
-        readAuthorityFor(c),
-      );
+      let durable: ReturnType<OrchestrationService['inspectTurnDelivery']>;
+      try {
+        durable = orchestrationService.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          readAuthorityFor(c),
+        );
+      } catch (error) {
+        if (error instanceof TurnIdempotencySettledError)
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          );
+        throw error;
+      }
       // A turn the ledger settled outranks the request still being answered.
       // Only the public fields: the ledger also names the Session a live
       // claim is on (for a resend to join), which this answer never shows.
@@ -3713,18 +3815,25 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
-      const dispatch = (
+      let releaseRoomRequestPublication: (() => void) | undefined;
+      const dispatch = async (
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
-      ) =>
-        delegate({
+      ) => {
+        if (roomRequest) {
+          releaseRoomRequestPublication ??=
+            deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
+          await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
+        }
+        return delegate({
           ...request,
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(contextSnapshot
             ? {
-                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+                prompt: formatTaskRoomPrompt(body.prompt, contextSnapshot),
+                title: body.prompt.trim(),
               }
             : {}),
           ...(delegation ? { delegation } : {}),
@@ -3789,6 +3898,7 @@ export function createOrchestrationRoutes(
               }
             : {}),
         });
+      };
       if (roomRequest) {
         const work = deps.taskRoomWork;
         if (
@@ -3818,61 +3928,89 @@ export function createOrchestrationRoutes(
             ? scope
             : undefined;
         };
-        const outcome = await work.module.submit(
-          roomRequest.taskId,
-          userId,
-          {
-            operationId: roomRequest.operationId,
-            ...(body.target.model ? { model: body.target.model } : {}),
-            agentId: executionProfileAgentId(
-              normalizeExecutionTarget(body.target).agent,
-            ),
-            ...(typeof body.target.agent !== 'string'
-              ? {
-                  executionAgentId: body.target.agent.executionAgent,
-                  ...(body.target.agent.expectedDefinitionFingerprint
-                    ? {
-                        expectedDefinitionFingerprint:
-                          body.target.agent.expectedDefinitionFingerprint,
-                      }
-                    : {}),
-                }
-              : {}),
-            prompt: body.prompt,
-            ...(roomRequest.context ? { context: roomRequest.context } : {}),
-          },
-          authorize,
-          async (sessionId, scope, recheck, contextSnapshot) => {
-            const handle = await dispatch(
-              sessionId,
-              recheck,
-              {
-                projectId: scope.roomProjectId,
-                taskId: roomRequest.taskId,
-              },
-              contextSnapshot,
-            );
-            if (
-              !handle ||
-              typeof handle !== 'object' ||
-              !('sessionId' in handle) ||
-              typeof handle.sessionId !== 'string'
-            )
-              throw new Error('Agent execution identity was not returned.');
-            return { sessionId: handle.sessionId };
-          },
-          () =>
-            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
-            Promise.resolve(undefined),
-        );
-        return c.json(
-          { success: outcome.kind === 'recorded', data: outcome },
-          outcome.kind === 'recorded'
-            ? 200
-            : outcome.reason === 'access'
-              ? 403
-              : 409,
-        );
+        try {
+          const outcome = await work.module.submit(
+            roomRequest.taskId,
+            userId,
+            {
+              operationId: roomRequest.operationId,
+              ...(body.target.model ? { model: body.target.model } : {}),
+              agentId: executionProfileAgentId(
+                normalizeExecutionTarget(body.target).agent,
+              ),
+              ...(typeof body.target.agent !== 'string'
+                ? {
+                    executionAgentId: body.target.agent.executionAgent,
+                    ...(body.target.agent.expectedDefinitionFingerprint
+                      ? {
+                          expectedDefinitionFingerprint:
+                            body.target.agent.expectedDefinitionFingerprint,
+                        }
+                      : {}),
+                  }
+                : {}),
+              prompt: body.prompt,
+              ...(roomRequest.context ? { context: roomRequest.context } : {}),
+            },
+            authorize,
+            async (sessionId, scope, recheck, contextSnapshot) => {
+              const handle = await dispatch(
+                sessionId,
+                recheck,
+                {
+                  projectId: scope.roomProjectId,
+                  taskId: roomRequest.taskId,
+                },
+                contextSnapshot,
+              );
+              if (
+                !handle ||
+                typeof handle !== 'object' ||
+                !('sessionId' in handle) ||
+                typeof handle.sessionId !== 'string'
+              )
+                throw new Error('Agent execution identity was not returned.');
+              return { sessionId: handle.sessionId };
+            },
+            () =>
+              work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+              Promise.resolve(undefined),
+          );
+          if (
+            outcome.kind === 'recorded' &&
+            outcome.record.state !== 'refused'
+          ) {
+            try {
+              await work.onRecorded?.(outcome.record, c.req.raw, principal);
+            } catch (error) {
+              deps.logger.warn?.('Task room request publication failed', {
+                error: errorMessage(error),
+              });
+            }
+            const release = releaseRoomRequestPublication;
+            releaseRoomRequestPublication = undefined;
+            setTimeout(() => {
+              release?.();
+              void Promise.resolve()
+                .then(() => work.continued?.(roomRequest.taskId))
+                .catch((error) =>
+                  deps.logger.warn?.('Task room reconciliation failed', {
+                    error: errorMessage(error),
+                  }),
+                );
+            }, 0);
+          }
+          return c.json(
+            { success: outcome.kind === 'recorded', data: outcome },
+            outcome.kind === 'recorded'
+              ? 200
+              : outcome.reason === 'access'
+                ? 403
+                : 409,
+          );
+        } finally {
+          releaseRoomRequestPublication?.();
+        }
       }
       const data = await dispatch();
       bestEffortDelegationResult(deps.logger, 'arm', () =>
@@ -4247,6 +4385,18 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const replyBody = getBody(c);
+        if (
+          replyBody.taskRoomReply &&
+          (replyBody.environmentId || replyBody.model || replyBody.modelOptions)
+        )
+          return c.json(
+            {
+              success: false,
+              error: 'A room thread uses its existing agent Session and model.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent's follow-up carries no approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
@@ -4295,25 +4445,123 @@ export function createOrchestrationRoutes(
                 () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
               )
           : undefined;
-        const data = await deps.continueDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
-          // No-onward-hop + sender authority, from the verified
-          // credential — never body/userId. The follow-up body carries
-          // no portable signal, so both ride every follow-up: the tool
-          // enforces the hop guard and the post-resolution currency
-          // probe before any outbound forward.
-          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-          isRequestAuthorityCurrent: () =>
-            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-        });
-        return c.json({ success: true, data });
+        const roomReply = getBody(c).taskRoomReply;
+        let continuationMessage = getBody(c).message;
+        if (roomReply && roomReply.attachBrief !== false && principal) {
+          const context = await deps.taskRoomWork?.resolveContext?.(
+            roomReply.taskId,
+            c.req.raw,
+            principal,
+          );
+          if (!context)
+            return c.json(
+              {
+                success: false,
+                code: 'task_room_context_unavailable',
+                error:
+                  'The latest saved brief is unavailable. Retry or turn off the brief attachment.',
+              },
+              409,
+            );
+          continuationMessage = formatTaskRoomPrompt(
+            continuationMessage,
+            context,
+          );
+        }
+        const roomAdmission =
+          roomReply && principal
+            ? await deps.taskRoomWork?.admitReply?.(
+                {
+                  taskId: roomReply.taskId,
+                  taskCreatedAt: roomReply.taskCreatedAt,
+                  operationId: roomReply.operationId,
+                  sessionId: param(c, 'taskId'),
+                },
+                c.req.raw,
+                principal,
+              )
+            : undefined;
+        if (roomReply && !roomAdmission)
+          return c.json(
+            {
+              success: false,
+              code: 'task_room_reply_refused',
+              error:
+                'This agent thread can no longer continue in the same Session.',
+            },
+            403,
+          );
+        try {
+          const data = await deps.continueDelegatedTask({
+            ...(roomAdmission
+              ? { taskRoomInvocationAdmission: roomAdmission }
+              : {}),
+            ...getBody(c),
+            message: continuationMessage,
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            fullAccessGrant,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+            ...(authorizeReceiverExecution
+              ? { authorizeReceiverExecution }
+              : {}),
+            // No-onward-hop + sender authority, from the verified
+            // credential — never body/userId. The follow-up body carries
+            // no portable signal, so both ride every follow-up: the tool
+            // enforces the hop guard and the post-resolution currency
+            // probe before any outbound forward.
+            inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+            isRequestAuthorityCurrent: () =>
+              deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+          });
+          let roomReplyDelivery: 'posted' | 'unpublished' | undefined;
+          if (roomReply && principal) {
+            roomReplyDelivery = 'unpublished';
+            try {
+              const posted = await deps.taskRoomWork?.onReply?.(
+                {
+                  ...roomReply,
+                  sessionId: param(c, 'taskId'),
+                  message: getBody(c).message,
+                },
+                c.req.raw,
+                principal,
+              );
+              if (posted) roomReplyDelivery = 'posted';
+              if (!posted)
+                deps.logger.warn?.('Task room reply publication refused', {
+                  taskId: roomReply.taskId,
+                });
+            } catch (error) {
+              deps.logger.warn?.('Task room reply publication failed', {
+                error: errorMessage(error),
+              });
+            }
+            setTimeout(
+              () =>
+                void deps.taskRoomWork
+                  ?.continued?.(roomReply.taskId)
+                  .catch((error) => {
+                    deps.logger.warn?.('Task room reconciliation failed', {
+                      error: errorMessage(error),
+                    });
+                  }),
+              0,
+            );
+          }
+          return c.json({
+            success: true,
+            data:
+              roomReplyDelivery && data && typeof data === 'object'
+                ? { ...data, taskRoomReplyDelivery: roomReplyDelivery }
+                : data,
+          });
+        } finally {
+          if (roomAdmission?.releasePublication)
+            setTimeout(roomAdmission.releasePublication, 0);
+        }
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
@@ -5695,15 +5943,23 @@ export function createOrchestrationRoutes(
         : undefined;
       if (!current())
         return c.json({ success: false, error: 'Basis not found' }, 404);
-      return c.json({
-        success: true,
-        data: composeAuthorizedSessionAnswerBasis(
-          answer,
-          assessed?.assessment,
-          narrative,
-          reviewedSource,
-        ),
-      });
+      try {
+        return c.json({
+          success: true,
+          data: composeAuthorizedSessionAnswerBasis(
+            answer,
+            assessed?.assessment,
+            narrative,
+            reviewedSource,
+          ),
+        });
+      } catch (error) {
+        // Station's own projection failed Surface's contract: unavailable,
+        // never an owner gap published as if it were Basis data.
+        if (error instanceof StationBasisCompositionInvariantError)
+          return c.json({ success: false, error: 'Basis unavailable' }, 503);
+        throw error;
+      }
     }
     if (
       deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
@@ -6087,9 +6343,8 @@ export function createOrchestrationRoutes(
       let closeReason: 'client-abort' | 'authorization-expired' | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
-      // BEFORE anything else can `await` — the push-on-completion gate
-      // (`turn-completion-notifications.ts`) must never see a window where
-      // a client that is in fact connecting is reported as absent.
+      // BEFORE anything else can `await`, so the `/presence/summary` roster
+      // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
       const releasePresence = presenceSubject
@@ -6108,9 +6363,9 @@ export function createOrchestrationRoutes(
       // `stream.close()` in its own outer `finally` on an uncaught throw; it
       // has no idea this route registered presence/eventBus state that also
       // needs releasing. Without this, a setup-time throw would leak this
-      // user's presence count forever — `isConnected(userId)` would stay
-      // `true` and silently disable push-on-completion for that user for
-      // the rest of the process lifetime.
+      // user's presence count forever — `isConnected(userId)` and the
+      // `/presence/summary` roster would report them connected for the rest
+      // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
@@ -6126,7 +6381,7 @@ export function createOrchestrationRoutes(
             closeReason ??= 'client-abort';
             // Release what the connection holds NOW, not in `finally`: a store
             // read that never settles would otherwise keep this user counted
-            // as present (suppressing push-on-completion) and subscribed. All
+            // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
             stopActivityFlush?.();

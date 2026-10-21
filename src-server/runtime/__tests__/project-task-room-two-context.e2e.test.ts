@@ -479,11 +479,7 @@ describe('Project Task room two-context HTTP acceptance (#2888)', () => {
     const announcedStarts = announced.data.records.filter(
       (record: any) => record.body.kind === 'live-work-started',
     );
-    expect(announcedStarts).toHaveLength(2);
-    const announcedActorLabels = announcedStarts.map(
-      (record: any) => record.actor.label,
-    );
-    expect(new Set(announcedActorLabels).size).toBe(2);
+    expect(announcedStarts).toHaveLength(0);
 
     const plan = (
       await json(
@@ -658,7 +654,7 @@ describe('Project Task room two-context HTTP acceptance (#2888)', () => {
     // A fresh runtime and real listener reopen the same SQLite event and
     // working-state stores. Recovery must publish the durable room exactly
     // once: retained history and the private document converge without a
-    // duplicate human message or a duplicate live-work lifecycle record.
+    // duplicate human message. Human presence remains live-only in browser history.
     api = await listenRoomApi(databasePath, grants);
     const afterRestart = client(api.baseUrl, 'alpha');
     const restartedHistory = await json(
@@ -673,7 +669,7 @@ describe('Project Task room two-context HTTP acceptance (#2888)', () => {
       restartedHistory.data.records.filter(
         (record: any) => record.body.kind === 'live-work-started',
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
     const restartedDocument = (
       await json(await afterRestart(`${roomPath}/document`))
     ).data;
@@ -706,14 +702,8 @@ describe('Project Task room two-context HTTP acceptance (#2888)', () => {
     const recoveredEnds = recoveredHistory.data.records.filter(
       (record: any) => record.body.kind === 'live-work-presence-ended',
     );
-    expect(recoveredStarts).toHaveLength(2);
-    expect(recoveredEnds).toHaveLength(2);
-    expect(
-      recoveredStarts.map((record: any) => record.actor.label).sort(),
-    ).toEqual([...announcedActorLabels].sort());
-    expect(
-      recoveredEnds.map((record: any) => record.actor.label).sort(),
-    ).toEqual([...announcedActorLabels].sort());
+    expect(recoveredStarts).toHaveLength(0);
+    expect(recoveredEnds).toHaveLength(0);
 
     const restartCommand = async (
       command: Record<string, unknown>,

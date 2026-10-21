@@ -16,7 +16,14 @@ import {
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -49,8 +56,10 @@ import {
   type ChatFocusTarget,
   openChatsStore,
 } from '../../contexts/open-chats-store';
+import { usePublishOpenerSelection } from '../../contexts/PaneRelationsContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
@@ -99,6 +108,10 @@ import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
 } from '../../lib/task-shaping';
+import {
+  conversationSelectionKey,
+  WORKSPACE_CHAT_OPENER,
+} from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -118,7 +131,6 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
-import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
@@ -971,6 +983,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus,
     orchestrationSessionsFetching,
   });
+  useEffect(() => {
+    if (!isFullscreenPlacement && activeSession?.taskShaping)
+      setDockState(true, true);
+  }, [activeSession?.taskShaping, isFullscreenPlacement, setDockState]);
   const handleReplayConversation = useCallback(() => {
     const sourceThreadId =
       activeSession?.currentSessionId ??
@@ -1431,22 +1447,26 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const turnIntoTask =
     activeSession && !activeSession.replay && !importedSessionId
       ? () =>
-          requestTaskShaping({
-            projectSlug: activeSession.projectSlug,
-            source: {
-              sessionId: activeSession.currentSessionId ?? activeSession.id,
-              conversationId: activeSession.conversationId,
-              agentSlug: activeSession.agentSlug,
-              agentName: activeSession.agentName,
-            },
-          })
+          activeSession.taskShaping
+            ? updateChat(activeSessionId!, { taskShaping: false })
+            : requestTaskShaping({
+                projectSlug: activeSession.projectSlug,
+                source: {
+                  sessionId: activeSession.currentSessionId ?? activeSession.id,
+                  conversationId: activeSession.conversationId,
+                  agentSlug: activeSession.agentSlug,
+                  agentName: activeSession.agentName,
+                },
+              })
       : undefined;
   const dockMoreActions: DockMoreAction[] = [
     ...(turnIntoTask
       ? [
           {
             key: 'turn-into-task',
-            label: 'Turn into Task',
+            label: activeSession?.taskShaping
+              ? 'Stop shaping this Task'
+              : 'New Task from this',
             onSelect: turnIntoTask,
           },
         ]
@@ -1657,6 +1677,33 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const [isSessionContextSheetOpen, setIsSessionContextSheetOpen] =
     useState(false);
   const sessionContextChipRef = useRef<HTMLButtonElement>(null);
+  // #3882: the card and its chip trade places as the transcript column's
+  // room changes (an open Chat inventory takes it). Focus on whichever is
+  // showing must not drop to the page when the other replaces it.
+  // Neither counts while it plays its exit: an exiting card is `inert` and an
+  // exiting chip is `aria-hidden`, so focus sent there would drop or hide.
+  const focusSessionContextEntry = useCallback(() => {
+    const footer =
+      conversationSurfaceRef.current?.parentElement?.querySelector<HTMLElement>(
+        ':scope > .session-context-card:not(.session-context-card--exiting) .session-context-card__footer button',
+      );
+    const chip = sessionContextChipRef.current;
+    (
+      footer ??
+      (chip?.classList.contains('session-context-chip--exiting') ? null : chip)
+    )?.focus();
+  }, []);
+  const sessionContextFocusHandoffRef = useRef(false);
+  // The chip left with focus on it (the card came back): the card's own
+  // Chat inventory button takes it, unless focus has gone somewhere since.
+  useEffect(() => {
+    if (!sessionContextCardShown || !sessionContextFocusHandoffRef.current)
+      return;
+    sessionContextFocusHandoffRef.current = false;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    focusSessionContextEntry();
+  }, [focusSessionContextEntry, sessionContextCardShown]);
   // On a phone the sheet opens from the ⋯ sheet's row, which is gone by the
   // time this one closes; focus returns to the ⋯ trigger it names.
   const [sessionContextReturnFocus, setSessionContextReturnFocus] =
@@ -1819,6 +1866,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         | 'hydrateMessages'
         | 'signal'
         | 'beforeFocus'
+        | 'revealDock'
       >,
     ) => {
       // #3724 review (BLOCKING): classify BEFORE navigating. Routing first
@@ -1845,7 +1893,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         model,
         acceptedModel,
         ...execution,
-        revealDock: !isFullscreenPlacement,
+        revealDock: execution?.revealDock !== false && !isFullscreenPlacement,
         conversationUpdatedAt,
       });
     },
@@ -1869,14 +1917,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       conversation: ConversationOpenRecovery['conversation'] | string,
       isCurrent?: () => boolean,
       keepReader = false,
+      options?: { revealDock?: boolean },
     ) => {
       const controller = await loadConversationOpenController();
       const opened = await controller.openConversationForDock(conversation, {
         apiBase,
         observation: workObservation,
-        open: keepReader
-          ? openConversationInScopedPane
-          : openUserSelectedConversationInScopedPane,
+        open: (id, agent, slug, name, model, updated, accepted, execution) => {
+          const open = keepReader
+            ? openConversationInScopedPane
+            : openUserSelectedConversationInScopedPane;
+          return open(id, agent, slug, name, model, updated, accepted, {
+            ...execution,
+            ...options,
+          });
+        },
         projectName: (slug) =>
           projects.find((project) => project.slug === slug)?.name,
         findTab: (conversationId) =>
@@ -1967,6 +2022,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         options?.model,
         options?.conversationUpdatedAt,
         options?.acceptedModel,
+        options?.revealDock === false ? { revealDock: false } : undefined,
       ),
     [openConversationInScopedPane],
   );
@@ -2068,7 +2124,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
       focus: focusChat,
-      openConversation: openConversationForDock,
+      openConversation: (conversation, current, options) =>
+        openConversationForDock(conversation, current, false, options),
       // Remote transcript rendering has no safe cross-Station reader in this
       // slice. Route selection to its named connection instead of treating an
       // opaque remote conversation ID as a local one.
@@ -2530,6 +2587,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           projectId: inventoryProjectId,
           executionRead: activeOrchestrationSessionRead,
           mountRef: sessionInventoryMountRef,
+          restoreFocusFallback: focusSessionContextEntry,
           dockMode: effectiveDockSlotPlacement,
           fullscreen: isFullscreenPlacement,
           isMobile,
@@ -2541,6 +2599,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ?.workingDirectory ?? null)
     : null;
   const conversationId = activeSession?.conversationId ?? null;
+  // This conversation as a pane opener (docs/design/pane-relationships.md):
+  // its session is the selection its previews belong to, so a preview opened
+  // for one session hides while another is on screen and returns with it.
+  const openerOwner = useContext(UnsavedGuardOwnerContext);
+  usePublishOpenerSelection(
+    openerOwner ?? WORKSPACE_CHAT_OPENER,
+    conversationSelectionKey({
+      conversationId,
+      threadId: activeOrchestrationSession?.threadId,
+      projectSlug: conversationProjectSlug,
+    }),
+  );
+  const openerLabel = activeSession?.title || 'Chat';
   const markdownLinkContext = useMemo(
     () => ({
       projectSlug: conversationProjectSlug,
@@ -2554,6 +2625,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       sessionDirectory: sessionDisplayCwd,
       threadId: activeOrchestrationSession?.threadId ?? null,
       conversationId,
+      openerLabel,
       openPathInMain:
         conversationProjectSlug && codingLayoutSlug
           ? (path: string, lineRange?: { start: number; end: number }) =>
@@ -2569,6 +2641,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [
       codingLayoutSlug,
       conversationId,
+      openerLabel,
       conversationProjectDirectory,
       conversationProjectId,
       conversationProjectSlug,
@@ -2742,6 +2815,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               onNewChat={openNewChatDirect}
               overflow={{
                 onTurnIntoTask: turnIntoTask,
+                turnIntoTaskLabel: activeSession?.taskShaping
+                  ? 'Stop shaping this Task'
+                  : 'New Task from this',
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,
@@ -2905,6 +2981,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     expanded={isSessionContextSheetOpen}
                     onOpen={() => setIsSessionContextSheetOpen(true)}
                     exiting={sessionContextChipPresence.exiting}
+                    onUnmountWhileFocused={() => {
+                      sessionContextFocusHandoffRef.current = true;
+                    }}
                   />
                 ) : null
               }
@@ -2943,18 +3022,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : undefined
               }
             />
-          )}
-          {activeSession?.taskShaping && isPaneOpen && (
-            <Button
-              className="task-chat-start__chip"
-              size="sm"
-              aria-label="Remove Shaping a Task mode"
-              onClick={() =>
-                updateChat(activeSessionId!, { taskShaping: false })
-              }
-            >
-              Shaping a Task ×
-            </Button>
           )}
 
           {(isPaneOpen || isCollapsedDragPreview) && (
@@ -3040,7 +3107,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   className="chat-dock__conversation-surface"
                   ref={conversationSurfaceRef}
                 >
-                  <div ref={sessionInventoryMountRef} />
+                  <div
+                    ref={sessionInventoryMountRef}
+                    className="chat-dock__inventory-mount"
+                  />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}

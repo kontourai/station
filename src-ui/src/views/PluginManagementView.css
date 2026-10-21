@@ -226,35 +226,42 @@
   border: 1px solid;
   font-family: var(--font-mono);
 }
+/* Capability kinds are categories, not statuses, so they take the
+   categorical hues instead of dark-only Tailwind 400 literals. The text is
+   the hue pulled 20% toward --k-text (darker on light, lighter on dark): the
+   bare hue on its own 6% tint measured 3.98-4.49:1 in light over
+   --bg-primary. With the pull, text on the composited chip fill measured
+   5.11:1 (light, --k-active over --bg-primary) at worst and 6.01:1 in dark
+   (--ref over --bg-secondary), over both --bg-primary and --bg-secondary. */
 .plugins__cap--git {
-  color: #818cf8;
-  background: rgba(129, 140, 248, 0.06);
-  border-color: rgba(129, 140, 248, 0.18);
+  color: color-mix(in srgb, var(--k-active) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--k-active) 6%, transparent);
+  border-color: color-mix(in srgb, var(--k-active) 18%, transparent);
 }
 .plugins__cap--ref {
-  color: var(--text-muted);
-  background: rgba(148, 163, 184, 0.06);
-  border-color: rgba(148, 163, 184, 0.15);
+  color: color-mix(in srgb, var(--text-muted) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--text-muted) 6%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 15%, transparent);
 }
 .plugins__cap--bundle {
-  color: #60a5fa;
-  background: rgba(96, 165, 250, 0.06);
-  border-color: rgba(96, 165, 250, 0.18);
+  color: color-mix(in srgb, var(--series-4) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--series-4) 6%, transparent);
+  border-color: color-mix(in srgb, var(--series-4) 18%, transparent);
 }
 .plugins__cap--workspace {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.06);
-  border-color: rgba(52, 211, 153, 0.18);
+  color: color-mix(in srgb, var(--series-3) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--series-3) 6%, transparent);
+  border-color: color-mix(in srgb, var(--series-3) 18%, transparent);
 }
 .plugins__cap--agent {
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.06);
-  border-color: rgba(251, 191, 36, 0.18);
+  color: color-mix(in srgb, var(--series-2) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--series-2) 6%, transparent);
+  border-color: color-mix(in srgb, var(--series-2) 18%, transparent);
 }
 .plugins__cap--provider {
-  color: #c084fc;
-  background: rgba(192, 132, 252, 0.06);
-  border-color: rgba(192, 132, 252, 0.18);
+  color: color-mix(in srgb, var(--series-1) 80%, var(--k-text));
+  background: color-mix(in srgb, var(--series-1) 6%, transparent);
+  border-color: color-mix(in srgb, var(--series-1) 18%, transparent);
 }
 
 /* ── Tool List ── */
@@ -303,7 +310,7 @@
 .plugins__modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -397,7 +404,7 @@
 .plugins__confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-modal);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -194,8 +194,9 @@
   line-height: 1.4;
 }
 
-/* The collapsed rail is 52px of icon column: the count and the stack have
-   nowhere to go. The glyph is deliberately absent from this hide list — it is
+/* The collapsed rail is 52px of icon column: the count, the stack and the
+   "Live work" word have nowhere to go (the trigger's accessible name still
+   says what it reads). The glyph is deliberately absent from this hide list — it is
    the child that keeps the trigger from rendering as an empty box here, and
    the component renders it unconditionally so that is true for every roster,
    not only an empty one. `src-ui/src/__tests__/ProjectSidebarFooter.test.tsx`
@@ -206,6 +207,7 @@
    through `.sidebar__footer-presence` instead. */
 .sidebar--collapsed .sidebar__presence-count,
 .sidebar--collapsed .sidebar__presence-work-count,
+.sidebar--collapsed .sidebar__presence-summary,
 .sidebar--collapsed .sidebar__presence-stack {
   flex-shrink: 1;
   min-width: 0;

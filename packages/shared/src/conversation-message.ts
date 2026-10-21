@@ -1,7 +1,11 @@
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import type { ToolRequestSessionGrant } from './tool-request-preview.js';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from './tool-request-preview.js';
 
 /**
  * Canonical conversation message shape — the single shared contract every
@@ -119,6 +123,11 @@ export interface MessagePart {
    */
   approvalSessionGrant?: ToolRequestSessionGrant;
   /**
+   * Whether that request also offers the server-wide Station browser grant
+   * (`toolRequestServerGrantFromPayload`); `'none'` or absent offers nothing.
+   */
+  approvalServerGrant?: ToolRequestServerGrant;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
@@ -145,6 +154,14 @@ export interface ConversationMessage {
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
+    /**
+     * #3419: set on a user-role row another agent sent (`send_to_session`),
+     * from the server's own record of who sent it. Its presence is what makes
+     * a row render and read as a message from another agent, never as the
+     * person's; `text` is the sender's own words, without the frame the
+     * receiving engine was given.
+     */
+    sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
     /**

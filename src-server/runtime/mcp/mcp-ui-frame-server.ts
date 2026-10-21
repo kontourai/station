@@ -151,8 +151,8 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * archive#4201 step 3 makes the downlink load-bearing: the pane-host
  * contract's `confirm` resolves with the user's decision and its `facts` push
  * on change, and a request/response member whose response cannot be delivered
- * is a capability that only looks implemented. So the three pane-host replies
- * are relayed down to the plugin frame.
+ * is a capability that only looks implemented. So the pane-host replies are
+ * relayed down to the plugin frame.
  *
  * The relay is an ALLOWLIST, not a pass-through, and the uplink's rule is why:
  * one layer up, a message the adapter does not recognise is refused rather
@@ -160,13 +160,18 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * future host→frame message reaches plugin code with nobody deciding it
  * should.
  *
- * `DOWN` therefore names the three pane-host replies and nothing else. It is
- * NOT a list of one message being withheld: it is the general property that
+ * `DOWN` therefore names the pane-host replies and nothing else. It is NOT a
+ * list of one message being withheld: it is the general property that
  * every host→frame message is decided one at a time. This list previously
  * carried an argument about `api-response`, the reply half of the frame's
  * `api-request` bridge; archive#4300 deleted that bridge outright, so there is
  * no longer a message being kept out — there is only the allowlist, and the
  * next member added to it needs its own reason on its own review.
+ *
+ * `pane-host/related-result` is the answer to the frame's own related-pane
+ * request (`PaneRelatedPanesHost`): plain data — an outcome, an opaque handle
+ * the host minted, or the target this pane was opened for — correlated by the
+ * id the frame sent, so it carries nothing the plugin did not ask for.
  *
  * `'*'` is the only available targetOrigin: the inner frame is
  * `sandbox="allow-scripts"` without `allow-same-origin`, so it has an opaque
@@ -187,7 +192,7 @@ const escape=(value)=>String(value).replaceAll('&','&amp;').replaceAll('"','&quo
 const scriptBytes=(value)=>String(value).replace(/<\\/script/gi,'<\\\\/script');
 const styleBytes=(value)=>String(value).replace(/<\\/style/gi,'<\\/style');
 const cssTokens=(tokens)=>Object.entries(tokens&&typeof tokens==='object'?tokens:{}).map(([key,value])=>'--'+key.replace(/[^a-zA-Z0-9_-]/g,'')+':'+String(value).replace(/[;{}]/g,'')).join(';');
-const DOWN=new Set(['pane-host/confirm-result','pane-host/facts-changed','pane-host/refused','pane-host/experience-result']);
+const DOWN=new Set(['pane-host/confirm-result','pane-host/facts-changed','pane-host/refused','pane-host/experience-result','pane-host/related-result']);
 let inner=null;
 const load=(params={})=>{if(typeof params.runtimeJs!=='string'||typeof params.bundleJs!=='string')return;const frame=document.createElement('iframe');frame.title='Plugin';frame.sandbox.value='allow-scripts';const csp="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; frame-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'";const doc='<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="'+escape(csp)+'"><style>:root{'+cssTokens(params.themeTokens)+'}</style><style>'+styleBytes(params.bundleCss||'')+'</style><script>'+scriptBytes(params.runtimeJs)+'<\\/script><script>'+scriptBytes(params.bundleJs)+'<\\/script></head><body><div id="app"></div></body></html>';frame.srcdoc=doc;document.getElementById('app').replaceChildren(frame);inner=frame;};
 addEventListener('message',(event)=>{if(inner&&event.source===inner.contentWindow){postHost(event.data);return;}if(event.source!==parent)return;if(!host){if(!allowed.has(event.origin)&&!(opaqueTauri&&event.origin==='null'))return;host={inboundOrigin:event.origin,outboundOrigin:event.origin==='null'?'*':event.origin};}else if(event.origin!==host.inboundOrigin)return;const method=event.data&&event.data.method;if(method===RESOURCE){load(event.data.params);return;}if(method==='teardown'){document.getElementById('app').replaceChildren();inner=null;return;}if(inner&&DOWN.has(method))inner.contentWindow&&inner.contentWindow.postMessage(event.data,'*');});postHost({method:READY,params:{}});})();</script></body></html>`;

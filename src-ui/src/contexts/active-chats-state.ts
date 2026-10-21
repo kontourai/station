@@ -2,6 +2,7 @@ import type {
   ChildWorkModel,
   ChildWorkTerminalStatus,
 } from '@kontourai/station-contracts/child-work';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
@@ -18,7 +19,10 @@ import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import {
   readSkillExperienceDraft,
   type SkillExperienceDraft,
@@ -141,6 +145,8 @@ export type ChatContentPart = {
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  /** See `MessagePart.approvalServerGrant`. */
+  approvalServerGrant?: ToolRequestServerGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -173,6 +179,8 @@ export type ChatMessage = {
   steerInterruptedRun?: boolean;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
+  /** See `ChatMessage.sender` in types.ts. */
+  sender?: ClientOriginSender;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**
@@ -316,6 +324,7 @@ export type ChatBackgroundTask = {
    * Codex child carries none.
    */
   stop?: 'provider-task-stop';
+  latestTool?: string;
   /** #2457: the child's latest one-line status (`ChildWorkItem.progress`). */
   progress?: string;
 };

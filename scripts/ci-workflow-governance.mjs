@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { FAST_CHECKS_PART_JOBS } from './lib/fast-checks-shards.mjs';
+import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -487,6 +488,12 @@ export const FAST_CHECKS_AGGREGATE_STEP_IF =
   "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
+const FAST_CHECKS_AGGREGATE_STEP_ID = 'verify';
+export const FAST_CHECKS_PROVISIONAL_STEP_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ steps.verify.outputs.provisional == 'true' }}";
+export const FAST_CHECKS_PROVISIONAL_RUN =
+  'echo "fast-checks deferred ci-fast/test-full; Merge-queue regression runs full regression before merge"';
 export const FAST_CHECKS_PLAN_RUN =
   'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
 export const FAST_CHECKS_MATRIX =
@@ -598,6 +605,20 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
   )
     findings.push(
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    );
+  // #1706: the source policy reads this step's name to mark a provisional
+  // green; renaming it or its trigger would silently drop that marking.
+  const provisional = steps(job).filter(
+    (step) => step?.name === FAST_CHECKS_PROVISIONAL_STEP,
+  );
+  if (
+    aggregate[0]?.id !== FAST_CHECKS_AGGREGATE_STEP_ID ||
+    provisional.length !== 1 ||
+    provisional[0].if !== FAST_CHECKS_PROVISIONAL_STEP_IF ||
+    provisional[0].run !== FAST_CHECKS_PROVISIONAL_RUN
+  )
+    findings.push(
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
     );
 
   for (const partId of ['fast-checks-plan', 'fast-checks-statics']) {

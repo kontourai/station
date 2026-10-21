@@ -1,0 +1,11 @@
+{
+  "revision": "b04c4d1fbbad7bc842d388653fd2c28621fdad02",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Added the boundary gate's rule as implemented now: it refuses updater/process grants in every JSON file under capabilities/ and permissions/ and in app.security.capabilities of Tauri configs, and refuses any non-JSON file there; the TOML/JSON5 lexer was removed.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked against desktop_update.rs: a startup restore reports checking (state() while restoring), a Check pressed then is refused, and a drop guard ends the restore even if verification panics. Updated the guide's restore sentence from idle to checking.","inputs":["docs/guides/desktop-build.md","src-desktop/src/desktop_update.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reworded the refusal timing after reading publish-release.yml: the host-stream manifest is attached in an earlier step, so the refusal at Assemble and validate comes before the updater channel is uploaded, not before anything is.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

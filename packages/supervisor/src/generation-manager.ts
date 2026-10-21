@@ -6,7 +6,8 @@
  * trial generation parks before touching the home; only after the active
  * generation has exited is it promoted. Listening handles stay open in the
  * supervisor throughout, so connections queue in the kernel backlog instead
- * of being refused.
+ * of being refused. On Windows the supervisor also accepts, briefly, while a
+ * handoff moves the listeners (see `ListenerSparesMessage`).
  *
  * Process creation and time are injected so the algorithm can be tested
  * in-process with a fake clock.
@@ -21,6 +22,7 @@ import {
   type HandoffPhase,
   type HandoffTimings,
   type ListenerStatus,
+  MAX_LISTENER_SPARES,
   RESTART_DEFAULTS,
   type RestartPolicy,
   type SupervisorEvent,
@@ -45,9 +47,38 @@ export interface ListenerHandle {
   close(): void;
 }
 
+/** A connection a catcher accepted and holds, unread, until a generation adopts it. */
+export interface HeldConnection {
+  destroy(): void;
+}
+
+/** Listens on a spare copy of a held listener while a handoff moves it. */
+export interface ListenerCatcher {
+  readonly name: string;
+  /** Clock time of the last connection it accepted; 0 if none. */
+  readonly lastCaughtAt: number;
+  /** Connections it holds that are still open. */
+  readonly heldCount: number;
+  /** Stops listening, closing the spare, but keeps what it holds. */
+  stop(): void;
+  /** Stops listening, closing the spare, and returns what it holds. */
+  close(): HeldConnection[];
+}
+
+type CatcherFactory = (
+  name: string,
+  handle: ListenerHandle,
+  now: () => number,
+  /** Called after each connection it accepts. */
+  onCatch: () => void,
+) => ListenerCatcher;
+
 export interface GenerationProcess {
   readonly pid: number | null;
-  send(message: SupervisorToCoreMessage, handle?: ListenerHandle): void;
+  send(
+    message: SupervisorToCoreMessage,
+    handle?: ListenerHandle | HeldConnection,
+  ): void;
   kill(signal: 'SIGTERM' | 'SIGKILL'): void;
   onMessage(listener: (message: unknown, handle: unknown) => void): void;
   onExit(listener: (code: number | null, signal: string | null) => void): void;
@@ -86,7 +117,45 @@ export interface GenerationManagerOptions {
    * a rollback relaunches) are not re-checked: they passed this on the way in.
    */
   resolveEntry?: (entry: string) => { entry: string } | { refused: string };
+  /**
+   * Catch connections while a handoff drains the active generation: listen
+   * on `spares` copies of each held listener, made by `createCatcher`. Only
+   * Windows needs this (see `ListenerSparesMessage`); without it handoffs
+   * leave connections to the kernel backlog.
+   */
+  catchConnections?: { spares: number; createCatcher: CatcherFactory };
 }
+
+/** How long a handoff waits for the draining generation's `listener.spare` answers. */
+const SPARE_ANSWER_TIMEOUT_MS = 2_000;
+/**
+ * Catchers for a listener close once none has accepted for CATCH_QUIET_MS
+ * after the next generation listens on it, or after CATCH_QUIET_CAP_MS.
+ * That generation's accepts are newer, so connections reach it first, but
+ * one still booting may be slow to post its next accept, and closing a
+ * catcher resets a connection completed into one of its accepts, as closing
+ * a generation's listener would.
+ */
+const CATCH_QUIET_MS = 50;
+const CATCH_QUIET_CAP_MS = 1_000;
+/**
+ * The most connections held for one listener: Node's default listen backlog,
+ * the queue those connections would otherwise wait in. Past it the
+ * listener's spares close, and new connections wait in the kernel backlog
+ * instead. That loses fewer than turning new arrivals away: closing a spare
+ * resets only a connection completed into its accept in that instant, while
+ * destroying arrivals would reset every one.
+ */
+const HOLD_LIMIT_PER_LISTENER = 511;
+/**
+ * Held connections still unclaimed this long after their catcher started are
+ * closed, but only once the handoff that caught them has ended with no
+ * generation taking them (it fell back to crash restarts). While the handoff
+ * runs, a trial or the rollback is on its way, however long a live call
+ * extends the drain, so the deadline is checked again a period later; the
+ * count limit still bounds what is held meanwhile.
+ */
+const HOLD_DEADLINE_MS = 60_000;
 
 interface Generation {
   id: number;
@@ -104,6 +173,12 @@ interface Generation {
   drained: boolean;
   /** Exit code, once exited. */
   exitCode: number | null;
+  /** It said, when parked, that it speaks connection catching (protocol 1.1). */
+  adoptsConnections: boolean;
+  /** Held listeners it listens on: bound itself, or reported listening. */
+  listening: Set<string>;
+  /** A failed trial being ended: it gets no held connections. */
+  retiring: boolean;
   notify: Set<() => void>;
   exited: Promise<void>;
 }
@@ -149,6 +224,14 @@ function isRawListenerHandle(value: unknown): value is ListenerHandle {
   }
 }
 
+function destroyQuietly(connection: HeldConnection): void {
+  try {
+    connection.destroy();
+  } catch {
+    // Already gone.
+  }
+}
+
 function closeQuietly(handle: unknown): void {
   if (!isClosable(handle)) return;
   try {
@@ -168,6 +251,16 @@ export class GenerationManager {
   private state: SupervisorState = 'starting';
   private active: Generation | null = null;
   private trial: Generation | null = null;
+  /** Spares listening for the handoff in progress (see `beginCatching`). */
+  private catchers: ListenerCatcher[] = [];
+  /** When each catcher started, for HOLD_DEADLINE_MS. */
+  private readonly catcherSince = new Map<ListenerCatcher, number>();
+  private holdTimer: unknown = null;
+  /** Where `listener.spare` answers go while `beginCatching` waits. */
+  private spareRequest: {
+    gen: Generation;
+    onSpare: (name: string, handle: ListenerHandle) => void;
+  } | null = null;
   private readonly listeners = new Map<
     string,
     { port: number; handle: ListenerHandle }
@@ -276,6 +369,7 @@ export class GenerationManager {
 
     // Re-read: the previous generation may have exited while the trial parked.
     if (!hasExited(previous)) {
+      await this.beginCatching(previous, trial.adoptsConnections);
       progress('draining', previous.id);
       await this.drain(previous, drainDeadlineMs);
     }
@@ -301,7 +395,7 @@ export class GenerationManager {
       readinessTimeoutMs,
     );
     if (ready !== 'ok' || this.stopping) {
-      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
+      await this.retireTrial(trial, previous, drainDeadlineMs);
       this.trial = null;
       const reason = this.stopping
         ? 'stopping'
@@ -316,7 +410,7 @@ export class GenerationManager {
       (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
       this.stopping
     ) {
-      await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
+      await this.retireTrial(trial, previous, drainDeadlineMs);
       this.trial = null;
       const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
       return this.finishRollback(null, previousEntry, reason, progress);
@@ -376,6 +470,8 @@ export class GenerationManager {
   }
 
   closeListeners(): void {
+    // Nothing will adopt what the catchers hold now.
+    this.dropCatchers(this.catchers.splice(0));
     for (const { handle } of this.listeners.values()) {
       try {
         handle.close();
@@ -434,6 +530,9 @@ export class GenerationManager {
       failed: false,
       drained: false,
       exitCode: null,
+      adoptsConnections: false,
+      listening: new Set(),
+      retiring: false,
       notify: new Set(),
       exited: new Promise<void>((resolve) => {
         resolveExited = resolve;
@@ -465,8 +564,13 @@ export class GenerationManager {
       closeQuietly(handle);
       return;
     }
-    // Only listener.bound carries a handle; close one sent with anything else.
-    if (handle !== undefined && message.type !== 'listener.bound') {
+    // Only listener.bound and listener.spare carry a handle; close one sent
+    // with anything else.
+    if (
+      handle !== undefined &&
+      message.type !== 'listener.bound' &&
+      message.type !== 'listener.spare'
+    ) {
       closeQuietly(handle);
       this.log(
         `closed a stray handle sent with ${message.type} from generation ${gen.id}`,
@@ -492,6 +596,7 @@ export class GenerationManager {
           !this.listeners.has(name);
         if (acceptable) {
           this.listeners.set(name, { port, handle });
+          gen.listening.add(name);
           this.log(
             `holding listener ${name} on port ${port} from generation ${gen.id}`,
           );
@@ -501,8 +606,15 @@ export class GenerationManager {
         }
         return;
       }
+      case 'listener.spare':
+      case 'listener.listening':
+        this.onCatchingMessage(gen, message, handle);
+        return;
       case 'parked':
-        if (gen.state === 'starting') this.setGenerationState(gen, 'parked');
+        if (gen.state === 'starting') {
+          gen.adoptsConnections = message.adoptsConnections === true;
+          this.setGenerationState(gen, 'parked');
+        }
         return;
       case 'ready':
         if (
@@ -514,6 +626,9 @@ export class GenerationManager {
           gen.bootId = message.bootId;
           gen.port = message.port;
           this.setGenerationState(gen, 'serving');
+          // Whatever is still held (for a listener it never reported
+          // listening on) goes to it now.
+          void this.releaseCatching(gen);
         }
         return;
       case 'drain.progress':
@@ -553,6 +668,40 @@ export class GenerationManager {
       }
       default:
       // Minor versions may add messages; ignore what this version does not know.
+    }
+  }
+
+  /** Protocol 1.1 messages for connection catching. */
+  private onCatchingMessage(
+    gen: Generation,
+    message: Record<string, unknown>,
+    handle: unknown,
+  ): void {
+    const name = typeof message.name === 'string' ? message.name : null;
+    if (message.type === 'listener.spare') {
+      const request = this.spareRequest;
+      if (
+        request?.gen !== gen ||
+        name === null ||
+        !this.listeners.has(name) ||
+        !isRawListenerHandle(handle)
+      ) {
+        closeQuietly(handle);
+        this.log(`ignored listener.spare from generation ${gen.id}`);
+        return;
+      }
+      request.onSpare(name, handle);
+      return;
+    }
+    if (
+      name !== null &&
+      this.listeners.has(name) &&
+      (gen.state === 'promoted' || gen.state === 'serving')
+    ) {
+      gen.listening.add(name);
+      // Held connections go to the first generation listening again, as
+      // the kernel backlog would hand them to the first that accepts.
+      void this.releaseCatching(gen, name);
     }
   }
 
@@ -788,6 +937,256 @@ export class GenerationManager {
       return;
     }
     await this.terminate(gen);
+  }
+
+  /**
+   * Windows: before `gen` drains, listens on spare copies of each held
+   * listener `gen` listens on, which it sends back, so connections reach the
+   * supervisor rather than the listener `gen` is about to close (see
+   * `ListenerSparesMessage`). Only when `gen` speaks catching and so does the
+   * generation that will adopt what is held (`successorAdopts`). A
+   * generation that does not answer in time is drained anyway.
+   */
+  private async beginCatching(
+    gen: Generation,
+    successorAdopts: boolean,
+  ): Promise<void> {
+    const catching = this.options.catchConnections;
+    const count = Math.min(catching?.spares ?? 0, MAX_LISTENER_SPARES);
+    const names = [...this.listeners.keys()].filter((name) =>
+      gen.listening.has(name),
+    );
+    if (
+      !catching ||
+      count <= 0 ||
+      names.length === 0 ||
+      !gen.adoptsConnections ||
+      !successorAdopts ||
+      hasExited(gen)
+    ) {
+      return;
+    }
+    const expected = count * names.length;
+    let received = 0;
+    let listening = 0;
+    await new Promise<void>((resolve) => {
+      let timer: unknown = null;
+      const finish = () => {
+        this.spareRequest = null;
+        gen.notify.delete(check);
+        if (timer !== null) this.clock.clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        if (received >= expected || hasExited(gen)) finish();
+      };
+      this.spareRequest = {
+        gen,
+        onSpare: (name, handle) => {
+          received += 1;
+          try {
+            const catcher = catching.createCatcher(
+              name,
+              handle,
+              () => this.clock.now(),
+              () => this.onCaught(name),
+            );
+            this.catchers.push(catcher);
+            this.catcherSince.set(catcher, this.clock.now());
+            listening += 1;
+          } catch (error) {
+            closeQuietly(handle);
+            this.log(`could not listen on a spare ${name}: ${String(error)}`);
+          }
+          check();
+        },
+      };
+      gen.notify.add(check);
+      timer = this.clock.setTimeout(() => {
+        timer = null;
+        this.log(
+          `generation ${gen.id} sent ${received} of ${expected} listener spares; draining anyway`,
+        );
+        finish();
+      }, SPARE_ANSWER_TIMEOUT_MS);
+      for (const name of names) {
+        gen.proc.send({ type: 'listener.spares', name, count });
+      }
+      check();
+    });
+    if (listening > 0) {
+      this.log(
+        `catching connections on ${listening} spare listener(s) while generation ${gen.id} drains`,
+      );
+    }
+    this.armHoldDeadline();
+  }
+
+  /**
+   * Past HOLD_LIMIT_PER_LISTENER, a listener's spares stop listening. Only
+   * catchers in the list count: those being released are out of it, and
+   * uncapped, for up to CATCH_QUIET_CAP_MS while their quiet wait runs.
+   */
+  private onCaught(name: string): void {
+    const catchers = this.catchers.filter((c) => c.name === name);
+    const held = catchers.reduce((sum, c) => sum + c.heldCount, 0);
+    if (held < HOLD_LIMIT_PER_LISTENER) return;
+    for (const catcher of catchers) catcher.stop();
+    this.log(
+      `holding ${held} connection(s) for ${name}, the limit; new ones wait in the kernel backlog`,
+    );
+  }
+
+  /** Closes catchers held past HOLD_DEADLINE_MS and what they hold. */
+  private armHoldDeadline(): void {
+    if (this.holdTimer !== null) this.clock.clearTimeout(this.holdTimer);
+    this.holdTimer = null;
+    const starts = this.catchers.map((c) => this.catcherSince.get(c) ?? 0);
+    if (starts.length === 0) return;
+    const due = Math.min(...starts) + HOLD_DEADLINE_MS - this.clock.now();
+    this.holdTimer = this.clock.setTimeout(
+      () => this.onHoldDeadline(),
+      Math.max(0, due),
+    );
+  }
+
+  private onHoldDeadline(): void {
+    this.holdTimer = null;
+    if (this.state === 'handoff') {
+      // A trial or the rollback is still on its way: look again later.
+      this.holdTimer = this.clock.setTimeout(
+        () => this.onHoldDeadline(),
+        HOLD_DEADLINE_MS,
+      );
+      return;
+    }
+    const now = this.clock.now();
+    const expired = this.catchers.filter(
+      (c) => now - (this.catcherSince.get(c) ?? 0) >= HOLD_DEADLINE_MS,
+    );
+    this.catchers = this.catchers.filter((c) => !expired.includes(c));
+    const dropped = this.dropCatchers(expired);
+    this.log(
+      `closed ${dropped} connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
+    );
+    this.armHoldDeadline();
+  }
+
+  /** Closes catchers and destroys what they hold; returns how many. */
+  private dropCatchers(catchers: ListenerCatcher[]): number {
+    let dropped = 0;
+    for (const catcher of catchers) {
+      this.catcherSince.delete(catcher);
+      for (const connection of catcher.close()) {
+        destroyQuietly(connection);
+        dropped += 1;
+      }
+    }
+    if (this.catchers.length === 0 && this.holdTimer !== null) {
+      this.clock.clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
+    return dropped;
+  }
+
+  /**
+   * Passes what the catchers hold (for one listener, or all) to `gen`, now
+   * listening on it or ready. Its accepts are newer than the catchers', so
+   * connections go to it first; the catchers close once none has accepted
+   * for CATCH_QUIET_MS.
+   */
+  private async releaseCatching(gen: Generation, name?: string): Promise<void> {
+    const catchers = this.catchers.filter(
+      (catcher) => name === undefined || catcher.name === name,
+    );
+    if (catchers.length === 0) return;
+    this.catchers = this.catchers.filter(
+      (catcher) => !catchers.includes(catcher),
+    );
+    this.armHoldDeadline();
+    const started = this.clock.now();
+    for (;;) {
+      const now = this.clock.now();
+      const last = Math.max(0, ...catchers.map((c) => c.lastCaughtAt));
+      const quietLeft = CATCH_QUIET_MS - (now - last);
+      const capLeft = CATCH_QUIET_CAP_MS - (now - started);
+      if (quietLeft <= 0 || capLeft <= 0 || this.stopping) break;
+      await new Promise<void>((resolve) =>
+        this.clock.setTimeout(resolve, Math.min(quietLeft, capLeft)),
+      );
+    }
+    // It exited, or is being ended (a failed trial that listens or reports
+    // ready late gets here too): keep holding for the generation that comes
+    // next, the rollback's.
+    if ((hasExited(gen) || gen.retiring) && !this.stopping) {
+      this.holdForNext(gen, catchers);
+      return;
+    }
+    for (const catcher of catchers) this.catcherSince.delete(catcher);
+    let passed = 0;
+    let dropped = 0;
+    for (const catcher of catchers) {
+      for (const connection of catcher.close()) {
+        // A generation that cannot adopt would close it as a stray handle.
+        if (hasExited(gen) || this.stopping || !gen.adoptsConnections) {
+          destroyQuietly(connection);
+          dropped += 1;
+          continue;
+        }
+        gen.proc.send(
+          { type: 'connection.adopt', name: catcher.name },
+          connection,
+        );
+        passed += 1;
+      }
+    }
+    if (dropped > 0) {
+      this.log(
+        `closed ${dropped} connection(s) held during the handoff: generation ${gen.id} cannot adopt them`,
+      );
+    }
+    if (passed > 0) {
+      this.log(
+        `passed ${passed} connection(s) held during the handoff to generation ${gen.id}`,
+      );
+    }
+  }
+
+  /** Puts back catchers `gone` will not take, for the generation after it. */
+  private holdForNext(gone: Generation, catchers: ListenerCatcher[]): void {
+    this.catchers.push(...catchers);
+    this.armHoldDeadline();
+    const names = new Set(catchers.map((c) => c.name));
+    this.log(
+      `generation ${gone.id} is gone; still holding connections for ${[...names].join(', ')}`,
+    );
+    // The next generation may already listen: it asked while these were out
+    // of the list.
+    for (const next of [this.trial, this.active]) {
+      if (!next || next === gone || hasExited(next) || next.retiring) continue;
+      for (const name of names) {
+        if (next.state === 'serving' || next.listening.has(name)) {
+          void this.releaseCatching(next, name);
+        }
+      }
+    }
+  }
+
+  /**
+   * Ends a trial that failed after promotion. It may serve the held
+   * listeners already, so on Windows the supervisor catches while it drains,
+   * for the generation the rollback starts from `previous`'s entry.
+   */
+  private async retireTrial(
+    trial: Generation,
+    previous: Generation,
+    drainDeadlineMs: number,
+  ): Promise<void> {
+    trial.retiring = true;
+    if (!this.stopping) {
+      await this.beginCatching(trial, previous.adoptsConnections);
+    }
+    await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
   }
 
   /**

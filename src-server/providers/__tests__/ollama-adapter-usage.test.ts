@@ -34,6 +34,7 @@ async function runTurn(finishChunk: Record<string, unknown>): Promise<{
   const turn = await adapter.sendTurn({
     threadId: 'usage-thread',
     input: 'measure me',
+    invocationId: 'usage-origin',
   });
 
   const events: Array<Record<string, unknown>> = [];
@@ -75,6 +76,7 @@ describe('OllamaAdapter token-usage.updated emission (station#4197)', () => {
       provider: 'ollama',
       threadId: 'usage-thread',
       turnId,
+      invocationId: 'usage-origin',
       promptTokens: 512,
       completionTokens: 128,
     });

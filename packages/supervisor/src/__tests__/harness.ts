@@ -405,6 +405,9 @@ export async function getBoot(port: number): Promise<{
   generation: number;
   entry: string;
   inheritedBirth: string | null;
+  inheritedForceCatching: string | null;
+  /** Connections the supervisor passed it with `connection.adopt`. */
+  adoptedConnections: number;
 }> {
   return new Promise((resolve, reject) => {
     http

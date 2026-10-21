@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -8,27 +15,21 @@ import { MyAccessPanel } from '../profile/MyAccessPanel';
 import './HeaderMenu.css';
 
 /**
- * The avatar's menu (#1552 D1).
- *
- * The toolbar's right side carried five controls — connection, notifications,
- * avatar, help, settings — three of which were unlabelled glyphs of different
- * weights, and two of which (help, settings) are things you reach for a handful
- * of times a day rather than continuously. The row is four now: Layout, the
- * status dot, Notifications, and this avatar; help and settings are rows here.
+ * The account menu (#1552 D1), opened from the sidebar footer's account
+ * control (`SidebarAccountControl`) since the header's far-right slot went to
+ * the region glyphs.
  *
  * The chords are untouched. `app.settings` is registered globally in `App.tsx`,
- * not by the control that used to render the gear, so ⌘, still toggles Settings
- * with this menu closed — which is why the row shows the chord in its tooltip
- * rather than implying the menu is the only route. Help has never had one.
+ * not by any menu, so ⌘, still toggles Settings with this menu closed — which
+ * is why the row shows the chord in its tooltip rather than implying the menu
+ * is the only route. Help has never had one.
  *
  * `role="menu"` with `menuitem` rows, so `useMenuFocus` gives it arrow-key
  * roving focus (that hook derives the behaviour from the role, deliberately —
  * see its own note) plus focus entry and focus return.
  *
- * ESCAPE IS THIS COMPONENT'S OWN, and the first draft of this docblock claimed
- * `useMenuFocus` supplied it. It does not: the hook dismisses on FOCUSOUT, and
- * pressing Escape moves focus nowhere, so the menu stayed open under a
- * screenshot that was supposed to show it closed. `RegionToolbarControls` and
+ * ESCAPE IS THIS COMPONENT'S OWN: `useMenuFocus` dismisses on FOCUSOUT, and
+ * pressing Escape moves focus nowhere. `RegionToolbarControls` and
  * `ChatDockHeaderMoreMenu` each carry the same listener for the same reason.
  * Capturing, so a key pressed while focus sits on a row still reaches it.
  */
@@ -41,7 +42,8 @@ export function ProfileMenu({
   onClose,
   onOpenProfile,
   onOpenHelp,
-  onToggleSettings,
+  onOpenSettings,
+  anchor,
 }: {
   isOpen: boolean;
   isProfileActive: boolean;
@@ -51,25 +53,55 @@ export function ProfileMenu({
   onClose: () => void;
   onOpenProfile: () => void;
   onOpenHelp: () => void;
-  onToggleSettings: () => void;
+  onOpenSettings: () => void;
+  /** The trigger the menu opens from, in the sidebar footer. */
+  anchor: HTMLElement | null;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
+  const [placement, setPlacement] = useState<CSSProperties>();
   /**
-   * Close when the breakpoint takes this menu's TRIGGER away.
-   *
-   * The avatar lives in `.app-toolbar__action--secondary`, which the mobile
-   * query hides (archive#3311 demoted the profile into the `⋯` menu there), but
-   * this panel is portalled to `document.body` — so a resize across the
-   * breakpoint left it floating over the app with nothing on screen that could
-   * have opened it and no trigger to return focus to. `RegionToolbarControls`
-   * guards its own branch changes the same way (#1552 review L4).
-   *
-   * `useIsMobile` is the same `MOBILE_MEDIA_QUERY` that CSS rule matches on, so
-   * this cannot drift from the breakpoint that actually hides the avatar.
+   * Anchored ABOVE the trigger by its bottom edge, so the access panel's late
+   * rows grow the menu upward instead of past the viewport's bottom, and
+   * clamped to the viewport's width. Re-placed on resize; the footer closes
+   * the menu when the rail collapses or the route changes.
+   */
+  useLayoutEffect(() => {
+    if (!isOpen || !anchor) return;
+    const place = () => {
+      const box = anchor.getBoundingClientRect();
+      const width = menuRef.current?.offsetWidth ?? 0;
+      const gap = 8;
+      setPlacement({
+        top: 'auto',
+        right: 'auto',
+        marginTop: 0,
+        left: Math.max(
+          gap,
+          Math.min(box.left, window.innerWidth - width - gap),
+        ),
+        bottom: Math.max(gap, window.innerHeight - box.top + gap),
+        maxHeight: Math.max(0, box.top - 2 * gap),
+        overflowY: 'auto',
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [anchor, isOpen, menuRef]);
+  /**
+   * Close when the breakpoint changes under an open menu. The footer is the
+   * desktop rail on one side and the phone drawer on the other, and this panel
+   * is portalled to `document.body`, so a resize across the breakpoint would
+   * leave it floating over a trigger that moved or left the screen.
    */
   const isMobile = useIsMobile();
+  const openedMobile = useRef(isMobile);
   useEffect(() => {
-    if (isOpen && isMobile) onClose();
+    if (!isOpen) {
+      openedMobile.current = isMobile;
+      return;
+    }
+    if (openedMobile.current !== isMobile) onClose();
   }, [isOpen, isMobile, onClose]);
   useEffect(() => {
     if (!isOpen) return;
@@ -135,6 +167,7 @@ export function ProfileMenu({
       <div
         ref={menuRef}
         className="menu-surface app-toolbar__profile-menu"
+        style={placement}
         role="menu"
         aria-label="Profile and settings"
         tabIndex={-1}
@@ -157,7 +190,7 @@ export function ProfileMenu({
           'settings',
           'Open settings',
           <SettingsGlyph />,
-          onToggleSettings,
+          onOpenSettings,
           // The chord in the tooltip, not in the label: the row is one route to
           // Settings and ⌘, is the other, and a keycap printed in a menu row
           // reads as part of the command's name.

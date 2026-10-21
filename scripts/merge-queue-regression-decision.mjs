@@ -23,18 +23,15 @@
  * "unless the decision is exactly false").
  */
 import { appendFileSync, readFileSync } from 'node:fs';
-import { validateFastChecksPlan } from './lib/fast-checks-shards.mjs';
+import {
+  FULL_REGRESSION_LANES,
+  MERGE_QUEUE_REGRESSION_CHECK,
+  validateFastChecksPlan,
+} from './lib/fast-checks-shards.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-/** The required status context; ruleset 21782867 names it exactly. */
-export const MERGE_QUEUE_REGRESSION_CHECK = 'Merge-queue regression';
 export const FAST_PATH_SUMMARY = 'no deferred lane: fast path';
-/**
- * The deferred lanes whose broader obligations require full regression.
- * Narrower lanes (an E2E or packaging leg) are not re-run here: the owner
- * chose this scope to keep the queue under the shared runner cap (#3149).
- */
-export const FULL_REGRESSION_LANES = Object.freeze(['ci-fast', 'test-full']);
+export { FULL_REGRESSION_LANES, MERGE_QUEUE_REGRESSION_CHECK };
 
 const USAGE =
   'usage: node scripts/merge-queue-regression-decision.mjs --plan=<file> --head=<sha> --base=<base>';

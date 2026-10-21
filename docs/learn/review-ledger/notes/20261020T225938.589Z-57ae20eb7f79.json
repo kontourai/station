@@ -1,0 +1,7 @@
+{
+  "revision": "d40640107611caad34e573ce57580b3741f0ab55",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Wording only: shortcut registration is limited to a verified plugin's pane (the adapter refuses an unbound owner); 'installed' read as an install-permission statement to the station-docs permission test.","inputs":["docs/guides/keyboard-shortcuts.md"]}
+  ]
+}

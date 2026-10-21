@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
@@ -430,7 +431,7 @@ test.describe('compatibility-aware reconnect', () => {
       // only `updateAvailable: true` publishes NOTHING on a desktop viewport,
       // so there was no second banner, so no cap, so nine tests failed on a
       // missing test id while claiming to measure occlusion.
-      await page.route('**/api/system/core-update', (route) =>
+      await routeCoreUpdateCheck(page, (route) =>
         route.fulfill({
           status: 200,
           contentType: 'application/json',

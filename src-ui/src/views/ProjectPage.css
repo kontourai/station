@@ -200,7 +200,7 @@
 }
 
 .project-page__add-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--error-text) 10%, transparent);
   border-color: var(--error-text);
   color: var(--error-text);
 }
@@ -1305,7 +1305,7 @@
 .project-page__modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-modal);
   display: flex;
   align-items: center;
   justify-content: center;

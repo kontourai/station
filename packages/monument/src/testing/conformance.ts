@@ -98,7 +98,7 @@ const create = (
   threadId: string,
   owner: OwnerIdentity,
   now: string,
-  state: 'lifecycle' | 'prepared' = 'prepared',
+  state: 'lifecycle' | 'reserved' | 'prepared' = 'prepared',
   purpose: 'turn' | 'task-dispatch' = 'turn',
 ) =>
   ({
@@ -1368,6 +1368,829 @@ turnBoundary.push({
     }),
 });
 
+const preparedIntent = {
+  invocationId: 'invocation-a',
+  inputDigest: 'input-bytes-a',
+  intentDigest: 'envelope-a',
+  bodyRef: 'opaque:body-a',
+  dedupKey: 'prepared-key',
+} as const;
+
+async function prepareIntent(session: Session) {
+  const owner = session.processes.spawn();
+  const dedupOwner = session.processes.spawn();
+  assert.deepEqual(await session.run(claim('prepared-key', dedupOwner)), {
+    kind: 'claimed',
+    reclaimed: false,
+  });
+  assert.deepEqual(
+    await session.run(create('intent', 't', owner, at(1), 'reserved')),
+    { kind: 'applied' },
+  );
+  const command = {
+    type: 'turnBoundary.prepare',
+    boundaryId: 'intent',
+    ownerId: owner.id,
+    dedupOwnerId: dedupOwner.id,
+    intent: preparedIntent,
+    now: at(2),
+  } as const;
+  assert.deepEqual(await session.run(command), { kind: 'applied' });
+  return { owner, dedupOwner, command };
+}
+
+turnBoundary.push(
+  {
+    name: 'prepared intent: failed keyless preparation leaves its reservation, and ordinary cleanup retains captured input',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        await session.run(create('keyless', 't', owner, at(1), 'reserved'));
+        const intent = {
+          invocationId: 'keyless-i',
+          inputDigest: 'keyless-d',
+          intentDigest: 'keyless-e',
+          bodyRef: 'keyless-body',
+        };
+        const prepare = {
+          type: 'turnBoundary.prepare',
+          boundaryId: 'keyless',
+          ownerId: owner.id,
+          intent,
+          now: at(2),
+        } as const;
+        session.store.failNextCommit();
+        await assert.rejects(session.run(prepare), /Injected commit failure/);
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'keyless'))?.state, 'reserved');
+        assert.equal((await boundary(session, 'keyless'))?.intent, undefined);
+        assert.deepEqual(await session.run(prepare), { kind: 'applied' });
+        intent.bodyRef = 'mutated-caller-reference';
+        await session.store.reopen();
+        assert.equal(
+          (await boundary(session, 'keyless'))?.intent?.bodyRef,
+          'keyless-body',
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.remove',
+            boundaryId: 'keyless',
+            ownerId: owner.id,
+            from: ['prepared'],
+          }),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'keyless',
+            ownerId: owner.id,
+            intent: { ...intent, bodyRef: 'keyless-body' },
+            now: at(3),
+          }),
+          { kind: 'applied' },
+        );
+      }),
+  },
+  ...(
+    [
+      'boundary-unknown',
+      'dedup-unknown',
+      'boundary-live',
+      'dedup-live',
+    ] as const
+  ).map(
+    (control): KernelConformanceCase => ({
+      name: `prepared intent: ${control} independently blocks owner transfer`,
+      areas: ['turnBoundary', 'turnDedup'],
+      run: (harness) =>
+        withSession(harness, async (session) => {
+          const { owner, dedupOwner } = await prepareIntent(session);
+          const blocked = control.startsWith('boundary') ? owner : dedupOwner;
+          const dead = control.startsWith('boundary') ? dedupOwner : owner;
+          session.processes.kill(dead);
+          if (control.endsWith('unknown'))
+            session.processes.makeUnobservable(blocked);
+          const successor = session.processes.spawn();
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.resumePrepared',
+              boundaryId: 'intent',
+              intent: preparedIntent,
+              observed: {
+                owner,
+                createdAt: at(1),
+                updatedAt: at(2),
+                verdict: 'dead',
+              },
+              owner: successor,
+              dedup: {
+                previousOwner: dedupOwner,
+                createdAt: 1,
+                updatedAt: at(2),
+                owner: successor,
+              },
+              now: at(3),
+            }),
+            { kind: 'refused' },
+          );
+          assert.equal((await boundary(session, 'intent'))?.owner.id, owner.id);
+          const linked = await session.run({
+            type: 'turnDedup.read',
+            key: 'prepared-key',
+          });
+          assert.equal(
+            linked.kind === 'found' && linked.record.owner?.id,
+            dedupOwner.id,
+          );
+        }),
+    }),
+  ),
+  {
+    name: 'prepared intent: immutable preparation and pending dedup link survive reopen',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const { owner, dedupOwner, command } = await prepareIntent(session);
+        await session.store.reopen();
+        assert.deepEqual(await session.run({ ...command, now: at(3) }), {
+          kind: 'applied',
+        });
+        for (const field of [
+          'invocationId',
+          'inputDigest',
+          'intentDigest',
+          'bodyRef',
+          'dedupKey',
+        ] as const)
+          assert.deepEqual(
+            await session.run({
+              ...command,
+              intent: { ...preparedIntent, [field]: 'changed' },
+            }),
+            { kind: 'conflict' },
+          );
+        assert.deepEqual(
+          (await boundary(session, 'intent'))?.intent,
+          preparedIntent,
+        );
+        assert.equal((await boundary(session, 'intent'))?.updatedAt, at(2));
+        const key = await session.run({
+          type: 'turnDedup.read',
+          key: 'prepared-key',
+        });
+        assert.equal(key.kind, 'found');
+        if (key.kind !== 'found')
+          throw new Error('Expected linked pending key');
+        assert.equal(key.record.preparedInvocationId, 'invocation-a');
+        assert.equal(key.record.invocation, 'pending');
+        session.processes.kill(owner);
+        session.processes.kill(dedupOwner);
+        assert.deepEqual(
+          await session.run(claim('prepared-key', session.processes.spawn())),
+          { kind: 'prepared', invocationId: 'invocation-a' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.release',
+            key: 'prepared-key',
+            ownerId: dedupOwner.id,
+            now: 4,
+          }),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.beginInvocation',
+            key: 'prepared-key',
+            ownerId: dedupOwner.id,
+            now: 4,
+          }),
+          { kind: 'refused' },
+        );
+        assert.deepEqual(
+          await session.run(
+            transition('intent', owner, ['prepared'], 'invoking', at(4)),
+          ),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          (await boundary(session, 'intent'))?.intent,
+          preparedIntent,
+        );
+      }),
+  },
+  {
+    name: 'prepared intent: atomic begin requires exact facts and rolls both writes back on failure',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const { owner, dedupOwner } = await prepareIntent(session);
+        const begin = {
+          type: 'turnBoundary.beginInvocation',
+          boundaryId: 'intent',
+          ownerId: owner.id,
+          dedupOwnerId: dedupOwner.id,
+          intent: preparedIntent,
+          now: at(3),
+        } as const;
+        for (const bad of [
+          { ...begin, ownerId: 'wrong' },
+          { ...begin, dedupOwnerId: 'wrong' },
+          { ...begin, intent: { ...preparedIntent, intentDigest: 'wrong' } },
+        ])
+          assert.deepEqual(await session.run(bad), { kind: 'refused' });
+        const held = session.store.holdNextCommit();
+        const lost = assert.rejects(session.run(begin), KernelCrashError);
+        await held.entered;
+        await session.store.crash();
+        await lost;
+        await session.store.reopen();
+        session.store.failNextCommit();
+        await assert.rejects(session.run(begin), /Injected commit failure/);
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'intent'))?.state, 'prepared');
+        const pending = await session.run({
+          type: 'turnDedup.read',
+          key: 'prepared-key',
+        });
+        assert.equal(
+          pending.kind === 'found' && pending.record.invocation,
+          'pending',
+        );
+        assert.deepEqual(await session.run(begin), { kind: 'applied' });
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'intent'))?.state, 'invoking');
+        const begun = await session.run({
+          type: 'turnDedup.read',
+          key: 'prepared-key',
+        });
+        assert.equal(
+          begun.kind === 'found' && begun.record.invocation,
+          'begun',
+        );
+        assert.deepEqual(await session.run(begin), { kind: 'applied' });
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'intent',
+            ownerId: owner.id,
+            dedupOwnerId: dedupOwner.id,
+            intent: preparedIntent,
+            now: at(4),
+          }),
+          { kind: 'stale' },
+        );
+      }),
+  },
+  {
+    name: 'prepared intent: explicit resume compares both owners and revisions, never takes live or unknown owners',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const { owner, dedupOwner } = await prepareIntent(session);
+        const row = await boundary(session, 'intent');
+        assert.ok(row);
+        const successor = session.processes.spawn();
+        const successorDedup = session.processes.spawn();
+        const resume = {
+          type: 'turnBoundary.resumePrepared',
+          boundaryId: 'intent',
+          intent: preparedIntent,
+          observed: {
+            owner,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            verdict: 'dead',
+          },
+          owner: successor,
+          dedup: {
+            previousOwner: dedupOwner,
+            createdAt: 1,
+            updatedAt: at(2),
+            owner: successorDedup,
+          },
+          now: at(5),
+        } as const;
+        assert.deepEqual(await session.run(resume), { kind: 'refused' });
+        session.processes.kill(owner);
+        assert.deepEqual(await session.run(resume), { kind: 'refused' });
+        session.processes.makeUnobservable(dedupOwner);
+        assert.deepEqual(await session.run(resume), { kind: 'refused' });
+        // An independently dead exact dedup owner is required; use a second fixture below.
+        assert.equal((await boundary(session, 'intent'))?.owner.id, owner.id);
+      }),
+  },
+  {
+    name: 'prepared intent: dead-owner resume preserves intent and cannot run again after begin',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const { owner, dedupOwner } = await prepareIntent(session);
+        session.processes.reusePid(owner);
+        session.processes.kill(dedupOwner);
+        const row = await boundary(session, 'intent');
+        assert.ok(row);
+        const successor = session.processes.spawn();
+        const successorDedup = session.processes.spawn();
+        const resume = {
+          type: 'turnBoundary.resumePrepared',
+          boundaryId: 'intent',
+          intent: preparedIntent,
+          observed: {
+            owner,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            verdict: 'dead',
+          },
+          owner: successor,
+          dedup: {
+            previousOwner: dedupOwner,
+            createdAt: 1,
+            updatedAt: at(2),
+            owner: successorDedup,
+          },
+          now: at(5),
+        } as const;
+        for (const bad of [
+          { ...resume, observed: { ...resume.observed, updatedAt: at(9) } },
+          {
+            ...resume,
+            observed: { ...resume.observed, owner: { ...owner, pid: 99 } },
+          },
+          { ...resume, dedup: { ...resume.dedup, createdAt: 99 } },
+          { ...resume, dedup: { ...resume.dedup, updatedAt: at(9) } },
+          {
+            ...resume,
+            dedup: {
+              ...resume.dedup,
+              previousOwner: { ...dedupOwner, pid: 99 },
+            },
+          },
+          { ...resume, intent: { ...preparedIntent, inputDigest: 'wrong' } },
+        ])
+          assert.deepEqual(await session.run(bad), { kind: 'refused' });
+        session.store.failNextCommit();
+        await assert.rejects(session.run(resume), /Injected commit failure/);
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'intent'))?.owner.id, owner.id);
+        assert.deepEqual(await session.run(resume), { kind: 'applied' });
+        await session.store.reopen();
+        assert.deepEqual(
+          (await boundary(session, 'intent'))?.intent,
+          preparedIntent,
+        );
+        assert.equal(
+          (await boundary(session, 'intent'))?.owner.id,
+          successor.id,
+        );
+        assert.deepEqual(await session.run(resume), { kind: 'refused' });
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'intent',
+            ownerId: successor.id,
+            dedupOwnerId: successorDedup.id,
+            intent: preparedIntent,
+            now: at(6),
+          }),
+          { kind: 'applied' },
+        );
+        session.processes.kill(successor);
+        session.processes.kill(successorDedup);
+        const recovery = await reconcile(session, at(7));
+        assert.equal(recovery.kind, 'reconciled');
+        if (recovery.kind !== 'reconciled')
+          throw new Error('Expected recovery');
+        assert.deepEqual(recovery.resumable, []);
+        assert.equal(recovery.interrupted[0]?.state, 'indeterminate');
+        assert.deepEqual(recovery.interrupted[0]?.intent, preparedIntent);
+        assert.deepEqual(
+          await session.run({
+            ...resume,
+            observed: {
+              ...resume.observed,
+              owner: successor,
+              updatedAt: at(7),
+            },
+            dedup: { ...resume.dedup, previousOwner: successorDedup },
+          }),
+          { kind: 'refused' },
+        );
+      }),
+  },
+  {
+    name: 'prepared intent: reconcile separates resumable intent from abandoned reservations and legacy preparation',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const { owner, dedupOwner } = await prepareIntent(session);
+        await session.run(create('reserved', 'r', owner, at(1), 'reserved'));
+        await session.run(create('legacy', 'l', owner, at(1)));
+        await session.run(
+          create('dispatch', 'd', owner, at(1), 'prepared', 'task-dispatch'),
+        );
+        session.processes.kill(owner);
+        session.processes.kill(dedupOwner);
+        await session.store.reopen();
+        const result = await reconcile(session, at(8));
+        assert.equal(result.kind, 'reconciled');
+        if (result.kind !== 'reconciled') throw new Error('Expected recovery');
+        assert.deepEqual(result.interrupted, []);
+        assert.deepEqual(
+          result.resumable.map((candidate) => candidate.boundaryId),
+          ['intent'],
+        );
+        assert.deepEqual(
+          (await boundaries(session)).map((candidate) => candidate.boundaryId),
+          ['intent'],
+        );
+        assert.deepEqual(result.resumable[0]?.intent, preparedIntent);
+      }),
+  },
+);
+
+for (const type of [
+  'turnBoundary.cancelPrepared',
+  'turnBoundary.recordDefinitiveRefusal',
+] as const) {
+  const refused = type === 'turnBoundary.recordDefinitiveRefusal';
+  const disposition = refused ? 'definitively-refused' : 'cancelled';
+  const settlement = (owner: OwnerIdentity, dedupOwner: OwnerIdentity) => ({
+    type,
+    boundaryId: 'intent',
+    intent: preparedIntent,
+    settlementId: 'settlement-a',
+    now: at(5),
+    boundary: { owner, createdAt: at(1), updatedAt: refused ? at(3) : at(2) },
+    dedup: { owner: dedupOwner, createdAt: 1, updatedAt: at(2) },
+  });
+  turnBoundary.push({
+    name: `prepared settlement: ${disposition} retains audit, acknowledges exactly, and frees only active capacity`,
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const { owner, dedupOwner } = await prepareIntent(session);
+          if (refused)
+            assert.deepEqual(
+              await session.run({
+                type: 'turnBoundary.beginInvocation',
+                boundaryId: 'intent',
+                ownerId: owner.id,
+                dedupOwnerId: dedupOwner.id,
+                intent: preparedIntent,
+                now: at(3),
+              }),
+              { kind: 'applied' },
+            );
+          const command = settlement(owner, dedupOwner);
+          for (const bad of [
+            {
+              ...command,
+              boundary: { ...command.boundary, owner: { ...owner, pid: 90 } },
+            },
+            { ...command, boundary: { ...command.boundary, createdAt: at(9) } },
+            { ...command, boundary: { ...command.boundary, updatedAt: at(9) } },
+            {
+              ...command,
+              dedup: { ...command.dedup, owner: { ...dedupOwner, pid: 90 } },
+            },
+            { ...command, dedup: { ...command.dedup, createdAt: 90 } },
+            { ...command, dedup: { ...command.dedup, updatedAt: at(9) } },
+            {
+              ...command,
+              intent: { ...preparedIntent, bodyRef: 'changed-body' },
+            },
+          ])
+            assert.deepEqual(await session.run(bad), { kind: 'refused' });
+          const before = await boundary(session, 'intent');
+          session.store.failNextCommit();
+          await assert.rejects(session.run(command), /Injected commit failure/);
+          await session.store.reopen();
+          assert.deepEqual(await boundary(session, 'intent'), before);
+          assert.equal(
+            (await dedupRecord(session, 'prepared-key'))?.settlement,
+            undefined,
+          );
+          assert.deepEqual(await session.run(command), { kind: 'applied' });
+          await session.store.reopen();
+          const expected = {
+            id: 'settlement-a',
+            disposition,
+            at: at(5),
+            boundaryId: 'intent',
+            boundary: command.boundary,
+            dedup: command.dedup,
+          };
+          assert.deepEqual(
+            (await boundary(session, 'intent'))?.settlement,
+            expected,
+          );
+          assert.deepEqual(
+            (await boundary(session, 'intent'))?.intent,
+            preparedIntent,
+          );
+          assert.equal((await boundary(session, 'intent'))?.state, 'settled');
+          assert.deepEqual(
+            (await dedupRecord(session, 'prepared-key'))?.settlement,
+            expected,
+          );
+          assert.equal(
+            (await dedupRecord(session, 'prepared-key'))?.value,
+            null,
+          );
+          assert.deepEqual(await session.run(command), { kind: 'applied' });
+          for (const bad of [
+            { ...command, now: at(6) },
+            { ...command, settlementId: 'another-settlement' },
+            { ...command, boundary: { ...command.boundary, updatedAt: at(9) } },
+            {
+              ...command,
+              intent: { ...preparedIntent, inputDigest: 'different-input' },
+            },
+          ])
+            assert.deepEqual(await session.run(bad), { kind: 'refused' });
+          session.processes.kill(owner);
+          session.processes.kill(dedupOwner);
+          assert.deepEqual(
+            await session.run(claim('prepared-key', session.processes.spawn())),
+            {
+              kind: 'settled',
+              disposition,
+              invocationId: 'invocation-a',
+              settlementId: 'settlement-a',
+            },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.release',
+              key: 'prepared-key',
+              ownerId: dedupOwner.id,
+              now: 6,
+            }),
+            { kind: 'stale' },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.beginInvocation',
+              key: 'prepared-key',
+              ownerId: dedupOwner.id,
+              now: 6,
+            }),
+            { kind: 'refused' },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.resolve',
+              key: 'prepared-key',
+              ownerId: dedupOwner.id,
+              value: 'not-a-provider-turn',
+              now: 6,
+            }),
+            { kind: 'stale' },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.remove',
+              boundaryId: 'intent',
+              ownerId: owner.id,
+              from: ['settled'],
+            }),
+            { kind: 'stale' },
+          );
+          assert.deepEqual(
+            await session.run(
+              transition('intent', owner, ['settled'], 'invoking', at(6)),
+            ),
+            { kind: 'stale' },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.hasPossibleEffect',
+              threadId: 't',
+            }),
+            { kind: 'available', active: false },
+          );
+          const recovered = await reconcile(session, at(6));
+          assert.deepEqual(recovered, {
+            kind: 'reconciled',
+            interrupted: [],
+            resumable: [],
+          });
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            sessionTerminal: true,
+            terminalCreatedAt: at(7),
+          });
+          assert.deepEqual(
+            (await boundary(session, 'intent'))?.settlement,
+            expected,
+          );
+          if (!refused) {
+            assert.deepEqual(
+              await session.run({
+                type: 'turnDedup.forgetPrefix',
+                prefix: 'prepared-key',
+              }),
+              { kind: 'applied', removed: 1 },
+            );
+            assert.deepEqual(
+              (await boundary(session, 'intent'))?.settlement,
+              expected,
+            );
+            assert.deepEqual(await session.run(command), { kind: 'refused' });
+            assert.deepEqual(
+              await session.run(
+                claim('prepared-key', session.processes.spawn(), 8),
+              ),
+              { kind: 'claimed', reclaimed: false },
+            );
+            assert.deepEqual(
+              await session.run({
+                type: 'turnBoundary.beginInvocation',
+                boundaryId: 'intent',
+                ownerId: owner.id,
+                dedupOwnerId: dedupOwner.id,
+                intent: preparedIntent,
+                now: at(8),
+              }),
+              { kind: 'refused' },
+            );
+          }
+          const next = session.processes.spawn();
+          assert.deepEqual(
+            await session.run(
+              create(
+                'lifecycle-after-settlement',
+                't',
+                next,
+                at(8),
+                'lifecycle',
+              ),
+            ),
+            { kind: 'applied' },
+          );
+          await session.run({
+            type: 'turnBoundary.remove',
+            boundaryId: 'lifecycle-after-settlement',
+            ownerId: next.id,
+            from: ['lifecycle'],
+          });
+          assert.deepEqual(
+            await session.run(
+              recordAccepted('next', 't', 'provider-next', next, at(9)),
+            ),
+            { kind: 'applied' },
+          );
+          assert.deepEqual(
+            await session.run(
+              recordAccepted(
+                'over-capacity',
+                't',
+                'provider-other',
+                next,
+                at(9),
+              ),
+            ),
+            { kind: 'busy' },
+          );
+          await session.run({
+            type: 'turnBoundary.forgetThread',
+            threadId: 't',
+          });
+          assert.deepEqual(await boundaries(session), []);
+        },
+        { limits: { turnBoundaryAcceptedCapacity: 1 } },
+      ),
+  });
+  turnBoundary.push({
+    name: `prepared settlement: ${disposition} independently refuses the wrong keyless boundary stage and legacy inputless rows`,
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'stage-only',
+          inputDigest: 'stage-input',
+          intentDigest: 'stage-options',
+          bodyRef: 'stage-body',
+        };
+        assert.deepEqual(
+          await session.run(create('intent', 't', owner, at(1), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'intent',
+            ownerId: owner.id,
+            intent,
+            now: at(2),
+          }),
+          { kind: 'applied' },
+        );
+        if (!refused)
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.beginInvocation',
+              boundaryId: 'intent',
+              ownerId: owner.id,
+              intent,
+              now: at(3),
+            }),
+            { kind: 'applied' },
+          );
+        const command = {
+          type,
+          boundaryId: 'intent',
+          intent,
+          settlementId: 'stage-only-settlement',
+          now: at(5),
+          boundary: {
+            owner,
+            createdAt: at(1),
+            updatedAt: refused ? at(2) : at(3),
+          },
+        };
+        const before = await boundary(session, 'intent');
+        assert.equal(before?.state, refused ? 'prepared' : 'invoking');
+        assert.equal(before?.updatedAt, command.boundary.updatedAt);
+        assert.deepEqual(await session.run(command), {
+          kind: 'refused',
+        });
+        assert.deepEqual(await boundary(session, 'intent'), before);
+        await session.run(create('legacy', 'u', owner, at(1)));
+        assert.deepEqual(
+          await session.run({
+            ...command,
+            boundaryId: 'legacy',
+            boundary: { ...command.boundary, updatedAt: at(1) },
+          }),
+          { kind: 'refused' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.remove',
+            boundaryId: 'legacy',
+            ownerId: owner.id,
+            from: ['prepared'],
+          }),
+          { kind: 'applied' },
+        );
+      }),
+  });
+}
+
+turnBoundary.push({
+  name: 'prepared settlement: keyless cancellation keeps the opaque audit without inventing a dedup key',
+  areas: ['turnBoundary'],
+  run: (harness) =>
+    withSession(harness, async (session) => {
+      const owner = session.processes.spawn();
+      const intent = {
+        invocationId: 'keyless',
+        inputDigest: 'bytes',
+        intentDigest: 'options',
+        bodyRef: 'host-owned-body',
+      };
+      await session.run(create('keyless', 't', owner, at(1), 'reserved'));
+      await session.run({
+        type: 'turnBoundary.prepare',
+        boundaryId: 'keyless',
+        ownerId: owner.id,
+        intent,
+        now: at(2),
+      });
+      const command = {
+        type: 'turnBoundary.cancelPrepared',
+        boundaryId: 'keyless',
+        intent,
+        settlementId: 'cancel-keyless',
+        now: at(4),
+        boundary: { owner, createdAt: at(1), updatedAt: at(2) },
+      } as const;
+      assert.deepEqual(await session.run(command), { kind: 'applied' });
+      await session.store.reopen();
+      assert.deepEqual(await session.run(command), { kind: 'applied' });
+      assert.deepEqual((await boundary(session, 'keyless'))?.intent, intent);
+      assert.equal(
+        (await boundary(session, 'keyless'))?.settlement?.dedup,
+        undefined,
+      );
+      assert.deepEqual(
+        await session.run({
+          type: 'turnBoundary.hasPossibleEffect',
+          threadId: 't',
+        }),
+        { kind: 'available', active: false },
+      );
+    }),
+});
+
 const requestKeys: KernelConformanceCase[] = [
   {
     name: 'request keys: same digest replays or re-drives; a different digest conflicts',
@@ -2177,7 +3000,11 @@ const crashPoints: KernelConformanceCase[] = [
         session.processes.kill(first);
         await session.store.reopen();
         const recovered = await reconcile(session, at(3));
-        assert.deepEqual(recovered, { kind: 'reconciled', interrupted: [] });
+        assert.deepEqual(recovered, {
+          kind: 'reconciled',
+          interrupted: [],
+          resumable: [],
+        });
         assert.deepEqual(await boundaries(session), []);
         assert.deepEqual(
           await session.run(
@@ -2383,6 +3210,617 @@ crashPoints.push(
   },
 );
 
+/** Invocation terminal contracts share the real public command boundary. */
+const invocationTerminals: readonly KernelConformanceCase[] = [
+  {
+    name: 'invocation terminal: engine-opened acknowledgement refuses an otherwise matching accepted intent row',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'body',
+        };
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        const expected = await boundary(session, 'b');
+        assert.ok(expected);
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.acceptInvocation',
+            expected,
+            providerTurnId: 'N',
+            now: at(13),
+          }),
+          { kind: 'accepted' },
+        );
+        const accepted = await boundary(session, 'b');
+        assert.deepEqual(accepted, {
+          ...expected,
+          state: 'accepted',
+          providerTurnId: 'N',
+          updatedAt: at(13),
+        });
+        assert.deepEqual(
+          await session.run(recordAccepted('b', 't', 'N', owner, at(13))),
+          { kind: 'busy' },
+        );
+        assert.deepEqual(await boundary(session, 'b'), accepted);
+        assert.deepEqual(
+          await session.run(
+            recordAccepted('legacy', 'legacy-thread', 'N', owner, at(13)),
+          ),
+          { kind: 'applied' },
+        );
+        const legacy = await boundary(session, 'legacy');
+        assert.deepEqual(
+          await session.run(
+            recordAccepted('legacy', 'legacy-thread', 'N', owner, at(13)),
+          ),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await boundary(session, 'legacy'), legacy);
+      }),
+  },
+
+  {
+    name: 'invocation terminal: early backward-clock retirement survives reopen and exact ownership retries',
+    areas: ['turnBoundary', 'turnDedup'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const dedupOwner = session.processes.spawn();
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'opaque:body',
+          dedupKey: 'k',
+        };
+        assert.deepEqual(await session.run(claim('k', dedupOwner)), {
+          kind: 'claimed',
+          reclaimed: false,
+        });
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            dedupOwnerId: dedupOwner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            dedupOwnerId: dedupOwner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        const expected: TurnBoundaryRecord = {
+          boundaryId: 'b',
+          threadId: 't',
+          purpose: 'turn',
+          state: 'invoking',
+          owner,
+          createdAt: at(10),
+          updatedAt: at(12),
+          intent,
+        };
+        const dedup = await session.run({ type: 'turnDedup.read', key: 'k' });
+        assert.equal(dedup.kind, 'found');
+        if (dedup.kind !== 'found') throw new Error('begun dedup prerequisite');
+        const command = {
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          expectedDedup: dedup.record,
+          providerTurnId: 'N',
+          now: at(13),
+        } as const;
+        const terminal = {
+          threadId: 't',
+          invocationId: 'B',
+          terminalEventId: 'eB',
+          terminalCreatedAt: at(1),
+          retire: true,
+        };
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            ...terminal,
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.equal(await boundary(session, 'b'), undefined);
+        await session.store.reopen();
+        assert.deepEqual(await session.run(command), {
+          kind: 'terminal',
+          terminal,
+        });
+        assert.deepEqual(await session.run(command), {
+          kind: 'terminal',
+          terminal,
+        });
+        const changes: TurnBoundaryRecord[] = [
+          { ...expected, owner: { ...owner, id: 'other' } },
+          { ...expected, owner: { ...owner, pid: owner.pid + 1 } },
+          {
+            ...expected,
+            owner: {
+              id: owner.id,
+              pid: owner.pid,
+              identityKind: 'exact',
+              birth: 'other',
+            },
+          },
+          { ...expected, createdAt: at(9) },
+          { ...expected, updatedAt: at(11) },
+          { ...expected, createdSequence: 7 },
+          { ...expected, providerTurnId: 'N' },
+          { ...expected, boundaryId: 'other' },
+          { ...expected, threadId: 'other' },
+          ...['invocationId', 'inputDigest', 'intentDigest', 'bodyRef'].map(
+            (field) => ({
+              ...expected,
+              intent: { ...intent, [field]: 'changed' },
+            }),
+          ),
+        ];
+        for (const changed of changes)
+          assert.deepEqual(
+            await session.run({ ...command, expected: changed }),
+            { kind: 'stale' },
+          );
+        for (const changed of [
+          { ...dedup.record, createdAt: 9 },
+          { ...dedup.record, preparedUpdatedAt: at(9) },
+          { ...dedup.record, owner: { ...dedupOwner, id: 'other' } },
+          { ...dedup.record, invocation: 'pending' as const },
+          { ...dedup.record, value: 'N' },
+        ])
+          assert.deepEqual(
+            await session.run({ ...command, expectedDedup: changed }),
+            { kind: 'stale' },
+          );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.resolve',
+            key: 'k',
+            ownerId: dedupOwner.id,
+            value: 'N',
+            now: 20,
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await session.run(command), {
+          kind: 'terminal',
+          terminal,
+        });
+        assert.deepEqual(
+          await session.run({ type: 'turnDedup.forgetPrefix', prefix: 'k' }),
+          { kind: 'applied', removed: 1 },
+        );
+        assert.deepEqual(await session.run(command), { kind: 'stale' });
+      }),
+  },
+  {
+    name: 'invocation terminal: old and untagged native facts cannot retire or make a new invocation ambiguous',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'body',
+        };
+        const prior = { ...intent, invocationId: 'A' };
+        assert.deepEqual(
+          await session.run(create('a', 't', owner, at(1), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'a',
+            ownerId: owner.id,
+            intent: prior,
+            now: at(2),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'a',
+            ownerId: owner.id,
+            intent: prior,
+            now: at(3),
+          }),
+          { kind: 'applied' },
+        );
+        const priorExpected = await boundary(session, 'a');
+        assert.ok(priorExpected);
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.acceptInvocation',
+            expected: priorExpected,
+            providerTurnId: 'N',
+            now: at(4),
+          }),
+          { kind: 'accepted' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            invocationId: 'A',
+            terminalEventId: 'eA',
+            providerTurnId: 'N',
+            terminalCreatedAt: at(59),
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.equal(await boundary(session, 'a'), undefined);
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        const expected = await boundary(session, 'b');
+        assert.ok(expected);
+        for (const extra of [
+          { invocationId: 'A', terminalEventId: 'eA' },
+          {},
+        ]) {
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.observeTerminal',
+              threadId: 't',
+              providerTurnId: 'N',
+              terminalCreatedAt: at(59),
+              sessionTerminal: false,
+              ...extra,
+            }),
+            { kind: 'applied' },
+          );
+          assert.deepEqual(await boundary(session, 'b'), expected);
+        }
+        const command = {
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          providerTurnId: 'N',
+          now: at(13),
+        } as const;
+        assert.deepEqual(await session.run(command), { kind: 'accepted' });
+        const accepted = await boundary(session, 'b');
+        assert.deepEqual(accepted, {
+          ...expected,
+          state: 'accepted',
+          providerTurnId: 'N',
+          updatedAt: at(13),
+        });
+        for (const extra of [
+          { invocationId: 'A', terminalEventId: 'eA' },
+          {},
+        ]) {
+          assert.deepEqual(
+            await session.run({
+              type: 'turnBoundary.observeTerminal',
+              threadId: 't',
+              providerTurnId: 'N',
+              terminalCreatedAt: at(59),
+              sessionTerminal: false,
+              ...extra,
+            }),
+            { kind: 'applied' },
+          );
+          assert.deepEqual(await boundary(session, 'b'), accepted);
+        }
+        await session.store.reopen();
+        assert.deepEqual(await session.run(command), { kind: 'accepted' });
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            invocationId: 'B',
+            terminalEventId: 'e0',
+            terminalCreatedAt: at(1),
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await boundary(session, 'b'), accepted);
+        assert.deepEqual(await session.run(command), { kind: 'accepted' });
+        const terminal = {
+          threadId: 't',
+          invocationId: 'B',
+          providerTurnId: 'N',
+          terminalEventId: 'eN',
+          terminalCreatedAt: at(1),
+          retire: true,
+        };
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            ...terminal,
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.equal(await boundary(session, 'b'), undefined);
+        await session.store.reopen();
+        assert.deepEqual(await session.run(command), {
+          kind: 'terminal',
+          terminal,
+        });
+        assert.deepEqual(await session.run({ ...command, now: at(14) }), {
+          kind: 'stale',
+        });
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            ...terminal,
+            terminalEventId: 'eM',
+            providerTurnId: 'M',
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await session.run(command), { kind: 'stale' });
+        assert.equal(await boundary(session, 'b'), undefined);
+      }),
+  },
+  {
+    name: 'invocation terminal: keyless prepared guard, generic acceptance refusal and conservative E=Q precedence',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'body',
+        };
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        const prepared = await boundary(session, 'b');
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            invocationId: 'B',
+            terminalEventId: 'prepared',
+            providerTurnId: 'N',
+            terminalCreatedAt: at(59),
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(await boundary(session, 'b'), prepared);
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run(
+            transition('b', owner, ['invoking'], 'accepted', at(13), 'N'),
+          ),
+          { kind: 'stale' },
+        );
+        assert.deepEqual(
+          await session.run(
+            transition('b', owner, ['invoking'], 'indeterminate', at(14), 'N'),
+          ),
+          { kind: 'applied' },
+        );
+        const expected = await boundary(session, 'b');
+        assert.ok(expected);
+        // A distinct invocation isolates image precedence from the prepared event above.
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.forgetThread',
+            threadId: 't',
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run(
+            transition('b', owner, ['invoking'], 'indeterminate', at(14), 'N'),
+          ),
+          { kind: 'applied' },
+        );
+        const command = {
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          providerTurnId: 'N',
+          now: at(14),
+        } as const;
+        assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
+        assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
+        assert.deepEqual(await boundary(session, 'b'), expected);
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            invocationId: 'B',
+            providerTurnId: 'N',
+            terminalEventId: 'e',
+            terminalCreatedAt: at(1),
+            sessionTerminal: false,
+          }),
+          { kind: 'applied' },
+        );
+        assert.equal(await boundary(session, 'b'), undefined);
+        assert.equal((await session.run(command)).kind, 'terminal');
+      }),
+  },
+  {
+    name: 'invocation terminal: a real simultaneous accepted collision stays ambiguous after competitor removal',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        assert.deepEqual(
+          await session.run(recordAccepted('other', 't', 'N', owner, at(1))),
+          { kind: 'applied' },
+        );
+        const intent = {
+          invocationId: 'B',
+          inputDigest: 'input',
+          intentDigest: 'envelope',
+          bodyRef: 'body',
+        };
+        assert.deepEqual(
+          await session.run(create('b', 't', owner, at(10), 'reserved')),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.prepare',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(11),
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: 'b',
+            ownerId: owner.id,
+            intent,
+            now: at(12),
+          }),
+          { kind: 'applied' },
+        );
+        const expected = await boundary(session, 'b');
+        assert.ok(expected);
+        const command = {
+          type: 'turnBoundary.acceptInvocation',
+          expected,
+          providerTurnId: 'N',
+          now: at(13),
+        } as const;
+        assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
+        const ambiguous = await boundary(session, 'b');
+        assert.deepEqual(
+          await session.run({
+            type: 'turnBoundary.remove',
+            boundaryId: 'other',
+            ownerId: owner.id,
+            from: ['accepted'],
+          }),
+          { kind: 'applied' },
+        );
+        await session.store.reopen();
+        assert.deepEqual(await session.run(command), { kind: 'ambiguous' });
+        assert.deepEqual(await boundary(session, 'b'), ambiguous);
+      }),
+  },
+];
+
 export const kernelConformanceCases: readonly KernelConformanceCase[] =
   Object.freeze([
     ...durability,
@@ -2391,6 +3829,7 @@ export const kernelConformanceCases: readonly KernelConformanceCase[] =
     ...requestKeys,
     ...inbox,
     ...crashPoints,
+    ...invocationTerminals,
   ]);
 
 /**

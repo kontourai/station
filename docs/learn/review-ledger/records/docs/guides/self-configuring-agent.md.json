@@ -156,7 +156,25 @@
 
     "src-server/services/orchestration/agent-schedule.ts",
 
-    "src-server/tools/station-control-schedule-tools.ts"
+    "src-server/tools/station-control-schedule-tools.ts",
+
+    "src-server/services/orchestration/session-turn-wait.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-wait.test.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts",
+
+    "docs/architecture/module-map.md",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "src-server/routes/chat/conversation-reference-read.ts",
+
+    "packages/shared/src/conversation-message.ts"
   ],
 
   "checks": [

@@ -136,7 +136,9 @@
 
     "src-server/runtime/routes/tool-library-runtime.ts",
 
-    "src-server/services/plugins/tool-library-service.ts"
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts"
   ],
 
   "checks": [

@@ -1,0 +1,11 @@
+{
+  "revision": "5749282379edc149684959054d27ce1ffefda37f",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the changed corpus.json bytes against this guide and confirmed parsed JSON is identical to origin/main. Formatting only: public-doc sources, sections, order, bundle-only manual and topics are unchanged. No prose change needed; docs-kit-manifest owns the projection parity.","inputs":["docs/guides/documentation.md","corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed corpus.json formatting delta against the Pages manifest/publication explanation and verified parsed JSON matches origin/main exactly. No allowlist, publication policy, URL, topic or Corpus pin changed; no hosted deployment claim made.","inputs":["docs/pages/README.md","corpus.json"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed agents-pane.spec.ts changes: one geometry assertion and screenshot now verifies inline Stop action placement, preserving existing per-chat/global/provenance and mobile sheet journeys. Manifest ownership stays product/parallel-safe; fixtures remain the same transport seams. Temporary screenshot filesystem helpers were reverted when manifest validation rejected that classification. Coverage-map claims remain accurate, with no live-provider or full-surface acceptance claim.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/agents-pane.spec.ts"]}
+  ]
+}

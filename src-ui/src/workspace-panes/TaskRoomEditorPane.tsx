@@ -11,8 +11,19 @@ import {
 } from '@kontourai/station-sdk/project-task-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Button } from '../components/Button';
+import { LazyMarkdown } from '../components/chat/LazyMarkdown';
+import { SkeletonBlock } from '../components/state';
+import { navigationStore } from '../contexts/navigation-store';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import {
   browserEpochMs,
   clearInteractiveWorkspacePerformanceBookkeeping,
@@ -28,6 +39,8 @@ import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { projectTaskRoomEditorPaneId } from './ProjectTaskRoomPresence';
 import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
 
+import './TaskRoomComposer.css';
+
 type AuthoritativeRoomDocument = Extract<
   ProjectTaskRoomDocument,
   { kind: 'snapshot' | 'delta' }
@@ -42,8 +55,10 @@ export function TaskRoomEditorPane({
   taskId,
   runtime,
   instanceId,
+  startInPreview = false,
 }: {
   taskId: string;
+  startInPreview?: boolean;
   runtime?: WorkspacePaneHostRuntime;
   instanceId?: WorkspacePaneInstanceId;
 }) {
@@ -55,6 +70,7 @@ export function TaskRoomEditorPane({
   const plan = usePlanProjectTaskRoomEditMutation(taskId);
   const batch = useSubmitProjectTaskRoomBatchMutation(taskId);
   const [text, setText] = useState('');
+  const [editing, setEditing] = useState(!startInPreview);
   const [authoritativeText, setAuthoritativeText] = useState('');
   const [appliedDocument, setAppliedDocument] =
     useState<AuthoritativeRoomDocument>();
@@ -63,6 +79,7 @@ export function TaskRoomEditorPane({
     intentId: string;
     intentDigest: string;
     observedDocument: object;
+    submittedText: string;
   }>();
   const [settlement, setSettlement] = useState<
     'unchanged' | 'committed' | 'duplicate'
@@ -150,7 +167,38 @@ export function TaskRoomEditorPane({
   const applyAuthoritativeDocumentRef = useRef(applyAuthoritativeDocument);
   applyAuthoritativeDocumentRef.current = applyAuthoritativeDocument;
   const dirty = text !== authoritativeText;
-  const { DiscardModal } = useUnsavedGuard(dirty);
+  const pendingNavigation = useRef<(() => void) | undefined>(undefined);
+  const navigationIdentity = useRef(Symbol('brief-save-navigation'));
+  const navigationOwner = useContext(UnsavedGuardOwnerContext);
+  const retryCount = useRef(0);
+  useEffect(() => {
+    if (!dirty && !possibleEffect) {
+      const proceed = pendingNavigation.current;
+      pendingNavigation.current = undefined;
+      proceed?.();
+    }
+  }, [dirty, possibleEffect]);
+  const guardNeeded = dirty || !!possibleEffect;
+  useEffect(() => {
+    if (!guardNeeded) return;
+    return navigationStore.registerNavigationGuard(
+      navigationIdentity.current,
+      (proceed) => {
+        pendingNavigation.current = proceed;
+        void saveLatest.current();
+      },
+      navigationOwner,
+    );
+  }, [guardNeeded, navigationOwner]);
+  useLayoutEffect(() => {
+    if (!dirty && !possibleEffect) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      void saveLatest.current();
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [dirty, possibleEffect]);
   useLayoutEffect(() => {
     if (displayedTaskId.current === taskId) return;
     displayedTaskId.current = taskId;
@@ -432,6 +480,7 @@ export function TaskRoomEditorPane({
     observedDocument: object,
     settledTaskId: string,
     generation: number,
+    submittedText: string,
   ) {
     if (!isCurrentOperation(generation)) return;
     let adopted =
@@ -468,7 +517,7 @@ export function TaskRoomEditorPane({
     setSettlement(settled.kind);
     setAppliedDocument(adopted);
     setAuthoritativeText(adopted.text);
-    setText(adopted.text);
+    setText((current) => (current === submittedText ? adopted.text : current));
   }
   async function save() {
     if (
@@ -501,6 +550,7 @@ export function TaskRoomEditorPane({
       setRejection('The shared document changed. Review it before retrying.');
       return;
     }
+    const submittedText = text;
     const saveTaskId = taskId;
     const generation = operationGeneration.current;
     const plannedDocumentGeneration = documentAuthorityGeneration.current;
@@ -513,6 +563,7 @@ export function TaskRoomEditorPane({
           intentId: string;
           intentDigest: string;
           observedDocument: object;
+          submittedText: string;
         }
       | undefined;
     try {
@@ -547,6 +598,7 @@ export function TaskRoomEditorPane({
         intentId: planned.intentId,
         intentDigest: planned.digest,
         observedDocument,
+        submittedText,
       };
       setPossibleEffect(intent);
       if (!isCurrentOperation(generation)) return;
@@ -560,6 +612,7 @@ export function TaskRoomEditorPane({
           intent.observedDocument,
           saveTaskId,
           generation,
+          submittedText,
         );
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
@@ -590,6 +643,7 @@ export function TaskRoomEditorPane({
           possibleEffect.observedDocument,
           taskId,
           generation,
+          possibleEffect.submittedText,
         );
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
@@ -600,6 +654,57 @@ export function TaskRoomEditorPane({
       /* Keep the identical receipt visible; its effect remains unknown. */
     }
   }
+  const saveLatest = useRef(save);
+  saveLatest.current = save;
+  useEffect(() => {
+    if (
+      !rejection ||
+      !dirty ||
+      !writable ||
+      possibleEffect ||
+      retryCount.current >= 3
+    )
+      return;
+    const timer = window.setTimeout(async () => {
+      retryCount.current += 1;
+      try {
+        const refreshed = await refetchAuthoritativeProjectTaskRoomDocument(
+          queryClient,
+          taskId,
+        );
+        if (refreshed.kind === 'snapshot' || refreshed.kind === 'delta')
+          applyAuthoritativeDocumentRef.current(refreshed);
+        setRejection(undefined);
+      } catch {
+        setRejection(
+          'Autosave could not refresh the shared brief. Your draft is retained.',
+        );
+      }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [rejection, dirty, writable, possibleEffect, queryClient, taskId]);
+  useEffect(() => {
+    void text;
+    if (
+      !dirty ||
+      !writable ||
+      possibleEffect ||
+      rejection ||
+      plan.isPending ||
+      batch.isPending
+    )
+      return;
+    const timer = window.setTimeout(() => void saveLatest.current(), 450);
+    return () => window.clearTimeout(timer);
+  }, [
+    text,
+    dirty,
+    writable,
+    possibleEffect,
+    rejection,
+    plan.isPending,
+    batch.isPending,
+  ]);
   const status =
     document.isLoading || room.isLoading
       ? 'Loading the shared document.'
@@ -622,115 +727,155 @@ export function TaskRoomEditorPane({
                       : settlement === 'unchanged'
                         ? 'No changes were needed; your draft already matches the shared document.'
                         : settlement === 'committed'
-                          ? 'Shared document saved.'
+                          ? 'Saved'
                           : settlement === 'duplicate'
-                            ? 'This exact edit was already saved.'
+                            ? 'Saved'
                             : rejection
                               ? 'Save refused. Your draft is retained for retry.'
                               : dirty
-                                ? 'Unsaved changes.'
-                                : 'Shared document ready.';
+                                ? 'Saving brief…'
+                                : '';
   return (
     <section className="task-room-editor" aria-label="Task room editor">
-      <p id={`task-room-editor-status-${id}`} role="status">
+      <div className="task-room-brief-heading">
+        {startInPreview && <h2>Brief</h2>}
+        {startInPreview && (
+          <Button
+            onClick={() => {
+              if (editing) void saveLatest.current();
+              setEditing(!editing);
+            }}
+          >
+            {editing ? 'View brief' : 'Edit brief'}
+          </Button>
+        )}
+      </div>
+      {startInPreview && (
+        <p className="task-room-hint">
+          The shared plan for this Task. Changes save automatically.
+        </p>
+      )}
+      <p
+        className="task-room-inline-status"
+        id={`task-room-editor-status-${id}`}
+        role="status"
+      >
         {status}
       </p>
       {rejection ? (
-        <p role="alert">
+        <p className="task-room-inline-status" role="alert">
           {rejection} Draft retained; the shared document was not changed.
         </p>
       ) : null}
       {document.isError ? (
         <p role="alert">The latest shared document read failed.</p>
       ) : null}
-      <label htmlFor={`task-room-editor-${id}`}>Task document</label>
-      <textarea
-        id={`task-room-editor-${id}`}
-        ref={editorRef}
-        data-station-performance-surface="task-editor"
-        data-station-task-id={taskId}
-        data-station-working-revision={documentRevision}
-        value={text}
-        onChange={(event) => {
-          const enteredEpochMs = browserEpochMs();
-          const nextText = event.currentTarget.value;
-          setText(nextText);
-          setRejection(undefined);
-          setSettlement(undefined);
-          stopWatching();
-          if (shared)
-            void shared
-              .command({ command: 'typing', active: true })
-              .catch(() => {});
-          publishCursor({
-            anchor: event.currentTarget.selectionStart,
-            focus: event.currentTarget.selectionEnd,
-          });
-          if (
-            documentRevision &&
-            (import.meta.env.MODE === 'test' ||
-              import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE ===
-                '1')
-          )
-            emitTaskInputPerformanceMark({
-              taskId,
-              workingRevision: documentRevision,
-              text: nextText,
-              enteredEpochMs,
-              exitedEpochMs: browserEpochMs(),
+      {!editing && (
+        <div className="task-room-brief-rendered">
+          {text ? (
+            <LazyMarkdown
+              loadingProjection={<SkeletonBlock label="Loading brief" />}
+            >
+              {text}
+            </LazyMarkdown>
+          ) : (
+            <p>
+              Add a goal and a Done when checklist to give this Task direction.
+            </p>
+          )}
+        </div>
+      )}
+      <div hidden={!editing}>
+        <label htmlFor={`task-room-editor-${id}`}>Task brief</label>
+        <textarea
+          id={`task-room-editor-${id}`}
+          ref={editorRef}
+          data-station-performance-surface="task-editor"
+          data-station-task-id={taskId}
+          data-station-working-revision={documentRevision}
+          value={text}
+          onChange={(event) => {
+            const enteredEpochMs = browserEpochMs();
+            const nextText = event.currentTarget.value;
+            retryCount.current = 0;
+            setText(nextText);
+            setRejection(undefined);
+            setSettlement(undefined);
+            stopWatching();
+            if (shared)
+              void shared
+                .command({ command: 'typing', active: true })
+                .catch(() => {});
+            publishCursor({
+              anchor: event.currentTarget.selectionStart,
+              focus: event.currentTarget.selectionEnd,
             });
-        }}
-        onPointerDown={stopWatching}
-        onKeyDown={stopWatching}
-        onSelect={(event) =>
-          publishCursor({
-            anchor: event.currentTarget.selectionStart,
-            focus: event.currentTarget.selectionEnd,
-          })
-        }
-        readOnly={!writable}
-        aria-describedby={`task-room-editor-status-${id}`}
-      />
-      <aside aria-label="Remote selections">
-        {remoteCursors.length ? (
-          <ul>
-            {remoteCursors.map((cursor) => {
-              const participant = shared?.live?.participants.find(
-                (candidate) => candidate.actor.actorId === cursor.actorId,
-              );
-              return (
-                <li key={cursor.actorId} data-actor-id={cursor.actorId}>
-                  {participant?.actor.kind === 'agent' ? 'Agent' : 'Human'}{' '}
-                  {participant?.actor.label ?? 'participant'}: selection{' '}
-                  {cursor.selection.anchor}–{cursor.selection.focus}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p>Remote selections appear here.</p>
+            if (
+              documentRevision &&
+              (import.meta.env.MODE === 'test' ||
+                import.meta.env
+                  .VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1')
+            )
+              emitTaskInputPerformanceMark({
+                taskId,
+                workingRevision: documentRevision,
+                text: nextText,
+                enteredEpochMs,
+                exitedEpochMs: browserEpochMs(),
+              });
+          }}
+          onBlur={() => void saveLatest.current()}
+          onPointerDown={stopWatching}
+          onKeyDown={stopWatching}
+          onSelect={(event) =>
+            publishCursor({
+              anchor: event.currentTarget.selectionStart,
+              focus: event.currentTarget.selectionEnd,
+            })
+          }
+          readOnly={!writable}
+          aria-describedby={`task-room-editor-status-${id}`}
+        />
+        <aside aria-label="Remote selections" hidden={!remoteCursors.length}>
+          {remoteCursors.length ? (
+            <ul>
+              {remoteCursors.map((cursor) => {
+                const participant = shared?.live?.participants.find(
+                  (candidate) => candidate.actor.actorId === cursor.actorId,
+                );
+                return (
+                  <li key={cursor.actorId} data-actor-id={cursor.actorId}>
+                    {participant?.actor.kind === 'agent' ? 'Agent' : 'Human'}{' '}
+                    {participant?.actor.label ?? 'participant'}: selection{' '}
+                    {cursor.selection.anchor}–{cursor.selection.focus}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </aside>
+        {(document.isError ||
+          possibleEffect ||
+          rejection ||
+          document.data?.kind === 'gap') && (
+          <button
+            type="button"
+            onClick={() => void document.refetch()}
+            disabled={document.isFetching}
+          >
+            Reload brief
+          </button>
         )}
-      </aside>
-      <button
-        type="button"
-        onClick={() => void document.refetch()}
-        disabled={document.isFetching}
-      >
-        Resync document
-      </button>
-      <button
-        type="button"
-        onClick={() => void save()}
-        disabled={
-          !writable ||
-          !dirty ||
-          !!possibleEffect ||
-          plan.isPending ||
-          batch.isPending
-        }
-      >
-        {rejection ? 'Retry save' : 'Save shared document'}
-      </button>
+      </div>
+      {rejection ? (
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!writable || plan.isPending || batch.isPending}
+        >
+          Retry autosave
+        </button>
+      ) : null}
       {possibleEffect ? (
         <button
           type="button"
@@ -740,7 +885,6 @@ export function TaskRoomEditorPane({
           Retry identical batch
         </button>
       ) : null}
-      <DiscardModal />
     </section>
   );
 }

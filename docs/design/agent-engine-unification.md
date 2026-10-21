@@ -3,7 +3,7 @@
 > **Reading status: design record with later implementation amendments.** The
 > original “today” descriptions, seed matrix, version probes, and slice statuses
 > are snapshots of their recorded work, not a current capability inventory.
-> For current setup, use the [Agent guide](../guides/agents.md) and
+> For current setup, use the [Agent guide](../guides/agent-configuration.md) and
 > [Connections guide](../guides/connections.md). The current declarations and
 > delivery resolution belong to the
 > [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts)
@@ -64,7 +64,7 @@ What does *not* change: the engine still owns its loop. For external engines Sta
 remains the provisioning plane (connections-onboarding.md §5) — it hands the engine a
 definition through sanctioned channels; it does not execute inside the engine's loop,
 and policy delivery remains engine-specific. The later
-[Tools picker](../guides/agents.md#mcp-tool-configuration) delivers selected MCP
+[Tools picker](../guides/agent-configuration.md#mcp-tool-configuration) delivers selected MCP
 names to Claude and Codex; selecting names does not add a general pre-tool
 interception seam to Codex. The glossary's "who runs
 the loop" question stays the right question — the answer just becomes a property of the

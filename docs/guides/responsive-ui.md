@@ -91,9 +91,12 @@ its sheet together. Desktop keeps the feature's inline card.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
-anchored surface-popover, navigation, notification and palette tiers as well as
-sticky/dialog/system. A surface popover stays above the dock but below navigation and notification
-chrome; a modal dialog supersedes notification chrome.
+anchored surface-popover, navigation, notification, toolbar-menu and palette
+tiers as well as sticky/dialog/system. A surface popover stays above the dock
+but below navigation and notification chrome. A menu opened from the toolbar
+(or the sidebar's account control) sits just above notifications, because the
+toolbar's right end opens into their column; its dismiss backdrop stays below
+them. A modal dialog supersedes notification chrome.
 Do not use feature-local large z-index values to compensate for a wrong owner
 or stacking context. A blocking system surface must explicitly choose the
 system layer. Transparent notification wrappers must let pointer events through;
@@ -116,8 +119,13 @@ policy: a wide coarse-pointer device can be bottom-only without being mobile.
 Content whose room depends on the dock rather than the window measures the
 dock. The session context card beside the Chat transcript
 ([sessionContextCardModel.ts](../../src-ui/src/components/chat-dock/sessionContextCardModel.ts))
-reads the conversation surface's width with a `ResizeObserver` and shows only
-when the transcript keeps its 640px floor beside it; the same answer hides
+reads the transcript column's width (the conversation surface less any column
+beside the transcript in it, such as an open Chat inventory aside) with a
+`ResizeObserver` and shows only when the transcript keeps its 640px floor
+beside it, so opening the inventory folds the card behind its chip (#3882);
+while the inventory is open the aside gives way first, down to its 16rem
+minimum, so the transcript keeps 640px wherever the surface has room for
+both. The same answer hides
 the header items it repeats, which live outside the dock body, so a CSS
 container query on the body could not reach them. A phone never shows it
 inline; there it opens as a sheet from the Chat actions sheet, because the

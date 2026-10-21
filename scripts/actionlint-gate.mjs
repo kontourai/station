@@ -55,6 +55,7 @@ import {
   FAST_CHECKS_LEGACY_DETECT_RUN,
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_PROVISIONAL_RUN,
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
@@ -64,6 +65,7 @@ import {
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -2526,6 +2528,10 @@ function fastChecksShardingFindings(file, jobs) {
         {
           name: 'Verify fast-checks shard receipts',
           run: FAST_CHECKS_AGGREGATE_RUN,
+        },
+        {
+          name: FAST_CHECKS_PROVISIONAL_STEP,
+          run: FAST_CHECKS_PROVISIONAL_RUN,
         },
       ],
     );

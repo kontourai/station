@@ -232,7 +232,8 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
 | `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
-| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Its [README](../../packages/supervisor/README.md) covers status and build. Control-channel clients are to import the protocol from `@kontourai/station-supervisor/protocol`; none does yet |
+| `@kontourai/agent-runtime` | `packages/agent-runtime/` | Private experimental Tier 1 boundary; source workspace exports | Model-only request journal, retained stream replay and guarded VoltAgent/Strands consumers over public Monument contracts; Station chat/boot adoption and package release remain unqualified |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations; not yet run by any launch mode. Its [README](../../packages/supervisor/README.md) covers status and build. The core's supervisor link imports the protocol from `@kontourai/station-supervisor/protocol` |
 | `@kontourai/station-basis-pane` | `packages/basis-pane/` | Private workspace package (`private: true`); consumed from TypeScript source through Station's bundler | First-party Basis Workspace Pane, answer-basis affordance and session inventory views, built on SDK and Surface view contracts. See its [README](../../packages/basis-pane/README.md) |
 | `@kontourai/station-board-pane` | `packages/board-pane/` | Private workspace package (`private: true`); consumed from TypeScript source | The Console Board as an in-process Workspace Pane over published contracts. See its [README](../../packages/board-pane/README.md) |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
@@ -244,6 +245,12 @@ constraint. Monument publishes compiled `dist/` (build it with
 and its README says why only pnpm packs it correctly. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
+
+For the experimental model runtime, use `npm run build:agent-runtime` and
+`npm run typecheck:agent-runtime`. Its workspace exports currently resolve
+TypeScript source. Those scoped checks do not qualify a packed plain-Node
+consumer, a registry release or Station runtime adoption. See its
+[README](../../packages/agent-runtime/README.md) for supported modes and limits.
 
 New cross-package types should live in the owning `@kontourai/station-contracts/*` module. Keep compatibility re-exports in `shared` only when needed for older callers.
 
@@ -392,6 +399,51 @@ last 100 non-merge `origin/main` subjects still pass and that every merge
 subject in the last 3000 commits is exempt or conforming, so a vocabulary
 that stops fitting the repo fails a gate rather than its contributors.
 
+## Landing a pull request
+
+`main` is governed by the **main requires green checks** ruleset, which
+includes a merge queue. The ruleset is the authority for required checks,
+batching, and merge method; read it rather than copying its values into
+prose that drifts:
+
+```bash
+gh api repos/kontourai/station/rules/branches/main
+```
+
+- **Arm auto-merge; do not merge by hand.**
+  `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
+  PR: a green PR that nobody armed sits forever, which is the usual reason a
+  ready PR has not landed.
+- **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
+  the strategy, and `gh pr merge --squash` is refused with `The merge strategy
+  for main is set by the merge queue`. The `pull_request` rule's
+  `allowed_merge_methods` list does not grant permission to pass a flag.
+- **Read the queue, not the exit text.** A refused method flag prints a `!`
+  line that looks like a failure while the PR is queued anyway, and a second
+  attempt then reports `already queued to merge`. `autoMergeRequest` is `null`
+  for an entry already in the queue. The merge queue has no REST endpoint, so
+  confirm once with this GraphQL query, using the
+  [automation token](#github-automation-token), then stop:
+
+  ```bash
+  gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
+    mergeQueue { entries(first:20) { nodes {
+      position state pullRequest { number } } } } } }'
+  ```
+
+  Never poll the queue; a red or conflicted dequeue shows only on the PR
+  itself. A red entry is removed and the entries behind it rebuild.
+- **Branches need not be up to date** (`strict_required_status_checks_policy`
+  is `false`), but two independently green PRs can still break `main` in
+  combination. `.github/workflows/main-health.yml` files a P1 when that
+  happens.
+- **Keep authorship real.** The ruleset sets
+  `require_extra_approval_for_unattributed_changes`, so a commit GitHub cannot
+  attribute needs an extra approval. Credit delegates with a `Co-authored-by:`
+  trailer.
+- **Do not arm another lane's in-flight PR.** Coordinate with the owning
+  session first; green checks do not make its merge yours.
+
 ## GitHub automation token
 
 Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
@@ -433,7 +485,7 @@ Each refusal starts with a stable reason code, such as
 `gh api repos/kontourai/station/commits/<sha>/check-runs` and
 `gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
 REST endpoint, so confirm an armed PR with the single GraphQL query in
-[AGENTS.md](../../AGENTS.md), once, with the app token.
+[Landing a pull request](#landing-a-pull-request), once, with the app token.
 
 ### Setup (owner, once)
 
@@ -506,8 +558,9 @@ the full static/build chain or full Vitest corpus.
 Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
-The required `fast-checks` result combines job outcomes with exact-plan shard
-receipts. A failing shard also annotates each failed test and uploads its
+The `fast-checks` result combines job outcomes with exact-plan shard receipts;
+the required `Source verification policy` context reconciles it (the
+[ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
