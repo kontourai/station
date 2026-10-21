@@ -1,0 +1,7 @@
+{
+  "revision": "b7539d8c48ca49edbe1b10c566616a30ef5789a7",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Round-3 chat polish: the dock title keeps its line (agent and engine wrap off it first); the browser outbox joins the one pending list above the composer, which yields to the draft in a short dock; the context card mounts in the chip's exit commit and fades under the composer; an empty stopped turn shows why when the person did not stop it; check-back timers wait past setTimeout's maximum in steps; check-back Approve answers 503 while delivery is stopped. Re-read Wake an agent later against agent-schedule.ts: a restart still re-arms every waiting check-back and sends those due unless more than a day late; the timer now waits in steps of 2^31-1 ms for a due time beyond that, an internal detail that changes no stated behaviour. The 24-hour horizon and needs_approval flow are unchanged. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/agent-schedule.ts"]}
+  ]
+}
