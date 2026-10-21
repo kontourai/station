@@ -1069,6 +1069,7 @@ describe('ACP Routes', () => {
       mcpServers: [],
       configOptions: [],
       currentModel: null,
+      advertisedModels: [],
       providerRoutingCurrent: true,
       lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
     });
