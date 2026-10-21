@@ -912,7 +912,8 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
       (EXECUTED in review). Below the root, a repository is trusted only as
       a linked worktree the trusted one registered; a root in no repository
       trusts no `.codex`. A start without the stamp (recorded before it, or a
-      direct adapter call) is authorized for its cwd. Codex's own subagents
+      direct adapter call) supplies no trusted root and trusts no project
+      `.codex` configuration. Codex's own subagents
       run in the parent's process and cwd (`thread/started` reports the
       parent cwd in the captured 0.155.1 collab traffic), so the start check
       covers them. Otherwise the start is refused with
