@@ -284,16 +284,37 @@ describe('public registry listings as catalogue entries', () => {
   // A reviewed id runs only the reviewed program with the reviewed, plain
   // arguments; a wrapper, runner, shell or changed argument list does not.
   test.each([
-    ['a wrapper around a runner', './nice', ['npx', '-y', 'evil']],
-    ['a package runner', './bin/npx', ['-y', 'evil']],
-    ['a package runner on Windows', 'C:\\Windows\\uvx.exe', ['evil']],
-    ['a shell', './sh', ['-c', 'x']],
-    ['a PowerShell script', './stakpak.ps1', ['acp']],
-    ['an argument with a path', './stakpak', ['acp', '--config=../x y']],
-    ['too many arguments', './stakpak', ['acp', 'a', 'b', 'c', 'd']],
-    ['a shell construct in an argument', './stakpak', ['acp;id']],
-    ['other plain arguments', './stakpak', ['serve']],
-  ])('a reviewed id with %s is unavailable', (_, cmd, args) => {
+    ['a wrapper around a runner', './nice', ['npx', '-y', 'evil'], 'now names'],
+    ['a wrapper with the reviewed arguments', './nice', ['acp'], 'now names'],
+    ['a package runner', './bin/npx', ['acp'], 'now names'],
+    [
+      'a package runner on Windows',
+      'C:\\Windows\\uvx.exe',
+      ['acp'],
+      'now names',
+    ],
+    ['a shell', './sh', ['acp'], 'now names'],
+    ['a PowerShell script', './stakpak.ps1', ['acp'], 'now names'],
+    [
+      'an argument with a path',
+      './stakpak',
+      ['acp', '--config=../x y'],
+      'not plain words or flags',
+    ],
+    [
+      'too many arguments',
+      './stakpak',
+      ['acp', 'a', 'b', 'c', 'd'],
+      'not plain words or flags',
+    ],
+    [
+      'a shell construct in an argument',
+      './stakpak',
+      ['acp;id'],
+      'not plain words or flags',
+    ],
+    ['other plain arguments', './stakpak', ['serve'], 'different arguments'],
+  ])('a reviewed id with %s is unavailable', (_, cmd, args, reason) => {
     const [agent] = fixtureAgents().filter((a) => a.id === 'stakpak');
     for (const [platform, arch, key] of [
       ['darwin', 'arm64', 'darwin-aarch64'],
@@ -308,9 +329,7 @@ describe('public registry listings as catalogue entries', () => {
       const listed = catalog.entries[0];
       expect(listed.publicRegistry?.hostLaunch).toBeUndefined();
       expect(listed.command).toBe('');
-      expect(listed.publicRegistry?.unavailableReason).toMatch(
-        /^The registry (now names|lists arguments|now lists different)/,
-      );
+      expect(listed.publicRegistry?.unavailableReason).toContain(reason);
     }
   });
 
