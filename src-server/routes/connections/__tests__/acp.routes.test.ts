@@ -373,7 +373,7 @@ describe('ACP Routes', () => {
     ]);
   });
 
-  test('GET /registry?recheck=1 re-captures the login-shell PATH before detecting; a plain read does not', async () => {
+  test('only POST /registry/recheck re-captures the login-shell PATH, before detecting; GET never does', async () => {
     const order: string[] = [];
     providerEntries = [
       {
@@ -382,7 +382,7 @@ describe('ACP Routes', () => {
         provider: {
           listAvailable: () => {
             order.push('detect');
-            return [];
+            return [{ id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' }];
           },
         },
       },
@@ -394,9 +394,80 @@ describe('ACP Routes', () => {
     });
     const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
     await app.request('/registry');
-    expect(order).toEqual(['detect']);
     await app.request('/registry?recheck=1');
-    expect(order).toEqual(['detect', 'recapture', 'detect']);
+    expect(order).toEqual(['detect', 'detect']);
+    const response = await app.request('/registry/recheck', { method: 'POST' });
+    expect(response.status).toBe(200);
+    expect(order).toEqual(['detect', 'detect', 'recapture', 'detect']);
+    expect((await json(response)).data).toMatchObject([{ id: 'kiro' }]);
+  });
+
+  test('POST /registry/:id/install refuses an entry that does not launch on this platform, saving nothing', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              platforms: [other],
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    const app = asOperator(createACPRoutes(ctx as any));
+    const response = await app.request('/registry/elsewhere/install', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(400);
+    expect((await json(response)).error).toBe(
+      `Elsewhere does not run on ${process.platform}, the platform Station runs on.`,
+    );
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
+  test('a plugin entry is attributed to its registered provider, and unsafe names are refused', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:acme-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'acme',
+              name: 'Acme',
+              command: 'acme',
+              sourceName: 'Station',
+            },
+            {
+              id: 'spoof',
+              name: 'Spoof\u202E',
+              command: 'spoof',
+            },
+            {
+              id: 'multi',
+              name: 'Multi',
+              description: 'line one\nline two',
+              command: 'multi',
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: 'acme',
+        source: 'plugin',
+        sourceName: 'acpConnectionRegistry:acme-presets',
+      }),
+    ]);
   });
 
   test('GET /registry marks saved and plugin-provided connections as installed', async () => {

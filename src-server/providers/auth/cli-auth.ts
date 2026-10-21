@@ -191,26 +191,29 @@ let recapturePromise: Promise<void> | null = null;
 // searchable. Bounded by the capture's own timeout, rate-limited, joined while
 // one is in flight, and never throws. A capture that fails or comes back empty
 // keeps the PATH already held rather than dropping its directories.
-export async function recaptureLoginShellPath(
-  now: number = Date.now(),
-): Promise<void> {
-  if (isWindows() || isLoginPathResolveDisabled()) return;
+//
+// `now` is a test seam for the clock the rate limit compares against; it
+// defaults to the time after any startup capture has settled.
+export function recaptureLoginShellPath(now?: number): Promise<void> {
+  if (isWindows() || isLoginPathResolveDisabled()) return Promise.resolve();
+  // Claimed synchronously, before any await, so every caller that arrives
+  // while one is pending (including during the startup capture) joins it.
   if (recapturePromise) return recapturePromise;
-  await ensureLoginPathResolutionStarted();
-  if (now - lastLoginPathCaptureAt < LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS)
-    return;
-  recapturePromise = resolveLoginShellPath()
-    .then((resolved) => {
-      lastLoginPathCaptureAt = now;
-      if (resolved) cachedLoginPathValue = resolved;
-    })
-    .finally(() => {
-      recapturePromise = null;
-    });
+  recapturePromise = (async () => {
+    await ensureLoginPathResolutionStarted();
+    const at = now ?? Date.now();
+    if (at - lastLoginPathCaptureAt < LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS)
+      return;
+    const resolved = await resolveLoginShellPath();
+    lastLoginPathCaptureAt = Math.max(at, Date.now());
+    if (resolved) cachedLoginPathValue = resolved;
+  })().finally(() => {
+    recapturePromise = null;
+  });
   return recapturePromise;
 }
 
-// The combined search-PATH directories:// The combined search-PATH directories: process.env.PATH first (so a
+// The combined search-PATH directories: process.env.PATH first (so a
 // pinned/hardened deployments own PATH always wins -- never displaced),
 // then the resolved login-shell PATH (once available), then the
 // well-known install-dir backstop. Deduped. process.env.PATH and the

@@ -43,6 +43,8 @@ export type HostActionId =
   | 'engine-missing'
   /** An engine's install command, shown where the engine was not found. */
   | 'engine-install-command'
+  /** "Check again" refused because this credential cannot ask the host to re-check. */
+  | 'engine-recheck-not-permitted'
   /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
   /** archive#3843 — the Developer surface's redacted log read. */
@@ -132,6 +134,14 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: 'Install it on this machine:',
     paired: (hostName) =>
       `Install it on ${hostName}, the computer Station runs on. Engines run there, so installing it on this device does not help.`,
+  },
+  'engine-recheck-not-permitted': {
+    // Re-checking runs the host user's login shell, so it needs the operate
+    // scope. The plain list read still ran; only the re-check was refused.
+    reach: 'remote-safe',
+    host: 'This sign-in cannot ask Station to look again. The list shows what Station last found.',
+    paired: (hostName) =>
+      `This device cannot ask ${hostName} to look again. An operator can change this device's permissions.`,
   },
   'connection-sign-in': {
     // The engine's own login runs on the host and writes to the credential

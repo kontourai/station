@@ -5,6 +5,7 @@ import {
   useACPConnectionRegistry,
 } from '../../hooks/useACPConnections';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
+import { hostActionCopy } from '../host-action/host-action-copy';
 import { EngineInstallHint } from './EngineInstallHint';
 import { registryEntryDiscovery } from './registryEntryDiscovery';
 
@@ -31,6 +32,7 @@ function LiveRegistryEntryInstallHint({
 }) {
   const devicePresentation = useDevicePresentation();
   const [rechecking, setRechecking] = useState(false);
+  const [recheckRefused, setRecheckRefused] = useState(false);
   const {
     data: entries,
     refetch,
@@ -54,11 +56,19 @@ function LiveRegistryEntryInstallHint({
         // The re-read updates the host's search PATH; the refetch then
         // carries the fresh detection into the shared catalogue query.
         void recheckACPConnectionRegistry()
+          .then((result) =>
+            setRecheckRefused(result.status === 'not-permitted'),
+          )
           .catch(() => undefined)
           .then(() => refetch())
           .finally(() => setRechecking(false));
       }}
       checking={rechecking || isFetching}
+      checkAgainNotice={
+        recheckRefused
+          ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
+          : undefined
+      }
     />
   );
 }

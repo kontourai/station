@@ -79,10 +79,16 @@ export function listValidatedACPRegistryEntries(
   return admitted;
 }
 
-/** `/opt/homebrew/bin/goose` and `C:\…\goose.exe` both name `goose`. */
-function executableName(command: string): string {
+/**
+ * The program a command names: `/opt/homebrew/bin/goose` is `goose`. On
+ * Windows, where paths use `\`, executables carry `.exe`/`.cmd`/`.bat` and
+ * names are case-insensitive, `C:\tools\Goose.EXE` is `goose` too. POSIX
+ * names stay exact.
+ */
+function executableName(command: string, platform: string): string {
+  if (platform !== 'win32') return command.split('/').pop() ?? command;
   const base = command.split(/[\\/]/).pop() ?? command;
-  return base.replace(/\.(exe|cmd|bat)$/i, '');
+  return base.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
 }
 
 /**
@@ -91,13 +97,16 @@ function executableName(command: string): string {
  * the program (an auto-updater, a keychain prompt), so a custom connection
  * running the same program, by name or by full path, needs them as well.
  */
-export function registryLaunchEnvFor(connection: {
-  command: string;
-}): Record<string, string> | undefined {
-  const name = executableName(connection.command);
+export function registryLaunchEnvFor(
+  connection: { command: string },
+  platform: string = process.platform,
+): Record<string, string> | undefined {
+  const name = executableName(connection.command, platform);
   const match = listValidatedACPRegistryEntries({ detect: false }).find(
     ({ entry, builtin }) =>
-      builtin && entry.launchEnv && executableName(entry.command) === name,
+      builtin &&
+      entry.launchEnv &&
+      executableName(entry.command, platform) === name,
   );
   return match?.entry.launchEnv ? { ...match.entry.launchEnv } : undefined;
 }

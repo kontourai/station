@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -20,19 +20,24 @@ describe.skipIf(process.platform === 'win32')(
     const previousDisable = process.env.STATION_DISABLE_LOGIN_PATH_RESOLVE;
     let shellPathFile: string;
     let installDir: string;
+    let spawnLog: string;
 
     beforeEach(async () => {
       vi.resetModules();
       const dir = makeTempDir('station-recapture-');
       installDir = join(dir, 'vendor', 'bin');
       shellPathFile = join(dir, 'shell-path');
+      spawnLog = join(dir, 'spawns');
+      writeFileSync(spawnLog, '');
       writeFileSync(shellPathFile, '/nonexistent-station-dir');
       const { LOGIN_PATH_START_SENTINEL, LOGIN_PATH_END_SENTINEL } =
         await import('../cli-auth.js');
       const shell = join(dir, 'stub-shell');
       writeFileSync(
         shell,
-        `#!/bin/sh\nprintf '%s%s%s' '${LOGIN_PATH_START_SENTINEL}' "$(cat '${shellPathFile}')" '${LOGIN_PATH_END_SENTINEL}'\n`,
+        // Each run appends a line, so a test can count login-shell spawns;
+        // the short sleep keeps a capture in flight while callers pile up.
+        `#!/bin/sh\necho x >> '${spawnLog}'\nsleep 0.2\nprintf '%s%s%s' '${LOGIN_PATH_START_SENTINEL}' "$(cat '${shellPathFile}')" '${LOGIN_PATH_END_SENTINEL}'\n`,
       );
       chmodSync(shell, 0o755);
       process.env.SHELL = shell;
@@ -79,6 +84,31 @@ describe.skipIf(process.platform === 'win32')(
       // Inside the interval since the startup capture: no new shell runs.
       await cli.recaptureLoginShellPath(Date.now() + 1_000);
       expect(cli.findCliBinary(ENGINE)).toBeNull();
+    });
+
+    const spawns = () =>
+      readFileSync(spawnLog, 'utf8').split('\n').filter(Boolean).length;
+
+    test('concurrent recaptures share one login-shell run', async () => {
+      const cli = await import('../cli-auth.js');
+      await cli.resolveAugmentedPath();
+      expect(spawns()).toBe(1);
+
+      const later = Date.now() + MIN_INTERVAL_MS + 1;
+      await Promise.all(
+        Array.from({ length: 5 }, () => cli.recaptureLoginShellPath(later)),
+      );
+      expect(spawns()).toBe(2);
+    });
+
+    test('recaptures during the startup capture join it rather than spawning', async () => {
+      const cli = await import('../cli-auth.js');
+      const startup = cli.resolveAugmentedPath();
+      await Promise.all(
+        Array.from({ length: 5 }, () => cli.recaptureLoginShellPath()),
+      );
+      await startup;
+      expect(spawns()).toBe(1);
     });
 
     test('a failed recapture keeps the PATH it already had', async () => {

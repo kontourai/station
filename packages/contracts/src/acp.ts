@@ -113,7 +113,6 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'GOOSE_',
   'DROID_',
   'FACTORY_',
-  'AUGMENT_',
 ] as const;
 /** C0/C1 controls (including line breaks) and bidi embedding/override/isolate marks. */
 function hasUnsafeTextChar(value: string): boolean {
@@ -200,18 +199,33 @@ function boundedStringList(
 }
 
 /**
- * Validates the descriptor fields of a registry entry (`install`,
+ * Validates what a registry entry shows and how it launches: its `name`,
+ * `description` and `sourceName` text and the descriptor fields (`install`,
  * `launchEnv`, `platforms`, `auth`, `homepageUrl`). Returns every problem
- * found; an empty list means the descriptor is usable. Fields that are absent
- * are valid.
+ * found; an empty list means the entry is usable. Fields that are absent are
+ * valid.
  */
 export function validateACPEngineDescriptor(
-  entry: Pick<
-    ACPConnectionRegistryEntry,
-    'install' | 'launchEnv' | 'platforms' | 'auth' | 'homepageUrl'
+  entry: Partial<
+    Pick<
+      ACPConnectionRegistryEntry,
+      | 'name'
+      | 'description'
+      | 'sourceName'
+      | 'install'
+      | 'launchEnv'
+      | 'platforms'
+      | 'auth'
+      | 'homepageUrl'
+    >
   >,
 ): string[] {
   const errors: string[] = [];
+  for (const field of ['name', 'description', 'sourceName'] as const) {
+    if (entry[field] !== undefined && !isBoundedText(entry[field])) {
+      errors.push(`${field} is not valid`);
+    }
+  }
   if (entry.platforms !== undefined) {
     if (!Array.isArray(entry.platforms) || entry.platforms.length === 0) {
       errors.push('platforms must be a non-empty list');

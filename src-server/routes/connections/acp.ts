@@ -171,7 +171,11 @@ function getRegistryEntries(
         ? {}
         : { detected: false }),
       source: builtin ? 'core' : 'plugin',
-      sourceName: registryEntry.sourceName ?? providerSource,
+      // A plugin is named by the identity it registered under, never by a
+      // label its own entries choose.
+      sourceName: builtin
+        ? (registryEntry.sourceName ?? providerSource)
+        : providerSource,
       installed: installedSources.has(registryEntry.id),
       installedSource: installedSources.get(registryEntry.id),
       // Always the server's own projection; a provider cannot supply it.
@@ -345,9 +349,18 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
-    // "Check again" after an install: pick up a bin directory the installer
-    // added to the shell rc since Station started (rate-limited, bounded).
-    if (c.req.query('recheck') === '1') await recaptureLoginShellPath();
+    const entries = getRegistryEntries(
+      await installedACPConnections(ctx.configLoader),
+    );
+    return c.json({ success: true, data: entries });
+  });
+
+  // "Check again" after an install: re-read the login-shell PATH so a bin
+  // directory the installer added to the shell rc since Station started is
+  // searched, then list again. A POST at the operate tier because it runs the
+  // host user's shell (rate-limited and bounded); the GET above never does.
+  app.post('/registry/recheck', async (c) => {
+    await recaptureLoginShellPath();
     const entries = getRegistryEntries(
       await installedACPConnections(ctx.configLoader),
     );
@@ -384,6 +397,15 @@ export function createACPRoutes(ctx: RuntimeContext) {
                 error: `Engine registry entry '${id}' not found`,
               },
               404,
+            );
+          }
+          if (!engineSupportsPlatform(entry, process.platform)) {
+            return c.json(
+              {
+                success: false,
+                error: `${entry.name} does not run on ${process.platform}, the platform Station runs on.`,
+              },
+              400,
             );
           }
 

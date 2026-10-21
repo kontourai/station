@@ -144,18 +144,11 @@ export async function fetchACPConnections(): Promise<ACPConnectionInfo[]> {
   return result.data ?? [];
 }
 
-/**
- * `recheck: true` asks the host to re-read its login-shell PATH before
- * detecting, so an engine installed since it started can be found. The host
- * rate-limits that re-read.
- */
-export async function fetchACPConnectionRegistry(
-  options: { recheck?: boolean } = {},
-): Promise<ACPConnectionRegistryEntry[]> {
+export async function fetchACPConnectionRegistry(): Promise<
+  ACPConnectionRegistryEntry[]
+> {
   const apiBase = await _getApiBase();
-  const response = await authenticatedFetch(
-    `${apiBase}/acp/registry${options.recheck ? '?recheck=1' : ''}`,
-  );
+  const response = await authenticatedFetch(`${apiBase}/acp/registry`);
   const result = (await response.json()) as {
     success: boolean;
     data?: ACPConnectionRegistryEntry[];
@@ -259,6 +252,34 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
     throw new Error(result.detail ? `${base} ${result.detail}` : base);
   }
   return true;
+}
+
+export type ACPConnectionRegistryRecheck =
+  | { status: 'rechecked'; entries: ACPConnectionRegistryEntry[] }
+  /** This credential lacks the operate scope the host's re-check requires. */
+  | { status: 'not-permitted' };
+
+/**
+ * Asks the host to re-read its login-shell PATH and detect engines again, so
+ * one installed since it started can be found. The host rate-limits the
+ * re-read and requires the operate scope; a refusal for scope is returned as
+ * `not-permitted`, any other failure throws.
+ */
+export async function recheckACPConnectionRegistry(): Promise<ACPConnectionRegistryRecheck> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(`${apiBase}/acp/registry/recheck`, {
+    method: 'POST',
+  });
+  if (response.status === 403) return { status: 'not-permitted' };
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPConnectionRegistryEntry[];
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to re-check engines'));
+  }
+  return { status: 'rechecked', entries: result.data ?? [] };
 }
 
 export async function installACPConnectionRegistryEntry(

@@ -73,7 +73,7 @@ describe('validateACPEngineDescriptor', () => {
       validateACPEngineDescriptor({
         launchEnv: {
           GOOSE_API_KEY: 'x',
-          AUGMENT_SESSION_AUTH: 'x',
+          DROID_SESSION_AUTH: 'x',
           FACTORY_TOKEN: 'x',
           // KEYRING is not KEY: this one is allowed.
           GOOSE_DISABLE_KEYRING: '1',
@@ -81,7 +81,7 @@ describe('validateACPEngineDescriptor', () => {
       }),
     ).toEqual([
       'launchEnv.GOOSE_API_KEY: credentials never go in launchEnv',
-      'launchEnv.AUGMENT_SESSION_AUTH: credentials never go in launchEnv',
+      'launchEnv.DROID_SESSION_AUTH: credentials never go in launchEnv',
       'launchEnv.FACTORY_TOKEN: credentials never go in launchEnv',
     ]);
   });
@@ -156,7 +156,6 @@ describe('validateACPEngineDescriptor', () => {
           GOOSE_DISABLE_KEYRING: '1',
           DROID_DISABLE_AUTO_UPDATE: 'true',
           FACTORY_DROID_AUTO_UPDATE_ENABLED: 'false',
-          AUGMENT_DISABLE_AUTO_UPDATE: '1',
         },
       }),
     ).toEqual([]);
@@ -178,6 +177,23 @@ describe('validateACPEngineDescriptor', () => {
       'install.win32.note is not valid',
       'auth.signInHint is not valid',
     ]);
+  });
+
+  test('refuses unsafe or empty shown names, descriptions and source names', () => {
+    expect(
+      validateACPEngineDescriptor({
+        name: 'Engine\u202E',
+        description: 'one\ntwo',
+        sourceName: ' ',
+      }),
+    ).toEqual([
+      'name is not valid',
+      'description is not valid',
+      'sourceName is not valid',
+    ]);
+    expect(
+      validateACPEngineDescriptor({ name: 'Engine', description: 'Fine.' }),
+    ).toEqual([]);
   });
 
   test('refuses an unknown platform in platforms', () => {

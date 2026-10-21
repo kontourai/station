@@ -338,10 +338,14 @@ const checkOrder: string[] = [];
 const refetchRegistry = vi.fn(async () => {
   checkOrder.push('refetch');
 });
-const recheckRegistry = vi.fn(async () => {
-  checkOrder.push('recheck');
-  return [];
-});
+const recheckRegistry = vi.fn(
+  async (): Promise<
+    { status: 'rechecked'; entries: [] } | { status: 'not-permitted' }
+  > => {
+    checkOrder.push('recheck');
+    return { status: 'rechecked', entries: [] };
+  },
+);
 vi.mock('../hooks/useACPConnections', () => ({
   recheckACPConnectionRegistry: () => recheckRegistry(),
   useACPConnections: () => ({ data: acpBridgeConnections }),
@@ -794,6 +798,42 @@ describe('AgentConnectionView', () => {
     await waitFor(() => expect(checkOrder).toEqual(['recheck', 'refetch']));
     // Built-in recipes carry no plugin attribution.
     expect(within(goose).queryByText(/Provided by/)).toBeNull();
+  });
+
+  test('a device without the operate scope is told why Check again could not re-check, and the list still refreshes', async () => {
+    devicePresentation = { deviceClass: 'paired', hostName: 'studio-mac' };
+    acpRegistryEntries = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        command: 'goose',
+        installed: false,
+        detected: false,
+        hostInstall: { command: 'brew install block-goose-cli' },
+      },
+    ];
+    checkOrder.length = 0;
+    recheckRegistry.mockImplementationOnce(async () => {
+      checkOrder.push('recheck');
+      return { status: 'not-permitted' };
+    });
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+    const goose = screen.getByRole('group', { name: 'How to install Goose' });
+    fireEvent.click(
+      within(goose).getByRole('button', { name: 'Check again for Goose' }),
+    );
+
+    await waitFor(() =>
+      expect(
+        within(goose).getByText(
+          hostActionCopy('engine-recheck-not-permitted', devicePresentation),
+        ),
+      ).toBeTruthy(),
+    );
+    expect(checkOrder).toEqual(['recheck', 'refetch']);
   });
 
   test("a plugin's install command says which plugin provides it", async () => {

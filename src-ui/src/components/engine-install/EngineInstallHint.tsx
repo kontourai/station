@@ -22,7 +22,10 @@ export function EngineInstallHint({
   onCheckAgain,
   checking = false,
   provenance,
+  checkAgainNotice,
 }: {
+  /** Why the last "Check again" could not re-check, when it could not. */
+  checkAgainNotice?: string;
   name: string;
   /** The plugin that supplied this recipe; absent for Station's own catalogue. */
   provenance?: string;
@@ -101,6 +104,11 @@ export function EngineInstallHint({
           </Button>
         ) : null}
       </div>
+      {checkAgainNotice ? (
+        <p className="engine-install-hint__note" role="status">
+          {checkAgainNotice}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

@@ -721,7 +721,9 @@ An engine Station did not find reads **Not installed**. Its card shows the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
 after you install it, re-reading your login shell's `PATH` so a directory the
-installer added there is searched too. Station shows the command and never runs it. On a paired
+installer added there is searched too. A paired device needs permission to
+operate Station for that re-read; without it, the card says so and shows what
+Station last found. Station shows the command and never runs it. On a paired
 device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
