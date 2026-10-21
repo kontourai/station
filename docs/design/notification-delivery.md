@@ -47,7 +47,10 @@ conversation. An accepted approval action in notification history or Attention
 also opens that conversation; a runtime Activity link is converted to the chat
 dock for this decision action. Ordinary Open session links keep their original
 destination. These client actions do not add approval buttons to native push or
-change background delivery guarantees.
+change background delivery guarantees. A request answered with a form (a
+harness question) carries no decision actions in notification history or
+Attention: an Allow or Deny there names no answer and no exact request event,
+so the command route would refuse it. Its Open session link leads to the form.
 
 Failed decisions remain visible with a short explanation and disclosed details.
 An uncertain answer must be inspected before sending another decision. See
