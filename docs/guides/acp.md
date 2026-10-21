@@ -492,6 +492,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
 | `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
+| `publicRegistry` | | Set by Station on a connection added from the public agent registry: `{ id, version }` of the listing it was added from. Used only to report a later listing change. |
 
 ### Catalogue descriptors
 
@@ -538,6 +539,61 @@ is running (including during the startup capture), and a failed re-read keeps
 the `PATH` Station already had. **Check again** uses it; a device without that
 scope is told so and still gets the plain list.
 
+### Public agent registry
+
+When this Station reads the public agent registry
+([public-agent-registry.ts](../../src-server/services/acp/public-agent-registry.ts)),
+`GET /acp/registry` also lists its listings with `source: 'registry'`, mapped
+by
+[public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts).
+The registry is a catalogue source of the routes, not an
+`acpConnectionRegistry` provider: a provider is either a built-in, whose
+`launchEnv` is trusted, or a plugin, whose clashing ids are refused, and a
+listing is neither.
+
+- The index at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`
+  is fetched with no credentials and a 10-second timeout. An index over 1 MiB
+  (counted as it arrives), listing more than 500 agents, not JSON, or not
+  format version 1 is refused whole; the last good copy, saved in
+  `<station-home>/cache/public-agent-registry/registry.json`, stays in use. A
+  listing with a malformed id, an over-long or control-character field, a
+  non-https URL or a malformed distribution is refused with every reason.
+  Unknown fields and unknown platform keys are ignored.
+- A listing whose id is a built-in's, or one of `antigravity-acp`,
+  `github-copilot-cli` and `pi-acp`, adds a `publicRegistry` object (id,
+  version, publishers, licence, links, distributions) to the built-in entry and
+  is not listed again. Nothing else on the built-in changes. `claude-acp` and
+  `codex-acp` are listed unavailable, naming the native engine. A listing
+  whose name reads as a built-in's, or whose id a plugin entry holds, is
+  refused. A plugin entry's own `publicRegistry` is dropped.
+- A listing is connectable only through a `binary` build for the host's
+  `os-arch` key (`darwin-aarch64`, `linux-x86_64`, `windows-x86_64`, …):
+  `command` is the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
+  is `cursor-agent`), looked up on `PATH`, and `args` are the build's. `npx`
+  and `uvx` listings are never run. Any other listing has an empty `command`,
+  `detected: false` and `publicRegistry.unavailableReason`. A build's `env` is
+  returned as `publicRegistry.recommendedEnv` and never applied.
+- `POST /acp/registry/:id/install` for a listing requires the `coding:exec`
+  grant on a paired device (`403 command-not-granted`) and a JSON body
+  `{ "confirmCommand": { "command", "args" } }` equal to the listing's
+  `hostLaunch`; otherwise it answers `409` with
+  `code: 'registry-listing-not-confirmed'` and saves nothing. An unavailable
+  listing answers `400` with its reason. The saved connection records
+  `publicRegistry: { id, version }`.
+- For an added connection with that record, a listing whose version, or whose
+  command or arguments, differ from the saved ones gets `publicRegistry.update`.
+  The saved connection is not changed.
+- Reading `GET /acp/registry` or `GET /acp/registry/source` starts a
+  background download when the copy in use is more than 24 hours old, at most
+  once every 15 minutes after a failed attempt. `GET /acp/registry/source`
+  returns `ACPPublicRegistrySourceStatus`: `origin` (`network`, `cache` or
+  `none`), `fetchedAt`, `checkedAt`, `lastError`, `refreshing` and the refused
+  listings with their reasons. `POST /acp/registry/source/refresh` downloads
+  now (`orchestration:operate`), joining one already running and reusing a
+  result less than 30 seconds old. `STATION_PUBLIC_AGENT_REGISTRY=off`, or the
+  deterministic first-run mode, turns the source off; the status then reads
+  `enabled: false`.
+
 ### Runtime API
 
 Connections are managed at runtime via the REST API — unchanged by this cutover, since it only manages connection lifecycle, not chat turns:
@@ -551,6 +607,9 @@ POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 GET    /acp/registry                   List catalogue engines, with host detection and install recipe
 POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
+POST   /acp/registry/:id/install       Add a catalogue entry as a connection; a public listing needs its confirmed command
+GET    /acp/registry/source            Where the public agent registry listing comes from, and how fresh it is
+POST   /acp/registry/source/refresh    Download the public agent registry index now (orchestration:operate)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a

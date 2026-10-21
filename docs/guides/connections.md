@@ -770,6 +770,57 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
 
+### Engines from the public registry
+
+Below Station's own engines, **Add engine** lists the engines in the
+[public agent registry](https://github.com/agentclientprotocol/registry) under
+**From the public registry**. Their publishers list them there, not Station.
+Each card shows the publisher, the version the registry lists, and whether it
+can connect on this computer:
+
+- **Found** or **Not installed**: the registry has a build for this computer's
+  operating system and processor. Connecting runs the program you installed
+  yourself, found on `PATH` by the name the registry gives it (`stakpak`), with
+  the registry's arguments. A **Not installed** card links to the publisher's
+  site. Station does not download the program; the registry's download links
+  are not used.
+- **Unavailable**: the card says why and stays in the list. The registry may
+  have no build for this computer, or the engine may run only from a package
+  (`npx` or `uvx`) that Station would have to download and run, which it does
+  not do. You can install such an engine yourself and add it as a custom
+  engine. Listings for engines Station connects directly, such as Claude Code
+  and Codex, point to those engines instead.
+
+**About this listing** on each card shows what the registry lists: its id,
+how it is distributed, its builds and packages, the command connecting would
+run, and any settings it recommends. Station does not apply those settings:
+the registry is not Station's own catalogue, and an environment variable can
+change what a program runs.
+
+**Review** opens the confirm step, which shows the exact command line,
+publisher and version before anything is saved. Adding a registry engine is
+choosing a command, so a paired device needs the operator's `coding:exec`
+grant. If the registry changed the command between the confirm step and the
+add, Station saves nothing and asks you to review it again. An added registry
+engine goes through the same check and Agent setup as any engine; being listed
+does not mean it is signed in, or that Station's tools, approvals, model
+choice or remote use work with it.
+
+An engine that is also one of Station's own, such as Goose or Cursor, is listed
+once, as Station's card. The registry adds only its version and publisher to
+that card, never its command, arguments, settings or install instructions.
+
+When the registry later lists a new version or command for an engine you
+added from it, the engine's page says **Update listed**. Station does not
+change the saved connection; update the program yourself.
+
+Station downloads the registry index when the catalogue is read and its copy
+is more than a day old, or when you choose **Check registry**, and keeps the
+last good copy under its home folder. Without a network it lists that copy and
+says **Offline copy**. An index that is too large or malformed is refused whole
+and the saved copy stays; a single malformed listing is left out. Set
+`STATION_PUBLIC_AGENT_REGISTRY=off` to stop Station reading the registry.
+
 ---
 
 ## Route an engine through a model proxy
