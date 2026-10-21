@@ -1,0 +1,7 @@
+{
+  "revision": "d7e6e1624a0b3a44e4dbac78a7266a6cf61b1c84",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed registered group dispatch, target and credential reuse, explicit operation/revision parsing, follow-mode local SIGINT cleanup and terminal-safe output at 137e9cd6857; 34 focused group/help tests and CLI types pass. New command transport does not establish server support, preparation issuance or paid execution. Markdown links pass; native and live-provider journeys remain unverified.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/core.ts","packages/cli/src/help.ts","packages/contracts/src/ensemble.ts","src-server/services/execution-target/execution-target-resolver.ts"]}
+  ]
+}
