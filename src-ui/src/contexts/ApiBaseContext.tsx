@@ -773,6 +773,8 @@ export function useHostRequestAuthorityScope() {
        * (#2598). Absent means required.
        */
       requiresEnrolledCredential?: boolean;
+      /** Non-secret reload partition; restored drafts still require live admission. */
+      draftRecoveryKey?: string;
     } = {
       requiresEnrolledCredential:
         profile.isTauri || Boolean(evidence.brokerRoute),
@@ -790,6 +792,14 @@ export function useHostRequestAuthorityScope() {
             ? { authorityQualifier: relayAccountScopeKey }
             : {}),
       }),
+      draftRecoveryKey: JSON.stringify([
+        evidence.connectionId,
+        evidence.origin,
+        evidence.authorityGeneration,
+        evidence.credentialState,
+        nativeBinding?.bindingId ?? null,
+        relayAccountScopeKey ?? nativeRelayAccountAuthority ?? null,
+      ]),
       isCurrent: () =>
         isCredentialEvidenceCurrent(evidence) &&
         (!evidence.brokerRoute ||

@@ -72,7 +72,11 @@
 
     "src-ui/src/__tests__/ProjectTaskRoomConversation.test.tsx",
 
-    "src-ui/src/workspace-panes/BasisWorkspacePane.tsx"
+    "src-ui/src/workspace-panes/BasisWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/task-room-draft-recovery.ts",
+
+    "tests/task-room-reload-recovery.spec.ts"
   ],
 
   "checks": [

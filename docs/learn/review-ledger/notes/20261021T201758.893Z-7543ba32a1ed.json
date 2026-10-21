@@ -1,0 +1,9 @@
+{
+  "revision": "7246dc8f127418fd1e49b4ea9e72258dfcc82e59",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Bounded merged-main fixture delta: TaskWorkspaceView consumer fixture now declares the actual host draftRecoveryKey so the mounted composer reaches its same existing request invocation assertions. Reviewed current composition routing and Task/Session/authority separation; no production Task view, tab/Basis/lifecycle behavior changed. All63 TaskWorkspaceView cases passed after the fixture correction; other10focused owner files187combined results retain their original individual outcomes. No native/public/provider or master acceptance claim.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"After normal merge of actual main1dd83e0f3051, retained its exact reserved-turn revocation explanation and this branch reload-recovery contract. Mounted TaskWorkspaceView fixture supplies the real recovery authority field without weakening Project slug, Task creation time or single-dispatch assertions;63cases passed. SDK/UI/E2Etypechecks and fixturepolicy passed. Integrated real-browser verification is pending; earlier controlled/browser proof remains revision-bound.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}

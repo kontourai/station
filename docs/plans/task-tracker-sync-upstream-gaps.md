@@ -8,6 +8,26 @@ requires Flow Agents to own sync semantics. [Station #3703](https://github.com/k
 asked for both items below and to stop at any missing upstream contract rather
 than reimplement it; Station behavior remains unchanged.
 
+## Published-contract recheck
+
+On 2026-10-21, the Task follow-through lane inspected the npm tarball for
+`@kontourai/flow-agents@9.2.0` without installing it or changing Station's
+`6.5.1` pin. Its root exports still provide mutation rendering and local-file
+mutation adapters, but no settings-aware exact-item observation/target-resolution
+operation. The shipped ChangeProvider declaration adds `adoptExisting` for an
+open change bound to a publish request's exact refs and head. That does not
+supply a general kept-change merged/closed observation, and the package root
+does not export that internal provider interface as a consumer API.
+
+The upstream observation requests
+[#1508](https://github.com/kontourai/flow-agents/issues/1508) and
+[#1509](https://github.com/kontourai/flow-agents/issues/1509), and label status
+mismatch [#1507](https://github.com/kontourai/flow-agents/issues/1507), were still
+open at this dated check. The two implementation blockers
+below remain. No dependency upgrade, tracker write, merge operation or live
+tracker qualification was performed. An eventual published contract must be
+inspected again before the Station integration can proceed.
+
 ## Verified starting points
 
 - Station delegates board reads to the published settings and pull-work CLIs in

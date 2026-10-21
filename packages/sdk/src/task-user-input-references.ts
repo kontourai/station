@@ -59,10 +59,11 @@ function invalidateTaskScope(
   client: ReturnType<typeof useQueryClient>,
   taskId: string,
 ) {
+  client.invalidateQueries({ queryKey: ['tasks'] });
   for (const queryKey of [
-    taskQueries.list().queryKey,
     taskQueries.task(taskId).queryKey,
     taskQueries.graph(taskId).queryKey,
+    taskQueries.claim(taskId).queryKey,
     taskQueries.turnReferences(taskId).queryKey,
     taskQueries.userInputReferences(taskId).queryKey,
   ])

@@ -2,20 +2,26 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
   useCreateTaskMutation,
+  useCreateTaskReferenceMutation,
   useDispatchTaskMutation,
   useUpdateTaskStatusMutation,
 } from '../query-domains/taskGraph';
 import { taskQueries } from '../queryFactories';
+import { useAttachTaskUserInputReferenceMutation } from '../task-user-input-references';
 
 vi.mock('../api', () => ({ _getApiBase: async () => 'http://station.test' }));
-vi.mock('../client/http', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../client/http')>()),
-  authenticatedFetch: async () =>
-    Response.json({ success: true, data: { id: 'task-new' } }),
-}));
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({ success: true, data: { id: 'task-new' } }),
+    ),
+  );
+});
+afterEach(() => vi.unstubAllGlobals());
 
 test.each([
   [
@@ -45,8 +51,34 @@ test.each([
       };
     },
   ],
+  [
+    'reference',
+    () => {
+      const mutation = useCreateTaskReferenceMutation();
+      return async () => {
+        await mutation.mutateAsync({
+          taskId: 'task-new',
+          kind: 'artifact',
+          targetId: 'artifact://plan',
+        });
+      };
+    },
+  ],
+  [
+    'user input reference',
+    () => {
+      const mutation = useAttachTaskUserInputReferenceMutation();
+      return async () => {
+        await mutation.mutateAsync({
+          taskId: 'task-new',
+          sessionId: 'session',
+          eventId: 'input',
+        });
+      };
+    },
+  ],
 ] as const)(
-  '%s invalidates every Task list without invalidating other domains',
+  '%s refreshes affected Task caches without invalidating unrelated data',
   async (_name, useMutate) => {
     const client = new QueryClient();
     const listKeys = [
@@ -58,11 +90,29 @@ test.each([
         authorityKey: 'local',
       }).queryKey,
     ];
+    const taskKeys = [
+      taskQueries.task('task-new').queryKey,
+      taskQueries.graph('task-new').queryKey,
+      taskQueries.claim('task-new').queryKey,
+    ];
+    const referenceKeys = [
+      taskQueries.turnReferences('task-new').queryKey,
+      taskQueries.userInputReferences('task-new').queryKey,
+    ];
     const otherKeys = [
       ['projects', 'alpha'],
-      taskQueries.graph('task-new').queryKey,
+      ['sessions'],
+      taskQueries.task('unrelated-task').queryKey,
+      taskQueries.graph('unrelated-task').queryKey,
+      taskQueries.claim('unrelated-task').queryKey,
+      taskQueries.turnReferences('unrelated-task').queryKey,
     ];
-    for (const queryKey of [...listKeys, ...otherKeys]) {
+    for (const queryKey of [
+      ...listKeys,
+      ...taskKeys,
+      ...referenceKeys,
+      ...otherKeys,
+    ]) {
       client.setQueryData(queryKey, []);
     }
     const view = renderHook(useMutate, {
@@ -79,6 +129,18 @@ test.each([
           client.getQueryState(queryKey)?.isInvalidated,
           JSON.stringify(queryKey),
         ).toBe(true);
+      }
+      for (const queryKey of taskKeys) {
+        expect(
+          client.getQueryState(queryKey)?.isInvalidated,
+          JSON.stringify(queryKey),
+        ).toBe(_name !== 'create');
+      }
+      for (const queryKey of referenceKeys) {
+        expect(
+          client.getQueryState(queryKey)?.isInvalidated,
+          JSON.stringify(queryKey),
+        ).toBe(_name === 'reference' || _name === 'user input reference');
       }
       for (const queryKey of otherKeys) {
         expect(

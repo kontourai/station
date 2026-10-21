@@ -1,0 +1,7 @@
+{
+  "revision": "77b123c4cd100f79305b3332d5331aed12fd09a4",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Bounded SDK Task mutation documentation delta: inspected current public-contract routing and separation from hosted target architecture. New SDK cache refresh behavior does not alter this guide authentication, deployment or tenancy claims; no prose change needed and no new hosted/provider qualification claimed.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/sdk.md","docs/reference/api.md"]}
+  ]
+}

@@ -112,7 +112,10 @@ vi.mock('../platform/useBundledServerStatus', () => ({
 
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { answerBasisQueries } from '@kontourai/station-sdk/answer-basis';
-import { ApiBaseProvider } from '../contexts/ApiBaseContext';
+import {
+  ApiBaseProvider,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useServerEvents } from '../hooks/useServerEvents';
 
 function provider(client: QueryClient) {
@@ -130,6 +133,34 @@ describe('useServerEvents authority stability through the real host capture hook
     host.authorityGeneration = 1;
     host.bindingId = 'binding-a';
     streams.length = 0;
+  });
+
+  test('draft recovery survives a page boot but refuses changed authorization or native binding', () => {
+    const client = new QueryClient();
+    const first = renderHook(() => useHostRequestAuthorityScope(), {
+      wrapper: provider(client),
+    });
+    const saved = first.result.current;
+    expect(saved?.draftRecoveryKey).toBeTruthy();
+    first.unmount();
+    host.activationEpoch = 'a-new-page-boot';
+    const next = renderHook(() => useHostRequestAuthorityScope(), {
+      wrapper: provider(client),
+    });
+    expect(next.result.current?.authorityKey).not.toBe(saved?.authorityKey);
+    expect(next.result.current?.draftRecoveryKey).toBe(saved?.draftRecoveryKey);
+    expect(saved?.isCurrent()).toBe(false);
+    host.authorityGeneration += 1;
+    next.rerender();
+    expect(next.result.current?.draftRecoveryKey).not.toBe(
+      saved?.draftRecoveryKey,
+    );
+    const authorized = next.result.current?.draftRecoveryKey;
+    host.bindingId = 'replacement-binding';
+    next.rerender();
+    expect(next.result.current?.draftRecoveryKey).not.toBe(authorized);
+    next.unmount();
+    client.clear();
   });
 
   test('does not reconnect for equivalent fresh captures, but reconnects once per authority epoch or native binding change', async () => {
