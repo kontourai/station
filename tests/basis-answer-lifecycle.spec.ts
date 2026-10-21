@@ -263,7 +263,7 @@ test('inspect before Keep, retain the exact answer, restart, and revoke its asse
     await expectNoBlockingAccessibilityViolations(
       page,
       'basis-answer-lifecycle',
-      '.station-basis-pane:visible',
+      '.station-basis-pane',
     );
     const removed = await apiJson<{ success: boolean }>(page, assessmentPath, {
       method: 'DELETE',
