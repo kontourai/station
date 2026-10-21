@@ -361,7 +361,7 @@ describe('ACPAddConnectionModal', () => {
       const onRefreshConnections = vi.fn();
       const base = {
         registryEntries: [kiro],
-        connections: [],
+        connections: [] as ReturnType<typeof connection>[],
         onAdd: vi.fn(),
         onInstallRegistryEntry: vi.fn().mockResolvedValue(probingResponse),
         onRefreshConnections,
