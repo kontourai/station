@@ -105,9 +105,27 @@ These details were settled during implementation:
   everything after the edit. That rewrote other people's text and moved any
   concurrent note anchored there, about half the time for any edit in the
   middle of the document. The room runtime now gives every edit it plans a
-  low, strictly decreasing id, for people's edits and notes alike. New edits
+  short (20-character), low, strictly decreasing id, for people's edits and notes alike. New edits
   therefore insert before the existing text. The planner's suffix-reinsert
   branch remains as a fallback.
+- **Capacity (an open defect).** The room stores the whole converged state
+  of a document under a 512 KiB bound. That state is every character ever
+  inserted, deleted ones included, each with its own id and its
+  predecessor's: about 111 bytes per character with the ids above, and more
+  with the older UUID ids. A Task document therefore holds only about 4,000
+  to 4,700 characters ever written, not just the ones visible. Each
+  in-progress replacement adds the old line's characters to that total. A
+  note that would cross the worker's bound is refused as `document-full`,
+  and nothing is written. Before that, a commit can reach about 478 KB of
+  snapshot JSON, which the revision-evidence module refuses as
+  `snapshot_invalid`. That revision publication can then never drain, and
+  every later write to the room is rejected, a person's included. Task
+  memory that only grows will hit this, so the fix belongs to the room's
+  storage: a run-length snapshot encoding (one entry per inserted run, not
+  per character), or tombstone compaction, with one aligned bound for the
+  worker and the evidence module. Raising the bound alone needs a migration
+  (migration 008 fixes `snapshot_bytes <= 524288`) and leaves the per-character
+  cost.
 
 ## Session brief
 

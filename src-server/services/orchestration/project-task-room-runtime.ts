@@ -3,7 +3,7 @@
  * this module derives the Project scope and every opaque room grant from the
  * authenticated request on each operation.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import {
   LIVE_ACTIVITY_MAX_PARTICIPANTS,
@@ -641,7 +641,9 @@ export class ProjectTaskRoomRuntime {
             kind: 'refused',
             reason: result.reason ?? 'working-operation-rejected',
           }
-        : { kind: 'unavailable' };
+        : result.reason === 'working-state-capacity'
+          ? { kind: 'refused', reason: 'working-state-capacity' }
+          : { kind: 'unavailable' };
     if (!result.revision || result.text === undefined)
       return { kind: 'unavailable' };
     return {
@@ -875,6 +877,11 @@ export class ProjectTaskRoomRuntime {
         beforeCommit: current,
       },
     });
+    if (
+      settled.kind === 'refused' &&
+      settled.reason === 'working-state-capacity'
+    )
+      return { kind: 'document-full' };
     if (settled.kind !== 'settled') return settled;
     await this.#announceAgentEdit(
       association.task.id,
@@ -3844,6 +3851,8 @@ export type TaskNoteOutcome =
     }
   /** The Session has no Task binding, or is no longer this Task's Session. */
   | { readonly kind: 'no-task' | 'not-found' }
+  /** The Task document's stored state is at its size bound; nothing written. */
+  | { readonly kind: 'document-full' }
   | { readonly kind: 'refused'; readonly refusal: TaskNoteTextRefusal }
   | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'unavailable'; readonly reason?: string };
@@ -3868,7 +3877,10 @@ function roomEditIntentId(): string {
     lastRoomEditOrdinal - 1,
   );
   lastRoomEditOrdinal = ordinal;
-  return `!room-edit:${String(ordinal).padStart(16, '0')}:${randomUUID()}`;
+  // Short on purpose: every atom stores its own id and its predecessor's,
+  // so the id length is most of the stored state's bytes per character.
+  // Fixed-width base 36 keeps lexicographic order equal to numeric order.
+  return `!${ordinal.toString(36).padStart(11, '0')}${randomBytes(4).toString('hex')}`;
 }
 
 function deletedAtomCount(operations: readonly TextDocumentOperation[]) {

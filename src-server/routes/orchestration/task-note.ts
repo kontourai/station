@@ -143,6 +143,16 @@ export function createTaskNoteRoutes(deps: TaskNoteRoutesDeps) {
           200,
           NO_STORE,
         );
+      case 'document-full':
+        return c.json(
+          {
+            success: false,
+            error:
+              'The Task document is at its size limit, so nothing was recorded. Ask a person to trim the document; retrying will not help.',
+          },
+          409,
+          NO_STORE,
+        );
       case 'no-task':
       case 'not-found':
         return c.json(

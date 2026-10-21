@@ -97,7 +97,11 @@ export interface WorkingSettlement {
     | 'unavailable';
   readonly revision?: string;
   readonly text?: string;
-  readonly reason?: 'revision-publication-pending';
+  /**
+   * `working-state-capacity`: the converged snapshot would exceed the stored
+   * snapshot bound, so the write was not committed (with `unavailable`).
+   */
+  readonly reason?: 'revision-publication-pending' | 'working-state-capacity';
 }
 
 export interface RevisionPublication {

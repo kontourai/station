@@ -118,7 +118,9 @@ async function setup(
       },
     ],
   });
-  closers.push(() => store.close());
+  closers.push(() => {
+    store.close();
+  });
   closers.push(async () => {
     await runtime.close();
   });
@@ -523,5 +525,61 @@ describe('task_note through the Task room', () => {
         0,
       );
     expect(deleted).toBe(8);
+  });
+
+  test("at the room's stored-state bound a note is refused as document-full and nothing is written", async () => {
+    // The worker stores the whole converged state (each atom with its id and
+    // its predecessor's, tombstones included) under a 512 KiB bound: about
+    // 111 bytes per character with this runtime's identities. A 3500-
+    // character brief sits under it (and under the revision-evidence bound,
+    // see the next test); a maximum-length note would cross it in one step.
+    const room = await setup();
+    await room.runtime.discover({
+      taskId: room.task.id,
+      request: room.request,
+    });
+    await room.personEdit(taskDocumentSeedText('b'.repeat(3500)));
+    await room.bind(LEAD);
+    const before = await room.text();
+    expect(await room.note(LEAD, 'done', 'n'.repeat(2000))).toEqual({
+      kind: 'document-full',
+    });
+    expect(await room.text()).toBe(before);
+    // Deterministic: the same note is refused again and writes nothing.
+    expect(await room.note(LEAD, 'done', 'n'.repeat(2000))).toEqual({
+      kind: 'document-full',
+    });
+    expect(await room.text()).toBe(before);
+    // The room is not wedged: a note that fits is still recorded.
+    expect(await room.note(LEAD, 'done', 'Fits.')).toMatchObject({
+      kind: 'recorded',
+    });
+  });
+
+  // KNOWN DEFECT (reported on #4003, not fixed in this lane): the working
+  // state admits a commit whose revision evidence the evidence module then
+  // refuses as `snapshot_invalid` (observed at about 478 KB of snapshot JSON,
+  // below both 512 KiB bounds). That publication can never drain, so every
+  // later write to the room, a person's included, is rejected as
+  // `revision-publication-pending`. `test.fails` keeps the intended behavior
+  // executable; it starts failing (and should become `test`) once fixed.
+  test.fails("a room that notes have filled still accepts a person's edit", async () => {
+    const room = await setup();
+    await room.runtime.discover({
+      taskId: room.task.id,
+      request: room.request,
+    });
+    await room.personEdit(taskDocumentSeedText('Brief.'));
+    await room.bind(LEAD);
+    let outcome: Awaited<ReturnType<typeof room.note>> | undefined;
+    for (let index = 0; index < 400; index += 1) {
+      outcome = await room.note(LEAD, 'done', `${index} ${'n'.repeat(200)}`);
+      if (outcome.kind !== 'recorded') break;
+    }
+    expect(outcome?.kind).not.toBe('recorded');
+    const text = await room.text();
+    // A person shortens the brief: a pure deletion, so it shrinks nothing
+    // stored but must still be admitted.
+    await room.personEdit(text.replace('Brief.', 'Brief'));
   });
 });

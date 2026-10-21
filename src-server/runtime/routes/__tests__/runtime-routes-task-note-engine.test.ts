@@ -480,4 +480,24 @@ describe('an engine records Task memory with task_note', () => {
     expect(text).toContain(agent.body.entry);
     expect(text.endsWith(`## In progress\n\n## Open questions\n`)).toBe(true);
   });
+
+  test('a note that would push the Task document past its stored-state bound is refused as full, not retried', async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask();
+    // A person's 3500-character brief fits; a maximum-length note on top of
+    // it would cross the room's 512 KiB stored-state bound.
+    const submit = await e.personPlan(taskId, 'b'.repeat(3500));
+    expect(await submit()).toBe('committed');
+    const note = await e.connect(sessionId);
+    const refused = await note({ section: 'done', text: 'n'.repeat(2000) });
+    expect(refused).toEqual({
+      isError: true,
+      body: {
+        success: false,
+        error:
+          'The Task document is at its size limit, so nothing was recorded. Ask a person to trim the document; retrying will not help.',
+      },
+    });
+    expect(await e.documentText(taskId)).toBe('b'.repeat(3500));
+  });
 });

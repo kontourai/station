@@ -674,9 +674,18 @@ async function handle(message: any) {
         const snapshot = state.snapshot();
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
+        // The whole converged state (every atom, tombstones included) must fit
+        // one stored snapshot. Name that refusal: it is deterministic, and no
+        // retry of the same write can succeed.
+        if (snapshotBytes > maxWorkingSnapshotBytes) {
+          db.exec('ROLLBACK');
+          return send(id, {
+            kind: 'unavailable',
+            reason: 'working-state-capacity',
+          });
+        }
         if (
           snapshotBytes < 1 ||
-          snapshotBytes > maxWorkingSnapshotBytes ||
           !boundedText(value.intentId) ||
           !boundedText(value.actorId) ||
           (value.actorLabel !== undefined && !boundedText(value.actorLabel))
