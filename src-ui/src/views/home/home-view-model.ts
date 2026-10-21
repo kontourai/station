@@ -698,6 +698,8 @@ function mergeHomeWorkItems(
         chat?.modelLabel ??
         display.modelLabel,
       projectSlug: projectSource?.projectSlug,
+      cwdLabel:
+        orchestration?.cwdLabel ?? identity?.cwdLabel ?? display.cwdLabel,
       projectLabel:
         projectSource?.projectLabel ??
         orchestration?.projectLabel ??

@@ -51,6 +51,16 @@ The `/child-work` contract's optional `latestTool` carries only a reported child
 tool name, independently of its progress summary. Reducers retain it across
 updates and settlement; no tool arguments or inferred activity are added.
 
+Child-work result text may carry `source`: `provider-summary`, `child-message`,
+or `provider-error`. This identifies the observed report, not verification of
+a returned artifact or successful task acceptance. Older reports omit it;
+readers must preserve that uncertainty. Claude task notifications and Muse
+workflow summaries are provider summaries; Codex child-turn messages are child
+messages, including its last-message fallback. Completion status remains an
+independent provider observation. Child transcript access is read-only and
+uses the persisted, authorized child identity; a transcript handle is not a
+produced artifact or permission to read an arbitrary path.
+
 ## Subpaths without a reference section
 
 The [contracts reference](../../docs/reference/contracts.md) documents most
@@ -149,14 +159,3 @@ names what the module owns. Read the module before depending on it.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
-
-
-Child-work result text may carry `source`: `provider-summary`, `child-message`,
-or `provider-error`. This identifies the observed report, not verification of
-a returned artifact or successful task acceptance. Older reports omit it;
-readers must preserve that uncertainty. Claude task notifications and Muse
-workflow summaries are provider summaries; Codex child-turn messages are child
-messages, including its last-message fallback. Completion status remains an
-independent provider observation. Child transcript access is read-only and
-uses the persisted, authorized child identity; a transcript handle is not a
-produced artifact or permission to read an arbitrary path.

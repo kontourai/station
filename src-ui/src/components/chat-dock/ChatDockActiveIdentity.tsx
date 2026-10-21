@@ -41,6 +41,15 @@ export function ChatDockActiveIdentity({
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
+  const initiator = inputOrigin?.initiator;
+  const originSurface = initiator?.reportedSurface;
+  const originText =
+    originSurface && originSurface !== 'unknown'
+      ? `Delegation · ${originSurface === 'cli' || originSurface === 'mcp' ? originSurface.toUpperCase() : originSurface} (reported)`
+      : 'Driven from delegation';
+  const originTitle = inputOrigin
+    ? `${inputOrigin.title ? `Driven from delegated task: ${inputOrigin.title}` : `Driven from delegated task ${inputOrigin.taskId}`}${initiator ? ` · ${initiator.actor === 'unknown' ? 'Caller not recorded' : `Authenticated caller: ${initiator.actor}`} · Client surface is self-reported` : ''}`
+    : undefined;
 
   const engine = agent
     ? agentEngineDescriptor({
@@ -139,13 +148,9 @@ export function ChatDockActiveIdentity({
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"
-            title={
-              inputOrigin.title
-                ? `Driven from delegated task: ${inputOrigin.title}`
-                : `Driven from delegated task ${inputOrigin.taskId}`
-            }
+            title={originTitle}
           >
-            Driven from delegation
+            {originText}
           </span>
         )}
       </div>

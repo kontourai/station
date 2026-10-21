@@ -1,7 +1,12 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
-import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
+import type {
+  ClientOrigin,
+  ClientOriginActor,
+  ClientOriginSender,
+  ClientOriginSurface,
+} from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type { InputRequestContent } from './input-request.js';
@@ -714,6 +719,11 @@ export type OrchestrationInputOrigin = {
   kind: 'delegation';
   taskId: string;
   title?: string;
+  /** Initial turn only: authenticated actor kind beside an unverified client surface. */
+  initiator?: {
+    actor: ClientOriginActor['kind'];
+    reportedSurface: ClientOriginSurface;
+  };
 };
 
 /**

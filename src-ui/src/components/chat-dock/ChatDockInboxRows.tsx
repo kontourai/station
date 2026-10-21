@@ -535,6 +535,11 @@ export function InboxRow({
   // An attached transcript's meta line names the app it lives in; the
   // status word ("Elsewhere") says this Station cannot answer there.
   const agentText = item.agentLabel;
+  const directoryContext =
+    !item.projectSlug && item.projectLabel === 'No project' && item.cwdLabel;
+  const contextLabel = directoryContext
+    ? `Directory · ${directoryContext}`
+    : item.projectLabel;
   const hasTime = item.updatedAt > 0;
   const closable = Boolean(onCloseChat && isOpenChat && item.chatSessionId);
   const tooltip = hoverCard && chrome === 'hover';
@@ -741,7 +746,7 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
+        aria-label={`${item.title}, ${contextLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
         // The accessible name is the explicit label above, so the status
         // (word, and any reason, in full) is offered as the description;
         // otherwise a screen reader would never hear what state the row is
@@ -835,11 +840,9 @@ export function InboxRow({
                     <ProjectAccentSwatch
                       accent={projectAccent}
                       icon={projectIcon}
-                      name={item.projectLabel}
+                      name={contextLabel}
                     />
-                    <span className="inbox-row__project">
-                      {item.projectLabel}
-                    </span>
+                    <span className="inbox-row__project">{contextLabel}</span>
                   </>
                 )}
               </span>
@@ -873,9 +876,9 @@ export function InboxRow({
                 <ProjectAccentSwatch
                   accent={projectAccent}
                   icon={projectIcon}
-                  name={item.projectLabel}
+                  name={contextLabel}
                 />
-                <span className="inbox-row__project">{item.projectLabel}</span>
+                <span className="inbox-row__project">{contextLabel}</span>
               </span>
             )}
             <InboxRowChips chips={chips} />

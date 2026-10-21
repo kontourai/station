@@ -586,11 +586,24 @@ export function buildOrchestrationSessionSummary(options: {
     extractDelegationContext(events),
     events,
   );
+  const initialTurn = events.find((event) => event.method === 'turn.started');
+  const initiatingOrigin =
+    initialTurn && isClientOrigin(initialTurn.clientOrigin)
+      ? initialTurn.clientOrigin
+      : undefined;
   const inputOrigin = delegation
     ? {
         kind: 'delegation' as const,
         taskId: delegation.taskId,
         ...(delegation.title ? { title: delegation.title } : {}),
+        ...(initiatingOrigin
+          ? {
+              initiator: {
+                actor: initiatingOrigin.actor.kind,
+                reportedSurface: initiatingOrigin.reported.surface,
+              },
+            }
+          : {}),
       }
     : undefined;
   const configuredRouteEvent = [...events]

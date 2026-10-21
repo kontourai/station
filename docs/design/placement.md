@@ -833,7 +833,10 @@ These are display bounds, not a claim that omitted work stopped. Up to 50
 additional delegate bindings without cards remain available for later resume.
 Closing the last chat drops its settled history while retaining live or
 unresolved delegate routing; a later observed settlement retires that closed
-context unless the chat reopened. Snapshot absence means **No result**, never
+context unless the chat reopened. Open execution aliases own the cache;
+replaced aliases retire history without cancelling live work. Reconnects do
+not restore terminal history for closed scopes, and closing does not clear
+an omitted-tool disclosure while the turn may still be active. Snapshot absence means **No result**, never
 proof of a requested stop. A later terminal event can correct that uncertainty.
 
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
@@ -2026,3 +2029,12 @@ server read beyond the pull request links Chat details already reads.
   renders against, across in-process and iframe transports.
 - station#928: the epic and its decision log. station#570: pane-native
   surfaces. station#265: the layout-tabs to panes migration.
+
+
+Projectless Home rows with a reported working directory show compact
+“Directory · …/path” context instead of using “No project” as their primary
+context. This is a directory hint, never Project membership. Delegation headers
+may also show the initial turn's reported client surface, such as “CLI
+(reported)”; their tooltip separates the server-resolved caller kind from that
+self-reported surface. A later follow-up does not rewrite initiation origin.
+Neither prompt text nor User-Agent identifies an external orchestrator.

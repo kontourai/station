@@ -105,6 +105,23 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     ).toBe('Driven from delegated task: Review Station');
   });
 
+  test('delegation reports the initiating surface without claiming it is authenticated', () => {
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        onClose={vi.fn()}
+        inputOrigin={{
+          kind: 'delegation',
+          taskId: 'task:review',
+          initiator: { actor: 'operator', reportedSurface: 'cli' },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText('Delegation · CLI (reported)').getAttribute('title'),
+    ).toContain('Authenticated caller: operator');
+  });
+
   test('the title and the token each carry their full text as a tooltip, because each ellipsizes', () => {
     render(
       <ChatDockActiveIdentity
