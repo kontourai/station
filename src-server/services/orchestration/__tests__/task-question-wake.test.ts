@@ -55,6 +55,7 @@ let sends: string[] = [];
 /** Each send's invocation, which a turn's events carry back (#3991). */
 let invocations: (string | undefined)[] = [];
 let incarnation = 0;
+let refuseSends = false;
 let sequence = 0;
 
 class CountingAdapter extends GateTestAdapter {
@@ -96,6 +97,8 @@ interface World {
   committedAtSubmit: number[];
   /** Each submitted inbox payload, in order. */
   submitted: ThreadInboxPayload[];
+  /** The inbox's own log. */
+  inboxWarn: ReturnType<typeof vi.fn>;
 }
 
 const open: World[] = [];
@@ -108,6 +111,7 @@ function boot(
   } = {},
 ): World {
   incarnation += 1;
+  const inboxWarn = vi.fn();
   const birth = `boot-${incarnation}`;
   const store = new EventStore(path, TURN_DEDUP_MAX_ENTRIES, {
     exact: () => ({ pid: process.pid, start: birth }),
@@ -165,6 +169,12 @@ function boot(
         INTERNAL_SESSION_READ_SCOPE,
       ),
     start: async ({ threadId, payload, clientTurnId }) => {
+      // A lead that cannot take turns, as a Task-dispatched Session cannot
+      // until #4005: the start is refused before anything is sent.
+      if (refuseSends)
+        throw Object.assign(new Error('This Session cannot receive turns.'), {
+          code: 'session_not_receivable',
+        });
       try {
         const result = (await service.dispatch({
           type: 'sendTurn',
@@ -188,7 +198,7 @@ function boot(
         if (frame.event === 'orchestration:event' && event)
           listener({ threadId: event.threadId, method: event.method });
       }),
-    logger: { warn: vi.fn() },
+    logger: { warn: inboxWarn },
     retryDelaysMs: [5, 10, 20, 40],
   });
   inbox.start();
@@ -264,6 +274,7 @@ function boot(
     task,
     committedAtSubmit,
     submitted,
+    inboxWarn,
   };
   open.push(world);
   return world;
@@ -351,6 +362,7 @@ afterEach(async () => {
   }
   sends = [];
   invocations = [];
+  refuseSends = false;
 });
 
 describe('Task question lead wake (#4003)', () => {
@@ -423,6 +435,68 @@ describe('Task question lead wake (#4003)', () => {
       actor: { kind: 'internal' },
       sender: { kind: 'agent-session', sessionId: HELPER },
     });
+  });
+
+  test('setting the same question key again is a new version and wakes the lead again, one inbox entry per version (verifier V2)', async () => {
+    const world = boot(path());
+    await bindAll(world);
+    await startLead(world);
+    expect(await askAsHelper(world)).toMatchObject({
+      kind: 'recorded',
+      record: { version: 1 },
+    });
+    await settle(world);
+    expect(wakeSends()).toHaveLength(1);
+    // The first wake's turn runs and ends, so the lead is idle again.
+    await emit(world, 'turn.started', { turnId: 'turn-1' }, invocations[0]);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, invocations[0]);
+    expect(
+      await world.runtime.writeTaskRecordForSession({
+        sessionId: HELPER,
+        write: { kind: 'question', key: 'tier', text: `${QUESTION} (again)` },
+      }),
+    ).toMatchObject({ kind: 'recorded', record: { version: 2 } });
+    await settle(world);
+    expect(wakeSends()).toHaveLength(2);
+    expect(wakeSends()[1]).toContain(`> ${QUESTION} (again)`);
+    // Literal keys: a digest of task-1, its creation, "tier", the version
+    // and "set", computed outside the code under test.
+    expect(world.wakes).toEqual([
+      {
+        kind: 'queued',
+        conversationId: LEAD,
+        clientTurnId: 'tq-4f83646871a29ef54302a79e0dde6f9c0f1f6ed4',
+      },
+      {
+        kind: 'queued',
+        conversationId: LEAD,
+        clientTurnId: 'tq-a850aab3da915d0c032b254eece5fc5434d10135',
+      },
+    ]);
+    expect(world.inbox.list(LEAD)).toHaveLength(2);
+  });
+
+  test('a wake the inbox accepts but the lead refuses is recorded on the entry and logged (verifier V3)', async () => {
+    const world = boot(path());
+    await bindAll(world);
+    await startLead(world);
+    refuseSends = true;
+    await askAsHelper(world);
+    await settle(world);
+    // The wake was accepted: the inbox queued it.
+    expect(world.wakes).toMatchObject([{ kind: 'queued' }]);
+    const key = 'tq-4f83646871a29ef54302a79e0dde6f9c0f1f6ed4';
+    expect(world.inbox.list(LEAD)).toMatchObject([
+      { clientTurnId: key, state: 'refused' },
+    ]);
+    expect(world.inboxWarn).toHaveBeenCalledWith(
+      'thread inbox entry not delivered',
+      expect.objectContaining({
+        conversationId: LEAD,
+        clientTurnId: key,
+        state: 'refused',
+      }),
+    );
   });
 
   test("a person's answer reaches the lead once; the open question is unchanged by the wake", async () => {
