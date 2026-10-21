@@ -164,6 +164,9 @@ personal-runtime routes; hosted tenancy composes no Task room.
   text?, importance?, reason?}`. An invalid key is `400`
   (`task_record_key_invalid`); a live-record cap, a missing record or a state
   that does not allow the action is `409`.
+  A recorded answer also queues one message for the Task's lead Session
+  ([lead wake](../design/tracker-backed-tasks.md#lead-wake)). The response
+  does not report it, and a failed delivery does not change the response.
 
 Agents write through Station Control: `task_summary_update` and
 `task_record` (REST sides `POST /api/orchestration/station-control/task-summary`
