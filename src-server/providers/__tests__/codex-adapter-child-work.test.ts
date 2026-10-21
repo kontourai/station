@@ -1174,6 +1174,22 @@ test('child tool activity survives same-turn steer but clears for a new turn and
     ).latestTool,
   ).toBe('Read');
   const first = [spawn(), start('a'), tool('a', 'Read'), start('a')];
+  const padded = replayCodexCapture(
+    synthetic([...first, tool('a', `${' '.repeat(1024 * 1024)}Write `)]),
+  );
+  expect(child(padded.events).latestTool).toBe('Write');
+  for (const delta of deltasOf(padded.events)) {
+    if (delta.kind === 'upsert')
+      expect(delta.item.latestTool?.length ?? 0).toBeLessThanOrEqual(200);
+  }
+  const invalid = replayCodexCapture(
+    synthetic([...first, tool('a', 'x'.repeat(1024 * 1024))]),
+  );
+  expect(child(invalid.events).latestTool).toBe('Read');
+  for (const delta of deltasOf(invalid.events)) {
+    if (delta.kind === 'upsert')
+      expect(delta.item.latestTool?.length ?? 0).toBeLessThanOrEqual(200);
+  }
   expect(child(replayCodexCapture(synthetic(first)).events).latestTool).toBe(
     'Read',
   );

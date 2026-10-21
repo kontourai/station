@@ -12,6 +12,7 @@ import {
   type ChildWorkUsage,
   childWorkForReporter,
   createEmptyChildWorkRegistry,
+  isReportableChildWorkToolName,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -886,11 +887,12 @@ function handleKnownChildNotification(
       if (!isRecord(params.item)) return;
       const item = params.item;
       const toolTurn = extractString(params.turnId);
-      const latestTool = deriveToolName(item);
+      const latestTool = deriveToolName(item)?.trim();
       const existing = itemFor(context.record, childId);
       if (
         notification.method === 'item/started' &&
         latestTool &&
+        isReportableChildWorkToolName(latestTool) &&
         existing?.status === 'running' &&
         toolTurn &&
         (!facts.activeTurnId || toolTurn === facts.activeTurnId)
