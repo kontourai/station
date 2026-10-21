@@ -1,8 +1,20 @@
 /** @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { closeSessionInventoryOccurrence } from '../sessionInventoryOccurrence';
+import { ChatDockSessionInventoryHost } from '../ChatDockWorkspaceControls';
+import {
+  closeSessionInventoryOccurrence,
+  openSessionInventoryOccurrence,
+  readSessionInventoryHostRegistration,
+  useSessionInventoryOccurrence,
+} from '../sessionInventoryOccurrence';
 
 const hooks = vi.hoisted(() => ({
   fallback: vi.fn(),
@@ -81,6 +93,67 @@ function renderHost(options: { isMobile?: boolean } = {}) {
 }
 
 describe('SessionInventoryHost', () => {
+  test('an exact answer survives current-execution refresh but closes for another chat or unmount', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const input = {
+      hostId: 'refresh-host',
+      chatStoreId: 'chat-a',
+      executionId: 'execution-a',
+      mountRef: { current: mount },
+      executionRead: 'present',
+      dockMode: 'bottom' as const,
+      fullscreen: false,
+    };
+    const view = render(
+      <ChatDockSessionInventoryHost sessionInventory={input} />,
+    );
+    const occurrence = renderHook(() =>
+      useSessionInventoryOccurrence('refresh-host'),
+    );
+    act(() => {
+      expect(
+        openSessionInventoryOccurrence({
+          hostId: 'refresh-host',
+          authorityKey: 'handoff-test',
+          activeSessionId: 'chat-a',
+          executionSessionId: 'execution-a',
+          executionRead: 'present',
+          trigger: null,
+          requestedScope: {
+            kind: 'current-answer',
+            sessionId: 'execution-a',
+            turnId: 'turn-a',
+          },
+        }),
+      ).toBe(true);
+    });
+    view.rerender(
+      <ChatDockSessionInventoryHost
+        sessionInventory={{ ...input, executionId: 'execution-b' }}
+      />,
+    );
+    expect(occurrence.result.current?.requestedScope).toEqual({
+      kind: 'current-answer',
+      sessionId: 'execution-a',
+      turnId: 'turn-a',
+    });
+    expect(
+      readSessionInventoryHostRegistration('refresh-host')?.executionId,
+    ).toBe('execution-b');
+    view.rerender(
+      <ChatDockSessionInventoryHost
+        sessionInventory={{ ...input, chatStoreId: 'another-chat' }}
+      />,
+    );
+    expect(occurrence.result.current).toBeNull();
+    view.unmount();
+    expect(
+      readSessionInventoryHostRegistration('refresh-host'),
+    ).toBeUndefined();
+    mount.remove();
+  });
+
   test('replaces compact inventory with the full fallback and returns focus to the invoking control on close', () => {
     const { onClose, trigger } = renderHost();
 

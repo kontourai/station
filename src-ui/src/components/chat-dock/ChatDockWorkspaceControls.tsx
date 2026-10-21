@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
@@ -8,6 +8,7 @@ import { NewChatAction } from '../NewChatAction';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
+  refreshSessionInventoryHostExecution,
   registerSessionInventoryHost,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
@@ -42,21 +43,29 @@ export function ChatDockSessionInventoryHost({
   const authorityKey = authority?.authorityKey;
   const chatStoreId = inventory.chatStoreId;
   const executionId = inventory.executionId;
+  const latestExecution = useRef(executionId);
+  latestExecution.current = executionId;
+  const available = Boolean(
+    hostId && authorityKey && chatStoreId && executionId,
+  );
   const occurrence = useSessionInventoryOccurrence(hostId);
   useEffect(
     () =>
       registerSessionInventoryHost(
         hostId,
-        hostId && authorityKey && chatStoreId && executionId
+        available
           ? {
-              authorityKey,
+              authorityKey: authorityKey!,
               chatStoreId,
-              executionId,
+              executionId: latestExecution.current,
             }
           : null,
       ),
-    [authorityKey, chatStoreId, executionId, hostId],
+    [authorityKey, available, chatStoreId, hostId],
   );
+  useEffect(() => {
+    refreshSessionInventoryHostExecution(hostId, executionId);
+  }, [hostId, executionId]);
   if (!occurrence || !inventory.mountRef.current) return null;
   return createPortal(
     <LazyBoundary

@@ -52,6 +52,15 @@ export function registerSessionInventoryHost(
     notify(hostId);
   };
 }
+/** Refresh the live execution without replacing an already captured inspection. */
+export function refreshSessionInventoryHostExecution(
+  hostId: string,
+  executionId: string,
+) {
+  const registration = registrations.get(hostId);
+  if (registration) registration.executionId = executionId;
+}
+
 export function closeSessionInventoryOccurrence(hostId?: string) {
   if (!hostId) {
     for (const id of occurrences.keys()) closeSessionInventoryOccurrence(id);
