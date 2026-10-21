@@ -133,9 +133,29 @@ launch intents and reserved session/client-turn identities, retains returned
 provider-turn identities and admits dependencies from an explicit Station
 completion observation. Controlled HTTP tests cover three actual orchestration
 sessions and event-store joins, plus refusal at the adapter boundary after
-cancellation during Agent preparation. Live CLI engines, complete preset/inspector
-adoption, independent review and full epic acceptance remain outstanding.
+cancellation during Agent preparation.
 
+At `fe998248b601ac6f5e135267ca2866d6772a5164`, an isolated personal Station
+completed a live three-seat group through the registered CLI and existing
+signed-in OpenCode `zai-coding-plan/glm-5.3-flash` connection. All three returned
+their requested short challenge text. The first two provider turns overlapped
+for 1.442 seconds; the third began after both exact predecessor turns completed.
+After a runtime restart, supervision replay returned the completed group with
+one accepted turn per member and no additional turns. The engine reported
+context usage, not a reliable dollar charge; billing remains unverified.
+
+That live check first exposed the runtime's one-at-a-time startup lease: a
+concurrent start refused while the other member completed. Earlier unknown
+records were retained and canceled, never resent. The repair queues supervised
+starts on the same bounded runtime lease and leaves ordinary callers' immediate
+refusal behavior intact. A compiling wait-bypass mutation reproduces the
+failure in the real CLI/session integration test; byte-identical restoration
+passes. Independent review of the original session-group owner found no P1/P2
+findings; the startup/client delta has a separate review in progress.
+
+This establishes only the selected CLI path. Multiple engine families, complete
+preset/inspector adoption, the remaining lineage/context/recovery obligations,
+final combined review and full epic acceptance remain outstanding.
 
 Reuse the authenticated delegation route for caller resolution, permission
 posture, execution-target placement, attachments, receiver admission, session

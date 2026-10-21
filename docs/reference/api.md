@@ -1648,9 +1648,12 @@ The personal runtime exposes an initial Station-authorized session-group path:
 - `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
 
 This path is under development on the child-work branch. Controlled-adapter
-checks exercise the actual delegation, session and event-store path; live CLI,
-hosted, native and provider acceptance have not been established. It does not
-activate the separate hard-cap API group runtime or complete #205.
+checks exercise the actual delegation, session and event-store path. A live
+three-seat OpenCode/GLM Flash group completed on source `fe998248b601`, including
+a dependency join and an inert supervision replay after runtime restart. That
+bounded result does not establish other engine families, billing, hosted or
+native acceptance. This path does not activate the separate hard-cap API group
+runtime or complete #205.
 
 Creation takes `operationId`, `maxConcurrent` (1–32), an absolute `deadlineAt`
 within 30 minutes, and 1–32 `members`. Each member has `seatId`, `prompt`, a local
