@@ -372,6 +372,81 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test('member identity cannot be reused at a new sequence after an intervening page', async () => {
+  const pages = [memberPage(0, 7), memberPage(7, 80), memberPage(80, 90)];
+  pages[0].events[0].eventId = 'same';
+  pages[2].events[0].eventId = 'same';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () => new Response(pages.map((page) => frame(true, page)).join('')),
+    ),
+  );
+  const delivered: unknown[] = [];
+  const errors: unknown[] = [];
+  const stream = subscribe(true, {
+    onPage(page) {
+      delivered.push(page);
+    },
+    onError(error) {
+      errors.push(error);
+    },
+  });
+  try {
+    await vi.waitFor(() => assert.equal(errors.length, 1));
+    assert.deepEqual(delivered, pages.slice(0, 2));
+    assert.equal(errors.length, 1);
+  } finally {
+    stream.close();
+    await stream.completed;
+  }
+});
+
+test('member observation stops at its retained identity bound instead of evicting old identities', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (let offset = 0; offset < 4096; offset += 64) {
+                const page = memberPage(offset, offset + 64);
+                page.events = Array.from({ length: 64 }, (_, index) => ({
+                  eventId: `event-${offset + index + 1}`,
+                  sequence: offset + index + 1,
+                  kind: 'observed',
+                }));
+                controller.enqueue(new TextEncoder().encode(frame(true, page)));
+              }
+              controller.enqueue(
+                new TextEncoder().encode(frame(true, memberPage(4096, 4097))),
+              );
+            },
+          }),
+        ),
+    ),
+  );
+  let delivered = 0;
+  const errors: unknown[] = [];
+  const stream = subscribe(true, {
+    onPage() {
+      delivered++;
+    },
+    onError(error) {
+      errors.push(error);
+    },
+  });
+  try {
+    await vi.waitFor(() => assert.equal(errors.length, 1));
+    assert.equal(delivered, 64);
+    await stream.completed;
+  } finally {
+    stream.close();
+    await stream.completed;
+  }
+});
+
 for (const member of [false, true]) {
   test(`live ${member ? 'member' : 'group'} authority is checked before every callback and checkpoint`, async () => {
     let current = true;

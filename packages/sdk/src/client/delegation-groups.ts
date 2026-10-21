@@ -142,6 +142,8 @@ export function subscribeDelegationGroupMemberEvents(
   options?: ClientRequestOptions,
 ): FetchSseConnection {
   const seen = new Map<string, number>();
+  // Stop observation at capacity; evicting IDs would permit later identity reuse.
+  const maxIdentities = 4096;
   let cursor = afterSequence;
   return subscribePages(
     `${memberPath(apiBase, groupId, seatId)}/events/stream?afterSequence=${afterSequence}`,
@@ -152,6 +154,9 @@ export function subscribeDelegationGroupMemberEvents(
       isMemberPage(value, groupId, seatId) &&
       (value.nextSequence === cursor ||
         value.events.every((event) => event.sequence > cursor)) &&
+      seen.size +
+        value.events.filter((event) => !seen.has(event.eventId)).length <=
+        maxIdentities &&
       value.events.every(
         (event) =>
           !seen.has(event.eventId) ||
@@ -166,7 +171,6 @@ export function subscribeDelegationGroupMemberEvents(
       onPage(page) {
         callbacks.onPage(page);
         cursor = page.nextSequence;
-        if (page.events.length > 0) seen.clear();
         for (const event of page.events)
           seen.set(event.eventId, event.sequence);
       },
