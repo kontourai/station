@@ -137,7 +137,7 @@ async function expectAgentPresence(
     page,
     taskId,
     { command: 'heartbeat' },
-    'refreshed',
+    'updated',
   );
   const agent = live.participants.find(
     (participant) =>
@@ -444,8 +444,8 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId)?.state,
-        ).toBe('paused');
+          stoppedAfterEdit.panes.filter((pane) => pane.paneId === paneId),
+        ).toEqual([]);
 
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
