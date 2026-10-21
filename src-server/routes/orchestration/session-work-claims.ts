@@ -81,6 +81,12 @@ export interface SessionWorkClaimRoutesDeps {
   stationControlDispatchScope?: StationControlDispatchScope;
   resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
   hostedTenantRegistry?: HostedTenantRegistry;
+  /**
+   * The opaque id of the Project an id or slug names
+   * (`localProjectIdFor`). A room binding records the Task's own Project
+   * identity, often its slug, while a claim's scope is the opaque id.
+   */
+  localProjectIdFor: (identity: string) => string | undefined;
 }
 
 /** A claim as a tool or the UI reads it. */
@@ -266,12 +272,15 @@ export function createSessionWorkClaimRoutes(deps: SessionWorkClaimRoutesDeps) {
         409,
         NO_STORE,
       );
-    // The Task only when its binding is in the claim's own Project.
+    // The Task only when its binding is in the claim's own Project, both
+    // sides resolved to one Project identity (verifier V1).
     const binding = deps.eventStore.readProjectTaskRoomExecutionBinding(
       caller.sessionId,
     );
     const taskId =
-      binding && scope.kind === 'project' && binding.projectId === scope.id
+      binding &&
+      scope.kind === 'project' &&
+      deps.localProjectIdFor(binding.projectId) === scope.id
         ? binding.taskId
         : undefined;
     const outcome = deps.workClaims.claim({

@@ -193,16 +193,21 @@ describe('station-control work claims (#3413 B)', () => {
     startSession('u-caller', A, undefined, { projectSlug: 'project-1' });
     startSession('carol-p1', CAROL, p1);
     // `a-task` was dispatched for Task `task-1` of Project 1: the immutable
-    // binding dispatch records (`bindProjectTaskRoomExecution`).
-    expect(
-      (
-        await store.bindProjectTaskRoomExecution({
-          projectId: p1.id,
-          taskId: 'task-1',
-          sessionId: 'a-task',
-        })
-      ).kind,
-    ).toBe('bound');
+    // binding dispatch records (`bindProjectTaskRoomExecution`), whose
+    // projectId is the Task's own, the Project SLUG for a Task the Tasks
+    // board created (verifier V1), while the Session's scope is the id.
+    // `a-other` (Project 2) is bound to a Project 1 Task: a binding in
+    // another Project must not stamp its claims.
+    for (const sessionId of ['a-task', 'a-other'])
+      expect(
+        (
+          await store.bindProjectTaskRoomExecution({
+            projectId: p1.slug,
+            taskId: 'task-1',
+            sessionId,
+          })
+        ).kind,
+      ).toBe('bound');
 
     const orchestration = new OrchestrationService({
       eventStore: store,
@@ -859,6 +864,10 @@ describe('station-control work claims (#3413 B)', () => {
         workItemRef: 'kontourai/station#4003',
       });
       expect(onTask.taskId).toBe('task-1');
+      const elsewhere = await claim(tool, delegated('a-other'), {
+        workItemRef: '#elsewhere',
+      });
+      expect(elsewhere.taskId).toBeUndefined();
       const free = await claim(tool, delegated('a-caller'), {
         workItemRef: '#free',
       });

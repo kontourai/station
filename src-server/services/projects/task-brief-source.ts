@@ -98,6 +98,12 @@ export interface TaskBriefSourceDeps {
    */
   workClaims?: Pick<ActiveWorkClaimReader, 'listActiveClaims'>;
   /**
+   * The opaque Project id claims are scoped by, for the Task's own Project
+   * identity (often its slug; verifier V1). Absent: the Task's `projectId`
+   * as stored. Present and unresolved: no claims are read.
+   */
+  localProjectIdFor?(identity: string): string | undefined;
+  /**
    * Whether `viewerUserId` may read `sessionId`. Absent: every Session of
    * the Task is shown (tests that compose no read model).
    */
@@ -207,8 +213,12 @@ export function createTaskBriefSource(
     const bySession = new Map<string, WorkClaimRecordLike[]>();
     if (!deps.workClaims) return bySession;
     try {
+      const projectId = deps.localProjectIdFor
+        ? deps.localProjectIdFor(task.projectId)
+        : task.projectId;
+      if (projectId === undefined) return bySession;
       const claims = await deps.workClaims.listActiveClaims({
-        projectId: task.projectId,
+        projectId,
         taskId: task.id,
       });
       for (const claim of claims) {
@@ -501,6 +511,8 @@ export function composeTaskBriefSource(input: {
    * owner may read it.
    */
   readAuthorityForUser: (userId: string) => SessionReadAuthority;
+  /** See {@link TaskBriefSourceDeps.localProjectIdFor}. */
+  localProjectIdFor: (identity: string) => string | undefined;
   /** Read lazily: the room runtime is composed after the dispatcher. */
   roomRuntime: () =>
     | {
@@ -524,6 +536,7 @@ export function composeTaskBriefSource(input: {
         : { kind: 'unavailable', reason: 'the Task room is not running' };
     },
     ...(store ? { memory: store.taskMemoryStore() } : {}),
+    localProjectIdFor: input.localProjectIdFor,
     ...(input.sessionReadModel
       ? {
           canViewerRead: (viewerUserId: string, sessionId: string) =>

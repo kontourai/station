@@ -42,6 +42,9 @@ import { TaskGraphService } from '../task-graph-service.js';
 
 type EngineProvider = 'claude' | 'codex' | 'station-agent';
 
+/** The opaque id of Project `brief-project` (verifier V1). */
+const BRIEF_PROJECT_LOCAL_ID = 'f3a1c2d4-0000-4000-8000-00000000b71e';
+
 /** Publishes what real adapters publish: `session.started` with the start metadata. */
 class RecordingAdapter implements ProviderAdapterShape {
   readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
@@ -277,6 +280,10 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
         sessionReadModel: service,
         readAuthorityForUser: (userId) =>
           sessionReadAuthorityFromRequest(userId, undefined, undefined),
+        // The Task names its Project by slug; claims are scoped by the
+        // Project's opaque id, as `stationControlSessionScope` writes them.
+        localProjectIdFor: (identity) =>
+          identity === 'brief-project' ? BRIEF_PROJECT_LOCAL_ID : undefined,
         roomRuntime: () => ({
           readTaskDocumentForBrief: async () => ({
             kind: 'available',
@@ -503,7 +510,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     }) => {
       const outcome = claims.claim({
         claimant: { sessionId: first.sessionId },
-        scope: { kind: 'project', id: 'brief-project' },
+        scope: { kind: 'project', id: BRIEF_PROJECT_LOCAL_ID },
         ttlSeconds: 1800,
         ...input,
       });

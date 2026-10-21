@@ -180,6 +180,7 @@ import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import {
@@ -3991,6 +3992,8 @@ export class StationRuntime {
                   sessionReadModel: this.orchestrationService,
                   // The dispatched Session's owner reads its brief: the
                   // runtime routes' `readAuthorityForExecution`, with tenancy.
+                  localProjectIdFor: (identity) =>
+                    localProjectIdFor(this.projectService, identity),
                   readAuthorityForUser: (userId) => {
                     const execution = currentTenantExecutionContext();
                     return sessionReadAuthorityFromRequest(

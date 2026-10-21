@@ -620,6 +620,7 @@ import type { FileTreeService } from '../../services/projects/file-tree-service.
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
 import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
@@ -2777,6 +2778,8 @@ export function configureRuntimeRoutes(
     eventStore: context.orchestrationEventStore,
     sessionReadModel: context.orchestrationService,
     readAuthorityForUser: readAuthorityForExecution,
+    localProjectIdFor: (identity) =>
+      localProjectIdFor(context.projectService, identity),
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
     logger: context.logger,
@@ -5461,6 +5464,8 @@ export function configureRuntimeRoutes(
         stationControlDispatchScope,
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         hostedTenantRegistry,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(context.projectService, identity),
       }),
     );
   }
