@@ -1,0 +1,7 @@
+{
+  "revision": "6815b2a12f172b3c5e452dc53286631d3be8f407",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reconciled published Flow 9.3.0 export/artifact identity against the retained integrity receipt, four workspace pins and lockfile; traced fedcf runtime to Station persistence and explicit execution refusals. Recorded independent transport/finalizer repair findings and current unmounted routes. Installed graph remains 6.5.1 pending managed installer recovery; no managed, provider, native or hosted acceptance inferred. Markdown links passed for 445 documents. Review covers these updated status claims, not every historical acceptance statement.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
