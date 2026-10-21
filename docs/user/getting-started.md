@@ -877,16 +877,19 @@ conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.
 
-The continuation always works in the folder the conversation ran in, and the
-engine is confined to that folder. Station checks the folder again when you
-continue:
+The continuation starts in the folder the conversation ran in. Its actual
+confinement depends on the Session's access grant and the engine's enforcement;
+a continuation granted Full access can run with host authority. The working
+folder alone is not a sandbox guarantee. Station checks the folder again when
+you continue:
 
 - A conversation filed under a Project continues under that Project. This
   includes one in a worktree outside the Project folder: it continues in that
   worktree. Station refuses if the worktree was removed or replaced, or if its
   `.git` does not lead back to the Project's repository.
 - A conversation under **No project** continues as a **No project** chat
-  confined to its own folder, after you confirm that choice. This is allowed
+  in its own folder, after you confirm that choice. Its access grant still
+  determines confinement as described above. This is allowed
   only for a folder inside your home folder. Station refuses your home folder
   itself, every folder outside it (system folders included), any hidden
   folder directly in your home folder and everything in it (such as `.ssh`,
