@@ -59,7 +59,7 @@ What a Task knows comes in four layers. The third and fourth are new here.
 
 Task memory has two parts. Both are stored in the orchestration database,
 per Task incarnation (a Task re-created under the same id starts empty), in
-two append-only tables (migration 017). Every revision and every version is
+two append-only tables (migration 020). Every revision and every version is
 kept.
 
 **The Task summary** is one bounded text that agents rewrite and never
@@ -305,7 +305,7 @@ step.
   to. "Promoted" is read back from the stores, not recorded beside them. A
   later version of the same key is a new candidate.
 - **Dismissal is the one state Station keeps**: an append-only row per
-  dismissed record version (`task_learning_dismissals`, migration 018).
+  dismissed record version (`task_learning_dismissals`, migration 021).
 - **No store.** A Project without a knowledge store still lists its
   candidates and says so plainly, with a link to the Project page, where
   Knowledge stores has **Create store**. Promote is disabled until one exists.

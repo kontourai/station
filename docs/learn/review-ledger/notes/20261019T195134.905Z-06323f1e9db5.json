@@ -1,0 +1,13 @@
+{
+  "revision": "7f95e1bcd11ac8141f8a7b2698d733e1fd78e9a1",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Wording-only: the remote producer URL example now uses a generic Tailscale Serve host placeholder instead of a tailnet domain (docs hygiene). Claims unchanged.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/reference/api.md","note":"Wording-only: the remote producer URL example now uses a generic Tailscale Serve host placeholder (docs hygiene). Claims unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: the cited document's remote producer URL example now uses a generic host placeholder. Nothing here depends on it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: the cited document's remote producer URL example now uses a generic host placeholder. Nothing here depends on it.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

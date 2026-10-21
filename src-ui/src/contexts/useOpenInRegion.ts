@@ -16,6 +16,7 @@ import {
   type WorkspacePullRequestPaneKey,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import { useCallback } from 'react';
+import { readPaneFence } from '../regions/pane-fence';
 import { REGION_IDS, type RegionArrangement } from '../regions/region-model';
 import { regionSurfaceOfPane } from '../regions/region-surface-panes';
 import { createBrowserPreviewPaneInstance } from '../workspace-panes/browserPreviewPaneInstance';
@@ -201,6 +202,10 @@ export function openFilePreviewInRegion(
   const storage = window.localStorage;
   const held = placedPaneIds(model.regions).find((id) => {
     if (!id.startsWith('file-preview:')) return false;
+    // A FENCED preview is a related one (`openRelatedFilePreview.ts`): it is
+    // matched only through its relation, against its own Station, never by
+    // path here.
+    if (readPaneFence(storage, id).status !== 'none') return false;
     const stored = readFilePreviewPaneState(storage, id);
     // The session is part of which file this is: a worktree's copy and the
     // checkout's are different files under one path.
@@ -229,21 +234,7 @@ export function openFilePreviewInRegion(
     // forces a re-render and the new range shows on the pane's next one.
     // Closing that needs the preview's stored state to be an observable
     // store rather than a localStorage read at render time.
-    const previous = readFilePreviewPaneState(storage, held);
-    const heldRange = previous?.lineRange;
-    const rangeChanged =
-      lineRange !== undefined &&
-      (heldRange?.start !== lineRange.start ||
-        heldRange?.end !== lineRange.end);
-    if (rangeChanged && previous)
-      writeFilePreviewPaneState(storage, held, { ...previous, lineRange });
-    const outcome = model.openSurfaceInRegion(held, {
-      ...options,
-      focusExisting: true,
-    });
-    if (!outcome.ok && rangeChanged && previous)
-      writeFilePreviewPaneState(storage, held, previous);
-    return outcome;
+    return revealFilePreview(model, held, lineRange, options);
   }
   const instance = createFilePreviewPaneInstance(state, projectId);
   if (!instance) return { ok: false, reason: 'no-surface' };
@@ -255,6 +246,34 @@ export function openFilePreviewInRegion(
   if (!preparation.prepare()) return { ok: false, reason: 'not-stored' };
   const outcome = openInRegion(model, instance, options);
   if (!outcome.ok) preparation.rollback();
+  return outcome;
+}
+
+/**
+ * Reveal a placed preview, carrying a newly requested line range onto it —
+ * the reveal half `openFilePreviewInRegion` documents above, shared with the
+ * related path. A refused reveal restores the stored range.
+ */
+export function revealFilePreview(
+  model: OpenSurfaceInRegionModel,
+  held: string,
+  lineRange: WorkspaceFilePreviewLineRange | undefined,
+  options?: OpenInRegionOptions,
+): OpenInRegionOutcome {
+  const storage = window.localStorage;
+  const previous = readFilePreviewPaneState(storage, held);
+  const heldRange = previous?.lineRange;
+  const rangeChanged =
+    lineRange !== undefined &&
+    (heldRange?.start !== lineRange.start || heldRange?.end !== lineRange.end);
+  if (rangeChanged && previous)
+    writeFilePreviewPaneState(storage, held, { ...previous, lineRange });
+  const outcome = model.openSurfaceInRegion(held, {
+    ...options,
+    focusExisting: true,
+  });
+  if (!outcome.ok && rangeChanged && previous)
+    writeFilePreviewPaneState(storage, held, previous);
   return outcome;
 }
 

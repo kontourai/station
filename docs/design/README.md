@@ -71,6 +71,7 @@ category.
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
+- [pane-relationships.md](pane-relationships.md) — Pane relationships
 - [placement.md](placement.md) — Placement: regions, surfaces, layouts, panes, pane hosts
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
 - [plugin-installation-lifecycle.md](plugin-installation-lifecycle.md) — Plugin installation lifecycle
@@ -87,6 +88,7 @@ category.
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
+- [settings-launch-triage.md](settings-launch-triage.md) — Settings launch triage
 - [shared-task-channels.md](shared-task-channels.md) — Shared Task channels
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-ownership-and-boards.md](shell-ownership-and-boards.md) — Shell ownership scopes and Boards

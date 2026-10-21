@@ -492,6 +492,9 @@ vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
 vi.mock('../hooks/useOutboundQueueFlush', () => ({
   useOutboundQueueFlush: vi.fn(),
 }));
+vi.mock('../hooks/useTurnNotificationReads', () => ({
+  useTurnNotificationReads: vi.fn(),
+}));
 
 function resetHooks() {
   hooks.projects = { data: [], isLoading: false, isError: false };

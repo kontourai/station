@@ -170,6 +170,10 @@ test.each(['envelope', 'session'] as const)(
     const service = follower(source);
     if (phase === 'session') await service.pollNow();
     page = [event('durable-after-room')];
+    // #3551: an unchanged row is never rewritten before a page's new events,
+    // so a replayed, already-durable page makes the cursor advance the first
+    // write that meets the room's lock.
+    if (phase === 'session') events.appendEventIfAbsent(page[0]!);
     let checks = 0;
     let armed = false;
     let enter!: () => void;

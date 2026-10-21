@@ -57,9 +57,31 @@ const MAX_REFS = 64;
 const MAX_ID_BYTES = 1_024;
 
 /**
+ * Station built a Basis composition that Surface's published parser rejects.
+ *
+ * This is a Station-side invariant failure, not an owner fact: Surface's
+ * fallback projection would otherwise publish its generic contract message
+ * (for example `unsupported-owner-version`) as if an owner were at fault.
+ * Callers map it to their unavailable outcome and report the parser gap.
+ */
+export class StationBasisCompositionInvariantError extends Error {
+  readonly surfaceGap: { readonly code: string; readonly message: string };
+  constructor(surfaceGap: { code: string; message: string }) {
+    super(
+      `Station Basis composition violates Surface's contract: ${surfaceGap.code}`,
+    );
+    this.name = 'StationBasisCompositionInvariantError';
+    this.surfaceGap = { code: surfaceGap.code, message: surfaceGap.message };
+  }
+}
+
+/**
  * Converts authorized Station owner facts into Surface's pure input. This is
  * the only Station-to-Surface semantic seam: no Task Keep or output relation
  * can alter Surface standing.
+ *
+ * @throws StationBasisCompositionInvariantError when the answer or the
+ * Station-built input/result contributions fail Surface's parser.
  */
 export function composeAuthorizedSessionAnswerBasis(
   answer: Extract<SessionAnswerBasisQueryOutcome, { status: 'found' }>,
@@ -104,6 +126,21 @@ export function composeAuthorizedSessionAnswerBasis(
       },
     ],
   };
+  // Station builds the answer and its input/result contributions itself, so a
+  // parser rejection of those reads is Station's invariant, never an owner
+  // gap. Assessment and narrative come from other owners and keep Surface's
+  // own fail-closed composition below.
+  const stationOwned = parseBasisComposition({
+    ...input,
+    assessment: {
+      owner: { authority: '@kontourai/surface' },
+      state: 'not-captured',
+      observedAt: answer.observedAt,
+    },
+    contributions: [input.contributions[0]!, input.contributions.at(-1)!],
+  });
+  if (!stationOwned.ok)
+    throw new StationBasisCompositionInvariantError(stationOwned.gap);
   // Surface owns total parsing and standing. Host context is pre-sanitized so
   // malformed owner display fields cannot turn one Task answer into a 500.
   const parsed = parseBasisComposition(input);
@@ -162,6 +199,10 @@ export function createTaskBasisQueryModule(input: {
     associationRevision?: number;
     request?: Request;
   }) => Promise<ContributionRead>;
+  /** Diagnostic sink for Station's own Basis composition invariant failures. */
+  reportCompositionInvariant?: (
+    error: StationBasisCompositionInvariantError,
+  ) => void;
 }): TaskBasisQueryModule {
   return {
     async read({ taskId, answerReferenceId, authority, request }) {
@@ -267,9 +308,17 @@ export function createTaskBasisQueryModule(input: {
               reviewedSource,
             ),
           });
-        } catch {
+        } catch (error) {
+          const invariant =
+            error instanceof StationBasisCompositionInvariantError;
+          if (invariant) {
+            try {
+              input.reportCompositionInvariant?.(error);
+            } catch {}
+          }
           if (answerReferenceId) return { status: 'unavailable' };
-          gaps.add('corrupt');
+          // Station could not represent this answer; its data is not corrupt.
+          gaps.add(invariant ? 'unavailable' : 'corrupt');
         }
       }
       if (answerReferenceId)

@@ -8,9 +8,10 @@
  * behind the routes: the delegation tool's dispatch and conversation
  * continue (recorded), and orchestration-service reads.
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, writeSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { serve } from '@hono/node-server';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
@@ -176,6 +177,8 @@ async function composeOver(
     orchestrationEventStore: deepStub({
       sessionTurnBoundaryAuthority: () => ({
         reconcile: () => ({ kind: 'available', interrupted: [] }),
+        hasPossibleEffect: (threadId: string) =>
+          store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       }),
       delegationResultStore,
       listEventsByMethods: (threadId: string, methods: readonly string[]) =>
@@ -185,9 +188,24 @@ async function composeOver(
         turnId: string,
         methods: readonly string[],
         limit: number,
-      ) => store.listTurnEventsByMethods(threadId, turnId, methods, limit),
+        invocationId?: string,
+      ) =>
+        store.listTurnEventsByMethods(
+          threadId,
+          turnId,
+          methods,
+          limit,
+          invocationId,
+        ),
       readSessionInventoryHighWater: (threadId: string) =>
         store.readSessionInventoryHighWater(threadId),
+      readInputlessTurnDisposition: (threadId: string) =>
+        store.readInputlessTurnDisposition(threadId),
+      readInvocationTerminal: (
+        threadId: string,
+        invocationId: string,
+        turnId?: string,
+      ) => store.readInvocationTerminal(threadId, invocationId, turnId),
       conversationForSession: (threadId: string) =>
         store.conversationForSession(threadId),
       conversationSessions: () => [],
@@ -369,7 +387,10 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       ownerAttribution: 'verified-bound',
       fullAccessGrant: null,
-      clientOrigin: { actor: { kind: 'internal' } },
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'delegation-result', sessionId: CHILD },
+      },
     });
     expect(String(support.continued[0]!.message)).toContain(
       '> notes are written',
@@ -393,7 +414,13 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     expect(support.commands[0]).toMatchObject({
       type: 'steerTurn',
       threadId: PARENT,
-      context: { ownerAttribution: 'unattributed-agent' },
+      context: {
+        ownerAttribution: 'unattributed-agent',
+        clientOrigin: {
+          actor: { kind: 'internal' },
+          sender: { kind: 'delegation-result', sessionId: CHILD },
+        },
+      },
     });
     // The engine cannot steer: the result waits for the parent's turn end.
     expect(support.continued).toHaveLength(0);
@@ -573,6 +600,99 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     await vi.waitFor(() =>
       expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
     );
+  });
+
+  test('a real durable boundary holds a queued follow-up until its exact uninvoked owner releases it', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
+    const homeDir = makeTempDir('station-thread-inbox-durable-hold-');
+    const store = new EventStore(join(homeDir, 'orchestration.sqlite'));
+    closers.push(() => {
+      store.close();
+    });
+    const authority = store.sessionTurnBoundaryAuthority();
+    const owned = authority.claim(PARENT, new Date().toISOString());
+    if (owned.kind !== 'owner')
+      throw new Error('actual boundary owner required');
+    const boundaryRows = () =>
+      store['db']
+        .prepare(
+          'SELECT * FROM orchestration_turn_boundaries WHERE thread_id=?',
+        )
+        .all(PARENT);
+    const original = boundaryRows();
+    let released = false;
+    const release = () => {
+      if (released) return;
+      if (!isDeepStrictEqual(boundaryRows(), original))
+        throw new Error('Boundary changed; preserve intervening state');
+      expect(owned.claim.notInvoked()).toEqual({ kind: 'applied' });
+      released = true;
+    };
+    const reads = vi.spyOn(authority, 'hasPossibleEffect');
+    try {
+      expect(original).toHaveLength(1);
+      held(store, 'durable-hold');
+      const { emit } = await composeOver(homeDir, store, closers);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const queued = store.threadInboxStore().list(PARENT);
+      expect(queued).toMatchObject([{ key: 'durable-hold', state: 'queued' }]);
+      expect(support.continued).toHaveLength(0);
+      expect(support.commands).toHaveLength(0);
+      expect(boundaryRows()).toEqual(original);
+      expect(reads).toHaveBeenCalledWith(PARENT);
+      expect(reads.mock.results).toContainEqual({
+        type: 'return',
+        value: { kind: 'available', active: true },
+      });
+      writeSync(
+        1,
+        `@@STATION_RUNTIME_DURABLE_HOLD@@${JSON.stringify({
+          phase: 'held',
+          rows: queued,
+          boundary: original,
+          durableReads: reads.mock.results.slice(0, 32),
+          durableReadCount: reads.mock.results.length,
+          durableReadsTruncated: reads.mock.results.length > 32,
+          continued: support.continued,
+          commands: support.commands,
+        })}@@END_STATION_RUNTIME_DURABLE_HOLD@@\n`,
+      );
+      release();
+      expect(boundaryRows()).toEqual([]);
+      emit(PARENT, 'session.configured');
+      await vi.waitFor(() =>
+        expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+      );
+      expect(support.continued).toHaveLength(1);
+      expect(support.continued[0]).toMatchObject({
+        conversationId: PARENT,
+        clientTurnId: 'durable-hold',
+        message: 'held durable-hold',
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        fullAccessGrant: null,
+      });
+      expect(support.commands).toHaveLength(0);
+      expect(reads.mock.results).toContainEqual({
+        type: 'return',
+        value: { kind: 'available', active: false },
+      });
+      writeSync(
+        1,
+        `@@STATION_RUNTIME_DURABLE_HOLD@@${JSON.stringify({
+          phase: 'placed',
+          rows: store.threadInboxStore().list(PARENT),
+          boundary: boundaryRows(),
+          durableReads: reads.mock.results.slice(0, 32),
+          durableReadCount: reads.mock.results.length,
+          durableReadsTruncated: reads.mock.results.length > 32,
+          continued: support.continued,
+          commands: support.commands,
+        })}@@END_STATION_RUNTIME_DURABLE_HOLD@@\n`,
+      );
+    } finally {
+      reads.mockRestore();
+      release();
+    }
   });
 
   test('a held follow-up whose key the conversation already started is settled without a send', async () => {

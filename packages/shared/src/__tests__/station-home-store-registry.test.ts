@@ -39,6 +39,7 @@ const HOME_VARIABLES = [
 const NOT_STATION_HOME_ROOTS: Readonly<Record<string, string>> = {
   '.claude': "Claude Code's home under the OS user home",
   '.codex': "Codex's home under the OS user home",
+  '.config': "OpenCode's XDG fallback under the OS user home, not Station home",
   Android: 'Android SDK under the OS user home',
   AppData: 'Windows AppData under the OS user home',
   Applications: 'macOS Applications under the OS user home',

@@ -26,6 +26,10 @@ import {
   providerQuotaFactsFromDetails,
 } from '../../providers/provider-plan-quota.js';
 
+export type TurnIdentityAnchor =
+  | string
+  | { readonly turnId: string; readonly invocationId: string };
+
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
@@ -55,14 +59,33 @@ export interface ManualSessionTransitionInput {
 export function normalizeCanonicalRuntimeEventLifecycle(
   event: CanonicalRuntimeEvent,
   previousState?: SessionLifecycleState,
-  activeTurnId?: string,
+  activeTurnId?: TurnIdentityAnchor,
 ): CanonicalRuntimeEvent {
   const transition = deriveLifecycleTransition(
     event,
     previousState,
     activeTurnId,
   );
-  if (!transition) return event;
+  if (!transition) {
+    if (
+      typeof activeTurnId === 'object' &&
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      ) &&
+      (event.turnId !== undefined || event.invocationId !== undefined) &&
+      !acceptsTurnTerminalEvent(event, activeTurnId)
+    ) {
+      const {
+        sessionState: _state,
+        previousState: _previous,
+        transitionReason: _reason,
+        transitionSource: _source,
+        ...observation
+      } = event;
+      return observation;
+    }
+    return event;
+  }
   const next: CanonicalRuntimeEvent = {
     ...event,
     sessionState: event.sessionState ?? transition.to,
@@ -135,7 +158,7 @@ export function projectSessionLifecycle(options: {
   // (which retains a turn id across the error/exit that would otherwise
   // discard it) without disturbing `nextActiveTurnId`'s "is a turn open"
   // semantics anywhere else. See `nextTurnIdentityAnchor`'s doc.
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   for (const event of options.events) {
     const transition = deriveLifecycleTransition(
       event,
@@ -503,8 +526,28 @@ export function activeTurnIdForEvents(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   let activeTurnId: string | undefined;
+  let anchor: TurnIdentityAnchor | undefined;
   for (const event of events) {
-    activeTurnId = nextActiveTurnId(activeTurnId, event);
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
+    const scopedTerminal =
+      ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+        event.method,
+      ) &&
+      (event.turnId !== undefined || event.invocationId !== undefined);
+    if (
+      !retainedStart &&
+      !(
+        typeof anchor === 'object' &&
+        scopedTerminal &&
+        !acceptsTurnTerminalEvent(event, anchor)
+      )
+    )
+      activeTurnId = nextActiveTurnId(activeTurnId, event);
+    anchor = nextAnchor;
   }
   return activeTurnId;
 }
@@ -519,7 +562,18 @@ export function activeTurnIdForEvents(
 export function advanceOpenTurnId(
   openTurnId: string | undefined,
   event: CanonicalRuntimeEvent,
+  invocationId?: string,
 ): string | undefined {
+  if (
+    invocationId !== undefined &&
+    ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+      event.method,
+    ) &&
+    (event.turnId !== undefined || event.invocationId !== undefined) &&
+    (event.invocationId !== invocationId ||
+      (openTurnId !== undefined && event.turnId !== openTurnId))
+  )
+    return openTurnId;
   return nextActiveTurnId(openTurnId, event);
 }
 
@@ -547,10 +601,28 @@ export function interruptibleTurnIdForEvents(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   let activeTurnId: string | undefined;
+  let anchor: TurnIdentityAnchor | undefined;
   for (const event of events) {
-    activeTurnId = nextActiveTurnId(activeTurnId, event, {
-      preserveDeferredRetry: true,
-    });
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    const retainedStart =
+      event.method === 'turn.started' &&
+      typeof anchor === 'object' &&
+      nextAnchor === anchor;
+    if (
+      !retainedStart &&
+      !(
+        typeof anchor === 'object' &&
+        ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+          event.method,
+        ) &&
+        (event.turnId !== undefined || event.invocationId !== undefined) &&
+        !acceptsTurnTerminalEvent(event, anchor)
+      )
+    )
+      activeTurnId = nextActiveTurnId(activeTurnId, event, {
+        preserveDeferredRetry: true,
+      });
+    anchor = nextAnchor;
   }
   return activeTurnId;
 }
@@ -712,15 +784,14 @@ function nextActiveTurnId(
 //   session's life — see that function's doc for the discriminating case
 //   and why the Stop double-terminal case still accepts correctly.
 export function acceptsTurnTerminalEvent(
-  event: Extract<
-    CanonicalRuntimeEvent,
-    { method: 'turn.completed' | 'turn.aborted' }
-  >,
-  activeTurnId?: string,
+  event: Pick<CanonicalRuntimeEvent, 'turnId' | 'invocationId'>,
+  activeTurnId?: TurnIdentityAnchor,
 ): boolean {
-  // A no-active-turn terminal can still be a valid recovered completion, but
-  // only when it explicitly names its target. With an active turn, require an
-  // exact match so a resume/reconnect handshake cannot stomp it.
+  if (typeof activeTurnId === 'object')
+    return (
+      event.invocationId === activeTurnId.invocationId &&
+      event.turnId === activeTurnId.turnId
+    );
   return (
     Boolean(event.turnId) && (!activeTurnId || event.turnId === activeTurnId)
   );
@@ -794,10 +865,19 @@ export function acceptsTurnTerminalEvent(
  * anywhere positioned to catch it.
  */
 export function nextTurnIdentityAnchor(
-  turnIdentityAnchor: string | undefined,
+  turnIdentityAnchor: TurnIdentityAnchor | undefined,
   event: CanonicalRuntimeEvent,
-): string | undefined {
-  if (event.method === 'turn.started') return event.turnId;
+): TurnIdentityAnchor | undefined {
+  if (event.method === 'turn.started') {
+    if (event.invocationId && event.turnId)
+      return { turnId: event.turnId, invocationId: event.invocationId };
+    if (
+      typeof turnIdentityAnchor === 'object' &&
+      !isProviderTriggeredTurn(event)
+    )
+      return turnIdentityAnchor;
+    return event.turnId;
+  }
   // Every other canonical method — including an ACCEPTED
   // `turn.completed`/`turn.aborted` — retains. See the doc above for why
   // clearing on accept was itself the bug this fold exists to close.
@@ -820,8 +900,8 @@ export function nextTurnIdentityAnchor(
  */
 export function turnIdentityAnchorForEvents(
   events: CanonicalRuntimeEvent[],
-): string | undefined {
-  let turnIdentityAnchor: string | undefined;
+): TurnIdentityAnchor | undefined {
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   for (const event of events) {
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
@@ -927,7 +1007,7 @@ function deriveLifecycleTransition(
   // untyped (`string` rather than a branded type) because there is no
   // static way to enforce which fold produced a given `string | undefined`;
   // the discipline is "always `nextTurnIdentityAnchor`", documented here.
-  turnIdentityAnchor?: string,
+  turnIdentityAnchor?: TurnIdentityAnchor,
 ): {
   from: SessionLifecycleState;
   to: SessionLifecycleState;
@@ -974,8 +1054,13 @@ function deriveLifecycleTransition(
   // is what heals every row ALREADY persisted with the old, unguarded
   // stamp; a write-side-only fix cannot reach rows already on disk.
   const isStaleTurnTerminal =
-    (event.method === 'turn.completed' || event.method === 'turn.aborted') &&
+    (event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      (event.method === 'runtime.error' &&
+        typeof turnIdentityAnchor === 'object' &&
+        (event.turnId !== undefined || event.invocationId !== undefined))) &&
     !acceptsTurnTerminalEvent(event, turnIdentityAnchor);
+  if (isStaleTurnTerminal) return null;
   if (
     event.sessionState &&
     !isLegacyAttachStamp(event) &&

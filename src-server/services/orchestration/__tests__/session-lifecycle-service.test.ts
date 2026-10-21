@@ -2061,3 +2061,74 @@ test('a nonblocking question does not pause a turn or revive it when the engine 
     completed.lifecycleState,
   );
 });
+
+test.each(['turn.completed', 'turn.aborted', 'runtime.error'] as const)(
+  'invocation lifecycle rejects old and untagged %s despite reused native ids and stamps',
+  (method) => {
+    const base = {
+      provider: 'claude',
+      threadId: 'exact-lifecycle',
+      createdAt: '2030-01-01T00:00:00Z',
+    };
+    const started: CanonicalRuntimeEvent = {
+      ...base,
+      eventId: 'B-start',
+      method: 'turn.started',
+      turnId: 'N',
+      invocationId: 'B',
+      prompt: 'B',
+    };
+    const terminal = (invocationId?: string): CanonicalRuntimeEvent =>
+      method === 'runtime.error'
+        ? {
+            ...base,
+            eventId: 'terminal',
+            method,
+            turnId: 'N',
+            invocationId,
+            message: 'error',
+            severity: 'error',
+            sessionState: 'failed',
+          }
+        : method === 'turn.aborted'
+          ? {
+              ...base,
+              eventId: 'terminal',
+              method,
+              turnId: 'N',
+              invocationId,
+              sessionState: 'completed',
+              reason: 'stopped',
+            }
+          : {
+              ...base,
+              eventId: 'terminal',
+              method,
+              turnId: 'N',
+              invocationId,
+              sessionState: 'completed',
+            };
+    const session = {
+      provider: 'claude' as const,
+      threadId: base.threadId,
+      status: 'running' as const,
+      createdAt: base.createdAt,
+      updatedAt: base.createdAt,
+    };
+    for (const invocationId of ['A', undefined]) {
+      const stale = terminal(invocationId);
+      expect(
+        projectSessionLifecycle({ session, events: [started, stale] })
+          .lifecycleState,
+      ).toBe('running');
+      expect(activeTurnIdForEvents([started, stale])).toBe('N');
+      expect(
+        normalizeCanonicalRuntimeEventLifecycle(stale, 'running', {
+          turnId: 'N',
+          invocationId: 'B',
+        }),
+      ).not.toHaveProperty('sessionState');
+    }
+    expect(activeTurnIdForEvents([started, terminal('B')])).toBeUndefined();
+  },
+);

@@ -34,7 +34,21 @@
 
     "packages/shared/src/native-relay-link.ts",
 
-    "packages/shared/package.json#/exports/.~1native-relay-link"
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
   ],
 
   "checks": [

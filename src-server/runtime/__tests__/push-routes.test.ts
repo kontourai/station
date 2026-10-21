@@ -67,6 +67,7 @@ function createHarness() {
     createPushRoutes({
       getVapidPublicKey: () => 'fake-vapid-public-key',
       identifyDevice: (credential) => pairing.identifyDevice(credential),
+      credentialAliasId: (credential) => pairing.credentialAliasId(credential),
       setPushSubscription: (deviceId, subscription) =>
         pairing.setPushSubscription(deviceId, subscription),
       clearPushSubscription: (deviceId) =>
@@ -136,6 +137,7 @@ describe('push routes', () => {
     const callbacks = {
       getVapidPublicKey: vi.fn(() => 'hosted-vapid-key'),
       identifyDevice: vi.fn(),
+      credentialAliasId: vi.fn(),
       setPushSubscription: vi.fn(),
       clearPushSubscription: vi.fn(),
     };
@@ -236,6 +238,60 @@ describe('push routes', () => {
     expect(harness.pairing.listPushSubscriptions()).toEqual([
       { deviceId: paired.device.id, subscription: fakeSubscription('a') },
     ]);
+  });
+
+  // A relay alias reads as its device, never as the operator, while the
+  // device's own credential may (home-possession): a subscription made with
+  // it would be filed under that device and delivered by the operator's
+  // focus rules. Refused like a personal access token.
+  test('a relay alias of a paired device cannot subscribe', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    const alias = harness.pairing.issueRelayCredentialAlias(
+      paired.credential,
+      paired.device.id,
+    );
+    expect(harness.pairing.identifyDevice(alias.credential)?.id).toBe(
+      paired.device.id,
+    );
+    // Through the real credential floor: the alias's read scope is refused.
+    const response = await harness.request(
+      '/api/system/push-subscribe',
+      harness.authed(alias.credential, fakeSubscription('alias')),
+    );
+    expect(response.status).toBe(403);
+    expect(harness.pairing.listPushSubscriptions()).toEqual([]);
+
+    // And by the handler itself, should a floor ever admit it (a family-tier
+    // mapping, a relay path that widens scope).
+    const bare = new Hono();
+    bare.route(
+      '/api/system',
+      createPushRoutes({
+        getVapidPublicKey: () => 'fake-vapid-public-key',
+        identifyDevice: (credential) =>
+          harness.pairing.identifyDevice(credential),
+        credentialAliasId: (credential) =>
+          harness.pairing.credentialAliasId(credential),
+        setPushSubscription: (deviceId, subscription) =>
+          harness.pairing.setPushSubscription(deviceId, subscription),
+        clearPushSubscription: (deviceId) =>
+          harness.pairing.clearPushSubscription(deviceId),
+      }),
+    );
+    const direct = await bare.request(
+      '/api/system/push-subscribe',
+      harness.authed(alias.credential, fakeSubscription('alias')),
+    );
+    expect(direct.status).toBe(403);
+    expect(await direct.json()).toEqual({ error: 'device_pairing_required' });
+    expect(harness.pairing.listPushSubscriptions()).toEqual([]);
+    // The device's own credential still subscribes through the same handler.
+    const own = await bare.request(
+      '/api/system/push-subscribe',
+      harness.authed(paired.credential, fakeSubscription('own')),
+    );
+    expect(own.status).toBe(200);
   });
 
   test('an operator-only credential is not enough to subscribe (403 device_pairing_required)', async () => {

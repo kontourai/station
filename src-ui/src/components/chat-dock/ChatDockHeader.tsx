@@ -102,6 +102,12 @@ export interface ChatDockWorkspaceControls {
      * sets this.
      */
     isMobile?: boolean;
+    /**
+     * Where focus goes when the inventory closes and the element that opened
+     * it is gone (#3882: the session context card folds while the inventory
+     * is open, taking its Chat inventory button with it).
+     */
+    restoreFocusFallback?: () => void;
   };
   onOpenConversation: () => void;
   /** Opens the New Chat picker, where installed Skills appear too (#3170). */

@@ -21,7 +21,12 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
  *   hover card makes on demand, and the link observation carries no checks
  *   state.
  */
-export type InboxRowChipKind = 'remote' | 'draft' | 'woke' | 'claim';
+export type InboxRowChipKind =
+  | 'remote'
+  | 'draft'
+  | 'woke'
+  | 'agent-message'
+  | 'claim';
 
 export interface InboxRowChip {
   kind: InboxRowChipKind;
@@ -52,7 +57,7 @@ function claimChip(claims: readonly WorkClaimView[]): InboxRowChip | undefined {
 }
 
 export function inboxRowChips(
-  item: Pick<HomeWorkItem, 'environmentLabel'>,
+  item: Pick<HomeWorkItem, 'environmentLabel' | 'receivedAgentMessage'>,
   local: {
     hasUnsentDraft?: boolean;
     isWoken?: boolean;
@@ -60,6 +65,8 @@ export function inboxRowChips(
   } = {},
 ): InboxRowChip[] {
   const chips: InboxRowChip[] = [];
+  if (item.receivedAgentMessage)
+    chips.push({ kind: 'agent-message', label: 'Agent message' });
   const claim = local.claims ? claimChip(local.claims) : undefined;
   if (claim) chips.push(claim);
   if (item.environmentLabel) {

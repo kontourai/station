@@ -1,6 +1,6 @@
 /**
  * #4003 Task memory's store: `task_summary_revisions` and
- * `task_record_versions` in the orchestration database (migration 017).
+ * `task_record_versions` in the orchestration database (migration 020).
  * Authority is the caller's (`ProjectTaskRoomRuntime`); this module owns the
  * bounds, the base-revision rule, the live-record caps, supersede, answer and
  * retire, and the append-only shape.
@@ -13,7 +13,7 @@
  * The read API at the bottom (`listStandingRecords`, `listOpenQuestions`,
  * `countOpenQuestions`) is what other server code reads Task memory through.
  * It also keeps a person's dismissals of a done Task's promotion candidates
- * (`task_learning_dismissals`, migration 018; see
+ * (`task_learning_dismissals`, migration 021; see
  * `services/projects/task-learning.ts`).
  */
 import {

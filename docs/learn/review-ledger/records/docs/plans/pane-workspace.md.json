@@ -1,0 +1,15 @@
+{
+  "path": "docs/plans/pane-workspace.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Implementation plan and acceptance ledger for the pane workspace contract. Its ledger states what each pull request implements; no box is checked before independent review and runtime acceptance.",
+
+  "limits": "A plan: its order and ledger are intentions and recorded status, not evidence. Behavioural claims live in the contract and are reviewed there.",
+
+  "sources": [],
+
+  "checks": []
+}

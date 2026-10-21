@@ -32,7 +32,7 @@ AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
-the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
+the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
@@ -517,9 +517,11 @@ views. The header's sidebar button collapses the desktop map to a project
 rail; clicking a project icon opens its views without navigating first.
 The dashboard icon below projects opens your Personal Boards and their add
 button. Escape closes either popup and returns focus to its icon.
-The compact footer keeps live work, Schedule, Customize and Settings in one
-row, or under Sidebar utilities in the collapsed rail. Conversations and
-composer drafts stay in the chat dock and its inbox (⌘D).
+The footer puts live work beside your initials, which open a summary of your
+access with **My access**, **Profile**, **Ask Station for help** and **Open
+settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+Sidebar utilities. Conversations and composer drafts stay in the chat dock and
+its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
@@ -739,15 +741,23 @@ unavailable.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
-An existing chat can become a Task through **Turn into Task** in its More menu.
-The **Add to Task** picker also offers **New Task from this…** for an answer or input.
+An existing chat can become a Task through **New Task from this** in its More menu.
+The **Add to Task** picker also offers **New Task from this** for an answer or input.
+**New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
 
 On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
 issue's description and latest comments into a new Task and links back to the
 issue; if the issue already has an open Task, Station opens that Task instead.
-**Turn into Task** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or remove the chip. No Task is created until acceptance.
 
 After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
+
+The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
+line. New messages follow the newest message while you are at the bottom; if
+you scroll up, **Jump to latest** returns you there. **Load earlier messages**
+appears above the visible history. A failed agent request stays in the room
+with **Retry** and **Open run**. The Brief is shared with agent requests unless
+you turn off **Brief attached**. Saved answers appear in Results, with their
+source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
 Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
@@ -757,6 +767,30 @@ outcome, inspect that Task rather than creating another to retry it.
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
+
+## Review Activity Without Changing Your Place
+
+Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Quick review** to read it in Related while keeping the selected item, search,
+filters and list position. **Previous** and **Next** follow the rows currently
+visible in that list. When an item leaves the current results, review says so
+and disables those controls rather than choosing from hidden results.
+
+Choose **Open** to keep the reviewed item as durable work. Reopening the same
+kept item focuses it. Typing a reply also protects it; Cancel in the unsaved
+changes dialog leaves the reply and source in place. A review belongs to the
+Station it was opened on and does not read another Station's data.
+
+**Open conversation** uses Chat's normal conversation owner. A review that
+stays visible does not ask you to leave it. If opening Chat hides dirty work,
+that work asks once; Cancel keeps the current view and reply. An attached
+review hands its message to Chat's **Continue here?** confirmation on the same
+Station. Switching Station or closing that reader stops a late result from
+opening or sending in the new view.
+
+On a phone, review opens as a child screen. Back returns through the real
+history entry; **Up to Activity** returns to its captured Activity opener.
+Session properties sheets and cold child links remain separate planned work.
 
 ## See Conversations Started Outside Station
 
@@ -793,7 +827,9 @@ point Station at a different folder (for OpenCode, the folder holding the
 database). Station checks every two seconds and reads the 128 most recently
 changed conversations from each place. Older ones stay in Activity once Station
 has read them, but new messages in them are not picked up until they are among
-the 128 again.
+the 128 again. Conversations Station has not listed before appear only after it
+finishes restoring its own sessions at startup; if that restore fails, already
+listed conversations keep updating but new ones wait until Station restarts.
 
 Each conversation is filed under a Project by the folder it ran in:
 
@@ -824,7 +860,7 @@ gone. You can open these conversations, and so can every device you have
 paired with Activity read access, including a phone.
 
 To stop reading conversations from folders outside your Projects, turn off
-**Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
+**Conversations outside projects** in **Settings → Advanced** (under Host options), then **Save**
 (`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
 next check, including for conversations it already lists: new messages in
 them no longer arrive. What it already read stays in Activity, in search and
@@ -845,16 +881,19 @@ conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.
 
-The continuation always works in the folder the conversation ran in, and the
-engine is confined to that folder. Station checks the folder again when you
-continue:
+The continuation starts in the folder the conversation ran in. Its actual
+confinement depends on the Session's access grant and the engine's enforcement;
+a continuation granted Full access can run with host authority. The working
+folder alone is not a sandbox guarantee. Station checks the folder again when
+you continue:
 
 - A conversation filed under a Project continues under that Project. This
   includes one in a worktree outside the Project folder: it continues in that
   worktree. Station refuses if the worktree was removed or replaced, or if its
   `.git` does not lead back to the Project's repository.
 - A conversation under **No project** continues as a **No project** chat
-  confined to its own folder, after you confirm that choice. This is allowed
+  in its own folder, after you confirm that choice. Its access grant still
+  determines confinement as described above. This is allowed
   only for a folder inside your home folder. Station refuses your home folder
   itself, every folder outside it (system folders included), any hidden
   folder directly in your home folder and everything in it (such as `.ssh`,

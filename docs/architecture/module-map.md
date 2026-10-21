@@ -24,6 +24,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
+| [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [AccountPreferences](#accountpreferences) | Keep personal choices account-scoped and hardware preferences device-local. | `src-server/services/identity/account-preferences.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
@@ -547,6 +548,13 @@ for ordinary overrides and command skills. [Settings import/export](../../src-ui
 carries those values. Dispatch checks disabled state, the registered `when`
 expression and modal/input ownership before matching a chord; priority wins,
 then registry order. Browser or OS interception remains outside that matcher.
+Plugins register through the SDK's `useShortcut`, which the
+[SDK shortcut binding](../../src-ui/src/core/sdkShortcutsHost.ts) files under
+`plugin.<owner>.<id>` (owner: the verified installed-plugin name,
+percent-encoded; none means refused `unbound`) at priority -1, below Station's
+default 0. Dispatch skips a plugin shortcut on a
+[reserved kernel or text-editing chord](../../src-ui/src/contexts/kernelReservedShortcuts.ts),
+and registration refuses one.
 
 **Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
 uses ID-derived context hints rather than the actual dispatch rule, and checks
@@ -578,7 +586,10 @@ resolves the `colorTheme`, `colorThemeFlavor` and `colorThemeAccent` settings
 against a small generated index (unknown ids fall back, nothing throws), so
 the startup path never loads the catalog;
 [color-themes.ts](../../src-ui/src/lib/color-themes.ts) exposes
-`COLOR_THEME_OPTIONS` for a picker. [color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
+`COLOR_THEME_OPTIONS` for a picker; the one picker is the lazily loaded
+[Appearance page](../../src-ui/src/pages/AppearancePage.tsx), which reads the
+root attributes and shows a chosen family as loading until they name it.
+[color-theme-apply.ts](../../src-ui/src/lib/color-theme-apply.ts)
 loads the selected family's stylesheet, stamps `data-color-theme*` and
 `theme-color` once it has loaded (a failed sheet is not claimed, is marked
 with `data-color-theme-failed` and is requested again only when the selection
@@ -1394,8 +1405,8 @@ in `@kontourai/monument` owns the decision and record-before-effect sequence.
 Station Control's `send_to_session` and delegated task result delivery import
 it through the package's public root entry point; no server copy remains.
 
-**Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
-decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
+**Interface.** `deliverSessionMessage(ports, { threadId, text, mode,
+deliveryId, decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
 `no_active_turn`, or `indeterminate`. `decideSessionDelivery(mode, busy)` is the
 pure rule: `auto` steers a running Session and starts an idle one, `start`
 refuses a running one, and `steer` refuses an idle one. The module performs
@@ -1411,6 +1422,35 @@ key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
 primitive adds no storage command or inbox. Recovery-ledger and steer-receipt
 extraction remain open under #3565.
+
+**Provenance.** Station's `send_to_session` and delegated-result host callers
+validate their server-owned sender and frame the message (`frameAgentMessage`)
+through Monument's optional synchronous `prepareText` host port. Preparation
+runs after the deliverable branch decision, before recording or effect. The
+kernel imports no Station types or framing code; hosts without preparation
+pass opaque text unchanged. The engine reads the sender's lines
+quoted under a fixed header the text cannot imitate. The host stamps the same
+sender on the turn's
+`clientOrigin.sender` beside the unchanged `internal` actor, which is what keeps
+`isPersonActor` false and a link in the message from granting `read_conversation`
+access. The transcript projection reads the sender from that record, never from
+the prompt, and unframes the text for display. The digest reads this sender
+from the recorded start event. Engine-opened turns use the adapter's durable
+`metadata.trigger: 'provider'` fact; projected assistant rows retain that
+cause through settlement and rehydration. Phone transcripts show a compact
+cause disclosure, while desktop incoming bubbles keep their sender treatment.
+Exact send/receive navigation uses the recorded request key, reads at most
+20 older pages to rule out ambiguity, and focuses a uniquely resolved record.
+Missing, ambiguous and page-limit outcomes remain visible. The public
+`SessionMessageAnchor` travels through the existing region outbox and Activity
+binding as one consumed intent, with repeat activations keyed by its token.
+Its parser requires a matching Session of 1–512 characters, sent/received
+direction and a request key of 1–128 characters; invalid anchors grant
+neither exact navigation nor conversation access. Delegation-result delivery
+records the settled child Session as its sender on both start and steer,
+while retaining the internal actor and the delegating owner’s authority.
+Its text uses the same agent-message frame; declaring a sender kind grants
+no additional access.
 
 **Idempotence.** `deliveryId` is the `clientTurnId` of a start and the
 `clientInputId` of a steer, so the durable turn claim and the steer receipt
@@ -1428,9 +1468,13 @@ the caller's scope and keys each request in the durable
 before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
-which never acts on the Session. Source tests are the
+which never acts on the Session. The
+[Session control guide](../guides/self-configuring-agent.md#session-control)
+distinguishes ordinary idle from a verified requested-work acknowledgement,
+including the conservative untagged-history limit. Source tests are the
 [delivery decision table](../../packages/monument/src/__tests__/session-message-delivery.test.ts),
-the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts)
+the [key table on SQLite](../../src-server/services/orchestration/__tests__/session-control-request-keys.test.ts),
+the [provenance chain from route to transcript and `read_conversation`](../../src-server/routes/orchestration/__tests__/session-agent-message-provenance.integration.test.ts)
 and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts).
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
@@ -1476,13 +1520,39 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+A lifecycle at rest alone does not authorize a result. Before recording a
+delivery and again before each effect, the host requires either the exact
+invocation terminal disposition or a read-only disposition proving genuinely
+inputless storage. Retained capture history, unavailable or contradictory proof,
+and ambiguous legacy delivery identity hold the result. Output reads retain the
+proved invocation; a reused native turn ID cannot supply another invocation's result.
+
 **Held follow-ups (#3568).**
+The chat dock can read and remove server-held entries through
+`ConversationInboxMessages` and `useConversationInbox`, with captured request
+authority and explicit unavailable and removal-unknown states. This does not
+switch all composer follow-ups from the per-tab queue to server placement;
+that routing change remains separate.
+
 [ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
 holds a person's follow-up for a busy conversation, so it is sent even if the
 app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
 the conversation's current Session has a turn open (the persisted fold or the
 live coordinator) or earlier follow-ups are still waiting, and also when the
-dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
+dispatch is refused before entry with `provider_turn_in_progress` or
+`provider_session_starting`. A begun keyed refusal with one of those busy codes
+returns `client_turn_settled` HTTP409 only when the same authorized inspection
+of the original key proves its retained settlement. Other first definitive
+adapter refusals preserve their original actionable error envelope even when
+the key has closed; a subsequent authorized lookup or same-key retry reports
+the retained closed-key409. A settled key is never queued again, and Station
+does not automatically generate a replacement key. Fresh-input placement may
+proceed after guarded interrupted
+recovery when the actual durable possible-effect read is available/inactive,
+the local coordinator is clear, and the shared structured anchor still names
+the fold's open slot. A newer provider or legacy anchor keeps its normal busy
+hold. That disposition supplies no wait ACK, result
+receipt, invocation association or ordinary retirement witness.
 Only a plain continuation qualifies: one the caller may read, whose target
 names exactly the conversation's bound Agent and workspace
 (`followUpTargetMatchesBinding`), from a sender placement would accept;
@@ -1769,21 +1839,27 @@ Marking a Session complete can race a new turn. The [lifecycle module](../../src
 
 ## SessionTurnBoundaryAuthority
 
-This owner records when a provider call may have crossed into an external effect. It is the durable counterpart to process-local coordination: a restart must not turn an unknown outcome into permission to replay. The [claim protocol](../../src-server/services/orchestration/session-turn-boundary.ts) and EventStore’s SQLite adapter share that responsibility.
+This owner records when a provider call may have crossed into an external effect. A restart must not turn an unknown outcome into permission to replay. The [opaque claim protocol](../../src-server/services/orchestration/session-turn-boundary.ts), [SQLite composition](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) and Monument share that responsibility.
 
-**Interface.** `claim(threadId, now)` returns an opaque, one-way capability that may move only `prepared → invoking → accepted|indeterminate`, or remove a definitely uninvoked/terminally observed boundary. `claimLifecycle` acquires the conflicting per-thread lifecycle capability. Lifecycle code receives only `hasPossibleEffect`; canonical terminal projection receives only `observe`. A caller cannot supply an owner token or arbitrary stored state. The same authority separately owns Session-start and Task-dispatch claims; those have no invented provider turn ID. `prepareProviderTurn` records an engine-initiated turn directly as accepted, without pretending a user command started it. It works in two steps, so the canonical publish path writes that row inside the append of the turn's `turn.started` and the row commits or rolls back with the event.
+**Interface.** Legacy `claim` retains prepared/invoking/accepted behavior. Production sends explicitly reserve a boundary, capture their final immutable input, and atomically begin the boundary and any independently owned linked dedup claim. The private claim retains the full begun records, including purpose, creation sequence, complete owners, revisions, intent and submitted digest. Acceptance latches the provider response and revision before its first attempt and uses `turnBoundary.acceptInvocation`; it never rebuilds custody from a UUID. Missing, stale, ambiguous or unavailable acknowledgement preserves the no-replay fence. Explicit authorized resume uses the same protocol and stored bytes. Cancellation and definitive refusal remain distinct trusted settlement operations; the first acknowledged refusal preserves its actionable diagnosis, while a later same-key send reads the retained settled outcome.
 
-**Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. The single exception is a Session-start claim whose Adapter throws `SessionStartRefusedError`: that type is the Adapter's assertion that the engine definitively refused and what it spawned is torn down, with a `runtime.error` and `session.exited` published for the `session.started` it had already sent (the ACP adapter throws it for a model its fresh `session/new` options did not offer), so `refused()` removes the `invoking` boundary and the receipt is `rejected`. A claim without `refused` (the nested Task-dispatch start claim) records the usual indeterminate start, and an unconfirmed release falls back to it. Ambiguous boundary writes retain their exact opaque intent and retry it on later claim, prepare, observe or reconcile paths without reinvoking the Adapter. Possible-effect polling does not drain those writes; unresolved stored facts remain conservative until a writer retries. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
+**Terminal ownership.** Canonical events supply origin only when the producer has an actual request or stream association. The [host source](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) decodes real columns and payload eligibility on the same connection. Its complete eligible invocation set is checked before native/event candidate filters through the shared pure selector. An old or untagged terminal sharing a native ID cannot settle a new invocation; an exact backward-clock terminal can. Deferred errors, recovery aborts and Session-start-indeterminate facts cannot retire an ordinary invocation. A request-owned error without a native ID remains turn-scoped. Unknown or contradictory source evidence retains the fence.
 
-Session-scoped terminal retirement uses event order in SQLite (#3563). Migration 014 adds nullable `created_sequence` without backfilling existing rows. New boundaries capture the durable global high-water mark under the writer lock; a persisted `session.exited` or turn-less `runtime.error` retires a boundary only when its sequence is greater than that fence. Live observation, runtime reads and boot reconciliation use this rule. NULL-fence rows retain timestamp ordering and can remain accepted or indeterminate across boots. Turn-scoped terminals also retain their timestamp generation check: a backward clock step can still misorder them because provider turn IDs can be reused and terminal events carry no invocation-generation identity. Repairing that requires a Station-assigned invocation ID carried across adapter and event contracts (#3566 or #3575). The in-memory Adapter retains timestamp ordering because it has no durable event sequence.
+The exact raw observation read checks every field, including false eligibility and an absent boundary. Retirement writes a validated full witness on the same existing `orchestration_prepared_turns` audit row before deleting its boundary. Event insertion, witness, deletion and linked fences share the append savepoint, so an outer rollback restores all of them. There is no second terminal store or independent commit. Complete-set contradiction after a committed deletion makes later acknowledgement stale and holds new result-delivery effects or definitive handoff status. Those reads validate the actual current boundary or its same-audit retirement preimage against the canonical complete scope in one read transaction. They do not recreate a fence or retract an earlier release. Retained witnesses can grow until explicit thread deletion, and dedup retention can make acknowledgement stale.
 
-**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. Its private [`sqlite-session-turn-boundary.ts`](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) host adapter runs create, transition, remove, accepted-turn recording, terminal observation and listing through Monument on the existing `orchestration_turn_boundaries` table. Sealed-task admission joins the same writer transaction. A provider-started row runs inside the event append through a nested savepoint; the outer append alone publishes and settles admission. Storage errors retain the existing host result classification, and a lost outer transaction fails the append. Possible-effect polling uses optional fixed-at-open `retiredBoundaryIds` facts to exclude canonical event-retired rows without deleting them. Its deferred read transaction sees committed history while a peer holds the WAL writer; uncommitted terminals stay invisible. Raw listing and owner recovery still see retained rows. The host shares one exact predicate between that read projection and physical retirement, preserving strict sequence fences, legacy timestamp and NULL/empty-ID behavior, turn generations and lifecycle/task-dispatch/admission-error/recovery-marker exclusions. Physical cleanup joins write-only create and accepted-turn admission before occupancy/capacity decisions and rolls back with the command or outer event append; boot cleanup still precedes raw recovery. No Station participant observes reads. Owner reconciliation remains host-owned. `monument-boundary-host.test.ts` retains the pre-migration SQL as an independent oracle, and `monument-boundary-append.test.ts` exercises the production authority with a peer connection and outer rollback. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots, retained rows during writer-locked polling (including pending retry), admission cleanup at capacity and engine-opened outer rollback; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
+**Projection and coordination.** Read-only possible-effect projection and physical observation use the same pure terminal decision. SQL provider-ID/time cleanup applies only to inputless legacy rows. Create and engine-opened acceptance precompose cleanup in their owning writer transaction before kernel dispatch; participant admission never issues another command. Pending retries propagate whole-transaction loss before cleanup can issue another statement or dispatch. Polling uses a deferred read, drains no pending transition and writes no witness. Writer cleanup drains existing private retries before selecting current marker-bearing boundary targets; it collects complete terminal facts only for applicable threads. A no-target cleanup does not read unrelated terminal payloads. Boot cleanup precedes raw dead-owner recovery. Session-wide termination preserves the persisted global-sequence fence and NULL legacy timestamp fallback. Embedded memory uses local event/fence ordinals and the public pure decisions without a restart claim; unavailable linked custody refuses.
+
+Local begun/accepted identity, early-terminal memory, lifecycle anchors and workspace release follow actual invocation disposition. Acknowledged definitive refusal removes only its local invocation; uncertain settlement retains it. Cold and batched activity seeds preserve the selected invocation, and live tool updates select that identity before changing its tool ledger. Untagged non-provider starts remain observed facts while structured identity and its tools persist. Bounded reads retain the latest structured or genuine provider start before selecting terminal/error companions; a newer provider start prevents reviving an older invocation. A matching partial index on canonical events bounds positive-start seeks, including long raw suffixes and legacy-only histories. Malformed start rows remain decode blockers. Migration builds the index atomically; required-name and definition checks refuse absent or replaced indexes rather than falling back to a history scan. A terminal cannot release workspace custody while a durable effect remains. Untagged terminal acknowledgement and new native/sequence result effects require a read-only host disposition proving inactive, genuinely inputless storage: full current records and retained prepared audits must contain no captured input. This deliberately makes untagged legacy acknowledgement unavailable on a thread with retained capture history, even after its active fence is gone; exact positively scoped current/witness proof remains a separate path. Missing or corrupt proof holds, and local busy state alone grants no authority. Wait and delegated-result consumers carry the proved settled invocation into bounded output reads; keyed native-return status reads the retained prepared association and canonical terminal disposition. Untagged start observations have a separate bounded principal/client-origin routing slot: they receive no invocation, client-turn key or Skill credit and cannot consume an exact invocation reservation. Internal result keys use distinct versioned invocation/native/sequence tuples. Retained older rows deduplicate by semantic identity across states without changing their delivery ids; ambiguous old encodings hold rather than granting effect authority. Earliest native-only result rows retain their format provenance and block a new invocation-key delivery when the native association is ambiguous; their pending effects cannot borrow a later invocation's proof. Stop uses the same retained-start identity decision while preserving deferred-retry targeting. Inputless engine-opened turns retain their separate accepted-row and event co-commit protocol, capacity, provider-trigger provenance and legacy retirement. Task-dispatch, lifecycle and passive settlement audits remain outside ordinary terminal cleanup.
+
+**Evidence and limits.** The owning regressions are `session-turn-boundary.test.ts`, `session-execution-coordinator.test.ts`, `session-lifecycle-service.test.ts`, `session-turn-wait.test.ts`, `delegation-result-delivery.test.ts` and the real service/process fixture `prepared-turn-intent-crash.process.test.ts`. Legacy oracle and append owners remain `monument-boundary-host.test.ts` and `monument-boundary-append.test.ts`; session sequence and migration owners remain `session-turn-boundary-sequence.test.ts` and `turn-boundary-sequence-migration.test.ts`. Fixture execution and source review do not qualify installed providers, supported old writers, hosted landing or release. Raw reused-ID native notifications without positive origin remain unattributed and cannot release an identity-aware fence. Neither terminal disposition nor row absence authorizes another adapter call.
 
 ## TurnDeduplicator
 
-A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). Only a claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
+A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible. A claim is per Session; a keyed continuation that may move to a new Session first reads the whole conversation's claims (`inspectTurnDelivery`, applied by `conversationKeyDecision`; see Held follow-ups under SessionMessageDelivery). `inspect` marks an unresolved claim that is `indeterminate` only by age (`ageOnly`: past the in-flight bound, owner alive or unknown); the lookup still answers it `indeterminate`, but that pre-check treats it as live. A live claim names its Session, and the continuation joins its turn through the same bounded wait a contended `sendTurn` claim uses (`OrchestrationService.awaitHeldTurnKey`, exposed as `joinHeldTurnKey`). A claim given up after a possible effect, a dead owner's unreclaimable claim, or an expired one is refused as indeterminate. A dead prepared linked claim is also refused conservatively without reclaiming it; explicit settlement has the separate typed refusal below. `client_turn_in_flight` answers `409` on `/chat` and `/chat/:id/continue`.
 
 **Interface.** `claim({ threadId, clientTurnId, inputDigest? })` returns an opaque owner `TurnClaim`, `conflict`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution, and returns nothing at its next poll once the claim is released or its owner in this process retains it; `givenUp({ threadId, clientTurnId })` says whether this process's owner still owns the unresolved claim and retained it (never another owner's claim of the key, however old); `inspect({ threadId, clientTurnId, inputDigest? })` is a read-only peek that answers what a claim would meet (`absent`, `resolved`, `in-flight`, `reclaimable`, `indeterminate`, `expired`) without claiming, reclaiming or touching retention. Only the owner capability can `beginInvocation()`, `resolve(turnId)`, `release()` or `retain()`.
+
+A retained explicit prepared settlement makes both `claim` and `inspect` throw `TurnIdempotencySettledError`, with closed code `client_turn_settled` and actual `cancelled | definitively-refused` disposition. Neither returns a provider result or new claim. The service records a rejected, non-retryable command receipt and forwards the code; an ordinary same-key send is refused, so a deliberate new request needs a new key. The delivery GET normalizes only this typed refusal to 409 with its fixed message and disposition, leaving the success DTO unchanged. Conversation read authorization precedes every ledger inspection: an unreadable local conversation retains its 200 not-received answer. Unrelated exceptions, even with matching code fields, retain ordinary error handling. These facade rules consume stored protocol evidence; they do not create a host settlement API.
 
 **Behavior.** The rules below are grouped by concern.
 
@@ -1806,7 +1882,7 @@ Canonical JSON sorts object keys, preserves array order and text exactly, and re
 
 Legacy rows without original digest proof remain unknown, even after reclaim: a retry never supplies their original digest. SQLite mirrors the digest in the current owner JSON and the digest column, and trusts it only when they agree. An older writer replacing the owner JSON drops that marker, so a leftover column is unknown. Mixed-version operation therefore cannot guarantee conflict enforcement; missing-digest callers and legacy rows retain legacy replay behavior. Tombstone expiry and unresolved-claim safety remain unchanged. This is only the existing-key conflict slice of #3567: mandatory/generated keys, `/chat`'s independent stream ledger, CLI coverage and retention-policy expansion remain outside it.
 
-**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
+**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
 
 ## AdoptionLedger
 
@@ -1837,6 +1913,13 @@ An automatic profile change is a compensation protocol, not a switch followed by
 **Behavior.** A recovery call waits for the shared startup reconciliation attempt before staging. The caller currently does not require that attempt’s result to be `reconciled`; an `indeterminate` result, or `unavailable` when a durable obligation scan could not be read, leaves the startup pass eligible for another attempt rather than acting as a global staging barrier. Only a `reconciled` result latches the startup pass. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
 **Code and evidence.** `OrchestrationService` composes RecoveryLedger, `RecoveryDispatchAdapter`, credential profile Adapter, session restore/quarantine functions, and clock. `SessionRecoveryCoordinator` routes profile recovery to it. Real lifecycle, compensation, two-instance, and provider-truth coverage is in `src-server/services/orchestration/__tests__/credential-recovery-module.test.ts` and `session-recovery-coordinator.test.ts`. **Do not reintroduce:** credential callbacks on the coordinator, profile policy in a provider Adapter, broad rollback for linked work, or ad-hoc restart maps.
+
+The existing connection recovery policy can optionally rank eligible accounts
+with [allowance routing](../../src-server/services/connections/allowance-routing-policy.ts).
+ConnectionService supplies current, authorized profile quota observations and
+rechecks admission after probing. The selector adds no credential custody or
+scheduler; ordinary application and provider settlement stay with the owners
+above. Missing quota/lifecycle facts remain unknown.
 
 ## ConnectionInspector
 
@@ -2560,8 +2643,30 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
-mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
-and `ProjectTaskRoomConversation` through `WorkspacePaneHost`.
+mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
+`ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
+`TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
+`ProjectTaskRoomConversation` shows named, timed messages and agent threads.
+The provider serializes join, announce and departure across mount replacement;
+reannouncing an already-published viewer refreshes it. Expired departures settle before a renewed join replaces their handles. Legacy checkpoints can recover a retired handle only from a retained principal whose original announcement receipt matches; a different policy remains unavailable. Browser message history
+filters human presence lifecycle facts separately from the internal history.
+Shared history pages retain their continuation cursor and human-only filter.
+Room dispatch records a human-authored title separately from the provider prompt
+that includes the brief. Failed runs retain retry and inspection controls.
+
+`WorkspacePaneHost` remains in Details for Basis, with Kept answers (Answer
+details) directly below it in the same panel. Open Basis and Open Whole Task
+Basis reveal the pane, select it and focus its host tab. The page-published
+open action retains the #3883 reveal behavior: unless the visible room's tab
+strips were already in view, it scrolls the tab's pane group into view below
+the applicable page header. An already-visible strip
+and focused tab cause no extra reveal scroll. The host retains its tabbed
+presentation; the Basis renderer uses chromeless presentation to omit duplicate
+portable MCP App controls. Identity and workspace fields are collapsed by default.
+Task tab selection survives a temporary catalog loading boundary only for the
+same Station API and Task incarnation. Explicit Basis reveal refreshes the
+current authority-scoped Task Basis reads, including an already-mounted pane.
+Neither behavior preserves unsaved text across unmount or supplies effect authority.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -2582,10 +2687,32 @@ clean pre-effect refusal; unknown failures retain uncertainty. The
 [composer](../../src-ui/src/workspace-panes/TaskRoomComposer.tsx) selects exact
 agent recipients and uses the [scoped SDK hooks](../../packages/sdk/src/query-domains/taskRoomWork.ts).
 Ordinary composer messages also use captured transport authority and an expected
-Task incarnation that the history grant rechecks before commit. Request cards
-currently poll the journal read and link to existing execution
-inspection; they are not room-SSE lifecycle events. Invited/public result
-projection and actual-provider acceptance remain unfinished.
+Task incarnation that the history grant rechecks before commit.
+[TaskRoomConversationModule](../../src-server/services/projects/task-room-conversation-module.ts)
+composes request publication, todo/ready to in_progress transitions, exact-session
+thread replies, and canonical completed-answer reads. Turn events and startup
+reconcile the existing agent-publish text append path; no new history body or
+storage worker is needed. Browser records add optional timestamps, opaque actor
+identity and execution/thread correlation. Older records remain readable;
+older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
+under the lifecycle lock at shutdown so replies retain their raw Session identity
+after restart; authority is revoked before cleanup and rechecked before a new
+turn. Retryable, uncommitted timer-flush failures retain text and event identity.
+Final coalescer disposal cancels retry timers and reports undelivered text;
+parking or recovery failures do not skip provider cleanup. History paging waits
+for query refreshes rather than canceling them to fetch another page.
+The request journal refreshes before fresh submissions and after acknowledgements.
+Live presence and history use room SSE. Publication reconciliation is coalesced
+and scheduled after HTTP responses. A bounded proposal cache and durable lookup
+skip duplicate writes and history notifications, including after restart. Only
+room-origin turns publish answers; private dock follow-ups stay private. Reply
+origin requires a server-recorded admission in the private request journal;
+a client turn prefix alone is insufficient. Abandoned publication holds expire
+after 30 seconds. Each answer pass opens history once and truncates oversized
+text precisely at a code-point boundary within both string and body byte limits.
+Shared Task projection continues to publish human messages and the document;
+it excludes agent answers and private execution metadata. Invited/public agent
+results and actual-provider acceptance remain separate qualification scopes.
 
 Immutable output review uses the same room history, rather than a second
 feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
@@ -2601,8 +2728,9 @@ The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
 normalization. The [editor](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
-keeps unsaved text and an exact possible-effect receipt locally. It uses host
-and navigation close guards, rechecks Task/authority generations after awaits,
+keeps unsaved text and an exact possible-effect receipt locally. It flushes pending saves before in-app navigation and retains failed or uncertain
+drafts in place. Co-editing plan rejection refreshes and retries at most three
+times. It uses host and browser-close guards, rechecks Task/authority generations after awaits,
 and recovers from authoritative reads. A query gap or unavailable/error state
 revokes edit authority even when previously applied text remains visible.
 Terminal streams clear live presence; reconnect, duplicate/gap handling and
@@ -3687,7 +3815,12 @@ Sources explains the reviewed-source contribution to one exact answer. It is not
 point-read Interface for one authorized Session answer. It sequences Thread,
 assessment, retained narrative, and reviewed-source owners once, fences
 authority after every await, then returns the existing Surface Basis projection
-and the exact reviewed-source contribution. `SessionInventoryModule` consumes
+and the exact reviewed-source contribution. Station builds the answer's input
+and Thread result contributions itself, so when Surface's parser rejects them
+the read is `unavailable` (503) and the runtime logs a Station Basis composition
+invariant; it never publishes Surface's fallback projection, whose gap would
+blame an owner. Whole Task Basis records that answer as an `unavailable` gap.
+Session ids are opaque and may contain `:`. `SessionInventoryModule` consumes
 that result through the pure `ReviewedSourceSessionInventoryAdapter`; it never
 opens a plugin, scans answers, or reads a whole Session to populate Sources.
 
@@ -3714,7 +3847,7 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
@@ -3731,7 +3864,7 @@ needed for that adapter.
 
 **Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the tracker is read). `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true`, checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref and `workItemObservedAt`. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, an output bound and `--hostname github.com`. GitHub Enterprise hosts and pull requests are `unsupported`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
 
-**Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`017-task-memory.ts`](../../src-server/domain/migrations/017-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs answer" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version, so a version is written once. Dismissals are the only state it keeps (`task_learning_dismissals`, migration [`018-task-learning-dismissals.ts`](../../src-server/domain/migrations/018-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
+**Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs answer" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version, so a version is written once. Dismissals are the only state it keeps (`task_learning_dismissals`, migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
 
 **Task memory lead wake (#4003, in delivery).** After a `task_record` version commits, `ProjectTaskRoomRuntime` hands it to [`TaskQuestionWake`](../../src-server/services/orchestration/task-question-wake.ts) (the `afterTaskRecord` port), whose outcome never changes the write's answer. A question opened by a Session that is not the Task's lead (`TaskRecord.sessionId`, compared by conversation), or an answer by anyone else, becomes one [conversation inbox](#sessionmessagedelivery) entry for the lead's conversation, keyed `tq-` plus a digest of the Task incarnation, record key, version and action, and sent as the lead Session's recorded owner with an internal client origin. The inbox places it as a new turn when the lead is idle and after its turn when it is busy, never as a steer. A person's question, the lead's own writes, a done or canceled Task and a stopped lead send nothing. A failure is logged (`task question wake not delivered`). A crash between the commit and the submit loses that wake; Needs you and the brief still show the question. Evidence: `task-question-wake.test.ts` (the real room write path, inbox, turn ledger and orchestration service with a counting engine, across restarts).
 
@@ -4511,3 +4644,24 @@ immutable publication, privacy, publisher isolation, stale credentials and
 independent erasure during a blocked dimension.
 Neither establishes persistent deployment,
 actual Station execution, final-source backup/restore or native acceptance.
+
+
+## PluginTelemetryPublisher
+
+[PluginTelemetryService](../../src-server/services/plugin-telemetry-service.ts)
+projects declared SDK counts through the authenticated kernel telemetry route.
+[Admission](../../src-server/services/plugins/plugin-telemetry-admission.ts) binds
+selected immutable plugin code to the applied signature receipt, its verified
+registry item ID and the operator's public-catalog classification. Declaration
+validation runs during install before activation. Counts require a kernel-issued five-minute Pane capability bound to the namespaced registry/item identity, installation and declaration revision; plugin headers confer no attribution authority. Agents cannot count. Pane-marked and capability-bearing requests cannot raise tiers or write consent. Pane-context checks recognize explicit plugin/capability headers and prevent accidental or well-behaved SDK misuse. Same-origin plugin code can omit them, call shell APIs, raise tiers, mint tokens and read the shared query cache; isolation remains a separate platform item.
+
+The service uses the foundation tier resolver, monthly identity helper, atomic
+publisher daily state and shared bounded outbox. Plugin publishers default Off; plugin-chosen Lite counts can encode identifiers. A notice alone does not enable sending. Each plugin retains at most 16 live Pane tokens, evicting its oldest; the global cap remains 1024. Each publisher admits at most 100 count requests and 100 Full observations per day; Full sends are batched per flush and drops coalesce by publisher/day/reason. Daily reservations precede I/O;
+there is no backlog or automatic retry. Current installation/trust, effective tier,
+notice or Full receipt are checked before dispatch. The central uninstall
+transaction retires persistent snapshots and receipts; runtime also aborts requests
+already waiting to dispatch, with a synchronous final withdrawal fence. Rollback restores persisted telemetry state and allows fresh tokens, while a withdrawal epoch keeps earlier sends fenced. Explicit fixed-enum feedback can send before removal only while enabled; Off and DNT suppress it. Declaration literals and every DNS answer must be public; TLS is pinned to a validated address with redirects refused.
+The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.routes.test.ts)
+install a signed fixture, invoke the SDK and real kernel routes, and observe a
+loopback receiver. They do not qualify a deployed broker or physical UI journey.
+Distribution manifests and broker `plugin_daily` acceptance remain separate work.

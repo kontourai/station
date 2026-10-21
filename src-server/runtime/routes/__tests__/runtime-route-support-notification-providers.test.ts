@@ -52,6 +52,12 @@ const { configureRuntimeSupportServices } = await import(
 const { EventBus } = await import(
   '../../../services/orchestration/event-bus.js'
 );
+const {
+  OrchestrationStreamPresence,
+  orchestrationStreamPresenceSubjectForSession,
+} = await import(
+  '../../../services/orchestration/orchestration-stream-presence.js'
+);
 
 const makeTempDir = trackTempDirs();
 const shutdowns: Array<() => Promise<unknown>> = [];
@@ -75,16 +81,91 @@ function stub(): any {
   return proxy;
 }
 
-function supportContext(home: string, warn = vi.fn()) {
+function supportContext(
+  home: string,
+  warn = vi.fn(),
+  overrides: Record<PropertyKey, unknown> = {},
+) {
   return new Proxy(
     {
       eventBus: new EventBus(),
       logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
       configLoader: { getProjectHomeDir: () => home },
+      ...overrides,
     } as Record<PropertyKey, unknown>,
     { get: (target, key) => (key in target ? target[key] : stub()) },
   );
 }
+
+/** Real members first; anything else the composition touches is inert. */
+function withStubFallback<T extends object>(members: T): T {
+  return new Proxy(members, {
+    get: (target, key) => (key in target ? Reflect.get(target, key) : stub()),
+  }) as T;
+}
+
+test('a turn completion is recorded while its owner holds a live /events stream', async () => {
+  // The live-Station regression: a desktop app idling in the tray keeps its
+  // orchestration stream open, and the old "owner is connected" gate then
+  // recorded no completion at all, so no surface was ever notified. Whether
+  // a connected, focused surface is interrupted is the delivery router's
+  // decision; the record must exist for it to decide.
+  const eventBus = new EventBus();
+  const presence = new OrchestrationStreamPresence();
+  const owner = orchestrationStreamPresenceSubjectForSession('owner-1');
+  const disconnect = presence.connect(owner);
+  const warn = vi.fn();
+  const context = supportContext(makeTempDir('runtime-support-turn-'), warn, {
+    eventBus,
+    orchestrationStreamPresence: presence,
+    orchestrationService: withStubFallback({
+      isReadOnlyAttachedSession: () => false,
+      isEphemeralSession: () => false,
+      resolveSessionPresenceSubject: () => owner,
+      consumeInternalStopSuppression: () => false,
+    }),
+  });
+  const services = configureRuntimeSupportServices(context as never, stub(), {
+    webPushEnabled: false,
+  });
+  shutdowns.push(() => services.notificationService.shutdown());
+  try {
+    expect(presence.isConnected(owner)).toBe(true);
+    const event = {
+      createdAt: new Date().toISOString(),
+      provider: 'claude',
+      threadId: 'thread-live',
+      turnId: 'turn-1',
+    };
+    eventBus.emit('orchestration:event', {
+      event: { ...event, method: 'turn.started', prompt: 'go' },
+    });
+    eventBus.emit('orchestration:event', {
+      event: { ...event, method: 'turn.completed', finishReason: 'stop' },
+    });
+    await services.notificationService.drainAsyncDispatch();
+
+    const recorded = (await services.notificationService.list()).filter(
+      (notification) => notification.source === 'turn-completion',
+    );
+    expect(recorded).toEqual([
+      expect.objectContaining({
+        category: 'turn-completed',
+        title: 'Your agent finished',
+        metadata: expect.objectContaining({
+          threadId: 'thread-live',
+          turnId: 'turn-1',
+        }),
+      }),
+    ]);
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('turn-completion'),
+      expect.anything(),
+    );
+  } finally {
+    disconnect();
+  }
+});
 
 test('#2620: the focus source and in-app liveness reach delivery wiring', () => {
   const focus = { snapshotForPrincipals: () => new Map() };

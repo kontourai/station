@@ -104,6 +104,7 @@ function createHarness(
         ? { deliverable: options.deliverable }
         : {}),
       identifyDevice: (credential) => pairing.identifyDevice(credential),
+      credentialAliasId: (credential) => pairing.credentialAliasId(credential),
       loadOrCreateStationKey: async () =>
         (await keys.loadOrCreate()).thumbprint,
       stationId: () => pairing.environmentId(),
@@ -282,6 +283,63 @@ describe('native push routes', () => {
     ).json()) as Record<string, string>;
     expect(ra.registrationId).not.toBe(rb.registrationId);
     expect(ra.stationKey).toBe(rb.stationKey);
+  });
+
+  test('a relay alias of a paired device cannot register (403) and creates no key', async () => {
+    const harness = createHarness();
+    const paired = await pairDevice(harness);
+    const alias = harness.pairing.issueRelayCredentialAlias(
+      paired.credential,
+      paired.device.id,
+    );
+    expect(harness.pairing.identifyDevice(alias.credential)?.id).toBe(
+      paired.device.id,
+    );
+    // Through the real credential floor: the alias's read scope is refused.
+    const response = await harness.register(
+      alias.credential,
+      androidBody(TOKEN_A),
+    );
+    expect(response.status).toBe(403);
+    expect(existsSync(harness.keyPath)).toBe(false);
+
+    // And by the handler itself, should a floor ever admit it.
+    const bare = new Hono();
+    bare.route(
+      '/api/system',
+      createNativePushRoutes({
+        identifyDevice: (credential) =>
+          harness.pairing.identifyDevice(credential),
+        credentialAliasId: (credential) =>
+          harness.pairing.credentialAliasId(credential),
+        loadOrCreateStationKey: async () =>
+          (await harness.keys.loadOrCreate()).thumbprint,
+        stationId: () => harness.pairing.environmentId(),
+        setNativePush: (deviceId, request, stationKey) =>
+          harness.pairing.setNativePush(deviceId, request, stationKey),
+        clearNativePush: (deviceId) => {
+          harness.pairing.clearNativePush(deviceId);
+        },
+        nativePushRegistrationId: (deviceId) =>
+          harness.pairing.nativePushRegistrationId(deviceId),
+      }),
+    );
+    const post = (credential: string) =>
+      bare.request(NATIVE_PUSH_REGISTER_PATH, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${credential}`,
+        },
+        body: JSON.stringify(androidBody(TOKEN_A)),
+      });
+    const direct = await post(alias.credential);
+    expect(direct.status).toBe(403);
+    expect(await direct.json()).toEqual({ error: 'device_pairing_required' });
+    expect(existsSync(harness.keyPath)).toBe(false);
+    expect(harness.pairing.listNativePushRegistrations()).toEqual([]);
+    // The device's own credential still registers through the same handler.
+    expect((await post(paired.credential)).status).toBe(200);
   });
 
   test('an operator credential is not a paired device (403) and creates no key', async () => {

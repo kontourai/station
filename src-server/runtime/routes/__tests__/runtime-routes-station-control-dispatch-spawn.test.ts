@@ -52,7 +52,10 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
-import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
+import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
+  SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
+} from '../../../services/orchestration/session-project-identity.js';
 import { createStationControlMcpServer } from '../../../tools/station-control-mcp-server.js';
 import {
   STATION_CONTROL_CALLER_TOKEN_HEADER,
@@ -809,6 +812,101 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       ]);
       expect(body.error).toContain('omit projectSlug and projectPath');
       expect(adapter.starts).toEqual([]);
+    },
+  );
+
+  // #3800 (round 5 of the #3962 review): an agent's send_message to a plain
+  // folder inside its Project, naming no Project, still records the
+  // Project's directory as the folder the session was authorized for, so a
+  // repository the agent planted at that folder cannot anchor its own
+  // `.codex` (`findUnaccountedCodexConfig` refuses below the root).
+  test('send_message to a plain folder inside the Project records the Project directory as its confinement root', async () => {
+    const { base, adapter } = await setup();
+    const { root } = layout();
+    const planted = join(root, 'proj', 'sub', 'D');
+    mkdirSync(planted, { recursive: true });
+    support.routeBase = base;
+    const mcp = createStationControlMcpServer();
+    const sent: { id?: number; result?: unknown }[] = [];
+    const transport = {
+      start: async () => {},
+      close: async () => {},
+      send: async (message: { id?: number; result?: unknown }) => {
+        sent.push(message);
+      },
+      onmessage: undefined as undefined | ((message: unknown) => void),
+    };
+    await mcp.connect(transport as never);
+    closers.unshift(() => mcp.close());
+    let nextId = 0;
+    const rpc = async (method: string, params: object) => {
+      nextId += 1;
+      const id = nextId;
+      setImmediate(() =>
+        transport.onmessage?.({ jsonrpc: '2.0', id, method, params }),
+      );
+      for (let i = 0; i < 2_000; i += 1) {
+        const found = sent.find((message) => message.id === id);
+        if (found) return found;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error(`no response for ${method}`);
+    };
+    await rpc('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'engine', version: '1' },
+    });
+    const { token } = mintStationControlMcpToken('op-caller-a', 'url-token');
+    const response = (await withStationControlCallerContext(
+      {
+        token,
+        resolve: () => ({
+          sessionId: 'op-caller-a',
+          assurance: 'bearer-exposed',
+          principal: stationControlCallerPrincipal(
+            LOCAL_OPERATOR_PRINCIPAL_ID,
+            'session-owner',
+          ),
+        }),
+      },
+      () =>
+        rpc('tools/call', {
+          name: 'send_message',
+          arguments: { agent: 'writer', message: 'go', projectPath: planted },
+        }),
+    )) as { result?: { isError?: boolean } };
+    expect(response.result?.isError).not.toBe(true);
+    await waitFor(
+      () => adapter.starts[0],
+      (start) => start !== undefined,
+    );
+    expect(adapter.starts.map((start) => start.cwd)).toEqual([planted]);
+    expect(
+      adapter.starts[0]!.input.metadata?.[
+        SESSION_CONFINEMENT_ROOT_METADATA_KEY
+      ],
+    ).toBe(join(root, 'proj'));
+  });
+
+  test.each(ROUTES)(
+    '%s: a dispatch to a folder outside every Project trusts no engine configuration there',
+    async (route) => {
+      const { base, adapter } = await setup();
+      const { folder } = layout();
+      const request = DISPATCH[route]({ kind: 'directory', cwd: folder });
+      const response = await post(
+        base,
+        request.path,
+        as('delegated-custody', 'op-caller-global'),
+        request.body,
+      );
+      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect(
+        adapter.starts[0]!.input.metadata?.[
+          SESSION_CONFINEMENT_ROOT_METADATA_KEY
+        ],
+      ).toBe('');
     },
   );
 

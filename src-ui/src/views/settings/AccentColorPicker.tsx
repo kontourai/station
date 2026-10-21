@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
-import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
+import { PageRow } from '../../components/PageRow';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { applyAccentColor } from '../../lib/accent-contrast';
-import { SettingsPageRow } from './SettingsPageRow';
-import { settingsRow } from './settings-catalog';
+import './AccentColorPicker.css';
 
 /** Exported so the contrast tests measure the shipped list, not a copy. */
 export const ACCENT_PRESETS = [
@@ -20,8 +19,11 @@ export const ACCENT_PRESETS = [
   '#06b6d4',
 ];
 
-export function AccentColorPicker() {
-  const account = useAccountPreferences();
+export function AccentColorPicker({
+  description = 'Choose an accent color for your interface.',
+}: {
+  description?: string;
+} = {}) {
   const { accentColor } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const color = accentColor ?? '';
@@ -40,22 +42,25 @@ export function AccentColorPicker() {
     setDeviceSetting('accentColor', nextColor || null);
   };
 
+  // The swatches sit under the copy rather than beside it: the Appearance
+  // page states where the choice is saved once, at the top, so a per-row
+  // scope chip would repeat it and squeeze the row.
   return (
-    <SettingsPageRow
-      {...settingsRow('accent-color')}
-      description="Choose an accent color for your interface."
-      control={
-        <div className="settings__accent-row">
-          {ACCENT_PRESETS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
-              style={{ background: preset }}
-              onClick={() => apply(preset)}
-              aria-label={`Accent color ${preset}`}
-            />
-          ))}
+    <PageRow title="Accent color" description={description}>
+      <div className="settings__accent-row">
+        {ACCENT_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
+            // backgroundColor, not the `background` shorthand: the shorthand resets
+            // background-clip and would paint the whole 44px target.
+            style={{ backgroundColor: preset }}
+            onClick={() => apply(preset)}
+            aria-label={`Accent color ${preset}`}
+          />
+        ))}
+        <label className="settings__accent-custom-hit">
           <input
             type="color"
             className="settings__accent-custom"
@@ -63,17 +68,20 @@ export function AccentColorPicker() {
             onChange={(event) => apply(event.target.value)}
             aria-label="Custom accent color"
           />
-          {color && account.status !== 'account' && (
-            <button
-              type="button"
-              className="settings__accent-reset"
-              onClick={() => apply('')}
-            >
-              Use default
-            </button>
-          )}
-        </div>
-      }
-    />
+        </label>
+        {/* Clearing the device value and the account value are the same
+            write here: the store routes `accentColor` to the account when
+            signed in. */}
+        {color && (
+          <button
+            type="button"
+            className="settings__accent-reset"
+            onClick={() => apply('')}
+          >
+            Use default
+          </button>
+        )}
+      </div>
+    </PageRow>
   );
 }

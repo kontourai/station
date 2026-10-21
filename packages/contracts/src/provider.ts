@@ -1251,6 +1251,8 @@ export interface ProviderSessionAdoptInput
 
 export interface ProviderSendTurnInput {
   threadId: string;
+  /** Server-assigned retained invocation; attribution only, never replay authority. */
+  invocationId?: string;
   /** Model-facing turn input (may carry server-composed ambient context). */
   input: string;
   /**

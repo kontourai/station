@@ -68,6 +68,7 @@ export function ChatDockSessionInventoryHost({
         dockMode: inventory.dockMode,
         fullscreen: inventory.fullscreen,
         onClose: () => closeSessionInventoryOccurrence(hostId),
+        restoreFocusFallback: inventory.restoreFocusFallback,
       }}
     />,
     inventory.mountRef.current,

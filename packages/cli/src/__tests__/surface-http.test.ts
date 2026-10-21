@@ -48,6 +48,7 @@ describe('CLI surface commands over HTTP', () => {
     schedulerRunFails: false,
     monitoringEvents: [{ type: 'event', value: 'historical' }],
     monitoringEventQueries: [] as string[],
+    insightsQueries: [] as string[],
     notificationActionCalls: [] as Array<{ id: string; actionId: string }>,
     registry: {
       agents: [{ id: 'registry-agent', displayName: 'Registry Agent' }],
@@ -613,6 +614,7 @@ describe('CLI surface commands over HTTP', () => {
         return;
       }
       if (method === 'GET' && url.pathname === '/api/insights/') {
+        state.insightsQueries.push(url.search);
         sendJson(200, {
           success: true,
           data: {
@@ -803,6 +805,7 @@ describe('CLI surface commands over HTTP', () => {
     state.schedulerRunFails = false;
     state.monitoringEvents = [{ type: 'event', value: 'historical' }];
     state.monitoringEventQueries = [];
+    state.insightsQueries = [];
     state.notificationActionCalls = [];
     state.registryInstalls = [];
     state.feedbackRatings = [];
@@ -1655,6 +1658,38 @@ describe('CLI surface commands over HTTP', () => {
     // event instead of tool events, with no error.
     await runCli(['insights', 'events', '--tools', `--api-base=${apiBase}`]);
     expect(state.monitoringEventQueries[0]).toContain('tools=true');
+  });
+
+  test('insights get forwards --producer', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'insights',
+      'get',
+      '--producer=flow-agents',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(state.insightsQueries[0]).toContain('producer=flow-agents');
+  });
+
+  test('an empty --producer is a usage error, not an unfiltered rollup', async () => {
+    const { runCli } = await import('../cli.js');
+    for (const action of ['get', 'events'])
+      await expect(
+        runCli(['insights', action, '--producer=', `--api-base=${apiBase}`]),
+      ).rejects.toThrow('--producer');
+    expect(state.insightsQueries).toEqual([]);
+    expect(state.monitoringEventQueries).toEqual([]);
+  });
+
+  test('insights events forwards --producer', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'insights',
+      'events',
+      '--producer=flow-agents',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(state.monitoringEventQueries[0]).toContain('producer=flow-agents');
   });
 
   test('insights events rejects a --days it cannot use', async () => {

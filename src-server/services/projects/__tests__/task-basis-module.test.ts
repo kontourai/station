@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   composeAuthorizedSessionAnswerBasis,
   createTaskBasisQueryModule,
+  StationBasisCompositionInvariantError,
 } from '../task-basis-module.js';
 
 const observedAt = '2026-08-25T00:00:00.000Z';
@@ -62,6 +63,63 @@ const keptGateEvaluation = {
 };
 
 describe('Station Surface Basis adapter', () => {
+  // A lone surrogate passes Station's byte-bounded id check but not Surface's
+  // well-formed opaque id check: Station built a contribution Surface cannot
+  // carry. That is Station's invariant, never a published owner gap.
+  const unrepresentable = {
+    ...answer,
+    sessionId: 'station:1792425046978',
+    inputs: [{ ...answer.inputs[0]!, eventId: 'input-\ud800' }],
+  };
+
+  test('refuses a Station-built contribution Surface rejects as an invariant, not a fallback projection', async () => {
+    let thrown: unknown;
+    try {
+      composeAuthorizedSessionAnswerBasis(unrepresentable);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(StationBasisCompositionInvariantError);
+    expect(
+      (thrown as StationBasisCompositionInvariantError).surfaceGap.code,
+    ).toBe('hostile-input');
+
+    const reported: StationBasisCompositionInvariantError[] = [];
+    const module = createTaskBasisQueryModule({
+      taskGraph: {
+        readTaskTurnReferenceScope: () => ({ projectId: 'project-a' }),
+        readTaskTurnReferenceLinks: () => [
+          {
+            id: 'keep-a',
+            targetId: encodeTaskTurnReference(
+              'station:1792425046978',
+              'turn-a',
+            ),
+          },
+        ],
+      },
+      sessionQueries: { readAnswerBasis: async () => unrepresentable },
+      outputs: { list: async () => [] },
+      toolResultReferences: noKeptToolResults,
+      reportCompositionInvariant: (error) => reported.push(error),
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      'owner',
+      undefined,
+      undefined,
+    );
+    await expect(
+      module.read({ taskId: 'task-a', answerReferenceId: 'keep-a', authority }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    const whole = await module.read({ taskId: 'task-a', authority });
+    expect(whole).toMatchObject({
+      status: 'found',
+      data: { answers: [], gaps: [{ state: 'unavailable' }] },
+    });
+    expect(JSON.stringify(whole)).not.toContain('1970-01-01');
+    expect(reported).toHaveLength(2);
+  });
+
   test('round-trips a direct observed answer through Surface and stays execution-only without assessment', () => {
     const projection = composeAuthorizedSessionAnswerBasis(answer);
     expect(projection.standing).toBe('execution-only');

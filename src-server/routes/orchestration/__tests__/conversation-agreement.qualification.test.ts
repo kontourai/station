@@ -109,6 +109,7 @@ class TerminalAgreementAdapter extends GateTestAdapter {
       provider: this.provider,
       threadId: input.threadId,
       turnId,
+      invocationId: input.invocationId,
       createdAt: new Date().toISOString(),
     } as const;
     this.events.push({

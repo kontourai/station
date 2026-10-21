@@ -1,0 +1,7 @@
+{
+  "revision": "e3943527bd498dbd3f28c27432342c30c016723a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3800 fix round: registered the new codex-project-config-provenance.test.ts (real temp Git repositories) in the process-heavy manifest group with an inline reason; the manifest rules this document states are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

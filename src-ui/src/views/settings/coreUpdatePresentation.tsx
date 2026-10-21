@@ -382,6 +382,35 @@ export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
   ServiceUpdateProgress['state']
 > = new Set(['queued', 'staging', 'updating']);
 
+const MEGABYTE = 1024 * 1024;
+
+/**
+ * #3851: the step the installer reported, with measured bytes while it
+ * downloads. No percentage is shown without both byte counts.
+ */
+function stagingLine(
+  progress: Extract<ServiceUpdateProgress, { state: 'staging' }>,
+): string {
+  if (progress.intent === 'apply')
+    return 'Handing the downloaded release to the Station service…';
+  if (
+    progress.stagePhase === 'downloading' &&
+    progress.downloadedBytes !== undefined &&
+    progress.totalBytes !== undefined
+  ) {
+    const percent = Math.floor(
+      (progress.downloadedBytes / progress.totalBytes) * 100,
+    );
+    return `Downloading the release: ${(progress.downloadedBytes / MEGABYTE).toFixed(1)} of ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB (${percent}%)…`;
+  }
+  if (progress.stagePhase === 'downloading') return 'Downloading the release…';
+  if (progress.stagePhase === 'verifying')
+    return 'Verifying the downloaded release…';
+  if (progress.stagePhase === 'installing')
+    return 'Installing the downloaded release beside the running one…';
+  return 'Downloading and verifying the release…';
+}
+
 /**
  * One line for the service launcher's update progress (#2675 D3): what the
  * runtime files say, in the tone of the outcome. Finished outcomes carry
@@ -403,12 +432,17 @@ export function serviceUpdateProgressLine(
     case 'queued':
       return {
         tone: 'muted',
-        text: 'Update requested. Waiting for the Station service to start it…',
+        text:
+          progress.intent === 'stage'
+            ? 'Download requested. Waiting for the Station service to start it…'
+            : 'Update requested. Waiting for the Station service to start it…',
       };
     case 'staging':
+      return { tone: 'muted', text: stagingLine(progress) };
+    case 'staged':
       return {
-        tone: 'muted',
-        text: 'Downloading and verifying the release…',
+        tone: 'success',
+        text: `Station ${progress.version} is downloaded and verified. The server keeps running the current version until you restart it.`,
       };
     case 'updating':
       switch (progress.phase) {

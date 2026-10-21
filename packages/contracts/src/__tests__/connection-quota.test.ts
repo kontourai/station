@@ -272,3 +272,38 @@ describe('mergeQuotaSnapshot', () => {
     expect(delayed).toEqual(newer);
   });
 });
+
+test('a changed raw reset cannot inherit a previously qualified deadline', () => {
+  const prior: ConnectionQuotaSnapshot = {
+    ...baseline,
+    windows: [
+      { ...baseline.windows[0]!, resetDeadlineAt: '2026-08-22T00:00:00.000Z' },
+    ],
+  };
+  const rolled = mergeQuotaSnapshot(
+    prior,
+    update({
+      windows: [
+        {
+          ...prior.windows[0]!,
+          resetsAt: 1787529600,
+          resetDeadlineAt: undefined,
+          observedAt: '2026-08-21T00:00:00.000Z',
+        },
+      ],
+    }),
+  );
+  expect(rolled?.windows[0]?.resetDeadlineAt).toBeUndefined();
+});
+
+test('sparse updates do not refresh subscription lifecycle observation time', () => {
+  const prior: ConnectionQuotaSnapshot = {
+    ...baseline,
+    subscriptionEnd: {
+      value: { endsAt: '2026-09-01T00:00:00.000Z', renewal: 'non-renewing' },
+      observedAt: '2026-08-01T00:00:00.000Z',
+    },
+  };
+  const rolled = mergeQuotaSnapshot(prior, update({ subscriptionEnd: null }));
+  expect(rolled?.subscriptionEnd).toEqual(prior.subscriptionEnd);
+});

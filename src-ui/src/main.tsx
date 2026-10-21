@@ -44,6 +44,7 @@ import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBound
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
+import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -52,6 +53,7 @@ import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
+import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
 import { RegionModelProvider } from './contexts/RegionModelContext';
@@ -333,10 +335,14 @@ function renderApp(): void {
                                                     }
                                                   >
                                                     <RegionModelProvider>
-                                                      <BrandingThemeBridge />
-                                                      <WorkClaimsProvider>
-                                                        <App />
-                                                      </WorkClaimsProvider>
+                                                      <PaneRelationsProvider>
+                                                        <ActivityReviewProvider>
+                                                          <BrandingThemeBridge />
+                                                          <WorkClaimsProvider>
+                                                            <App />
+                                                          </WorkClaimsProvider>
+                                                        </ActivityReviewProvider>
+                                                      </PaneRelationsProvider>
                                                     </RegionModelProvider>
                                                     <NotificationContainer />
                                                   </LocaleProvider>

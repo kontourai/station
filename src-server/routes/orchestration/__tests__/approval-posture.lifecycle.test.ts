@@ -79,6 +79,8 @@ class PostureAdapter extends GateTestAdapter {
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
   readonly answers: Array<{ requestId: string; decision: string }> = [];
+  /** The context each answer reached the adapter with, in order. */
+  readonly answerContexts: Array<Record<string, unknown> | undefined> = [];
 
   /** Sessions holding an open request the engine is waiting on. */
   readonly waiting = new Set<string>();
@@ -104,10 +106,12 @@ class PostureAdapter extends GateTestAdapter {
     threadId = '',
     requestId = '',
     decision = '',
+    context?: Record<string, unknown>,
   ): Promise<void> {
     this.answering = true;
     await this.answerGate;
     this.answers.push({ requestId, decision });
+    this.answerContexts.push(context);
     this.waiting.delete(threadId);
     this.events.push({
       eventId: `${requestId}:resolved`,
@@ -813,6 +817,83 @@ describe('approval posture probe table under server order (#2436)', () => {
         unwire();
         await notifications.shutdown();
       }
+    });
+
+    describe('the Station browser server grant on the answer wire', () => {
+      const browserCall = {
+        toolName: 'mcp__station-browser__browser_click',
+        toolInput: { ref: 'e1' },
+        stationBrowserServer: true,
+      };
+      const post = (
+        h: Harness,
+        threadId: string,
+        body: Record<string, unknown>,
+      ) =>
+        h.post('/api/orchestration/commands', {
+          type: 'respondToRequest',
+          threadId,
+          requestId: 'req-browser',
+          ...body,
+        });
+
+      test('the typed scope reaches the adapter beside acceptForSession, and records no posture', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', browserCall);
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'server',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answers.at(-1)).toEqual({
+          requestId: 'req-browser',
+          decision: 'acceptForSession',
+        });
+        expect(h.adapter.answerContexts.at(-1)).toMatchObject({
+          sessionGrantScope: 'server',
+        });
+        expect(h.decisions()).toEqual(['ask']);
+      });
+
+      test("an older client's plain acceptForSession reaches the adapter with no scope", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', browserCall);
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
+          undefined,
+        );
+      });
+
+      test('a scope other than the typed value is refused at the route', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', browserCall);
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'tool',
+        });
+        expect(response.status).toBe(400);
+        expect(h.adapter.answers).toEqual([]);
+      });
+
+      test('a scope on any other decision is not forwarded', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', browserCall);
+        const response = await post(h, threadId, {
+          decision: 'accept',
+          sessionGrantScope: 'server',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
+          undefined,
+        );
+      });
     });
 
     test('records nothing for any other session answer', async () => {

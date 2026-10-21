@@ -11,7 +11,10 @@ import {
   type ConfinementProvider,
   requiredConfinementLevel,
 } from '../../security/confinement/confinement-provider.js';
-import type { CodexSandboxPolicy } from './codex-approval-mode.js';
+import type {
+  CodexSandboxMode,
+  CodexSandboxPolicy,
+} from './codex-approval-mode.js';
 
 /**
  * #2494: what Codex's sandbox posture is derived from. `reported` is the
@@ -26,6 +29,58 @@ export interface CodexSandboxEvidence {
   workspace?: string | undefined;
   /** Station-owned roots a confined engine may also write (its TMPDIR). */
   permittedRoots?: readonly string[];
+  /**
+   * #3800: the permission profile Station started the process under, when
+   * it relies on one, and the `activePermissionProfile.id` Codex reported.
+   * A sandbox Station relies on a profile for is confined only when Codex
+   * reports that profile active: the legacy `sandbox` shape cannot show its
+   * deny rules, and a thread-level `sandbox` or turn-level `sandboxPolicy`
+   * silently replaces it.
+   */
+  requestedProfile?: string | undefined;
+  reportedProfile?: string | undefined;
+}
+
+/**
+ * #3800: the Codex permission profile a session not started as `host` runs
+ * under. Its id is Station's; its definition is in
+ * `codexConfinementConfigArgs`.
+ */
+export const STATION_CODEX_PERMISSION_PROFILE = 'station-workspace';
+
+/**
+ * Codex's `:workspace` (what `workspace-write` means: the workspace roots and
+ * temp writable) plus engine configuration denied at any depth under every
+ * workspace root.
+ *
+ * `:workspace` keeps a root's `.git` and `.agents` read-only, but a profile
+ * that adds its own `:workspace_roots` entries loses that (EXECUTED, 0.162.1:
+ * `.git/hooks`, `refs/remotes` and `packed-refs` became writable), so both
+ * are restated as `read`. Remote-tracking refs are what a later start trusts
+ * a nested `.codex` by (`findUnaccountedCodexConfig`).
+ *
+ * Codex merges each `.codex/config.toml` from the project root down to the
+ * cwd, and Station starts sessions in subdirectories, so a nested
+ * `sub/.codex/config.toml` the agent writes configures every later session
+ * started in `sub` (an `mcp_servers` command there runs outside the sandbox
+ * at `thread/start`). `:workspace` protects only the `.codex` at a root.
+ * `.claude` is the same class for a Claude session in that directory.
+ *
+ * Codex accepts only `deny` for a glob (a `read` glob is refused at
+ * startup), so the agent cannot read these directories either; Codex's own
+ * configuration loading runs outside the sandbox and is unaffected. The
+ * subtree patterns cover a directory that already exists: the bare
+ * directory pattern alone refuses creating one, but not writing inside a
+ * checked-in one (EXECUTED, codex-cli 0.162.1, macOS).
+ */
+const STATION_CODEX_PERMISSION_PROFILE_DEFINITION = `permissions.${STATION_CODEX_PERMISSION_PROFILE}={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}`;
+
+/** Whether the profile Station relies on, if any, is the one Codex reports. */
+function profileApplied(evidence: CodexSandboxEvidence): boolean {
+  return (
+    evidence.requestedProfile === undefined ||
+    evidence.reportedProfile === evidence.requestedProfile
+  );
 }
 
 function within(root: string, path: string): boolean {
@@ -56,29 +111,70 @@ function rootsConfined(
  * #3800: the `codex app-server` arguments that keep a session not started
  * as `host` from being widened by configuration inside its own workspace.
  *
- * Codex merges every `.codex/config.toml` from the project root down to the
- * cwd over the user's configuration, and honours
- * `sandbox_workspace_write.writable_roots` from it: a planted
- * `writable_roots = ["/Users"]` is what `thread/start` then reports and
- * enforces. A `-c` override outranks every file layer (EXECUTED against
- * codex-cli 0.162.1), and as a spawn argument it applies to every
- * configuration load the process makes (start, resume, fork,
- * `config/read`), so it holds even when the file is rewritten mid-session.
+ * The session runs under Station's permission profile
+ * (`STATION_CODEX_PERMISSION_PROFILE`), selected as `default_permissions`.
+ * A `-c` override outranks every file layer (EXECUTED against codex-cli
+ * 0.162.1: a user or project `sandbox_mode = "danger-full-access"` or
+ * `default_permissions = ":danger-full-access"` still reports this profile),
+ * and as a spawn argument it applies to every configuration load the process
+ * makes (start, resume, fork, `config/read`). Station then sends no
+ * `workspace-write` sandbox on the thread or turn: either replaces the
+ * profile (`codexThreadSandboxRequest`, `planCodexTurnSandbox`).
  *
- * It pins the roots to none rather than marking the project untrusted:
- * Codex's untrusted mode would also drop the workspace's `AGENTS.md` and
- * change its default approval policy. The user's own extra roots are
- * dropped too; a root outside the workspace was never a confinement
- * (`observeCodexSandboxPosture`), and one inside it adds nothing but can
- * re-open a path Codex keeps read-only, such as `.git`. Appended last, so
- * it also outranks a connection's own arguments.
+ * Tables merge across layers, so other layers can add entries to the
+ * profile. The operator's own configuration can (`[permissions.
+ * station-workspace.network] enabled = true` is how network is given to a
+ * confined session); a repository's checked-in configuration can too, with
+ * the trust its `.codex` already has. A writable root outside the workspace
+ * still shows in the reported `writableRoots` and is refused there. The
+ * agent cannot write a `.codex` under the workspace roots; one it stages in
+ * temp and moves in is refused before the next start
+ * (`findUnaccountedCodexConfig`).
+ *
+ * `sandbox_workspace_write.writable_roots` is pinned to none for a thread
+ * that is not under the profile (a `read-only` review start, or a Codex
+ * that does not apply it): a tightening restores the reported workspace
+ * baseline, which must not carry a planted root. It does not mark the
+ * project untrusted: Codex's untrusted mode would also drop the workspace's
+ * `AGENTS.md` and change its default approval policy.
+ *
+ * The approval reviewer is pinned to a person for the same reason: with
+ * `approvals_reviewer = "auto_review"` (from any layer) a model approves a
+ * sandbox escalation, and a confined session would leave its sandbox with
+ * no Station approval card. Appended last, so all of these also outrank a
+ * connection's own arguments.
  */
 export function codexConfinementConfigArgs(
   confinement: StationConfinement | undefined,
 ): string[] {
   return confinement === 'host'
     ? []
-    : ['-c', 'sandbox_workspace_write.writable_roots=[]'];
+    : [
+        '-c',
+        `default_permissions="${STATION_CODEX_PERMISSION_PROFILE}"`,
+        '-c',
+        STATION_CODEX_PERMISSION_PROFILE_DEFINITION,
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ];
+}
+
+/**
+ * #3800: the thread-level `sandbox` mode to send. Outside a `host` session
+ * `workspace-write` is Station's permission profile, which the spawn already
+ * selects; sending the mode would replace the profile with Codex's legacy
+ * workspace-write (EXECUTED: `activePermissionProfile` then reads `null`).
+ * `read-only` is still sent: it is narrower than the profile.
+ */
+export function codexThreadSandboxRequest(
+  sandbox: CodexSandboxMode | undefined,
+  confinement: StationConfinement | undefined,
+): CodexSandboxMode | undefined {
+  return sandbox === 'workspace-write' && confinement !== 'host'
+    ? undefined
+    : sandbox;
 }
 
 /**
@@ -90,6 +186,8 @@ export function describeCodexSandboxGap(
 ): string | undefined {
   const reported = evidence.reported;
   if (reported?.type === 'readOnly') return undefined;
+  if (reported?.type === 'workspaceWrite' && !profileApplied(evidence))
+    return `Codex did not report Station's permission profile \`${evidence.requestedProfile}\` active${evidence.reportedProfile ? ` (it reported \`${evidence.reportedProfile}\`)` : ''}, so its deny rules for engine configuration are not in force. Update Codex to a version with permission profiles, or run the session as the operator (a host session).`;
   if (reported?.type === 'workspaceWrite') {
     const allowed = [
       ...(evidence.workspace ? [evidence.workspace] : []),
@@ -112,9 +210,11 @@ export function describeCodexSandboxGap(
  * response, not a kernel observation):
  *
  * - `readOnly`, or `workspaceWrite` whose extra writable roots all lie in
- *   the workspace or a Station-owned root: `confined`.
+ *   the workspace or a Station-owned root and, when Station relies on its
+ *   permission profile, under that profile: `confined`.
  * - `workspaceWrite` with a root outside those (`/`, the home directory,
- *   another checkout): `configured-but-failed`.
+ *   another checkout), or without the profile Station relies on:
+ *   `configured-but-failed`.
  * - Otherwise (`dangerFullAccess`, an `externalSandbox` Station cannot see,
  *   or nothing), the sandbox is not reported applied:
  *   `configured-but-failed` when Station asked for one, else
@@ -126,7 +226,8 @@ export function observeCodexSandboxPosture(
   const reported = evidence?.reported;
   if (reported?.type === 'readOnly') return 'confined';
   if (reported?.type === 'workspaceWrite')
-    return rootsConfined(reported.writableRoots, evidence!)
+    return profileApplied(evidence!) &&
+      rootsConfined(reported.writableRoots, evidence!)
       ? 'confined'
       : 'configured-but-failed';
   return evidence?.requested === 'workspace-write' ||

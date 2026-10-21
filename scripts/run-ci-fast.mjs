@@ -293,6 +293,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     process.execPath,
     Object.freeze(['scripts/typecheck-aggregate.mjs']),
   ]),
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/agent-runtime-import-boundary-gate.mjs']),
+  ]),
 ]);
 
 export function fastBase(env = process.env) {

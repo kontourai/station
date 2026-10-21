@@ -149,6 +149,16 @@ Codex and Grok already start at byte zero; OpenCode starts before the first
 message in its ordered database query, so they have no moving cold window.
 Deterministic ingress refusals keep their existing logged-skip policy.
 
+An unchanged, event-free page performs no session write
+([#3551](https://github.com/kontourai/station/issues/3551)). A meaningful
+session write re-reads the stored row inside its own queued write attempt,
+re-run after each contention backoff, and refuses if another writer deleted it,
+made it Station-owned, changed its subject or affinity, or advanced its cursor.
+A page with new events checks the row once, then each append compares the raw
+stored owner, subject and cursor columns inside its queued attempt. A refusal
+writes nothing, drops the thread's in-memory follow state and logs one warning
+per thread; the next poll rebuilds from the durable cursor.
+
 Scheduled message-search imports use the same yielding path. Their projection
 and watermark commit in one transaction. On contention budget exhaustion, the
 next pass retries the unchanged durable window after two seconds; restart also

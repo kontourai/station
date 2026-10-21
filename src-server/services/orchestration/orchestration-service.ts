@@ -285,6 +285,7 @@ import {
   TASK_BRIEF_MAX_CHARS,
   TASK_BRIEF_VERSION,
 } from '../projects/task-brief.js';
+import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
@@ -382,6 +383,7 @@ import {
 } from './open-requests.js';
 import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge.js';
 import {
+  type AttachedSessionRecoveryObservation,
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
   deriveReadModelSession,
@@ -395,6 +397,11 @@ import {
   trackOrchestrationSession,
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
+import {
+  captureTurnIntent,
+  type PreparedTurnIntentView,
+  samePreparedValue,
+} from './prepared-turn-intent.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
@@ -447,8 +454,10 @@ import {
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
 import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+  sessionConfinementRoot,
 } from './session-project-identity.js';
 import {
   createSessionQueryModule,
@@ -1702,6 +1711,32 @@ function withSessionLocalProjectId(
   return _untrusted === undefined ? input : { ...input, metadata: rest };
 }
 
+/**
+ * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY`
+ * (`sessionConfinementRoot`) from this Station's own Project list and the
+ * resolved start cwd, replacing whatever the caller sent.
+ */
+function withSessionConfinementRoot(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+  admittedWorkspace?: { threadId: string; cwd: string },
+): ProviderSessionStartInput {
+  const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
+    input.metadata ?? {};
+  const root = sessionConfinementRoot(input.cwd, listProjects?.() ?? [], {
+    ...(typeof input.metadata?.projectSlug === 'string'
+      ? { projectSlug: input.metadata.projectSlug }
+      : {}),
+    ...(admittedWorkspace?.threadId === input.threadId
+      ? { admittedCwd: admittedWorkspace.cwd }
+      : {}),
+  });
+  return {
+    ...input,
+    metadata: { ...rest, [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
+  };
+}
+
 // Runtime composition resolves the current local resource before containment and
 // engine invocation. Embedded consumers without that callback retain legacy cwd
 // behavior; recovered sessions with a persisted cwd retain their original path.
@@ -2207,6 +2242,12 @@ export class OrchestrationService {
    * attachment until it is true, so the projection fails open in the window.
    */
   private sessionAttachmentSettled = false;
+  // Separate from answerability settlement: a failed/partial binding scan
+  // cannot authorize a new or replacement attached source subject.
+  private attachedSubjectRecovery:
+    | { outcome: 'pending' | 'failed' }
+    | { outcome: 'observed'; observation: AttachedSessionRecoveryObservation } =
+    { outcome: 'pending' };
 
   /**
    * The instance-bound half of {@link sessionAttachmentSettled}: resolved in
@@ -2628,6 +2669,9 @@ export class OrchestrationService {
           : undefined;
         return {
           assignedAgentSlug: session.assignedAgentSlug,
+          ...(session.delegation?.title
+            ? { delegationTitle: session.delegation.title }
+            : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
             ? { environmentId: session.environmentId }
@@ -3136,7 +3180,13 @@ export class OrchestrationService {
     void this.adoption
       .startReconciliation()
       .then(() => this.recoverSessions())
+      .then((observation) => {
+        this.attachedSubjectRecovery = observation.scanObserved
+          ? { outcome: 'observed', observation }
+          : { outcome: 'failed' };
+      })
       .catch((error) => {
+        this.attachedSubjectRecovery = { outcome: 'failed' };
         // Both upstream steps do unguarded durable reads
         // (`adoptionLedger.reservations()`, `readSessions()`), so this chain can
         // reject. On `main` that only produced an unhandled rejection; since
@@ -3823,6 +3873,21 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    // Preserve only resumable idle room Sessions, under their lifecycle lock.
+    // An unavailable binding is a parking failure; all other teardown still runs.
+    const roomParkingResults = await Promise.allSettled(
+      [...this.sessionAdapters].map(([threadId, adapter]) =>
+        this.adapterRetirement.runCleanupWithinDeadline(async () => {
+          if (
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              threadId,
+            ) &&
+            this.isParkableIdleSession(threadId, Date.now(), 0)
+          )
+            await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+        }, `${adapter.provider} room session parking`),
+      ),
+    );
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -3837,7 +3902,9 @@ export class OrchestrationService {
     // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
     this.conversationActivity?.dispose();
-    await this.recoveryCoordinator?.dispose();
+    const recoveryResults = await Promise.allSettled(
+      this.recoveryCoordinator ? [this.recoveryCoordinator.dispose()] : [],
+    );
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     const currentAdapters = this.options.adapterRegistry.list();
@@ -3881,9 +3948,18 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    const failures = cleanupResults.flatMap((result) =>
+    const failures = [
+      ...roomParkingResults,
+      ...recoveryResults,
+      ...cleanupResults,
+    ].flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     );
+    try {
+      this.deltaCoalescer.dispose();
+    } catch (error) {
+      failures.push(error);
+    }
     if (failures.length > 0) {
       throw new AggregateError(failures, 'Provider adapter shutdown failed.');
     }
@@ -6418,6 +6494,11 @@ export class OrchestrationService {
             this.options.listProjects,
             admittedStartWorkspace,
           );
+          startInput = withSessionConfinementRoot(
+            startInput,
+            this.options.listProjects,
+            admittedStartWorkspace,
+          );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start
           // is bound to), or carry forward the one the conversation's
@@ -7275,6 +7356,7 @@ export class OrchestrationService {
               ),
           });
           const {
+            invocationId: _untrustedInvocationId,
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
@@ -7688,15 +7770,6 @@ export class OrchestrationService {
                       // same key is indeterminate instead of a second send.
                       // A throw here has invoked nothing: the boundary stays
                       // `prepared` and the claim is released.
-                      ownedClientTurnClaim?.beginInvocation();
-                      const begun = boundary.beginInvocation(
-                        new Date().toISOString(),
-                      );
-                      if (begun.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       let providerAccepted = false;
                       let providerInvoked = false;
                       let turnCorrelation:
@@ -7869,6 +7942,57 @@ export class OrchestrationService {
                             }
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            if (boundary.prepareIntent) {
+                              const captured = captureTurnIntent(turnInput, {
+                                binding: this.preparedTurnBinding(
+                                  turnInput.threadId,
+                                ),
+                                requiresFreshCompanions: Boolean(
+                                  nativeMemory ||
+                                    nativeOutputRelay ||
+                                    nativeForeground ||
+                                    experienceReference ||
+                                    experienceContext ||
+                                    internal?.receiverExecutionAdmission ||
+                                    internal?.foregroundInvocationAdmission ||
+                                    internal?.nativeMemoryReadAuthority ||
+                                    submittedInput.expectedInputRequest,
+                                ),
+                              });
+                              const prepared = boundary.prepareIntent(
+                                captured,
+                                ownedClientTurnClaim,
+                                new Date().toISOString(),
+                              );
+                              if (prepared.kind !== 'applied') {
+                                if (prepared.kind === 'stale')
+                                  throw new Error(
+                                    'Prepared turn input could not be retained; no provider call was made.',
+                                  );
+                                claimOutcome = 'retain';
+                                throw new SessionTurnStartIndeterminateError();
+                              }
+                              turnInput = captured.adapterInput;
+                            } else {
+                              ownedClientTurnClaim?.beginInvocation();
+                            }
+                            const begun = boundary.beginInvocation(
+                              new Date().toISOString(),
+                            );
+                            if (begun.kind !== 'applied') {
+                              claimOutcome = 'retain';
+                              throw new SessionTurnStartIndeterminateError();
+                            }
+                            if (turnInput.invocationId)
+                              this.clientOriginTurns.bindInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.markTurnBegun(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground
@@ -7970,9 +8094,33 @@ export class OrchestrationService {
                           context?.principal,
                           experienceReference,
                           stampedClientKey ?? turnInput.clientTurnId,
+                          turnInput.invocationId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
+                        }
+                        const legacyOriginEvent =
+                          this.clientOriginTurns.takeLegacyRouting(
+                            turnInput.threadId,
+                            accepted.turnId,
+                          );
+                        if (legacyOriginEvent)
+                          this.projectAndPublishEvent(legacyOriginEvent);
+                        if (turnInput.invocationId) {
+                          const settled = boundary.accepted(
+                            accepted.turnId,
+                            new Date().toISOString(),
+                          );
+                          if (settled.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          this.sessionExecutionCoordinator.markTurnAccepted(
+                            turnInput.threadId,
+                            accepted.turnId,
+                            turnInput.invocationId,
+                          );
+                          return accepted;
                         }
                         if (
                           !this.sessionExecutionCoordinator.markTurnAccepted(
@@ -8023,6 +8171,15 @@ export class OrchestrationService {
                         ) {
                           throw error;
                         }
+                        if (!providerInvoked && claimOutcome !== 'retain') {
+                          const retired = boundary.notInvoked();
+                          if (retired.kind === 'applied') {
+                            claimOutcome = 'release';
+                            throw error;
+                          }
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
+                        }
                         if (
                           !providerInvoked &&
                           (error instanceof ReceiverExecutionRefusal ||
@@ -8067,6 +8224,20 @@ export class OrchestrationService {
                           throw error;
                         }
                         if (error instanceof SendTurnRefusedError) {
+                          if (boundary.recordDefinitiveRefusal) {
+                            claimOutcome = 'retain';
+                            const settled = boundary.recordDefinitiveRefusal(
+                              new Date().toISOString(),
+                            );
+                            if (settled.kind !== 'applied')
+                              throw new SessionTurnStartIndeterminateError();
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.settleInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            throw error;
+                          }
                           // The adapter refused the turn BEFORE its first
                           // provider-visible effect, so no engine was invoked
                           // and no `turn.started` was published even though
@@ -8214,6 +8385,7 @@ export class OrchestrationService {
                       ? undefined
                       : identity.key;
                   })(),
+                  true,
                 );
               };
               try {
@@ -8660,6 +8832,16 @@ export class OrchestrationService {
                 context?.clientOrigin,
                 context?.principal,
               );
+              const steerInvocationId =
+                this.sessionExecutionCoordinator.invocationForTurn(
+                  command.threadId,
+                  activeTurnId,
+                );
+              if (steerInvocationId)
+                this.clientOriginTurns.bindInvocation(
+                  command.threadId,
+                  steerInvocationId,
+                );
               try {
                 await this.withCurrentSkillExperience(command.threadId, () => {
                   this.assertAdapterCurrent(adapter);
@@ -8684,10 +8866,19 @@ export class OrchestrationService {
                 activeTurnId,
                 context?.clientOrigin,
                 context?.principal,
+                undefined,
+                undefined,
+                steerInvocationId,
               );
               if (earlySteerOriginEvent) {
                 this.projectAndPublishEvent(earlySteerOriginEvent);
               }
+              const legacySteerEvent = this.clientOriginTurns.takeLegacyRouting(
+                command.threadId,
+                activeTurnId,
+              );
+              if (legacySteerEvent)
+                this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
               if (steerInput) {
@@ -8946,9 +9137,15 @@ export class OrchestrationService {
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
+          const serverScope =
+            decision === 'acceptForSession' &&
+            command.sessionGrantScope === 'server';
           const requestContext =
-            inputForm || context?.clientOrigin
+            inputForm || context?.clientOrigin || serverScope
               ? {
+                  ...(serverScope
+                    ? { sessionGrantScope: 'server' as const }
+                    : {}),
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
@@ -9074,6 +9271,7 @@ export class OrchestrationService {
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
           error instanceof ReceiverExecutionRefusal ||
+          error instanceof TurnIdempotencySettledError ||
           // #2494: a respawn refused for its confinement started nothing.
           error instanceof ConfinementRefusedError
             ? ('rejected' as const)
@@ -9121,6 +9319,7 @@ export class OrchestrationService {
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
           error instanceof AttachmentInputUnsupportedError ||
+          error instanceof TurnIdempotencySettledError ||
           error instanceof ApprovalGovernanceRefusedError ||
           error instanceof ClientTurnInputConflictError ||
           error instanceof TurnSubmissionUnsupportedError ||
@@ -9907,6 +10106,25 @@ export class OrchestrationService {
       this.options.eventStore?.listCommandReceipts(threadId) ?? []
     ).filter((receipt) =>
       this.sessionAuthz.canReadSession(receipt.threadId, authority),
+    );
+  }
+
+  /** A completed scan fences failed targets without blocking unrelated discovery. */
+  canBindNewAttachedSubject(threadId: string): boolean {
+    if (
+      !this.options.eventStore ||
+      this.attachedSubjectRecovery.outcome !== 'observed' ||
+      this.transcriptSearchStopped ||
+      this.quarantinedThreads.has(threadId) ||
+      this.attachedSubjectRecovery.observation.failedTargets.has(threadId) ||
+      this.sessionAuthz.tenantContextFor(threadId) !== undefined
+    )
+      return false;
+    const current = this.options.eventStore.readSessionByThread(threadId);
+    return (
+      current === undefined ||
+      (current.controlMode === 'read-only-attached' &&
+        !current.tenantExecutionContext)
     );
   }
 
@@ -11801,6 +12019,25 @@ export class OrchestrationService {
   }
 
   /**
+   * Every session with an active turn, ephemeral ones (webhooks, execution
+   * targets, delegations) included and no read authority applied: what a
+   * server restart would stop (#3851 apply-when-idle). The same predicate as
+   * `hasActiveTurn`, over every persisted, loaded or turn-tracked thread.
+   */
+  listActiveTurnThreadIds(): string[] {
+    const threadIds = new Set<string>([
+      ...(this.options.eventStore?.readSessions() ?? []).map(
+        (session) => session.threadId,
+      ),
+      ...this.sessionReadModel.keys(),
+      ...this.sessionExecutionCoordinator.threadIdsWithTurnState(),
+    ]);
+    return [...threadIds].filter((threadId) =>
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId),
+    );
+  }
+
+  /**
    * archive#3350: every event reaching the publish body below pays a
    * read-model projection, a SQLite append with four projections, an
    * execution-coordinator and recovery observation, a monitoring call and a
@@ -11978,17 +12215,20 @@ export class OrchestrationService {
     // still shows the turn running. It settles before the in-memory
     // observers run, so one that throws cannot strand a stop whose terminal
     // is already stored (#3561 review F3).
-    this.cooperativeStop.settleCompletedTurn(
-      event.threadId,
-      event.turnId,
-      event.method,
-    );
+    if (this.sessionExecutionCoordinator.ownsTurnEvent(event))
+      this.cooperativeStop.settleCompletedTurn(
+        event.threadId,
+        event.turnId,
+        event.method,
+      );
     if (!committed) return false;
     const projectedEvent = this.observeCommittedEvent(
       event,
       committed,
       quarantined,
     );
+    if (!isCoalescableDelta(event))
+      this.sessionExecutionCoordinator.observe(projectedEvent);
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11997,7 +12237,8 @@ export class OrchestrationService {
         projectedEvent.method === 'turn.aborted' ||
         (projectedEvent.method === 'runtime.error' &&
           !isDeferredRetriableTurnError(projectedEvent))) &&
-      projectedEvent.turnId
+      projectedEvent.turnId &&
+      !this.sessionExecutionCoordinator.hasActiveTurn(projectedEvent.threadId)
     ) {
       this.nativeOutputGrants.retireTerminal(
         projectedEvent.threadId,
@@ -12020,8 +12261,6 @@ export class OrchestrationService {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
-    if (!isCoalescableDelta(event))
-      this.sessionExecutionCoordinator.observe(projectedEvent);
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
     // archive#3451 finding 5: a failed turn used to be either mis-counted as
     // `completed` (pre-#3442) or dropped from this metric entirely — count it
@@ -12136,7 +12375,9 @@ export class OrchestrationService {
       sessionReadModel: this.sessionReadModel,
     });
     const declaredOutputs =
-      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
+      projectedEvent.method === 'turn.completed' &&
+      projectedEvent.turnId &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(projectedEvent)
         ? [
             ...this.nativeOutputDeclarations.takeTerminalAdmissions(
               projectedEvent.threadId,
@@ -12216,7 +12457,8 @@ export class OrchestrationService {
     // stalled turn's window (#2436).
     if (
       !isCoalescableDelta(event) &&
-      event.method !== 'session.approval-mode-set'
+      event.method !== 'session.approval-mode-set' &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(event)
     )
       this.turnProgress.observe(event);
     this.threadProviders.set(event.threadId, event.provider);
@@ -12232,7 +12474,11 @@ export class OrchestrationService {
       event.method === 'turn.aborted' ||
       event.method === 'runtime.error'
     ) {
-      this.clientOriginTurns.retire(event.threadId, event.turnId);
+      this.clientOriginTurns.retire(
+        event.threadId,
+        event.turnId,
+        event.invocationId,
+      );
     }
     // Adapter-agnostic activity telemetry: adapters stay metric-free (the
     // sessionStateDuration precedent), so provider activity notifications
@@ -12441,8 +12687,8 @@ export class OrchestrationService {
     });
   }
 
-  private async recoverSessions(): Promise<void> {
-    await recoverOrchestrationSessions({
+  private async recoverSessions(): Promise<AttachedSessionRecoveryObservation> {
+    const observation = await recoverOrchestrationSessions({
       adapterRegistry: this.options.adapterRegistry,
       eventStore: this.options.eventStore,
       requireTenantExecutionContext: this.options.requireTenantExecutionContext,
@@ -12501,6 +12747,7 @@ export class OrchestrationService {
     // which is exactly when that receipt is not published either.
     this.sessionRecoveryCompletedSignal.settle();
     this.evictCollidingAttachedAliases();
+    return observation;
   }
 
   /**
@@ -12559,16 +12806,22 @@ export class OrchestrationService {
       // sessions whose directory is momentarily unavailable (an unmounted
       // volume, a not-yet-restored worktree) — recovery has always been
       // tolerant there and this fix is not the place to change that.
-      resolveSessionCwd: (input) =>
-        input.cwd
+      resolveSessionCwd: async (input) => {
+        const resolved = input.cwd
           ? input
-          : resolveStartSessionCwd(
+          : await resolveStartSessionCwd(
               input,
               this.options.listProjects,
               this.options.observeCwdShadow,
               undefined,
               this.options.resolveProjectSessionDirectory,
-            ),
+            );
+        return typeof resolved.metadata?.[
+          SESSION_CONFINEMENT_ROOT_METADATA_KEY
+        ] === 'string'
+          ? resolved
+          : withSessionConfinementRoot(resolved, this.options.listProjects);
+      },
     };
   }
 
@@ -12706,6 +12959,222 @@ export class OrchestrationService {
   /** The configured local owner can supply native prompt history across Session boundaries. */
   supportsNativeMemoryContinuity(): boolean {
     return this.options.eventStore !== undefined;
+  }
+
+  async readPreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<PreparedTurnIntentView | null> {
+    this.initialize();
+    if (
+      !isSessionReadAuthority(authority) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (!stored || !this.sessionAuthz.canReadSession(threadId, authority))
+      return null;
+    return {
+      invocationId,
+      threadId,
+      clientTurnId: stored.capture.clientTurnId,
+      inputDigest: stored.capture.intent.inputDigest,
+      intentDigest: stored.capture.intent.intentDigest,
+      state: stored.state,
+      input: stored.capture.input,
+    };
+  }
+
+  private preparedTurnBinding(threadId: string): Record<string, unknown> {
+    const session =
+      this.options.eventStore?.readSessionByThread(threadId) ??
+      this.sessionReadModel.get(threadId);
+    if (!session) throw new Error('Prepared turn input is unavailable.');
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    const start = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    const nativeBindingKey =
+      start?.method === 'session.started'
+        ? start.metadata?.nativeResumeBindingKey
+        : undefined;
+    const liveBinding = this.options.adapterRegistry
+      .get(session.provider)
+      ?.preparedTurnBinding?.(threadId);
+    return {
+      provider: session.provider,
+      resumeCursor: session.resumeCursor ?? null,
+      cwd: session.cwd ?? null,
+      environmentId: metadata?.environmentId ?? null,
+      nativeBindingKey: liveBinding?.bindingKey ?? nativeBindingKey ?? null,
+      liveBinding: liveBinding ?? null,
+      connectionId: metadata?.connectionId ?? null,
+      agentId: metadata?.agentSlug ?? null,
+    };
+  }
+
+  /** Explicit replay of never-begun retained bytes; dormant engines require their own start protocol. */
+  async resumePreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<ProviderTurnStartResult> {
+    const unavailable = () => new Error('Prepared turn input is unavailable.');
+    const authorized = () =>
+      isSessionReadAuthority(authority) &&
+      this.sessionAuthz.canReadSession(threadId, authority) &&
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isReadOnlyAttachedSession(threadId);
+    this.initialize();
+    if (!authorized()) throw unavailable();
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (
+      stored?.state !== 'prepared' ||
+      stored.capture.resumeGuard.requiresFreshCompanions ||
+      stored.capture.adapterInput.confinement === 'host' ||
+      stored.capture.adapterInput.reviewIsolation ||
+      typeof stored.capture.resumeGuard.binding.nativeBindingKey !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(
+        stored.capture.resumeGuard.binding.nativeBindingKey,
+      ) ||
+      stored.capture.resumeGuard.binding.resumeCursor === null ||
+      stored.capture.resumeGuard.binding.liveBinding === null ||
+      !samePreparedValue(
+        stored.capture.resumeGuard.binding,
+        this.preparedTurnBinding(threadId),
+      )
+    )
+      throw unavailable();
+    this.assertTurnAdmitted(threadId);
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const adapter = provider && this.options.adapterRegistry.get(provider);
+    if (!adapter || !(await adapter.hasSession(threadId)) || !authorized())
+      throw unavailable();
+    const live = (await adapter.listSessions()).find(
+      (session) => session.threadId === threadId,
+    );
+    if (
+      !live ||
+      live.status === 'closed' ||
+      live.status === 'dead' ||
+      !samePreparedValue(
+        live.resumeCursor ?? null,
+        stored.capture.resumeGuard.binding.resumeCursor,
+      ) ||
+      !authorized()
+    )
+      throw unavailable();
+    const posture = this.approvalPosture.decision(threadId);
+    if (posture?.approvalMode === 'connection-default') throw unavailable();
+    const confinement = this.approvalPosture.standingConfinement(
+      threadId,
+      this.readStartConfinementStamp(threadId),
+    );
+    const current = () => {
+      try {
+        this.assertTurnAdmitted(threadId);
+        return (
+          authorized() &&
+          this.isAdapterCurrent(adapter) &&
+          this.approvalPosture.decision(threadId)?.sequence ===
+            posture?.sequence &&
+          this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStamp(threadId),
+          ) === confinement &&
+          samePreparedValue(
+            stored.capture.resumeGuard.binding,
+            this.preparedTurnBinding(threadId),
+          )
+        );
+      } catch {
+        return false;
+      }
+    };
+    const freshOptions = await this.replayModelOptionsWithPosture(
+      threadId,
+      adapter.provider,
+      stored.capture.adapterInput.modelOptions,
+    );
+    if (
+      !samePreparedValue(
+        freshOptions ?? null,
+        stored.capture.adapterInput.modelOptions ?? null,
+      ) ||
+      !current()
+    )
+      throw unavailable();
+    const cwd = this.options.eventStore?.readSessionByThread(threadId)?.cwd;
+    const workspace = cwd
+      ? await resolveWorkspaceIdentity(cwd, 'local')
+      : undefined;
+    return this.sessionExecutionCoordinator.runPreparedTurnStart(
+      threadId,
+      async () => {
+        if (!current()) throw unavailable();
+        const owned = this.sessionStartBoundaries.resumePrepared?.(
+          stored.capture,
+          new Date().toISOString(),
+          current,
+        );
+        if (owned?.kind !== 'owner') throw unavailable();
+        const begun = owned.claim.beginInvocation(new Date().toISOString());
+        if (begun.kind !== 'applied') {
+          owned.turnClaim?.retain();
+          throw unavailable();
+        }
+        this.sessionExecutionCoordinator.markTurnBegun(
+          threadId,
+          stored.capture.intent.invocationId,
+        );
+        try {
+          const result = await adapter.sendTurn(stored.capture.adapterInput);
+          if (
+            owned.claim.accepted(result.turnId, new Date().toISOString())
+              .kind !== 'applied'
+          )
+            throw unavailable();
+          owned.turnClaim?.resolve(result.turnId);
+          this.sessionExecutionCoordinator.markTurnAccepted(
+            threadId,
+            result.turnId,
+            stored.capture.intent.invocationId,
+          );
+          return result;
+        } catch (error) {
+          if (
+            error instanceof SendTurnRefusedError &&
+            owned.claim.recordDefinitiveRefusal
+          ) {
+            owned.turnClaim?.retain();
+            const settled = owned.claim.recordDefinitiveRefusal(
+              new Date().toISOString(),
+            );
+            if (settled.kind === 'applied') {
+              this.sessionExecutionCoordinator.settleInvocation(
+                threadId,
+                stored.capture.intent.invocationId,
+              );
+              throw error;
+            }
+            throw new SessionTurnStartIndeterminateError();
+          }
+          owned.claim.indeterminate(new Date().toISOString());
+          owned.turnClaim?.retain();
+          throw new SessionTurnStartIndeterminateError();
+        }
+      },
+      workspace && workspace.kind !== 'remote' ? workspace.key : undefined,
+    );
   }
 
   private async captureNativeMemoryHistory(

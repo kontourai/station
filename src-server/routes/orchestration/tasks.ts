@@ -383,6 +383,15 @@ const taskBasisAppRevokeSchema = z
 export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
+    logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+    onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
+    onRoomSystemLine?: (input: {
+      task: TaskRecord;
+      request: Request;
+      proposalId: string;
+      text: string;
+      occurredAt: string;
+    }) => Promise<void>;
     taskDispatcher: TaskDispatcher;
     /**
      * #4003: open Task-memory questions per Task incarnation, so the Tasks
@@ -804,6 +813,13 @@ export function createTaskRoutes(
             503,
           );
         await service.completeProposalAcceptance(data.id, input.shapingSource);
+        await options.onRoomSystemLine?.({
+          task: data,
+          request: c.req.raw,
+          proposalId: `room-created:${data.id}`,
+          text: 'created this Task from a chat',
+          occurredAt: data.createdAt,
+        });
       }
       return c.json({ success: true, data }, 201);
     } catch (error) {
@@ -1501,6 +1517,15 @@ export function createTaskRoutes(
               commit: create,
             })
           : await create();
+      const task = service.readTask(param(c, 'taskId'));
+      if (task)
+        await options.onRoomSystemLine?.({
+          task,
+          request: c.req.raw,
+          proposalId: `room-kept:${data.id}`,
+          occurredAt: data.createdAt,
+          text: `kept ${input.kind === 'turn' ? 'an answer' : input.kind === 'user-input' ? 'a message' : 'a reference'} in Results`,
+        });
       return c.json({ success: true, data }, 201);
     } catch (error) {
       if (error instanceof AnswerNarrativeUnavailableError) {
@@ -2255,6 +2280,47 @@ export function createTaskRoutes(
     return c.json({ success: true, data });
   });
 
+  app.get('/:taskId/kept-pull-requests', async (c) => {
+    const service = serviceForRequest(c.req.raw);
+    if (!service?.readTaskView(param(c, 'taskId'))) return hostedNotFound(c);
+    const authority = options.readAuthorityForRequest?.(c.req.raw);
+    const data = service
+      .listKeptDeclaredPullRequests(param(c, 'taskId'))
+      .filter(
+        (keep) =>
+          authority &&
+          options.canReadSession?.(keep.provenance.sessionId, authority),
+      );
+    return c.json({ success: true, data });
+  });
+
+  app.patch(
+    '/:taskId/title',
+    validate(
+      z
+        .object({
+          title: z.string().trim().min(1).max(512),
+          expectedCreatedAt: z.string().datetime(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.updateTaskTitle(
+          param(c, 'taskId'),
+          getBody(c).title,
+          getBody(c).expectedCreatedAt,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
   app.patch('/:taskId/status', validate(taskStatusSchema), async (c) => {
     try {
       const service = serviceForRequest(c.req.raw);
@@ -2264,6 +2330,13 @@ export function createTaskRoutes(
         getBody(c).status,
         resolveClientOriginForRequest(c.req.raw),
       );
+      try {
+        await options.onStatusChanged?.(data, c.req.raw);
+      } catch (error) {
+        options.logger?.warn('Task status publication failed', {
+          error: errorMessage(error),
+        });
+      }
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

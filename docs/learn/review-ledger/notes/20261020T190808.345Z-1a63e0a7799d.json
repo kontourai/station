@@ -1,0 +1,7 @@
+{
+  "revision": "c0d271615d1150c593fed6d515407c77fd10099a",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Count correction to the preceding Activity review note: the independently executed AttachedSessionDetail.permissionPosture.test.tsx suite has 45 passing tests, not 55 (13.79s invocation, 4.12s test execution). The earlier combined four-suite receipt has 85 passing tests. The opt-in Related draftScope still preserves existing Starter continuation ownership; no source or behavioral change accompanies this correction.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

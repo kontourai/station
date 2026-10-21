@@ -14,7 +14,7 @@
  *   promoting it twice writes once, in whichever Project store it went to.
  *   "Promoted" is read back from the stores, never recorded beside them.
  * - A dismissal is the one state Station keeps
- *   (`task_learning_dismissals`, migration 018).
+ *   (`task_learning_dismissals`, migration 021).
  *
  * Authority is the caller's: the routes pass a person's Task-room access.
  * No station-control tool names these routes, so an agent never reaches them.

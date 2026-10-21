@@ -141,6 +141,7 @@ vi.mock('../../../contexts/PreviewContext', () => ({
 }));
 vi.mock('../../../contexts/RegionModelContext', () => ({
   RegionModelProvider: Through,
+  useRegionModelOptional: () => null,
 }));
 vi.mock('../../../contexts/SyntaxHighlighterContext', () => ({
   SyntaxHighlighterProvider: Through,

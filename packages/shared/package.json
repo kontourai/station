@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-shared",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Shared runtime helpers, config parsing, and compatibility re-exports for Station",
   "type": "module",
   "engines": {
@@ -29,9 +29,12 @@
     "LICENSE"
   ],
   "exports": {
+    "./public-network": "./src/public-network.ts",
+    "./plugin-telemetry": "./src/plugin-telemetry.ts",
     "./product-telemetry": "./src/product-telemetry.ts",
     "./connection-proof": "./src/connection-proof.ts",
     ".": "./src/index.ts",
+    "./agent-message-frame": "./src/agent-message-frame.ts",
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
@@ -111,6 +114,7 @@
     "./release-manifest": "./src/release-manifest.mjs",
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
+    "./station-home-restore-marker": "./src/station-home-restore-marker.ts",
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
@@ -121,7 +125,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.11.0",
+    "@kontourai/station-contracts": "^0.12.0",
     "@kontourai/thread": "0.5.0",
     "@modelcontextprotocol/client": "2.3.1",
     "agent-skills-ts-sdk": "^2.5.0",

@@ -72,7 +72,25 @@
 
     "src-ui/src/contexts/AccountPreferencesProvider.tsx",
 
-    "src-ui/src/views/settings/composite-editors.tsx"
+    "src-ui/src/views/settings/composite-editors.tsx",
+
+    "src-ui/src/hooks/useDeveloperFeatures.ts",
+
+    "src-ui/src/views/settings/DeveloperFeatures.tsx",
+
+    "src-ui/src/views/settings/EnvironmentStatus.tsx",
+
+    "src-ui/src/views/settings/SystemSection.tsx",
+
+    "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
+
+    "src-ui/src/app-shell/codingWorkspaceDocument.ts",
+
+    "packages/contracts/src/workspace-coding-evidence-composition.ts",
+
+    "src-ui/src/views/settings/SettingRowStatus.tsx",
+
+    "src-ui/src/views/settings/SettingsScopeBadge.tsx"
   ],
 
   "checks": [

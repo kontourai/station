@@ -1,4 +1,9 @@
-import { type MouseEvent, type PointerEvent, useRef } from 'react';
+import {
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useRef,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { triggerHaptic } from '../../platform/native/haptics';
 import { Button } from '../Button';
@@ -7,6 +12,8 @@ import { Dialog } from '../Dialog';
 export interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
+  /** Small line above the title, e.g. who is asking. */
+  eyebrow?: ReactNode;
   message: string;
   confirmLabel?: string;
   /**
@@ -64,6 +71,7 @@ export function ConfirmModal({
   role = 'dialog',
   pending = false,
   error = null,
+  eyebrow,
 }: ConfirmModalProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -97,6 +105,7 @@ export function ConfirmModal({
     <div className="confirm-modal-portal" onPointerDown={containToPortal}>
       <Dialog
         title={title}
+        {...(eyebrow ? { eyebrow } : {})}
         closeLabel={`Close ${title}`}
         onClose={onCancel}
         role={role}

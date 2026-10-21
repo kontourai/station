@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
+import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
@@ -143,6 +144,35 @@ async function main() {
     port = adoptedApiPort;
   }
   const projectHomeDir = resolveHomeDir();
+
+  // #3851: a rolled-back update handoff restores the home it left BEFORE the
+  // schema gate reads it (the target may have migrated it); a marker this
+  // release cannot account for refuses boot. No marker: nothing happens.
+  try {
+    consumeHomeRestoreMarkerAtBoot(projectHomeDir);
+  } catch (error) {
+    // The normal fatal path (review F9). The durable log sink is installed
+    // only now: a marked home is not a fresh one, and `logs` is a live root
+    // the restore never touches.
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(1);
+    console.error('Failed to start Station:', error);
+    try {
+      installServerLogSink({
+        directory: join(projectHomeDir, 'logs', 'server'),
+      });
+    } catch {
+      // The console line above is all that can be recorded.
+    }
+    logFatalAndFlush(
+      createLogger({ name: 'station', level: resolveLogLevel() }),
+      'Failed to start Station',
+      { err: error },
+      flushLogSink,
+      buildProvenanceSnapshot,
+    );
+    process.exit(1);
+  }
 
   // The schema gate must own the first write to a Station home. In
   // particular, installing the durable log sink first creates logs/server in

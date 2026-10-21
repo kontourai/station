@@ -657,6 +657,24 @@ describe('sdk public barrel re-exports the Workspace Pane contract API (#1369/#1
     }
   });
 
+  // Station shares the SDK ROOT with plugin bundles at runtime
+  // (`pluginSharedRuntime.ts`); a hook only on a subpath would be bundled into
+  // the plugin with its own React context and never see the host's. The Pane
+  // subpath carries the frame client and stays free of the provider module,
+  // which frame code compiled without JSX imports through it.
+  it('publishes the related-pane hook on the shared root only, and the frame client on the Pane subpath', async () => {
+    const [sdk, paneSdk] = await Promise.all([
+      import('../index'),
+      import('../workspace-pane'),
+    ]);
+    expect(typeof sdk.useRelatedPanes).toBe('function');
+    expect('useRelatedPanes' in paneSdk).toBe(false);
+    expect(sdk.UNSUPPORTED_RELATED_PANES).toBe(
+      paneSdk.UNSUPPORTED_RELATED_PANES,
+    );
+    expect(typeof paneSdk.createRelatedPanesPaneHost).toBe('function');
+  });
+
   it('spells every Workspace Pane contract and adapter type in the SDK barrel', () => {
     // Types are erased at runtime, so the value check above cannot see them;
     // they are parsed out of the contract modules' own source instead.

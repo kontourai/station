@@ -6,7 +6,7 @@
  * #4003 layer 4: the Task workspace's lesson review. The real panel and the
  * real SDK hooks, served by the real learning routes
  * (`createTaskLearningRoutes`) over the real Task memory store (migrations
- * 017 and 018 in an in-memory SQLite database) and a real
+ * 020 and 021 in an in-memory SQLite database) and a real
  * `KnowledgeStoreProvider` writing Kit records in a temporary directory.
  * The person's room authority is granted by a stand-in; that authority, the
  * agent refusal and search are proved in `runtime-routes-task-learning.test.ts`.
@@ -26,8 +26,8 @@ import {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
-import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/017-task-memory';
-import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../../src-server/domain/migrations/018-task-learning-dismissals';
+import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/020-task-memory';
+import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../../src-server/domain/migrations/021-task-learning-dismissals';
 import { KnowledgeStoreProvider } from '../../../src-server/knowledge-store/knowledge-store-provider';
 import { createTaskLearningRoutes } from '../../../src-server/routes/orchestration/task-learning';
 import { createSqliteTaskMemoryStore } from '../../../src-server/services/orchestration/task-memory-store';

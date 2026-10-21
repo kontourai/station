@@ -23,18 +23,57 @@ export interface TurnDedupRecord {
   readonly createdAt: number;
   readonly owner?: OwnerIdentity;
   readonly invocation?: TurnClaimInvocation;
+  /** Only explicit prepared resume may transfer this pending claim. */
+  readonly preparedInvocationId?: string;
+  /** Revision of the linked pending fence; preserved independently of its creation. */
+  readonly preparedUpdatedAt?: string;
+  readonly settlement?: PreparedTurnSettlement;
   /** Versioned submission digest; absent means the original input is unknown. */
   readonly inputDigest?: string;
 }
 
 export type TurnBoundaryState =
   | 'lifecycle'
+  | 'reserved'
   | 'prepared'
   | 'invoking'
   | 'accepted'
-  | 'indeterminate';
+  | 'indeterminate'
+  | 'settled';
 
 export type TurnBoundaryPurpose = 'turn' | 'task-dispatch';
+
+/** Immutable host-owned input identity; the kernel never reads the body. */
+export interface PreparedTurnIntent {
+  readonly invocationId: string;
+  readonly inputDigest: string;
+  readonly intentDigest: string;
+  readonly bodyRef: string;
+  readonly dedupKey?: string;
+}
+
+export interface TurnBoundarySnapshot {
+  readonly owner: OwnerIdentity;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface PreparedDedupSnapshot {
+  readonly owner: OwnerIdentity;
+  readonly createdAt: number;
+  /** The linked claim's preparedUpdatedAt. */
+  readonly updatedAt: string;
+}
+
+/** Passive, immutable acknowledgement; it never names a provider turn. */
+export interface PreparedTurnSettlement {
+  readonly id: string;
+  readonly disposition: 'cancelled' | 'definitively-refused';
+  readonly at: string;
+  readonly boundaryId: string;
+  readonly boundary: TurnBoundarySnapshot;
+  readonly dedup?: PreparedDedupSnapshot;
+}
 
 export interface TurnBoundaryRecord {
   readonly boundaryId: string;
@@ -48,6 +87,8 @@ export interface TurnBoundaryRecord {
   readonly updatedAt: string;
   /** Host event-sequence fence; absent/NULL rows retain timestamp ordering. */
   readonly createdSequence?: number | null;
+  readonly intent?: PreparedTurnIntent;
+  readonly settlement?: PreparedTurnSettlement;
 }
 
 export interface RequestKeyId {
@@ -111,4 +152,35 @@ export interface InboxEntryRecord {
   readonly outcome: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
+}
+
+/** Trusted ordinary terminal assertion; it supplies no native-origin proof. */
+export interface InvocationTerminalFact {
+  readonly threadId: string;
+  readonly invocationId: string;
+  readonly terminalEventId: string;
+  readonly providerTurnId?: string;
+  readonly terminalCreatedAt: string;
+  readonly retire: boolean;
+}
+
+export interface InvocationTerminalQuery {
+  readonly threadId: string;
+  readonly invocationId: string;
+  readonly providerTurnId?: string;
+  readonly allowMissingProviderTurnId: boolean;
+  readonly terminalEventId?: string;
+}
+
+export type InvocationTerminalRead =
+  | { readonly kind: 'found'; readonly fact: InvocationTerminalFact }
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unknown' };
+
+/** Exact pre-deletion ownership evidence, retained in the terminal area. */
+export interface InvocationTerminalRetirement {
+  readonly schema: 'monument.invocation-terminal-retirement/v1';
+  readonly terminal: InvocationTerminalFact;
+  readonly boundary: TurnBoundaryRecord;
+  readonly dedup?: TurnDedupRecord;
 }

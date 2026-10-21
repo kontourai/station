@@ -1,4 +1,5 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { resolveWorkflowTaskMatch } from '@kontourai/station-contracts/workflow';
 import {
   type GitStatusResult,
@@ -18,6 +19,7 @@ import {
   useWorkItemClaimQuery,
   useWorkItemsQuery,
 } from '@kontourai/station-sdk';
+import { StatusBadge } from '@kontourai/ui/react';
 import type { FormEvent } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
@@ -426,7 +428,7 @@ export function ProjectTasksSection({
       <div className="project-page__section-header">
         <span className="project-page__section-label">Tasks</span>
         <Button size="sm" onClick={() => void refetchTasks()}>
-          Refresh tasks
+          Refresh Tasks
         </Button>
       </div>
       {presentation === 'board' ? (
@@ -540,7 +542,11 @@ export function ProjectTasksSection({
             />
           ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
             /* empty-state action: task creation form is adjacent */
-            <Empty variant="compact" label="No tasks yet." />
+            <Empty
+              variant="compact"
+              label="Start a Task"
+              description="Describe a goal and work through it here."
+            />
           ) : (
             <>
               {presentation === 'board' ? (
@@ -565,7 +571,11 @@ export function ProjectTasksSection({
                       {task.title}
                     </span>
                     <span className="project-page__task-row-meta">
-                      {task.status} · {task.priority}
+                      <StatusBadge
+                        tone="neutral"
+                        status={taskStatusLabel(task.status)}
+                      />
+                      {task.priority !== 'normal' && ` · ${task.priority}`}
                     </span>
                   </button>
                 ))
@@ -673,9 +683,7 @@ export function ProjectTasksSection({
                     {selectedTask.title}
                   </div>
                   <div className="project-page__task-detail-meta">
-                    {selectedTask.sessionId
-                      ? `Session ${selectedTask.sessionId}`
-                      : 'No session yet'}
+                    {selectedTask.sessionId ? 'Run linked' : 'No session yet'}
                   </div>
                   {taskClaim?.state === 'claimed-by-me' && (
                     <div
@@ -765,28 +773,37 @@ export function ProjectTasksSection({
                   </button>
                 </div>
               </div>
-              <dl className="project-page__task-binding">
-                <div>
-                  <dt>Working directory</dt>
-                  <dd>{binding?.workingDirectory ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Git top-level</dt>
-                  <dd>{binding?.repoRoot ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Worktree</dt>
-                  <dd>{binding?.worktreePath ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Branch</dt>
-                  <dd>{binding?.branch ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Agent</dt>
-                  <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
-                </div>
-              </dl>
+              <details className="project-page__task-record-details">
+                <summary>Details</summary>
+                <dl className="project-page__task-binding">
+                  {selectedTask.sessionId && (
+                    <div>
+                      <dt>Session</dt>
+                      <dd>{selectedTask.sessionId}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>Working directory</dt>
+                    <dd>{binding?.workingDirectory ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Git top-level</dt>
+                    <dd>{binding?.repoRoot ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Worktree</dt>
+                    <dd>{binding?.worktreePath ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Branch</dt>
+                    <dd>{binding?.branch ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Agent</dt>
+                    <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
+                  </div>
+                </dl>
+              </details>
               <ProjectTaskSharingControl
                 slug={slug}
                 projectId={projectId}
@@ -795,20 +812,23 @@ export function ProjectTasksSection({
                   createdAt: selectedTask.createdAt,
                 }}
               />
-              <div className="project-page__relation-timeline">
-                {links.length === 0 ? (
-                  <div className="project-page__task-empty">
-                    No relations recorded.
-                  </div>
-                ) : (
-                  links.map((link) => (
-                    <div className="project-page__relation-row" key={link.id}>
-                      <span className="project-page__relation-dot" />
-                      <span>{relationLabel(link)}</span>
+              <details className="project-page__task-record-details">
+                <summary>References</summary>
+                <div className="project-page__relation-timeline">
+                  {links.length === 0 ? (
+                    <div className="project-page__task-empty">
+                      No relations recorded.
                     </div>
-                  ))
-                )}
-              </div>
+                  ) : (
+                    links.map((link) => (
+                      <div className="project-page__relation-row" key={link.id}>
+                        <span className="project-page__relation-dot" />
+                        <span>{relationLabel(link)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </details>
             </>
           ) : (
             /* empty-state action: task selection list is adjacent */

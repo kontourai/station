@@ -1,0 +1,7 @@
+{
+  "revision": "4733b9019f95a1b382b53e4b7a0e9377cf00cc1e",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed foundation follow-up 73ded936c01923adb10292f7704d4d08023a3c09. The DNT reminder storage key is now admitted by the raw-storage policy test; the component comment accurately says API-base scoped rather than host scoped. This delta changes no product behavior or consent authority. Existing round-two review of mapper, SemVer, minute precision, monthly migration and daily feedback budget remains applicable.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/UsageTelemetryDisclosure.tsx"]}
+  ]
+}

@@ -63,7 +63,12 @@ export function BackgroundTaskNoticeCard({
 }) {
   const status = NOTICE_STATUS[notice.status] ?? NOTICE_STATUS.unresolved;
   const { title, summary } = notice;
-  const summaryRestatesTitle = Boolean(title && summary?.includes(title));
+  const summaryRestatesTitle = Boolean(
+    title &&
+      (summary?.trim() === title ||
+        summary?.trim() ===
+          `Background command "${title}" completed (exit code 0)`),
+  );
   return (
     <div
       className="task-notice"

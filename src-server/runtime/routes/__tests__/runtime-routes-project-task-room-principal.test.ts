@@ -16,20 +16,15 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type { TaskRoomContextSnapshot } from '@kontourai/station-contracts/task-room-work';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import {
-  createGateTestRegistry,
-  GateTestAdapter,
-} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import * as auth from '../../../routes/system/auth.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import {
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
@@ -202,6 +197,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       // the member is named instead (station#4283 added `environmentId`).
       devicePairing: {
         listDevices: () => [],
+        listKnownPrincipals: () => [],
         environmentId: () => 'environment-local',
       },
     });
@@ -229,6 +225,11 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         readTaskView: (id: string) =>
           id === taskRecord.id ? taskRecord : null,
         listTasks: () => [],
+        updateTaskStatus: async (_id: string, status: TaskRecord['status']) =>
+          Object.assign(taskRecord, {
+            status,
+            updatedAt: new Date().toISOString(),
+          }),
       },
       projectService: {
         listProjects: () => projects,
@@ -598,47 +599,12 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
   });
 
   test.each(['revoke', 'replace-task', 'replace-project'] as const)(
-    'request delivery refuses %s while canonical lifecycle reconciliation is awaiting',
+    'request delivery refuses %s after the authorized journal read and before delivery',
     async (change) => {
-      let revalidatingAgent = false;
-      const fixture = await setup(
-        'request-view-device',
-        'pairing-v7',
-        change === 'replace-project'
-          ? (store) => {
-              const create = store.createProjectTaskRoomHistory.bind(store);
-              vi.spyOn(
-                store,
-                'createProjectTaskRoomHistory',
-              ).mockImplementation((authority) => {
-                const agents = authority.agents;
-                return create({
-                  ...authority,
-                  ...(agents
-                    ? {
-                        agents: {
-                          ...agents,
-                          revalidate: async (receipt) => {
-                            revalidatingAgent =
-                              receipt.capability === 'agent-publish';
-                            try {
-                              return await agents.revalidate(receipt);
-                            } finally {
-                              revalidatingAgent = false;
-                            }
-                          },
-                        },
-                      }
-                    : {}),
-                });
-              });
-            }
-          : undefined,
-      );
+      const fixture = await setup('request-view-device');
       const {
         app,
         store,
-        context,
         directory,
         roomRuntime,
         taskRecord,
@@ -650,17 +616,9 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         authority: 'device-credential',
         source: 'bearer',
       });
-      const service = new OrchestrationService({
-        adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
-        eventBus: new EventBus(),
-        eventStore: store,
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
-      Reflect.set(context, 'orchestrationService', service);
       const work = new TaskRoomWorkModule(
         join(directory, 'task-room-work.json'),
       );
-      if (change === 'replace-project') taskRecord.projectId = 'project';
       const scope = {
         projectId: fixture.projects[0].id,
         roomProjectId: taskRecord.projectId,
@@ -668,7 +626,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         taskCreatedAt: taskRecord.createdAt,
         requesterId: 'human:device:device-x',
       };
-      const submitted = await work.submit(
+      await work.submit(
         taskRecord.id,
         scope.requesterId,
         {
@@ -677,23 +635,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           prompt: 'Private investigation prompt.',
         },
         async () => scope,
-        async (sessionId) => {
-          if (change !== 'replace-project') {
-            await store.bindProjectTaskRoomExecution({
-              projectId: taskRecord.projectId,
-              taskId: taskRecord.id,
-              sessionId,
-            });
-            store.upsertSession({
-              provider: 'claude',
-              threadId: sessionId,
-              status: 'ready',
-              createdAt: '2026-10-01T00:00:00.000Z',
-              updatedAt: '2026-10-01T00:00:00.000Z',
-            });
-          }
-          return { sessionId };
-        },
+        async (sessionId) => ({ sessionId }),
       );
       const request = () =>
         app.fetch(
@@ -702,85 +644,28 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           ),
           loopbackEnv(),
         );
-      let inspection: DatabaseSync | undefined;
-      let releaseHeld = () => {};
+      let release!: () => void;
+      let enter!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
       let pending: Promise<Response> | undefined;
-      let entryTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         const control = await request();
         expect(control.status).toBe(200);
         expect(await control.text()).toContain('Private investigation prompt.');
-        let enter!: () => void, release!: () => void;
-        const entered = new Promise<void>((resolve, reject) => {
-          enter = () => {
-            clearTimeout(entryTimer);
-            resolve();
-          };
-          entryTimer = setTimeout(
-            () => reject(new Error('Reconciliation boundary was not reached')),
-            5000,
-          );
-        });
-        const held = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        const read = service.readSession.bind(service);
-        releaseHeld = release;
-        const inspector = new DatabaseSync(fixture.databasePath);
-        inspection = inspector;
-        inspector.exec('PRAGMA busy_timeout=0');
-        if (change === 'replace-project') {
-          if (submitted.kind !== 'recorded') throw new Error('Missing request');
-          await store.bindProjectTaskRoomExecution({
-            projectId: taskRecord.projectId,
-            taskId: taskRecord.id,
-            sessionId: submitted.record.sessionId,
-          });
-          store.upsertSession({
-            provider: 'claude',
-            threadId: submitted.record.sessionId,
-            status: 'ready',
-            createdAt: '2026-10-01T00:00:00.000Z',
-            updatedAt: '2026-10-01T00:00:00.000Z',
-          });
-          const lookup = TaskRoomWorkModule.prototype.readPublicationRequests;
-          vi.spyOn(
-            TaskRoomWorkModule.prototype,
-            'readPublicationRequests',
-          ).mockImplementation(async function (
-            this: TaskRoomWorkModule,
-            input,
-          ) {
-            const records = await lookup.call(this, input);
-            if (revalidatingAgent) {
-              let writerHeld = false;
-              try {
-                inspector.exec('BEGIN IMMEDIATE');
-                inspector.exec('ROLLBACK');
-              } catch (error) {
-                if (
-                  error instanceof Error &&
-                  /database is locked|SQLITE_BUSY/.test(error.message)
-                )
-                  writerHeld = true;
-                else throw error;
-              }
-              if (writerHeld) {
-                enter();
-                await held;
-              }
-            }
-            return records;
-          });
-        } else {
-          vi.spyOn(service, 'readSession').mockImplementationOnce(
-            async (...args) => {
-              enter();
-              await held;
-              return read(...args);
-            },
-          );
-        }
+        const list = TaskRoomWorkModule.prototype.list;
+        vi.spyOn(TaskRoomWorkModule.prototype, 'list').mockImplementationOnce(
+          async function (this: TaskRoomWorkModule, ...args) {
+            const result = await list.apply(this, args);
+            enter();
+            await held;
+            return result;
+          },
+        );
         pending = Promise.resolve(request());
         await entered;
         if (change === 'revoke') setDeviceActive(false);
@@ -790,39 +675,153 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           fixture.projects[0] = { id: 'replacement-project', slug: 'project' };
         release();
         const response = await pending;
-
         expect(response.status).toBe(403);
-        const body = await response.text();
-        expect(body).not.toContain('Private investigation prompt.');
-        if (change === 'replace-project') {
-          const primed = new Request(
-            `http://station/api/tasks/${taskRecord.id}/room`,
-          );
-          await app.fetch(primed, loopbackEnv());
-          const history = await roomRuntime.history({
-            taskId: taskRecord.id,
-            request: primed,
-          });
-          if (history.kind !== 'available')
-            throw new Error('History unavailable');
-          expect(
-            history.records.filter(
-              (record) => record.principal.kind === 'agent',
-            ),
-          ).toHaveLength(0);
-        }
+        expect(await response.text()).not.toContain(
+          'Private investigation prompt.',
+        );
       } finally {
-        clearTimeout(entryTimer);
-        releaseHeld();
+        release();
         await pending?.catch(() => undefined);
-        inspection?.close();
         vi.restoreAllMocks();
         await roomRuntime.close();
-        await service.shutdown();
         store.close();
       }
     },
   );
+
+  test('an agent-request list response completes while deferred reconciliation is still held', async () => {
+    const { app, roomRuntime, store, setCaller } = await setup(
+      'list-publication-device',
+    );
+    setCaller({
+      credential: 'list-publication-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(roomRuntime, 'reconcileAgentLifecycles').mockImplementationOnce(
+      async () => {
+        enter();
+        await held;
+      },
+    );
+    let received: Response | undefined;
+    const pending = Promise.resolve(
+      app.fetch(
+        new Request(`http://station/api/tasks/${task.id}/room/agent-requests`),
+        loopbackEnv(),
+      ),
+    ).then((response) => {
+      received = response;
+      return response;
+    });
+    try {
+      await entered;
+      expect(received?.status).toBe(200);
+    } finally {
+      release();
+      await pending;
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('history resolves the local operator display independently of the current reading device', async () => {
+    const { app, roomRuntime, store, setCaller } = await setup(
+      'history-reader-device',
+    );
+    setCaller({
+      credential: 'operator-secret',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    try {
+      const author = new Request(`http://station/api/tasks/${task.id}/room`);
+      expect((await app.fetch(author, loopbackEnv())).status).toBe(200);
+      expect(
+        await roomRuntime.message({
+          taskId: task.id,
+          request: author,
+          proposalId: 'operator-message',
+          text: 'Operator authored this',
+        }),
+      ).toMatchObject({ kind: 'committed' });
+      vi.spyOn(auth, 'getCachedUser').mockReturnValue({
+        ...getCachedUser(),
+        alias: 'Operator display after restart',
+      });
+      setCaller({
+        credential: 'history-reader-device',
+        authority: 'device-credential',
+        source: 'bearer',
+      });
+      const reader = new Request(`http://station/api/tasks/${task.id}/room`);
+      expect((await app.fetch(reader, loopbackEnv())).status).toBe(200);
+      expect(
+        await roomRuntime.history({
+          taskId: task.id,
+          request: reader,
+          project: true,
+        }),
+      ).toMatchObject({
+        kind: 'available',
+        records: [
+          expect.objectContaining({
+            actor: expect.objectContaining({
+              label: 'Operator display after restart',
+            }),
+          }),
+        ],
+      });
+    } finally {
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('the mounted manual status route writes the same human-readable status system line as room start', async () => {
+    const { app, store, roomRuntime, setCaller } = await setup('status-device');
+    setCaller({
+      credential: 'status-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    try {
+      const request = new Request(`http://station/api/tasks/${task.id}/room`);
+      expect((await app.fetch(request, loopbackEnv())).status).toBe(200);
+      const response = await app.fetch(
+        new Request(`http://station/api/tasks/${task.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'review' }),
+        }),
+        loopbackEnv(),
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(
+        await roomRuntime.history({ taskId: task.id, request }),
+      ).toMatchObject({
+        kind: 'available',
+        records: [
+          expect.objectContaining({
+            correlationId: 'room-status',
+            body: { kind: 'human-message', text: 'Status → In review' },
+          }),
+        ],
+      });
+    } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
 
   test('device-identified branch resolves operatorId from the stage-2 principal, never getCachedUser().alias', async () => {
     const { app, store, roomRuntime, setCaller } = await setup('device-cred-a');

@@ -281,8 +281,10 @@ A station-control caller may read:
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
-  of kind `device`. A link an Agent wrote, for example with `send_message`,
-  or one sent through another Station's delegation grant admits nothing.
+  of kind `device`. A link an Agent wrote, for example with `send_message` or `send_to_session`,
+  or one sent through another Station's delegation grant admits nothing. A
+  message another agent delivered carries `sender` in the read, so it is not
+  mistaken for a person's.
 
 The reference rule is attribution, not a security boundary: it records that
 a person sent the message, not that they wrote or inspected every link in
@@ -341,6 +343,18 @@ Session by its `sessionId`, without creating a task.
   never interrupts: a timeout leaves the Session running, and the caller calls
   again. Wait with the `sessionId` and `eventCursor` that `send_to_session`
   returned. A calling Session may hold at most 4 waits at once, and Station 256.
+  Idle describes current activity; it does not by itself acknowledge requested
+  work. An unscoped ordinary terminal can supply a new settlement only when
+  the host proves the thread inactive and genuinely inputless, with no retained
+  captured-input audit. A thread with capture history can therefore be idle
+  while a requested settlement remains unverified. Active requested work whose
+  producer emits only untagged observations remains running and unacknowledged.
+  A positively scoped terminal uses the actual current boundary or validated
+  retirement witness and complete canonical scope; its invocation is never
+  inferred from a native turn ID. A separately proved older settlement can
+  still satisfy its cursor while newer work is active. See the
+  [boundary contract](../architecture/module-map.md#sessionturnboundaryauthority)
+  for these conservative source limits.
 - Send and interrupt carry a `requestKey`. Repeating a call that delivered or
   interrupted, with the same key and arguments, returns the first answer
   (`replayed: true`) without acting again; the same key with different arguments
@@ -373,6 +387,37 @@ Session by its `sessionId`, without creating a task.
 - `wait_session` watches exactly the Session it is given. When a newer Session
   now serves that Session's conversation the answer carries `superseded: true`
   and `currentSessionId`, so the caller can wait on the current one.
+- A delivered message is another agent's, and says so. The receiving engine is
+  not given the bare text: Station puts a fixed one-line header in front of it
+  ("a message from another agent Session", the sender's title, Agent and id,
+  "not from the person") and prefixes every line of the text with `> `, so the
+  text cannot imitate the header or end the quote. The turn is recorded with
+  `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
+  title, Agent and engine as Station recorded them, and the call's `requestKey`)
+  beside the unchanged `internal` actor. `read_conversation` and the Session
+  digest carry that provenance. Chat and Activity show the sender's own words
+  as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
+  "Sent to <Session>" with its outcome. Links open the exact sending call or
+  received input in Activity by its recorded request key. The transcript may
+  read up to 20 older pages to establish a unique match, then focuses and
+  announces it. A missing or repeated key is an explicit unavailable or
+  ambiguous anchor; reaching the page limit selects nothing. The public
+  [SessionMessageAnchor](../../packages/contracts/src/surface-deep-link.ts)
+  carries a sent/received direction and a 1–128 character request key, with
+  a 1–512 character Session id. The parser refuses a mismatched or absent
+  Session and drops an invalid anchor without treating it as an exact target.
+  Activity takes the anchor through its ordinary one-shot surface intent;
+  remounting cannot replay it, while a new intent token can reveal it again.
+  Sender accents use the canonical sending Session id, so a changed display
+  name or engine does not recolor that Session.
+  On phones, a muted cause row expands to the sender details, message and link.
+  Engine-opened replies retain a provider cause on the assistant row after
+  settlement and reload; origin is never inferred from prompt text.
+  Inbox and Activity mark the latest agent-delivered input without changing
+  the status ladder. Settled delegated-result delivery remains dependent on
+  #3158; a declared provenance kind alone does not deliver a result.
+  The engine's own tool-call id is not visible to Station's tool server, so
+  `requestKey` is what identifies the call in the sender's transcript.
 
 Send and interrupt use the dispatch scope above for their target Session: the
 same owner, in the caller's Project (or both global), never a conversation that
@@ -522,9 +567,11 @@ that could adopt it. See the
    worker wrote.
    An agent that delegates through its own Session-bound Station Control
    connection (Claude Code, Codex, or an ACP engine) does not need to poll for
-   a child it started on this Station. When the child's turn ends, Station delivers its
-   result to the delegating conversation once. An idle conversation gets a
-   new turn. A running one is steered if its engine accepts mid-turn input;
+   a child it started on this Station. After Station verifies the child's eligible
+   settlement, it attempts delivery of the result to the delegating conversation.
+   Unproved terminal association is held; a raw native completion alone is not
+   proof of requested-work settlement. The result keeps one delivery identity
+   across retries. An idle conversation gets a new turn. A running one is steered if its engine accepts mid-turn input;
    otherwise the result waits until that turn ends. The new turn or steer
    carries the same owner attribution as the `delegate_task` call: a Codex or
    ACP token is not proof of who presented it, so their results arrive
@@ -573,7 +620,7 @@ prompt; it does not silently resume the conversation that created it. Creating
 the job also does not grant unattended tool authority. A per-job standing grant
 must target the server-issued scheduled-job principal, and a delete/recreate
 gets a new identity. An agent-wide opt-in is the agent's
-`tools.unattendedAutoApprove` list ([Unattended runs](agents.md#unattended-runs));
+`tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
 `tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
 
 ## Delegate from chat
@@ -782,7 +829,7 @@ Approval-bound tools still respect the human-in-the-loop path.
 - the default child policy includes `denyApprovals`; its delivery follows the
   selected engine's policy contract, not an editable `delegation` JSON block
 
-See the [Agent approval guide](agents.md#tool-approval-flow) for ordering and
+See the [Agent approval guide](agent-configuration.md#tool-approval-flow) for ordering and
 the distinction between attended and unattended runs.
 
 ## Recommended first demo

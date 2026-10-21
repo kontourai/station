@@ -9,6 +9,10 @@ import type {
 } from '../commands.js';
 import { type OwnerLiveness, ownerFields } from '../owner.js';
 import type { TurnDedupRecord } from '../records.js';
+import {
+  isPreparedTurnSettlement,
+  sameSettlementOwner,
+} from './prepared-settlement.js';
 
 /**
  * A decision names the one write it wants (`put`, `delete`, or none) and the
@@ -27,13 +31,34 @@ export interface TurnDedupDecision<Result> {
 
 const NO_WRITE: TurnDedupWrite = Object.freeze({ kind: 'none' });
 
+/** Both absent is legacy; either surviving marker fences a partial record. */
+export function preparedDedupLinkState(
+  record: Pick<TurnDedupRecord, 'preparedInvocationId' | 'preparedUpdatedAt'>,
+): 'unlinked' | 'linked' | 'invalid' {
+  if (
+    record.preparedInvocationId === undefined &&
+    record.preparedUpdatedAt === undefined
+  )
+    return 'unlinked';
+  return typeof record.preparedInvocationId === 'string' &&
+    record.preparedInvocationId !== '' &&
+    typeof record.preparedUpdatedAt === 'string' &&
+    record.preparedUpdatedAt !== ''
+    ? 'linked'
+    : 'invalid';
+}
+
 /**
  * station#3559: a dead owner's claim may be taken over only when that owner
  * provably never began its effect. `begun` and unknown (absent) are not
  * reclaimable.
  */
 export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
-  return record.invocation === 'pending' || record.invocation === 'untracked';
+  return (
+    record.settlement === undefined &&
+    preparedDedupLinkState(record) === 'unlinked' &&
+    (record.invocation === 'pending' || record.invocation === 'untracked')
+  );
 }
 
 /**
@@ -64,6 +89,32 @@ export function decideTurnDedupClaim(
       result: { kind: 'claimed', reclaimed: false },
     };
   }
+  if (current.settlement !== undefined) {
+    const audit = current.settlement;
+    if (
+      !isPreparedTurnSettlement(audit) ||
+      !audit.dedup ||
+      !current.owner ||
+      current.value !== null ||
+      !sameSettlementOwner(current.owner, audit.dedup.owner) ||
+      current.createdAt !== audit.dedup.createdAt ||
+      current.preparedUpdatedAt !== audit.dedup.updatedAt ||
+      current.invocation !==
+        (audit.disposition === 'cancelled' ? 'pending' : 'begun') ||
+      preparedDedupLinkState(current) !== 'linked' ||
+      current.preparedInvocationId === undefined
+    )
+      return { write: NO_WRITE, result: { kind: 'indeterminate' } };
+    return {
+      write: NO_WRITE,
+      result: {
+        kind: 'settled',
+        disposition: audit.disposition,
+        invocationId: current.preparedInvocationId,
+        settlementId: audit.id,
+      },
+    };
+  }
   if (
     current.inputDigest !== undefined &&
     command.inputDigest !== undefined &&
@@ -78,6 +129,18 @@ export function decideTurnDedupClaim(
   // Liveness is consulted only for an unresolved claim with an owner, and
   // only `dead` frees it: `unknown` must not.
   if (current.owner && liveness(current.owner) === 'dead') {
+    if (
+      current.invocation === 'pending' &&
+      preparedDedupLinkState(current) === 'linked' &&
+      current.preparedInvocationId !== undefined
+    )
+      return {
+        write: NO_WRITE,
+        result: {
+          kind: 'prepared',
+          invocationId: current.preparedInvocationId,
+        },
+      };
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
     return {
@@ -106,6 +169,7 @@ function ownsUnresolved(
 ): current is TurnDedupRecord {
   return (
     current !== undefined &&
+    current.settlement === undefined &&
     current.value === null &&
     current.owner?.id === ownerId
   );
@@ -121,6 +185,7 @@ export function decideTurnDedupBeginInvocation(
 ): TurnDedupDecision<TurnDedupBeginInvocationResult> {
   if (
     !ownsUnresolved(current, command.ownerId) ||
+    preparedDedupLinkState(current) !== 'unlinked' ||
     (current.invocation !== 'pending' && current.invocation !== 'begun')
   )
     return { write: NO_WRITE, result: { kind: 'refused' } };
@@ -134,6 +199,8 @@ export function decideTurnDedupResolve(
   current: TurnDedupRecord | undefined,
   command: TurnDedupResolveCommand,
 ): TurnDedupDecision<TurnDedupSettleResult> {
+  if (current?.settlement !== undefined)
+    return { write: NO_WRITE, result: { kind: 'stale' } };
   // A retry after a lost acknowledgement finds its own value already there.
   if (current?.owner?.id === command.ownerId && current.value === command.value)
     return { write: NO_WRITE, result: { kind: 'applied' } };
@@ -149,7 +216,10 @@ export function decideTurnDedupRelease(
   current: TurnDedupRecord | undefined,
   command: TurnDedupReleaseCommand,
 ): TurnDedupDecision<TurnDedupSettleResult> {
-  if (!ownsUnresolved(current, command.ownerId))
+  if (
+    !ownsUnresolved(current, command.ownerId) ||
+    preparedDedupLinkState(current) !== 'unlinked'
+  )
     return { write: NO_WRITE, result: { kind: 'stale' } };
   return { write: { kind: 'delete' }, result: { kind: 'applied' } };
 }

@@ -1,0 +1,15 @@
+{
+  "revision": "42b7271e457e541a862d3749c8c381a3d4eade39",
+
+  "notes": [
+    {"path":".changeset/settings-preview-opt-ins.md","note":"Reviewed committed deletion after canonical Changesets version generation298d. Explicitly reclassified historical note without behavioral sources/checks; old claims remain in Git history and canonical owners. Absence is recorded, not npm publication or execution.","inputs":[".changeset/settings-preview-opt-ins.md"]},
+
+    {"path":"packages/cli/CHANGELOG.md","note":"Reviewed new generated version section from canonical Changesets generation298d against retained member notes, package versions and internal dependency ranges. The notes retain their named-source foundation/history limits; they are not final combined-runtime, installation, delivery or publication proof. Contracts/SDK/shared0.12.0 andCLI0.11.0; all14lockfile importers preserved, resolved packages/snapshots/settings unchanged. Managed install, lock sync and20release-tooltests passed with Brian-authorized disk override.","inputs":["packages/cli/CHANGELOG.md"]},
+
+    {"path":"packages/contracts/CHANGELOG.md","note":"Reviewed new generated version section from canonical Changesets generation298d against retained member notes, package versions and internal dependency ranges. The notes retain their named-source foundation/history limits; they are not final combined-runtime, installation, delivery or publication proof. Contracts/SDK/shared0.12.0 andCLI0.11.0; all14lockfile importers preserved, resolved packages/snapshots/settings unchanged. Managed install, lock sync and20release-tooltests passed with Brian-authorized disk override.","inputs":["packages/contracts/CHANGELOG.md"]},
+
+    {"path":"packages/sdk/CHANGELOG.md","note":"Reviewed new generated version section from canonical Changesets generation298d against retained member notes, package versions and internal dependency ranges. The notes retain their named-source foundation/history limits; they are not final combined-runtime, installation, delivery or publication proof. Contracts/SDK/shared0.12.0 andCLI0.11.0; all14lockfile importers preserved, resolved packages/snapshots/settings unchanged. Managed install, lock sync and20release-tooltests passed with Brian-authorized disk override.","inputs":["packages/sdk/CHANGELOG.md"]},
+
+    {"path":"packages/shared/CHANGELOG.md","note":"Reviewed new generated version section from canonical Changesets generation298d against retained member notes, package versions and internal dependency ranges. The notes retain their named-source foundation/history limits; they are not final combined-runtime, installation, delivery or publication proof. Contracts/SDK/shared0.12.0 andCLI0.11.0; all14lockfile importers preserved, resolved packages/snapshots/settings unchanged. Managed install, lock sync and20release-tooltests passed with Brian-authorized disk override.","inputs":["packages/shared/CHANGELOG.md"]}
+  ]
+}

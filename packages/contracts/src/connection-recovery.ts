@@ -119,14 +119,23 @@ export interface CredentialRecoveryGroup {
   enrolledProfileRefs: string[];
 }
 
+/** Optional ranking within the existing authorized recovery candidates. */
+export interface AllowanceRoutingPreference {
+  /** Optimize this provider-reported window; other rolling resets do not rank. */
+  windowId: string;
+  minimumRemainingPercent: number;
+}
+
 /** Absence is deliberately equivalent to the default `automatic: false`. */
 export interface CredentialRecoveryPolicy {
   automatic?: boolean;
+  /** Explicit opt-in; omitted policy retains enrollment order. */
+  allowancePreference?: AllowanceRoutingPreference;
 }
 
 export const DEFAULT_CREDENTIAL_RECOVERY_POLICY = {
   automatic: false,
-} as const satisfies Required<CredentialRecoveryPolicy>;
+} as const satisfies Pick<CredentialRecoveryPolicy, 'automatic'>;
 
 /** No profile is automatically selected unless this exact opt-in is present. */
 export function isAutomaticCredentialRecoveryEnabled(
@@ -169,7 +178,7 @@ export interface CredentialProfileApplicationProjection {
 export interface CredentialRecoveryGroupProjection {
   profiles: CredentialProfileProjection[];
   group: CredentialRecoveryGroup;
-  policy: Required<CredentialRecoveryPolicy>;
+  policy: CredentialRecoveryPolicy & { automatic: boolean };
   application: CredentialProfileApplicationProjection;
 }
 

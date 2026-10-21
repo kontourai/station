@@ -12,13 +12,29 @@ import {
   decideInboxSettle,
   decideInboxSubmit,
 } from './decisions/inbox.js';
+import {
+  acceptanceQuery,
+  assertAcceptInvocationCommand,
+  assertInvocationTerminalFact,
+  assertInvocationTerminalQuery,
+  assertInvocationTerminalRead,
+  assertInvocationTerminalRetirement,
+  decideTurnBoundaryAcceptInvocation,
+  isSynchronousTerminalBundle,
+  sameTerminalData,
+  terminalDataObject,
+} from './decisions/invocation-terminal.js';
 import { decideRequestKeyClaim } from './decisions/request-keys.js';
 import {
+  decidePreparedTurnSettlement,
+  decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
+  decideTurnBoundaryPrepare,
   decideTurnBoundaryReconcile,
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
+  decideTurnBoundaryResumePrepared,
   decideTurnBoundaryTransition,
   turnBoundaryAcceptCollides,
 } from './decisions/turn-boundary.js';
@@ -38,6 +54,7 @@ import {
   type KernelTerminalFacts,
   type KernelTransaction,
 } from './port.js';
+import type { InvocationTerminalFact } from './records.js';
 
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
@@ -209,6 +226,49 @@ function dispatch(
       if (decision.put) tx.turnBoundary.put(decision.put);
       return decision.result;
     }
+    case 'turnBoundary.prepare':
+    case 'turnBoundary.beginInvocation':
+    case 'turnBoundary.resumePrepared': {
+      const current = tx.turnBoundary.get(command.boundaryId);
+      const key = command.intent.dedupKey;
+      const dedup = key === undefined ? undefined : tx.turnDedup.get(key);
+      const tombstoned =
+        key !== undefined && tx.turnDedup.expiredAt(key) !== undefined;
+      const decision =
+        command.type === 'turnBoundary.prepare'
+          ? decideTurnBoundaryPrepare(current, dedup, tombstoned, command)
+          : command.type === 'turnBoundary.beginInvocation'
+            ? decideTurnBoundaryBeginInvocation(
+                current,
+                dedup,
+                tombstoned,
+                command,
+              )
+            : decideTurnBoundaryResumePrepared(
+                current,
+                dedup,
+                tombstoned,
+                command,
+                context.liveness,
+              );
+      // Both writes belong to this command's transaction. Never call a second command here.
+      if (decision.dedupPut) tx.turnDedup.put(decision.dedupPut);
+      if (decision.put) tx.turnBoundary.put(decision.put);
+      return decision.result;
+    }
+    case 'turnBoundary.cancelPrepared':
+    case 'turnBoundary.recordDefinitiveRefusal': {
+      const key = command.intent.dedupKey;
+      const decision = decidePreparedTurnSettlement(
+        tx.turnBoundary.get(command.boundaryId),
+        key === undefined ? undefined : tx.turnDedup.get(key),
+        key !== undefined && tx.turnDedup.expiredAt(key) !== undefined,
+        command,
+      );
+      if (decision.dedupPut) tx.turnDedup.put(decision.dedupPut);
+      if (decision.put) tx.turnBoundary.put(decision.put);
+      return decision.result;
+    }
     case 'turnBoundary.recordAccepted': {
       const decision = decideTurnBoundaryRecordAccepted(
         tx.turnBoundary.listThread(command.threadId),
@@ -219,8 +279,57 @@ function dispatch(
       if (decision.put) tx.turnBoundary.put(decision.put);
       return decision.result;
     }
+    case 'turnBoundary.acceptInvocation': {
+      assertAcceptInvocationCommand(command);
+      const expected = command.expected;
+      const source = facts?.invocationTerminals;
+      const current = tx.turnBoundary.get(expected.boundaryId);
+      const witness = current
+        ? undefined
+        : source
+          ? source.readRetirement(expected.threadId, expected.boundaryId)
+          : tx.turnTerminals.readRetirement(
+              expected.threadId,
+              expected.boundaryId,
+            );
+      if (witness) assertInvocationTerminalRetirement(witness);
+      const target = current ?? witness?.boundary;
+      const query = target && acceptanceQuery(target, command, witness);
+      if (query) assertInvocationTerminalQuery(query);
+      let terminal = query
+        ? source
+          ? source.find(query)
+          : tx.turnTerminals.findInvocation(query)
+        : ({ kind: 'absent' } as const);
+      if (query) assertInvocationTerminalRead(terminal, query);
+      terminal = structuredClone(terminal);
+      const key = expected.intent?.dedupKey;
+      const decision = decideTurnBoundaryAcceptInvocation(
+        current,
+        tx.turnBoundary.listThread(expected.threadId),
+        key === undefined ? undefined : tx.turnDedup.get(key),
+        key !== undefined && tx.turnDedup.expiredAt(key) !== undefined,
+        terminal,
+        witness,
+        command,
+      );
+      if (decision.retirement) {
+        if (source) {
+          const result = source.recordRetirement(decision.retirement);
+          if (result !== undefined)
+            throw new TypeError(
+              'Retirement writes must be synchronous and return void.',
+            );
+        } else tx.turnTerminals.recordRetirement(decision.retirement);
+      }
+      if (decision.remove) tx.turnBoundary.delete(decision.remove);
+      if (decision.put) tx.turnBoundary.put(decision.put);
+      return decision.result;
+    }
     case 'turnBoundary.transition': {
       const current = tx.turnBoundary.get(command.boundaryId);
+      if (current?.intent !== undefined && command.to === 'accepted')
+        return { kind: 'stale' };
       const collision = turnBoundaryAcceptCollides(
         current,
         command,
@@ -249,28 +358,136 @@ function dispatch(
       return decision.result;
     }
     case 'turnBoundary.observeTerminal': {
+      const source = facts?.invocationTerminals;
+      const ordinary =
+        command.invocationId !== undefined && !command.sessionTerminal;
+      let asserted: InvocationTerminalFact | undefined;
+      if (ordinary) {
+        asserted = {
+          threadId: command.threadId,
+          invocationId: command.invocationId!,
+          terminalEventId: command.terminalEventId!,
+          terminalCreatedAt: command.terminalCreatedAt,
+          retire: command.retire ?? true,
+          ...(command.providerTurnId === undefined
+            ? {}
+            : { providerTurnId: command.providerTurnId }),
+        };
+        assertInvocationTerminalFact(asserted);
+        if (!facts) tx.turnTerminals.addInvocation(asserted);
+        else if (source) {
+          const observed = source.readObservation(
+            asserted.threadId,
+            asserted.terminalEventId,
+          );
+          if (observed === undefined)
+            throw new TypeError('Observed invocation terminal is unavailable.');
+          assertInvocationTerminalFact(observed);
+          if (!sameTerminalData(observed, asserted))
+            throw new TypeError(
+              'Observed invocation terminal differs from retained event.',
+            );
+        }
+      }
       if (command.providerTurnId !== undefined && !facts)
         tx.turnTerminals.add(command.threadId, command.providerTurnId);
+      const rows = tx.turnBoundary.listThread(command.threadId);
+      const reads = ordinary
+        ? rows
+            .filter((row) => row.intent?.invocationId === command.invocationId)
+            .map((row) => {
+              const query = {
+                threadId: row.threadId,
+                invocationId: command.invocationId!,
+                ...(row.providerTurnId === undefined
+                  ? {}
+                  : { providerTurnId: row.providerTurnId }),
+                allowMissingProviderTurnId: row.providerTurnId === undefined,
+                terminalEventId: command.terminalEventId!,
+              };
+              assertInvocationTerminalQuery(query);
+              const read = source
+                ? source.find(query)
+                : tx.turnTerminals.findInvocation(query);
+              assertInvocationTerminalRead(read, query);
+              if (
+                read.kind === 'found' &&
+                !sameTerminalData(read.fact, asserted)
+              )
+                throw new TypeError(
+                  'Observed invocation terminal differs from retained event.',
+                );
+              const key = row.intent?.dedupKey;
+              const dedup =
+                key === undefined ? undefined : tx.turnDedup.get(key);
+              return {
+                boundaryId: row.boundaryId,
+                read,
+                ...(dedup ? { dedup } : {}),
+              };
+            })
+        : [];
       const decision = decideTurnBoundaryObserveTerminal(
-        tx.turnBoundary.listThread(command.threadId),
+        rows,
         command,
         command.sessionTerminal
           ? facts?.terminalSequence?.(command.threadId, command.terminalEventId)
           : undefined,
+        reads,
       );
+      for (const witness of decision.retirements) {
+        if (source) {
+          const result = source.recordRetirement(witness);
+          if (result !== undefined)
+            throw new TypeError(
+              'Retirement writes must be synchronous and return void.',
+            );
+        } else tx.turnTerminals.recordRetirement(witness);
+      }
       for (const boundaryId of decision.retire)
         tx.turnBoundary.delete(boundaryId);
       return { kind: 'applied' };
     }
     case 'turnBoundary.hasPossibleEffect': {
       const retired = new Set(facts?.retiredBoundaryIds?.(command.threadId));
+      const rows = tx.turnBoundary.listThread(command.threadId);
       return {
         kind: 'available',
-        active: tx.turnBoundary
-          .listThread(command.threadId)
-          .some(
-            (row) => row.state !== 'lifecycle' && !retired.has(row.boundaryId),
-          ),
+        active: rows.some((row) => {
+          if (
+            row.state === 'lifecycle' ||
+            row.state === 'settled' ||
+            retired.has(row.boundaryId)
+          )
+            return false;
+          if (!row.intent) return true;
+          const query = {
+            threadId: row.threadId,
+            invocationId: row.intent.invocationId,
+            ...(row.providerTurnId === undefined
+              ? {}
+              : { providerTurnId: row.providerTurnId }),
+            allowMissingProviderTurnId: row.providerTurnId === undefined,
+          };
+          const read = facts?.invocationTerminals
+            ? facts.invocationTerminals.find(query)
+            : facts
+              ? { kind: 'unknown' as const }
+              : tx.turnTerminals.findInvocation(query);
+          assertInvocationTerminalRead(read, query);
+          if (read.kind !== 'found') return true;
+          // Projection uses the retirement decision without recording its witness.
+          return !decideTurnBoundaryObserveTerminal(
+            [row],
+            {
+              type: 'turnBoundary.observeTerminal',
+              ...read.fact,
+              sessionTerminal: false,
+            },
+            undefined,
+            [{ boundaryId: row.boundaryId, read }],
+          ).retire.includes(row.boundaryId);
+        }),
       };
     }
     case 'turnBoundary.list':
@@ -284,7 +501,11 @@ function dispatch(
       for (const boundaryId of decision.remove)
         tx.turnBoundary.delete(boundaryId);
       for (const record of decision.put) tx.turnBoundary.put(record);
-      return { kind: 'reconciled', interrupted: decision.interrupted };
+      return {
+        kind: 'reconciled',
+        interrupted: decision.interrupted,
+        resumable: decision.resumable,
+      };
     }
     case 'turnBoundary.forgetThread': {
       for (const row of tx.turnBoundary.listThread(command.threadId))
@@ -435,6 +656,12 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'turnDedup.read': true,
   'turnDedup.forgetPrefix': false,
   'turnBoundary.create': false,
+  'turnBoundary.prepare': false,
+  'turnBoundary.beginInvocation': false,
+  'turnBoundary.resumePrepared': false,
+  'turnBoundary.cancelPrepared': false,
+  'turnBoundary.recordDefinitiveRefusal': false,
+  'turnBoundary.acceptInvocation': false,
   'turnBoundary.transition': false,
   'turnBoundary.remove': false,
   'turnBoundary.recordAccepted': false,
@@ -493,6 +720,83 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
   host: Host,
   facts?: KernelTerminalFacts,
 ): KernelResult<C> {
+  if (command.type === 'turnBoundary.acceptInvocation')
+    assertAcceptInvocationCommand(command);
+  if (
+    command.type === 'turnBoundary.observeTerminal' &&
+    'invocationId' in command
+  ) {
+    if (
+      !terminalDataObject(
+        command,
+        [
+          'type',
+          'threadId',
+          'invocationId',
+          'sessionTerminal',
+          'terminalCreatedAt',
+        ],
+        ['providerTurnId', 'terminalEventId', 'retire'],
+      ) ||
+      typeof command.invocationId !== 'string' ||
+      command.invocationId === '' ||
+      typeof command.sessionTerminal !== 'boolean' ||
+      (Object.hasOwn(command, 'retire') && typeof command.retire !== 'boolean')
+    )
+      throw new TypeError('Invalid invocation terminal observation.');
+    assertInvocationTerminalQuery({
+      threadId: command.threadId,
+      invocationId: command.invocationId,
+      allowMissingProviderTurnId: true,
+      ...(Object.hasOwn(command, 'providerTurnId')
+        ? { providerTurnId: command.providerTurnId }
+        : {}),
+      ...(Object.hasOwn(command, 'terminalEventId')
+        ? { terminalEventId: command.terminalEventId }
+        : {}),
+    });
+    if (
+      typeof command.terminalCreatedAt !== 'string' ||
+      command.terminalCreatedAt === ''
+    )
+      throw new TypeError('Invalid invocation terminal time.');
+    if (!command.sessionTerminal)
+      assertInvocationTerminalFact({
+        threadId: command.threadId,
+        invocationId: command.invocationId,
+        terminalEventId: command.terminalEventId,
+        terminalCreatedAt: command.terminalCreatedAt,
+        retire: command.retire ?? true,
+        ...(Object.hasOwn(command, 'providerTurnId')
+          ? { providerTurnId: command.providerTurnId }
+          : {}),
+      });
+  }
+  if (
+    facts &&
+    (command.type === 'turnBoundary.acceptInvocation' ||
+      (command.type === 'turnBoundary.observeTerminal' &&
+        'invocationId' in command))
+  ) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      facts,
+      'invocationTerminals',
+    );
+    if (
+      !descriptor ||
+      !Object.hasOwn(descriptor, 'value') ||
+      !isSynchronousTerminalBundle(descriptor.value)
+    )
+      throw new TypeError(
+        'Invocation terminals require an own synchronous source bundle.',
+      );
+  }
+  if (
+    command.type === 'turnBoundary.acceptInvocation' ||
+    (command.type === 'turnBoundary.observeTerminal' &&
+      'invocationId' in command)
+  )
+    command = structuredClone(command);
   const readOnly = isReadOnlyKernelCommand(command);
   const joined = readOnly
     ? participants.filter((participant) => participant.observeReads)

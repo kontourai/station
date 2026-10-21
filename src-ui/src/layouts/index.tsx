@@ -12,8 +12,8 @@ import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
+import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, SkeletonBlock } from '../components/state';
-import { useNavigationOptional } from '../contexts/NavigationContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
@@ -135,7 +135,6 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
   );
-  const navigation = useNavigationOptional();
   const component = activeTab?.component;
 
   // The extension registry is deliberately lazy. On a fresh document the
@@ -160,19 +159,9 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
       <div className="workspace-default" role="status">
         <Empty
           variant="prominent"
-          label="Extensions are disabled for this Station"
-          description={`The "${component}" view is provided by an extension. Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.`}
-          action={
-            navigation ? (
-              <button
-                type="button"
-                className="workspace-default__btn"
-                onClick={() => navigation.navigate('/registry')}
-              >
-                Review in Registry
-              </button>
-            ) : undefined
-          }
+          label="Extensions are off on this device"
+          description="This view needs extension code from the selected Station."
+          action={<StationExtensionsAccess onlyWhenOff />}
         />
       </div>
     );

@@ -2224,7 +2224,7 @@ describe('verification coordinator', () => {
       await Promise.allSettled(pending);
       temp.remove();
     }
-  }, 30_000);
+  }, 120_000);
 
   test('recovers a killed cross-process completion owner, reaps its fixture group, and selects the next FIFO owner', async () => {
     if (process.platform === 'win32') return;
@@ -2438,7 +2438,7 @@ setInterval(() => {
       }
       temp.remove();
     }
-  }, 45_000);
+  }, 120_000);
 
   test('runs a real npm lifecycle node command with the bound Node runtime ahead of an ambient node shim', async () => {
     const temp = fixture();

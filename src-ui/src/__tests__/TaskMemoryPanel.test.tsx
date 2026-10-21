@@ -5,7 +5,7 @@
 /**
  * #4003 Task memory panel: the real panel and the real SDK hooks, served by
  * the real Task memory store (`createSqliteTaskMemoryStore` over migration
- * 017 in an in-memory SQLite database) behind a stand-in for the person's
+ * 020 in an in-memory SQLite database) behind a stand-in for the person's
  * `/api/tasks/:taskId/room/memory` routes that answers with the routes' own
  * outcome mapping (`task-memory-http.ts`). The routes
  * and their authority are proved in `runtime-routes-task-memory-engine.test.ts`;
@@ -28,7 +28,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/017-task-memory';
+import { TASK_MEMORY_MIGRATION } from '../../../src-server/domain/migrations/020-task-memory';
 import {
   taskRecordResponse,
   taskSummaryResponse,

@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-shared/runtime-event-projection';
 import {
   toolRequestFromPayload,
+  toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import type { ChatMessage } from '../../types';
@@ -165,6 +166,7 @@ export function unansweredApprovalRequests(
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
+      approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
     };
   });
 }

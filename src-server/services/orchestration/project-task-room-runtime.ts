@@ -20,6 +20,7 @@ import type {
   ProjectTaskRoomOutputFeedback,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
+  ProjectTaskRoomRecord,
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
 import type {
@@ -64,7 +65,10 @@ import type {
   ProjectTaskRoomLinkAuthority,
   ProjectTaskRoomOutputFeedbackTargets,
 } from './project-task-room-history.js';
-import { projectTaskRoomChannelId } from './project-task-room-history.js';
+import {
+  PROJECT_TASK_ROOM_LIMITS,
+  projectTaskRoomChannelId,
+} from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
@@ -129,6 +133,7 @@ interface RequestPrincipal {
   readonly operatorId: string;
   readonly deviceId: string;
   readonly policyRevision: string;
+  readonly displayName?: string;
 }
 export interface ProjectTaskRoomRequestAuthority {
   resolve(
@@ -194,6 +199,14 @@ interface ProjectTaskRoomRuntimeDeps {
     };
     readonly record: TaskMemoryRecord;
   }) => Promise<unknown> | unknown;
+  readonly readDisplayName?: (id: string) => Promise<string | undefined>;
+  readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
+  readonly readAgentAnswers?: (input: {
+    sessionId: string;
+    ownerOperatorId: string;
+  }) => Promise<
+    readonly { turnId: string; text: string; occurredAt: string }[]
+  >;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
   /** Test-only crash boundary for durable publication recovery proofs. */
@@ -278,7 +291,7 @@ interface LiveRoomEntry {
         readonly sessionId: string;
         readonly runId?: string;
         readonly workName: string;
-        readonly workState: 'working';
+        readonly workState: 'working' | 'blocked';
         readonly startedAt: number;
       };
       readonly publication: 'published';
@@ -364,6 +377,11 @@ export class ProjectTaskRoomRuntime {
   readonly #documentNotificationChains = new Map<string, Promise<void>>();
   readonly #notificationChains = new Map<string, Promise<void>>();
   #unwatchWorking: (() => void) | undefined;
+  readonly #sessionRuns = new Map<string, string>();
+  readonly #agentNames = new Map<string, string>();
+  readonly #displayNames = new Map<string, string>();
+  readonly #published = new Set<string>();
+  readonly #unpostedAnswers = new Set<string>();
   #closed = false;
 
   constructor(deps: ProjectTaskRoomRuntimeDeps) {
@@ -378,6 +396,72 @@ export class ProjectTaskRoomRuntime {
       agents: { revalidate: (receipt) => this.#revalidateAgent(receipt) },
       ...(deps.revisionEvidence ? { links: deps.revisionEvidence.links } : {}),
     });
+  }
+
+  #publicationKey(scope: ProjectTaskRoomScope, proposalId: string): string {
+    return JSON.stringify([
+      scope,
+      this.#deps.taskGraph.readTaskView(scope.taskId)?.createdAt,
+      proposalId,
+    ]);
+  }
+
+  #rememberPublication(key: string) {
+    while (this.#published.size >= 4096)
+      this.#published.delete(this.#published.keys().next().value!);
+    this.#published.add(key);
+  }
+
+  async #alreadyPublished(
+    scope: ProjectTaskRoomScope,
+    principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
+    proposalId: string,
+    taskCreatedAt: string,
+  ) {
+    const key = this.#publicationKey(scope, proposalId);
+    if (this.#published.has(key)) return true;
+    const existing = await this.#history.findByProposal?.({
+      grant: this.#issueAgent(scope, principal, 'history-read', taskCreatedAt),
+      proposalId,
+    });
+    if (existing) this.#rememberPublication(key);
+    return Boolean(existing);
+  }
+
+  async #hydrateHistoryLabels(result: ProjectTaskRoomReadOutcome) {
+    if (result.kind !== 'available') return;
+    const people = new Set<string>();
+    const agents = new Set<string>();
+    const sessions = new Set<string>();
+    for (const record of result.records) {
+      if (
+        record.principal.kind === 'operator' &&
+        !people.has(record.principal.operatorId)
+      ) {
+        people.add(record.principal.operatorId);
+        const name = await this.#deps.readDisplayName?.(
+          record.principal.operatorId,
+        );
+        if (name) this.#displayNames.set(record.principal.operatorId, name);
+      } else if (record.principal.kind === 'agent') {
+        if (!agents.has(record.principal.agentId)) {
+          agents.add(record.principal.agentId);
+          const name = await this.#deps.readAgentLabel?.(
+            record.principal.agentId,
+          );
+          if (name) this.#agentNames.set(record.principal.agentId, name);
+        }
+        const sessionId = agentSessionId(record.principal);
+        if (!sessionId || sessions.has(sessionId)) continue;
+        sessions.add(sessionId);
+        const session = await this.#deps.readAgentLifecycle?.({ sessionId });
+        if (sessionId && session)
+          this.#sessionRuns.set(
+            sessionId,
+            createOrchestrationRunId(session.provider, sessionId),
+          );
+      }
+    }
   }
 
   /** Server-only ingress after Task/Session association; no browser DTO enters here. */
@@ -990,6 +1074,166 @@ export class ProjectTaskRoomRuntime {
     };
   }
 
+  /** Publish only completed answers read from the bound Session's canonical projection. */
+  async publishAgentAnswers(taskId: string, sessionId: string): Promise<void> {
+    const association = await this.#lifecycleAssociation(taskId, sessionId);
+    if (!association || !this.#deps.readAgentAnswers) return;
+    let answers: Awaited<
+      ReturnType<NonNullable<ProjectTaskRoomRuntimeDeps['readAgentAnswers']>>
+    >;
+    try {
+      answers = await this.#deps.readAgentAnswers({
+        sessionId,
+        ownerOperatorId: association.ownerOperatorId,
+      });
+    } catch (error) {
+      const current = await this.#lifecycleAssociation(taskId, sessionId);
+      if (
+        current &&
+        current.task.createdAt === association.task.createdAt &&
+        sameScope(current.scope, association.scope)
+      ) {
+        this.#unpostedAnswers.add(sessionId);
+        this.#publishAgentPresence({
+          task: current.task,
+          scope: current.scope,
+          agentId: current.agentId,
+          sessionId,
+          startedAt: Date.parse(current.task.createdAt),
+        });
+      }
+      throw error;
+    }
+    const current = await this.#lifecycleAssociation(taskId, sessionId);
+    if (
+      !current ||
+      current.task.createdAt !== association.task.createdAt ||
+      !sameScope(current.scope, association.scope) ||
+      current.agentId !== association.agentId ||
+      current.ownerOperatorId !== association.ownerOperatorId
+    )
+      return;
+    let opened = false;
+    let changed = false;
+    let complete = true;
+    try {
+      for (const answer of answers) {
+        const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> =
+          {
+            kind: 'agent',
+            agentId: current.agentId,
+            ownerOperatorId: current.ownerOperatorId,
+            deviceId: `agent-session:${sessionId}`,
+            authorizationReceiptId: agentLifecycleReceiptId(
+              taskId,
+              sessionId,
+              'completed',
+            ),
+          };
+        const proposalId = `room-answer:${sessionId}:${answer.turnId}`;
+        if (
+          await this.#alreadyPublished(
+            current.scope,
+            principal,
+            proposalId,
+            current.task.createdAt,
+          )
+        )
+          continue;
+        if (!opened) {
+          const result = await this.#history.open({
+            grant: this.#issueAgent(
+              current.scope,
+              principal,
+              'discover',
+              current.task.createdAt,
+            ),
+          });
+          if (result.kind !== 'opened' && result.kind !== 'existing') {
+            complete = false;
+            return;
+          }
+          opened = true;
+        }
+        // The existing text body accepts agent-publish authority. Envelope correlation
+        // retains exact Session/turn identity without a new history storage format.
+        const fits = (value: string) =>
+          value.length <= PROJECT_TASK_ROOM_LIMITS.stringBytes &&
+          Buffer.byteLength(value, 'utf8') <=
+            PROJECT_TASK_ROOM_LIMITS.stringBytes &&
+          Buffer.byteLength(
+            JSON.stringify({ kind: 'human-message', text: value }),
+            'utf8',
+          ) <= PROJECT_TASK_ROOM_LIMITS.bodyBytes;
+        let text = answer.text;
+        if (!fits(text)) {
+          const notice =
+            '\n\n_Answer shortened for the room. Open full run for the complete answer._';
+          const points = Array.from(answer.text);
+          let low = 0;
+          let high = Math.min(
+            points.length,
+            PROJECT_TASK_ROOM_LIMITS.stringBytes - notice.length,
+          );
+          while (low < high) {
+            const middle = Math.ceil((low + high) / 2);
+            if (fits(points.slice(0, middle).join('') + notice)) low = middle;
+            else high = middle - 1;
+          }
+          text = points.slice(0, low).join('') + notice;
+        }
+        const result = await this.#history.append({
+          grant: this.#issueAgent(
+            current.scope,
+            principal,
+            'agent-publish',
+            current.task.createdAt,
+          ),
+          intent: {
+            proposalId,
+            occurredAt: answer.occurredAt,
+            correlationId: `room-answer:${sessionId}`,
+            causationId: answer.turnId,
+            body: { kind: 'human-message', text },
+          },
+        });
+        if (result.kind === 'committed' || result.kind === 'duplicate') {
+          this.#rememberPublication(
+            this.#publicationKey(current.scope, proposalId),
+          );
+          changed ||= result.kind === 'committed';
+        } else complete = false;
+      }
+      if (changed)
+        await this.#publishHistory({
+          ...current.scope,
+          documentId: documentIdFor(current.scope),
+        });
+    } catch (error) {
+      complete = false;
+      throw error;
+    } finally {
+      if (complete) this.#unpostedAnswers.delete(sessionId);
+      else {
+        const final = await this.#lifecycleAssociation(taskId, sessionId);
+        if (
+          final &&
+          final.task.createdAt === current.task.createdAt &&
+          sameScope(final.scope, current.scope)
+        ) {
+          this.#unpostedAnswers.add(sessionId);
+          this.#publishAgentPresence({
+            task: final.task,
+            scope: final.scope,
+            agentId: final.agentId,
+            sessionId,
+            startedAt: Date.parse(final.task.createdAt),
+          });
+        }
+      }
+    }
+  }
+
   /** Server-only ingress from canonical session.exited. */
   async publishAgentFinished(input: {
     taskId: string;
@@ -1032,7 +1276,7 @@ export class ProjectTaskRoomRuntime {
       for (const record of pending) {
         const lifecycle = parsePendingAgentLifecycle(record.value);
         if (!lifecycle || lifecycle.taskId !== taskId) continue;
-        await this.#publishAgentLifecycle(lifecycle);
+        await this.#publishAgentLifecycle(lifecycle, true);
       }
       for (const request of (await this.#deps.readAgentRequests?.(taskId)) ??
         []) {
@@ -1040,6 +1284,7 @@ export class ProjectTaskRoomRuntime {
           sessionId: request.sessionId,
         });
         if (!durable) continue;
+        await this.publishAgentAnswers(taskId, request.sessionId);
         const started: PendingAgentLifecycle = {
           taskId,
           sessionId: request.sessionId,
@@ -1054,7 +1299,7 @@ export class ProjectTaskRoomRuntime {
           ),
         };
         await this.#publishAgentLifecycle(started);
-        if (durable.outcome)
+        if (durable.outcome) {
           await this.publishAgentFinished({
             taskId,
             sessionId: request.sessionId,
@@ -1062,6 +1307,19 @@ export class ProjectTaskRoomRuntime {
             outcome: durable.outcome,
             occurredAt: durable.updatedAt,
           });
+          // The session-level finish receipt may already describe an older turn.
+          // Current canonical lifecycle still ends this turn's live presence.
+          const terminal = await this.#lifecycleAssociation(
+            taskId,
+            request.sessionId,
+          );
+          if (terminal)
+            this.#removeAgentPresence(
+              terminal.scope,
+              terminal.agentId,
+              request.sessionId,
+            );
+        }
       }
       // Task association is the durable source of a started publication. It
       // closes the crash window before an outbox insert (or when that insert
@@ -1305,9 +1563,17 @@ export class ProjectTaskRoomRuntime {
     });
     if (result.kind === 'denied' || result.kind === 'not-found')
       return { kind: 'not-found' };
+    if (input.project) {
+      await this.#hydrateHistoryLabels(result);
+      if ((await this.#resolveGrant(grant, 'history-read')).kind !== 'granted')
+        return { kind: 'not-found' };
+    }
     return input.project
       ? (projectHistory(
           result,
+          (id: string) => this.#displayNames.get(id),
+          (id: string) => this.#agentNames.get(id),
+          (id: string) => this.#sessionRuns.get(id),
         ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>)
       : result;
   }
@@ -1316,6 +1582,7 @@ export class ProjectTaskRoomRuntime {
     taskId: string;
     request: Request;
     current: () => Promise<boolean>;
+    cursor?: Parameters<ProjectTaskRoomAuthority['read']>[0]['cursor'];
   }) {
     const grant = await this.#issue(
       input.taskId,
@@ -1324,13 +1591,50 @@ export class ProjectTaskRoomRuntime {
       input.current,
     );
     if (!grant) return { kind: 'not-found' } as const;
-    const result = await this.#history.read({ grant });
-    if (!(await input.current())) return { kind: 'not-found' } as const;
-    if (result.kind === 'denied') return { kind: 'not-found' } as const;
-    return projectHistory(
-      result,
-    ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+    const records: ProjectTaskRoomRecord[] = [];
+    let cursor = input.cursor;
+    for (;;) {
+      const page = await this.#history.read({
+        grant,
+        ...(cursor ? { cursor } : {}),
+      });
+      if (!(await input.current())) return { kind: 'not-found' } as const;
+      if (page.kind === 'denied') return { kind: 'not-found' } as const;
+      if (page.kind !== 'available')
+        return projectHistory(
+          page,
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      const human = page.records.filter(sharedHumanMessage);
+      // Keep the next physical page intact if its human records do not fit.
+      // Private-only pages may advance the cursor without becoming empty chat pages.
+      if (records.length && records.length + human.length > 100)
+        return projectHistory(
+          { ...page, records, hasMore: true, nextCursor: cursor },
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      records.push(...human);
+      if (!page.hasMore) {
+        const { nextCursor: _next, ...complete } = page;
+        return projectHistory(
+          { ...complete, records, hasMore: false },
+          () => undefined,
+          () => undefined,
+          () => undefined,
+          true,
+        ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
+      }
+      if (!page.nextCursor) return { kind: 'unavailable' } as const;
+      cursor = page.nextCursor;
+    }
   }
+
   async sharedDocument(input: {
     taskId: string;
     request: Request;
@@ -1350,6 +1654,8 @@ export class ProjectTaskRoomRuntime {
     text: string;
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
+    correlationId?: string;
+    causationId?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
     const grant = await this.#issue(
       input.taskId,
@@ -1364,6 +1670,8 @@ export class ProjectTaskRoomRuntime {
       intent: {
         proposalId: input.proposalId,
         occurredAt: input.occurredAt ?? new Date().toISOString(),
+        ...(input.correlationId ? { correlationId: input.correlationId } : {}),
+        ...(input.causationId ? { causationId: input.causationId } : {}),
         body: { kind: 'human-message', text: input.text },
       },
     });
@@ -1877,6 +2185,52 @@ export class ProjectTaskRoomRuntime {
     const now = Date.now();
     const actorId = actorIdFor(principal);
     const entry = this.#liveEntry(document, now);
+    const scope = entry.room.scope;
+    const authorization: LiveWorkAuthorization = {
+      actorId,
+      scope,
+      capabilities: new Set([
+        'join',
+        'read',
+        'write',
+        'watch',
+        'follow',
+        'announce',
+        'history-read',
+      ]),
+    };
+    if (input.command === 'join') {
+      const snapshot = entry.room.snapshotAfterMutation(authorization, now);
+      if (
+        snapshot.outcome === 'available' &&
+        snapshot.snapshot.state === 'degraded'
+      ) {
+        const checkpoint = await this.#checkpointForRequest({
+          taskId: input.taskId,
+          request: input.request,
+          document,
+          principal,
+          entry,
+          now,
+        });
+        if (checkpoint !== 'stored') return { kind: checkpoint } as const;
+        const reconciled = await this.#reconcileCadencePending(
+          document,
+          entry,
+          now,
+        );
+        if (reconciled === undefined) return { kind: 'unavailable' } as const;
+        const settled = await this.#checkpointForRequest({
+          taskId: input.taskId,
+          request: input.request,
+          document,
+          principal,
+          entry,
+          now,
+        });
+        if (settled !== 'stored') return { kind: settled } as const;
+      }
+    }
     const priorTtlAuthority =
       input.command === 'join' ? entry.ttlAuthorities.get(actorId) : undefined;
     let retireTtlAuthority: string | undefined;
@@ -1915,20 +2269,6 @@ export class ProjectTaskRoomRuntime {
         return { kind: 'not-found' } as const;
       this.#activeLiveMaterial.set(requestId, input.request);
     }
-    const scope = entry.room.scope;
-    const authorization: LiveWorkAuthorization = {
-      actorId,
-      scope,
-      capabilities: new Set([
-        'join',
-        'read',
-        'write',
-        'watch',
-        'follow',
-        'announce',
-        'history-read',
-      ]),
-    };
     let result: LiveWorkMutationOutcome;
     try {
       if (input.command === 'join')
@@ -1940,11 +2280,17 @@ export class ProjectTaskRoomRuntime {
         // history port this produces an indeterminate pending intent without
         // dispatching it, so the recovery image below is the authoritative retry
         // record before SQLite can commit `live-work-started`.
-        const prepared = entry.room.announce(
-          { actorId, requestId },
-          authorization,
-          now,
-        );
+        const current = entry.room.snapshotAfterMutation(authorization, now);
+        const published =
+          current.outcome === 'available' &&
+          current.snapshot.participants.some(
+            (participant) =>
+              participant.actor.actorId === actorId &&
+              participant.publication === 'published',
+          );
+        const prepared: LiveWorkMutationOutcome = published
+          ? { outcome: 'refreshed' }
+          : entry.room.announce({ actorId, requestId }, authorization, now);
         if (
           prepared.outcome === 'degraded' &&
           prepared.state === 'indeterminate'
@@ -2495,6 +2841,15 @@ export class ProjectTaskRoomRuntime {
     if (this.#closed || this.#deps.hosted?.()) return 'unavailable';
     const scope = this.#scope(lifecycle.taskId);
     if (!scope) return 'unavailable';
+    if (
+      this.#published.has(
+        this.#publicationKey(
+          scope,
+          `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
+        ),
+      )
+    )
+      return 'stored';
     return this.#deps.working.agentLifecycle({
       scope: { ...scope, documentId: documentIdFor(scope) },
       intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
@@ -2504,6 +2859,7 @@ export class ProjectTaskRoomRuntime {
 
   async #publishAgentLifecycle(
     lifecycle: PendingAgentLifecycle,
+    pending = false,
   ): Promise<void> {
     if (this.#closed || this.#deps.hosted?.()) return;
     const association = await this.#lifecycleAssociation(
@@ -2512,6 +2868,13 @@ export class ProjectTaskRoomRuntime {
     );
     if (!association) return;
     const { task, scope, agentId, ownerOperatorId } = association;
+    if (lifecycle.provider)
+      this.#sessionRuns.set(
+        lifecycle.sessionId,
+        createOrchestrationRunId(lifecycle.provider, lifecycle.sessionId),
+      );
+    const label = await this.#deps.readAgentLabel?.(agentId);
+    if (label) this.#agentNames.set(agentId, label);
     const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
       kind: 'agent',
       agentId,
@@ -2519,16 +2882,47 @@ export class ProjectTaskRoomRuntime {
       deviceId: `agent-session:${lifecycle.sessionId}`,
       authorizationReceiptId: lifecycle.authorizationReceiptId,
     };
+    const proposalId = `agent:${lifecycle.outcome}:${lifecycle.sessionId}`;
+    if (
+      await this.#alreadyPublished(scope, principal, proposalId, task.createdAt)
+    ) {
+      if (pending)
+        await this.#deps.working.removeAgentLifecycle({
+          scope: { ...scope, documentId: documentIdFor(scope) },
+          intentId: proposalId,
+        });
+      if (lifecycle.outcome === 'started')
+        this.#publishAgentPresence({
+          task,
+          scope,
+          agentId,
+          sessionId: lifecycle.sessionId,
+          provider: lifecycle.provider,
+          startedAt: Date.parse(lifecycle.occurredAt),
+        });
+      else this.#removeAgentPresence(scope, agentId, lifecycle.sessionId);
+      return;
+    }
     // The channel must exist before append. This is a private server grant;
     // the browser never receives it and cannot select the agent identity.
-    const opened = this.#issueAgent(scope, principal, 'discover');
+    const opened = this.#issueAgent(
+      scope,
+      principal,
+      'discover',
+      task.createdAt,
+    );
     const open = await this.#history.open({ grant: opened });
     if (open.kind !== 'opened' && open.kind !== 'existing') return;
-    const grant = this.#issueAgent(scope, principal, 'agent-publish');
+    const grant = this.#issueAgent(
+      scope,
+      principal,
+      'agent-publish',
+      task.createdAt,
+    );
     const append = await this.#history.append({
       grant,
       intent: {
-        proposalId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
+        proposalId,
         occurredAt: lifecycle.occurredAt,
         correlationId: lifecycle.sessionId,
         causationId: lifecycle.dispatchId,
@@ -2543,6 +2937,7 @@ export class ProjectTaskRoomRuntime {
       },
     });
     if (append.kind === 'committed' || append.kind === 'duplicate') {
+      this.#rememberPublication(this.#publicationKey(scope, proposalId));
       if (lifecycle.outcome === 'started')
         this.#publishAgentPresence({
           task,
@@ -2557,11 +2952,12 @@ export class ProjectTaskRoomRuntime {
         scope: { ...scope, documentId: documentIdFor(scope) },
         intentId: `agent:${lifecycle.outcome}:${lifecycle.sessionId}`,
       });
-      await this.#publishHistory({
-        projectId: scope.projectId,
-        taskId: scope.taskId,
-        documentId: documentIdFor(scope),
-      });
+      if (append.kind === 'committed')
+        await this.#publishHistory({
+          projectId: scope.projectId,
+          taskId: scope.taskId,
+          documentId: documentIdFor(scope),
+        });
     }
   }
 
@@ -2659,12 +3055,20 @@ export class ProjectTaskRoomRuntime {
       ? createOrchestrationRunId(input.provider, input.sessionId)
       : existingRunId;
     entry.agentParticipants.set(actorId, {
-      actor: { actorId, kind: 'agent', label: input.agentId },
+      actor: {
+        actorId,
+        kind: 'agent',
+        label: this.#agentNames.get(input.agentId) ?? input.agentId,
+      },
       work: {
         sessionId: input.sessionId,
         ...(runId ? { runId } : {}),
-        workName: input.task.title,
-        workState: 'working',
+        workName: this.#unpostedAnswers.has(input.sessionId)
+          ? "Answer couldn't be posted"
+          : input.task.title,
+        workState: this.#unpostedAnswers.has(input.sessionId)
+          ? 'blocked'
+          : 'working',
         startedAt:
           Number.isSafeInteger(input.startedAt) && input.startedAt >= 0
             ? input.startedAt
@@ -2689,6 +3093,27 @@ export class ProjectTaskRoomRuntime {
     const document = { ...scope, documentId: documentIdFor(scope) };
     const entry = this.#live.get(documentKey(document));
     if (!entry) return;
+    if (this.#unpostedAnswers.has(sessionId)) {
+      const actorId = agentActorId(scope.taskId, agentId, sessionId);
+      const participant = entry.agentParticipants.get(actorId);
+      if (participant)
+        entry.agentParticipants.set(actorId, {
+          ...participant,
+          work: {
+            ...participant.work,
+            workState: 'blocked',
+            workName: "Answer couldn't be posted",
+          },
+        });
+      this.#notify(document, {
+        type: 'live',
+        kind: 'available',
+        generation: entry.generation,
+        result: { outcome: 'updated' },
+        snapshot: { outcome: 'available' },
+      });
+      return;
+    }
     entry.agentParticipants.delete(
       agentActorId(scope.taskId, agentId, sessionId),
     );
@@ -2701,10 +3126,11 @@ export class ProjectTaskRoomRuntime {
     });
   }
 
-  #issueAgent<K extends 'discover' | 'agent-publish'>(
+  #issueAgent<K extends 'discover' | 'agent-publish' | 'history-read'>(
     scope: ProjectTaskRoomScope,
     principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }>,
     capability: K,
+    expectedTaskCreatedAt: string,
   ): ProjectTaskRoomGrant<K> {
     const token = randomUUID();
     while (this.#issued.size >= 256)
@@ -2713,6 +3139,7 @@ export class ProjectTaskRoomRuntime {
       capability,
       scope,
       principal,
+      expectedTaskCreatedAt,
       receiptId: principal.authorizationReceiptId,
     });
     return Object.freeze({
@@ -2741,10 +3168,14 @@ export class ProjectTaskRoomRuntime {
     entry.authorities.set(token, { principal });
     return token;
   }
-  #releaseTtlAuthority(entry: LiveRoomEntry, actorId: string) {
-    const token = entry.ttlAuthorities.get(actorId);
+  #releaseTtlAuthority(
+    entry: LiveRoomEntry,
+    actorId: string,
+    token = entry.ttlAuthorities.get(actorId),
+  ) {
     if (token) entry.authorities.delete(token);
-    entry.ttlAuthorities.delete(actorId);
+    if (entry.ttlAuthorities.get(actorId) === token)
+      entry.ttlAuthorities.delete(actorId);
   }
 
   async #issueLiveMaterial<K extends RoomCapability>(
@@ -3067,7 +3498,7 @@ export class ProjectTaskRoomRuntime {
                   // paired-device identifier is private authority material.
                   // Derive a stable opaque display label from the actor ID so
                   // every SSE projection remains safe to persist or share.
-                  label: participantDisplayLabel(authority.principal),
+                  label: authority.principal.displayName ?? 'Teammate',
                 },
                 occurrenceId: `${scope.sessionId}:${actorId}`,
                 sessionId: scope.sessionId,
@@ -3334,13 +3765,26 @@ export class ProjectTaskRoomRuntime {
       return undefined;
     const recovery = parsePersistedRecovery(stored.value);
     if (!recovery) return undefined;
+    for (const { principal } of recovery.authorities.values())
+      if (principal.displayName)
+        this.#displayNames.set(principal.operatorId, principal.displayName);
     let reconciled = false;
     const authorization: LiveWorkRecoveryAuthorization = {
       kind: 'system',
       recoveryId: `room-recovery:${entry.generation}`,
       scope: entry.room.scope,
     };
+    const closing = new Set(
+      recovery.state.lifecycles
+        .filter((lifecycle) => lifecycle.state === 'closing')
+        .map((lifecycle) => lifecycle.announcementId),
+    );
     for (const pending of recovery.state.pending) {
+      if (
+        pending.intent.kind !== 'departure' ||
+        !closing.has(pending.lifecycleId ?? '')
+      )
+        continue;
       const intentId = pending?.intent?.intentId;
       if (
         typeof intentId !== 'string' ||
@@ -3360,9 +3804,18 @@ export class ProjectTaskRoomRuntime {
       } finally {
         this.#activeLiveRecovery.delete(pending.intent.requestId);
       }
-      if (outcome.outcome === 'unavailable') return undefined;
+      if (
+        outcome.outcome === 'unavailable' ||
+        outcome.outcome === 'degraded' ||
+        outcome.outcome === 'rate_limited'
+      )
+        return undefined;
       if (outcome.outcome === 'updated' || outcome.outcome === 'departed')
-        this.#releaseTtlAuthority(entry, pending.actorId);
+        this.#releaseTtlAuthority(
+          entry,
+          pending.actorId,
+          pending.intent.requestId,
+        );
       reconciled = true;
     }
     return reconciled;
@@ -3379,7 +3832,11 @@ export class ProjectTaskRoomRuntime {
     if (existing) return existing;
     const recovery = this.#restorePending(document);
     this.#recovery.set(key, recovery);
-    return recovery;
+    return recovery.then((available) => {
+      if (!available && this.#recovery.get(key) === recovery)
+        this.#recovery.delete(key);
+      return available;
+    });
   }
   async #restorePending(document: {
     projectId: string;
@@ -3428,15 +3885,63 @@ export class ProjectTaskRoomRuntime {
           (await this.#restorePending(document))
         );
       }
-      if (
-        state.pending.some((pending) => {
-          const authority = persisted.authorities.get(pending.intent.requestId);
-          return (
-            !authority || actorIdFor(authority.principal) !== pending.actorId
+      const authorities = new Map(persisted.authorities);
+      let repaired = false;
+      for (const pending of state.pending) {
+        if (!authorities.has(pending.intent.requestId)) {
+          const lifecycle = state.lifecycles.find(
+            (item) => item.announcementId === pending.lifecycleId,
           );
-        })
-      )
-        return false;
+          if (
+            pending.intent.kind !== 'departure' ||
+            !lifecycle ||
+            lifecycle.identity.actor.kind !== 'human' ||
+            lifecycle.identity.ttlClosureRequestId !== pending.intent.requestId
+          )
+            return false;
+          // Older renewal checkpoints could retire this handle too early.
+          // Restore only a captured principal proven by its original room receipt.
+          for (const candidate of authorities.values()) {
+            if (actorIdFor(candidate.principal) !== pending.actorId) continue;
+            const grant = this.#issueSystemLiveMaterial(
+              document.taskId,
+              candidate,
+              'history-read',
+            );
+            if (!grant) continue;
+            let record: ProjectTaskRoomRecord | undefined;
+            try {
+              record = await this.#history.findByProposal?.({
+                grant,
+                proposalId: lifecycle.announcementId,
+              });
+            } finally {
+              this.#issued.delete(grant.opaqueToken);
+            }
+            const body = record?.envelope.proposal.body;
+            if (
+              record?.body.kind === 'live-work-started' &&
+              record.body.sessionId === pending.intent.work.sessionId &&
+              plainRecord(body) &&
+              plainRecord(body.grantReceipt) &&
+              body.grantReceipt.capability === 'lifecycle-append' &&
+              body.grantReceipt.receiptId ===
+                requestReceiptId(
+                  record.scope,
+                  candidate.principal,
+                  'lifecycle-append',
+                )
+            ) {
+              authorities.set(pending.intent.requestId, candidate);
+              repaired = true;
+              break;
+            }
+          }
+        }
+        const authority = authorities.get(pending.intent.requestId);
+        if (!authority || actorIdFor(authority.principal) !== pending.actorId)
+          return false;
+      }
       const recoveryScope = state?.scope;
       // The recovery row belongs to one Project/Task/document and generation.
       // Never let a syntactically valid image from another row reissue its
@@ -3450,6 +3955,17 @@ export class ProjectTaskRoomRuntime {
         recoveryScope.channelId !== `room:${document.documentId}`
       )
         return false;
+      if (
+        repaired &&
+        (await this.#deps.working.recovery({
+          scope: document,
+          generation: stored.generation,
+          value: persistedRecoveryValue(state, authorities, [
+            ...persisted.armedIntentIds,
+          ]),
+        })) !== 'stored'
+      )
+        return false;
       const authorization: LiveWorkRecoveryAuthorization = {
         kind: 'system',
         recoveryId: `room-recovery:${stored.generation}`,
@@ -3459,7 +3975,7 @@ export class ProjectTaskRoomRuntime {
       const ports = {
         history: new ProjectTaskLiveWorkHistoryAdapter(this.#history, {
           issue: async ({ capability, requestId }) => {
-            const authority = persisted.authorities.get(requestId);
+            const authority = authorities.get(requestId);
             const grant = authority
               ? this.#issueSystemLiveMaterial(
                   document.taskId,
@@ -3506,7 +4022,7 @@ export class ProjectTaskRoomRuntime {
       const storedRecovery = await this.#deps.working.recovery({
         scope: document,
         generation: stored.generation,
-        value: persistedRecoveryValue(corrected.state, persisted.authorities),
+        value: persistedRecoveryValue(corrected.state, authorities),
       });
       if (storedRecovery !== 'stored' || this.#closed) return false;
       return true;
@@ -3602,7 +4118,10 @@ export class ProjectTaskRoomRuntime {
   async #principal(request: Request): Promise<RequestPrincipal | undefined> {
     try {
       const result = await this.#deps.requestAuthority.resolve(request);
-      return result.kind === 'granted' ? result : undefined;
+      if (result.kind !== 'granted') return undefined;
+      if (result.displayName)
+        this.#displayNames.set(result.operatorId, result.displayName);
+      return result;
     } catch {
       return undefined;
     }
@@ -3632,6 +4151,7 @@ export class ProjectTaskRoomRuntime {
         (await this.#lifecycleAssociation(issued.scope.taskId, sessionId));
       if (
         !association ||
+        association.task.createdAt !== issued.expectedTaskCreatedAt ||
         !sameScope(association.scope, issued.scope) ||
         issued.receiptId !== issued.principal.authorizationReceiptId ||
         association.agentId !== issued.principal.agentId ||
@@ -3832,11 +4352,16 @@ function parsePersistedRecovery(value: unknown):
         'operatorId',
         'deviceId',
         'policyRevision',
+        ...(Object.hasOwn(item.principal, 'displayName')
+          ? ['displayName']
+          : []),
       ]) ||
       item.principal.kind !== 'granted' ||
       !boundedId(item.principal.operatorId) ||
       !boundedId(item.principal.deviceId) ||
       !boundedId(item.principal.policyRevision) ||
+      (item.principal.displayName !== undefined &&
+        !boundedId(item.principal.displayName)) ||
       authorities.has(item.token)
     )
       return undefined;
@@ -3846,6 +4371,9 @@ function parsePersistedRecovery(value: unknown):
         operatorId: item.principal.operatorId,
         deviceId: item.principal.deviceId,
         policyRevision: item.principal.policyRevision,
+        ...(typeof item.principal.displayName === 'string'
+          ? { displayName: item.principal.displayName }
+          : {}),
       },
     });
   }
@@ -3953,8 +4481,15 @@ function requestReceiptId(
     .digest('hex')}`;
 }
 
-function participantDisplayLabel(principal: RequestPrincipal) {
-  return `Participant ${actorIdFor(principal).slice(-12)}`;
+function sharedHumanMessage(
+  record: Pick<ProjectTaskRoomRecord, 'principal' | 'body' | 'correlationId'>,
+): boolean {
+  return (
+    record.principal.kind !== 'agent' &&
+    record.body.kind === 'human-message' &&
+    !record.correlationId?.startsWith('room-thread:') &&
+    !['room-status', 'room-system'].includes(record.correlationId ?? '')
+  );
 }
 
 /**
@@ -3962,31 +4497,83 @@ function participantDisplayLabel(principal: RequestPrincipal) {
  * Grant receipts, device/operator identities, policy revisions, and scope
  * only exist inside the history worker's verified record.
  */
-function projectHistory(value: any): unknown {
+function projectHistory(
+  value: any,
+  displayName: (id: string) => string | undefined,
+  agentName: (id: string) => string | undefined,
+  runId: (id: string) => string | undefined,
+  guest = false,
+): unknown {
   if (value?.kind === 'available') {
     return {
       kind: 'available',
-      records: value.records.map((record: any) => ({
-        actor: {
-          kind: record.principal.kind === 'agent' ? 'agent' : 'human',
-          label:
-            record.principal.kind === 'agent'
-              ? `Agent ${record.principal.agentId}`
-              : `Participant ${createHash('sha256')
-                  .update(
-                    `${record.principal.operatorId}\u0000${record.principal.deviceId}`,
+      records: value.records
+        .filter(
+          (record: any) =>
+            !(
+              (record.body.kind === 'live-work-started' ||
+                record.body.kind === 'live-work-presence-ended') &&
+              record.principal.kind !== 'agent'
+            ) &&
+            (!guest || sharedHumanMessage(record)),
+        )
+        .map((record: any) => ({
+          actor: {
+            kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+            id:
+              record.principal.kind === 'agent'
+                ? agentActorId(
+                    record.scope.taskId,
+                    record.principal.agentId,
+                    agentSessionId(record.principal) ?? '',
                   )
-                  .digest('hex')
-                  .slice(-12)}`,
-        },
-        sequence: record.envelope.seq,
-        body: projectBody(record.body),
-        digests: {
-          proposal: record.envelope.proposalDigest,
-          checkpoint: record.checkpointDigest,
-        },
-        integrity: 'L0',
-      })),
+                : actorIdFor(record.principal),
+            label:
+              record.principal.kind === 'agent'
+                ? guest
+                  ? `Agent ${record.principal.agentId}`
+                  : (agentName(record.principal.agentId) ??
+                    record.principal.agentId)
+                : guest
+                  ? `Participant ${createHash('sha256').update(`${record.principal.operatorId}\u0000${record.principal.deviceId}`).digest('hex').slice(-12)}`
+                  : (displayName(record.principal.operatorId) ?? 'Teammate'),
+          },
+          sequence: record.envelope.seq,
+          occurredAt: record.envelope.proposal.happenedAt,
+          ...(record.principal.kind === 'agent' &&
+          record.body.kind === 'human-message' &&
+          record.correlationId ===
+            `room-answer:${agentSessionId(record.principal)}` &&
+          record.causationId
+            ? {
+                execution: {
+                  sessionId: agentSessionId(record.principal),
+                  turnId: record.causationId,
+                  ...(runId(agentSessionId(record.principal)!)
+                    ? { runId: runId(agentSessionId(record.principal)!) }
+                    : {}),
+                },
+              }
+            : {}),
+          ...(record.principal.kind === 'operator' &&
+          record.correlationId?.startsWith('room-thread:')
+            ? {
+                threadSessionId: record.correlationId.slice(
+                  'room-thread:'.length,
+                ),
+              }
+            : {}),
+          ...(record.principal.kind === 'operator' &&
+          ['room-status', 'room-system'].includes(record.correlationId)
+            ? { system: true }
+            : {}),
+          body: projectBody(record.body),
+          digests: {
+            proposal: record.envelope.proposalDigest,
+            checkpoint: record.checkpointDigest,
+          },
+          integrity: 'L0',
+        })),
       checkpoint: projectCheckpoint(value.checkpoint),
       hasMore: value.hasMore === true,
       ...(value.nextCursor

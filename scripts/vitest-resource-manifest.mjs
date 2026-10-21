@@ -45,6 +45,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Real 1,026-part WAL/FULL setup and 1,027 one-at-a-time acknowledgements
+  // use a 120-second completion guard, not a throughput assertion. Serial
+  // ownership keeps ordinary workers from adding filesystem contention.
+  'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
   // The complete 1,200-thread seed/read/equivalence case owns its original
   // 10-second product-law bound in a fresh file/process lifecycle.
   'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
@@ -127,6 +131,7 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'packages/agent-runtime/src/__tests__/body-process.test.ts',
   // Disposable Chromium previews, including renderer limits and process cleanup.
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
@@ -169,6 +174,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3101: runs the dequeue report as a child against temporary Git remotes
   // (git fetch + merge-tree) and a loopback GitHub API.
   'scripts/__tests__/merge-queue-dequeue.test.ts',
+  // #2908: runs the sweep's --upsert step as a short Node child with a fake
+  // `gh` (a sh script that spawns one more Node child for `issue list`).
+  'scripts/__tests__/dated-todo-sweep.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
@@ -368,6 +376,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3567: bounded CLI executable children send to a per-test loopback
   // fixture to verify lost-response JSON handles in both entry points.
   'packages/cli/src/__tests__/core-http.test.ts',
+  // Spawns the CLI entry point as bounded children against a per-test
+  // loopback HTTP fixture to assert exit status and request shape.
+  'packages/cli/src/__tests__/telemetry-producers-command.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
   // a real child ownership boundary, so it belongs in the two-worker pool.
@@ -416,6 +427,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3565: a real child claims a turn through the node:sqlite adapter and is
   // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
   'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3566: SIGKILL a real prepared/begun Station caller and reopen its SQLite file.
+  'src-server/services/orchestration/__tests__/prepared-turn-intent-crash.process.test.ts',
   // #3565: runs the monument import boundary gate as a child process against
   // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
   'scripts/__tests__/monument-import-boundary-gate.test.ts',
@@ -893,6 +906,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // contract are proven against their actual exit statuses. Single-shot,
   // no Station boot, no wall-clock assertion.
   'scripts/__tests__/account-requirement.test.ts',
+  // #3851: runs the native platform boundary gate as a child process
+  // against temp desktop roots holding each capability bypass shape, and
+  // asserts its exit status. Single-shot, no Station boot.
+  'scripts/__tests__/native-platform-boundary.process.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   // #2648: the lease resolves its own exact process identity, which shells
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.
@@ -1059,8 +1076,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
   // #3800: starts the real `codex app-server` (when this host has one) with a
   // fresh CODEX_HOME to read the sandbox it reports over a planted workspace
-  // config; skips loudly where no codex binary resolves.
+  // config, and runs short `codex sandbox` probes of Station's permission
+  // profile on macOS; skips loudly where no codex binary resolves.
   'src-server/providers/__tests__/codex-project-config.process.test.ts',
+  // #3800: builds small real Git repositories (init, add, commit) in temp
+  // directories to check which nested `.codex` a non-host start refuses.
+  'src-server/providers/__tests__/codex-project-config-provenance.test.ts',
   // #561: runs a real Flow shell command (a stub script that leaves a
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
@@ -1096,6 +1117,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // #3924: runs the real `opencode` (when this host has one) with fresh XDG
+  // directories against a planted project plugin; skips loudly where no
+  // opencode binary resolves.
+  'src-server/providers/__tests__/opencode-project-config.process.test.ts',
+  // #3957: runs the real `opencode` (when this host has one) against a local
+  // mock model; skips loudly where no opencode binary resolves.
+  'src-server/providers/__tests__/opencode-client-write.process.test.ts',
   // Runs npm and the real lockfile gate against an isolated two-workspace
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
@@ -1278,6 +1306,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
+  // Owns Chromium to drive the Appearance page's native radio groups with real
+  // arrow keys and Tab, and to read the focus ring on the visible card.
+  'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
   // #90: owns Chromium to measure the held page-dialog card's action row
   // (the icon-only Open in pane beside OK and Cancel) against the real
   // cascade, in the float's compact card and the pane's card.

@@ -1,0 +1,7 @@
+{
+  "revision": "8e9b6e9105c2bbc542ebb696513e9c708fc12761",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Restored #3922's (9b1c96bcf5e) Agent/Model truncation and phone-minimum text and the OpenCode/ACP approval paragraph, lost in a merge resolution; git diff origin/main shows only the Basis chip sentence rewritten (narrow-row ellipsis, 150ms dwell). Those claims are pinned by MessageBubble.basisChipFit.test.tsx and the fling and dwell-cleanup cases in MessageBubble.basisChipStanding.test.tsx.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

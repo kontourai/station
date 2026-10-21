@@ -5,7 +5,7 @@
 
   "state": "source-reviewed",
 
-  "summary": "Proposal for operator passkey sign-in and per-action step-up on the device-admin routes (#2894), with owner decisions D1, D2 and D6 recorded and D3-D5, D7-D11 open. Only slice S1 is implemented: off-host raw operator-credential use is observed and still allowed, and the host desktop app's local-grant credential is pinned as list-only.",
+  "summary": "Proposal for operator passkey sign-in and per-action step-up (#2894), retaining the dated S1 evidence and owner/open decisions. The opening current qualifications also describe S2b enrollment and separate scoped Device/launcher-browser administration; operator sessions and per-action step-up remain proposed.",
 
   "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
 

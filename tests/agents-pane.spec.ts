@@ -73,6 +73,17 @@ test.describe('Agents pane child work (#2459)', () => {
       (conversationId) =>
         conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
     );
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            { slug: 'dev-agent', name: 'Dev Agent' },
+            { slug: 'owl', name: 'Owl', icon: '🦉' },
+          ],
+        },
+      }),
+    );
     delegateStarted = false;
     await page.route('**/api/orchestration/sessions/read-model', (route) =>
       route.fulfill({
@@ -88,6 +99,7 @@ test.describe('Agents pane child work (#2459)', () => {
               ? [
                   summary(CLI_DELEGATE, {
                     provider: 'codex',
+                    assignedAgentSlug: 'owl',
                     turnOrigin: {
                       latest: {
                         version: 1,
@@ -121,7 +133,7 @@ test.describe('Agents pane child work (#2459)', () => {
 
   test('per chat keeps Claude’s Stop; All shows a CLI delegate and a chatless subagent live, with provenance', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // Home, not the Coding layout: this journey hides the Chat DOCK to prove
     // the pane alone keeps the read model fresh, and on a wide screen the
     // Coding layout's Chat is its centre, not a dock (#928 coding stack).
@@ -154,7 +166,10 @@ test.describe('Agents pane child work (#2459)', () => {
       .getByRole('menuitem', { name: /Background tasks — 1 running/ })
       .click();
 
-    const scopeChat = page.getByRole('button', { name: 'This conversation' });
+    const scopeChat = page.getByRole('button', {
+      name: 'This conversation',
+      exact: true,
+    });
     const scopeAll = page.getByRole('button', { name: 'All', exact: true });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
@@ -189,6 +204,33 @@ test.describe('Agents pane child work (#2459)', () => {
     });
     await expect(page.getByText('Nightly audit')).toBeVisible();
     await expect(page.getByText('Started from the CLI')).toBeVisible();
+    const delegateRow = page
+      .getByRole('listitem')
+      .filter({ hasText: 'Nightly audit' });
+    await expect(
+      delegateRow.getByRole('img', { name: 'Owl · Codex' }),
+    ).toContainText('🦉');
+    await expect(
+      delegateRow.locator(
+        '.child-work-identity__engine [data-brand-key="codex"]',
+      ),
+    ).toBeVisible();
+    await emit(page, {
+      provider: 'codex',
+      threadId: CLI_DELEGATE,
+      method: 'tool.started',
+      turnId: 'turn-cli-1',
+      itemId: 'cli-read',
+      toolCallId: 'cli-read',
+      toolName: 'Read',
+      arguments: {},
+    });
+    await expect(delegateRow.locator('.child-work-activity__name')).toHaveText(
+      'Read',
+    );
+    await delegateRow.screenshot({
+      path: testInfo.outputPath('agents-delegate-artwork-activity.png'),
+    });
 
     // A subagent reported by a session no chat has open arrives live.
     await emit(page, {
@@ -238,6 +280,19 @@ test.describe('Agents pane child work (#2459)', () => {
       runningRow('Chatless survey').getByRole('button', { name: 'Stop' }),
     ).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(2);
+
+    const childRow = runningRow('Investigate flaky test');
+    const main = await childRow.locator('.child-work-row__main').boundingBox();
+    const stop = await childRow
+      .getByRole('button', { name: 'Stop' })
+      .boundingBox();
+    expect(main).not.toBeNull();
+    expect(stop).not.toBeNull();
+    expect(stop!.y).toBeLessThan(main!.y + main!.height);
+    expect(stop!.x).toBeGreaterThanOrEqual(main!.x + main!.width - 1);
+    await childRow.screenshot({
+      path: testInfo.outputPath('agents-row-inline-actions.png'),
+    });
 
     // The scope is remembered on this device.
     await page.reload();
@@ -302,7 +357,7 @@ test.describe('Agents pane child work (#2459)', () => {
       await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
       // Bottom-only: the sheet, never the Agents pane's scope controls.
       await expect(
-        page.getByRole('button', { name: 'This conversation' }),
+        page.getByRole('button', { name: 'This conversation', exact: true }),
       ).toHaveCount(0);
       await page.screenshot({
         path: testInfo.outputPath('mobile-background-tasks-390.png'),

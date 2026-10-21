@@ -56,6 +56,82 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'plugin-telemetry-undeclared-event',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'real signed install and kernel route reject undeclared events, props and values before admitting a batch',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const parsed = events.map((event) =>',
+            'const parsed = events.filter(event => Object.hasOwn(binding.declaration.events, event.event)).map((event) =>',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-unsigned-declaration',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure: 'installation rejects telemetry from unqualified registry',
+    files: [
+      {
+        path: 'src-server/services/plugins/plugin-telemetry-admission.ts',
+        change: (source) =>
+          exactReplace(source, '!receipt?.signer ||', '!receipt ||'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-policy-raises',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'publisher policy only lowers defaults, and a user choice wins downward through status and DNT',
+    files: [
+      {
+        path: 'packages/contracts/src/product-telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'rank[policy] < rank[tier]',
+            'rank[policy] > rank[tier]',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-no-notice',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'Lite needs its own notice and sends only bucketed yesterday counts once',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(source, '!currentNotice(binding, state)', 'false'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-uninstall-queued-send',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'uninstall aborts an already admitted Full send still waiting to reach the receiver',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (owner === publisher) request.abort();',
+            'if (owner === publisher) continue;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'worktree-diff-untracked-inclusion',
     test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
     failure:
@@ -128,6 +204,95 @@ export const MUTATIONS = [
             source,
             '          if (writesTelemetryChoice) {',
             "          if (writesTelemetryChoice && !mayRaiseTelemetry) throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');\n          if (writesTelemetryChoice) {",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-daily-duplicate',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'persists one daily attempt across simultaneous flushes and a real service restart',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if ((state.attempted[publisher] ?? '') >= today) continue;",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-empty-author',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'keeps author inert with an empty build constant even when runtime environment supplies one',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '? this.options.configuration().authorEndpoint',
+            '? this.options.configuration().authorEndpoint || this.options.operatorEndpoint()',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-full-at-lite',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'never sends a Full event at Lite; Full needs its own receipt and uses the monthly ID',
+    files: [
+      {
+        path: 'src-server/services/usage-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.resolvedConfiguration().publishers[this.publisher].tier === 'full'",
+            "this.resolvedConfiguration().publishers[this.publisher].tier !== 'off'",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-outbox-unbounded',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'outbox evicts oldest entries at both the 30-day and actual serialized 5 MiB bounds',
+    files: [
+      {
+        path: 'src-server/services/telemetry-local-state.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              'while (bytes > TELEMETRY_OUTBOX_LIMITS.maxBytes && entries.length)',
+              'while (false && entries.length)',
+            ),
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes, label:',
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes * 2, label:',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-muted-headless-notice',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'notice is recorded once per inventory and desktop/web must record the shown revision before Lite',
+    files: [
+      {
+        path: 'src-server/utils/logger.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  process.stderr.write(',
+            "  if (process.env.STATION_STDOUT_LOGS !== '0') process.stderr.write(",
           ),
       },
     ],

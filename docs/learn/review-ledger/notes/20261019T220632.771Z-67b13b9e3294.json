@@ -1,0 +1,7 @@
+{
+  "revision": "6b91d2ce230ab1a3452ebcde0a096945ec1bf4c1",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed against the #3851 slice 4 changes to runtime-events.ts (new server-update:changed event), pairing-route-scopes.ts (system-tier scopes for the new core-update routes) and station-runtime.ts (server-update coordinator wiring and readiness). All additive and outside MCP app hosting; the doc's claims about MCP UI host routing, scopes, event stamping and EventStore admission still hold.","inputs":["docs/design/mcp-ui-host.md","packages/contracts/src/runtime-events.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}
