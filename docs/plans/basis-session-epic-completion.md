@@ -16,7 +16,7 @@ Keep the remaining work on `feat/basis-epic-418` and open one PR after its accep
 - [ ] #3951: a narrow side dock presents inventory without squeezing the transcript into a split column. Verify 400px geometry and focus return.
 - [ ] #3959: Escape closes the appropriate inventory layer without navigating to a parent view; fault injection must detect loss of the event claim.
 - [ ] #3975 and #3978: repair the mobile composer prerequisite and app-shell accessible names at their owners, preserving existing journeys.
-- [ ] #3867 and the complete journey: exercise the MCP reader with real Session identity/ownership, inspection before Keep, exact retention, restart, revocation, publishing entry points, keyboard focus and accessibility relationships.
+- [x] #3867 and the complete journey: exercise the MCP reader with real Session identity/ownership, inspection before Keep, exact retention, restart, revocation, publishing entry points, keyboard focus and accessibility relationships.
 - [ ] Review documentation, regenerate derived content, run routed checks and Veritas readiness, and retain final combined evidence before the single PR.
 
 ## Ownership boundaries
@@ -43,3 +43,24 @@ accessibility or publication completion is claimed by a panel-only pass.
 ## Evidence rules
 
 Each repaired behavior needs its own baseline or injected failure and restored result at the actual owner or caller boundary. Focused tests are local diagnostic evidence. Browser, real-device, provider, hosted qualification and publication results remain separate. Record unresolved prerequisites explicitly.
+
+## Follow-through evidence at 2026-10-21
+
+- The real local lifecycle passed at `226be8843fd`: inspection before Keep,
+  portable App read, explicit Task selection and focus return, frozen Surface
+  fixture publication, process restart, reopened Policy met standing,
+  revocation to Unassessed, and unchanged retained answer and exact binding.
+  This uses a local Ollama transport fixture, not a paid/live provider.
+- Header-host relocation alone did not repair the intermittent lost inspection.
+  Eager chat-pane registration replaced lazy-renderer ownership in
+  `bf2479b0a7e`. Six host/affordance tests, 27 header/pane regressions and UI
+  typechecking passed. The lifecycle's axe scan is limited to the Basis panel.
+- Withheld unknown tool results and partial Output pages now carry typed gaps
+  instead of exact empty claims. Two baseline failures, two committed old-source
+  injection failures and 30 restored inventory passes are retained; server-test
+  typechecking passed. These changes are later than the lifecycle's source.
+- Room collaboration stopped before peer isolation: heartbeat after a brief
+  edit returned `updated` where the existing fixture expected `refreshed`.
+  The cookie-isolation repair has no complete browser acceptance yet.
+- Master-owned geometry, remaining mobile acceptance, final documentation
+  readiness and final-main integration remain pending. No push or PR exists.

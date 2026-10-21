@@ -3558,6 +3558,16 @@ Project and principal must match the publication. See the
 [route schema](../../src-server/routes/orchestration/orchestration.ts) and
 [assessment owner](../../src-server/services/evidence/answer-assessment-module.ts).
 
+`keepAnswerInTask(taskId, { sessionId, turnId }, requestScope)` and
+`useKeepAnswerInTaskMutation()` retain the exact inspected answer as a Task
+reference. The client sends only that tuple and the selected Task, validates
+the returned reference identity, and rejects changed authority. The hook
+invalidates the selected Task's Basis, turn references and graph after success.
+The connected inspector asks the person to choose a Task; opening inspection
+alone does not Keep anything. Keeping preserves identity, not a semantic
+support claim. See the [client](../../packages/sdk/src/client/task-basis.ts)
+and [hook](../../packages/sdk/src/task-basis.ts).
+
 `ApiRequestScope` contains only `apiBase` and a non-secret `authorityKey`.
 The host captures it before invocation from Connect's public request-authority
 evidence, including its activation epoch. Native Station additionally qualifies
