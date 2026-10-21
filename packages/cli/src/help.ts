@@ -72,6 +72,35 @@ const TARGET_FLAGS = [
 ];
 
 const VERBS: Record<string, VerbSpec> = {
+  group: {
+    group: 'Core Workspace',
+    summary: 'Read and supervise a server-owned delegation group',
+    usage: [
+      'station group create --preparation=<id> --operation=<id> [--json]',
+      'station group get <group> [--json]',
+      'station group list [--after-group=<id>] [--json]',
+      'station group events <group> [--after-revision=<n>] [--follow] [--json]',
+      'station group run|cancel <group> --operation=<id> --revision=<n> [--json]',
+      'station group member-events <group> <seat> [--after-sequence=<n>] [--follow] [--json]',
+      'station group member-output <group> <seat> [--json]',
+    ],
+    actions: [
+      'create',
+      'get',
+      'list',
+      'events',
+      'run',
+      'cancel',
+      'member-events',
+      'member-output',
+    ],
+    detail: [
+      'Requires server group support and server-issued preparation; capability refusals remain errors.',
+      'Commands carry explicit operation IDs and revisions. A lost response never authorizes resend.',
+      'Follow streams stop locally on Ctrl-C; this does not cancel the group.',
+      'Output is terminal-safe JSON. Group completion is separate from Flow acceptance.',
+    ],
+  },
   ensemble: {
     group: 'Core Workspace',
     summary: 'Inspect an Ensemble preset file and its member roster',
@@ -1367,8 +1396,7 @@ export function usageText(): string {
   lines.push('  station <command> [action] [options]');
   lines.push('');
   lines.push('  station --help          This summary');
-  lines.push('  station <command> --help');
-  lines.push('                         Actions and flags for one command');
+  lines.push('  station <command> --help  Actions and flags for one command');
   lines.push('  station --version       CLI version and build provenance');
 
   const width = 28;

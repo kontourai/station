@@ -77,6 +77,7 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { runGroupCommand } from './group.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
 import { runProjectIdentityCommand } from './project-identity.js';
@@ -1334,6 +1335,11 @@ export async function runCoreCommand(
 
   if (command === 'operate') {
     await runOperateCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'group') {
+    await runGroupCommand(apiBase, parsed);
     return;
   }
 
