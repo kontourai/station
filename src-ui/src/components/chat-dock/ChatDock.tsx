@@ -3198,6 +3198,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 sessionContextCardRenderedProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}
+                    // A regrow mounts it in the commit that starts the chip's
+                    // exit. A new lazy per mount suspends first, and React
+                    // holds a resolved boundary back for its fallback
+                    // throttle: the card arrived ~200ms after the chip left.
+                    shareAcrossMounts
                     componentProps={
                       sessionContextCardPresence.exiting
                         ? {

@@ -728,6 +728,29 @@ describe('the card and its chip trade places without a snap', () => {
       expect(document.querySelector('.session-context-chip')).toBeNull(),
     );
   });
+
+  test('a regrow mounts the card in the same commit the chip starts leaving: one width change, no gap', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    await resizeSurface(600);
+    await waitFor(() => expect(card()).toBeNull());
+
+    // Its chunk is loaded now, so the regrow's own commit carries the card,
+    // while the chip is still playing its exit. A synchronous act: no promise
+    // (a lazy that suspends again) gets to settle before the check.
+    fixture.surfaceWidth = 1200;
+    act(() => {
+      for (const callback of [...surfaceObservers]) callback();
+    });
+    expect(card()).not.toBeNull();
+    expect(
+      document
+        .querySelector('.session-context-chip')
+        ?.classList.contains('session-context-chip--exiting'),
+    ).toBe(true);
+  });
 });
 
 describe('a folder Station made for the chat is named, not printed', () => {

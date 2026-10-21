@@ -39,6 +39,17 @@
     forwards;
 }
 
+/* Its fade covers only the transcript's edge: while it leaves, the composer
+   and the pending list above it paint over it on the dock's own background,
+   so it never hides Send or the composer's pills. */
+.chat-dock__workspace:has(> .session-context-card--exiting)
+  .chat-dock__body
+  > :is(.chat-input, .queued-messages-presence) {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-secondary);
+}
+
 @keyframes session-context-card-enter {
   from {
     opacity: 0;
