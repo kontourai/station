@@ -1204,6 +1204,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               );
               expect(status?.status).toBe('failed');
               expect(status?.contextDelivery?.status).toBe('failed');
+              expect(status?.nativeAcceptedTextThrough).toEqual([]);
               expect(
                 status?.contextDelivery?.acceptedTextThrough,
               ).toBeUndefined();
@@ -1245,6 +1246,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               INTERNAL_SESSION_READ_SCOPE,
             );
             expect(unqualified?.contextDelivery?.status).toBe('indeterminate');
+            expect(unqualified?.nativeAcceptedTextThrough).toEqual([]);
             expect(
               unqualified?.contextDelivery?.acceptedTextThrough,
             ).toBeUndefined();
@@ -1265,6 +1267,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         if (restartBeforeReturnStart)
           expect(firstReturnSeedDigest).toBe(reservedSeedDigest);
         if (oversizedCatchup) {
+          expect(status?.nativeAcceptedTextThrough).toEqual([]);
           expect(
             status?.contextDelivery?.omission.omittedMessages,
           ).toBeGreaterThan(0);
@@ -1335,6 +1338,55 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           expect(adapter.starts.at(-1)?.resumeCursor).toEqual({
             nativeSessionId: `${selected.provider}:native:${selected === source ? conversationId : handoffReceipt.data.sessionId}`,
           });
+        }
+        const aggregate = await service.readConversationHandoffStatus(
+          conversationId,
+          'second-return',
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        expect(aggregate).toMatchObject({
+          nativeAcceptedTextThrough: [
+            expect.objectContaining({
+              sessionId: handoffReceipt.data.sessionId,
+              afterSequence: 0,
+            }),
+            expect.objectContaining({
+              sessionId: extraHandoffs[0],
+              afterSequence: 0,
+            }),
+          ],
+        });
+        const nativeId = `${source.provider}:native:${conversationId}`;
+        const originalIdentity = nativeSessionIdentityKey(
+          source.provider,
+          'a'.repeat(64),
+          nativeId,
+        );
+        store.claimNativeSessionIdentity(
+          nativeSessionIdentityKey(source.provider, 'b'.repeat(64), nativeId),
+          returnedSessionId!,
+          true,
+        );
+        try {
+          const rebound = await service.readConversationHandoffStatus(
+            conversationId,
+            'second-return',
+            INTERNAL_SESSION_READ_SCOPE,
+          );
+          expect(rebound?.nativeAcceptedTextThrough).toBeUndefined();
+          expect(rebound?.contextDelivery?.status).toBe('indeterminate');
+          await expect(
+            execute(source, {
+              conversationId,
+              message: 'Continue after the native binding changed.',
+            }),
+          ).rejects.toThrow(/native.return.*context|context.*native.return/i);
+        } finally {
+          store.claimNativeSessionIdentity(
+            originalIdentity,
+            returnedSessionId!,
+            true,
+          );
         }
       }
 

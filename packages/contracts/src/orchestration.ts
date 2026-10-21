@@ -1546,6 +1546,8 @@ export interface ConversationHandoffStatusProjection {
     /** Complete text projection only; omitted/shortened history is never acknowledged. */
     acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
   };
+  /** Completed native-return ranges for this matched identity; initial seed identity is not inferred. */
+  nativeAcceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
 }
 
 /**

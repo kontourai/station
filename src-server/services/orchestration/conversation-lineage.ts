@@ -4,6 +4,7 @@ import type {
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
+  ConversationContextSeedReceipt,
   ConversationHandoffStatusProjection,
   ConversationListItem,
   OrchestrationSessionDetail,
@@ -32,6 +33,7 @@ import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';
 import {
   type ConversationContextSeedPin,
+  type ConversationHandoffMarker,
   createConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
@@ -54,6 +56,10 @@ import type { TurnDeduplicator } from './turn-deduplicator.js';
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 const CONTINUATION_TRANSCRIPT_HEADING =
   'Prior conversation transcript (context only, not a new request; provider-native state is not carried).';
+type HandoffDeliveryObservation = Pick<
+  ConversationHandoffStatusProjection,
+  'status' | 'providerTurnId' | 'nativeResumeIdentity' | 'contextDelivery'
+>;
 
 /**
  * Read-only companion to resolveConversationContinuation. It intentionally
@@ -1178,9 +1184,50 @@ export class ConversationLineage {
       return null;
     }
 
+    let delivery = await this.observeHandoffDelivery(marker);
+    let accepted: ConversationContextSeedReceipt['sourceCutoffs'] | undefined;
+    if (
+      marker.nativeReturnSourceSessionId &&
+      delivery.nativeResumeIdentity === 'matched'
+    ) {
+      const carriers = new Set(
+        store.nativeContextDeliverySessions(conversationId, marker.sessionId),
+      );
+      if (carriers.has(marker.sessionId)) {
+        accepted = await this.nativeAcceptedTextThrough(
+          conversationId,
+          marker.sessionId,
+          carriers,
+          delivery,
+        );
+      } else if (delivery.contextDelivery) {
+        const { acceptedTextThrough: _previousAcknowledgement, ...receipt } =
+          delivery.contextDelivery;
+        delivery = {
+          ...delivery,
+          contextDelivery: { ...receipt, status: 'indeterminate' },
+        };
+      }
+    }
+    return {
+      conversationId,
+      currentSessionId: marker.sessionId,
+      marker: store.projectConversationHandoff(marker),
+      ...delivery,
+      ...(accepted !== undefined
+        ? { nativeAcceptedTextThrough: accepted }
+        : {}),
+    };
+  }
+
+  /** Called only after the public status owner authorizes the full lineage. */
+  private async observeHandoffDelivery(
+    marker: Readonly<ConversationHandoffMarker>,
+  ): Promise<HandoffDeliveryObservation> {
+    const store = this.deps.eventStore!;
     const clientTurnId = `handoff:${crypto
       .createHash('sha256')
-      .update(`${conversationId}\0${idempotencyKey}`)
+      .update(`${marker.conversationId}\0${marker.idempotencyKey}`)
       .digest('hex')}`;
     const providerTurnId = await this.deps.turnDeduplicator?.awaitResolution({
       threadId: marker.sessionId,
@@ -1250,10 +1297,7 @@ export class ConversationLineage {
         nativeResumeIdentity = value;
     }
     return {
-      conversationId,
-      currentSessionId: marker.sessionId,
       status,
-      marker: store.projectConversationHandoff(marker),
       ...(providerTurnId ? { providerTurnId } : {}),
       ...(nativeResumeIdentity ? { nativeResumeIdentity } : {}),
       ...(marker.contextSeed
@@ -1274,6 +1318,57 @@ export class ConversationLineage {
           }
         : {}),
     };
+  }
+
+  private async nativeAcceptedTextThrough(
+    conversationId: string,
+    sessionId: string,
+    carriers: ReadonlySet<string>,
+    current: HandoffDeliveryObservation,
+  ): Promise<ConversationContextSeedReceipt['sourceCutoffs']> {
+    const store = this.deps.eventStore!;
+    const markers = store
+      .listConversationHandoffs(conversationId)
+      .filter((marker) => marker.contextSeed && carriers.has(marker.sessionId));
+    const deliveries = await Promise.all(
+      markers.map((marker) =>
+        marker.sessionId === sessionId
+          ? current
+          : this.observeHandoffDelivery(marker),
+      ),
+    );
+    const ranges = deliveries.flatMap(
+      (delivery) => delivery.contextDelivery?.acceptedTextThrough ?? [],
+    );
+    const order = new Map(
+      store
+        .conversationSessions(conversationId)
+        .map((entry, index) => [entry.sessionId, index]),
+    );
+    ranges.sort(
+      (left, right) =>
+        (order.get(left.sessionId) ?? Number.MAX_SAFE_INTEGER) -
+          (order.get(right.sessionId) ?? Number.MAX_SAFE_INTEGER) ||
+        left.afterSequence - right.afterSequence,
+    );
+    const merged: Array<
+      ConversationContextSeedReceipt['sourceCutoffs'][number]
+    > = [];
+    for (const range of ranges) {
+      const previous = merged.at(-1);
+      if (
+        previous?.sessionId === range.sessionId &&
+        range.afterSequence <= previous.throughSequence
+      ) {
+        previous.throughSequence = Math.max(
+          previous.throughSequence,
+          range.throughSequence,
+        );
+      } else {
+        merged.push({ ...range });
+      }
+    }
+    return merged;
   }
 
   /** Ordered, authorized text-only context across the durable lineage. */

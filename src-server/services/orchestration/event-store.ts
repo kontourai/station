@@ -10250,6 +10250,30 @@ export class EventStore {
     );
   }
 
+  /**
+   * A return's retired source anchors its identity; its carrier may later
+   * rebind profiles. Keys stay private and callers authorize the Conversation.
+   */
+  nativeContextDeliverySessions(
+    conversationId: string,
+    sessionId: string,
+  ): readonly string[] {
+    const rows = this.db
+      .prepare(`SELECT handoff.session_id
+      FROM orchestration_native_session_bindings own
+      JOIN orchestration_conversation_handoffs handoff ON handoff.conversation_id = ?
+      JOIN orchestration_native_session_bindings source
+        ON source.session_id = handoff.native_return_source_session_id
+        AND source.identity_key = own.identity_key
+      JOIN orchestration_conversation_sessions lineage ON lineage.session_id = handoff.session_id
+      WHERE own.session_id = ? AND lineage.conversation_id = ?
+      ORDER BY lineage.ordinal ASC`)
+      .all(conversationId, sessionId, conversationId) as Array<{
+      session_id: string;
+    }>;
+    return rows.map((row) => row.session_id);
+  }
+
   claimNativeSessionIdentity(
     identityKey: string,
     sessionId: string,
