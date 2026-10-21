@@ -448,7 +448,7 @@ export function ACPConnectionSetupStatus({
     const detail =
       label === 'Ready'
         ? 'This engine is ready to use.'
-        : label === 'Setup needed'
+        : label === 'Setup required'
           ? 'This engine needs more setup before it can run work — its Agent is added when it connects.'
           : label === 'Off'
             ? 'This engine is configured but turned off.'

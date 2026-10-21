@@ -720,7 +720,7 @@ the [ACP guide](acp.md) covers protocol details.
    the cause, or edit the setup or choose another engine, before closing. The
    engine's Agent is added only once its check succeeds.
 
-A configured engine whose card reads **Setup needed** offers **Retry check** too.
+A configured engine that reads **Setup required** offers **Retry check** too, on its card and on its engine page.
 In the Add catalogue, an app that still needs setup offers **Add and set up**: it
 adds the engine and opens it, where setup continues. Station does not check
 whether a command-backed engine is signed in, so its login row says so and does

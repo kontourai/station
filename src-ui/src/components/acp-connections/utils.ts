@@ -3,7 +3,7 @@ import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 type ACPConnectionReadiness =
   | 'Checking'
   | 'Ready'
-  | 'Setup needed'
+  | 'Setup required'
   | 'Unavailable'
   | 'Off';
 
@@ -30,14 +30,14 @@ export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
       : isConnected
         ? 'Ready'
         : isUnavailable
-          ? 'Setup needed'
+          ? 'Setup required'
           : 'Unavailable';
   const recommendedAction: RecommendedAction = isPlugin
     ? null
     : !conn.enabled
       ? 'Enable'
       : isUnavailable
-        ? // Setup needed: the engine ran its check and failed; re-running
+        ? // Setup required: the engine ran its check and failed; re-running
           // it after fixing the cause is the next step.
           'Retry check'
         : isError || isDisconnected || (!isConnected && !isConnecting)
@@ -48,7 +48,7 @@ export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
       ? 'ready'
       : statusLabel === 'Checking'
         ? 'checking'
-        : statusLabel === 'Setup needed'
+        : statusLabel === 'Setup required'
           ? 'setup-needed'
           : statusLabel === 'Unavailable'
             ? 'unavailable'

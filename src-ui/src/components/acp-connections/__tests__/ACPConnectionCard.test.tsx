@@ -164,7 +164,7 @@ test('hides raw command details until Advanced is opened', () => {
 test.each([
   ['available', true, 'Ready', null],
   ['probing', true, 'Checking', null],
-  ['unavailable', true, 'Setup needed', 'Retry check'],
+  ['unavailable', true, 'Setup required', 'Retry check'],
   ['error', true, 'Unavailable', 'Reconnect'],
   ['available', false, 'Off', 'Enable'],
 ] as const)(

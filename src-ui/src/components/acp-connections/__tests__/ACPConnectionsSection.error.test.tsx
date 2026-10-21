@@ -102,7 +102,7 @@ describe('ACPConnectionsSection read failure (review H1)', () => {
   });
 });
 
-describe('ACPConnectionsSection Retry check on a Setup needed card', () => {
+describe('ACPConnectionsSection Retry check on a Setup required card', () => {
   // The engine's check failing again is an expected outcome, not an
   // unhandled rejection; the list is refreshed so the card shows it.
   test('a failed re-check refreshes the list and rejects nothing', async () => {

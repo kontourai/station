@@ -483,7 +483,7 @@ export function AgentConnectionView({
                   reconnectMutation.mutate(selectedAcpConnectionId)
                 }
               >
-                {reconnectMutation.isPending ? 'Reconnecting…' : 'Reconnect'}
+                {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
               </button>
             )}
           </DetailHeader>

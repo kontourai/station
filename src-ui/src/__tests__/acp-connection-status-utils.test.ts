@@ -26,7 +26,7 @@ describe('acp connection status utils', () => {
   test.each([
     ['available', true, 'user', 'Ready', null],
     ['probing', true, 'user', 'Checking', null],
-    ['unavailable', true, 'user', 'Setup needed', 'Retry check'],
+    ['unavailable', true, 'user', 'Setup required', 'Retry check'],
     ['error', true, 'user', 'Unavailable', 'Reconnect'],
     ['disconnected', true, 'user', 'Unavailable', 'Reconnect'],
     ['unknown', true, 'user', 'Unavailable', 'Reconnect'],
@@ -38,7 +38,7 @@ describe('acp connection status utils', () => {
     ['unknown', false, 'user', 'Off', 'Enable'],
     ['available', true, 'plugin', 'Ready', null],
     ['probing', true, 'plugin', 'Checking', null],
-    ['unavailable', true, 'plugin', 'Setup needed', null],
+    ['unavailable', true, 'plugin', 'Setup required', null],
     ['error', true, 'plugin', 'Unavailable', null],
     ['disconnected', true, 'plugin', 'Unavailable', null],
     ['unknown', true, 'plugin', 'Unavailable', null],

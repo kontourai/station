@@ -165,7 +165,7 @@ export function ACPAddConnectionModal({
         ready={readiness?.statusLabel === 'Ready'}
         firstContact={awaitingFirstContact}
         canRetryCheck={
-          readiness?.statusLabel === 'Setup needed' ||
+          readiness?.statusLabel === 'Setup required' ||
           readiness?.statusLabel === 'Unavailable'
         }
         errorKind={state.errorKind}

@@ -140,7 +140,7 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+      expect(screen.getByRole('status').textContent).toContain('Setup required');
     });
     expect(screen.queryByText('Ready')).toBeNull();
     expect(
@@ -182,7 +182,7 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+      expect(screen.getByRole('status').textContent).toContain('Setup required');
     });
     const status = screen.getByRole('status');
     expect(status.textContent).toContain('spawn kiro ENOENT');
@@ -226,7 +226,7 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+      expect(screen.getByRole('status').textContent).toContain('Setup required');
     });
     const status = screen.getByRole('status');
     expect(status.textContent).toContain(
@@ -271,7 +271,7 @@ describe('ACPAddConnectionModal', () => {
     );
   });
 
-  test('a failed first add lands on Setup needed from the add response, and Retry check re-runs it', async () => {
+  test('a failed first add lands on Setup required from the add response, and Retry check re-runs it', async () => {
     const { lastError: _failure, ...connected } = failedFirstAddResponse;
     const onInstallRegistryEntry = vi
       .fn()
@@ -289,7 +289,7 @@ describe('ACPAddConnectionModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+      expect(screen.getByRole('status').textContent).toContain('Setup required');
     });
     expect(screen.queryByText('Checking')).toBeNull();
     expect(screen.getByRole('status').textContent).toContain(
@@ -334,7 +334,7 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup needed');
+      expect(screen.getByRole('status').textContent).toContain('Setup required');
     });
     expect(screen.getByRole('status').textContent).toContain(
       'spawn: spawn gemini ENOENT',
@@ -374,7 +374,7 @@ describe('ACPAddConnectionModal', () => {
       return { rerender, onFirstContactPendingChange, onRefreshConnections };
     }
 
-    test('stays on Checking with first-start copy, then lands on Setup needed from the polled status', async () => {
+    test('stays on Checking with first-start copy, then lands on Setup required from the polled status', async () => {
       const { rerender, onFirstContactPendingChange } = renderProbing();
       fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
 
@@ -401,7 +401,7 @@ describe('ACPAddConnectionModal', () => {
 
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toContain(
-          'Setup needed',
+          'Setup required',
         ),
       );
       expect(screen.getByRole('status').textContent).toContain(
@@ -443,7 +443,7 @@ describe('ACPAddConnectionModal', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    // Retry check after a Setup needed result: the section still holds the
+    // Retry check after a Setup required result: the section still holds the
     // last poll, which says `unavailable` for this id. That answer is about
     // the previous attempt and must not end the new wait.
     test('a poll from before this add does not end its first-start wait', async () => {

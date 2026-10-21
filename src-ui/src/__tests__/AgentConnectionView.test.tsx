@@ -1011,7 +1011,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     expect(reconnectMutate).toHaveBeenCalledWith('opencode');
   });
 
@@ -1033,7 +1033,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
   });
 
   test('a refused reconnect reports the engine observation in place', async () => {
@@ -1058,7 +1058,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     expect(screen.getByText(/Engine exited before handshake/)).toBeTruthy();
   });
 
