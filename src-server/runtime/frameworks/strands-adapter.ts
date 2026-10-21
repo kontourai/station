@@ -40,7 +40,10 @@ import {
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
 import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
-import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
+import {
+  assertBoundedApiExecutionAvailable,
+  currentBoundedApiTurnCompanion,
+} from '../conversation/bounded-api-turn-grant.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -332,6 +335,7 @@ class StrandsAgentWrapper implements IAgent {
   }
 
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
+    const boundedApiTurn = currentBoundedApiTurnCompanion();
     const owned = await this.nativeInvocation(_options);
     if (owned) return owned.streamText(input, _options);
     // #3112 known gap: Strands keeps the prompt it is handed as the user
@@ -369,6 +373,10 @@ class StrandsAgentWrapper implements IAgent {
       const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let observedUsage = false;
       try {
+        assertBoundedApiExecutionAvailable(
+          'Strands stream invocation',
+          boundedApiTurn,
+        );
         if (
           self.native?.isHistoryCurrent &&
           !(await self.native.isHistoryCurrent())

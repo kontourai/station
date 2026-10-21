@@ -17,7 +17,11 @@ import {
 } from '../../frameworks/framework-model-factory.js';
 import { StrandsFramework } from '../../frameworks/strands-adapter.js';
 import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
-import type { DispatchFleetRouting, IAgentFramework } from '../../types.js';
+import type {
+  DispatchFleetRouting,
+  IAgent,
+  IAgentFramework,
+} from '../../types.js';
 import {
   createAuthorizedTurnCorrelation,
   issueAuthorizedTurnCorrelationHandoff,
@@ -148,6 +152,30 @@ async function drain(stream: AsyncIterable<unknown>) {
   }
 }
 
+async function refuseEscapedStrandsStream(agent: IAgent) {
+  const escaped = await runWithRequiredBoundedApiTurn(() =>
+    agent.streamText('Hi'),
+  );
+  expect(physical).not.toHaveBeenCalled();
+  const iterator = escaped.fullStream[Symbol.asyncIterator]();
+  let failure: unknown;
+  try {
+    while (!(await iterator.next()).done) {
+      /* drain outside the originating scope */
+    }
+  } catch (error) {
+    failure = error;
+  }
+  expect(physical).not.toHaveBeenCalled();
+  expect(failure).toBeInstanceOf(BoundedApiExecutionUnavailableError);
+  expect(await escaped.text).toBe('');
+  expect(await escaped.finishReason).toBe('error');
+  expect(await escaped.usage).toBeUndefined();
+  expect(await iterator.next()).toMatchObject({ done: true });
+  expect(await iterator.return?.()).toMatchObject({ done: true });
+  expect(physical).not.toHaveBeenCalled();
+}
+
 test('cached installed model refuses both bound invocations while unbound defaults and usage reach the wire', async () => {
   const model = installedModel();
   const response = await model.doGenerate(calls);
@@ -236,6 +264,7 @@ test.each(['volt', 'strands'] as const)(
     await refused(async () => {
       await drain((await agent.streamText('Hi')).fullStream);
     });
+    if (kind === 'strands') await refuseEscapedStrandsStream(agent);
     if ('raw' in agent && agent.raw instanceof Agent) {
       const raw = agent.raw;
       await refused(() => raw.generateText('Hi'));
@@ -275,6 +304,7 @@ test.each(['volt', 'strands'] as const)(
     await refused(async () => {
       await drain((await bundle.agent.streamText('Hi')).fullStream);
     });
+    if (kind === 'strands') await refuseEscapedStrandsStream(bundle.agent);
     if ('raw' in bundle.agent && bundle.agent.raw instanceof Agent) {
       const raw = bundle.agent.raw;
       await refused(() => raw.generateText('Hi'));
