@@ -3,6 +3,7 @@ import {
   type ACPConnectionConfig,
   type ACPConnectionRegistryEntry,
   type ACPEngineInstallRecipe,
+  type ACPPublicRegistrySourceStatus,
   ACPStatus,
   engineSupportsPlatform,
   installRecipeForPlatform,
@@ -24,6 +25,11 @@ import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
+import type { PublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
+import {
+  mapPublicRegistryListings,
+  type PublicRegistryCatalog,
+} from '../../services/acp/public-agent-registry-catalog.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
@@ -143,7 +149,23 @@ async function installedACPConnections(configLoader: {
 
 function getRegistryEntries(
   installedConnections: ACPConnectionConfig[],
+  publicRegistry?: PublicAgentRegistrySource,
 ): ACPConnectionRegistryEntry[] {
+  return getRegistryCatalog(installedConnections, publicRegistry).entries;
+}
+
+/**
+ * The Add engine catalogue: built-in and plugin entries, then the public
+ * agent registry's listings when this Station reads it. Built-ins win every
+ * id; a listing only adds display facts to a built-in card.
+ */
+function getRegistryCatalog(
+  installedConnections: ACPConnectionConfig[],
+  publicRegistry?: PublicAgentRegistrySource,
+): {
+  entries: ACPConnectionRegistryEntry[];
+  publicRefused: PublicRegistryCatalog['refused'];
+} {
   const installedSources = new Map<string, 'user' | 'plugin'>();
   for (const connection of installedConnections) {
     if (!installedSources.has(connection.id)) {
@@ -176,24 +198,122 @@ function getRegistryEntries(
       sourceName: builtin
         ? (registryEntry.sourceName ?? providerSource)
         : providerSource,
+      // Only the public registry projection below may set this.
+      publicRegistry: undefined,
       installed: installedSources.has(registryEntry.id),
       installedSource: installedSources.get(registryEntry.id),
       // Always the server's own projection; a provider cannot supply it.
       hostInstall: hostInstall ? { ...hostInstall } : undefined,
     });
   }
-  return Array.from(entriesById.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+
+  let publicRefused: PublicRegistryCatalog['refused'] = [];
+  if (publicRegistry) {
+    const present = Array.from(entriesById.values());
+    const catalog = mapPublicRegistryListings({
+      agents: publicRegistry.agents(),
+      builtins: present.filter((entry) => entry.source === 'core'),
+      takenIds: new Set(
+        present
+          .filter((entry) => entry.source !== 'core')
+          .map((entry) => entry.id),
+      ),
+      platform: process.platform,
+      arch: process.arch,
+      commandExists: publicRegistry.commandExists,
+    });
+    publicRefused = catalog.refused;
+    for (const [builtinId, listing] of catalog.enrichments) {
+      const builtin = entriesById.get(builtinId);
+      if (builtin) builtin.publicRegistry = listing;
+    }
+    const savedById = new Map(
+      installedConnections.map((connection) => [connection.id, connection]),
+    );
+    for (const entry of catalog.entries) {
+      const update = publicRegistryUpdate(savedById.get(entry.id), entry);
+      entriesById.set(entry.id, {
+        ...entry,
+        ...(update && entry.publicRegistry
+          ? { publicRegistry: { ...entry.publicRegistry, update } }
+          : {}),
+        installed: installedSources.has(entry.id),
+        installedSource: installedSources.get(entry.id),
+      });
+    }
+  }
+  return {
+    entries: Array.from(entriesById.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    ),
+    publicRefused,
+  };
+}
+
+/**
+ * What changed in the listing since a connection was added from it. Only a
+ * connection that records its listing is compared; the saved connection is
+ * reported on, never changed.
+ */
+function publicRegistryUpdate(
+  saved: ACPConnectionConfig | undefined,
+  entry: ACPConnectionRegistryEntry,
+): { version: string; command?: string; args?: string[] } | undefined {
+  const listing = entry.publicRegistry;
+  if (!saved?.publicRegistry || !listing) return undefined;
+  const launch = listing.hostLaunch;
+  const commandChanged =
+    launch !== undefined &&
+    (saved.command !== launch.command ||
+      !isDeepStrictEqual(saved.args ?? [], launch.args));
+  if (!commandChanged && saved.publicRegistry.version === listing.version) {
+    return undefined;
+  }
+  return {
+    version: listing.version,
+    ...(commandChanged && launch
+      ? { command: launch.command, args: [...launch.args] }
+      : {}),
+  };
+}
+
+const DISABLED_PUBLIC_REGISTRY_STATUS: ACPPublicRegistrySourceStatus = {
+  enabled: false,
+  origin: 'none',
+  fetchedAt: null,
+  checkedAt: null,
+  lastError: null,
+  refreshing: false,
+  refused: [],
+};
+
+/** The command the person confirmed, when the request carries one. */
+async function confirmedCommand(
+  request: Request,
+): Promise<{ command: string; args: string[] } | undefined> {
+  const body = (await request.json().catch(() => undefined)) as
+    | { confirmCommand?: { command?: unknown; args?: unknown } }
+    | undefined;
+  const confirm = body?.confirmCommand;
+  if (
+    typeof confirm?.command !== 'string' ||
+    !Array.isArray(confirm.args) ||
+    !confirm.args.every((arg) => typeof arg === 'string')
+  ) {
+    return undefined;
+  }
+  return { command: confirm.command, args: confirm.args as string[] };
 }
 
 function findRegistryEntry(
   id: string,
   installedConnections: ACPConnectionConfig[],
+  publicRegistry?: PublicAgentRegistrySource,
 ): ACPConnectionRegistryEntry | null {
   return (
-    getRegistryEntries(installedConnections).find((entry) => entry.id === id) ??
-    null
+    getRegistryEntries(installedConnections, publicRegistry).find(
+      (entry) => entry.id === id,
+    ) ?? null
   );
 }
 
@@ -212,7 +332,9 @@ function acpProviderRoutePublicError(
   return ACP_PROVIDER_ROUTE_PUBLIC_ERRORS[error.code];
 }
 
-function normalizeACPConnection(value: Record<string, any>) {
+function normalizeACPConnection(
+  value: Record<string, any>,
+): ACPConnectionConfig {
   return {
     id: value.id,
     name: value.name,
@@ -227,6 +349,7 @@ function normalizeACPConnection(value: Record<string, any>) {
     ...(value.provideToolServers
       ? { provideToolServers: value.provideToolServers }
       : {}),
+    ...(value.publicRegistry ? { publicRegistry: value.publicRegistry } : {}),
   };
 }
 
@@ -326,8 +449,15 @@ async function registeredRuntimeConnectionIds(configLoader: {
   return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
 
-export function createACPRoutes(ctx: RuntimeContext) {
+export function createACPRoutes(
+  ctx: RuntimeContext,
+  options: {
+    /** Absent when this Station does not read the public agent registry. */
+    publicAgentRegistry?: PublicAgentRegistrySource;
+  } = {},
+) {
   const app = new Hono();
+  const publicRegistry = options.publicAgentRegistry;
 
   app.get('/status', (c) => {
     return c.json({ success: true, data: ctx.acpBridge.getStatus() });
@@ -349,11 +479,55 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
+    await publicRegistry?.ready();
+    // Reading the catalogue is what keeps the listing current: a stale or
+    // missing one is fetched in the background, bounded by the source's
+    // retry interval, and this answer uses what is already on hand.
+    publicRegistry?.refreshIfStale();
     const entries = getRegistryEntries(
       await installedACPConnections(ctx.configLoader),
+      publicRegistry,
     );
     return c.json({ success: true, data: entries });
   });
+
+  app.get('/registry/source', async (c) => {
+    if (!publicRegistry) {
+      return c.json({ success: true, data: DISABLED_PUBLIC_REGISTRY_STATUS });
+    }
+    await publicRegistry.ready();
+    // The same bounded background check the catalogue read starts, so the
+    // status a client reads first already says a download is running.
+    publicRegistry.refreshIfStale();
+    return c.json({
+      success: true,
+      data: await publicRegistryStatus(publicRegistry),
+    });
+  });
+
+  // Downloads the public listing now. Operate tier, like the PATH re-check:
+  // it makes this Station reach out to the network on request.
+  app.post('/registry/source/refresh', async (c) => {
+    if (!publicRegistry) {
+      return c.json({ success: true, data: DISABLED_PUBLIC_REGISTRY_STATUS });
+    }
+    await publicRegistry.refresh();
+    return c.json({
+      success: true,
+      data: await publicRegistryStatus(publicRegistry),
+    });
+  });
+
+  async function publicRegistryStatus(
+    source: PublicAgentRegistrySource,
+  ): Promise<ACPPublicRegistrySourceStatus> {
+    const status = source.status();
+    const { publicRefused } = getRegistryCatalog(
+      await installedACPConnections(ctx.configLoader),
+      source,
+    );
+    return { ...status, refused: [...status.refused, ...publicRefused] };
+  }
 
   // "Check again" after an install: re-read the login-shell PATH so a bin
   // directory the installer added to the shell rc since Station started is
@@ -363,6 +537,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
     await recaptureLoginShellPath();
     const entries = getRegistryEntries(
       await installedACPConnections(ctx.configLoader),
+      publicRegistry,
     );
     return c.json({ success: true, data: entries });
   });
@@ -386,10 +561,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
             );
           }
 
-          const entry = findRegistryEntry(id, [
-            ...config.connections,
-            ...providerConns,
-          ]);
+          const entry = findRegistryEntry(
+            id,
+            [...config.connections, ...providerConns],
+            publicRegistry,
+          );
           if (!entry) {
             return c.json(
               {
@@ -409,6 +585,43 @@ export function createACPRoutes(ctx: RuntimeContext) {
             );
           }
 
+          const listing =
+            entry.source === 'registry' ? entry.publicRegistry : undefined;
+          if (entry.source === 'registry') {
+            // A public listing names the program and arguments Station will
+            // run, so adding one is choosing a command: the same authority,
+            // and the person must have confirmed exactly what runs now.
+            const commandRefused = refuseUngrantedCommandChoice(c);
+            if (commandRefused) return commandRefused;
+            const launch = listing?.hostLaunch;
+            if (!launch) {
+              return c.json(
+                {
+                  success: false,
+                  error:
+                    listing?.unavailableReason ??
+                    `${entry.name} cannot be connected on this computer.`,
+                },
+                400,
+              );
+            }
+            const confirmed = await confirmedCommand(c.req.raw);
+            if (
+              !confirmed ||
+              confirmed.command !== launch.command ||
+              !isDeepStrictEqual(confirmed.args, launch.args)
+            ) {
+              return c.json(
+                {
+                  success: false,
+                  code: 'registry-listing-not-confirmed',
+                  error: `Review ${entry.name} again before connecting: the command confirmed is not the one the public registry lists now. Nothing was saved.`,
+                },
+                409,
+              );
+            }
+          }
+
           const newConn = normalizeACPConnection({
             id: entry.id,
             name: entry.name,
@@ -418,6 +631,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
             cwd: entry.cwd,
             enabled: true,
             interactive: entry.interactive,
+            ...(listing
+              ? { publicRegistry: { id: listing.id, version: listing.version } }
+              : {}),
           });
           const existing = config.connections.find((conn) => conn.id === id);
           if (existing && !isDeepStrictEqual(existing, newConn)) {

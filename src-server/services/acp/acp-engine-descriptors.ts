@@ -63,7 +63,7 @@ const CONFUSABLE_SKELETON: Readonly<Record<string, string>> = {
 };
 
 /** The form two names are compared in: NFKC, case-folded, confusables mapped, spacing collapsed. */
-function nameSkeleton(name: unknown): string {
+export function nameSkeleton(name: unknown): string {
   // Entries come from plugin code, so a missing or non-string name is possible.
   if (typeof name !== 'string') return '';
   return [...name.normalize('NFKC').toLowerCase()]

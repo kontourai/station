@@ -1,4 +1,7 @@
-import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
+import type {
+  ACPConnectionRegistryEntry,
+  ACPPublicRegistrySourceStatus,
+} from '@kontourai/station-contracts/acp';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
@@ -7,7 +10,7 @@ import {
   useApiQuery,
 } from '../query-core';
 
-export type { ACPConnectionRegistryEntry };
+export type { ACPConnectionRegistryEntry, ACPPublicRegistrySourceStatus };
 
 export interface FileSystemBrowseEntry {
   name: string;
@@ -254,6 +257,61 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
   return true;
 }
 
+export async function fetchACPPublicRegistrySource(): Promise<ACPPublicRegistrySourceStatus> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(`${apiBase}/acp/registry/source`);
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPPublicRegistrySourceStatus;
+    error?: string;
+  };
+  if (!result.success || !result.data) {
+    throw new Error(
+      apiErrorMessage(result, 'Failed to read the public registry status'),
+    );
+  }
+  return result.data;
+}
+
+export type ACPPublicRegistryRefresh =
+  | { status: 'refreshed'; source: ACPPublicRegistrySourceStatus }
+  /** This credential lacks the operate scope a refresh requires. */
+  | { status: 'not-permitted' };
+
+/**
+ * Asks the host to download the public agent registry now. The host joins a
+ * download already running and reuses a very recent result; a scope refusal
+ * is returned as `not-permitted`, any other failure throws.
+ */
+export async function refreshACPPublicRegistrySource(): Promise<ACPPublicRegistryRefresh> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/registry/source/refresh`,
+    { method: 'POST' },
+  );
+  const result = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    data?: ACPPublicRegistrySourceStatus;
+    error?: string | { code?: string };
+  };
+  const code =
+    typeof result.error === 'object' ? result.error?.code : undefined;
+  if (response.status === 403 && code === 'insufficient_scope') {
+    return { status: 'not-permitted' };
+  }
+  if (!result.success || !result.data) {
+    throw new Error(
+      code
+        ? `Failed to check the public registry (${code})`
+        : apiErrorMessage(
+            result as { error?: string },
+            'Failed to check the public registry',
+          ),
+    );
+  }
+  return { status: 'refreshed', source: result.data };
+}
+
 export type ACPConnectionRegistryRecheck =
   | { status: 'rechecked'; entries: ACPConnectionRegistryEntry[] }
   /** This credential lacks the operate scope the host's re-check requires. */
@@ -295,14 +353,30 @@ export async function recheckACPConnectionRegistry(): Promise<ACPConnectionRegis
   return { status: 'rechecked', entries: result.data ?? [] };
 }
 
+/**
+ * The command a person confirmed for a public registry listing. The host
+ * refuses the install when it no longer lists exactly this command.
+ */
+export interface ACPRegistryConfirmedCommand {
+  command: string;
+  args: string[];
+}
+
 export async function installACPConnectionRegistryEntry(
   id: string,
+  confirmCommand?: ACPRegistryConfirmedCommand,
 ): Promise<ACPConnectionInfo | undefined> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/acp/registry/${encodeURIComponent(id)}/install`,
     {
       method: 'POST',
+      ...(confirmCommand
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmCommand }),
+          }
+        : {}),
     },
   );
   const result = (await response.json()) as {
@@ -419,6 +493,20 @@ export function useACPConnectionRegistryQuery(
   );
 }
 
+export function useACPPublicRegistrySourceQuery(
+  config?: QueryConfig<ACPPublicRegistrySourceStatus>,
+) {
+  return useApiQuery(
+    ['acp-public-registry-source'],
+    () => fetchACPPublicRegistrySource(),
+    {
+      staleTime: config?.staleTime ?? 30_000,
+      gcTime: config?.gcTime,
+      enabled: config?.enabled ?? true,
+    },
+  );
+}
+
 export function useCreateACPConnectionMutation(
   options?: MutationOptions<
     ACPConnectionInfo | undefined,
@@ -461,12 +549,27 @@ export function useCreateACPConnectionMutation(
   });
 }
 
+/** An entry id, or an id with the command confirmed for a public listing. */
+export type ACPRegistryInstallRequest =
+  | string
+  | { id: string; confirmCommand?: ACPRegistryConfirmedCommand };
+
 export function useInstallACPConnectionRegistryEntryMutation(
-  options?: MutationOptions<ACPConnectionInfo | undefined, string>,
+  options?: MutationOptions<
+    ACPConnectionInfo | undefined,
+    ACPRegistryInstallRequest
+  >,
 ) {
   const queryClient = useQueryClient();
-  return useMutation<ACPConnectionInfo | undefined, Error, string>({
-    mutationFn: async (id) => installACPConnectionRegistryEntry(id),
+  return useMutation<
+    ACPConnectionInfo | undefined,
+    Error,
+    ACPRegistryInstallRequest
+  >({
+    mutationFn: async (request) =>
+      typeof request === 'string'
+        ? installACPConnectionRegistryEntry(request)
+        : installACPConnectionRegistryEntry(request.id, request.confirmCommand),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({

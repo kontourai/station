@@ -346,7 +346,16 @@ const recheckRegistry = vi.fn(
     return { status: 'rechecked', entries: [] };
   },
 );
+let publicRegistryStatus: unknown;
+const refreshPublicRegistry = vi.fn(async () => ({
+  status: 'refreshed' as const,
+}));
 vi.mock('../hooks/useACPConnections', () => ({
+  refreshACPPublicRegistrySource: () => refreshPublicRegistry(),
+  useACPPublicRegistrySource: () => ({
+    data: publicRegistryStatus,
+    refetch: vi.fn(),
+  }),
   recheckACPConnectionRegistry: () => recheckRegistry(),
   useACPConnections: () => ({ data: acpBridgeConnections }),
   useACPConnectionRegistry: () => ({
@@ -417,6 +426,7 @@ describe('AgentConnectionView', () => {
     agentConnections = DEFAULT_AGENT_CONNECTIONS;
     agentCatalog = DEFAULT_AGENT_CATALOG;
     acpRegistryEntries = [];
+    publicRegistryStatus = undefined;
     acpBridgeConnections = [];
     reconnectMutate.mockReset();
     reconnectMutationError = null;
@@ -1142,6 +1152,171 @@ describe('AgentConnectionView', () => {
     expect(
       steps.filter((step) => step.getAttribute('aria-current') === 'step'),
     ).toHaveLength(0);
+  });
+
+  // #3162: the public registry's listings are their own group, never mixed
+  // into Station's own engines, and an entry that cannot connect here stays
+  // listed with its reason.
+  test('lists public registry engines in their own group with publisher, version and availability', async () => {
+    publicRegistryStatus = {
+      enabled: true,
+      origin: 'cache',
+      fetchedAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      checkedAt: new Date(Date.now() - 60_000).toISOString(),
+      lastError: 'The registry could not be reached.',
+      refreshing: false,
+      refused: [],
+    };
+    acpRegistryEntries = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        command: 'goose',
+        installed: false,
+        detected: true,
+        source: 'core',
+        publicRegistry: {
+          id: 'goose',
+          version: '1.55.0',
+          publishers: ['Block'],
+          distributions: ['binary'],
+          binaryPlatforms: ['darwin-aarch64'],
+        },
+      },
+      {
+        id: 'stakpak',
+        name: 'Stakpak',
+        command: 'stakpak',
+        args: ['acp'],
+        installed: false,
+        detected: true,
+        source: 'registry',
+        sourceName: 'Public agent registry',
+        publicRegistry: {
+          id: 'stakpak',
+          version: '0.3.88',
+          publishers: ['Stakpak Team'],
+          distributions: ['binary'],
+          binaryPlatforms: ['darwin-aarch64'],
+          hostLaunch: { command: 'stakpak', args: ['acp'] },
+        },
+      },
+      {
+        id: 'gemini',
+        name: 'Gemini CLI',
+        command: '',
+        installed: false,
+        detected: false,
+        source: 'registry',
+        sourceName: 'Public agent registry',
+        publicRegistry: {
+          id: 'gemini',
+          version: '0.65.0',
+          publishers: ['Google'],
+          distributions: ['npx'],
+          binaryPlatforms: [],
+          packages: [
+            {
+              kind: 'npx',
+              package: '@google/gemini-cli@0.65.0',
+              args: ['--acp'],
+            },
+          ],
+          unavailableReason:
+            'Gemini CLI runs from the @google/gemini-cli@0.65.0 package, which Station would have to download and run (npx).',
+        },
+      },
+    ];
+    const onNavigate = vi.fn();
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    const group = screen.getByRole('region', {
+      name: 'From the public registry',
+    });
+    // Station's own catalogue keeps its built-in, with the listing's facts.
+    expect(within(group).queryByText('Goose')).toBeNull();
+    expect(screen.getByText('By Block · version 1.55.0')).toBeTruthy();
+
+    const stakpak = within(group).getByTestId('public-registry-entry-stakpak');
+    expect(within(stakpak).getByText('Found')).toBeTruthy();
+    expect(
+      within(stakpak).getByText('By Stakpak Team · version 0.3.88'),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(stakpak).getByRole('button', { name: 'Review Stakpak' }),
+    );
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-new',
+      providerId: 'stakpak',
+    });
+
+    const gemini = within(group).getByTestId('public-registry-entry-gemini');
+    expect(within(gemini).getByText('Unavailable')).toBeTruthy();
+    expect(
+      within(gemini).getByText(
+        /runs from the @google\/gemini-cli@0.65.0 package/,
+      ),
+    ).toBeTruthy();
+    expect(within(gemini).queryByRole('button')).toBeNull();
+    // Still inspectable: the listing's details are there to open.
+    expect(within(gemini).getByText('About this listing')).toBeTruthy();
+    expect(within(gemini).getByText('@google/gemini-cli@0.65.0')).toBeTruthy();
+
+    expect(
+      within(group).getByText(
+        'Offline copy, downloaded 3h ago. Registry checked 1m ago: The registry could not be reached.',
+      ),
+    ).toBeTruthy();
+    // User copy names the engines and the registry, never the protocol.
+    expect(group.textContent).not.toMatch(/\bACP\b/);
+  });
+
+  test('an added engine whose public listing changed shows the update without applying it', async () => {
+    acpBridgeConnections = [{ id: 'stakpak', name: 'Stakpak' }];
+    connectionQueryData = {
+      id: 'stakpak',
+      kind: 'agent',
+      type: 'acp',
+      name: 'Stakpak',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    acpRegistryEntries = [
+      {
+        id: 'stakpak',
+        name: 'Stakpak',
+        command: 'stakpak',
+        installed: true,
+        source: 'registry',
+        publicRegistry: {
+          id: 'stakpak',
+          version: '0.3.88',
+          publishers: ['Stakpak Team'],
+          distributions: ['binary'],
+          binaryPlatforms: [],
+          hostLaunch: { command: 'stakpak', args: ['acp'] },
+          update: { version: '0.3.88', command: 'stakpak', args: ['acp'] },
+        },
+      },
+    ];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="stakpak" onNavigate={vi.fn()} />,
+    );
+
+    const notice = screen.getByTestId('public-registry-update');
+    expect(notice.textContent).toContain(
+      'The public registry now lists Stakpak version 0.3.88, run as stakpak acp.',
+    );
+    expect(notice.textContent).toContain('Your saved connection is unchanged');
+    expect(save).not.toHaveBeenCalled();
   });
 
   // The refusal sentence (enriched-agents.ts) names the setup page as the

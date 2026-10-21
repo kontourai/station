@@ -15,6 +15,43 @@ const kiro = {
   installed: false,
 };
 
+const stakpak = {
+  id: 'stakpak',
+  name: 'Stakpak',
+  command: 'stakpak',
+  args: ['acp'],
+  detected: true,
+  installed: false,
+  source: 'registry' as const,
+  sourceName: 'Public agent registry',
+  publicRegistry: {
+    id: 'stakpak',
+    version: '0.3.88',
+    publishers: ['Stakpak Team'],
+    distributions: ['binary' as const],
+    binaryPlatforms: ['darwin-aarch64'],
+    hostLaunch: { command: 'stakpak', args: ['acp'] },
+    recommendedEnv: { STAKPAK_QUIET: '1' },
+  },
+};
+
+const gemini = {
+  id: 'gemini',
+  name: 'Gemini CLI',
+  command: '',
+  detected: false,
+  installed: false,
+  source: 'registry' as const,
+  publicRegistry: {
+    id: 'gemini',
+    version: '0.65.0',
+    publishers: ['Google'],
+    distributions: ['npx' as const],
+    binaryPlatforms: [],
+    unavailableReason: 'Gemini CLI runs from a package Station does not run.',
+  },
+};
+
 function connection(status: string) {
   return {
     id: 'kiro',
@@ -53,6 +90,45 @@ describe('ACPAddConnectionModal', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/\bACP\b/i)).toBeNull();
+  });
+
+  // #3162: a public registry listing names what Station will run, so it is
+  // never one click: it stops at the confirm step with the exact command,
+  // and that command goes with the request for the server to compare.
+  test('a public registry engine is confirmed by its exact command before it is added', () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[kiro, stakpak, gemini]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('From the public registry')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: /Gemini CLI/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /Stakpak/ }));
+    expect(onInstallRegistryEntry).not.toHaveBeenCalled();
+    expect(screen.getByText('stakpak acp')).toBeTruthy();
+    expect(screen.getByText('By Stakpak Team · version 0.3.88')).toBeTruthy();
+    expect(screen.getByText(/STAKPAK_QUIET=1/).textContent).toContain(
+      'which Station does not apply',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Stakpak' }));
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('stakpak', {
+      command: 'stakpak',
+      args: ['acp'],
+    });
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
   });
 
   test('shows Checking until the refreshed connection result reports Ready', async () => {

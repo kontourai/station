@@ -1121,6 +1121,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  // Downloading the public agent registry makes this Station reach out to
+  // the network on request, so it takes the same operate tier as the re-check.
+  {
+    id: '/acp/registry/source/refresh:operate',
+    method: 'POST',
+    prefix: '/acp/registry/source/refresh',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // archive#1097 review round 2 (HIGH), owner decision "tighten now, loosen
   // later if wanted": GET /api/environments/ssh/sessions aggregates OTHER
   // connected stations' orchestration session titles/projectSlugs/agents/
@@ -2797,6 +2807,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/acp/connections/:id' },
     { method: 'POST', path: '/acp/connections/:id/reconnect' },
     { method: 'GET', path: '/acp/registry' },
+    { method: 'GET', path: '/acp/registry/source' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
     { method: 'GET', path: '/api/tool-library/accounts/:id' },

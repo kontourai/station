@@ -32,6 +32,12 @@ interface ACPConnectionSetupState {
 
 export type ACPConnectionSetupErrorKind = 'mutation' | 'refresh';
 
+/** `confirmCommand` is passed for a public registry listing only. */
+export type InstallRegistryEntry = (
+  id: string,
+  confirmCommand?: { command: string; args: string[] },
+) => unknown;
+
 type SetupAction =
   | { type: 'custom' }
   | { type: 'catalog' }
@@ -165,7 +171,7 @@ function useSetupSubmit(
   state: ACPConnectionSetupState,
   dispatch: (action: SetupAction) => void,
   onAdd: (draft: ACPConnectionDraft) => unknown,
-  onInstallRegistryEntry: ((id: string) => unknown) | undefined,
+  onInstallRegistryEntry: InstallRegistryEntry | undefined,
 ) {
   return useCallback(
     async (entry = state.selectedEntry) => {
@@ -178,7 +184,14 @@ function useSetupSubmit(
         );
       dispatch({ type: 'submit', entry, id });
       try {
-        if (entry) await onInstallRegistryEntry?.(entry.id);
+        if (entry?.source === 'registry') {
+          // The command shown on the confirm step, so the server can refuse
+          // the add if the public listing changed since.
+          await onInstallRegistryEntry?.(entry.id, {
+            command: entry.command,
+            args: entry.args ?? [],
+          });
+        } else if (entry) await onInstallRegistryEntry?.(entry.id);
         else await onAdd({ ...state.draft, id });
         dispatch({ type: 'complete' });
       } catch (error) {
@@ -225,7 +238,7 @@ export function useACPConnectionSetup({
   queryError?: unknown;
   queryFetching?: boolean;
   onAdd: (draft: ACPConnectionDraft) => unknown;
-  onInstallRegistryEntry?: (id: string) => unknown;
+  onInstallRegistryEntry?: InstallRegistryEntry;
   onRefreshConnections?: () => unknown;
 }) {
   const [state, dispatch] = useReducer(

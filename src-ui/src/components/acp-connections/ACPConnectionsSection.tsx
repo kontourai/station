@@ -138,8 +138,13 @@ export function ACPConnectionsSection({
     return createConnectionMutation.mutateAsync(data);
   };
 
-  const installRegistryEntry = async (id: string) => {
-    return installRegistryEntryMutation.mutateAsync(id);
+  const installRegistryEntry = async (
+    id: string,
+    confirmCommand?: { command: string; args: string[] },
+  ) => {
+    return installRegistryEntryMutation.mutateAsync(
+      confirmCommand ? { id, confirmCommand } : id,
+    );
   };
 
   // Registry entries are suggestions only. Once installed, the connection
