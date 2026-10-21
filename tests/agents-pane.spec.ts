@@ -90,7 +90,14 @@ test.describe('Agents pane child work (#2459)', () => {
         json: {
           success: true,
           data: [
-            summary(SESSION_ID, { conversationId: CONVERSATION_ID }),
+            summary(SESSION_ID, {
+              conversationId: CONVERSATION_ID,
+              inputOrigin: {
+                kind: 'delegation',
+                taskId: SESSION_ID,
+                initiator: { actor: 'operator', reportedSurface: 'cli' },
+              },
+            }),
             // A delegate started from the CLI AFTER the page loaded: no
             // parent task, no chat open. `surface: 'cli'` is what the CLI
             // declares since #2459; the server's stamping of it onto the
@@ -343,6 +350,9 @@ test.describe('Agents pane child work (#2459)', () => {
         .click();
       const actions = page.getByRole('menu', { name: 'Chat actions' });
       await expect(actions).toBeVisible();
+      await expect(actions.getByRole('note')).toHaveText(
+        'Delegation · CLI (reported)',
+      );
       const row = actions.getByRole('menuitem', {
         name: 'Background tasks — 1 running',
       });
