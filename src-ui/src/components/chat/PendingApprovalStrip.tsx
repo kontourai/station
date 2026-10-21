@@ -1,3 +1,4 @@
+import { inputRequestSummary } from '@kontourai/station-shared/input-request';
 import { toolRequestDisplayName } from '@kontourai/station-shared/tool-request-preview';
 import { useEffect, useRef, useState } from 'react';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
@@ -58,9 +59,11 @@ function useNewApprovalAnnouncement(
     // Still loading history, or the render that finished loading it:
     // whatever it brings was already waiting.
     if (!settled || !wasSettled || fresh.length === 0) return;
-    const names = fresh.map(
-      (request) =>
-        toolRequestDisplayName(request.toolName || request.name) || 'a tool',
+    // A form names its own ask; its tool name is a protocol method.
+    const names = fresh.map((request) =>
+      request.inputRequest
+        ? inputRequestSummary(request.inputRequest.message)
+        : toolRequestDisplayName(request.toolName || request.name) || 'a tool',
     );
     setAnnouncement((previous) => ({
       id: previous.id + 1,

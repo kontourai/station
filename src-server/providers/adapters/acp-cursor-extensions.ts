@@ -5,6 +5,7 @@ import type {
 import { INPUT_REQUEST_SCHEMA } from '@kontourai/station-contracts/input-request';
 import type { PlanEntry } from '@kontourai/station-contracts/runtime-events';
 import {
+  INPUT_REQUEST_MAX_MESSAGE_CHARS,
   ownArray,
   ownRecord,
   readInputRequestForm,
@@ -210,9 +211,50 @@ const TODO_STATUS_TEXT: Record<CursorTodoStatus, string> = {
 };
 
 /**
- * `cursor/create_plan` params as a plan review: the whole plan is the form's
- * message, so the person reads what they approve. Null when malformed or
- * over bounds, including a plan too long for one form message.
+ * The plan review's message, fitted to one form message
+ * ({@link INPUT_REQUEST_MAX_MESSAGE_CHARS}) so a person present always gets
+ * to decide: the whole plan when it fits; otherwise the todo list becomes a
+ * count (an approved plan's todos still reach the plan surface); as a last
+ * resort the plan text is cut, with a note saying how much was left out.
+ */
+function planReviewMessage(
+  heading: Array<string | undefined>,
+  plan: string,
+  todos: CursorTodo[],
+): string {
+  const join = (sections: Array<string | undefined>) =>
+    sections.filter((section) => section !== undefined).join('\n\n');
+  const todoList =
+    todos.length > 0
+      ? `Todos:\n${todos
+          .map((todo) => `- ${todo.content} (${TODO_STATUS_TEXT[todo.status]})`)
+          .join('\n')}`
+      : undefined;
+  const whole = join([...heading, plan, todoList]);
+  if (whole.length <= INPUT_REQUEST_MAX_MESSAGE_CHARS) return whole;
+  const todoCount =
+    todos.length > 0
+      ? `${todos.length} todos, shown on the plan once approved.`
+      : undefined;
+  const withoutTodos = join([...heading, plan, todoCount]);
+  if (withoutTodos.length <= INPUT_REQUEST_MAX_MESSAGE_CHARS)
+    return withoutTodos;
+  // Measured with a worst-case note, so the cut message always fits.
+  const note = (left: number) =>
+    `[Plan truncated for display: ${left} more characters.]`;
+  const room =
+    INPUT_REQUEST_MAX_MESSAGE_CHARS -
+    join([...heading, '', note(plan.length), todoCount]).length;
+  let shown = plan.slice(0, Math.max(0, room));
+  // Never end on half of a surrogate pair.
+  if (/[\uD800-\uDBFF]$/.test(shown)) shown = shown.slice(0, -1);
+  return join([...heading, shown, note(plan.length - shown.length), todoCount]);
+}
+
+/**
+ * `cursor/create_plan` params as a plan review: the plan is the form's
+ * message ({@link planReviewMessage}), so the person reads what they approve.
+ * Null when malformed or over bounds.
  */
 export function readCursorCreatePlan(
   params: unknown,
@@ -231,23 +273,21 @@ export function readCursorCreatePlan(
     !optionalBoundedText(raw.overview, PLAN_OVERVIEW_MAX_CHARS)
   )
     return null;
-  const sections = [
-    typeof raw.name === 'string' && raw.name.trim() ? raw.name : undefined,
-    typeof raw.overview === 'string' && raw.overview.trim()
-      ? raw.overview
-      : undefined,
+  const message = planReviewMessage(
+    [
+      typeof raw.name === 'string' && raw.name.trim() ? raw.name : undefined,
+      typeof raw.overview === 'string' && raw.overview.trim()
+        ? raw.overview
+        : undefined,
+    ],
     raw.plan,
-    todos.length > 0
-      ? `Todos:\n${todos
-          .map((todo) => `- ${todo.content} (${TODO_STATUS_TEXT[todo.status]})`)
-          .join('\n')}`
-      : undefined,
-  ].filter((section): section is string => section !== undefined);
+    todos,
+  );
   const form = readInputRequestForm({
     schema: INPUT_REQUEST_SCHEMA,
     source: 'harness:cursor',
     requester,
-    message: sections.join('\n\n'),
+    message,
     body: {
       kind: 'form',
       fields: [
@@ -261,7 +301,7 @@ export function readCursorCreatePlan(
               value: PLAN_APPROVE,
               label: 'Approve',
               // Station answers the request only (see docs/guides/agents.md).
-              description: `${requester} stops after an approved plan. Send a message to continue.`,
+              description: `Station doesn't resume ${requester} after approval; send a message to continue.`,
             },
             { value: PLAN_REJECT, label: 'Reject' },
           ],

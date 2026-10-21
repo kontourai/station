@@ -193,7 +193,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Plan Rendering
 
-`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A later `content.text-delta`/`content.reasoning-delta` event does not clobber a typed plan artifact with plain prose; the heuristic parser used by other providers only fills in when no typed artifact is already present.
+`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A later `content.text-delta`/`content.reasoning-delta` event does not clobber a typed plan artifact with plain prose, and neither does the turn completing (a plan sent mid-turn, before the answer is committed, stays on the surface); the heuristic parser used by other providers only fills in when no typed artifact is already present.
 
 ### Extension Rendering
 
@@ -333,7 +333,7 @@ documented nested `outcome` shape.
 | Request | What the person sees | Answers |
 |---|---|---|
 | `cursor/ask_question` | The harness-question form (`station.input-request/v1`, source `harness:cursor`), one choice or multi-choice field per question | `answered` with the chosen option ids; `skipped` when declined; `cancelled` when the prompt ends, the turn is interrupted, the engine exits or the session stops |
-| `cursor/create_plan` | A plan-review form: the plan's name, overview, markdown and todos (each phase's todos listed under the phase name) as its message, and one Approve/Reject choice | `accepted` on Approve, then the todos replace the Session's plan; `rejected` on Reject or decline, with the plan left as it was; `cancelled` as above |
+| `cursor/create_plan` | A plan-review form: the plan's name, overview, Markdown and todos (each phase's todos listed under the phase name) as its message, rendered as Markdown without raw HTML, and one Approve/Reject choice. When that is longer than one form message (8000 characters), the todo list becomes a count; only if the plan text alone is still too long is it cut, with a note saying how many characters were left out | `accepted` on Approve, then the todos replace the Session's plan; `rejected` on Reject or decline, with the plan left as it was; `cancelled` as above |
 
 Both forms are published under their method name, so no surface offers a
 session grant, and the approval inbox card offers no Allow/Deny decision: a
@@ -343,12 +343,13 @@ A session with nobody to ask (a delegated child that may not ask a person) is
 answered at once, never left waiting: the question `skipped`, the plan
 `rejected`. A request Station cannot show (malformed, over 256 KiB of JSON,
 over 16 questions or 32 options per question, an option id that is blank or
-repeated, over 200 todos including phases, a plan longer than one form message
-of 8000 characters) gets the same refusal outcome, a `warn` log and a
+repeated, over 200 todos including phases) gets the same refusal outcome, a `warn` log and a
 `runtime.warning` (`acp.extension-request-unreadable`). Accepting a plan
 answers the request only: Station does not switch the engine out of plan mode
-or send a follow-up prompt, so the Approve option tells the person to send a
-message to continue.
+or send a follow-up prompt, so the Approve option says "Station doesn't resume
+<engine> after approval; send a message to continue." Notifications name the
+connection: "<engine> asked a question." or "<engine> wants you to review a
+plan: <name>".
 
 **Error codes are emitted, never inferred.** Station emits `-32601` because
 the spec says so, and derives nothing from the codes it *receives*: the

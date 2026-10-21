@@ -9,6 +9,7 @@ import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-re
 import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
+  toolRequestIsPlanReview,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
@@ -691,6 +692,12 @@ function formatOrchestrationBody(
 ): string {
   const toolName =
     typeof event.payload?.toolName === 'string' ? event.payload.toolName : null;
+  // A form names its requester; its tool name, if any, is a protocol method.
+  const form = inputRequestFromRequestEvent(event);
+  if (form)
+    return toolRequestIsPlanReview(toolName)
+      ? `${form.requester} wants you to review a plan.`
+      : `${form.requester} asked a question.`;
   if (toolName) {
     return `${event.provider} wants approval to use ${toolName}.`;
   }

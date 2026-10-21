@@ -472,7 +472,9 @@ describe('cursor/create_plan is a plan review', () => {
     const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
 
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
-    expect(opened.title).toBe("Review Lab Engine's plan: Refactor tabs layout");
+    expect(opened.title).toBe(
+      'Lab Engine wants you to review a plan: Refactor tabs layout',
+    );
     // A plan review is addressed to a person: no session grant is offered.
     expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe('none');
     const form = inputRequestFromRequestEvent(opened);
@@ -488,7 +490,7 @@ describe('cursor/create_plan is a plan review', () => {
         {
           value: 'approve',
           description:
-            'Lab Engine stops after an approved plan. Send a message to continue.',
+            "Station doesn't resume Lab Engine after approval; send a message to continue.",
         },
         { value: 'reject' },
       ],
@@ -541,6 +543,77 @@ describe('cursor/create_plan is a plan review', () => {
       await session.stop();
     },
   );
+
+  test('an ordinary long plan reaches the person, its todos counted rather than listed', async () => {
+    // 6000 characters of plan and 40 todos overflow one form message
+    // together; that is no reason to refuse a plan a person could review.
+    const session = await startCursorSession();
+    const todos = Array.from({ length: 40 }, (_, index) => ({
+      id: `t${index}`,
+      content: `Step ${index} of the migration, with enough words to matter`,
+      status: 'pending',
+    }));
+    const plan = 'p'.repeat(6000);
+    const response = session.agent.extMethod('cursor/create_plan', {
+      ...CREATE_PLAN,
+      plan,
+      todos,
+    });
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    const message = inputRequestFromRequestEvent(opened)?.message ?? '';
+    expect(message).toContain(plan);
+    expect(message).toContain('40 todos, shown on the plan once approved.');
+    expect(message).not.toContain('Step 0 of the migration');
+    await answerForm(session, opened, { review: 'approve' });
+    await expect(within(response)).resolves.toEqual({
+      outcome: { outcome: 'accepted' },
+    });
+    const planned = await session.waitFor(isPlanUpdated, 'plan.updated');
+    expect(planned.entries).toHaveLength(40);
+    await session.stop();
+  });
+
+  test('a plan too long to show whole is cut with a note, never refused', async () => {
+    const session = await startCursorSession();
+    const plan = `${'q'.repeat(7990)}TAIL`;
+    void session.agent.extMethod('cursor/create_plan', {
+      ...CREATE_PLAN,
+      plan,
+    });
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    const message = inputRequestFromRequestEvent(opened)?.message ?? '';
+    expect(message.length).toBeLessThanOrEqual(8000);
+    expect(message).not.toContain('TAIL');
+    expect(message).toMatch(
+      /\[Plan truncated for display: \d+ more characters\.\]/,
+    );
+    await session.stop();
+  });
+
+  test('an approval that lands as the session stops plans nothing', async () => {
+    const session = await startCursorSession();
+    void session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    const form = inputRequestFromRequestEvent(opened);
+    if (!form) throw new Error('no form');
+    // The answer resolves the request synchronously; the stop lands before
+    // the plan handler resumes.
+    const answered = session.adapter.respondToRequest(
+      session.threadId,
+      opened.requestId,
+      'accept',
+      {
+        inputContent: validateInputRequestContent(form, { review: 'approve' }),
+        expectedRequestEventId: opened.eventId,
+      },
+    );
+    const stopped = session.adapter.stopSession(session.threadId);
+    await answered;
+    await stopped;
+    await settle();
+    expect(session.events.filter(isPlanUpdated)).toHaveLength(0);
+    await session.stop();
+  });
 
   test("phases' todos are shown and planned under their phase name", async () => {
     const session = await startCursorSession();

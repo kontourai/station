@@ -157,6 +157,53 @@ describe('handlePlanUpdatedEvent', () => {
     ]);
   });
 
+  test('a plan delivered mid-turn survives the turn completing', async () => {
+    // The live ACP order (session/update \`plan\`, then text, then the
+    // prompt settles): turn.completed commits the answer and used to re-derive
+    // the plan from message prose, replacing the typed plan with null.
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const base = { provider: 'acp', threadId, turnId: 'turn-1' } as const;
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-start',
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'turn.started',
+    } as never);
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-plan',
+      createdAt: '2026-07-03T00:00:01.000Z',
+      method: 'plan.updated',
+      entries: [
+        { content: 'Standard ACP plan step one', status: 'completed' },
+        { content: 'Standard ACP plan step two', status: 'pending' },
+      ],
+    });
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-text',
+      createdAt: '2026-07-03T00:00:02.000Z',
+      method: 'content.text-delta',
+      itemId: 'item-1',
+      delta: 'Sent a standard ACP plan update.\n',
+    } as never);
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-done',
+      createdAt: '2026-07-03T00:00:03.000Z',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    } as never);
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationTurnOpen).not.toBe(true);
+    expect(chat?.planArtifact?.source).toBe('canonical');
+    expect(chat?.planArtifact?.steps).toEqual([
+      { content: 'Standard ACP plan step one', status: 'completed' },
+      { content: 'Standard ACP plan step two', status: 'pending' },
+    ]);
+  });
+
   test('ignores an event for a thread with no active chat', () => {
     handlePlanUpdatedEvent({
       eventId: 'evt-1',

@@ -334,6 +334,11 @@ export type ClaudeAskReason = {
 /** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
 const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
 /**
+ * Plan reviews: the ACP adapter publishes Cursor's `cursor/create_plan` under
+ * its method name (see `toolRequestIsPlanReview`).
+ */
+const PLAN_REVIEW_TOOLS: ReadonlySet<string> = new Set(['cursor/createplan']);
+/**
  * Tools whose request gets no standing answer: a plan exit, a plan review
  * and a harness question, which are addressed to a person, and Claude Code's
  * sandbox network ask (#2932; input `{host}`). The engine remembers an
@@ -346,7 +351,7 @@ const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'askuserquestion',
   'sandboxnetworkaccess',
   'cursor/askquestion',
-  'cursor/createplan',
+  ...PLAN_REVIEW_TOOLS,
   ...PLAN_EXIT_TOOLS,
 ]);
 /**
@@ -614,6 +619,14 @@ export function toolRequestIsPlanExit(
   if (toolKind === 'switch_mode') return true;
   const trimmed = toolName?.trim();
   return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
+}
+
+/** Whether the request asks a person to review a plan the engine proposes. */
+export function toolRequestIsPlanReview(
+  toolName: string | null | undefined,
+): boolean {
+  const trimmed = toolName?.trim();
+  return !!trimmed && PLAN_REVIEW_TOOLS.has(canonicalKey(trimmed));
 }
 
 /**

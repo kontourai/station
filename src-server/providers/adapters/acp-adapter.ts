@@ -3476,12 +3476,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       return cursorPlanRejected('No one is present to review this plan.');
     const answer = await this.awaitPersonRequest(record, {
       title: plan.name
-        ? `Review ${record.engineName}'s plan: ${plan.name}`
-        : `Review ${record.engineName}'s plan`,
+        ? `${record.engineName} wants you to review a plan: ${plan.name}`
+        : `${record.engineName} wants you to review a plan`,
       form: plan.form,
       payload: { toolCallId: plan.toolCallId, toolName: method },
     });
     const response = cursorPlanResponse(answer.decision, answer.content);
+    // An approval that lands as the session stops plans nothing for a
+    // session that has already ended.
     if (
       (response.outcome as { outcome: string }).outcome === 'accepted' &&
       !record.stopping
