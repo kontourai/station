@@ -108,6 +108,15 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       screen.getByText('Driven from delegation').getAttribute('title'),
     ).toBe('Driven from delegated task: Review Station');
+    // It is the first to give way on a narrow bar, so the title's tooltip
+    // keeps it.
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-title')
+        ?.getAttribute('title')
+        ?.split('\n')
+        .at(-1),
+    ).toBe('Driven from delegated task: Review Station');
   });
 
   test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {

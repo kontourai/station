@@ -108,6 +108,11 @@ export function ChatDockActiveIdentity({
   const contextTitle = [!originLabel ? agentName : null, fullTrail]
     .filter(Boolean)
     .join(' · ');
+  const delegationTitle = inputOrigin
+    ? inputOrigin.title
+      ? `Driven from delegated task: ${inputOrigin.title}`
+      : `Driven from delegated task ${inputOrigin.taskId}`
+    : null;
 
   return (
     <div className="chat-dock__active-identity">
@@ -121,10 +126,11 @@ export function ChatDockActiveIdentity({
       <div className="chat-dock__active-identity-text">
         <span
           className="chat-dock__active-identity-title"
-          // The agent and engine may have stepped aside for the title.
-          title={
-            contextTitle ? `${session.title}\n${contextTitle}` : session.title
-          }
+          // The agent, engine and delegation may have stepped aside for
+          // the title; its tooltip keeps them.
+          title={[session.title, contextTitle, delegationTitle]
+            .filter(Boolean)
+            .join('\n')}
         >
           {session.title}
         </span>
@@ -149,11 +155,7 @@ export function ChatDockActiveIdentity({
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"
-            title={
-              inputOrigin.title
-                ? `Driven from delegated task: ${inputOrigin.title}`
-                : `Driven from delegated task ${inputOrigin.taskId}`
-            }
+            title={delegationTitle ?? undefined}
           >
             Driven from delegation
           </span>
