@@ -395,6 +395,14 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: false,
       failReturnSeed: true,
     },
+    {
+      label: 'Codex to Claude Code through two complete native-return cycles',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      repeatNativeReturn: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
     async ({
@@ -403,6 +411,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile,
       nativeReturn,
       failReturnSeed = false,
+      repeatNativeReturn = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -1026,6 +1035,48 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         );
       }
 
+      const firstReturnedSessionId = returnedSessionId;
+      const extraHandoffs: string[] = [];
+      if (repeatNativeReturn) {
+        for (const [selected, adapter, key, missedMessage] of [
+          [
+            target,
+            targetAdapter,
+            'second-away',
+            'Recall the token after returning to your earlier engine.',
+          ],
+          [
+            source,
+            sourceAdapter,
+            'second-return',
+            'Second cycle: keep the same conversation.',
+          ],
+        ] as const) {
+          const count = adapter.turns.length;
+          const result = await execute(selected, {
+            conversationId,
+            message: 'Second cycle: keep the same conversation.',
+            idempotencyKey: key,
+          });
+          extraHandoffs.push(result.sessionId);
+          returnedSessionId = result.sessionId;
+          await eventually(async () => {
+            expect(adapter.turns).toHaveLength(count + 1);
+            const status = await service.readConversationHandoffStatus(
+              conversationId,
+              key,
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            expect(status?.status).toBe('completed');
+            expect(status?.nativeResumeIdentity).toBe('matched');
+          });
+          expect(adapter.turns.at(-1)?.ambientContext).toContain(missedMessage);
+          expect(adapter.starts.at(-1)?.resumeCursor).toEqual({
+            nativeSessionId: `${selected.provider}:native:${selected === source ? conversationId : handoffReceipt.data.sessionId}`,
+          });
+        }
+      }
+
       await service.shutdown();
       store.close();
       store = new EventStore(databasePath);
@@ -1080,26 +1131,29 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         ...(nativeReturn
           ? [
               expect.objectContaining({
-                sessionId: returnedSessionId,
+                sessionId: firstReturnedSessionId,
                 targetAgentId: source.agent,
                 carried: expect.arrayContaining(['nativeSession']),
                 reset: expect.not.arrayContaining(['providerNativeCursor']),
               }),
             ]
           : []),
+        ...extraHandoffs.map((sessionId) =>
+          expect.objectContaining({ sessionId }),
+        ),
       ]);
       expect(
         restored?.events.filter(
           (entry) => entry.event.method === 'turn.completed',
         ),
-      ).toHaveLength(nativeReturn ? 4 : 3);
+      ).toHaveLength(repeatNativeReturn ? 6 : nativeReturn ? 4 : 3);
       expect(
         restored?.events.filter(
           (entry) =>
             entry.event.method === 'turn.completed' &&
             entry.event.outputText?.includes(CONTEXT_TOKEN),
         ),
-      ).toHaveLength(nativeReturn ? 4 : 3);
+      ).toHaveLength(repeatNativeReturn ? 6 : nativeReturn ? 4 : 3);
 
       if (preserveProfile) {
         const returned = await execute(source, {
