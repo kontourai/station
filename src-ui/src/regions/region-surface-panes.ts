@@ -1,3 +1,4 @@
+import { isCanonicalWorkspaceActivityReviewPaneInstance } from '@kontourai/station-contracts/workspace-activity-review-pane';
 /**
  * The pane each dock-capable surface is rendered as inside a region's pane
  * host (#2045, slice 1 of the tabbed dock; #2047 adds the coding panes).
@@ -570,9 +571,7 @@ export function regionSurfacePane(
       instance: () => activityReviewInstance(surfaceId),
       isCanonical: (instance) =>
         String(instance.instanceId) === surfaceId &&
-        String(instance.stateKey) === surfaceId &&
-        instance.descriptorId === ACTIVITY_REVIEW_DESCRIPTOR_ID &&
-        instance.boundContext === undefined,
+        isCanonicalWorkspaceActivityReviewPaneInstance(instance),
     };
   }
   return undefined;

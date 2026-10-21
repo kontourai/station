@@ -2,6 +2,10 @@ import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pan
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  isCanonicalWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -1077,10 +1081,37 @@ function BoardWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   );
 }
 
+const LazyActivityReview = lazy(() =>
+  import('./RegionActivityReviewPane').then((m) => ({
+    default: m.RegionActivityReviewPane,
+  })),
+);
+function ActivityReviewWorkspacePaneEntry({
+  instance,
+}: BuiltinWorkspacePaneProps) {
+  if (!isCanonicalWorkspaceActivityReviewPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <UnsavedGuardOwnerContext.Provider value={String(instance.instanceId)}>
+      <Suspense
+        fallback={<SkeletonBlock count={3} label="Loading Activity review" />}
+      >
+        <LazyActivityReview instance={instance} />
+      </Suspense>
+    </UnsavedGuardOwnerContext.Provider>
+  );
+}
+
 const builtinWorkspacePaneRegistry: Record<
   BuiltinWorkspacePaneRendererName,
   BuiltinWorkspacePaneComponent
 > = {
+  [WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME]:
+    ActivityReviewWorkspacePaneEntry,
   'flow-run-console': FlowRunConsolePane,
   [WORKSPACE_CHAT_PANE_RENDERER_NAME]: ChatPane,
   [WORKSPACE_TASK_ROOM_EDITOR_RENDERER_NAME]: TaskRoomEditor,

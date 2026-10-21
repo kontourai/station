@@ -62,6 +62,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-basis-pane:WORKSPACE_BASIS_PANE_DESCRIPTOR',
   '@kontourai/station-board-pane/workspace-board-pane:WORKSPACE_BOARD_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_ACTIVITY_PANE_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CHAT_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR',
@@ -204,6 +205,7 @@ describe('docked is a derived capability, pinned to the shell surface registry',
     // descriptor — two prefixes for one `descriptorId` is the shape this pin
     // admits).
     expect(INSTANCE_SURFACE_PREFIXES.map((prefix) => prefix.prefix)).toEqual([
+      'activity-review:',
       'pr:',
       'file-preview:',
       // #90 D9: a Browser pane attached to one session.

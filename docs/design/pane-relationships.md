@@ -42,7 +42,11 @@ Main Activity's row menu offers **Quick review** without selecting the row. The
 review is a Related destination using the existing SessionDetail reader and
 controls. It is a child screen on a phone, not a properties sheet. Its typed
 target captures the Session and Project; the occurrence's Station fence runs
-before any Session reader mounts.
+before any Session reader mounts. The shared Activity Review descriptor is
+available only in the dock and represents a nonce-keyed occurrence; catalogs
+never create a blank review or offer it inside a Project layout. Its canonical
+lazy renderer owns the same unsaved-guard identity and Station fence as the
+region reader.
 
 Previous and Next follow the list owner's current visible ordered rows,
 including search, filters, conversation folds, pagination and collapsed groups.

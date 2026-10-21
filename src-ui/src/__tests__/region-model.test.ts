@@ -254,6 +254,7 @@ describe('region model', () => {
       // Files joins the Related side. Explicit Left placements still hold.
       'coding:file-browser': 'right',
       home: 'main',
+      'activity-review:': 'right',
       'pr:': 'right',
       'file-preview:': 'right',
       // #90 D9: a Browser pane opened from the float-over-chat's "Open in

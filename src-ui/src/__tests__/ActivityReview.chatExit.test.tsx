@@ -1,3 +1,5 @@
+import { WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-review-pane';
+import { getBuiltinWorkspacePaneRenderer } from '../workspace-panes/builtinWorkspacePaneRegistry';
 /** @vitest-environment jsdom */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -65,7 +67,6 @@ import {
   activityReviewInstance,
   prepareActivityReviewPane,
 } from '../workspace-panes/activityReviewPane';
-import { RegionActivityReviewPane } from '../workspace-panes/RegionActivityReviewPane';
 
 const session: OrchestrationSessionSummary = {
   threadId: 'thread-review',
@@ -297,6 +298,11 @@ async function mount(
   );
   const instance = activityReviewInstance(paneId);
   if (!instance) throw new Error('Review fixture did not prepare');
+  const Review = getBuiltinWorkspacePaneRenderer(
+    WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
+    instance,
+  );
+  if (!Review) throw new Error('Canonical Activity review renderer missing');
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -313,8 +319,11 @@ async function mount(
                   >
                     <ToastProvider>
                       <Owner />
+                      <Review
+                        descriptor={WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR}
+                        instance={instance}
+                      />
                       <UnsavedGuardOwnerContext.Provider value={paneId}>
-                        <RegionActivityReviewPane instance={instance} />
                         {options.otherDirty && <OtherDirtyWork />}
                       </UnsavedGuardOwnerContext.Provider>
                       {options.recipient && (
@@ -346,7 +355,7 @@ async function mount(
     if (phone) model.openSurfaceInRegion(paneId);
   });
   await within(
-    screen.getByRole('region', { name: 'Activity quick review' }),
+    await screen.findByRole('region', { name: 'Activity quick review' }),
   ).findByRole('heading', { name: 'Reviewed conversation' });
 }
 

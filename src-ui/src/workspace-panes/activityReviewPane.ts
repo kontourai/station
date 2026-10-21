@@ -1,13 +1,16 @@
 import {
-  parseWorkspacePaneInstance,
-  WORKSPACE_PANE_CONTRACT_VERSION,
-} from '@kontourai/station-contracts/workspace-pane';
+  createWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR_ID,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_INSTANCE_PATTERN,
+} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { removeFencedRecord, removePaneFence } from '../regions/pane-fence';
 import type { PaneRelationTarget } from '../regions/pane-relations';
 
-export const ACTIVITY_REVIEW_PANE_ID = /^activity-review:[0-9a-f]{32}$/;
-export const ACTIVITY_REVIEW_DESCRIPTOR_ID = 'pane:builtin:activity-review';
+export const ACTIVITY_REVIEW_PANE_ID =
+  WORKSPACE_ACTIVITY_REVIEW_PANE_INSTANCE_PATTERN;
+export const ACTIVITY_REVIEW_DESCRIPTOR_ID =
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR_ID;
 const STATE_PREFIX = 'station:activity-review:v1:';
 
 export interface ActivityReviewPaneState {
@@ -68,13 +71,7 @@ export function activityReviewTarget(
 }
 
 export function activityReviewInstance(id: string) {
-  if (!ACTIVITY_REVIEW_PANE_ID.test(id)) return null;
-  return parseWorkspacePaneInstance({
-    version: WORKSPACE_PANE_CONTRACT_VERSION,
-    descriptorId: ACTIVITY_REVIEW_DESCRIPTOR_ID,
-    instanceId: id,
-    stateKey: id,
-  });
+  return createWorkspaceActivityReviewPaneInstance(id);
 }
 
 export function prepareActivityReviewPane(state: ActivityReviewPaneState) {

@@ -195,6 +195,7 @@
     "./workspace-browser-pane": "./src/workspace-browser-pane.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-plugin-draft-pane": "./src/workspace-plugin-draft-pane.ts",
+    "./workspace-activity-review-pane": "./src/workspace-activity-review-pane.ts",
     "./workspace-activity-pane": "./src/workspace-activity-pane.ts",
     "./workspace-chat-pane": "./src/workspace-chat-pane.ts",
     "./workspace-home-pane": "./src/workspace-home-pane.ts",

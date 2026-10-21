@@ -13,3 +13,7 @@ sandboxed-frame client. A host without the capability answers `unsupported`.
 (`destination` or `tool`), and `LayoutCatalogContribution` an optional,
 server-issued `lifecycleGeneration` that a reinstall or an enablement change
 replaces (identity only; older readers drop it).
+
+Register the dock-only Activity Review descriptor and renderer through the
+shared pane catalog. Reviews remain captured, nonce-keyed occurrences; the
+catalog does not create blank reviews or permit Project placement.
