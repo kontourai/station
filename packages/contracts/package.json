@@ -226,7 +226,8 @@
     "./mcp-prompts": "./src/mcp-prompts.ts",
     "./account-preferences": "./src/account-preferences.ts",
     "./html-reply": "./src/html-reply.ts",
-    "./ensemble": "./src/ensemble.ts"
+    "./ensemble": "./src/ensemble.ts",
+    "./delegation-group": "./src/delegation-group.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
