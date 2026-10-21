@@ -76,6 +76,8 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Core Workspace',
     summary: 'Read and supervise a server-owned delegation group',
     usage: [
+      'station group session-create --file=<local-group.json> [--json]',
+      'station group session-get|session-run|session-cancel <group> [--json]',
       'station group create --preparation=<id> --operation=<id> [--json]',
       'station group get <group> [--json]',
       'station group list [--after-group=<id>] [--json]',
@@ -85,6 +87,10 @@ const VERBS: Record<string, VerbSpec> = {
       'station group member-output <group> <seat> [--json]',
     ],
     actions: [
+      'session-create',
+      'session-get',
+      'session-run',
+      'session-cancel',
       'create',
       'get',
       'list',
@@ -95,7 +101,9 @@ const VERBS: Record<string, VerbSpec> = {
       'member-output',
     ],
     detail: [
-      'Requires server group support and server-issued preparation; capability refusals remain errors.',
+      'Session groups use existing Station authority; portable Flow lineage and hard dollar/token/attempt limits remain unavailable.',
+      'session-run follows the server deadline. Ctrl-C requests interruption, not proven provider termination.',
+      'Other group commands require server-issued preparation; capability refusals remain errors.',
       'Commands carry explicit operation IDs and revisions. A lost response never authorizes resend.',
       'Follow streams stop locally on Ctrl-C; this does not cancel the group.',
       'Output is terminal-safe JSON. Group completion is separate from Flow acceptance.',

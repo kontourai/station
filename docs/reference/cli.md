@@ -1178,8 +1178,32 @@ checkout; published CLI/contracts availability requires separate release evidenc
 
 ### `group`
 
+The initial CLI-session path uses the personal Station's existing authority and
+confinement. It has separate commands from the hard-cap API transport below:
+
+```bash
+station group session-create --file=local-group.json --json
+station group session-get <group-id> --json
+station group session-run <group-id> --json
+station group session-cancel <group-id> --json
+```
+
+The JSON file follows the [CLI session-group API](api.md#cli-session-groups): an
+explicit operation ID, bounded roster, expected engine connection, concurrency
+and absolute deadline. It is validated before submission; create does not start
+members. Run supervises the server's Flow frontier and can wait up to its deadline.
+Ctrl-C disconnects that supervision and requests interruption; it is not proof of
+physical termination. Inspect the same group after an uncertain response; never
+create a replacement merely because the response was lost. Member handles use
+ordinary `station delegate` status/events/respond/interrupt/continuation commands.
+
+Output explicitly reports unbound portable Flow lineage and unavailable dollar,
+token and physical-attempt caps. Unknown cost is not free. These commands have
+controlled-adapter integration evidence; live CLI and release acceptance remain
+unverified. The following legacy group transport commands remain separate.
+
 The local CLI has group transport commands. They require a serving Station with
-the corresponding group routes; this checkout has not mounted those routes or
+the corresponding group routes; this checkout has not mounted the hard-cap API group routes or
 enabled bounded paid execution. A client command is not a capability probe or
 permission to launch. Group preparation IDs must come from a server owner.
 The public handshake currently advertises `delegationGroups: false`; an absent

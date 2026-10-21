@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { afterEach, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
 import { reportCliError, runCli } from '../cli';
 import { parseCoreArgs } from '../commands/core-api';
 import { runGroupCommand } from '../commands/group';
+
+const sessionGroupTemp = trackTempDirs();
 
 test('registered group command reaches the SDK with explicit target credentials', async () => {
   const original = globalThis.fetch;
@@ -300,3 +303,73 @@ test('top-level group JSON reports refusal codes and ambiguous write timeout wit
     process.exitCode = exitCode;
   }
 });
+
+test('session-group commands validate selected engines and refuse invented cost guarantees', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = sessionGroupTemp('station-cli-group-input-');
+  const file = join(root, 'group.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      operationId: 'op',
+      maxConcurrent: 1,
+      deadlineAt: Date.now() + 60_000,
+      members: [
+        { seatId: 'one', prompt: 'Review this', target: { agent: 'reviewer' } },
+      ],
+    }),
+  );
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  await assert.rejects(
+    runGroupCommand(
+      'https://station.test',
+      parseCoreArgs(['session-create', `--file=${file}`]),
+    ),
+  );
+  assert.equal(fetch.mock.calls.length, 0);
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          ...sessionGroupView(),
+          guarantees: {
+            ...sessionGroupView().guarantees,
+            dollarCap: 'enforced',
+          },
+        },
+      }),
+    );
+  await assert.rejects(
+    runGroupCommand(
+      'https://station.test',
+      parseCoreArgs(['session-get', 'cli-group']),
+    ),
+  );
+});
+
+function sessionGroupView() {
+  return {
+    version: 'station.cli-session-group/v1',
+    groupId: 'cli-group',
+    revision: 0,
+    supervision: 'not-running',
+    cancelled: false,
+    deadlineAt: Date.now() + 60_000,
+    maxConcurrent: 1,
+    dispatchCount: 0,
+    guarantees: {
+      authority: 'station-session',
+      portableFlowLineage: 'unbound',
+      dollarCap: 'unavailable',
+      tokenCap: 'unavailable',
+      physicalAttemptCap: 'unavailable',
+      deadline: 'stop-admission-and-request-interruption',
+    },
+    flow: null,
+    acceptance: 'unassessed',
+    members: [{ seatId: 'one', needs: [], state: 'pending' }],
+  };
+}

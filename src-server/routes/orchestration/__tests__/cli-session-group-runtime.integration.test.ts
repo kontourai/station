@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -9,8 +9,14 @@ import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
+import {
+  createCliSessionGroup,
+  parseCliSessionGroupInput,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { runCli } from '../../../../packages/cli/src/cli.js';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -33,6 +39,8 @@ const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  setClientCredentialResolver(undefined);
 });
 
 class MemberAdapter extends GateTestAdapter {
@@ -186,6 +194,8 @@ async function fixture() {
   vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'group-test');
   return {
     app,
+    apiBase,
+    root,
     adapter,
     store,
     pendingDispatches,
@@ -195,37 +205,56 @@ async function fixture() {
   };
 }
 
+function groupInput(seats = 3) {
+  return {
+    operationId: 'real-group',
+    maxConcurrent: 2,
+    deadlineAt: Date.now() + 60_000,
+    members: Array.from({ length: seats }, (_, index) => ({
+      seatId: `seat-${index}`,
+      prompt: `Review part ${index}`,
+      needs: index === 2 ? ['seat-0', 'seat-1'] : [],
+      target: {
+        agent: 'reviewer',
+        expectedEngine: { kind: 'connection', connectionId: 'claude' },
+      },
+    })),
+  };
+}
 async function create(f: Awaited<ReturnType<typeof fixture>>, seats = 3) {
-  const response = await f.app.request('/api/orchestration/session-groups', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      operationId: 'real-group',
-      maxConcurrent: 2,
-      deadlineAt: Date.now() + 60_000,
-      members: Array.from({ length: seats }, (_, index) => ({
-        seatId: `seat-${index}`,
-        prompt: `Review part ${index}`,
-        needs: index === 2 ? ['seat-0', 'seat-1'] : [],
-        target: {
-          agent: 'reviewer',
-          expectedEngine: { kind: 'connection', connectionId: 'claude' },
-        },
-      })),
-    }),
-  });
-  expect(response.status, await response.clone().text()).toBe(200);
-  return ((await response.json()) as { data: CliSessionGroupView }).data;
+  return createCliSessionGroup(
+    f.apiBase,
+    parseCliSessionGroupInput(groupInput(seats)),
+    { credential: 'group-test', credentialOrigin: f.apiBase },
+  );
 }
 
-test('actual delegation creates three sessions and first turns, joins their durable events, and completes the Flow frontier', async () => {
+test('registered CLI and SDK create three real orchestration sessions and initial turns joined to durable Flow completion', async () => {
   const f = await fixture();
-  const group = await create(f);
-  const abort = new AbortController();
-  const running = f.app.request(
-    `/api/orchestration/session-groups/${group.groupId}/run`,
-    { method: 'POST', signal: abort.signal },
-  );
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((value) => {
+    output.push(String(value));
+  });
+  const file = join(f.root, 'group.json');
+  writeFileSync(file, JSON.stringify(groupInput()));
+  await runCli([
+    'group',
+    'session-create',
+    `--file=${file}`,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  const group: CliSessionGroupView = JSON.parse(output.splice(0).join('\n'));
+  const running = runCli([
+    'group',
+    'session-run',
+    group.groupId,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  let completed = false;
   try {
     await vi.waitFor(
       async () => {
@@ -249,12 +278,12 @@ test('actual delegation creates three sessions and first turns, joins their dura
       },
       { timeout: 5000, interval: 100 },
     );
+    completed = true;
   } finally {
-    abort.abort();
+    if (!completed) process.emit('SIGINT');
+    await running;
   }
-  const response = await running;
-  expect(response.status, await response.clone().text()).toBe(200);
-  const final = ((await response.json()) as { data: CliSessionGroupView }).data;
+  const final: CliSessionGroupView = JSON.parse(output.join('\n'));
   expect(f.adapter.starts).toHaveLength(3);
   expect(f.adapter.turns).toHaveLength(3);
   expect(final.flow?.status).toBe('completed');

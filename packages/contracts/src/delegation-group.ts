@@ -168,3 +168,27 @@ export type CliSessionGroupView = {
     terminalEvent?: { eventId: string; turnId: string };
   }[];
 };
+
+export type CliSessionGroupCreateInput = {
+  operationId: string;
+  maxConcurrent: number;
+  deadlineAt: number;
+  members: {
+    seatId: string;
+    prompt: string;
+    needs?: string[];
+    parentTaskId?: string;
+    target: {
+      environment?: { kind: 'current' };
+      agent: import('./agent-identity').AgentId;
+      expectedEngine: {
+        kind: 'connection';
+        connectionId: import('./agent-identity').EngineConnectionId;
+      };
+      model?: import('./execution-target').ExecutionModelRequest;
+      workspace?:
+        | { kind: 'project'; projectSlug: string; cwd?: string }
+        | { kind: 'directory'; cwd: string };
+    };
+  }[];
+};

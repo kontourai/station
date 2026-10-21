@@ -5116,6 +5116,25 @@ capabilities are not readiness or permission to launch. See the
 `21de0f40` awaits independent review, browser qualification and package publication;
 checkout exports do not establish registry availability.
 
+## CLI session groups
+
+`@kontourai/station-sdk/client` exports `parseCliSessionGroupInput`,
+`createCliSessionGroup`, `getCliSessionGroup`, `runCliSessionGroup` and
+`cancelCliSessionGroup`, with `CliSessionGroupCreateInput` and
+`CliSessionGroupView`. They target the personal Station's
+[CLI session-group API](api.md#cli-session-groups), using the same credential and
+request-scope options as other client calls. Parsing accepts local named Agents,
+explicit expected engine connections, prompts and dependencies. It does not
+choose credentials, authorize an engine, or grant access to a workspace.
+
+Run waits for server supervision and opts out of the ordinary 30-second client
+timeout; pass `signal` or an explicit `timeoutMs` to bound the caller's wait.
+Aborting requests interruption and preserves unknown occupied seats. There is no
+automatic launch retry. Responses validate the unbound-lineage and unavailable-cap
+disclosures; they cannot silently become a hard fiscal authority. Group completion
+is distinct from work acceptance. Package publication and live provider evidence
+remain unverified.
+
 ## Delegation group transport
 
 The local `@kontourai/station-sdk/client` exports `createDelegationGroup`,

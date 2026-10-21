@@ -38,6 +38,7 @@ export {
 export * from './attachment-staging';
 export * from './board';
 export { ChatHttpError } from './chatHttpError';
+export * from './cli-session-groups';
 export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';
 export * from './conversations';
