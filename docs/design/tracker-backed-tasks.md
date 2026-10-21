@@ -142,7 +142,9 @@ order:
 6. a compact line per Session of the Task, from the same facts
    `get_session_digest` and `list_project_activity` report: the status word,
    the turn count, and the newest turn's request, outcome, changed-file count
-   and declared pull request;
+   and declared pull request, followed by what the Session has claimed with
+   `claim_work` while the claim is active (its work item and paths, and when
+   it expires);
 7. what was left out, each line naming the call that fetches it;
 
 followed by the rules and, for a Task with a tracker item, the tracker
