@@ -334,6 +334,17 @@ in Needs you and in the lead's next `get_task_brief`.
   one, and nothing stops it. The answer's version records who answered, and
   the Task workspace shows it as "answered by Session X" (or the person).
   The lead wake names the answering Session too.
+- **Delivery to a Task-dispatched Session waits on
+  [#4005](https://github.com/kontourai/station/issues/4005).** Dispatch does
+  not bind the Session to an Agent, so live, the Session cannot receive the
+  turns that carry the first-turn brief or a lead wake. Until #4005 lands,
+  the brief reaches the agent only through `get_task_brief` and the
+  `session.started` record of its start metadata. A wake to such a lead is
+  accepted by the inbox and then settles `refused`; that is recorded on the
+  inbox entry, which the conversation inbox read lists, and logged as
+  `thread inbox entry not delivered` with the entry key (`tq-…`), state and
+  reason code. Nothing retries it, and the question still shows in Needs
+  you.
 - **Revisions and versions are unbounded in count.** Each summary write and
   each record action adds a row, and nothing caps how many a Task
   accumulates. Every row's size is bounded, the brief shows only the newest
