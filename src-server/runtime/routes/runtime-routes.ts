@@ -2596,8 +2596,11 @@ export function configureRuntimeRoutes(
   // owner gap. Logged once per read so it cannot hide behind a fallback gap.
   const reportBasisCompositionInvariant = (
     error: StationBasisCompositionInvariantError,
+    taskId?: string,
   ) =>
     context.logger.error('Station Basis composition invariant failed', {
+      ...error.identity,
+      ...(taskId ? { taskId } : {}),
       surfaceGapCode: error.surfaceGap.code,
       surfaceGapMessage: error.surfaceGap.message,
     });

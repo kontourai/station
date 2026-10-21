@@ -5964,8 +5964,14 @@ export function createOrchestrationRoutes(
       } catch (error) {
         // Station's own projection failed Surface's contract: unavailable,
         // never an owner gap published as if it were Basis data.
-        if (error instanceof StationBasisCompositionInvariantError)
+        if (error instanceof StationBasisCompositionInvariantError) {
+          deps.logger.warn?.('Station Basis composition invariant failed', {
+            ...error.identity,
+            surfaceGapCode: error.surfaceGap.code,
+            surfaceGapMessage: error.surfaceGap.message,
+          });
           return c.json({ success: false, error: 'Basis unavailable' }, 503);
+        }
         throw error;
       }
     }

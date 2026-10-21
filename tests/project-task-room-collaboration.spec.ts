@@ -331,8 +331,7 @@ test.describe
         ...ownerStorage,
         cookies: ownerStorage.cookies.filter(
           (cookie) =>
-            cookie.name !== 'station-device' &&
-            cookie.name !== '__Host-station-device',
+            !/^(?:__Host-)?station-device(?:-[a-f0-9]+)?$/.test(cookie.name),
         ),
         origins: ownerStorage.origins.map((origin) => ({
           ...origin,

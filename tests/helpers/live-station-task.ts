@@ -372,10 +372,9 @@ export async function createTaskFromProject(
     new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
     { timeout: 15_000 },
   );
-  // #3720 replaced the Project page's direct title form with conversational
-  // shaping, which needs a live engine. This lifecycle fixture creates the
-  // Task through the public route with the binding that form used to send,
-  // labelled as an API origin, then opens it like a person would.
+  // The default Project flow shapes Tasks conversationally; the start-task
+  // starter still has a title form. This lifecycle fixture creates through
+  // the public API, labelled as an API origin, then opens the Task in the UI.
   const created = await apiJson<{ success: boolean; data?: { id: string } }>(
     page,
     '/api/tasks',
