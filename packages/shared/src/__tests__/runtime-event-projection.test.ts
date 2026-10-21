@@ -3237,6 +3237,22 @@ describe('a check-back Station sent', () => {
     ).toBe(true);
   });
 
+  it('names no other sender: an internal turn reads unattributed, a check-back does not', () => {
+    const internal = {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { surface: 'unknown' },
+    };
+    expect(
+      userRow({ clientTurnId: WAKE_UP, clientOrigin: internal })?.metadata
+        ?.sender,
+    ).toBeUndefined();
+    expect(
+      userRow({ clientTurnId: 'wake-up:not-an-id', clientOrigin: internal })
+        ?.metadata?.sender,
+    ).toMatchObject({ kind: 'unattributed' });
+  });
+
   it('is not marked from a person’s origin, or a key that does not parse', () => {
     expect(
       userRow({
