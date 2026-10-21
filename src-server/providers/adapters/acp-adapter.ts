@@ -45,6 +45,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
@@ -189,6 +190,15 @@ type AcpLogger = any;
 type AcpDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
 
 /** Stable internal outcome for a user stop or adapter shutdown racing start. */
+/** ACP's `auth_required` JSON-RPC error (`RequestError.authRequired`, -32000). */
+function isAcpAuthRequired(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === -32000
+  );
+}
+
 class AcpSessionStartCancelledError extends Error {
   constructor() {
     super('ACP session start was cancelled before it became ready.');
@@ -504,6 +514,8 @@ export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  /** The engine's display name, for user-facing copy. */
+  connectionName: string;
   command: string;
   args?: string[];
   /**
@@ -1102,6 +1114,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      connectionName: config.name,
       command: config.command,
       args: config.args,
       promptEpoch: 0,
@@ -1822,7 +1835,15 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
 
       return session;
-    } catch (error) {
+    } catch (caught) {
+      // The engine's own "not signed in" answer is a refusal with a typed
+      // code, so a surface can say "sign in" instead of showing raw text.
+      const error = isAcpAuthRequired(caught)
+        ? new SessionStartRefusedError(
+            `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
+            ENGINE_SIGN_IN_REQUIRED_CODE,
+          )
+        : caught;
       record.startFailure = error;
       // A Stop that landed while `session/new` was in flight ends the start
       // as a stop whatever the engine then said: the user asked for it, so a
@@ -1886,6 +1907,37 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'session.exited',
             sessionId: input.threadId,
             reason: 'start-refused',
+          });
+        }
+        // Any other failure after the announcement ends that session the
+        // same way, or the thread stays bound and a retry announces a second
+        // start on a session that never ended. A credential-recovery restart
+        // reports its own failure (see its caller).
+        if (
+          !(error instanceof SessionStartRefusedError) &&
+          !cancelled &&
+          !options?.credentialRecoveryAttempted &&
+          record.startedPublished &&
+          this.isCurrentGeneration(input.threadId, record.generation)
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.error',
+            ...providerFailure('provider_error', 'failed'),
+            severity: 'error',
+            message: errorMessage(error),
+          } satisfies ProviderRuntimeErrorEvent);
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'session.exited',
+            sessionId: input.threadId,
+            reason: 'start-failed',
           });
         }
       } catch (cleanupError) {
@@ -3440,6 +3492,19 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
             message: PROVIDER_PLAN_QUOTA_MESSAGE,
             details: providerQuotaEventDetails(quota),
+          } satisfies ProviderRuntimeErrorEvent);
+        } else if (isAcpAuthRequired(error)) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            method: 'runtime.error',
+            ...providerFailure('auth'),
+            severity: 'error',
+            code: ENGINE_SIGN_IN_REQUIRED_CODE,
+            message: `${record.connectionName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = errorMessage(error);
