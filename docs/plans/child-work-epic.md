@@ -99,8 +99,13 @@ restoration. Independent review then reproduced five P2 gaps. Repair `071b49b8` 
 those original probes with reported 378 focused passes and a compiling final-guard mutation catch.
 A fresh independent review still found two late windows: the final guard can retain an earlier
 receiver snapshot across Project lookup, and private active-profile/overlay changes can precede
-spawn under the old context. Real owner-backed synchronous fences are being implemented. The
-source remains unqualified; no final-preparation or launch acceptance follows from these counts. The caller stops at the first unsupported guarantee
+spawn under the old context. Repair `9df426d7` adds ConfigLoader source-file witnesses, Project revision checks,
+provider launchability and the existing stable runtime Agent revision. The CLI runner consumes
+a synchronous finalizer after its asynchronous setup, checking request authority last before
+spawn. The implementer reports 496 focused passes across 14 files, focused types, and four
+failures from a compiling mutation that skipped this finalizer, followed by byte-identical
+restoration. Fresh independent review is pending. These checks do not establish atomic
+filesystem-to-execution custody or hostile same-UID isolation. The source remains unqualified; no final-preparation or launch acceptance follows from these counts. The caller stops at the first unsupported guarantee
 and returns a refusal, not a complete prepared snapshot. API engines and option/reasoning catalog
 discovery are unsupported. Real credential/model entitlement, launch-time context consumption and
 subsequent effect enforcement still need implementation and evidence.
