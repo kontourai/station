@@ -113,6 +113,18 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const lease = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const token = lease.config.headers.Authorization.slice('Bearer '.length);
+const clientEnvironmentKeys = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP',
+  'LANG', 'LC_ALL', 'TERM', 'COLORTERM', 'CODEX_HOME',
+  'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+  'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+  'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
+];
+const env = Object.fromEntries(clientEnvironmentKeys
+  .filter(key => process.env[key] !== undefined)
+  .map(key => [key, process.env[key]]));
+env.STATION_CLIENT_TOKEN = token;
 const child = spawnSync('codex', [
   '-c', `mcp_servers.station.url=${JSON.stringify(lease.config.url)}`,
   '-c', 'mcp_servers.station.bearer_token_env_var="STATION_CLIENT_TOKEN"',
@@ -120,7 +132,7 @@ const child = spawnSync('codex', [
   '-c', `mcp_servers.station.enabled_tools=${JSON.stringify(lease.allowedTools)}`,
 ], {
   stdio: 'inherit', windowsHide: true,
-  env: { ...process.env, STATION_CLIENT_TOKEN: token },
+  env,
 });
 if (child.error) throw new Error('Could not launch Codex.');
 process.exitCode = child.status ?? 1;
@@ -130,7 +142,9 @@ JS
 The command uses the client configuration described by the [official OpenAI MCP
 documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli); installed
 `codex mcp add --help` also exposes `--bearer-token-env-var`. This recipe avoids
-writing a plaintext token into Codex's global configuration. The scoped bearer
+writing a plaintext token into Codex's global configuration. Its explicit
+environment list excludes Station's internal/operator credentials and provider
+API keys; the client uses its own existing sign-in. The scoped bearer
 is intentionally entrusted to the client process; that is not in-process caller
 assurance or protection from the client itself.
 

@@ -167,7 +167,7 @@ describe('operator-issued external Station Control clients', () => {
       },
       { highWaterMark: 0 },
     );
-    const init = {
+    const init: RequestInit = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: stream,
