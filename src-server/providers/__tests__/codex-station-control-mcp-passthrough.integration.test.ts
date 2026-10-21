@@ -11,9 +11,6 @@
  * raw stdio command.
  */
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
@@ -21,7 +18,7 @@ import type {
   SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../telemetry/metrics.js', () => ({
   adapterSessionStartDuration: { record: vi.fn() },
@@ -31,6 +28,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
   codexToolServersDelivered: { add: vi.fn() },
 }));
 
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createRuntimeSelfIntegration } from '../../runtime/agents/runtime-default-agent.js';
 import {
   builtinStationControlServerPath,
@@ -115,18 +113,11 @@ function toolServersReport(input: ProviderSessionStartInput) {
   )?.toolServers;
 }
 
-const workspaces: string[] = [];
+const makeWorkspace = trackTempDirs();
 
 function isolatedWorkspace(): string {
-  const cwd = mkdtempSync(join(tmpdir(), 'station-codex-control-'));
-  workspaces.push(cwd);
-  return cwd;
+  return makeWorkspace('station-codex-control-');
 }
-
-afterEach(() => {
-  for (const cwd of workspaces.splice(0))
-    rmSync(cwd, { recursive: true, force: true });
-});
 
 describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station-control integration wire-safe', () => {
   test('an explicit engine override refuses a tool that resolved but cannot be delivered by the adapter', async () => {
