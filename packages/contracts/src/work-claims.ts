@@ -81,12 +81,28 @@ export function parseWorkClaimView(value: unknown): WorkClaimView | undefined {
   };
 }
 
-/** What a claim is on, in a few words: its work item, else its paths. */
+/**
+ * What a claim is on, in a few words: its work item, else its first path's
+ * last segment and how many more paths (`work-claims.ts +1`), so the count
+ * survives a narrow row.
+ */
 export function workClaimSubjectLabel(
   claim: Pick<WorkClaimView, 'workItemRef' | 'paths'>,
 ): string {
   if (claim.workItemRef) return claim.workItemRef;
   const [first, ...rest] = claim.paths ?? [];
   if (!first) return '';
-  return rest.length > 0 ? `${first} +${rest.length}` : first;
+  const trimmed = first.replace(/\/+$/u, '');
+  const name = trimmed.slice(trimmed.lastIndexOf('/') + 1) || first;
+  return rest.length > 0 ? `${name} +${rest.length}` : name;
+}
+
+/** Everything a claim is on, in full: its work item and every path. */
+export function workClaimSubjectDetail(
+  claim: Pick<WorkClaimView, 'workItemRef' | 'paths'>,
+): string {
+  return [
+    ...(claim.workItemRef ? [claim.workItemRef] : []),
+    ...(claim.paths ?? []),
+  ].join(', ');
 }

@@ -1,5 +1,6 @@
 import {
   type WorkClaimView,
+  workClaimSubjectDetail,
   workClaimSubjectLabel,
 } from '@kontourai/station-contracts/work-claims';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
@@ -44,7 +45,7 @@ function claimChip(claims: readonly WorkClaimView[]): InboxRowChip | undefined {
         hour: '2-digit',
         minute: '2-digit',
       });
-      return `Claimed: ${workClaimSubjectLabel(claim)}${claim.note ? ` — ${claim.note}` : ''} (until ${until})`;
+      return `Claimed: ${workClaimSubjectDetail(claim)}${claim.note ? ` — ${claim.note}` : ''} (until ${until})`;
     })
     .join('\n');
   return { kind: 'claim', label, title };

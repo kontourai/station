@@ -130,7 +130,7 @@ describe('a Session row shows its claims (#3413 B)', () => {
       expect.stringMatching(
         /^Claimed: kontourai\/station#3413 — writing the claim tests \(until .+\)$/,
       ),
-      expect.stringMatching(/^Claimed: src\/a\.ts \+1 \(until .+\)$/),
+      expect.stringMatching(/^Claimed: src\/a\.ts, src\/b\.ts \(until .+\)$/),
     ]);
     expect(
       within(screen.getByTestId('inbox-row')).queryByText(/OTHER-CLAIM/),
