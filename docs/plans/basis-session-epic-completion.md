@@ -31,6 +31,15 @@ Durable inbox and turn-boundary work (#3858/#3859) remains with the runtime work
 - Inventory: exact-turn Output cursor/restart, bounded lineage owner, protocol forwarding and dialect-bound paging pass locally. Removing the storage turn filter and protocol gate produced assertion failures; restored inventory/Output suites passed (47 tests). Server test typechecking passed for this slice.
 - Task Outputs: real store/route suites pass (96 tests). Removing the exact producing-turn comparison exposes another turn's same-byte Output and fails the route assertion; restored suites pass (67 tests). Browser proof remains pending.
 
+## Separate shell observations
+
+The real lifecycle whole-page scan additionally found Inbox row visible-label
+mismatches and a Project-initial contrast ratio of 4.46 against 4.5. These are
+outside the Basis panel and remain unqualified shell follow-ups. The lifecycle
+checks the visible Basis panel; the existing Task answer-support journey keeps
+its whole-page scan for the original app-shell label repairs. No shell-wide
+accessibility or publication completion is claimed by a panel-only pass.
+
 ## Evidence rules
 
 Each repaired behavior needs its own baseline or injected failure and restored result at the actual owner or caller boundary. Focused tests are local diagnostic evidence. Browser, real-device, provider, hosted qualification and publication results remain separate. Record unresolved prerequisites explicitly.
