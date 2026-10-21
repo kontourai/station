@@ -21,15 +21,19 @@
    which takes its room). It fades and slides in place; its column never
    animates. The show/hide decision is a measured fit with anti-oscillation
    (sessionContextCardModel.ts), and a width animation would feed that
-   ResizeObserver mid-flight. Leaving, it keeps its column for one motion
-   beat while it fades, then gives it back in one step. The exit class is
-   only ever applied with motion on: under reduced motion
+   ResizeObserver mid-flight. Leaving, it gives its column back at once (a
+   negative margin as wide as the card nets it zero room in the row) and
+   fades over the transcript's edge, so the transcript takes its new width
+   in one step rather than narrowing for the fade and widening after. The
+   fit reads the same answer either way (sessionContextCardFits). The exit
+   class is only ever applied with motion on: under reduced motion
    `useExitTransition` unmounts at once. */
 .session-context-card:not(.session-context-card--sheet) {
   animation: session-context-card-enter var(--motion-base) var(--ease-standard);
 }
 
 .session-context-card--exiting:not(.session-context-card--sheet) {
+  margin-inline-start: calc(-1 * var(--session-context-card-width));
   pointer-events: none;
   animation: session-context-card-exit var(--motion-base) var(--ease-standard)
     forwards;

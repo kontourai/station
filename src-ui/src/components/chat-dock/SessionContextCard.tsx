@@ -1,5 +1,10 @@
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import { memo, type ReactNode, useLayoutEffect } from 'react';
+import {
+  type CSSProperties,
+  memo,
+  type ReactNode,
+  useLayoutEffect,
+} from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
@@ -358,7 +363,12 @@ function SessionContextCardImpl({
       aria-label="This chat"
       aria-hidden={exiting || undefined}
       inert={exiting || undefined}
-      style={{ width: SESSION_CONTEXT_CARD_WIDTH }}
+      style={
+        {
+          width: SESSION_CONTEXT_CARD_WIDTH,
+          '--session-context-card-width': `${SESSION_CONTEXT_CARD_WIDTH}px`,
+        } as CSSProperties
+      }
     >
       <h2 className="session-context-card__title">This chat</h2>
       <SessionContextRows {...props} />

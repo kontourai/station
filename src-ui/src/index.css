@@ -4864,6 +4864,10 @@ button.tool-call__line:hover {
    lists the individual calls and reuses ToolCallDisplay per row. */
 .tool-call-batch {
   margin: 2px 0;
+  /* Fills the answer's column (its max width) for its whole life, so the
+     running calls under it changing never resize the card. */
+  width: 100vw;
+  max-width: 100%;
 }
 
 /* Quiet, borderless — the same visual weight as a single activity row
