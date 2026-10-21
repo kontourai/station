@@ -4533,6 +4533,48 @@ describe('station#1182: runtime-reported model', () => {
     await expect(adapter.listSessions()).resolves.toEqual([]);
   });
 
+  // -32000 opens JSON-RPC's server-error range (-32000..-32099); only the
+  // ACP SDK's own authRequired shape means "sign in".
+  test('a generic -32000 on session/new is not labelled a sign-in failure', async () => {
+    const { adapter } = createAdapter({
+      newSessionError: new RequestError(-32000, 'turn failed'),
+    });
+
+    const start = adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-generic-32000',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+
+    await expect(start).rejects.toThrow('turn failed');
+    await expect(start).rejects.not.toBeInstanceOf(SessionStartRefusedError);
+  });
+
+  test('a generic -32000 on a prompt stays a provider error', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-prompt-generic',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-prompt-generic', input: 'hi' });
+    await nextEvent(iterator, 'turn.started');
+
+    processes[0].rejectPrompt(new RequestError(-32000, 'turn failed'));
+
+    const failure = await nextEvent(iterator, 'runtime.error');
+    expect(failure).toMatchObject({
+      method: 'runtime.error',
+      kind: 'provider_error',
+    });
+    expect(failure).not.toHaveProperty('code', ENGINE_SIGN_IN_REQUIRED_CODE);
+  });
+
   test('auth_required on a prompt is reported as a typed sign-in failure', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();

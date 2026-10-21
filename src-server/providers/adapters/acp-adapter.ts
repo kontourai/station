@@ -21,15 +21,16 @@ import { providerFailure } from '../provider-failure.js';
 
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
-import type {
-  Client,
-  ContentBlock,
-  McpServer,
-  PermissionOption,
-  PromptResponse,
-  RequestPermissionRequest,
-  RequestPermissionResponse,
-  SessionNotification,
+import {
+  type Client,
+  type ContentBlock,
+  type McpServer,
+  type PermissionOption,
+  type PromptResponse,
+  RequestError,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
+  type SessionNotification,
 } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
@@ -190,12 +191,21 @@ type AcpLogger = any;
 type AcpDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
 
 /** Stable internal outcome for a user stop or adapter shutdown racing start. */
-/** ACP's `auth_required` JSON-RPC error (`RequestError.authRequired`, -32000). */
+/**
+ * ACP's `auth_required` error, in the exact shape the ACP SDK's
+ * `RequestError.authRequired` builds: code -32000 and a message beginning
+ * "Authentication required". The code alone is not enough: -32000 opens
+ * JSON-RPC's generic server-error range.
+ */
+const ACP_AUTH_REQUIRED = RequestError.authRequired();
+
 function isAcpAuthRequired(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code === -32000
+    code === ACP_AUTH_REQUIRED.code &&
+    typeof message === 'string' &&
+    message.startsWith(ACP_AUTH_REQUIRED.message)
   );
 }
 

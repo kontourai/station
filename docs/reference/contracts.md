@@ -659,7 +659,8 @@ refused again. An ACP session whose requested model the engine's own fresh
 option at all) is refused by the adapter with `SessionStartRefusedError`,
 carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
 An engine that answers `session/new` (or `session/load`) with ACP's
-`auth_required` error (`-32000`) is refused the same way, carrying
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", as the ACP SDK builds it) is refused the same way, carrying
 `ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
 `provider`); the same error on a prompt is that turn's `runtime.error` with the
 same code, and chat renders both as a prompt to sign in to the engine.
