@@ -9,6 +9,7 @@ import { Agent } from '@voltagent/core';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   buildAiSdkLanguageModel,
   createStrandsManagedModel,
@@ -258,6 +259,7 @@ test.each(['volt', 'strands'] as const)(
       },
       {
         processedPrompt: spec.prompt,
+        logger: createLogger({ name: 'bounded-physical-test', level: 'error' }),
         memoryAdapter: new FileMemoryAdapter({ projectHomeDir }),
       },
     );
