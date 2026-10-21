@@ -367,6 +367,8 @@ export function NewChatModal({
   // useCallback so the setter is referentially stable and can be an honest
   // effect dependency (archive#3021) — the previous render-scoped arrow forced a
   // reasoned lint suppression on the effect below.
+  // An app whose first start is still running (not a failure to prepare).
+  const [startingNotice, setStartingNotice] = useState<string | null>(null);
   const setSelectFeedback = useCallback(
     (text: string | null) =>
       setSelectFeedbackState((current) =>
@@ -1424,11 +1426,12 @@ export function NewChatModal({
                 (!initialAuthority.current ||
                   initialAuthority.current.isCurrent())
               }
-              onComplete={(engineId, failure) => {
+              onComplete={(engineId, failure, notice) => {
                 setDiscoveryInProgress(false);
                 setPreparedEngineId(engineId);
                 setDiscoveryCompleted(true);
                 if (failure) setSelectFeedback(failure);
+                else setStartingNotice(notice ?? null);
               }}
             />
           ) : preparing ||
@@ -1453,6 +1456,17 @@ export function NewChatModal({
                 onFix={(route) => repairAgent(needsAttention, route)}
               />
             </>
+          ) : startingNotice ? (
+            <Empty
+              variant="compact"
+              label="Your AI app is still starting"
+              description={startingNotice}
+              action={
+                <Button onClick={() => beginSetup('/connections/engines')}>
+                  Open engines
+                </Button>
+              }
+            />
           ) : (
             <Empty
               variant="compact"

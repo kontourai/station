@@ -329,6 +329,20 @@ function acpRegistryInstallErrorMessage(error: unknown): string {
   return 'Failed to connect engine';
 }
 
+/**
+ * The engine's first start is still running on the server (the add answered
+ * `probing`): neither connected nor failed. Station registers the engine and
+ * adds its Agent if that start succeeds while Station keeps running.
+ */
+export class EngineStillStartingError extends Error {
+  constructor(readonly engineName: string) {
+    super(
+      `${engineName} is still starting for the first time. If it connects while Station is running, its Agent is added then; otherwise add it again later.`,
+    );
+    this.name = 'EngineStillStartingError';
+  }
+}
+
 export async function connectAndMaterializeACPRegistryEngine(
   id: string,
 ): Promise<ACPRegistryInstallAgentReceipt> {
@@ -351,6 +365,9 @@ export async function connectAndMaterializeACPRegistryEngine(
     throw new Error(acpRegistryInstallErrorMessage(result.error));
   }
   if (!result.agent) {
+    if (result.data?.status === 'probing') {
+      throw new EngineStillStartingError(result.data.name ?? id);
+    }
     // The engine's first probe failed: the route saved the connection but
     // registered no Agent, and its `data` carries the probe's reason.
     const failure = result.data?.lastError;

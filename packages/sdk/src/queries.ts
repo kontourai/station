@@ -20,6 +20,7 @@ export {
   connectAndMaterializeACPRegistryEngine,
   createACPConnection,
   deleteACPConnection,
+  EngineStillStartingError,
   type FileSystemBrowseEntry,
   type FileSystemBrowseResult,
   fetchACPConnectionProbeStatuses,

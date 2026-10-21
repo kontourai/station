@@ -87,3 +87,38 @@ test('never enables an explicitly disabled app', async () => {
   expect(state.connect).not.toHaveBeenCalled();
   expect(state.materialize).not.toHaveBeenCalled();
 });
+// A cold app's first start continues on the server after the add answers.
+// It is not a failure: the caller gets it as its own notice, never as the
+// failure that the chat could not be prepared.
+test('reports an app still on its first start as a notice, not a failure', async () => {
+  const { EngineStillStartingError } = await vi.importActual<
+    typeof import('@kontourai/station-sdk')
+  >('@kontourai/station-sdk');
+  state.engines = [
+    {
+      engineId: engineId('kiro'),
+      name: 'Kiro CLI',
+      detected: true,
+      ready: false,
+      source: 'registry',
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    },
+  ];
+  state.connect.mockRejectedValue(new EngineStillStartingError('Kiro CLI'));
+  const done = vi.fn();
+  render(
+    <AutomaticEnginePreparation
+      agents={[]}
+      refresh={vi.fn().mockResolvedValue(undefined)}
+      onComplete={done}
+      onStart={vi.fn()}
+      isCurrent={() => true}
+    />,
+  );
+  await waitFor(() => expect(done).toHaveBeenCalledOnce());
+  const [engine, failure, notice] = done.mock.calls[0]!;
+  expect(engine).toBe('kiro');
+  expect(failure).toBeUndefined();
+  expect(notice).toContain('Kiro CLI is still starting for the first time.');
+});

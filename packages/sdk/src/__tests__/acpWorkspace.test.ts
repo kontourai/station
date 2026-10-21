@@ -7,9 +7,8 @@ vi.mock('../api', () => ({
 const authenticatedFetch = vi.hoisted(() => vi.fn());
 vi.mock('../client/http', () => ({ authenticatedFetch }));
 
-const { connectAndMaterializeACPRegistryEngine } = await import(
-  '../query-domains/acpWorkspace'
-);
+const { connectAndMaterializeACPRegistryEngine, EngineStillStartingError } =
+  await import('../query-domains/acpWorkspace');
 
 describe('connectAndMaterializeACPRegistryEngine', () => {
   beforeEach(() => authenticatedFetch.mockReset());
@@ -71,6 +70,33 @@ describe('connectAndMaterializeACPRegistryEngine', () => {
     await expect(
       connectAndMaterializeACPRegistryEngine('kiro'),
     ).rejects.toThrow('Kiro CLI did not connect. spawn: spawn kiro ENOENT');
+  });
+
+  // A cold engine's first add answers `probing` while its first start
+  // continues on the server; the request-budget timeout is in lastError, but
+  // the engine has not failed.
+  test('a first start still running is its own outcome, not a failure', async () => {
+    authenticatedFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            id: 'kiro',
+            name: 'Kiro CLI',
+            status: 'probing',
+            lastError: {
+              phase: 'initialize',
+              message: 'Timed out after 10000ms',
+            },
+          },
+        }),
+      ),
+    );
+
+    const outcome = connectAndMaterializeACPRegistryEngine('kiro');
+    await expect(outcome).rejects.toBeInstanceOf(EngineStillStartingError);
+    await expect(outcome).rejects.toMatchObject({ engineName: 'Kiro CLI' });
+    await expect(outcome).rejects.not.toThrow(/did not connect/);
   });
 
   test('preserves an explicit 409 message', async () => {

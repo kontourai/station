@@ -6,7 +6,10 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { userFacingErrorMessage } from '../../utils/errorText';
-import { buildFirstRunEngineOptions } from '../first-run/first-run-engines';
+import {
+  buildFirstRunEngineOptions,
+  isEngineStillStarting,
+} from '../first-run/first-run-engines';
 import { ErrorState, SkeletonList } from '../state';
 
 export function AutomaticEnginePreparation({
@@ -18,7 +21,15 @@ export function AutomaticEnginePreparation({
 }: {
   agents: AgentData[];
   refresh: () => Promise<void>;
-  onComplete: (engineId?: string, failure?: string) => void;
+  /**
+   * `startingNotice`: an app whose first start is still running on the
+   * server. Not a failure, so it never arrives as `failure`.
+   */
+  onComplete: (
+    engineId?: string,
+    failure?: string,
+    startingNotice?: string,
+  ) => void;
   onStart: () => void;
   isCurrent: () => boolean;
 }) {
@@ -44,6 +55,7 @@ export function AutomaticEnginePreparation({
     );
     let lastEngine: string | undefined;
     let failureMessage: string | undefined;
+    let startingNotice: string | undefined;
     for (const candidate of candidates) {
       if (!active.current || !isCurrent()) return;
       lastEngine = candidate.engineId;
@@ -65,12 +77,17 @@ export function AutomaticEnginePreparation({
         }
       } catch (failure) {
         if (!active.current || !isCurrent()) return;
-        failureMessage = userFacingErrorMessage(failure);
+        if (isEngineStillStarting(failure)) {
+          startingNotice = userFacingErrorMessage(failure);
+        } else {
+          failureMessage = userFacingErrorMessage(failure);
+        }
       }
     }
     if (!active.current || !isCurrent()) return;
     await refresh();
-    if (active.current && isCurrent()) onComplete(lastEngine, failureMessage);
+    if (active.current && isCurrent())
+      onComplete(lastEngine, failureMessage, startingNotice);
   });
   useEffect(() => {
     if (

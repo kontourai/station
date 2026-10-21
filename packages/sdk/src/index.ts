@@ -490,6 +490,7 @@ export {
   dispatchTask,
   type EngineLoginMechanismEvidence,
   type EngineLoginSurface,
+  EngineStillStartingError,
   type EnrolmentAuthState,
   type EnrolmentCommand,
   type EnrolmentStatus,
