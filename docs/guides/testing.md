@@ -490,6 +490,9 @@ event sets the variables it needs explicitly. The one deliberate exception is
 the real-ledger documentation freshness checks: `vitest.setup.ts` keeps the
 removed variables on the process object, and their `JOB_ENV` adds them back,
 so a pull request stays scoped and the merge queue stays advisory.
+It also sets `STATION_PUBLIC_AGENT_REGISTRY=off`, so a runtime a test builds
+never downloads the public agent registry; tests of that source construct it
+with an injected `fetch`.
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes

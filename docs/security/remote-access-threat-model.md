@@ -1025,6 +1025,9 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
     `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
     renaming, toggling, listing, removing and reconnecting are unchanged;
     reconnect re-probes the stored command and cannot change it);
+  - `POST /acp/registry/:id/install` for a public agent registry listing,
+    whose program name and arguments come from the registry rather than from
+    Station's own catalogue (adding a built-in engine is unchanged);
   - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
     are set or change, when a record that holds a command but did not launch it
     (a URL transport) is changed to launch it, and when any value is submitted
