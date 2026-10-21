@@ -320,11 +320,22 @@ function foldToolStarted(
     startedAt: parseTime(event.createdAt, Date.now()),
     state: 'running',
   };
-  const entries = { ...state.entries, [entry.id]: entry };
+  return boundRunningTools(
+    state,
+    { ...state.entries, [entry.id]: entry },
+    event.threadId,
+  );
+}
+
+function boundRunningTools(
+  state: BackgroundTasksState,
+  entries: Record<string, BackgroundTaskEntry>,
+  chatThreadId: string,
+): BackgroundTasksState {
   const running = Object.values(entries)
     .filter(
       (item) =>
-        item.chatThreadId === event.threadId &&
+        item.chatThreadId === chatThreadId &&
         item.kind === 'tool' &&
         item.state === 'running',
     )
@@ -335,7 +346,7 @@ function foldToolStarted(
   return {
     ...state,
     entries,
-    limitedToolChats: { ...state.limitedToolChats, [event.threadId]: true },
+    limitedToolChats: { ...state.limitedToolChats, [chatThreadId]: true },
   };
 }
 
@@ -351,9 +362,9 @@ function foldToolProgress(
     return state;
   if (existing.state === 'running' && existing.detail === event.message)
     return state;
-  return {
-    ...state,
-    entries: {
+  return boundRunningTools(
+    state,
+    {
       ...state.entries,
       [existing.id]: {
         ...existing,
@@ -362,7 +373,8 @@ function foldToolProgress(
         detail: event.message,
       },
     },
-  };
+    event.threadId,
+  );
 }
 
 function foldToolCompleted(

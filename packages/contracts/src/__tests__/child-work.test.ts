@@ -486,6 +486,27 @@ describe('applyChildWorkDelta', () => {
     });
   });
 
+  test('truncated matching prefixes cannot establish report identity or truncation', () => {
+    const prefix = 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS);
+    for (const original of [prefix, `${prefix} first suffix`]) {
+      const first = fold(
+        settle('reported', 'completed', { result: { summary: original } }),
+      );
+      const after = applyChildWorkDelta(
+        first,
+        settle('reported', 'completed', {
+          result: {
+            summary: `${prefix} different suffix`,
+            source: 'child-message',
+          },
+        }),
+      );
+      expect(get(after, 'reported')?.result).toEqual(
+        get(first, 'reported')?.result,
+      );
+    }
+  });
+
   test('absent usage stays absent; invalid figures are dropped, not zeroed', () => {
     const none = get(fold(settle('a', 'completed')), 'a');
     expect(none).not.toHaveProperty('usage');

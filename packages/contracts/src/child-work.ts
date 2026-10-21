@@ -536,7 +536,12 @@ function enrichResult(
   incoming: ChildWorkResult | undefined,
 ): ChildWorkResult | undefined {
   if (!existing || !incoming) return existing ?? incoming;
-  if (existing.summary !== undefined && existing.summary !== incoming.summary) {
+  if (
+    existing.summary !== undefined &&
+    (existing.summary !== incoming.summary ||
+      existing.summaryTruncated ||
+      incoming.summaryTruncated)
+  ) {
     const {
       source: _source,
       summaryTruncated: _truncated,

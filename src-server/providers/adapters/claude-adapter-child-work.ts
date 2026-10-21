@@ -565,7 +565,7 @@ export function observeClaudeTaskUpdated(
     // A real terminal is mapped even after the session end (module note).
     settle(context, childId, terminal, {
       ...(terminal === 'failed' && nonEmpty(patch.error)
-        ? { result: { summary: patch.error } }
+        ? { result: { summary: patch.error, source: 'provider-error' } }
         : {}),
     });
     return;

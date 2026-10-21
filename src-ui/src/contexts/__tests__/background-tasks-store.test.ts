@@ -1263,3 +1263,26 @@ test('a closed scope keeps its retirement policy after unresolved card eviction 
   );
   expect(store.getSnapshot().entries['child-1']).toBeUndefined();
 });
+
+test('revived tool progress shares the running-row bound with new tools', () => {
+  const store = new BackgroundTasksStore();
+  for (let i = 0; i < 50; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `old-${i}`, toolName: 'Read' }),
+    );
+  store.reconcileSnapshot({ sessions: [] });
+  for (let i = 0; i < 100; i++)
+    store.ingest(
+      event('tool.started', { toolCallId: `new-${i}`, toolName: 'Read' }),
+    );
+  for (let i = 0; i < 50; i++)
+    store.ingest(
+      event('tool.progress', {
+        toolCallId: `old-${i}`,
+        message: 'Still reading',
+      }),
+    );
+  const view = selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []);
+  expect(view.running).toHaveLength(100);
+  expect(view.toolHistoryLimited).toBe(true);
+});
