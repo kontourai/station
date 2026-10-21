@@ -1,0 +1,7 @@
+{
+  "revision": "545d61999c3fe6235da4e982a413154d912ffcc4",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed Flow adoption57f02040 and combined accounting36de11b1 against actual source/build/docs checks and20 focused tests. Recipient retention mutant compiled, lost exact sync accounting, restored byte-identically and passed3 accounting cases. Combined full Flow readiness and two independent reviews remain running; prior accounting-only readiness is not combined evidence. Station still uses published9.3.0 and group capability remains disabled pending publication, private issuance, preparation and mounted acceptance.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
