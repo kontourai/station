@@ -32,10 +32,11 @@ work. Source containment is not final runtime/native/provider acceptance.
 
 Flow Agents 9.3.0 is published. Upstream PRs #1535 and #1536 merged, and the
 release artifact identifies `ab2b320aeec4bf1ec98e1ff4ae456877863bd5b7`.
-Station's four workspace pins and managed lockfile now select 9.3.0. The existing
-installed tree remains at 6.5.1; recovery of a failed managed installer receipt
-awaits authorization. Published artifact integrity and export checks do not
-establish managed installation or Station runtime acceptance.
+Station's four workspace pins and managed lockfile select 9.3.0. After authorized
+archival of the failed installer receipt, the normal managed install completed;
+approved lifecycle/native checks and the PTY handshake passed. The installed
+package's 367 inspected artifact files match the verified tarball. Managed
+installation does not establish supported group execution or provider acceptance.
 
 Brian authorized the upstream Flow Agents work. Station consumes the published
 contract rather than sibling internals. The upstream release and the single
@@ -73,8 +74,9 @@ invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the
 public controller with its host-fenced persistence owner. Diagnostic probes
 against the verified artifact exercise metadata operations and staged-write
-revocation; managed tests and serving composition remain unverified. These
-checks do not establish provider metering or supported group execution. Flow itself stays at the lifecycle
+revocation. Managed focused tests now exercise persistence, runtime metadata and
+observation owners; serving composition remains unverified. These checks do not
+establish provider metering or supported group execution. Flow itself stays at the lifecycle
 coordinator's canonical 5.2.0 pin; Dispatch/Relay 0.7.1 supply physical reservation APIs.
 
 Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
@@ -159,9 +161,17 @@ mutations consume mandatory synchronous authority finalizers; the invalid-async
 finalizer rejection repair passed independent subprocess and filesystem checks.
 
 At `fedcf0ee664e47508dd7b27b53742dce0e64c539`, the runtime composes public Flow
-controllers with Station persistence and captures preparation through mutation
-and disclosure waits. Independent review of that composition is in progress.
-Routes remain unmounted. Current host preparation, physical reservations and
+controllers with Station persistence. Independent review found replacement
+preparation in retention callbacks and observation publication without a final
+commit fence. Repair `5b65281e0ef` retains the composition's capture and checks
+at observation publication and after release; fresh independent review remains
+in progress. Routes remain unmounted.
+
+Managed validation at `c5f062c606c` passes server-test typechecking. The seven-file
+persistence/runtime/observation selection has 76 passing cases across its first
+five passing files and a two-file rerun after fixture corrections. The separate
+physical/provider/Ensemble-preparation selection passes 109 cases. These are
+focused fixture results, not full readiness or live execution acceptance. Current host preparation, physical reservations and
 launch fencing, raw response settlement, context ACKs and supported execution
 still require integration and acceptance evidence. Isolated drafts and safe
 refusals do not establish supported group execution.
