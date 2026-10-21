@@ -140,7 +140,9 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup required');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
     });
     expect(screen.queryByText('Ready')).toBeNull();
     expect(
@@ -182,7 +184,9 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup required');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
     });
     const status = screen.getByRole('status');
     expect(status.textContent).toContain('spawn kiro ENOENT');
@@ -226,7 +230,9 @@ describe('ACPAddConnectionModal', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup required');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
     });
     const status = screen.getByRole('status');
     expect(status.textContent).toContain(
@@ -289,7 +295,9 @@ describe('ACPAddConnectionModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup required');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
     });
     expect(screen.queryByText('Checking')).toBeNull();
     expect(screen.getByRole('status').textContent).toContain(
@@ -334,7 +342,9 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('Setup required');
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
     });
     expect(screen.getByRole('status').textContent).toContain(
       'spawn: spawn gemini ENOENT',
