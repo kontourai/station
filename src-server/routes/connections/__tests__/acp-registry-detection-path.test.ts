@@ -1,7 +1,7 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 /**
  * Catalogue detection must read the user's login-shell PATH, not only the
@@ -24,11 +24,12 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 
 const ENGINE_COMMAND = 'station-path-test-engine';
 let shellOnlyDir: string;
+const makeTempDir = trackTempDirs();
 
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllEnvs();
-  shellOnlyDir = mkdtempSync(join(tmpdir(), 'station-shell-path-'));
+  shellOnlyDir = makeTempDir('station-shell-path-');
   const binary = join(shellOnlyDir, ENGINE_COMMAND);
   writeFileSync(binary, '#!/bin/sh\n');
   chmodSync(binary, 0o755);
@@ -44,7 +45,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  rmSync(shellOnlyDir, { recursive: true, force: true });
 });
 
 describe.skipIf(process.platform === 'win32')(

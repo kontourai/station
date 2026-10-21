@@ -1,9 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -108,11 +106,10 @@ function asOperator(routes: Hono): Hono {
   return app;
 }
 
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 async function createContext(createProbe: () => any) {
-  const home = mkdtempSync(join(tmpdir(), 'station-acp-first-contact-'));
-  homes.push(home);
+  const home = makeTempDir('station-acp-first-contact-');
   const configLoader = new ConfigLoader({ projectHomeDir: home });
   await loadOrCreateAgentRegistry(configLoader);
   // A serialized queue, like the runtime's: each mutation waits for the last.
@@ -156,11 +153,6 @@ describe('first-contact continuation of a cold engine add', () => {
         provider: { listAvailable: () => [MUSE] },
       },
     ];
-  });
-  afterEach(() => {
-    for (const home of homes.splice(0)) {
-      rmSync(home, { recursive: true, force: true });
-    }
   });
 
   test('a timed-out first add answers probing and registers once the cold probe succeeds, without holding the queue', async () => {
