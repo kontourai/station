@@ -27,6 +27,11 @@
  *   No remote host or other Station is ever returned: a delegated Session on a
  *   paired Station or an SSH Environment is left out.
  *
+ * Each row carries its Session's active claims (#3413 part B,
+ * `session-work-claims.ts`): unreleased and unexpired, in the caller's own
+ * scope (its own row's whatever their scope), and none for a Session that has
+ * ended (`workClaimSessionEnded`).
+ *
  * Nothing here is summarized by a model. The status is the ladder's word
  * (`sessionLadderWord`, the same derivation the UI words a row with); the
  * digest is folded from recorded events only (`session-digest.ts`).
@@ -57,6 +62,11 @@ import {
   encodeDigestCursor,
   fitDigestPage,
 } from '../../services/orchestration/session-digest.js';
+import {
+  type WorkClaimRecord,
+  type WorkClaimStore,
+  workClaimSessionEnded,
+} from '../../services/orchestration/work-claims.js';
 import {
   sameScope,
   stationControlRefusal,
@@ -100,6 +110,8 @@ export interface SessionProjectActivityDeps {
   stationControlDispatchScope?: StationControlDispatchScope;
   resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
   hostedTenantRegistry?: HostedTenantRegistry;
+  /** #3413 part B: absent, rows carry no claims. */
+  workClaims?: Pick<WorkClaimStore, 'listUnexpired'>;
 }
 
 function callerOf(c: Context): StationControlCaller | Response {
@@ -216,6 +228,17 @@ function isAfter(cursor: ListCursor, position: ListCursor): boolean {
   );
 }
 
+/** A claim as a row in the list shows it: what, until when, and the note. */
+const activityClaim = (claim: WorkClaimRecord) => ({
+  claimId: claim.claimId,
+  ...(claim.workItemRef ? { workItemRef: claim.workItemRef } : {}),
+  ...(claim.paths.length > 0 ? { paths: claim.paths } : {}),
+  ...(claim.note ? { note: claim.note } : {}),
+  ...(claim.taskId ? { taskId: claim.taskId } : {}),
+  claimedAt: claim.claimedAt,
+  expiresAt: claim.expiresAt,
+});
+
 export function createSessionProjectActivityRoutes(
   deps: SessionProjectActivityDeps,
 ) {
@@ -322,9 +345,45 @@ export function createSessionProjectActivityRoutes(
     return { page, more: false };
   };
 
+  /**
+   * The page's active claims, by row: a claim is its Session's, or its
+   * conversation's (a later Session of the same conversation keeps it). A row
+   * other than the caller's own shows only claims in the caller's scope.
+   */
+  const claimsByRow = (
+    caller: StationControlCaller,
+    page: ReturnType<typeof activityRows>,
+  ): Map<string, WorkClaimRecord[]> => {
+    const byRow = new Map<string, WorkClaimRecord[]>();
+    if (!deps.workClaims || page.length === 0) return byRow;
+    const live = page.filter((row) => !workClaimSessionEnded(row.session));
+    const claims = deps.workClaims.listUnexpired({
+      claimants: {
+        sessionIds: live.map((row) => row.session.threadId),
+        conversationIds: live.flatMap((row) =>
+          row.session.conversationId ? [row.session.conversationId] : [],
+        ),
+      },
+    });
+    const callerScope = stationControlSessionScope(caller);
+    for (const row of live) {
+      const own = isOwnSession(caller, row.session);
+      const mine = claims.filter(
+        (claim) =>
+          (claim.sessionId === row.session.threadId ||
+            (claim.conversationId !== undefined &&
+              claim.conversationId === row.session.conversationId)) &&
+          (own || sameScope(callerScope, claim.scope)),
+      );
+      if (mine.length > 0) byRow.set(row.session.threadId, mine);
+    }
+    return byRow;
+  };
+
   const listRow = (
     caller: StationControlCaller,
     { session, at }: ReturnType<typeof activityRows>[number],
+    claims: readonly WorkClaimRecord[] | undefined,
   ) => {
     const title =
       deps.eventStore.conversationTitle([
@@ -346,6 +405,9 @@ export function createSessionProjectActivityRoutes(
       ...(session.cwd ? { workingDirectory: session.cwd } : {}),
       ...(worktree ? { worktree } : {}),
       ...(isCaller ? { self: true as const } : {}),
+      ...(claims && claims.length > 0
+        ? { claims: claims.map(activityClaim) }
+        : {}),
     };
   };
 
@@ -405,10 +467,13 @@ export function createSessionProjectActivityRoutes(
       limit,
     );
     const last = page.at(-1);
+    const claims = claimsByRow(caller, page);
     return c.json({
       success: true,
       data: {
-        sessions: page.map((row) => listRow(caller, row)),
+        sessions: page.map((row) =>
+          listRow(caller, row, claims.get(row.session.threadId)),
+        ),
         nextCursor:
           more && last
             ? encodeListCursor({ at: last.at, id: last.session.threadId })

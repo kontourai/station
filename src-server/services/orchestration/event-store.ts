@@ -324,6 +324,11 @@ import {
   type VoiceTurnRunsReader,
 } from './voice-turn-runs.js';
 import {
+  createSqliteWorkClaimStore,
+  WORK_CLAIMS_SCHEMA,
+  type WorkClaimStore,
+} from './work-claims.js';
+import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
 } from './work-item-result-projector.js';
@@ -2223,6 +2228,8 @@ export class EventStore {
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
+      // #3413 B: the claims agents declare on their work.
+      this.db.exec(WORK_CLAIMS_SCHEMA);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
       initializeProjectTaskRoomSourceSeals(this.db);
@@ -11040,6 +11047,14 @@ export class EventStore {
     if (!this.skillExperienceSnapshots)
       this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
     return this.skillExperienceSnapshots;
+  }
+
+  /** #3413 B: the work-claim store over this database (`work-claims.ts`). */
+  createWorkClaimStore(options: {
+    maxActivePerClaimant: number;
+    now?: () => number;
+  }): WorkClaimStore {
+    return createSqliteWorkClaimStore(this.db, options);
   }
 
   createAdoptionLedger(): AdoptionLedger {
