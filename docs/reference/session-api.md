@@ -48,8 +48,12 @@ expose the internal API token, transfer provider sign-in, or turn an external
 client into a Station-managed engine. Remote OAuth/TLS onboarding is outside
 this surface. Station consuming an external MCP server is a different journey.
 
-**Authority.** A request needs a current device credential minted through the
-owner-home local-grant path and `access:manage`; personal tokens are refused.
+**Authority.** The explicit personal-host setup action is authorized by a current
+device credential minted through the owner-home file-proven local-grant path.
+`access:manage` is an additional route gate, not sufficient authority by itself;
+personal tokens are refused. This action does not require a second per-issuance
+ConsentTransaction. Browser/plugin-origin consent flows retain their own
+transactions and decisions; they cannot inherit this setup authority.
 UI-bootstrap/browser approval and the internal process credential are not this
 authority. The requested Session must already have a recorded operator owner,
 Conversation and Project ID, and the current Project must still match that ID.

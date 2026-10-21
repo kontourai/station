@@ -949,6 +949,14 @@ reports whether it was confirmed; a partial private file may remain. See the
 [external-client recipe](session-api.md#external-clients-using-station-tools)
 for client configuration, mutation approval and qualification limits.
 
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
+
 ### `agents`
 
 ```

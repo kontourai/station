@@ -141,10 +141,20 @@ in this lane. Merge its owner's subsequent published repair normally.
 
 The existing grant owner's v2 review approves the bounded external-client
 issuer source/policy model with limits; it does not approve live onboarding.
-Scoped custody clearance is not approval. The issuer uses the maintained credential-by-ID scope check
+Scoped custody clearance is not approval. The issuer uses the maintained
+credential-by-ID scope check
 for revocation/narrowing/account standing, without retaining its bearer, and
 current Project identity is rechecked on each new-client request/call. This
 review does not authorize a live token, login, provider call or deployment.
+
+The sealed v2 review receipt has SHA-256
+`1e95ae95d764ab82af038c5c2c8acb8a7e1d9f7151a2eabe34a76158a23a1a8c`.
+Current issuer, caller and MCP route bytes match its snapshots. The token file
+has a later comment-only change; the CLI adds unconfirmed-revoke error handling.
+Those later deltas are outside that independent approval. The receipt does not
+approve the full branch or establish #162 completion. Canonical setup docs now
+state historical Session eligibility, file-proof authority versus the additional
+scope gate, and per-request versus whole-command timeout limits.
 
 ## Current local evidence and unfinished gates
 
