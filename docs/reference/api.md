@@ -1604,6 +1604,40 @@ normal request authentication runs first. See the
 
 ---
 
+## Ensemble configuration inspection
+
+> Local source at `21de0f40`; independent review and browser qualification are
+> pending. This diagnostic does not establish group execution or launch readiness.
+
+`POST /api/orchestration/ensembles/inspect` reads a preset on This Station without
+model discovery, login probes or provider turns. It uses `orchestration:operate`
+and additionally requires the current bound, locally minted, in-person operator
+on a personal Station before reading the file. Hosted, Agent and device callers
+are unsupported.
+
+The closed JSON body contains `path`, `bindings` and optional `expectedPresetHash`.
+Bindings map exact preset member IDs to `{agent, projectSlug}`; nonempty bindings
+require the expected source hash. Empty bindings permit an initial declaration
+inspection. The response envelope is `{success:true,data}` with version
+`station.ensemble.inspection/v1`, exact source hash, environment, observation time,
+allowlisted resolution receipts and bounded facts. No prompt appends, credentials
+or raw definitions are returned.
+
+Each fact identifies its category, origin, state and owner reference. Categories
+cover members/models, routing/triggers, tools/services, workspace, memory,
+schedules/webhooks and output destinations. Missing live bindings and unsupported
+owner projections remain unavailable or unknown. Stationmaster is an identity,
+not a routing edge or grant. Native engine identity is separate from API model
+connection identity. A successful inspection grants no execution authority.
+
+Requests are limited to 16 KiB and responses to 256 KiB, with at most 512 facts and
+eight displayed tool references per member. Responses use `Cache-Control: no-store`.
+Authority refusal returns 403, stale source/configuration 409, and unavailable
+inspection 422; oversized requests return 413. Request validation errors use
+`ensemble_inspection_invalid`. Errors omit raw filesystem/provider diagnostics.
+Final source/configuration/request checks are observations, not atomic external
+filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
+
 ## Ensemble preparation observations
 
 > This unpublished diagnostic has passed bounded independent review at `9df426d7`

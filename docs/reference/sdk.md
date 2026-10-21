@@ -5065,3 +5065,21 @@ and prose, with excerpts and line notes removed. See the
 state and process-local run status without a forge snapshot.
 `writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
 or false reuses a completed guide for the current head.
+
+
+## Ensemble configuration inspection
+
+The local source client exports `inspectEnsemble(apiBase, input, options?)` from
+`@kontourai/station-sdk/client`; the `ensembles` client domain exposes the same
+operation. `useInspectEnsemble(scope)` is an explicit mutation hook with no
+automatic retry and zero retention time. Its scope includes `apiBase`,
+`authorityKey` and `isCurrent`; responses are checked against current authority
+before becoming available. Keep preset paths in the POST body, outside URLs and
+persistent application state.
+
+The input and result types live in `@kontourai/station-contracts/ensemble`.
+Inspection observes configuration only; unavailable facts and unknown effective
+capabilities are not readiness or permission to launch. See the
+[API contract](api.md#ensemble-configuration-inspection). The increment at
+`21de0f40` awaits independent review, browser qualification and package publication;
+checkout exports do not establish registry availability.

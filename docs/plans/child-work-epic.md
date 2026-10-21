@@ -128,6 +128,16 @@ prepared/live records, including authored/default/runtime provenance and missing
 Context sync must use the actual delegate session with enforced no-tools authority, accounted
 attempts and retained per-member ACK receipts. Existing continuation plus a prompt is insufficient.
 
+## Read-only inspector increment
+
+Source `21de0f40` adds an Agents inspector at `/agents?tab=ensembles`, a separate
+non-probing local-operator inspection route, SDK transport and category table/diagram.
+The implementer reports 384 focused passes, scoped types/lint and a compiling UI
+branch mutation caught before byte-identical restoration. Independent review and
+browser proof are pending. Configuration relations do not establish live group
+edges, shared memory, scheduler/webhook membership, provider entitlement or bounded
+execution; unavailable facts remain visible. This does not complete #453.
+
 ## Remaining qualification
 
 - Finish independent delta review and meaningful injected/restored checks.
