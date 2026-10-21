@@ -741,7 +741,10 @@ aborted. Two aborts count, and they settle different sets
   'turn-interrupted'` for every request still open that was opened since the
   dead turn started and before any other turn started, then aborts the turn
   (`turn.aborted` with `recoveryTerminal`). The session reads `needs_input` with transition reason
-  `runtime_exit`, not `review_pending`. A log written before recovery recorded
+  `runtime_exit`, not `review_pending`. A turn still running at a normal stop
+  takes the same path on the next boot: the `session.exited` Station writes as
+  it shuts down (`reason: 'orchestration_shutdown'`) does not retire the
+  turn's boundary, so recovery finds it as it would after a crash. A log written before recovery recorded
   those resolutions holds the abort with the request still open; every server
   read treats that request as settled all the same.
 - **A live turn was stopped**: `turn.aborted`, or the

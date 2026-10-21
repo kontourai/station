@@ -596,11 +596,12 @@ pending-message list with this browser's queued follow-ups
 ([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
 It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
 for that conversation and verified Station identity, including messages submitted
-by another client. Held rows read **Held by Station** and sit below the local
-rows, in the server's send order. Waiting and sending rows count as pending;
-unknown or refused delivery stays visible, flagged for review, without being
-counted. A message both queued locally and held by Station (the same
-`clientTurnId`) appears once, as the held row. While neither holds anything the
+by another client. Held rows read **Held by Station** and sit at the bottom of
+the list, in the server's send order. A message both queued locally and held by
+Station (the same `clientTurnId`) appears once, as the held row. The count is
+every row the list shows, whatever its state (waiting, sending, unknown or
+refused delivery), and the chat's context card shows the same count from the
+same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts)). While neither holds anything the
 list renders nothing. Reads are silent: polling (every 2s while the
 conversation is working or holds messages, every 15s otherwise), turn-fact
 invalidation and focus/reconnect change the list only when the answer changes.
@@ -612,18 +613,29 @@ read-only. Held rows offer no local edit, reorder, send-now or steer action.
 This view does not transfer ordinary busy-composer submissions from
 browser-local storage into the server inbox. This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
-window or one that closed) is the top of the same list, not a second list: its
-rows keep their own Send, Retry, Check and Discard actions, count toward the
-pending total, and a failed, possibly-delivered or held row marks the list
-Needs review. A held copy reads **From another window. Not sent.** with
-**Send**; it has no order number, since it is sent only on Send. Rows, and the
-list itself, grow in and collapse out (height and opacity) rather than popping.
+window or one that closed) leads the same list, not a second list, and its rows
+keep their own Send, Retry, Check and Discard actions. Order numbers follow the
+order messages send, 1 at the bottom: what Station holds goes as the turn ends,
+then this window's queued follow-ups, one per turn. Outbox rows carry no
+number: they go when the turn ends too, and which lands first is not known
+ahead. Needs review marks a row only the person can settle: a send that failed
+or may have reached the agent, unconfirmed delivery, or a copy from a window
+proven closed (its Web Lock is gone; liveness that cannot be read is not
+closed). A failed send marks it **Not sent** instead. A copy another open
+window holds reads **Queued in another window.** (that window sends it), one
+from a closed window **From a closed window. Not sent.**; both offer **Send**.
+Send on a closed window's copy, while a turn runs or this window's queue holds
+follow-ups, queues it here under its own key, so it sends in that order and
+takes its number; otherwise it goes now.
+Rows, and the list itself, grow in and collapse out (height and opacity) rather
+than popping.
 In a dock too short for the list and the draft, the list yields before the
 draft does, down to its toggle row (and, while open, its first row); the rest
 scrolls inside it.
 
 The pending-message section starts collapsed, showing only its
-count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
+count and a Needs review (or Not sent) indicator; a live region outside the
+collapsed rows announces it when it appears. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending
@@ -716,7 +728,7 @@ simple per-device preference rather than claiming to detect an attached keyboard
   blocked send; slash-command output and status notices are not repeated, and
   a later accepted send clears it. A message queued to retry automatically is
   not a failure, so its notice is not repeated. The queue panel in the dock
-  body already lists the queued turn with a "×" (**Delete message**) that
+  body already lists the queued turn with a "×" (**Discard message**) that
   discards it, so discarding was never impossible; but that control is an
   unlabelled icon, and the notice it explained stayed in the transcript. The
   notice's own **Discard** sits in that hidden transcript, so while the chat is
