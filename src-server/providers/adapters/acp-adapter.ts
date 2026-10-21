@@ -531,6 +531,8 @@ export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  /** The connection's display name: what copy calls this engine. */
+  engineName: string;
   command: string;
   args?: string[];
   /**
@@ -1131,6 +1133,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      engineName: config.name.trim() || config.id,
       command: config.command,
       args: config.args,
       promptEpoch: 0,
@@ -3418,13 +3421,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     params: Record<string, unknown>,
     logger: AcpLogger,
   ): Promise<Record<string, unknown>> {
-    const question = readCursorAskQuestion(params);
+    const question = readCursorAskQuestion(params, record.engineName);
     if (!question) {
       this.reportUnreadableCursorRequest(
         record,
         method,
         logger,
-        'Cursor asked a question Station could not show, so Station told it the question was skipped.',
+        `${record.engineName} asked a question Station could not show, so Station told it the question was skipped.`,
       );
       return cursorQuestionSkipped('The client could not show this question.');
     }
@@ -3436,11 +3439,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
     const answer = await this.awaitPersonRequest(record, {
       title: question.form.message,
-      payload: {
-        toolCallId: question.toolCallId,
-        inputRequest: question.form,
-      },
-      inputRequest: question.form,
+      form: question.form,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { toolCallId: question.toolCallId, toolName: method },
     });
     return cursorQuestionResponse(
       answer.decision,
@@ -3451,9 +3452,9 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * `cursor/create_plan`: Cursor's plan-mode request to approve a plan. Its
-   * todos go to the plan surface, and the plan goes to a person as an
-   * approval that no standing grant answers.
+   * `cursor/create_plan`: a plan-mode request to approve a plan, shown whole
+   * as a plan-review form. Only an approved plan reaches the session's plan
+   * surface; a rejected or unanswered one leaves it as it was.
    */
   private async answerCursorPlan(
     record: AcpSessionRecord,
@@ -3461,46 +3462,46 @@ export class AcpAdapter implements ProviderAdapterShape {
     params: Record<string, unknown>,
     logger: AcpLogger,
   ): Promise<Record<string, unknown>> {
-    const plan = readCursorCreatePlan(params);
+    const plan = readCursorCreatePlan(params, record.engineName);
     if (!plan) {
       this.reportUnreadableCursorRequest(
         record,
         method,
         logger,
-        'Cursor sent a plan Station could not show, so Station told it the plan was not approved.',
+        `${record.engineName} sent a plan Station could not show, so Station told it the plan was not approved.`,
       );
       return cursorPlanRejected('The client could not show this plan.');
     }
-    record.cursorTodos = plan.todos;
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: record.session.threadId,
-      createdAt: new Date().toISOString(),
-      turnId: record.activeTurnId,
-      method: 'plan.updated',
-      entries: cursorTodosToPlanEntries(plan.todos),
-    });
     if (record.delegation?.denyApprovals)
       return cursorPlanRejected('No one is present to review this plan.');
     const answer = await this.awaitPersonRequest(record, {
       title: plan.name
-        ? `Review Cursor's plan: ${plan.name}`
-        : "Review Cursor's plan",
-      ...(plan.overview ? { description: plan.overview } : {}),
-      payload: {
-        toolCallId: plan.toolCallId,
-        // A plan review, which `toolRequestNeedsPerson` keeps from any
-        // session grant.
-        toolName: method,
-        rawInput: { plan: plan.plan },
-      },
+        ? `Review ${record.engineName}'s plan: ${plan.name}`
+        : `Review ${record.engineName}'s plan`,
+      form: plan.form,
+      payload: { toolCallId: plan.toolCallId, toolName: method },
     });
-    return cursorPlanResponse(answer.decision);
+    const response = cursorPlanResponse(answer.decision, answer.content);
+    if (
+      (response.outcome as { outcome: string }).outcome === 'accepted' &&
+      !record.stopping
+    ) {
+      record.cursorTodos = plan.todos;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        createdAt: new Date().toISOString(),
+        turnId: record.activeTurnId,
+        method: 'plan.updated',
+        entries: cursorTodosToPlanEntries(plan.todos),
+      });
+    }
+    return response;
   }
 
   /**
-   * Publish a request addressed to a person and wait for the answer. It is
+   * Publish a form addressed to a person and wait for the answer. It is
    * settled with `cancel` like any permission request when the prompt ends,
    * the turn is interrupted or the session stops.
    */
@@ -3508,9 +3509,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     request: {
       title: string;
-      description?: string;
+      form: InputRequestForm;
       payload: Record<string, unknown>;
-      inputRequest?: InputRequestForm;
     },
   ): Promise<{
     decision: CursorRequestDecision;
@@ -3528,22 +3528,20 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'request.opened',
       requestType: 'approval',
       title: request.title,
-      ...(request.description ? { description: request.description } : {}),
-      payload: request.payload,
+      payload: { ...request.payload, inputRequest: request.form },
     });
     return new Promise((resolve) => {
       record.pendingRequests.set(requestId, {
         resolve: (decision, content) =>
           resolve({
-            // `respondToRequest` already turns a session answer into a
-            // one-call accept for a request addressed to a person.
+            // `respondToRequest` refuses a session answer to a form.
             decision: decision === 'acceptForSession' ? 'accept' : decision,
             ...(content ? { content } : {}),
           }),
         options: [],
         needsPerson: true,
         eventId,
-        ...(request.inputRequest ? { inputRequest: request.inputRequest } : {}),
+        inputRequest: request.form,
       });
     });
   }

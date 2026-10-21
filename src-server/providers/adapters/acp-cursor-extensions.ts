@@ -2,8 +2,13 @@ import type {
   InputRequestContent,
   InputRequestForm,
 } from '@kontourai/station-contracts/input-request';
+import { INPUT_REQUEST_SCHEMA } from '@kontourai/station-contracts/input-request';
 import type { PlanEntry } from '@kontourai/station-contracts/runtime-events';
-import { ownArray, ownRecord } from '@kontourai/station-shared/input-request';
+import {
+  ownArray,
+  ownRecord,
+  readInputRequestForm,
+} from '@kontourai/station-shared/input-request';
 import { cursorAnswers, cursorInputRequest } from './harness-questions.js';
 
 /**
@@ -11,7 +16,8 @@ import { cursorAnswers, cursorInputRequest } from './harness-questions.js';
  * cursor.com/docs/cli/acp documents them (fetched 2026-10-21). Cursor sends
  * the blocking requests without declaring them at `initialize` (checked
  * against `cursor-agent` 2026.05.01), so they are bound by exact method name
- * in `acp-inbound-extension-policy.ts`.
+ * in `acp-inbound-extension-policy.ts`. Any engine may send them, so every
+ * label names the connection that did, never Cursor.
  *
  * Both blocking responses nest their result under `outcome`; Cursor reads
  * `result.outcome.outcome`, and a flat `{ outcome: 'accepted' }` reads to it
@@ -23,8 +29,8 @@ import { cursorAnswers, cursorInputRequest } from './harness-questions.js';
  * are refused with the documented refusal outcome rather than shown cut.
  */
 export const CURSOR_PAYLOAD_MAX_JSON_CHARS = 256 * 1024;
-/** Bound on the todo entries one plan or update may carry. */
-export const CURSOR_TODOS_MAX = 200;
+/** Bound on the todo entries one plan (phases included) or update may carry. */
+const CURSOR_TODOS_MAX = 200;
 const TODO_CONTENT_MAX_CHARS = 2000;
 const TODO_ID_MAX_CHARS = 256;
 const PLAN_NAME_MAX_CHARS = 200;
@@ -109,17 +115,20 @@ export function cursorTodosToPlanEntries(todos: CursorTodo[]): PlanEntry[] {
 
 // --- cursor/ask_question -------------------------------------------------
 
-export interface CursorQuestion {
+interface CursorQuestion {
   toolCallId: string;
   form: InputRequestForm;
 }
 
 /** `cursor/ask_question` params, or null when Station cannot show them. */
-export function readCursorAskQuestion(params: unknown): CursorQuestion | null {
+export function readCursorAskQuestion(
+  params: unknown,
+  requester: string,
+): CursorQuestion | null {
   const raw = ownRecord(params);
   if (!raw || !withinPayloadBound(params)) return null;
   const toolCallId = readToolCallId(raw);
-  const form = cursorInputRequest(raw);
+  const form = cursorInputRequest(raw, requester);
   return toolCallId && form ? { toolCallId, form } : null;
 }
 
@@ -148,20 +157,71 @@ export function cursorQuestionResponse(
 
 // --- cursor/create_plan --------------------------------------------------
 
-export interface CursorPlan {
+interface CursorPlan {
   toolCallId: string;
   name?: string;
-  overview?: string;
-  plan: string;
+  /** Top-level todos, then each phase's todos labelled with its phase. */
   todos: CursorTodo[];
+  form: InputRequestForm;
 }
 
-/** `cursor/create_plan` params, or null when malformed or over bounds. */
-export function readCursorCreatePlan(params: unknown): CursorPlan | null {
+/** The plan review's one field, and its two answers. */
+const PLAN_REVIEW_FIELD = 'review';
+const PLAN_APPROVE = 'approve';
+const PLAN_REJECT = 'reject';
+
+/**
+ * The plan's todos with each phase's todos flattened in, named by phase. A
+ * phase todo that repeats a top-level id replaces that entry, so one todo is
+ * never listed twice. Null past {@link CURSOR_TODOS_MAX} or when malformed.
+ */
+function readPlanTodos(raw: Record<string, unknown>): CursorTodo[] | null {
+  const todos = readTodos(raw.todos);
+  if (!todos) return null;
+  if (raw.phases === undefined) return todos;
+  const phases = ownArray(raw.phases);
+  if (!phases || phases.length > CURSOR_TODOS_MAX) return null;
+  const merged = [...todos];
+  for (const entry of phases) {
+    const phase = ownRecord(entry);
+    const phaseTodos = readTodos(phase?.todos);
+    if (
+      !phase ||
+      !phaseTodos ||
+      !boundedText(phase.name, PLAN_NAME_MAX_CHARS) ||
+      !phase.name.trim()
+    )
+      return null;
+    for (const todo of phaseTodos) {
+      const labelled = { ...todo, content: `${phase.name}: ${todo.content}` };
+      const index = merged.findIndex((other) => other.id === todo.id);
+      if (index >= 0) merged[index] = labelled;
+      else merged.push(labelled);
+    }
+  }
+  return merged.length > CURSOR_TODOS_MAX ? null : merged;
+}
+
+const TODO_STATUS_TEXT: Record<CursorTodoStatus, string> = {
+  pending: 'to do',
+  in_progress: 'in progress',
+  completed: 'done',
+  cancelled: 'cancelled',
+};
+
+/**
+ * `cursor/create_plan` params as a plan review: the whole plan is the form's
+ * message, so the person reads what they approve. Null when malformed or
+ * over bounds, including a plan too long for one form message.
+ */
+export function readCursorCreatePlan(
+  params: unknown,
+  requester: string,
+): CursorPlan | null {
   const raw = ownRecord(params);
   if (!raw || !withinPayloadBound(params)) return null;
   const toolCallId = readToolCallId(raw);
-  const todos = readTodos(raw.todos);
+  const todos = readPlanTodos(raw);
   if (
     !toolCallId ||
     !todos ||
@@ -171,16 +231,52 @@ export function readCursorCreatePlan(params: unknown): CursorPlan | null {
     !optionalBoundedText(raw.overview, PLAN_OVERVIEW_MAX_CHARS)
   )
     return null;
+  const sections = [
+    typeof raw.name === 'string' && raw.name.trim() ? raw.name : undefined,
+    typeof raw.overview === 'string' && raw.overview.trim()
+      ? raw.overview
+      : undefined,
+    raw.plan,
+    todos.length > 0
+      ? `Todos:\n${todos
+          .map((todo) => `- ${todo.content} (${TODO_STATUS_TEXT[todo.status]})`)
+          .join('\n')}`
+      : undefined,
+  ].filter((section): section is string => section !== undefined);
+  const form = readInputRequestForm({
+    schema: INPUT_REQUEST_SCHEMA,
+    source: 'harness:cursor',
+    requester,
+    message: sections.join('\n\n'),
+    body: {
+      kind: 'form',
+      fields: [
+        {
+          name: PLAN_REVIEW_FIELD,
+          kind: 'choice',
+          title: `Approve ${requester}'s plan?`,
+          required: true,
+          options: [
+            {
+              value: PLAN_APPROVE,
+              label: 'Approve',
+              // Station answers the request only (see docs/guides/agents.md).
+              description: `${requester} stops after an approved plan. Send a message to continue.`,
+            },
+            { value: PLAN_REJECT, label: 'Reject' },
+          ],
+        },
+      ],
+    },
+  });
+  if (!form) return null;
   return {
     toolCallId,
     ...(typeof raw.name === 'string' && raw.name.trim()
       ? { name: raw.name }
       : {}),
-    ...(typeof raw.overview === 'string' && raw.overview.trim()
-      ? { overview: raw.overview }
-      : {}),
-    plan: raw.plan,
     todos,
+    form,
   };
 }
 
@@ -191,11 +287,12 @@ export function cursorPlanRejected(reason: string): Record<string, unknown> {
 /** The documented response for a person's review of `cursor/create_plan`. */
 export function cursorPlanResponse(
   decision: CursorRequestDecision,
+  content: InputRequestContent | undefined,
 ): Record<string, unknown> {
-  if (decision === 'accept') return { outcome: { outcome: 'accepted' } };
-  if (decision === 'decline')
-    return cursorPlanRejected('The person rejected the plan.');
-  return { outcome: { outcome: 'cancelled' } };
+  if (decision === 'accept' && content?.[PLAN_REVIEW_FIELD] === PLAN_APPROVE)
+    return { outcome: { outcome: 'accepted' } };
+  if (decision === 'cancel') return { outcome: { outcome: 'cancelled' } };
+  return cursorPlanRejected('The person rejected the plan.');
 }
 
 // --- cursor/update_todos -------------------------------------------------

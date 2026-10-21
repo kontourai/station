@@ -24,15 +24,18 @@ import { FakeAcpProcess } from './fake-acp-process.js';
  * and a real `AgentSideConnection` sends the documented request and
  * notification shapes over ndjson. So each test also proves the ACP SDK
  * routes Cursor's non-underscore method names to the adapter.
+ *
+ * The connection is deliberately not named Cursor: any engine can send these
+ * methods, and every label must name the engine that did.
  */
 
 const makeTempDir = trackTempDirs();
 
 const CONNECTIONS: ACPConnectionConfig[] = [
   {
-    id: 'cursor',
-    name: 'Cursor',
-    command: 'cursor-agent',
+    id: 'lab',
+    name: 'Lab Engine',
+    command: 'lab-agent',
     args: ['acp'],
     enabled: true,
   },
@@ -123,7 +126,7 @@ async function startCursorSession(options: { unattended?: boolean } = {}) {
     threadId,
     cwd: '/tmp/project',
     metadata: {
-      connectionId: 'cursor',
+      connectionId: 'lab',
       ...(options.unattended ? { delegation: UNATTENDED_DELEGATION } : {}),
     },
   });
@@ -156,6 +159,7 @@ async function startCursorSession(options: { unattended?: boolean } = {}) {
   return {
     adapter,
     agent,
+    proc,
     events,
     threadId,
     waitFor,
@@ -187,6 +191,28 @@ function within<T>(promise: Promise<T>, ms = 1000): Promise<T> {
   ]);
 }
 
+/** Answer an open form request as the orchestration service would. */
+async function answerForm(
+  session: Awaited<ReturnType<typeof startCursorSession>>,
+  opened: RequestOpened,
+  content: unknown,
+): Promise<void> {
+  const form = inputRequestFromRequestEvent(opened);
+  if (!form) throw new Error('no form');
+  await session.adapter.respondToRequest(
+    session.threadId,
+    opened.requestId,
+    'accept',
+    {
+      inputContent: validateInputRequestContent(form, content),
+      expectedRequestEventId: opened.eventId,
+    },
+  );
+}
+
+/** Lets in-flight wire traffic land before asserting something did not. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
 describe('cursor/ask_question reaches the harness-question contract', () => {
   test("the person's answer goes back as the documented response", async () => {
     const session = await startCursorSession();
@@ -200,7 +226,7 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
     const form = inputRequestFromRequestEvent(opened);
     expect(form).toMatchObject({
       source: 'harness:cursor',
-      requester: 'Cursor',
+      requester: 'Lab Engine',
       message: 'Need input',
       body: {
         fields: [
@@ -216,22 +242,54 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
         ],
       },
     });
-    if (!form) throw new Error('no form');
-    // What the orchestration service validates before handing it over.
-    const inputContent = validateInputRequestContent(form, { q1: '1' });
-
-    await session.adapter.respondToRequest(
-      session.threadId,
-      opened.requestId,
-      'accept',
-      { inputContent, expectedRequestEventId: opened.eventId },
-    );
+    // Named so no session grant is offered on any surface.
+    expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe('none');
+    await answerForm(session, opened, { q1: '1' });
 
     await expect(within(response)).resolves.toEqual({
       outcome: {
         outcome: 'answered',
         answers: [{ questionId: 'q1', selectedOptionIds: ['plan'] }],
       },
+    });
+    await session.stop();
+  });
+
+  test('a multi-select answer maps back to every chosen option id', async () => {
+    const session = await startCursorSession();
+    const response = session.agent.extMethod('cursor/ask_question', {
+      ...ASK_QUESTION,
+      questions: [{ ...ASK_QUESTION.questions[0], allowMultiple: true }],
+    });
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    expect(inputRequestFromRequestEvent(opened)?.body.fields[0]).toMatchObject({
+      kind: 'multi-choice',
+    });
+    await answerForm(session, opened, { q1: ['1', '0'] });
+    await expect(within(response)).resolves.toEqual({
+      outcome: {
+        outcome: 'answered',
+        answers: [{ questionId: 'q1', selectedOptionIds: ['plan', 'agent'] }],
+      },
+    });
+    await session.stop();
+  });
+
+  test('a declined question answers skipped, not cancelled', async () => {
+    const session = await startCursorSession();
+    const response = session.agent.extMethod(
+      'cursor/ask_question',
+      ASK_QUESTION,
+    );
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    await session.adapter.respondToRequest(
+      session.threadId,
+      opened.requestId,
+      'decline',
+      { expectedRequestEventId: opened.eventId },
+    );
+    await expect(within(response)).resolves.toEqual({
+      outcome: { outcome: 'skipped', reason: 'The person declined to answer.' },
     });
     await session.stop();
   });
@@ -291,13 +349,14 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
       },
     });
     expect(session.events.filter(isRequestOpened)).toHaveLength(0);
-    expect(
-      session.events.some(
-        (event) =>
-          event.method === 'runtime.warning' &&
-          event.code === 'acp.extension-request-unreadable',
-      ),
-    ).toBe(true);
+    const warning = session.events.find(
+      (event) =>
+        event.method === 'runtime.warning' &&
+        event.code === 'acp.extension-request-unreadable',
+    );
+    expect(warning && 'message' in warning && warning.message).toMatch(
+      /^Lab Engine asked a question/,
+    );
     await session.stop();
   });
 
@@ -339,48 +398,210 @@ describe('cursor/ask_question reaches the harness-question contract', () => {
     });
     await session.stop();
   });
+
+  test('stopping the session answers an open question and plan cancelled', async () => {
+    const session = await startCursorSession();
+    const question = session.agent.extMethod(
+      'cursor/ask_question',
+      ASK_QUESTION,
+    );
+    const plan = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const deadline = Date.now() + 1000;
+    while (
+      session.events.filter(isRequestOpened).length < 2 &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    await session.adapter.stopSession(session.threadId);
+    await expect(within(question)).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    await expect(within(plan)).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    expect(session.events.filter(isPlanUpdated)).toHaveLength(0);
+    await session.stop();
+  });
+
+  test('an engine exit mid-turn answers an open question and plan cancelled', async () => {
+    const session = await startCursorSession();
+    await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'Plan it',
+    });
+    const question = session.agent.extMethod(
+      'cursor/ask_question',
+      ASK_QUESTION,
+    );
+    const plan = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const deadline = Date.now() + 1000;
+    while (
+      session.events.filter(isRequestOpened).length < 2 &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    // The engine dying fails its open `session/prompt`.
+    session.proc?.rejectPrompt(new Error('engine exited'));
+    await expect(within(question)).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    await expect(within(plan)).resolves.toEqual({
+      outcome: { outcome: 'cancelled' },
+    });
+    await session.stop();
+  });
+
+  test('a request that arrives while the session stops is cancelled, not opened', async () => {
+    const session = await startCursorSession();
+    await session.adapter.stopSession(session.threadId);
+    const opened = session.events.filter(isRequestOpened).length;
+    await expect(
+      within(session.agent.extMethod('cursor/ask_question', ASK_QUESTION)),
+    ).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    await expect(
+      within(session.agent.extMethod('cursor/create_plan', CREATE_PLAN)),
+    ).resolves.toEqual({ outcome: { outcome: 'cancelled' } });
+    expect(session.events.filter(isRequestOpened)).toHaveLength(opened);
+    await session.stop();
+  });
 });
 
 describe('cursor/create_plan is a plan review', () => {
-  test('todos reach the plan surface and an accepted review answers accepted', async () => {
+  test('the person reads the whole plan, and only an approved plan reaches the plan surface', async () => {
     const session = await startCursorSession();
     const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
 
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    expect(opened.title).toBe("Review Lab Engine's plan: Refactor tabs layout");
+    // A plan review is addressed to a person: no session grant is offered.
+    expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe('none');
+    const form = inputRequestFromRequestEvent(opened);
+    expect(form?.requester).toBe('Lab Engine');
+    expect(form?.message).toContain(CREATE_PLAN.plan);
+    expect(form?.message).toContain(CREATE_PLAN.overview);
+    expect(form?.message).toContain(
+      '- Update layout calculations (in progress)',
+    );
+    // Approving says what happens next: the engine stops (follow-up pending).
+    expect(form?.body.fields[0]).toMatchObject({
+      options: [
+        {
+          value: 'approve',
+          description:
+            'Lab Engine stops after an approved plan. Send a message to continue.',
+        },
+        { value: 'reject' },
+      ],
+    });
+    // Proposed, not yet the session's plan.
+    await settle();
+    expect(session.events.filter(isPlanUpdated)).toHaveLength(0);
+
+    await answerForm(session, opened, { review: 'approve' });
+    await expect(within(response)).resolves.toEqual({
+      outcome: { outcome: 'accepted' },
+    });
     const plan = await session.waitFor(isPlanUpdated, 'plan.updated');
     expect(plan.entries).toEqual([
       { content: 'Inspect current tab sizing logic', status: 'completed' },
       { content: 'Update layout calculations', status: 'in_progress' },
       { content: 'Verify editor behavior', status: 'pending' },
     ]);
-    const opened = await session.waitFor(isRequestOpened, 'request.opened');
-    expect(opened.title).toBe("Review Cursor's plan: Refactor tabs layout");
-    // A plan review is addressed to a person: no session grant is offered.
-    expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe('none');
-
-    // A session answer is a one-call accept here.
-    await session.adapter.respondToRequest(
-      session.threadId,
-      opened.requestId,
-      'acceptForSession',
-    );
-    await expect(within(response)).resolves.toEqual({
-      outcome: { outcome: 'accepted' },
-    });
     await session.stop();
   });
 
-  test('a declined review answers rejected', async () => {
+  test.each([
+    ['choosing Reject', 'reject'],
+    ['declining the form', undefined],
+  ])(
+    '%s answers rejected and leaves the plan surface alone',
+    async (_label, choice) => {
+      const session = await startCursorSession();
+      const response = session.agent.extMethod(
+        'cursor/create_plan',
+        CREATE_PLAN,
+      );
+      const opened = await session.waitFor(isRequestOpened, 'request.opened');
+      if (choice) await answerForm(session, opened, { review: choice });
+      else
+        await session.adapter.respondToRequest(
+          session.threadId,
+          opened.requestId,
+          'decline',
+          { expectedRequestEventId: opened.eventId },
+        );
+      await expect(within(response)).resolves.toEqual({
+        outcome: {
+          outcome: 'rejected',
+          reason: 'The person rejected the plan.',
+        },
+      });
+      await settle();
+      expect(session.events.filter(isPlanUpdated)).toHaveLength(0);
+      await session.stop();
+    },
+  );
+
+  test("phases' todos are shown and planned under their phase name", async () => {
+    const session = await startCursorSession();
+    const response = session.agent.extMethod('cursor/create_plan', {
+      ...CREATE_PLAN,
+      todos: [CREATE_PLAN.todos[0]],
+      phases: [
+        {
+          name: 'Build',
+          todos: [
+            { id: 'todo-4', content: 'Write the layout', status: 'pending' },
+          ],
+        },
+      ],
+    });
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    expect(inputRequestFromRequestEvent(opened)?.message).toContain(
+      '- Build: Write the layout (to do)',
+    );
+    await answerForm(session, opened, { review: 'approve' });
+    await within(response);
+    const plan = await session.waitFor(isPlanUpdated, 'plan.updated');
+    expect(plan.entries).toEqual([
+      { content: 'Inspect current tab sizing logic', status: 'completed' },
+      { content: 'Build: Write the layout', status: 'pending' },
+    ]);
+    await session.stop();
+  });
+
+  test('a later update_todos merges onto the approved plan', async () => {
     const session = await startCursorSession();
     const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
     const opened = await session.waitFor(isRequestOpened, 'request.opened');
-    await session.adapter.respondToRequest(
-      session.threadId,
-      opened.requestId,
-      'decline',
-    );
-    await expect(within(response)).resolves.toEqual({
-      outcome: { outcome: 'rejected', reason: 'The person rejected the plan.' },
+    await answerForm(session, opened, { review: 'approve' });
+    await within(response);
+    await session.waitFor(isPlanUpdated, 'plan.updated');
+
+    await session.agent.extNotification('cursor/update_todos', {
+      toolCallId: 'call_125',
+      todos: [
+        {
+          id: 'todo-2',
+          content: 'Update layout calculations',
+          status: 'completed',
+        },
+        { id: 'todo-4', content: 'Ship it', status: 'pending' },
+      ],
+      merge: true,
     });
+    const deadline = Date.now() + 1000;
+    while (
+      session.events.filter(isPlanUpdated).length < 2 &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(session.events.filter(isPlanUpdated)[1]?.entries).toEqual([
+      { content: 'Inspect current tab sizing logic', status: 'completed' },
+      { content: 'Update layout calculations', status: 'completed' },
+      { content: 'Verify editor behavior', status: 'pending' },
+      { content: 'Ship it', status: 'pending' },
+    ]);
     await session.stop();
   });
 
@@ -395,6 +616,8 @@ describe('cursor/create_plan is a plan review', () => {
       },
     });
     expect(session.events.filter(isRequestOpened)).toHaveLength(0);
+    await settle();
+    expect(session.events.filter(isPlanUpdated)).toHaveLength(0);
     await session.stop();
   });
 

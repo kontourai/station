@@ -23,8 +23,10 @@ import {
  * | Cursor `cursor/ask_question` | choice / multi-choice | no | no | no |
  *
  * Field names are the engine's own question identity (Claude's question
- * index, Codex's question id) and option values are option indexes, so the
- * answer maps back without trusting any label to be unique.
+ * index, Codex's and Cursor's question id) and option values are option
+ * indexes, so the answer maps back without trusting any label to be unique.
+ * Cursor's request can come from any engine that speaks it, so its form
+ * names the sending connection as requester, never Cursor.
  *
  * Every engine record is snapshotted by its own keys at this ingress, at
  * every level (`ownRecord` / `ownArray`): an inherited `isSecret`, option or
@@ -189,9 +191,12 @@ export function codexAnswers(
  * Cursor `cursor/ask_question` params → form (cursor.com/docs/cli/acp). Its
  * answer can only name option ids, so a question with no options, or with an
  * option id that is blank or repeated, is refused: it could not be answered
- * back unambiguously.
+ * back unambiguously. `requester` is the sending connection's display name.
  */
-export function cursorInputRequest(params: unknown): InputRequestForm | null {
+export function cursorInputRequest(
+  params: unknown,
+  requester: string,
+): InputRequestForm | null {
   const raw = ownRecord(params);
   const list = ownArray(raw?.questions);
   if (!raw || !list) return null;
@@ -225,7 +230,7 @@ export function cursorInputRequest(params: unknown): InputRequestForm | null {
     });
   }
   const title = typeof raw.title === 'string' ? raw.title.trim() : '';
-  return harnessForm('cursor', 'Cursor', questions, title || undefined);
+  return harnessForm('cursor', requester, questions, title || undefined);
 }
 
 /**

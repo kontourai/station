@@ -128,12 +128,12 @@
  * reviewer conversation before an allowlist entry lands; under-matching
  * costs nothing today, because the allowlist is a short reviewed table and
  * every unlisted method is refused anyway. It is a tripwire on the obvious
- * vocabulary, not a proof of completeness. Known misses, so nobody mistakes it for one:
- * `_vendor/session/refresh` (no credential word), `_vendor/getAPIToken` (the
- * camelCase splitter breaks at `t|A`, so `getAPIKey` matches but
- * `getAPIToken` does not), any non-English method name, and
- * `_x/session/bootstrap` — which could return a credential without naming
- * one. The protection is (1) and (2) above; this is a tripwire on top.
+ * vocabulary, not a proof of completeness. Known misses, so nobody mistakes
+ * it for one: `_vendor/session/refresh` (no credential word),
+ * `_vendor/getAPIToken` (the camelCase splitter breaks at `t|A`, so
+ * `getAPIKey` matches but `getAPIToken` does not), any non-English method
+ * name, and `_x/session/bootstrap` — which could return a credential without
+ * naming one. The protection is (1) and (2) above; this is a tripwire on top.
  *
  * ### Why this module exists at all, given the SDK
  *

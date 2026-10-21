@@ -262,13 +262,13 @@ enforce tenant ownership. See the [Session API attention contract](../reference/
 
 ### Questions from agent harnesses
 
-Claude Code's `AskUserQuestion`, Codex's `requestUserInput` and Cursor's
-questions appear as one form in the Session, rendered by the same card as a tool server's form
+Claude Code's `AskUserQuestion`, Codex's `requestUserInput` and questions an
+ACP engine asks through Cursor's `cursor/ask_question` appear as one form in the Session, rendered by the same card as a tool server's form
 (#3390): inline on desktop, and in the request sheet on a phone. Each
 question keeps the engine's short header above it, when it has one. Select an
 option, choose several where the harness supports it, or choose Other to
-enter a custom answer (Cursor's questions offer no Other: Cursor takes back
-only the options it offered). Send checks every question first; an unanswered one is
+enter a custom answer (`cursor/ask_question` offers no Other: the engine
+takes back only the options it offered). Send checks every question first; an unanswered one is
 marked on its own field with its reason, and focus moves to the first.
 Ctrl/Cmd+Enter sends. Decline and Cancel return that action to the engine
 instead of an answer. Answering a question never grants permission to later
@@ -309,9 +309,12 @@ Claude Code these always reach a person:
   MCP tool the organization requires approval for (#2932);
 - `ExitPlanMode`, so a plan is always reviewed.
 
-On ACP engines a plan exit (a `switch_mode` tool call, `ExitPlanMode`, or
-Cursor's plan review) always prompts, and answering it "for this session" allows that one exit
-only. ACP reports no other escalation signal. Codex and Muse do not
+On ACP engines a plan exit (a `switch_mode` tool call or `ExitPlanMode`)
+always prompts, and answering it "for this session" allows that one exit
+only. An engine's plan review sent as Cursor's `cursor/create_plan` shows the
+whole plan as a form to approve or reject; only an approved plan replaces the
+Session's plan. After you approve, the engine stops: send a message to
+continue (Station does not yet switch it out of plan mode). ACP reports no other escalation signal. Codex and Muse do not
 honour `autoApprove`. Station reads why Claude Code asks from the engine's
 own request, and a request it cannot read counts as an escalation, so a
 pattern never answers one. A pattern such as `Bash` covers chained commands

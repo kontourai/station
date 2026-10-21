@@ -187,6 +187,52 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
+  test('#3390: a harness question offers no decision the orchestration route would refuse', async () => {
+    // The ACP adapter's shape for an engine's `cursor/ask_question`: a form,
+    // named so no session grant is derived for it.
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'evt-question',
+        method: 'request.opened',
+        payload: {
+          toolCallId: 'call_123',
+          toolName: 'cursor/ask_question',
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:cursor',
+            requester: 'Lab engine',
+            message: 'Need input',
+            body: {
+              kind: 'form',
+              fields: [
+                {
+                  name: 'q1',
+                  kind: 'choice',
+                  title: 'Which mode should I use?',
+                  required: true,
+                  options: [
+                    { value: '0', label: 'Agent' },
+                    { value: '1', label: 'Plan' },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        provider: 'acp',
+        requestId: 'req-question',
+        requestType: 'approval',
+        threadId: 'thread-question',
+        title: 'Need input',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].actions ?? []).toEqual([]);
+  });
+
   test('#2915: a Claude file edit is persisted without the auto-accept action, which only the command route can honour', async () => {
     await emit('orchestration:event', {
       event: {

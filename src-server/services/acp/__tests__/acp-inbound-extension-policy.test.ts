@@ -129,8 +129,9 @@ describe('AcpInboundExtensionRegistry', () => {
 
 describe('registry scoping — the property the guarantee rests on', () => {
   test('two handlers built without an explicit registry do not share one', async () => {
-    // The honest ranking in the module header puts "the allowlist is empty
-    // and both call sites own a private registry" ABOVE the name predicate.
+    // The honest ranking in the module header puts "the allowlist is a
+    // reviewed table and both call sites own a private registry" ABOVE the
+    // name predicate.
     // That is only true while each factory call builds its own registry, so
     // assert it rather than assume it: registering on one handler's registry
     // must not make the method answerable on another's.

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/notification';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
@@ -468,19 +469,24 @@ export function wireApprovalInboxNotifications(
             title: event.title || 'Provider approval needed',
             body: event.description || formatOrchestrationBody(event),
             priority: 'high',
-            actions: [
-              { id: 'accept', label: 'Allow Once', variant: 'primary' },
-              ...(grantLabel
-                ? [
-                    {
-                      id: 'acceptForSession',
-                      label: grantLabel,
-                      variant: 'secondary' as const,
-                    },
-                  ]
-                : []),
-              { id: 'decline', label: 'Deny', variant: 'danger' },
-            ],
+            // #3390: a form is answered with content on its own card, against
+            // the exact event the person saw; this card's decisions carry
+            // neither and would be refused, so it offers only the way there.
+            actions: inputRequestFromRequestEvent(event)
+              ? []
+              : [
+                  { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                  ...(grantLabel
+                    ? [
+                        {
+                          id: 'acceptForSession',
+                          label: grantLabel,
+                          variant: 'secondary' as const,
+                        },
+                      ]
+                    : []),
+                  { id: 'decline', label: 'Deny', variant: 'danger' },
+                ],
             dedupeTag: buildOrchestrationRequestKey(event),
             metadata: {
               detail: event.description,

@@ -326,21 +326,29 @@ waits for the answer (cursor.com/docs/cli/acp). Cursor does not declare them at
 `initialize` (checked against `cursor-agent` 2026.05.01), so the reviewed
 table keys them by exact method name. Only the chat adapter registers them;
 the availability probe has no person to ask and refuses them like any other
-request. Every answer uses Cursor's documented nested `outcome` shape.
+request. Any ACP engine may send them, so every label names the connection
+that did (its display name), never Cursor. Every answer uses Cursor's
+documented nested `outcome` shape.
 
 | Request | What the person sees | Answers |
 |---|---|---|
-| `cursor/ask_question` | The harness-question form (`station.input-request/v1`, source `harness:cursor`), one choice or multi-choice field per question | `answered` with the chosen option ids; `skipped` when declined; `cancelled` when the prompt ends, the turn is interrupted or the session stops |
-| `cursor/create_plan` | The plan's todos on the Plan surface, and an approval titled with the plan's name. No session grant is offered: it is a plan review | `accepted`; `rejected` when declined; `cancelled` as above |
+| `cursor/ask_question` | The harness-question form (`station.input-request/v1`, source `harness:cursor`), one choice or multi-choice field per question | `answered` with the chosen option ids; `skipped` when declined; `cancelled` when the prompt ends, the turn is interrupted, the engine exits or the session stops |
+| `cursor/create_plan` | A plan-review form: the plan's name, overview, markdown and todos (each phase's todos listed under the phase name) as its message, and one Approve/Reject choice | `accepted` on Approve, then the todos replace the Session's plan; `rejected` on Reject or decline, with the plan left as it was; `cancelled` as above |
+
+Both forms are published under their method name, so no surface offers a
+session grant, and the approval inbox card offers no Allow/Deny decision: a
+form is answered on its own card, from the Session.
 
 A session with nobody to ask (a delegated child that may not ask a person) is
 answered at once, never left waiting: the question `skipped`, the plan
 `rejected`. A request Station cannot show (malformed, over 256 KiB of JSON,
 over 16 questions or 32 options per question, an option id that is blank or
-repeated, over 200 todos) gets the same refusal outcome, a `warn` log and a
+repeated, over 200 todos including phases, a plan longer than one form message
+of 8000 characters) gets the same refusal outcome, a `warn` log and a
 `runtime.warning` (`acp.extension-request-unreadable`). Accepting a plan
-answers the request only: Station does not switch Cursor out of plan mode or
-send a follow-up prompt.
+answers the request only: Station does not switch the engine out of plan mode
+or send a follow-up prompt, so the Approve option tells the person to send a
+message to continue.
 
 **Error codes are emitted, never inferred.** Station emits `-32601` because
 the spec says so, and derives nothing from the codes it *receives*: the
