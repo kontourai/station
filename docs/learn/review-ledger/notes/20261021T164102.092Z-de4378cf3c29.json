@@ -1,0 +1,7 @@
+{
+  "revision": "de689c299b0b101f3ceb64ce031f35d177f1ed93",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#4003 review: added one sentence to the Tasks paragraph describing task_note (one Session-attributed line in its own Task's document, the in-progress line replaced, never other text, never status), checked against station-control-task-note-tools.ts and the room runtime. Regenerated station-docs-content.ts with docs:mcp:generate. The rest of the page is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
