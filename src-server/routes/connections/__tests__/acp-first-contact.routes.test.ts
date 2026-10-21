@@ -197,6 +197,32 @@ describe('first-contact continuation of a cold engine add', () => {
     ]);
   });
 
+  // A registry reload (`/api/registry`) re-adds every saved connection on
+  // the request budget. Replacing the probe would dispose the cold
+  // continuation mid-start, and its later success could never register.
+  test('a registry reload does not drop a first-start continuation', async () => {
+    const { script, initiators, createProbe } = scriptedProbes();
+    const cold = deferred<Run>();
+    script.request.push({ ok: false, deadline: true });
+    script.background.push(cold.promise);
+    const { ctx, configLoader, acpBridge } = await createContext(createProbe);
+    const app = asOperator(createACPRoutes(ctx));
+    await app.request('/registry/muse/install', { method: 'POST' });
+
+    await acpBridge.startAll((await configLoader.loadACPConfig()).connections);
+    expect(initiators).toEqual(['request', 'background']);
+    expect(acpBridge.getStatus().connections[0]).toMatchObject({
+      status: 'probing',
+    });
+
+    cold.resolve({ ok: true });
+    await vi.waitFor(async () => {
+      expect(await registered(configLoader)).toEqual(['muse']);
+      expect(await configLoader.agentExists('muse')).toBe(true);
+    });
+    await acpBridge.shutdown();
+  });
+
   test('a cold probe whose saved config changed meanwhile registers nothing', async () => {
     const { script, createProbe } = scriptedProbes();
     const cold = deferred<Run>();

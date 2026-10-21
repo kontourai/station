@@ -489,7 +489,7 @@ describe('ACPAddConnectionModal', () => {
         });
 
         expect(screen.getByRole('alert').textContent).toContain(
-          'has not finished its first start',
+          'Station keeps checking it while Station is running; if Station restarts first, add it again.',
         );
         expect(screen.queryByText('Checking')).toBeNull();
         expect(

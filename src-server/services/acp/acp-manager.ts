@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { SetProviderRequest } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -28,6 +29,8 @@ export class ACPManager {
   private configs = new Map<string, ACPConnectionConfig>();
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private firstHandshakeListener?: ACPFirstHandshakeListener;
+  /** Connections whose cold first-contact continuation is still running. */
+  private continuing = new Set<string>();
 
   // Chat sessions moved to the orchestration adapter (archive#149), so the
   // manager needs only what probing and connection management use.
@@ -85,6 +88,7 @@ export class ACPManager {
       eventBus: this.eventBus,
       logger: this.logger,
       onFirstHandshake: (config) => this.firstHandshakeListener?.(config),
+      continuing: this.continuing,
     });
   }
 
@@ -105,6 +109,16 @@ export class ACPManager {
     config: ACPConnectionConfig,
     initiator: ACPProbeInitiator = 'request',
   ): Promise<boolean> {
+    // A registry reload re-adds every saved connection. Replacing a probe
+    // whose first start is still running would dispose it mid-start and its
+    // success could never register; the same config keeps that probe.
+    if (
+      this.continuing.has(config.id) &&
+      isDeepStrictEqual(this.configs.get(config.id), config)
+    ) {
+      return false;
+    }
+    this.continuing.delete(config.id);
     return addACPManagerConnection({
       config,
       initiator,
@@ -119,6 +133,7 @@ export class ACPManager {
   }
 
   async removeConnection(id: string): Promise<void> {
+    this.continuing.delete(id);
     await removeACPManagerConnection({
       id,
       probes: this.probes,

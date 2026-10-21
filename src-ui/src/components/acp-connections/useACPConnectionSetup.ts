@@ -224,7 +224,7 @@ function useFirstContactWait(
         dispatch({
           type: 'error',
           message:
-            'This engine has not finished its first start. Station keeps checking it in the background.',
+            'This engine has not finished its first start. Station keeps checking it while Station is running; if Station restarts first, add it again.',
           kind: 'refresh',
         }),
       FIRST_CONTACT_WAIT_MS,

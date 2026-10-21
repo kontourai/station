@@ -119,6 +119,7 @@ export function continueACPFirstContact({
   eventBus,
   logger,
   onFirstHandshake,
+  continuing,
 }: {
   id: string;
   probes: Map<string, ACPProbeLike>;
@@ -126,14 +127,20 @@ export function continueACPFirstContact({
   eventBus?: EventBus;
   logger: any;
   onFirstHandshake?: ACPFirstHandshakeListener;
+  /** Ids whose continuation is in flight; kept until it settles. */
+  continuing?: Set<string>;
 }): boolean {
   const probe = probes.get(id);
   const config = configs.get(id);
   if (!probe || !config || probe.firstContactTimedOut?.() !== true) {
     return false;
   }
+  continuing?.add(id);
   void probe
     .probe('background')
+    .finally(() => {
+      if (probes.get(id) === probe) continuing?.delete(id);
+    })
     .then((ok) => {
       if (!ok || probes.get(id) !== probe) return;
       eventBus?.emit(SERVER_EVENTS.AGENTS_CHANGED);
