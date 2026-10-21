@@ -885,6 +885,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/declare-pull-request')],
   },
+  // Epic #4003: the brief for the caller's OWN Task. The route reads the
+  // session from the verified caller and the Task from that session's
+  // immutable room execution binding; the tool takes no arguments.
+  get_task_brief: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-brief')],
+  },
 
   // ── notify ─────────────────────────────────────────────────────────────
   html_render: {

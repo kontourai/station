@@ -85,6 +85,43 @@ The brief reuses the digest-pinned `TaskRoomContextSnapshot` approach from
 [task-room agent requests](task-room-agent-requests.md). A Session that runs
 for a long time re-reads the current memory with `get_task_brief`.
 
+Implementation notes (brief lane), where the build differs from the list
+above:
+
+- **Delivery is with the first turn, on every engine.** Dispatch builds the
+  brief and records it in the Session's start metadata under a reserved,
+  server-only key. Station prepends it to the first turn's ambient context,
+  the same place an authored Agent prompt goes on engines without a
+  system-prompt channel. It is not a system-prompt addition, even on Claude.
+  Task dispatch resolves no Agent definition to append to, so this is one
+  path for Claude Code, Codex, ACP and Station's engine. It also keeps the
+  snapshot a single turn in the transcript, so a later resume does not
+  re-apply a stale one. The person's typed text stays the transcript text.
+  Station's engine relays ambient context to `/chat`, whose ambient bound
+  rises from 4000 to 4000 + 1 + the brief bound for this reason.
+- **Two more parts.** After the title, id and revision the brief adds the
+  Task description as its goal (at most 1000 characters). It also adds the
+  document's preamble, the seeded brief before the first fixed heading (at
+  most 2500). Without them a dispatched Session would not know what the Task
+  is for.
+- **The bound** is the existing 16000-character Task-room bound, applied to
+  the whole rendered brief. Each fixed part has its own cap. The tracker
+  guidance is reserved first. The memory sections fill what is left: newest
+  entries first, taken in turn from each section, with a count of the entries
+  left out.
+- **Tracker guidance** goes in the brief whenever the Task has a
+  `workItemRef`. It is the `tracker-hygiene` text, embedded as a server
+  constant, because Station cannot ship a built-in skill and Codex has no
+  skill channel. The three rules stay inline in every brief.
+- **"Comments newer than the last revision the Task recorded".** A Task
+  records no tracker revision, so the tracker read asks for comments since the
+  Task's previous dispatch, or since its creation for the first dispatch.
+  A failed, timed-out (10 s) or non-observed read becomes one line, such as
+  `linked item not re-read: unauthenticated`. It never fails the dispatch.
+- **`get_task_brief` does not re-read the tracker.** The Station memory is
+  rebuilt, and the item is reported as not re-read. Only opening the Task and
+  dispatch re-read it, as stated under Thesis.
+
 ## Starting a Task from a tracker item
 
 The project Tasks board already lists read-only provider items

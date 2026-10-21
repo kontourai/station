@@ -349,6 +349,7 @@ import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -608,6 +609,7 @@ import type { ProposedChangeService } from '../../services/projects/proposed-cha
 import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/session-workspace-directory.js';
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -2673,6 +2675,22 @@ export function configureRuntimeRoutes(
       scope: stationControlDispatchScope,
       declare: (input) =>
         context.orchestrationService.declareStationControlPullRequest(input),
+    }),
+  );
+  // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
+  // session, the Task its immutable room execution binding names.
+  const taskBriefSource = composeTaskBriefSource({
+    taskGraph: context.taskGraphService,
+    eventStore: context.orchestrationEventStore,
+    roomRuntime: () => projectTaskRoomRuntime,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/api/orchestration',
+    createTaskBriefRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      readBrief: (sessionId) => taskBriefSource.forSession(sessionId),
     }),
   );
   context.app.route(

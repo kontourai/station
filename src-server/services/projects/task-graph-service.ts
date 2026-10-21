@@ -76,6 +76,7 @@ import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
+import type { TaskBriefSource } from './task-brief-source.js';
 import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
@@ -271,6 +272,12 @@ export interface TaskDispatchAdapterDeps {
     'claim' | 'release' | 'status'
   >;
   resolveProjectWorkspace?: WorkspacePathResolver;
+  /**
+   * Epic #4003: builds the Task brief an engine-started Session receives with
+   * its first turn. Absent (most tests, the seeded `task-dispatch` path)
+   * attaches no brief.
+   */
+  taskBrief?: Pick<TaskBriefSource, 'forDispatch'>;
 }
 
 /**
@@ -2927,6 +2934,19 @@ export class TaskGraphService {
     };
   }
 
+  /** Every Session dispatched for a Task, oldest first (epic #4003 brief). */
+  listTaskDispatchSessions(
+    taskId: string,
+  ): { sessionId: string; provider: string; createdAt: string }[] {
+    return this.readStore()
+      .dispatches.filter((dispatch) => dispatch.taskId === taskId)
+      .map((dispatch) => ({
+        sessionId: dispatch.sessionId,
+        provider: dispatch.provider,
+        createdAt: dispatch.createdAt,
+      }));
+  }
+
   readSessionRelations(sessionId: string): SessionRelations {
     const links = this.readStore().links.filter(
       (link) =>
@@ -2958,6 +2978,7 @@ export class TaskGraphService {
       deps.assignmentClaimService ?? this.assignmentClaimService;
     const resolveProjectWorkspace =
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
+    const taskBrief = deps.taskBrief;
     const graph: TaskDispatchGraphState = {
       reserve: async (taskId, input) => {
         try {
@@ -3034,6 +3055,26 @@ export class TaskGraphService {
             reservation.task,
             input.runtimeConfig?.cwd,
           );
+          // Epic #4003: the Task brief, built before the provider start so
+          // the start records exactly what the first turn will carry. A
+          // brief that cannot be built never fails the dispatch: its parts
+          // already degrade to a stated gap, so a throw here is a defect,
+          // logged, and the Session starts without one.
+          let brief: { digest: string; text: string } | undefined;
+          if (taskBrief) {
+            try {
+              const built = await taskBrief.forDispatch(
+                reservation.task,
+                reservation.sessionId,
+              );
+              brief = { digest: built.digest, text: built.text };
+            } catch (error) {
+              this.logger?.warn('Task brief could not be built for dispatch', {
+                taskId: reservation.task.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
           await this.assertDispatchReservationProviderStarting(
             reservation as TaskDispatchReservation,
           );
@@ -3078,6 +3119,7 @@ export class TaskGraphService {
                 projectId: reservation.task.projectId,
                 taskId: reservation.task.id,
               },
+              ...(brief ? { taskBrief: brief } : {}),
               ...(admission ? { sessionStartAdmission: admission } : {}),
               ...(taskSlug
                 ? { workflowSidecarAttachMode: 'read-only-join' as const }
