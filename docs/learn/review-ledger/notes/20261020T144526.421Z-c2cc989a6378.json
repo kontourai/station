@@ -1,0 +1,7 @@
+{
+  "revision": "4851c6121c6b0af61e0be66fd21d01513713e05a",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 fix round: added the temp-staging plant and the pre-start provenance refusal (outermost Git work tree to cwd, lexical and resolved, HEAD blob match via ls-tree and hash-object --no-filters, confinement_workspace_incompatible for every non-host start), the uncommitted-root and nested-repository decisions, the non-git residual, F2 (checked-in root .codex can grant writes such as .git/hooks, accepted) and F3 (network not in the posture, pre-existing). Traced to codex-project-config-provenance.ts and startReservedSession; live plant reproduced and refused on codex-cli 0.162.1 macOS.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

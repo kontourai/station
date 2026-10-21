@@ -1,4 +1,7 @@
-import { monitoringAgentName } from '@shared/monitoring-keys';
+import {
+  displayMonitoringId,
+  monitoringAgentName,
+} from '@shared/monitoring-keys';
 import type {
   MonitoringEvent,
   MonitoringStats,
@@ -8,6 +11,7 @@ import { getAgentColor } from '../monitoring-utils';
 import {
   getHistoricalAgentSlugs,
   getMonitoringAgentCountLabel,
+  getProducerAgentSlugs,
   getRunningConversations,
 } from './view-utils';
 
@@ -34,6 +38,73 @@ export function MonitoringSidebar({
 }) {
   const activeAgents = stats?.agents || [];
   const historicalSlugs = getHistoricalAgentSlugs(filteredEvents, activeAgents);
+  const producerSlugs = getProducerAgentSlugs(filteredEvents);
+
+  // One card shape for agents seen only in history: Station's own past
+  // agents, and the agents external telemetry producers reported.
+  // `producer` is set only for the External producers group: the rows'
+  // own producer, never one parsed from the slug's text.
+  const renderPastAgentCard = (
+    slug: string,
+    statusLabel: string,
+    producer?: string,
+  ) => {
+    // Count through the SAME naming rule the list was built with.
+    // Comparing the raw field to a derived name meant the
+    // '(unnamed)' card reported 0 events and then filtered to N —
+    // a number contradicting what selecting it produced, which is
+    // exactly the label-vs-derivation defect this work is about.
+    const eventCount = filteredEvents.filter(
+      (event) => monitoringAgentName(event as Record<string, unknown>) === slug,
+    ).length;
+    const isSelected = selectedAgents.includes(slug);
+    const agentColor = getAgentColor(slug);
+
+    return (
+      // Same structure as the running card above: card = mouse
+      // convenience, header row = the keyboard control. This card
+      // has no interactive descendants, but the shared shape keeps
+      // its meta rows readable as text instead of flattened into
+      // one long button label.
+      // biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
+      // biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
+      <div
+        key={slug}
+        className={`agent-card historical ${isSelected ? 'selected' : ''}`}
+        onClick={(event) => onAgentClick(slug, event)}
+        style={{
+          borderLeftColor: agentColor,
+          background: isSelected
+            ? `color-mix(in srgb, ${agentColor} 10%, var(--bg-secondary))`
+            : undefined,
+        }}
+      >
+        <div
+          className="agent-header"
+          {...activatable((event) => {
+            event.stopPropagation();
+            onAgentClick(slug, event);
+          })}
+        >
+          <span className="agent-name" title={slug}>
+            {displayMonitoringId(slug, producer)}
+          </span>
+          <span className="agent-status historical-status">{statusLabel}</span>
+        </div>
+        {producer && (
+          <div className="meta-label" title={slug}>
+            via {producer}
+          </div>
+        )}
+        <div className="agent-meta">
+          <div className="meta-item">
+            <span className="meta-label">Events:</span>
+            <span className="meta-value">{eventCount}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="monitoring-sidebar">
@@ -148,60 +219,23 @@ export function MonitoringSidebar({
         {historicalSlugs.length > 0 && (
           <>
             <div className="agent-historical-header">Historical</div>
-            {historicalSlugs.map((slug) => {
-              // Count through the SAME naming rule the list was built with.
-              // Comparing the raw field to a derived name meant the
-              // '(unnamed)' card reported 0 events and then filtered to N —
-              // a number contradicting what selecting it produced, which is
-              // exactly the label-vs-derivation defect this work is about.
-              const eventCount = filteredEvents.filter(
-                (event) =>
-                  monitoringAgentName(event as Record<string, unknown>) ===
-                  slug,
-              ).length;
-              const isSelected = selectedAgents.includes(slug);
-              const agentColor = getAgentColor(slug);
+            {historicalSlugs.map((slug) =>
+              renderPastAgentCard(slug, 'Historical'),
+            )}
+          </>
+        )}
 
-              return (
-                // Same structure as the running card above: card = mouse
-                // convenience, header row = the keyboard control. This card
-                // has no interactive descendants, but the shared shape keeps
-                // its meta rows readable as text instead of flattened into
-                // one long button label.
-                // biome-ignore lint/a11y/noStaticElementInteractions: mouse convenience surface; the keyboard control is the agent-header row inside.
-                // biome-ignore lint/a11y/useKeyWithClickEvents: same — the agent-header row carries the keyboard path.
-                <div
-                  key={slug}
-                  className={`agent-card historical ${isSelected ? 'selected' : ''}`}
-                  onClick={(event) => onAgentClick(slug, event)}
-                  style={{
-                    borderLeftColor: agentColor,
-                    background: isSelected
-                      ? `color-mix(in srgb, ${agentColor} 10%, var(--bg-secondary))`
-                      : undefined,
-                  }}
-                >
-                  <div
-                    className="agent-header"
-                    {...activatable((event) => {
-                      event.stopPropagation();
-                      onAgentClick(slug, event);
-                    })}
-                  >
-                    <span className="agent-name">{slug}</span>
-                    <span className="agent-status historical-status">
-                      Historical
-                    </span>
-                  </div>
-                  <div className="agent-meta">
-                    <div className="meta-item">
-                      <span className="meta-label">Events:</span>
-                      <span className="meta-value">{eventCount}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {producerSlugs.length > 0 && (
+          <>
+            <div
+              className="agent-historical-header"
+              title="Reported by external telemetry producers; not observed by Station"
+            >
+              External producers
+            </div>
+            {producerSlugs.map(({ slug, producer }) =>
+              renderPastAgentCard(slug, 'External', producer),
+            )}
           </>
         )}
       </div>

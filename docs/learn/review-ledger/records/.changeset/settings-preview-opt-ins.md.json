@@ -1,0 +1,15 @@
+{
+  "path": ".changeset/settings-preview-opt-ins.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Historical Changesets note, consumed by combined-source package version generation in 298d4ff6d84.",
+
+  "limits": "Records the committed absence of this release-note input after canonical Changesets generation. Former source-review/check claims remain in Git history and current owning documentation; this classification claims no test execution, package publication or live feature qualification.",
+
+  "sources": [],
+
+  "checks": []
+}

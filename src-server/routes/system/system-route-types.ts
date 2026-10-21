@@ -3,12 +3,17 @@ import type {
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
+import type {
+  HomeRecoveryDisclosure,
+  ServerUpdateRunningTurns,
+} from '@kontourai/station-contracts/system-status';
 import type { TerminalCapability } from '@kontourai/station-shared/terminal-capability';
+import type { Context } from 'hono';
 import type { DeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import type { ManagedChatBinding } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
+import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import type { BootHistoryRecord } from './boot-history.js';
 
@@ -92,6 +97,13 @@ export interface SystemStatusDeps {
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
   };
+  /**
+   * #3851: the server's own update coordinator, one per runtime (the
+   * capabilities probe builds these deps again and must not start another).
+   */
+  serverUpdate?: ServerUpdateCoordinator;
+  /** #3851: the running turns a restart would interrupt, as `request` may see them. */
+  listRunningTurnsFor?: (c: Context) => Promise<ServerUpdateRunningTurns>;
   appConfig?: { runtime?: string };
   port?: number;
   /**

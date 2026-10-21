@@ -1,0 +1,7 @@
+{
+  "revision": "04b39560a1389076a2d676470dd9983e00bcf1c3",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Final keyboard delta reviewed at cb611d5c8afde0bffd3f63c3c713312e28b15d64: Settings prompt return-focus assertion failed before repair and passes after retaining its triggering select; heading focus is mount-only. The 120-case focused run covers generic publishers, both deliberate publisher writes, feedback ordering/status refresh, DNT, notice lifecycle and outbox. All three requested faults were re-injected and caught on this source; restored route suite is 7/7. Six desktop/390px gallery scenes passed again with action hit testing and prompt focus. Images and source provenance are retained under docs/learn/media/telemetry-ui-*. No native, hosted, live receiver or release qualification is claimed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/TelemetryFeedbackPrompt.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx"]}
+  ]
+}

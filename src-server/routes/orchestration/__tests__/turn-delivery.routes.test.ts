@@ -6,6 +6,8 @@
  * owner are the real ones.
  */
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import {
   agentId,
   engineConnectionId,
@@ -34,6 +36,10 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import {
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+  turnDedupKey,
+} from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { authorizeStationControlRequest } from '../../../tools/station-control-policy.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -94,6 +100,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
    */
   nextTurn: 'refuse' | 'fail' | undefined;
   turnGate: Promise<void> | undefined;
+  emitInvocation = true;
 
   async sendTurn(input: ProviderSendTurnInput) {
     const next = this.nextTurn;
@@ -101,20 +108,25 @@ class ScriptedAdapter implements ProviderAdapterShape {
     if (next === 'refuse')
       throw new SendTurnRefusedError('The engine refused this turn.', 'busy');
     if (next === 'fail') throw new Error('The engine connection dropped.');
+    const invocationId = input.invocationId;
+    const threadId = input.threadId;
+    const prompt = input.input;
+    const turnId = `delivery-turn-${this.turns.length + 1}`;
+    const emitInvocation = this.emitInvocation;
     this.turns.push(input);
     if (this.turnGate) await this.turnGate;
-    const turnId = `delivery-turn-${this.turns.length}`;
     const base = {
       provider: this.provider,
-      threadId: input.threadId,
+      threadId,
       turnId,
+      ...(emitInvocation && invocationId !== undefined ? { invocationId } : {}),
       createdAt: new Date().toISOString(),
     } as const;
     this.events.push({
       ...base,
       eventId: `${turnId}:started`,
       method: 'turn.started',
-      prompt: input.input,
+      prompt,
     });
     this.events.push({
       ...base,
@@ -122,7 +134,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
       method: 'turn.completed',
       outputText: 'ok',
     });
-    return { threadId: input.threadId, turnId };
+    return { threadId, turnId };
   }
 
   async interruptTurn() {
@@ -337,8 +349,173 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         caller = previous;
       }
     };
-    return { root, store, adapter, service, send, lookup };
+    return { root, store, adapter, service, app, send, lookup };
   }
+
+  test.each(['cancelled', 'definitively-refused'] as const)(
+    'a %s key answers a closed 409 to its reader and rejects replay without exposing it to another caller',
+    async (disposition) => {
+      const { store, adapter, service, app, send, lookup } = station();
+      const conversationId = `conversation:${disposition}`;
+      const sent = await send(conversationId, 'initial-key');
+      expect(sent.status, await sent.clone().text()).toBe(200);
+      const { sessionId } = (
+        (await sent.json()) as { data: { sessionId: string } }
+      ).data;
+      const clientTurnId = 'settled-key';
+      expect(
+        store
+          .createTurnDeduplicator()
+          .claim({ threadId: sessionId, clientTurnId }).kind,
+      ).toBe('owner');
+      const kernel = openSqliteKernelStorage({
+        database: store['db'],
+        tables: {
+          turnDedup: STATION_TURN_DEDUP_KERNEL_TABLES.turnDedup,
+          requestKeys: 'unused',
+          inbox: 'unused',
+        },
+      });
+      const context = { liveness: () => 'unknown' as const };
+      const key = turnDedupKey(sessionId, clientTurnId);
+      const read = kernel.executeSync({ type: 'turnDedup.read', key }, context);
+      if (read.kind !== 'found' || !read.record.owner)
+        throw new Error('Expected the actual Station claim owner.');
+      const owner = read.record.owner;
+      const at = (n: number) => new Date(n).toISOString();
+      const intent = {
+        invocationId: 'delivery-invocation',
+        inputDigest: 'input',
+        intentDigest: 'intent',
+        bodyRef: 'retained-body',
+        dedupKey: key,
+      };
+      expect(
+        kernel.executeSync(
+          {
+            type: 'turnBoundary.create',
+            boundaryId: key,
+            threadId: sessionId,
+            state: 'reserved',
+            purpose: 'turn',
+            owner,
+            now: at(2),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      expect(
+        kernel.executeSync(
+          {
+            type: 'turnBoundary.prepare',
+            boundaryId: key,
+            ownerId: owner.id,
+            dedupOwnerId: owner.id,
+            intent,
+            now: at(3),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      if (disposition === 'definitively-refused')
+        expect(
+          kernel.executeSync(
+            {
+              type: 'turnBoundary.beginInvocation',
+              boundaryId: key,
+              ownerId: owner.id,
+              dedupOwnerId: owner.id,
+              intent,
+              now: at(4),
+            },
+            context,
+          ),
+        ).toEqual({ kind: 'applied' });
+      expect(
+        kernel.executeSync(
+          {
+            type:
+              disposition === 'cancelled'
+                ? 'turnBoundary.cancelPrepared'
+                : 'turnBoundary.recordDefinitiveRefusal',
+            boundaryId: key,
+            intent,
+            boundary: {
+              owner,
+              createdAt: at(2),
+              updatedAt: at(disposition === 'cancelled' ? 3 : 4),
+            },
+            dedup: {
+              owner,
+              createdAt: read.record.createdAt,
+              updatedAt: at(3),
+            },
+            settlementId: 'delivery-settlement',
+            now: at(5),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+      const before = kernel.executeSync(
+        { type: 'turnDedup.read', key },
+        context,
+      );
+      const boundaryBefore = kernel.executeSync(
+        { type: 'turnBoundary.list' },
+        context,
+      );
+      const response = await app.request(
+        `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${clientTurnId}`,
+      );
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toEqual({
+        success: false,
+        error: `This turn was ${disposition === 'cancelled' ? 'cancelled' : 'definitively refused'}. A new request requires a new turn key.`,
+        code: 'client_turn_settled',
+        disposition,
+      });
+      expect(await lookup(conversationId, clientTurnId, STRANGER)).toEqual({
+        outcome: 'not-received',
+        conversationId,
+        clientTurnId,
+      });
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId: sessionId, clientTurnId, input: 'retry' },
+          },
+          { userId: OWNER },
+        ),
+      ).rejects.toMatchObject({
+        code: 'client_turn_settled',
+        retryable: false,
+        receipt: { status: 'rejected' },
+      });
+      expect(adapter.turns).toHaveLength(1);
+      expect(
+        kernel.executeSync({ type: 'turnDedup.read', key }, context),
+      ).toEqual(before);
+      expect(
+        kernel.executeSync({ type: 'turnBoundary.list' }, context),
+      ).toEqual(boundaryBefore);
+    },
+  );
+
+  test('does not normalize an unrelated lookup error carrying a settlement-shaped code', async () => {
+    const { service, app } = station();
+    vi.spyOn(service, 'inspectTurnDelivery').mockImplementation(() => {
+      throw Object.assign(new Error('Unexpected storage failure'), {
+        code: 'client_turn_settled',
+        disposition: 'cancelled',
+      });
+    });
+    const response = await app.request(
+      '/api/orchestration/conversations/c/turn-deliveries/k',
+    );
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe('Internal Server Error');
+  });
 
   test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {
     const { adapter, send } = station();
@@ -432,25 +609,224 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(adapter.turns).toHaveLength(1);
   });
 
-  test('a send refused before the engine took it is not-received again, so the same key can be retried', async () => {
-    const { adapter, send, lookup } = station();
-    adapter.nextTurn = 'refuse';
-    const refused = await send('conversation:refused', 'key-refused');
-    expect(refused.status).toBeGreaterThanOrEqual(400);
-    expect(await refused.json()).toMatchObject({
-      kind: 'busy',
-      retryable: true,
-      failurePhase: 'refused',
-    });
-    expect(await lookup('conversation:refused', 'key-refused')).toEqual({
-      outcome: 'not-received',
-      conversationId: 'conversation:refused',
-      clientTurnId: 'key-refused',
-    });
-    const retried = await send('conversation:refused', 'key-refused');
-    expect(retried.status, await retried.clone().text()).toBe(200);
-    expect(adapter.turns).toHaveLength(1);
+  test.each(['acknowledged', 'lost-ack'] as const)(
+    'a definitive refusal retains its settlement and input with %s, while a new key can start work',
+    async (acknowledgement) => {
+      const { adapter, send, app, root } = station();
+      adapter.nextTurn = 'refuse';
+      let lostAck = false;
+      const originalExec = DatabaseSync.prototype.exec;
+      const spy =
+        acknowledgement === 'lost-ack'
+          ? vi.spyOn(DatabaseSync.prototype, 'exec')
+          : undefined;
+      spy?.mockImplementation(function (this: DatabaseSync, sql: string) {
+        originalExec.call(this, sql);
+        if (
+          !lostAck &&
+          sql.trim().toUpperCase() === 'COMMIT' &&
+          this.prepare(
+            "SELECT name FROM sqlite_master WHERE name = 'orchestration_turn_boundaries'",
+          ).get() &&
+          this.prepare(
+            "SELECT boundary_id FROM orchestration_turn_boundaries WHERE state = 'settled'",
+          ).get()
+        ) {
+          lostAck = true;
+          throw new Error('Settlement committed; acknowledgement lost.');
+        }
+      });
+      let refused: Response;
+      try {
+        refused = await send('conversation:refused', 'key-refused');
+      } finally {
+        spy?.mockRestore();
+      }
+      expect(lostAck).toBe(acknowledgement === 'lost-ack');
+      expect(refused.status).toBeGreaterThanOrEqual(400);
+      expect(await refused.json()).toMatchObject(
+        acknowledgement === 'lost-ack'
+          ? {
+              kind: 'indeterminate',
+              retryable: false,
+              failurePhase: 'indeterminate',
+            }
+          : {
+              kind: 'busy',
+              retryable: true,
+              failurePhase: 'refused',
+            },
+      );
+      const inspection = await app.request(
+        '/api/orchestration/conversations/conversation%3Arefused/turn-deliveries/key-refused',
+      );
+      expect(inspection.status, await inspection.clone().text()).toBe(409);
+      expect(await inspection.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_settled',
+        disposition: 'definitively-refused',
+      });
+      const repeated = await send('conversation:refused', 'key-refused');
+      expect(repeated.status).toBeGreaterThanOrEqual(400);
+      expect(adapter.turns).toHaveLength(0);
+      const db = new DatabaseSync(join(root, 'orchestration.sqlite'), {
+        readOnly: true,
+      });
+      let retainedAudit: unknown;
+      try {
+        const audit = db
+          .prepare(
+            'SELECT state, prepared_settlement FROM orchestration_turn_boundaries WHERE state = ? ',
+          )
+          .get('settled');
+        expect(audit?.state).toBe('settled');
+        retainedAudit = audit?.prepared_settlement;
+        expect(JSON.parse(String(audit?.prepared_settlement))).toMatchObject({
+          disposition: 'definitively-refused',
+        });
+        expect(
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM orchestration_prepared_turns',
+            )
+            .get()?.count,
+        ).toBe(1);
+      } finally {
+        db.close();
+      }
+      const next = await send('conversation:refused', 'key-new-request');
+      expect(next.status, await next.clone().text()).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      const reopened = new DatabaseSync(join(root, 'orchestration.sqlite'), {
+        readOnly: true,
+      });
+      try {
+        expect(
+          reopened
+            .prepare(
+              "SELECT prepared_settlement FROM orchestration_turn_boundaries WHERE state = 'settled'",
+            )
+            .get()?.prepared_settlement,
+        ).toBe(retainedAudit);
+      } finally {
+        reopened.close();
+      }
+    },
+  );
+
+  test('a failed boundary settlement write rolls back the linked dedup audit and retains the effect fence', async () => {
+    const { adapter, send, root, lookup } = station();
+    const db = new DatabaseSync(join(root, 'orchestration.sqlite'));
+    try {
+      db.exec(`CREATE TRIGGER abort_host_refusal BEFORE UPDATE OF state ON orchestration_turn_boundaries
+        WHEN NEW.state = 'settled' BEGIN SELECT RAISE(ABORT, 'host refusal write aborted'); END`);
+      adapter.nextTurn = 'refuse';
+      const refused = await send(
+        'conversation:refusal-abort',
+        'key-refusal-abort',
+      );
+      expect(refused.status).toBe(409);
+      expect(
+        await lookup('conversation:refusal-abort', 'key-refusal-abort'),
+      ).toMatchObject({
+        outcome: 'indeterminate',
+      });
+      expect(adapter.turns).toHaveLength(0);
+      expect(
+        db
+          .prepare(
+            'SELECT state, prepared_settlement FROM orchestration_turn_boundaries',
+          )
+          .get(),
+      ).toMatchObject({
+        state: 'invoking',
+        prepared_settlement: null,
+      });
+      const dedup = db
+        .prepare('SELECT owner_json, value FROM orchestration_turn_dedup')
+        .get();
+      expect(dedup?.value).toBeNull();
+      const owner = JSON.parse(String(dedup?.owner_json));
+      expect(owner.invocation).toBe('begun');
+      expect(owner).not.toHaveProperty('settlement');
+      expect(
+        db
+          .prepare('SELECT COUNT(*) AS count FROM orchestration_prepared_turns')
+          .get()?.count,
+      ).toBe(1);
+    } finally {
+      db.close();
+    }
   });
+
+  test.each([
+    {
+      label: 'boundary owner',
+      sql: 'UPDATE orchestration_turn_boundaries SET owner_pid = owner_pid + 1 WHERE boundary_id = NEW.boundary_id;',
+    },
+    {
+      label: 'dedup owner',
+      sql: "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.pid', json_extract(owner_json, '$.pid') + 1) WHERE dedup_key = NEW.dedup_key;",
+    },
+    {
+      label: 'boundary update revision',
+      sql: "UPDATE orchestration_turn_boundaries SET updated_at = '2099-01-01T00:00:00.000Z' WHERE boundary_id = NEW.boundary_id;",
+    },
+    {
+      label: 'boundary creation revision',
+      sql: "UPDATE orchestration_turn_boundaries SET created_at = '2000-01-01T00:00:00.000Z' WHERE boundary_id = NEW.boundary_id;",
+    },
+    {
+      label: 'dedup preparation revision',
+      sql: "UPDATE orchestration_turn_dedup SET owner_json = json_set(owner_json, '$.preparedUpdatedAt', '2099-01-01T00:00:00.000Z') WHERE dedup_key = NEW.dedup_key;",
+    },
+    {
+      label: 'dedup creation revision',
+      sql: 'UPDATE orchestration_turn_dedup SET created_at = created_at + 1 WHERE dedup_key = NEW.dedup_key;',
+    },
+  ])(
+    'a definitive refusal cannot settle a changed private $label',
+    async ({ sql }) => {
+      const { adapter, send, root, lookup } = station();
+      const db = new DatabaseSync(join(root, 'orchestration.sqlite'));
+      try {
+        db.exec(`CREATE TRIGGER change_refusal_owner AFTER UPDATE OF state ON orchestration_turn_boundaries
+          WHEN NEW.state = 'invoking' BEGIN
+          ${sql}
+          END`);
+        adapter.nextTurn = 'refuse';
+        const refused = await send(
+          'conversation:changed-owner',
+          'key-changed-owner',
+        );
+        expect(refused.status, await refused.clone().text()).toBe(409);
+        expect(
+          await lookup('conversation:changed-owner', 'key-changed-owner'),
+        ).toMatchObject({
+          outcome: 'indeterminate',
+        });
+        expect(adapter.turns).toHaveLength(0);
+        expect(
+          db
+            .prepare(
+              'SELECT state, prepared_settlement FROM orchestration_turn_boundaries',
+            )
+            .get(),
+        ).toMatchObject({
+          state: 'invoking',
+          prepared_settlement: null,
+        });
+        const row = db
+          .prepare('SELECT owner_json FROM orchestration_turn_dedup')
+          .get();
+        expect(JSON.parse(String(row?.owner_json))).not.toHaveProperty(
+          'settlement',
+        );
+      } finally {
+        db.close();
+      }
+    },
+  );
 
   test('a send that failed after the engine may have taken it is indeterminate while this Station lives, never received', async () => {
     const { adapter, send, lookup } = station();
@@ -466,18 +842,105 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
   });
 
   test('stamps the send key on the turn.started that send produced', async () => {
-    const { store, send } = station();
+    const { store, adapter, send } = station();
     const sent = await send('conversation:stamp', 'key-stamp');
-    expect(sent.status, await sent.clone().text()).toBe(200);
+    const responseBody = await sent.clone().text();
     const { sessionId } = (
       (await sent.json()) as { data: { sessionId: string } }
     ).data;
+    let lastImage: string | undefined;
     await eventually(() => {
+      const request = adapter.turns[0];
       const started = store
         .listEvents(sessionId)
         .map((row) => row.payload)
         .find((event) => event.method === 'turn.started');
+      const image = JSON.stringify({
+        scenario: 'original-key-stamp-positive',
+        status: sent.status,
+        responseBody,
+        producerCount: adapter.turns.length,
+        request: request ?? null,
+        started: started ?? null,
+      });
+      if (image !== lastImage) {
+        lastImage = image;
+        process.stdout.write(
+          `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+        );
+      }
+      expect(sent.status, responseBody).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      expect(typeof request?.invocationId).toBe('string');
+      expect(request?.invocationId).not.toBe('');
+      expect(started).toMatchObject({ invocationId: request?.invocationId });
       expect(started).toMatchObject({ clientTurnId: 'key-stamp' });
+    });
+  });
+
+  test('keeps a deliberately raw producer start unscoped despite its captured send invocation', async () => {
+    const { store, adapter, send } = station();
+    adapter.emitInvocation = false;
+    let releaseTurn!: () => void;
+    adapter.turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    const pending = send('conversation:raw-stamp', 'key-raw-stamp');
+    let lastEntryImage: string | undefined;
+    try {
+      await eventually(() => {
+        const image = JSON.stringify({
+          scenario: 'raw-producer-entry',
+          currentEmitInvocation: adapter.emitInvocation,
+          producerCount: adapter.turns.length,
+          request: adapter.turns[0] ?? null,
+        });
+        if (image !== lastEntryImage) {
+          lastEntryImage = image;
+          process.stdout.write(
+            `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+          );
+        }
+        expect(adapter.turns).toHaveLength(1);
+      });
+      adapter.emitInvocation = true;
+    } finally {
+      releaseTurn();
+    }
+    const sent = await pending;
+    const responseBody = await sent.clone().text();
+    const { sessionId } = (
+      (await sent.json()) as { data: { sessionId: string } }
+    ).data;
+    let lastImage: string | undefined;
+    await eventually(() => {
+      const request = adapter.turns[0];
+      const started = store
+        .listEvents(sessionId)
+        .map((row) => row.payload)
+        .find((event) => event.method === 'turn.started');
+      const image = JSON.stringify({
+        scenario: 'raw-producer-stored-start',
+        status: sent.status,
+        responseBody,
+        currentEmitInvocation: adapter.emitInvocation,
+        producerCount: adapter.turns.length,
+        request: request ?? null,
+        started: started ?? null,
+      });
+      if (image !== lastImage) {
+        lastImage = image;
+        process.stdout.write(
+          `\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_BEGIN>>>\n${image}\n<<<STATION_DELIVERY_ATTRIBUTION_JSON_END>>>\n`,
+        );
+      }
+      expect(sent.status, responseBody).toBe(200);
+      expect(adapter.turns).toHaveLength(1);
+      expect(typeof request?.invocationId).toBe('string');
+      expect(request?.invocationId).not.toBe('');
+      expect(started).toBeDefined();
+      expect(started).not.toHaveProperty('invocationId');
+      expect(started).not.toHaveProperty('clientTurnId');
     });
   });
 

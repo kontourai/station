@@ -2342,14 +2342,14 @@ export const webPushSends = meter.createCounter('station.web_push.sends', {
 /**
  * `/api/orchestration/events` connect/disconnect lifecycle, by op
  * (`connect`/`disconnect`) — backs `OrchestrationStreamPresence`'s
- * per-user live-subscriber count, which the push-on-completion gate below
- * queries to decide whether anyone is actually watching a session.
+ * per-user live-subscriber count (no longer a notification gate; see
+ * `turn-completion-notifications.ts`).
  */
 export const orchestrationStreamPresenceOps = meter.createCounter(
   'station.orchestration.stream_presence_ops',
   {
     description:
-      'Orchestration /events SSE connect/disconnect lifecycle events backing the per-user presence gate',
+      'Orchestration /events SSE connect/disconnect lifecycle events backing per-user stream presence',
   },
 );
 
@@ -2382,13 +2382,12 @@ export const connectedClientPresenceOps = meter.createCounter(
 /**
  * A turn's completion/abort notification-scheduling decision, by outcome
  * (`done`/`failed`, omitted for an `error` result) and gate result
- * (`scheduled` when nobody was watching, `skipped_connected` when the
- * owning user had a live stream open, `skipped_no_recipient` when the
- * session has no owner who may read it, `error` when the listener's own
- * defensive try/catch caught a throw — see `turn-completion-notifications.ts`).
- * Only a `scheduled` decision ever reaches `NotificationService.schedule`
- * (and, via the notification delivery router's Web Push channel, a Web Push
- * send).
+ * (`scheduled`, `skipped_no_recipient` when the session has no owner who
+ * may read it, `skipped_external` for a read-only attached session, the
+ * listener's other `skipped_*` reasons, `error` when its own defensive
+ * try/catch caught a throw — see `turn-completion-notifications.ts`).
+ * Only `scheduled` reaches `NotificationService.scheduleEnveloped`; the
+ * delivery router then decides each surface (focus, preferences).
  */
 export const turnCompletionNotificationOps = meter.createCounter(
   'station.orchestration.turn_completion_notification_ops',

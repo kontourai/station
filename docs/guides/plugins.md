@@ -134,6 +134,7 @@ Common fields:
 |-------|------|----------|-------------|
 | `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
+| `telemetry` | PublisherTelemetryDeclaration | no | Bounded publisher analytics declaration. Agent Plugins puts it in the Station extension; install requires a signed, verified public registry identity. See [Publisher analytics](#publisher-analytics). |
 | `sdkVersion` | string | no | Semver range of `@kontourai/station-sdk` required |
 | `displayName` | string | no | Human-readable name shown in UI |
 | `description` | string | no | Short description |
@@ -623,8 +624,11 @@ Use the documented SDK root or owning subpath. Key root hooks:
   contributed that Agent.
 - `useSendMessage()` sends to the active conversation; `useCreateChatSession()`
   and `useOpenConversation()` start or reopen one in the chat dock.
-- `useConversations()`, `useConversation(id)` and
-  `useConversationMessages(id)` read conversations.
+- `useConversations()` reads the default host's captured conversation list; its
+  Agent argument is not forwarded by Station's adapter. `useConversation(id)`
+  and `useConversationMessages(id)` require custom-host slots that Station's
+  default adapter does not supply. Use an explicitly supported query/client
+  operation for a protected read; see the [default host bindings](../reference/sdk.md#default-host-bindings-and-custom-hosts).
 
 <!-- compile-checked: examples/docs-snippets/src/plugins-agents-and-chat.tsx -->
 ```tsx
@@ -726,6 +730,10 @@ message; the host answers on the same channel.
 | `pane-host/confirm` `{ id, title, message }` | `confirm` | `pane-host/confirm-result` `{ id, decision }` |
 | `pane-host/facts` | `facts.subscribe` | `pane-host/facts-changed` `{ facts }`, now and on every change |
 | `pane-host/present-unavailable` `{ reason }` | `presentUnavailable` | none |
+| `pane-host/related-open` `{ id, request }` | `relatedPanes.open` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-reveal` `{ id, handle }` | `relatedPanes.reveal` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-close` `{ id, handle }` | `relatedPanes.close` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-target` `{ id }` | `relatedPanes.target` | `pane-host/related-result` `{ id, data }` |
 
 `target` accepts the documented path string above, or a typed target —
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
@@ -744,17 +752,28 @@ Three things are worth knowing before writing against it:
   then one every thirty seconds — the same shape as navigation, for the same
   reason: a full-screen dialog you must answer is the most expensive attention
   a pane can spend, and a pane cannot buy more of it by running in a frame.
+- **Related panes answer every request, with a value.** `relatedPanes` is
+  optional: a placement without it answers each related request
+  `{ status: 'unavailable', reason: 'unsupported' }`, and an older host
+  refuses the method by name. Use `createRelatedPanesPaneHost` (see
+  [Related panes](../reference/sdk.md#related-panes)) rather than the raw
+  messages; the frame tier shares the direct tier's budget and refusals.
 - **An unrecognised or malformed `pane-host/*` message is refused, not
   ignored.** The host replies `pane-host/refused` `{ method, reason, id? }`.
   Silence is how two earlier plugin capabilities stayed broken for months.
 
 ### Config
 
-```tsx
-import { useConfig } from '@kontourai/station-sdk';
+Station's default host supplies `useApiBase()` but does not bind the optional
+`useConfig()` slot. For a server configuration read, use `useConfigQuery()` and
+handle its loading, error and authorization result. A custom host may supply
+the compatibility slot explicitly; export presence alone does not enable it.
 
-const config = useConfig();
-// config.region, config.defaultModel, config.invokeModel, ...
+```tsx
+import { useConfigQuery } from '@kontourai/station-sdk';
+
+const config = useConfigQuery();
+// Read config.data only after this query succeeds.
 ```
 
 ### Notifications
@@ -770,12 +789,11 @@ showToast({ type: 'info', message: 'FYI' });
 
 ### Workflows & Slash Commands
 
-```tsx
-import { useWorkflows, useSlashCommands, useSlashCommandHandler } from '@kontourai/station-sdk';
-
-const workflows = useWorkflows();
-const commands = useSlashCommands();
-```
+`useWorkflows()`, `useSlashCommands()` and `useSlashCommandHandler()` are
+optional custom-host slots. Station's default plugin adapter does not supply
+them, so calling them there throws. For an Agent workflow catalog read, use
+`useAgentWorkflowsQuery(agentSlug)`; this query does not register or execute a
+slash command. See the [SDK hook boundaries](../reference/sdk.md#workflow-hooks).
 
 ### Query Hooks
 
@@ -822,23 +840,18 @@ operations throw; it does not return the outer `success`/`response` envelope.
 
 ### Server-Side Fetch Proxy
 
-For external HTTP calls from plugin UI (requires `network.fetch` permission):
+`useServerFetch()` is exported but is not a working production proxy in the
+current Station host. Its legacy plugin-name getter is empty, so it calls
+`POST /api/plugins/fetch`, which returns 403. The named
+`POST /api/plugins/:name/fetch` route also refuses after checking grants, until
+plugin execution identity can be verified. Declaring `network.fetch` does not
+enable either route.
 
-```tsx
-import { useServerFetch } from '@kontourai/station-sdk';
-
-const serverFetch = useServerFetch();
-const result = await serverFetch('https://api.example.com/data', {
-  method: 'GET',
-  headers: { Authorization: 'Bearer ...' },
-});
-// result: { status: number, contentType: string, body: string }
-// A proxy response with success: false throws; handle errors at the call site.
-```
-
-The [hook implementation](../../packages/sdk/src/hooks/operations.ts) returns
-the callable directly and strips the proxy's `success` field from a successful
-result.
+The CLI preview server has its own bounded development proxy; its success does
+not establish production support. See the [SDK refusal contract](../reference/sdk.md#utility-hooks),
+[hook](../../packages/sdk/src/hooks/operations.ts),
+[legacy identity getter](../../packages/sdk/src/api-core.ts), and
+[production route](../../src-server/routes/plugins/plugin-public-routes.ts).
 
 ### Layout Providers
 
@@ -1782,10 +1795,30 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-A remote Station's extensions are off until this device explicitly consents.
-That is a normal trust setting, not a workspace-wide failure banner. The
-Extensions screen explains it and offers Enable remote extensions, with the
-existing warning about app-wide authority before consent is stored.
+Native clients require this device's explicit loading consent for a saved
+Station, including one reached over a loopback address. An injected or
+owner-managed profile needs that consent when its API origin is not HTTP
+loopback. A blocked pane or layout offers **Review and enable** in place.
+Plugin previews with a client bundle or declared entrypoint explain that installation
+can proceed while custom code stays off; built-in views still work. The staged
+preview reports bundle presence separately from its manifest. The review names
+the Station and its origin. Code loaded into the app has app-wide authority.
+Saved remote profiles that are neither injected nor owner-managed use separate
+plugin frames in the native app. Their native security boundary is not
+qualified; the review says to treat that code as having access to app data,
+native features and saved credentials. Injected and owner-managed profiles
+load custom code inside the app. This remains an explicit
+opt-in, not a claim that frame isolation is verified. Dependency-only client code
+may first offer review when its blocked view opens; preview bundle metadata
+currently describes the staged root plugin.
+
+Manage access in **Stations → current Station details → Extensions**, or from
+Registry. **Turn off extensions** removes the stored permission, verifies the
+removal, then reloads the window. Failed persistence stays in the review and
+does not report success. A Station switch while review is open cancels admission;
+permission is never rebound to the newly selected Station. Consent remains bound
+to the saved connection and its exact origin. These controls do not install a
+plugin or grant its server-side permissions.
 
 A failed inventory or bundle load produces a notification linking to Extensions.
 The screen retains the failure message and Retry extensions until the registry
@@ -1794,7 +1827,123 @@ with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
-These presentation changes do not enable bundles or alter consent storage,
-origin binding, plugin permissions or native bridge authority.
+Loading rules, consent storage and origin binding stay unchanged. These
+controls do not grant server-side plugin permissions or narrow the native
+bridge authority explained by the consent dialog.
+
+
+## Publisher analytics
+
+Station owns publisher consent and delivery. Declare analytics only in a signed
+package installed from a public registry. The operator must classify its catalog
+source key in `publicTelemetryRegistries`, and the existing applied registry trust
+policy must verify the package signature. A trusted signature alone does not
+classify a private catalog as public. The declaration's `publisher` must equal the
+verified public registry item ID. Unsigned, private, direct-source and unverified
+installs with telemetry are rejected before activation with an install diagnostic.
+
+Agent Plugins 1.0 puts the declaration in the Station extension:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "writer",
+  "version": "1.0.0",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "telemetry": {
+        "publisher": "writer",
+        "endpoint": "https://publisher.example.test/counts",
+        "events": {
+          "opened": {
+            "properties": {
+              "surface": ["main", "dock"],
+              "items": { "countBuckets": [0, 1, 3, 10] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The same `PublisherTelemetryDeclaration` contract can be used by a future
+distribution manifest; distribution manifest loading is still designed, not built.
+Legacy manifests may declare `telemetry` at the root, but the current signed
+registry acquisition path supports Agent Plugins 1.0 only. Prefer that format.
+
+Declarations allow at most 16 events, 8 properties per event, 16 enum values or
+count boundaries per property, and 256 total property-value cells. Event, property
+and enum tokens are lowercase ASCII identifiers up to 48 characters. There are no
+free-text properties. `countBuckets` must start at zero, increase strictly and end
+at or below 65,535; input values are integers from 0 to 65,535. For the example,
+2 becomes `2-3`, 9 becomes `4-10`, and 11 becomes `11+`. The HTTPS destination
+cannot contain credentials, a query or a fragment. Non-public literals (including loopback, private, link-local and metadata addresses) are rejected at parse time. Every DNS answer is checked before each send, and the TLS connection is pinned to a validated address. Redirects are refused. Every count supplies exactly
+the declared properties; undeclared names/values and extra fields are rejected.
+
+In a Pane, `const telemetry = useTelemetry()` provides
+`await telemetry.count('opened', { surface: 'main', items: 2 })`. See the
+[SDK reference](../reference/sdk.md#plugin-publisher-counts) for non-React callers.
+The kernel sends; this API gives the plugin no transport to its endpoint. It does
+not restrict other networking performed by separately trusted plugin code.
+
+Publishers are namespaced as `publisher:<24 hex registry-key digest>/writer` so identical item IDs in different registries have separate state and consent. Third-party plugin publishers default **Off**. The notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone never enables sending. After an explicit Lite choice and its current notice,
+its receiver gets at most one `plugin_daily` v1 ping for the completed previous
+UTC day. Each declared event has a total count and separate property-value
+histograms, with counts bucketed as `0`, `1`, `2-3`, `4+`. These are marginal
+histograms, never cross-property combinations. Zero cells are included. Pings
+carry a random deduplication event ID, publisher, schema/data and inventory
+revisions. Station adds no installation ID, raw date, timestamp or cross-day key. The content is plugin-chosen within the declared inventory and can encode a stable identifier, so plugin Lite is not identifier-free.
+Days without collection and older offline days are not backfilled. Attempts are
+reserved before network I/O and are not retried, so network loss can reduce totals.
+
+Full additionally requires that publisher's own current inventory/destination
+acknowledgement and an explicit user Full choice. Each flush sends one `plugin_events` batch containing `plugin_event` v1 records
+with the declared event and bucketed properties, random event ID, server timestamp,
+revisions and a publisher-specific monthly hash of the existing random installation
+secret. Full is pseudonymous. Receivers must not treat monthly hashes as people.
+Inventory or destination changes invalidate receipts and discard old accumulators.
+Uninstall retires pending counts and receipts; reinstall does not revive them.
+
+`DO_NOT_TRACK` except empty/0 forces Off. Operator
+`telemetryPublisherPolicy` may lower defaults to Off; Lite/Full policy values never
+raise the plugin Off default. Explicit user choices take precedence. Distributions cannot
+hide, rebrand or restyle kernel consent surfaces. Status, choices, disclosures and
+the 30-day/5-MiB outbox use the same kernel APIs as built-in publishers. An uninstall
+request may carry `?telemetryFeedbackReason=not-useful` (or another fixed reason
+from the [telemetry reference](../reference/usage-telemetry.md)); it sends only to
+that publisher before removal, at most once per publisher per UTC day. Skip or an
+omitted reason sends nothing; Off and DNT suppress plugin feedback. Already transmitted bodies
+cannot be recalled.
+
+The shared [plugin_daily parser](../../packages/shared/src/plugin-telemetry.ts) is
+available for receiver authors. The Station broker does not yet accept this
+contract. A direct HTTPS receiver sees network metadata, including source IP;
+these shapes do not establish network unlinkability or aggregate-only reception.
+
+The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its
+plugin, namespaced publisher, installation and declaration revision. `useTelemetry()`
+uses that capability; `x-station-plugin` cannot authorize counts. Agent principals
+cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a
+tier, acknowledge Full, or write an opt-in/notice receipt.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. It can also mint tokens under another plugin’s name to evict that
+plugin’s live tokens within the 16-token limit. Distinct-origin isolation is tracked
+in [#3826](https://github.com/kontourai/station/issues/3826).
+
+Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

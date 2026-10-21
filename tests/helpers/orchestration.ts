@@ -768,17 +768,18 @@ export async function emitMockOrchestrationEvent(
 /**
  * Opens Settings the way the shell now offers it.
  *
- * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer.
- * On a phone the avatar — and therefore its menu — is hidden instead, and the
- * header carries no Settings gear either: Settings lives in the sidebar
- * drawer's footer (`ProjectSidebarFooter`), so this takes whichever route the
- * running breakpoint actually offers rather than assuming one.
+ * #1552 D1 folded "Open settings" into the account menu, whose trigger is
+ * the sidebar footer's account control beside Live work. On a desktop that
+ * footer is on screen (expanded or as the collapsed rail); on a phone it is
+ * inside the closed drawer, whose footer also carries a Settings button, so
+ * this takes whichever route the running breakpoint actually offers rather
+ * than assuming one.
  *
- * The avatar branch is deliberately a real click through the real menu: it is
- * the only end-to-end coverage of the route D1 introduced, and a spec that
- * reached Settings by chord would pass with that menu completely broken. The
- * drawer branch is the same idea: a real open of the drawer plus the real
- * footer button, so a spec fails if either stops existing.
+ * The account branch is deliberately a real click through the real menu: it
+ * is the only end-to-end coverage of that route, and a spec that reached
+ * Settings by chord would pass with the menu completely broken. The drawer
+ * branch is the same idea: a real open of the drawer plus the real footer
+ * button, so a spec fails if either stops existing.
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
   const avatar = page.getByRole('button', { name: 'Profile and settings' });

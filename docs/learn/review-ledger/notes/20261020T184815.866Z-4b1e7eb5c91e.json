@@ -1,0 +1,7 @@
+{
+  "revision": "383d316f7ca72eae4e34fdd87eebff5f058f80fd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Corrective source-consistency review at 383d316f7ca72eae4e34fdd87eebff5f058f80fd: Corrected exactly three current/disclaimer Agent SDK version literals from 0.3.300 to 0.3.302. The actual root manifest range is ^0.3.302, the root lock importer resolves 0.3.302, and the installed SDK package reports 0.3.302. Read its sdk.d.ts declarations for omitted settingSources (all filesystem sources), [] isolation and project CLAUDE.md description, and requestId/decisionReason/matchedAskRule. This is an installed declaration read, not a typecheck, SDK execution, live provider or permission-precedence probe. The earlier 7dcde783 review note and its 38-note file remain append-only at their original context; its characterization of the current 0.3.300 wording as only historical was incomplete and is corrected by this note. Dated SDK0.3.224/0.3.289 and CLI2.1.224/2.1.278 observations, all other guide bytes, existing assertions of unknown permission/approval/native behavior, and every human record/state/check/limit/citation/baseline/capture remain unchanged. No historical probe is retroactively rerun or promoted, and no whole-page or live enforcement qualification is claimed. Actual default/history recorder inputs select only this document body for this corrective note; no outstanding cited-source input or new direct dependent was found.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

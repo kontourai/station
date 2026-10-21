@@ -47,6 +47,7 @@ export type {
   WorkspacePaneProvenance,
   WorkspacePaneProvenanceOrigin,
   WorkspacePaneRegion,
+  WorkspacePaneRelationRole,
   WorkspacePaneRendererCandidate,
   WorkspacePaneRendererCapability,
   WorkspacePaneRendererId,
@@ -129,6 +130,25 @@ export type {
   AgentId,
   QualifiedPluginAgentId,
 } from '@kontourai/station-contracts/agent-identity';
+// Plain-data shapes the host-service hooks above take and return.
+export type {
+  ShortcutBinding,
+  ShortcutModifier,
+} from '@kontourai/station-contracts/device-settings';
+export type {
+  PaneConfirmDecision,
+  PaneConfirmRequest,
+  PaneHostFacts,
+  PaneRelatedPanesHost,
+  RelatedPaneCloseOutcome,
+  RelatedPaneOpenOutcome,
+  RelatedPaneOpenRequest,
+  RelatedPanePresentation,
+  RelatedPaneRevealOutcome,
+  RelatedPaneTarget,
+  RelatedPaneUnavailable,
+  RelatedPaneUnavailableReason,
+} from '@kontourai/station-contracts/workspace-pane-host-contract';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
 // Re-export utility functions
@@ -298,6 +318,9 @@ export {
   // Chat operations
   useCreateChatSession,
   useDockState,
+  // Host services and facts
+  useHost,
+  useHostFacts,
   // Keyboard shortcuts
   useKeyboardShortcut,
   useKeyboardShortcuts,
@@ -325,11 +348,14 @@ export {
   useSendToChat,
   // Server-side fetch proxy
   useServerFetch,
+  useShortcut,
+  useShortcutScope,
   // Slash commands
   useSlashCommandHandler,
   useSlashCommands,
   // Statistics
   useStats,
+  useTelemetry,
   // Toast notifications
   useToast,
   // Tool approval
@@ -346,8 +372,17 @@ export type {
   SDKAuthContext,
   SDKAuthState,
   SDKAuthUser,
+  SDKHost,
+  SDKHostContext,
   SDKNavigation,
   SDKNavigationContext,
+  SDKPromptRequest,
+  SDKShortcut,
+  SDKShortcutHostContextKey,
+  SDKShortcutRefusalReason,
+  SDKShortcutRegistration,
+  SDKShortcutsContext,
+  SDKShortcutWhen,
   SDKToast,
   SDKToastContext,
   ToastAction,
@@ -408,6 +443,7 @@ export {
   analyzeFeedback,
   answerShareQueries,
   applyCoreUpdate,
+  applyServerUpdateStateEvent,
   approveProposedChange,
   type BindProjectResourceVariables,
   type BoardAvailability,
@@ -697,6 +733,9 @@ export {
   requestCoreUpdateStatus,
   requestPluginRecoveryPreview,
   requestPluginRegistryInstallAction,
+  requestServerUpdateAction,
+  requestServerUpdateRunningTurns,
+  requestServerUpdateState,
   requestServiceUpdateProgress,
   requestSystemIdentity,
   requestSystemStatus,
@@ -715,6 +754,7 @@ export {
   runsQueries,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type ServerCapabilities,
+  type ServerUpdateAction,
   type SessionBoardItem,
   type SessionBoardLifecycleState,
   type SessionBuilderRunView,
@@ -747,6 +787,7 @@ export {
   type SystemStatus,
   saveFeedbackRating,
   sendOrchestrationTurn,
+  serverUpdateStateQueryKey,
   setOrchestrationApprovalMode,
   setStationPersonGroup,
   shouldRetryLayoutCatalog,
@@ -911,7 +952,11 @@ export {
   useFlowRunsQuery,
   useForceRefetchSystemStatus,
   useGenerateSessionSummaryMutation,
+  useGitBranchesQuery,
+  useGitCheckoutMutation,
+  useGitCommitMutation,
   useGitLogQuery,
+  useGitPushMutation,
   useGitStatusQuery,
   useGlobalKnowledgeStatusQuery,
   useImportAppHomeSnapshotMutation,
@@ -973,6 +1018,7 @@ export {
   useOrchestrationCommandReceiptQuery,
   useOrchestrationCommandReceiptsQuery,
   useOrchestrationProvidersQuery,
+  useOrchestrationSessionActivityQuery,
   useOrchestrationSessionQuery,
   useOrchestrationSessionsQuery,
   useOwnAccessTokensQuery,
@@ -1033,6 +1079,7 @@ export {
   useRenameConversationMutation,
   useRenewAuthMutation,
   useReorderProjectsMutation,
+  useReposQuery,
   useResetUsageStatsMutation,
   useResolveDiffCommentMutation,
   useResolveIndeterminateJobMonitor,
@@ -1058,6 +1105,9 @@ export {
   useSchedulerStatus,
   useSearchKnowledgeIndexMutation,
   useServerCapabilitiesQuery,
+  useServerUpdateActionMutation,
+  useServerUpdateRunningTurnsQuery,
+  useServerUpdateStateQuery,
   useServiceUpdateProgressQuery,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
@@ -1242,8 +1292,15 @@ export {
 // of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
 export type {
+  DiscoveredRepo,
+  GitBranch,
+  GitCheckoutResult,
+  GitCommitResult,
+  GitPushResult,
   GitReadLocation,
   GitStatusResult,
+  ReposLocation,
+  ReposResult,
 } from './query-domains/projectData.js';
 export {
   adoptCommittedProjectTaskRoomDocument,
@@ -1329,6 +1386,12 @@ export {
   orchestrationQueries,
   taskQueries,
 } from './queryFactories';
+// Related panes (docs/design/pane-relationships.md): what a direct plugin
+// pane calls. On the root because the root is the module Station shares with
+// plugin bundles at runtime, so the hook reads the host's own SDK context; a
+// sandboxed frame uses `createRelatedPanesPaneHost` from the Pane subpath.
+export { type RelatedPanes, UNSUPPORTED_RELATED_PANES } from './related-panes';
+export { useRelatedPanes } from './related-panes-hook';
 export {
   type AttentionRequestInspection,
   type AttentionRequestReference,
@@ -1364,7 +1427,7 @@ export {
   useStarterWorkObservationQuery,
   useStarterWorkQuery,
 } from './starter-work';
-export { telemetry } from './telemetry';
+export { createPluginTelemetry, telemetry } from './telemetry';
 export * from './types';
 export {
   unifiedSearchQueries,

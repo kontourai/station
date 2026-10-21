@@ -241,6 +241,28 @@ export function pairingScopeSatisfiesHttpRoute(
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
+/**
+ * The telemetry ingest leaves `createOtlpReceiverRoutes` mounts. The only
+ * routes a telemetry producer token is admitted on, and only with POST.
+ */
+const TELEMETRY_INGEST_PATHS = [
+  '/v1/agent-events',
+  '/v1/logs',
+  '/v1/traces',
+] as const;
+
+/**
+ * Whether a request is telemetry ingest, matched exactly: no prefix, no
+ * trailing slash, POST only. A producer token presented anywhere else is not
+ * recognized as a credential at all.
+ */
+export function isTelemetryIngestRoute(method: string, path: string): boolean {
+  return (
+    method.toUpperCase() === 'POST' &&
+    (TELEMETRY_INGEST_PATHS as readonly string[]).includes(path)
+  );
+}
+
 export interface PairingScopeRouteRule {
   readonly id: string;
   readonly method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | '*';
@@ -427,6 +449,15 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  // This leaf mints a mounted plugin capability, rather than ingesting events.
+  // Standard paired clients must not create credentials for another plugin.
+  {
+    id: '/api/telemetry/panes:manage',
+    method: 'POST',
+    prefix: '/api/telemetry/panes',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/account-usage:manage',
     method: '*',
@@ -673,6 +704,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/usage-telemetry/disclosure/acknowledgements:manage',
     method: 'POST',
     prefix: '/api/usage-telemetry/disclosure/acknowledgements',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/feedback:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/lite-notices:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/lite-notices',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -1341,6 +1386,32 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/shares:manage',
     method: '*',
     prefix: '/api/shares',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Telemetry ingest. A paired credential with the operate tier keeps the
+  // access it had through the `/v1` family. These leaves ALSO admit a
+  // telemetry producer token, the one credential that works nowhere else:
+  // see {@link isTelemetryIngestRoute} and the producer seam in
+  // `runtime-http.ts`. Exact, so a future `/v1/*` leaf is not ingest.
+  ...TELEMETRY_INGEST_PATHS.map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:POST:telemetry-ingest`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Telemetry producer management mints and revokes ingest credentials.
+  // Same ceiling as the other credential managers (`/api/shares`,
+  // `/api/secret-bindings`); the handlers additionally refuse every caller
+  // but the Station operator.
+  {
+    id: '/api/telemetry-producers:manage',
+    method: '*',
+    prefix: '/api/telemetry-producers',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -2701,6 +2772,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
+    { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
+    { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
@@ -3690,7 +3763,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // files: no other Station's or Environment's data, nothing written. The
     // /api/system read tier, like the restart-status leaf above.
     { method: 'GET', path: '/api/system/core-update/service-update' },
+    // #3851: the server's own update state (the same install facts the
+    // service-update leaf reads, plus its last release check and intent),
+    // and the running turns a restart would interrupt, listed only as far
+    // as the caller may read those sessions.
+    { method: 'GET', path: '/api/system/core-update/state' },
+    { method: 'GET', path: '/api/system/core-update/running-turns' },
     { method: 'POST', path: '/api/system/core-update' },
+    // #3851: set or cancel applying the downloaded update once no turn runs;
+    // the same authority as applying it now (the POST above).
+    { method: 'PUT', path: '/api/system/core-update/apply-when-idle' },
+    { method: 'DELETE', path: '/api/system/core-update/apply-when-idle' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
     { method: 'GET', path: '/api/system/instance' },
@@ -3867,9 +3950,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/scheduler/status' },
     { method: 'POST', path: '/scheduler/webhook' },
     { method: 'POST', path: '/tool-approval/:approvalId' },
-    { method: 'POST', path: '/v1/agent-events' },
-    { method: 'POST', path: '/v1/logs' },
-    { method: 'POST', path: '/v1/traces' },
     // archive#1131 review round 1 (HIGH): `createPluginRoutes`
     // (`plugins.ts`) composes five sibling route files by handing each a
     // shared local `const app = new Hono()` — invisible to the scan until

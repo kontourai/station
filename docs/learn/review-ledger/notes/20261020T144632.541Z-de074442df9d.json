@@ -1,0 +1,7 @@
+{
+  "revision": "4851c6121c6b0af61e0be66fd21d01513713e05a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3800 fix round: the execution-confinement.ts change is doc-comment only (confinement_workspace_incompatible also covers unaccounted engine configuration). The refusal-code table here (code, failure kind permission_denied, not retriable) is unchanged and still accurate against provider-failure.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/execution-confinement.ts"]}
+  ]
+}

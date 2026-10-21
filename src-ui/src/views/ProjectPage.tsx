@@ -16,6 +16,7 @@ import { Button } from '../components/Button';
 import { HomeStartComposer } from '../components/home/HomeStartComposer';
 import { BranchGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
+import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
@@ -198,6 +199,7 @@ function ProjectOperatorPage({
   project: ProjectConfig;
 }) {
   const { setLayout, setConversation, navigate } = useNavigation();
+  const extensionAccess = useStationExtensionsAccess();
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
   // and render the empty state for a project that has layouts.
@@ -483,6 +485,7 @@ function ProjectOperatorPage({
           onRetry={() => void layoutCatalog.refetch()}
           onAddLayout={addLayout}
         />
+        {extensionAccess.dialog}
         <ProjectWorkspacePaneModal
           show={showAddPane}
           entries={paneCatalog.entries}
@@ -494,10 +497,7 @@ function ProjectOperatorPage({
           onSelect={openPane}
           onAction={handlePaneAction}
           canExecuteAction={canExecutePaneAction}
-          // The removed page grid was the only surface that supplied this, and
-          // without it a card whose availability names the Registry falls back
-          // to a bounded action instead of the navigation that resolves it.
-          onReviewInRegistry={() => navigate('/registry')}
+          onReviewExtensions={extensionAccess.review}
           onClose={() => setShowAddPane(false)}
         />
       </div>

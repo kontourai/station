@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import {
   type ClientOrigin,
+  clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -49,6 +50,7 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -70,6 +72,7 @@ import {
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
+  type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
 import {
   SESSION_START_INDETERMINATE_CODE,
@@ -605,6 +608,7 @@ export function buildOrchestrationSessionSummary(options: {
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
+    (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
     (options.conversationFirstPromptedTurn
       ? extractDisplayTitle([options.conversationFirstPromptedTurn])
       : undefined) ??
@@ -900,26 +904,34 @@ function extractModelSelectionReceipt(
  * projecting their full prompts. Only the first meaningful user turn is
  * considered, and injected timezone context is removed before bounding.
  */
-function extractDisplayTitle(
+export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   for (const event of events) {
     if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
       continue;
     }
-    const normalized = event.prompt
-      .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!normalized) continue;
-    const codePoints = Array.from(normalized);
-    if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
-    return `${codePoints
-      .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
-      .join('')
-      .trimEnd()}…`;
+    const prompt = clientOriginSender(event.clientOrigin)
+      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
+      : event.prompt;
+    const title = displayPromptTitle(prompt);
+    if (title) return title;
   }
   return undefined;
+}
+
+function displayPromptTitle(prompt: string): string | undefined {
+  const normalized = prompt
+    .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return undefined;
+  const codePoints = Array.from(normalized);
+  if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
+  return `${codePoints
+    .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
+    .join('')
+    .trimEnd()}…`;
 }
 
 function effectiveModelBoundary(event: CanonicalRuntimeEvent): {
@@ -1360,6 +1372,11 @@ function extractTerminalTurnAt(
     const event = events[index];
     if (!event) continue;
     if (turnId && event.turnId && event.turnId !== turnId) continue;
+    if (
+      events[latestStart]?.invocationId !== undefined &&
+      event.invocationId !== events[latestStart]?.invocationId
+    )
+      continue;
     if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
@@ -1863,6 +1880,18 @@ export async function startRecoveredOrchestrationSession(options: {
  * That second half is not optional: without it every restored session would
  * fail its first use with `No provider session found for thread`.
  */
+/** Only a completed pass certifies which durable targets could not be observed. */
+export interface AttachedSessionRecoveryObservation {
+  readonly scanObserved: boolean;
+  readonly failedTargets: ReadonlyMap<
+    string,
+    {
+      readonly provider: string;
+      readonly reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >;
+}
+
 export async function recoverOrchestrationSessions(options: {
   adapterRegistry: IProviderAdapterRegistry;
   eventStore?: EventStore;
@@ -1885,13 +1914,20 @@ export async function recoverOrchestrationSessions(options: {
   ) => TenantExecutionContext | undefined;
   /** Removes an invalid persisted row from every in-memory read/publish path. */
   quarantineSession?: (session: ProviderSession) => void;
-}): Promise<void> {
+}): Promise<AttachedSessionRecoveryObservation> {
   const persistedSessions = options.eventStore?.readSessions() ?? [];
   // archive#1101: threadIds this pass restored — quarantined,
   // read-only-attached, already-closed/dead, and no-adapter sessions are
   // skipped and never appear in the 'session.recovery.completed' milestone
   // this function publishes once the whole pass finishes.
   const restoredThreadIds: string[] = [];
+  const failedTargets = new Map<
+    string,
+    {
+      provider: string;
+      reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >();
   for (const session of persistedSessions) {
     // Validate BEFORE every recovery escape hatch. In particular, an attached
     // session used to be tracked and published before this check, allowing an
@@ -1904,6 +1940,10 @@ export async function recoverOrchestrationSessions(options: {
           )
         : session.tenantExecutionContext;
     if (options.requireTenantExecutionContext?.() && !tenantExecutionContext) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'quarantined',
+      });
       options.quarantineSession?.(session);
       options.eventStore?.markSessionClosed(session.threadId, session.provider);
       options.logger.warn(
@@ -1932,7 +1972,13 @@ export async function recoverOrchestrationSessions(options: {
     // rows have never entered the in-memory read model and this change is
     // not the place to start.
     const adapter = options.adapterRegistry.get(session.provider);
-    if (!adapter) continue;
+    if (!adapter) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'missing-adapter',
+      });
+      continue;
+    }
     restoredThreadIds.push(session.threadId);
     // archive#3476: THIS is the whole recovery pass now. The session's state
     // is restored — it is listed, addressable, and resumable — and no engine
@@ -1956,6 +2002,10 @@ export async function recoverOrchestrationSessions(options: {
     try {
       if (await adapter.hasSession(session.threadId)) attachedAdapter = adapter;
     } catch (error) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'presence-failed',
+      });
       options.logger.warn(
         'Provider adapter could not report whether it still holds a recovered thread; treating it as not attached',
         {
@@ -1985,6 +2035,7 @@ export async function recoverOrchestrationSessions(options: {
     attemptedCount: restoredThreadIds.length,
     threadIds: restoredThreadIds,
   });
+  return { scanObserved: options.eventStore !== undefined, failedTargets };
 }
 
 function mapOrchestrationSessionState(
@@ -2043,7 +2094,7 @@ function deriveAgentRunStatus(options: {
   // terminal — it retains the last-started turn's id for the session's
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   for (const event of options.events) {
     switch (event.method) {
       case 'session.started':
@@ -2095,6 +2146,12 @@ function deriveAgentRunStatus(options: {
           agentRunStatusFromSessionState(event.sessionState) ?? 'running';
         break;
       case 'runtime.error':
+        if (
+          typeof turnIdentityAnchor === 'object' &&
+          (event.turnId !== undefined || event.invocationId !== undefined) &&
+          !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+        )
+          break;
         // UX audit AW-8 (live): the SAME rule as `session.exited` below, for
         // the route the audit actually reproduced. Killing a pooled Claude
         // Code engine after its turn had finished published
@@ -2295,12 +2352,18 @@ function extractRuntimeThreadId(resumeCursor: unknown): string | undefined {
 function findTerminalFailureEvent(
   events: CanonicalRuntimeEvent[],
 ): Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }> | undefined {
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
   for (const event of events) {
     if (event.method === 'runtime.error') {
+      if (
+        typeof turnIdentityAnchor === 'object' &&
+        (event.turnId !== undefined || event.invocationId !== undefined) &&
+        !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+      )
+        continue;
       lastFailure = event;
     } else if (
       (event.method === 'turn.completed' || event.method === 'turn.aborted') &&

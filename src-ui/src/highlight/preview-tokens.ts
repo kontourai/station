@@ -5,20 +5,36 @@
  * The preview does not take Shiki's HTML: it renders every token as a React
  * text node, so workspace content is never parsed as markup, and it keeps its
  * own per-line anchors, requested-line tint and wrap. Tokens therefore carry
- * only text and the github-dark foreground Shiki chose. The pane maps that
- * foreground onto Station's measured syntax rungs (`--syntax-*`), because the
- * theme's own pigments are dark-only and fail contrast on the light theme
- * (#2140).
+ * only text and the syntax role Shiki chose. The shared theme
+ * (`station-syntax-theme.ts`) spells every role as a Station variable, so a
+ * token's colour is already the measured rung (`var(--syntax-keyword)`,
+ * #2140) and follows the light theme and palette themes through the cascade.
+ * Ordinary text (`SYNTAX_FOREGROUND`) carries no colour and inherits.
  *
  * Entry-safe: type-only imports, no Shiki at runtime.
  */
 import type { HighlighterCore } from './core-highlighter';
-import { THEME } from './shared';
+import { SYNTAX_FOREGROUND, THEME } from './shared';
 
-/** One run of same-coloured text; `color` is an upper-case `#RRGGBB`. */
+/** One run of same-coloured text; `color` is a `var(--syntax-*)` role. */
 export interface PreviewToken {
   content: string;
   color?: string;
+}
+
+const SYNTAX_ROLE = /^var\(--syntax-[a-z]+\)$/;
+
+/**
+ * Whether `color` is a Station syntax role the pane may paint. Tokens cross a
+ * worker boundary and land in `style`, so anything else, including the plain
+ * foreground, renders as ordinary text.
+ */
+export function isPreviewSyntaxRole(color: string | undefined): boolean {
+  return (
+    color !== undefined &&
+    color !== SYNTAX_FOREGROUND &&
+    SYNTAX_ROLE.test(color)
+  );
 }
 
 export type PreviewTokenLine = PreviewToken[];
@@ -49,7 +65,7 @@ export function tokenizeForPreview(
   return lines.map((line) => {
     const merged: PreviewTokenLine = [];
     for (const token of line) {
-      const color = token.color ? token.color.toUpperCase() : undefined;
+      const color = isPreviewSyntaxRole(token.color) ? token.color : undefined;
       const previous = merged.at(-1);
       if (previous && previous.color === color) {
         previous.content += token.content;

@@ -1,7 +1,7 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
-import type { ClientOrigin } from './client-origin.js';
+import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type { InputRequestContent } from './input-request.js';
@@ -39,7 +39,7 @@ export type {
 export interface OrchestrationSendTurnInput
   extends Omit<
     ProviderSendTurnInput,
-    'recoveryCorrelationId' | 'reviewIsolation' | 'confinement'
+    'invocationId' | 'recoveryCorrelationId' | 'reviewIsolation' | 'confinement'
   > {
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
@@ -144,6 +144,14 @@ export type OrchestrationCommand =
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      /**
+       * Only with `acceptForSession`. `server` widens the session grant from
+       * the one tool to the whole in-process Station browser server, and only
+       * where the request offered it (an authentic `station-browser` call).
+       * Absent keeps the per-tool grant, so an older client's answer is
+       * unchanged. An engine that cannot honour it takes the per-tool grant.
+       */
+      sessionGrantScope?: 'server';
       /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
@@ -1391,6 +1399,15 @@ export interface OrchestrationSessionEventWindow {
   nextCursor?: string;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
+  /**
+   * Session's latest tool start in its latest turn, as of `watermark`,
+   * independent of the transcript window's event/byte caps. The name is at
+   * most 256 UTF-8 bytes. `null` means no usable bounded fact; absence means
+   * this read does not support the projection. Never use an event fallback
+   * for `null`, which also clears activity when a different turn starts.
+   * Re-announcing the same turn (steering) preserves that turn's last tool.
+   */
+  latestTool?: { turnId: string; name: string } | null;
 }
 
 /**
@@ -1643,6 +1660,7 @@ export interface ConversationInboxQueuedReceipt {
 
 /** Bounded agent-facing transcript rows; missing attribution stays unknown. */
 export interface ConversationReadMessage {
+  sender?: ClientOriginSender;
   index: number;
   id: string;
   role: 'user' | 'assistant' | 'system';

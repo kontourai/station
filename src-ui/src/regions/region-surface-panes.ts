@@ -1,3 +1,4 @@
+import { isCanonicalWorkspaceActivityReviewPaneInstance } from '@kontourai/station-contracts/workspace-activity-review-pane';
 /**
  * The pane each dock-capable surface is rendered as inside a region's pane
  * host (#2045, slice 1 of the tabbed dock; #2047 adds the coding panes).
@@ -101,6 +102,13 @@ import {
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import {
+  ACTIVITY_REVIEW_DESCRIPTOR_ID,
+  ACTIVITY_REVIEW_PANE_ID,
+  activityReviewInstance,
+  readActivityReviewPane,
+  removeActivityReviewPane,
+} from '../workspace-panes/activityReviewPane';
+import {
   createBrowserPreviewPaneInstance,
   isCanonicalBrowserPreviewPaneInstance,
 } from '../workspace-panes/browserPreviewPaneInstance';
@@ -117,6 +125,12 @@ import {
   readFilePreviewPaneState,
   removeFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneStateStorage';
+import {
+  PLUGIN_PANE_ID,
+  pluginPaneInstance,
+  readPluginPaneState,
+  removePluginPaneState,
+} from '../workspace-panes/pluginPaneOccurrence';
 
 /** What a region host knows when it builds its panes: the dock's project. */
 export interface RegionPaneContext {
@@ -150,8 +164,12 @@ export interface RegionSurfacePane {
    * which directory it reads). Absent: no tooltip.
    */
   tooltip?: string;
-  /** The descriptor the pane is an occurrence of (`pane:builtin:<surface>`). */
-  descriptorId: string;
+  /**
+   * The descriptor the pane is an occurrence of (`pane:builtin:<surface>`; a
+   * plugin occurrence's own plugin descriptor), or null for a plugin
+   * occurrence whose record is gone.
+   */
+  descriptorId: string | null;
   /**
    * The instance id every occurrence this entry mints carries — constant per
    * kind, whatever project it binds — so the region's tab strip can name the
@@ -195,7 +213,7 @@ function codingPane(
   instanceId: string,
   create: (projectId: string) => WorkspacePaneInstance | null,
   isCanonical: (instance: WorkspacePaneInstance) => boolean,
-): [string, RegionSurfacePane] {
+): [string, RegisteredRegionSurfacePane] {
   return [
     surfaceId,
     {
@@ -211,82 +229,89 @@ function codingPane(
   ];
 }
 
-export const REGION_SURFACE_PANES: ReadonlyMap<string, RegionSurfacePane> =
-  new Map<string, RegionSurfacePane>([
-    [
-      'chat',
-      {
-        surfaceId: 'chat',
-        descriptorId: WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
-        instanceId: AMBIENT_CHAT_PANE_INSTANCE.instanceId,
-        instance: () => AMBIENT_CHAT_PANE_INSTANCE,
-        // The predicate the chat-dock host used before it became the region
-        // host, unchanged: a persisted project-bound Chat under the same
-        // instance id is normalised to the projectless catalog record by
-        // `restoreWorkspacePaneHostDocument`'s catalog match, so admission
-        // needs no project rule of its own.
-        isCanonical: (instance) =>
-          instance.descriptorId === WORKSPACE_CHAT_PANE_DESCRIPTOR.id &&
-          isCanonicalWorkspaceChatPaneInstance(instance),
-      },
-    ],
-    [
-      'activity',
-      {
-        surfaceId: 'activity',
-        descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
-        instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceActivityPaneInstance,
-      },
-    ],
-    [
-      'workspace-agents',
-      {
-        surfaceId: 'workspace-agents',
-        descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
-        instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
-      },
-    ],
-    [
-      'device',
-      {
-        surfaceId: 'device',
-        descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
-        instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
-        // Ignores the context, like Chat, Activity and Agents, and for a
-        // reason of its own: the device list is a fact about the STATION's host, not
-        // about a checkout, so a Device pane renders in a dock with no
-        // project rather than showing "choose a project" for a question no
-        // project answers.
-        instance: () => WORKSPACE_DEVICE_PANE_INSTANCE,
-        isCanonical: isCanonicalWorkspaceDevicePaneInstance,
-      },
-    ],
-    codingPane(
-      'coding:terminal',
-      WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
-      createWorkspaceCodingTerminalPaneInstance,
-      isCanonicalWorkspaceCodingTerminalPaneInstance,
-    ),
-    codingPane(
-      'coding:diff',
-      WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_DIFF_PANE_INSTANCE_ID,
-      createWorkspaceCodingDiffPaneInstance,
-      isCanonicalWorkspaceCodingDiffPaneInstance,
-    ),
-    codingPane(
-      'coding:file-browser',
-      WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
-      WORKSPACE_CODING_FILE_BROWSER_PANE_INSTANCE_ID,
-      createWorkspaceCodingFileBrowserPaneInstance,
-      isCanonicalWorkspaceCodingFileBrowserPaneInstance,
-    ),
-  ]);
+/** A registered surface's pane, which always names its built-in descriptor. */
+export interface RegisteredRegionSurfacePane extends RegionSurfacePane {
+  descriptorId: string;
+}
+
+export const REGION_SURFACE_PANES: ReadonlyMap<
+  string,
+  RegisteredRegionSurfacePane
+> = new Map<string, RegisteredRegionSurfacePane>([
+  [
+    'chat',
+    {
+      surfaceId: 'chat',
+      descriptorId: WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
+      instanceId: AMBIENT_CHAT_PANE_INSTANCE.instanceId,
+      instance: () => AMBIENT_CHAT_PANE_INSTANCE,
+      // The predicate the chat-dock host used before it became the region
+      // host, unchanged: a persisted project-bound Chat under the same
+      // instance id is normalised to the projectless catalog record by
+      // `restoreWorkspacePaneHostDocument`'s catalog match, so admission
+      // needs no project rule of its own.
+      isCanonical: (instance) =>
+        instance.descriptorId === WORKSPACE_CHAT_PANE_DESCRIPTOR.id &&
+        isCanonicalWorkspaceChatPaneInstance(instance),
+    },
+  ],
+  [
+    'activity',
+    {
+      surfaceId: 'activity',
+      descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
+      instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceActivityPaneInstance,
+    },
+  ],
+  [
+    'workspace-agents',
+    {
+      surfaceId: 'workspace-agents',
+      descriptorId: WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_AGENTS_PANE_INSTANCE.instanceId,
+      instance: () => WORKSPACE_AGENTS_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceAgentsPaneInstance,
+    },
+  ],
+  [
+    'device',
+    {
+      surfaceId: 'device',
+      descriptorId: WORKSPACE_DEVICE_PANE_DESCRIPTOR.id,
+      instanceId: WORKSPACE_DEVICE_PANE_INSTANCE.instanceId,
+      // Ignores the context, like Chat, Activity and Agents, and for a
+      // reason of its own: the device list is a fact about the STATION's host, not
+      // about a checkout, so a Device pane renders in a dock with no
+      // project rather than showing "choose a project" for a question no
+      // project answers.
+      instance: () => WORKSPACE_DEVICE_PANE_INSTANCE,
+      isCanonical: isCanonicalWorkspaceDevicePaneInstance,
+    },
+  ],
+  codingPane(
+    'coding:terminal',
+    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_TERMINAL_PANE_INSTANCE_ID,
+    createWorkspaceCodingTerminalPaneInstance,
+    isCanonicalWorkspaceCodingTerminalPaneInstance,
+  ),
+  codingPane(
+    'coding:diff',
+    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_DIFF_PANE_INSTANCE_ID,
+    createWorkspaceCodingDiffPaneInstance,
+    isCanonicalWorkspaceCodingDiffPaneInstance,
+  ),
+  codingPane(
+    'coding:file-browser',
+    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+    WORKSPACE_CODING_FILE_BROWSER_PANE_INSTANCE_ID,
+    createWorkspaceCodingFileBrowserPaneInstance,
+    isCanonicalWorkspaceCodingFileBrowserPaneInstance,
+  ),
+]);
 
 /**
  * The renderer source each REGISTERED surface mounts, by surface id: the
@@ -318,12 +343,14 @@ export const REGION_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
  * dropped from the build), where it cost every user one there (#90 D9).
  */
 export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
+  'activity-review:': 'src-ui/src/workspace-panes/RegionActivityReviewPane.tsx',
   'pr:': 'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
   'file-preview:': 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
   'browser-preview:':
     'src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx',
   'board:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
   'layout:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
+  'plugin-pane:': 'src-ui/src/workspace-panes/RegionPluginPane.tsx',
 };
 
 /** The exact shape `createFilePreviewPaneInstance` mints its identity in. */
@@ -476,6 +503,37 @@ function layoutSurfacePane(surfaceId: string): RegionSurfacePane | undefined {
 }
 
 /**
+ * One plugin pane a related open minted (`PaneRelatedPanesHost`), resolved
+ * from its id and its stored record (`pluginPaneOccurrence.ts`). Like a file
+ * preview, an occurrence exists only while that record does and only under
+ * the dock's own Project. Whether the plugin may render it now is decided
+ * where it renders (`RegionPluginPane`), against the Project's catalog and
+ * the live plugin registry, never here.
+ */
+function pluginSurfacePane(surfaceId: string): RegionSurfacePane {
+  const storage = filePreviewStorage();
+  const state = storage ? readPluginPaneState(storage, surfaceId) : null;
+  const canonical = state ? pluginPaneInstance(surfaceId, state) : null;
+  return {
+    surfaceId,
+    descriptorId: state?.descriptorId ?? null,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    ...(state?.title ? { title: state.title } : {}),
+    instance: ({ projectId, projectSlug }) =>
+      state &&
+      state.projectId === projectId &&
+      state.projectSlug === projectSlug
+        ? canonical
+        : null,
+    isCanonical: (instance) =>
+      canonical !== null &&
+      String(instance.instanceId) === surfaceId &&
+      String(instance.stateKey) === surfaceId &&
+      instance.descriptorId === canonical.descriptorId,
+  };
+}
+
+/**
  * The pane a surface renders as in a region host, if it has one: a registered
  * surface's map entry, else the one occurrence an instance-keyed id names
  * (#2049). The prefixes here are the same ones `INSTANCE_SURFACE_PREFIXES`
@@ -501,6 +559,21 @@ export function regionSurfacePane(
     return browserPreviewSurfacePane(surfaceId);
   if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
     return layoutSurfacePane(surfaceId);
+  if (PLUGIN_PANE_ID.test(surfaceId)) return pluginSurfacePane(surfaceId);
+  if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId)) {
+    const state = filePreviewStorage();
+    const saved = state ? readActivityReviewPane(state, surfaceId) : null;
+    return {
+      surfaceId,
+      descriptorId: ACTIVITY_REVIEW_DESCRIPTOR_ID,
+      instanceId: toWorkspacePaneInstanceId(surfaceId),
+      ...(saved ? { title: saved.title } : {}),
+      instance: () => activityReviewInstance(surfaceId),
+      isCanonical: (instance) =>
+        String(instance.instanceId) === surfaceId &&
+        isCanonicalWorkspaceActivityReviewPaneInstance(instance),
+    };
+  }
   return undefined;
 }
 
@@ -519,6 +592,10 @@ export function forgetRegionPaneState(surfaceId: string): void {
       removeFilePreviewPaneState(storage, surfaceId);
     else if (BROWSER_PREVIEW_PANE_ID.test(surfaceId))
       removeBrowserPreviewPaneState(storage, surfaceId);
+    else if (PLUGIN_PANE_ID.test(surfaceId))
+      removePluginPaneState(storage, surfaceId);
+    else if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId))
+      removeActivityReviewPane(storage, surfaceId);
   } catch {
     /* per-device storage is optional */
   }

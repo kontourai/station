@@ -1,0 +1,9 @@
+{
+  "revision": "7d05d3a307762c7f7064a623fad7a4559fe505e9",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Rechecked against the #3851 review round: orchestration-service.ts only adds the read-only listActiveTurnThreadIds(); the request-inspection screen this capture shows reads none of it, so the capture is still accurate.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Rechecked against the #3851 review round: orchestration-service.ts only adds the read-only listActiveTurnThreadIds(); the request-inspection flow this recording shows reads none of it, so the recording is still accurate.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

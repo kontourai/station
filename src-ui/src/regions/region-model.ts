@@ -145,7 +145,7 @@ export function surfaceMayOccupy(
  * `preferred` one when that is empty, else the first empty region in the
  * fallback order.
  *
- * The fallback tries `right` BEFORE `bottom` (#2156). Only an EMPTY region
+ * The fallback tries `right` BEFORE `bottom` (#2156), and never `left`. Only an EMPTY region
  * is ever returned, so under either order nothing lands beside a pane that
  * is already there; what the order decides is which empty edge a surface
  * takes when its own default is taken. Bottom is Chat's by default, and an
@@ -164,7 +164,11 @@ export function firstFreeDockRegion(
   preferred: DockRegionId,
 ): DockRegionId | undefined {
   if (regionIsEmpty(arrangement[preferred])) return preferred;
-  return (['right', 'bottom', 'left'] as const).find((id) =>
+  // Left is an advanced placement (docs/design/pane-relationships.md): a
+  // surface lands there only when the user put it there or remembers it
+  // there (`preferred`), never as an automatic fallback. With Related and
+  // Tools both taken, the caller's `preferred` region gains a tab instead.
+  return (['right', 'bottom'] as const).find((id) =>
     regionIsEmpty(arrangement[id]),
   );
 }
@@ -433,6 +437,35 @@ export function removeRegionPane(
 }
 
 /**
+ * Replace one pane of a dock region with another IN PLACE: `next` takes
+ * `previous`'s tab slot and is selected, and the region is shown. The reuse a
+ * transient preview needs (docs/design/pane-relationships.md): opening a
+ * sibling from the same source swaps what the one preview tab shows rather
+ * than appending a tab. Returned unchanged when `previous` is not in the
+ * region, `next` is already placed anywhere, or `next` may not occupy it. A
+ * replacement is not a relocation, so the region keeps its maximize.
+ */
+export function replaceRegionPane(
+  arrangement: RegionArrangement,
+  regionId: DockRegionId,
+  previous: string,
+  next: string,
+): RegionArrangement {
+  const region = arrangement[regionId];
+  if (
+    !region.panes.includes(previous) ||
+    occupiedRegion(arrangement, next) !== undefined ||
+    !surfaceMayOccupy(next, regionId)
+  )
+    return arrangement;
+  return updateRegion(arrangement, regionId, {
+    panes: region.panes.map((pane) => (pane === previous ? next : pane)),
+    occupant: next,
+    visible: true,
+  });
+}
+
+/**
  * Move every pane of dock region `from` into dock region `to` (#2046 2b: the
  * region bar's placement control moves the REGION — its tab order and its
  * selection go with it — where the pre-2b header moved the one surface it
@@ -547,6 +580,34 @@ export function showSurfaceAlone(
       next = updateRegion(next, id, { visible: false });
   }
   return { arrangement: next, region: revealed.region };
+}
+
+/**
+ * The dock panes on screen now that the model's own reveal of `surfaceId`
+ * would take off screen (`revealSurface`, or `showSurfaceAlone` on a folded
+ * device, `alone`: where the surface is, else `preferred`). The panes whose
+ * unsaved-changes guards a caller outside the model asks before it reveals
+ * the surface. A page change in `main` is a navigation, which asks its own
+ * guards; what the reveal does to a maximize hides no pane.
+ */
+export function panesHiddenByReveal(
+  arrangement: RegionArrangement,
+  surfaceId: string,
+  preferred: RegionId,
+  alone: boolean,
+): string[] {
+  const onScreen = (value: RegionArrangement) =>
+    DOCK_REGION_IDS.flatMap((id) => {
+      const region = value[id];
+      return region.visible && region.occupant ? [region.occupant] : [];
+    });
+  const reveal = alone ? showSurfaceAlone : revealSurface;
+  const after = new Set(
+    onScreen(reveal(arrangement, surfaceId, preferred).arrangement),
+  );
+  return onScreen(arrangement).filter(
+    (id) => id !== surfaceId && !after.has(id),
+  );
 }
 
 /**
@@ -1041,7 +1102,7 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Files',
     icon: 'files',
     regions: DOCK_REGION_IDS,
-    defaultRegion: 'left',
+    defaultRegion: 'right',
     exposure: 'catalog',
   },
 ]);
@@ -1094,8 +1155,12 @@ export interface InstanceSurfacePrefix {
    * same answer.
    */
   matches: (id: string) => boolean;
-  /** The built-in descriptor its occurrences carry (`pane:builtin:…`). */
-  descriptorId: string;
+  /**
+   * The built-in descriptor its occurrences carry (`pane:builtin:…`), or null
+   * for the plugin-pane family, whose occurrences each name their own plugin
+   * descriptor in their stored record (`pluginPaneOccurrence.ts`).
+   */
+  descriptorId: string | null;
   /**
    * The title an id alone can carry — a tab whose instance has not been
    * resolved (the folded Regions menu, the shell landmark) shows this.
@@ -1133,7 +1198,19 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const BOARD_SURFACE_ID = new RegExp(`^board:${UUID}$`);
 const PROJECT_LAYOUT_SURFACE_ID = new RegExp(`^layout:${UUID}/${UUID}$`);
 
+/** `plugin-pane:<nonce>`, the 32 hex digits `mintPluginPaneId` mints. */
+const PLUGIN_PANE_SURFACE_ID = /^plugin-pane:[0-9a-f]{32}$/;
+
 export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
+  {
+    prefix: 'activity-review:',
+    matches: (id) => /^activity-review:[0-9a-f]{32}$/.test(id),
+    descriptorId: 'pane:builtin:activity-review',
+    title: 'Activity review',
+    icon: 'activity',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+  },
   {
     prefix: 'pr:',
     matches: (id) => PULL_REQUEST_SURFACE_ID.test(id),
@@ -1186,6 +1263,19 @@ export const INSTANCE_SURFACE_PREFIXES: readonly InstanceSurfacePrefix[] = [
     descriptorId: 'pane:builtin:workspace-layout',
     title: 'Layout',
     icon: 'board',
+    regions: DOCK_REGION_IDS,
+    defaultRegion: 'right',
+  },
+  // A plugin's own pane opened as a related pane (`PaneRelatedPanesHost`):
+  // the host mints the nonce, and which plugin descriptor, mode and target it
+  // shows is the occurrence's stored record. Related by default; a related
+  // open of a `tool` lands it with the Tools.
+  {
+    prefix: 'plugin-pane:',
+    matches: (id) => PLUGIN_PANE_SURFACE_ID.test(id),
+    descriptorId: null,
+    title: 'Plugin pane',
+    icon: 'plugin',
     regions: DOCK_REGION_IDS,
     defaultRegion: 'right',
   },

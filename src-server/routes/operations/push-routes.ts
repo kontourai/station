@@ -33,6 +33,15 @@ interface PushRouteDeps {
   enabled?: boolean;
   getVapidPublicKey: () => string;
   identifyDevice: (credential: string) => PairedDevice | null;
+  /**
+   * The relay alias id when the credential is a relay alias of a paired
+   * device, else undefined. An alias is a read-scoped relay bearer for the
+   * same device id that never carries the device's home-possession stamp,
+   * so a registration made with it would be filed under a device whose
+   * other credential may read as the operator: refused, as a personal
+   * access token is.
+   */
+  credentialAliasId: (credential: string) => string | undefined;
   setPushSubscription: (
     deviceId: string,
     subscription: WebPushSubscription,
@@ -95,8 +104,13 @@ export function createPushRoutes(deps: PushRouteDeps) {
       (candidate) => deps.identifyDevice(candidate) !== null,
     );
     const device = credential ? deps.identifyDevice(credential) : null;
-    // #3557: a personal access token is not a device a notification reaches.
-    if (!device || device.credentialKind === 'personal-token') {
+    // #3557: a personal access token is not a device a notification reaches;
+    // nor is a relay alias (see `credentialAliasId`).
+    if (
+      !device ||
+      device.credentialKind === 'personal-token' ||
+      deps.credentialAliasId(credential!) !== undefined
+    ) {
       webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }

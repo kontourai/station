@@ -115,6 +115,7 @@ const CANONICAL_VIEWS = [
   { type: 'developer', tab: 'telemetry' },
   { type: 'schedule' },
   { type: 'settings' },
+  { type: 'appearance' },
   { type: 'profile' },
   { type: 'notifications' },
   { type: 'task', taskId: 'task/one' },

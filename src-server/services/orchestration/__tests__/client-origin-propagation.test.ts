@@ -294,3 +294,42 @@ describe('client origin propagation', () => {
     });
   });
 });
+
+it('keeps old and untagged starts away from a pending invocation without rewriting origin', () => {
+  const propagation = new ClientOriginTurnPropagation();
+  expect(propagation.begin('t', origin, undefined, undefined, 'B-key')).toBe(
+    true,
+  );
+  propagation.bindInvocation('t', 'B');
+  const base = {
+    method: 'turn.started' as const,
+    eventId: 'start',
+    provider: 'claude',
+    threadId: 't',
+    turnId: 'N',
+    createdAt: '2030-01-01T00:00:00Z',
+  };
+  for (const invocationId of ['A', undefined]) {
+    expect(
+      propagation.apply({ ...base, invocationId })?.clientOrigin,
+    ).toBeUndefined();
+    propagation.retire('t', undefined, 'A');
+  }
+  expect(
+    propagation.apply({ ...base, eventId: 'B', invocationId: 'B' }),
+  ).toBeUndefined();
+  const accepted = propagation.settle(
+    't',
+    'N',
+    origin,
+    undefined,
+    undefined,
+    'B-key',
+    'B',
+  );
+  expect(accepted).toMatchObject({
+    invocationId: 'B',
+    clientTurnId: 'B-key',
+    clientOrigin: origin,
+  });
+});

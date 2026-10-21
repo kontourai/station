@@ -1,0 +1,7 @@
+{
+  "revision": "cce36dcb39c6b246356fb1c713b6a9debf3dbd37",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed merge cce36dcb39c: TaskWorkspaceView fixture preserves PageFrame and room authority mocks together with incoming real coding-diff process fixture, typed diff query and expanded public outcomes. Chat/Brief/Results remain independent of the Details inspection selection. Source integration review found no admission, restart or pane-boundary regression; six focused integration files passed 227 tests and UI typecheck passed. No context prose change required; not hosted or release acceptance.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}

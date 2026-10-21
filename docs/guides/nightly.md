@@ -243,9 +243,12 @@ separate:
   keys for its ring, and reports the running and newest versions. A manifest
   older than the newest release that install already accepted is not offered
   (it would be a stale or replayed one). Settings can
-  apply that update only when the service's fixed launcher runs the server;
-  any other archive names `station upgrade` on the host, or a reinstall (see
-  the [CLI `service` reference](../reference/cli.md#service)).
+  apply that update only when the service's fixed launcher runs the server.
+  Such a server downloads and verifies the release without restarting (when
+  asked, or by itself under the `serverUpdateDownloadPolicy` setting). Only
+  Restart or Update when idle switches it to the new version; see the
+  [CLI `service` reference](../reference/cli.md#service). Any other archive
+  names `station upgrade` on the host, or a reinstall.
 
 An established built-in (embedded sidecar) server never runs the ordinary
 source check at all; its update path is the desktop app itself, and its card
@@ -457,7 +460,7 @@ signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
-only that cohort. It uploads the five version-specific desktop downloads and
+only that cohort; each signature must name the cohort version (#3851). It uploads the five version-specific desktop downloads and
 checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and

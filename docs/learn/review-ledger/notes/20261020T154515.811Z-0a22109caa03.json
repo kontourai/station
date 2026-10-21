@@ -1,0 +1,7 @@
+{
+  "revision": "1bef55ba43e292efbb2f9bb0eade858678b36be7",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Re-read the root-theme paragraph (lines ~160-170): it names only observeRootTheme and useRootThemeVersion and the attributes they report. This change only drops the export keyword from ROOT_THEME_ATTRIBUTES and rootThemeSignature, which the guide does not mention; behavior is unchanged.","inputs":["docs/guides/theming.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/lib/root-theme.ts"]}
+  ]
+}

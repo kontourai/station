@@ -1,0 +1,7 @@
+{
+  "revision": "081032a8a9b350c175822d7c8d131262e4291d66",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed release fence repair081032a8 after independent round2: ordinary dedup release now requires no prepared metadata regardless pending/begun/unknown/untracked tag. Public realSQLite prepare-close-corrupt-reopen cases and portabledecision records failed RED9/66 controls before repair, then focused282 and all411 package tests GREEN; scoped tsc GREEN. Claim and ordinary begin already fence every linked tag. No prepared cancellation or definitive-refusal settlement operation is added; future host owner must supply a guarded atomic operation. Prior atomic-begin/pair-owner mutation exact restoration evidence remains pinned to its own revisions.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/decisions.test.ts","packages/monument/src/__tests__/sqlite-prepared-intent.test.ts","packages/monument/src/decisions/turn-dedup.ts"]}
+  ]
+}

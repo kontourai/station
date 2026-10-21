@@ -126,21 +126,44 @@ export function ChatInboxHoverCard({
     visibility: 'hidden',
   });
 
-  // Position once from the anchor's rect; flip to the left side when the row
-  // sits against the viewport's right edge (the dock can dock either side).
+  // Beside the anchor's rect, top-aligned with the row and slid up as far as
+  // the card's height needs to stay inside the viewport; flipped to the left
+  // side when the row sits against the viewport's right edge (the dock can
+  // dock either side). Placed again whenever the card's size changes: its
+  // git, pull request and Basis sections arrive after it opens, and a card
+  // placed for its first, short height ran off the bottom of the screen once
+  // they did (#3884). Its CSS caps it at 70vh, scrolling within.
   useLayoutEffect(() => {
-    const rect = anchor.getBoundingClientRect();
-    const height = cardRef.current?.offsetHeight ?? 0;
-    const top = Math.min(
-      Math.max(VIEWPORT_MARGIN, rect.top),
-      Math.max(VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
-    );
-    const fitsRight =
-      rect.right + CARD_GAP + CARD_WIDTH <= window.innerWidth - VIEWPORT_MARGIN;
-    const left = fitsRight
-      ? rect.right + CARD_GAP
-      : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
-    setPosition({ top, left, visibility: 'visible' });
+    const card = cardRef.current;
+    const place = () => {
+      const rect = anchor.getBoundingClientRect();
+      const height = card?.offsetHeight ?? 0;
+      const top = Math.min(
+        Math.max(VIEWPORT_MARGIN, rect.top),
+        Math.max(
+          VIEWPORT_MARGIN,
+          window.innerHeight - height - VIEWPORT_MARGIN,
+        ),
+      );
+      const fitsRight =
+        rect.right + CARD_GAP + CARD_WIDTH <=
+        window.innerWidth - VIEWPORT_MARGIN;
+      const left = fitsRight
+        ? rect.right + CARD_GAP
+        : Math.max(VIEWPORT_MARGIN, rect.left - CARD_GAP - CARD_WIDTH);
+      setPosition((current) =>
+        current.top === top &&
+        current.left === left &&
+        current.visibility === 'visible'
+          ? current
+          : { top, left, visibility: 'visible' },
+      );
+    };
+    place();
+    if (!card || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    return () => observer.disconnect();
   }, [anchor]);
 
   // The card is fixed-positioned: any scroll (the inbox's own scroll included)

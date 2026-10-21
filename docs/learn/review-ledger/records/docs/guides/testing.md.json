@@ -214,7 +214,11 @@
 
     "scripts/pr-title-check.mjs",
 
-    "scripts/__tests__/pr-title-check.test.ts"
+    "scripts/__tests__/pr-title-check.test.ts",
+
+    "scripts/source-verification-policy.mjs",
+
+    "scripts/__tests__/source-verification-policy.test.ts"
   ],
 
   "checks": [

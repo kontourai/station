@@ -351,7 +351,7 @@ export async function createTaskFromProject(
   ).toHaveURL((url) => url.pathname === `/projects/${slug}`);
   const gitStatus = await apiJson<{
     success: boolean;
-    data: { isRepo: boolean; branch?: string };
+    data: { isRepo: boolean; branch?: string; repoRoot?: string };
   }>(
     page,
     // Coding reads are confined to a named Project since #2471; a bare path
@@ -372,12 +372,40 @@ export async function createTaskFromProject(
     new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
     { timeout: 15_000 },
   );
-  await page.getByLabel('Task title').fill(title);
-  await page.getByRole('button', { name: 'Add task' }).click();
-  await page.waitForURL(/\/tasks\//, { timeout: 15_000 });
-  return decodeURIComponent(
-    new URL(page.url()).pathname.slice('/tasks/'.length),
+  // #3720 replaced the Project page's direct title form with conversational
+  // shaping, which needs a live engine. This lifecycle fixture creates the
+  // Task through the public route with the binding that form used to send,
+  // labelled as an API origin, then opens it like a person would.
+  const created = await apiJson<{ success: boolean; data?: { id: string } }>(
+    page,
+    '/api/tasks',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId: slug,
+        title,
+        createdBy: 'user',
+        workspaceBinding: {
+          workingDirectory,
+          repoRoot: gitStatus.data.repoRoot,
+          worktreePath: gitStatus.data.repoRoot,
+          branch: gitStatus.data.branch,
+          sourceSurface: 'api',
+        },
+      }),
+    },
   );
+  expect(created).toMatchObject({
+    success: true,
+    data: { id: expect.any(String) },
+  });
+  const taskId = created.data!.id;
+  await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `/tasks/${encodeURIComponent(taskId)}`,
+  );
+  return taskId;
 }
 
 export async function pairBrowserDevice(

@@ -1,0 +1,7 @@
+{
+  "revision": "7766cb17f21acff4c4f4036f36a41b59eb73e3ab",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"PR #3820 round 1 at 7766cb17f21: Re-reviewed only the new telemetry Settings-feedback capture framing delta. It now scrolls the real feedback section into view and requires Cancel to be in the viewport at both widths, using normal Playwright actionability. The earlier eight-scene controlled run passed its browser assertions, but visual review caught the cropped mobile controls; the stronger framing requires a final-head capture. The guide’s focused gallery route and controlled-versus-hosted limits remain accurate.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

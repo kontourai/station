@@ -4,6 +4,7 @@ import {
   type HtmlReplyTheme,
 } from '@kontourai/station-contracts/html-reply';
 import { useEffect, useRef, useState } from 'react';
+import { observeRootTheme } from '../../lib/root-theme';
 import { openNativeExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
@@ -105,12 +106,8 @@ export function HtmlReply({
       );
     };
     update();
-    const observer = new MutationObserver(update);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme'],
-    });
-    return () => observer.disconnect();
+    // Light/dark, palette (data-color-theme*), accent and branding changes.
+    return observeRootTheme(update);
   }, [ready, origin, theme]);
   const viewer = (
     <div className="html-reply">

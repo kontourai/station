@@ -1,4 +1,5 @@
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { QuoteSurfaceCloseContext } from '../../components/chat/quote-surface';
 import { DocumentGlyph } from '../../components/icons/Glyph';
 import { ResponsiveDialogCloseButton } from '../../components/ResponsiveDialogSurface';
 import { SkeletonBlock } from '../../components/state';
@@ -52,7 +53,9 @@ export function ProjectKnowledgeViewerModal({
           ) : content ? (
             doc.filename.endsWith('.md') ? (
               <div className="project-page__doc-viewer-markdown">
-                <LazyMarkdown>{content}</LazyMarkdown>
+                <QuoteSurfaceCloseContext.Provider value={onClose}>
+                  <LazyMarkdown>{content}</LazyMarkdown>
+                </QuoteSurfaceCloseContext.Provider>
               </div>
             ) : (
               <pre className="project-page__doc-viewer-content">{content}</pre>

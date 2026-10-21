@@ -798,7 +798,8 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       item: {
         childId: 'task-1',
         title: 'Explore the codebase',
-        progress: 'Explore the codebase — Grep',
+        progress: 'Explore the codebase',
+        latestTool: 'Grep',
         usage: { totalTokens: 10, toolUses: 2, durationMs: 100 },
       },
     });

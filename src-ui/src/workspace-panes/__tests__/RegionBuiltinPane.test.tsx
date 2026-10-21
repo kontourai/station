@@ -186,9 +186,16 @@ test('a Browser occurrence placed in a region resolves to its renderer', async (
  * family added without one reds here, not in a user's dock.
  */
 test('every instance family a region can hold has a region renderer', () => {
-  for (const family of INSTANCE_SURFACE_PREFIXES)
+  for (const family of INSTANCE_SURFACE_PREFIXES) {
+    // A related plugin pane names its plugin's own descriptor and renders
+    // through `RegionPluginPane`, not the built-in registry.
+    if (family.descriptorId === null) {
+      expect(family.prefix).toBe('plugin-pane:');
+      continue;
+    }
     expect(
       REGION_BUILTIN_DESCRIPTORS.has(family.descriptorId),
       family.prefix,
     ).toBe(true);
+  }
 });

@@ -106,6 +106,8 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   /**
    * #3390: accepted content for a form input request, keyed by field name;
    * validated server-side against the exact opened event.
