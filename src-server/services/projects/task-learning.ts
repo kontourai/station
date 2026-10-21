@@ -10,11 +10,17 @@
  *   `POST /api/knowledge/roots/:rootId/records` uses, with the Task, record
  *   version and work item in the record's creation provenance.
  * - The record's id is derived from the Task incarnation and the record
- *   version, so the store itself refuses a second record for one version:
- *   promoting it twice writes once, in whichever Project store it went to.
- *   "Promoted" is read back from the stores, never recorded beside them.
- * - A dismissal is the one state Station keeps
- *   (`task_learning_dismissals`, migration 021).
+ *   version, so a store refuses a second record for one version.
+ * - Across stores, a version is promoted once (review F9): before the
+ *   knowledge write, the promotion inserts one append-only row naming its
+ *   store (`task_learning_promotions`, migration 022). A later or
+ *   concurrent promotion of that version finds the row and writes, or reads
+ *   back, only in that store, so two people choosing two stores still get
+ *   one record. When the row's write failed or was interrupted, the next
+ *   promotion finishes it in the row's store, with that request's edited
+ *   title and text. "Promoted" in the candidate list is still read back
+ *   from the stores.
+ * - A dismissal is kept in `task_learning_dismissals` (migration 021).
  *
  * Authority is the caller's: the routes pass a person's Task-room access.
  * No station-control tool names these routes, so an agent never reaches them.
@@ -277,8 +283,28 @@ export async function promoteTaskLearning(
     // Any Project store already holding this version: it was promoted.
     const existing = await findPromoted(store, roots, id);
     if (existing) return { kind: 'already-promoted', ...existing };
+    // The one decision across stores, made before the knowledge write.
+    const claim = access.memory.claimLearningPromotion({
+      ...incarnation,
+      kind: record.kind,
+      key: record.key,
+      version: record.version,
+      projectId: access.projectId,
+      rootId: root.id,
+      principalId: access.principalId,
+      beforeCommit: access.isCurrent,
+    });
+    if (claim.kind === 'stale') return { kind: 'stale' };
+    const target = roots.find((r) => r.id === claim.promotion.rootId);
+    // The store this version was first promoted into is no longer one of
+    // the Project's: nothing is written anywhere else.
+    if (!target) return { kind: 'no-store' };
+    if (claim.kind === 'existing') {
+      const done = await findPromoted(store, [target], id);
+      if (done) return { kind: 'already-promoted', ...done };
+    }
     if (!access.isCurrent()) return { kind: 'stale' };
-    const adapter = await store.adapterFor(root.id);
+    const adapter = await store.adapterFor(target.id);
     try {
       await adapter.create({
         id,
@@ -298,14 +324,14 @@ export async function promoteTaskLearning(
     } catch (error) {
       // A concurrent promotion of the same version won the create: the store
       // refuses an existing id, so read back the record it wrote.
-      const raced = await findPromoted(store, [root], id);
+      const raced = await findPromoted(store, [target], id);
       if (raced) return { kind: 'already-promoted', ...raced };
       throw error;
     }
     const written = await adapter.get(id);
     if (!written)
       throw new Error('The promoted record could not be read back.');
-    return { kind: 'promoted', rootId: root.id, record: written };
+    return { kind: 'promoted', rootId: target.id, record: written };
   } catch (error) {
     return { kind: 'store-failed', error };
   }

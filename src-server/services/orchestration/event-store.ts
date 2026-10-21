@@ -123,6 +123,7 @@ import {
 } from '../../domain/migrations/019-positive-turn-start-index.js';
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
+import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2341,6 +2342,8 @@ export class EventStore {
       this.db.exec(TASK_MEMORY_MIGRATION);
       // #4003 layer 4: dismissed promotion candidates.
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
+      // #4003 layer 4: the store each promoted record version went to.
+      this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)

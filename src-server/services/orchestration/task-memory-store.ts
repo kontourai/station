@@ -120,6 +120,26 @@ export type TaskLearningDismissResult =
   | { readonly kind: 'not-a-candidate' }
   | { readonly kind: 'stale' };
 
+/** Which Project store a record version was promoted into (migration 022). */
+export interface TaskLearningPromotionRecord extends TaskLearningDismissal {
+  readonly rootId: string;
+  readonly principalId: string;
+  readonly promotedAt: string;
+}
+
+export type TaskLearningPromotionClaim =
+  /** This promotion is the version's first: the row now names its store. */
+  | {
+      readonly kind: 'claimed';
+      readonly promotion: TaskLearningPromotionRecord;
+    }
+  /** An earlier promotion's row stands; write or read back only there. */
+  | {
+      readonly kind: 'existing';
+      readonly promotion: TaskLearningPromotionRecord;
+    }
+  | { readonly kind: 'stale' };
+
 export interface TaskOpenQuestion {
   readonly record: TaskMemoryRecord;
   /** The Session that asked it; absent when a person asked. */
@@ -172,6 +192,20 @@ export interface TaskMemoryStore {
         readonly beforeCommit?: () => boolean;
       },
   ): TaskLearningDismissResult;
+  /**
+   * #4003 review F9: record, before the knowledge write, which store this
+   * record version is promoted into. The first promotion of a version
+   * inserts the row; a later or concurrent one gets that row back.
+   */
+  claimLearningPromotion(
+    input: TaskMemoryIncarnation &
+      TaskLearningDismissal & {
+        readonly projectId: string;
+        readonly rootId: string;
+        readonly principalId: string;
+        readonly beforeCommit?: () => boolean;
+      },
+  ): TaskLearningPromotionClaim;
   /** Every dismissal of the incarnation, oldest first. */
   listLearningDismissals(
     input: TaskMemoryIncarnation,
@@ -219,6 +253,29 @@ interface DismissalRow {
 
 const DISMISSAL_COLUMNS =
   'kind, record_key, version, principal_id, dismissed_at';
+
+interface PromotionRow {
+  kind: TaskLearningKind;
+  record_key: string;
+  version: number;
+  root_id: string;
+  principal_id: string;
+  promoted_at: string;
+}
+
+const PROMOTION_COLUMNS =
+  'kind, record_key, version, root_id, principal_id, promoted_at';
+
+function promotionFromRow(row: PromotionRow): TaskLearningPromotionRecord {
+  return {
+    kind: row.kind,
+    key: row.record_key,
+    version: row.version,
+    rootId: row.root_id,
+    principalId: row.principal_id,
+    promotedAt: row.promoted_at,
+  };
+}
 
 function dismissalFromRow(row: DismissalRow): TaskLearningDismissalRecord {
   return {
@@ -649,6 +706,54 @@ export function createSqliteTaskMemoryStore(
         },
       );
       return result;
+    },
+
+    claimLearningPromotion(input) {
+      return transact<TaskLearningPromotionClaim>(input.beforeCommit, () => {
+        const row = db
+          .prepare(
+            `SELECT ${PROMOTION_COLUMNS} FROM task_learning_promotions
+              WHERE task_id = ? AND task_created_at = ? AND kind = ?
+                AND record_key = ? AND version = ?`,
+          )
+          .get(
+            input.taskId,
+            input.taskCreatedAt,
+            input.kind,
+            input.key,
+            input.version,
+          ) as PromotionRow | undefined;
+        if (row)
+          return {
+            commit: false,
+            value: { kind: 'existing', promotion: promotionFromRow(row) },
+          };
+        const promotion: TaskLearningPromotionRecord = {
+          kind: input.kind,
+          key: input.key,
+          version: input.version,
+          rootId: input.rootId,
+          principalId: input.principalId,
+          promotedAt: now().toISOString(),
+        };
+        db.prepare(
+          `INSERT INTO task_learning_promotions (project_id, task_id,
+             task_created_at, kind, record_key, version, root_id,
+             principal_id, promoted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).run(
+          input.projectId,
+          input.taskId,
+          input.taskCreatedAt,
+          promotion.kind,
+          promotion.key,
+          promotion.version,
+          promotion.rootId,
+          promotion.principalId,
+          promotion.promotedAt,
+        );
+        return { commit: true, value: { kind: 'claimed', promotion } };
+      });
     },
 
     listLearningDismissals(input) {
