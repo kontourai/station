@@ -613,6 +613,78 @@ describe('fast-checks shard runner (in process)', () => {
     expect(runShard).not.toHaveBeenCalled();
   });
 
+  test('a serial shard can finish after fifteen minutes but still aborts at twenty', async () => {
+    const cwd = inProcessFixture();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const runShard = vi.fn(
+        (_plan, _slice, { signal }) =>
+          new Promise((resolvePromise) => {
+            entered();
+            const completed = () =>
+              resolvePromise({
+                status: 'completed',
+                counts: {
+                  executed: 1,
+                  passed: 1,
+                  failed: 0,
+                  infrastructureErrors: 0,
+                },
+              });
+            signal.addEventListener('abort', completed);
+            setTimeout(completed, 16 * 60_000);
+          }),
+      );
+      const result = runFastChecksShardCli(
+        ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+        { cwd, env, runShard, ...quiet },
+      );
+      await started;
+      await vi.advanceTimersByTimeAsync(16 * 60_000);
+      expect(await result).toBe(0);
+
+      let enteredStall!: () => void;
+      const stallStarted = new Promise<void>((resolve) => {
+        enteredStall = resolve;
+      });
+      const stalled = vi.fn(
+        (_plan, _slice, { signal }) =>
+          new Promise((resolvePromise) => {
+            enteredStall();
+            signal.addEventListener('abort', () =>
+              resolvePromise({
+                status: 'completed',
+                counts: {
+                  executed: 1,
+                  passed: 1,
+                  failed: 0,
+                  infrastructureErrors: 0,
+                },
+              }),
+            );
+          }),
+      );
+      const expired = runFastChecksShardCli(
+        ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+        { cwd, env, runShard: stalled, ...quiet },
+      );
+      await stallStarted;
+      await vi.advanceTimersByTimeAsync(20 * 60_000 - 1);
+      expect(stalled.mock.calls[0][2].signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await expired).toBe(1);
+      expect(
+        JSON.parse(readFileSync(join(cwd, 'receipt.json'), 'utf8')).status,
+      ).toBe('infrastructure_error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a shard that outlives its budget is aborted and fails', async () => {
     const cwd = inProcessFixture();
     const status = await runFastChecksShardCli(

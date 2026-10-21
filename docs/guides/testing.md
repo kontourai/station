@@ -2242,7 +2242,7 @@ only planned legs; omitted legs need no receipt and cannot keep the aggregate
 pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
 Without that handshake, a new planner retains four shards for the old base
 workflow. Older candidates that emit no adaptive outputs also retain four shards.
-Each allocated slice runs inside the fifteen-minute budget and
+Each allocated slice runs inside its twenty-minute completion budget and
 writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
