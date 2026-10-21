@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import { test } from 'vitest';
-import { runCli } from '../cli';
+import { afterEach, test, vi } from 'vitest';
+import { reportCliError, runCli } from '../cli';
 import { parseCoreArgs } from '../commands/core-api';
 import { runGroupCommand } from '../commands/group';
 
@@ -12,9 +12,7 @@ test('registered group command reaches the SDK with explicit target credentials'
   console.log = () => {};
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    return new Response(
-      JSON.stringify({ success: true, data: { groupId: 'g' } }),
-    );
+    return new Response(JSON.stringify({ success: true, data: groupView() }));
   };
   try {
     await runCli([
@@ -54,7 +52,7 @@ test('CLI group write carries explicit operation and revision and never invents 
     return new Response(
       JSON.stringify({
         success: true,
-        data: { replayed: false, group: { groupId: 'g' } },
+        data: { replayed: false, group: groupView() },
       }),
     );
   };
@@ -133,7 +131,7 @@ test('CLI follow closes its stream and SIGINT listener after interruption', asyn
         start(controller) {
           controller.enqueue(
             new TextEncoder().encode(
-              `event: group-events\nid: group:g:1\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, events: [], hasMore: false })}\n\n`,
+              `event: group-events\nid: group:g:1\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, events: [], hasMore: false, unavailable: [] })}\n\n`,
             ),
           );
         },
@@ -157,5 +155,148 @@ test('CLI follow closes its stream and SIGINT listener after interruption', asyn
   } finally {
     globalThis.fetch = original;
     console.log = log;
+  }
+});
+
+function groupView() {
+  return {
+    version: 'station.delegation-group/v1',
+    groupId: 'g',
+    revision: 0,
+    execution: 'idle',
+    cancellation: 'none',
+    terminal: 'unproven',
+    acceptance: 'unassessed',
+    executionCapability: {
+      status: 'unavailable',
+      code: 'physical_adapter_unqualified',
+    },
+    topology: { kind: 'independent-advisory' },
+    members: [],
+  };
+}
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  setClientCredentialResolver(undefined);
+  vi.useRealTimers();
+});
+
+test('CLI follow reconnects normal rotation with its checkpoint; SIGINT remains local', async () => {
+  vi.useFakeTimers();
+  const listeners = process.listenerCount('SIGINT');
+  const requests: { url: string; headers: Headers }[] = [];
+  const cancel = vi.fn();
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url, init) => {
+      requests.push({ url: String(url), headers: new Headers(init?.headers) });
+      const revision = requests.length;
+      const bytes = new TextEncoder().encode(
+        `event: group-events\nid: group:g:${revision}\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: revision - 1, nextRevision: revision, events: [], hasMore: false, unavailable: [] })}\n\n`,
+      );
+      return new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(bytes);
+            if (revision === 1) c.close();
+          },
+          cancel,
+        }),
+      );
+    }),
+  );
+  const running = runCli([
+    'group',
+    'events',
+    'g',
+    '--follow',
+    '--json',
+    '--api-base=https://station.test',
+    '--credential=fixture',
+  ]);
+  const settled = running.then(
+    () => 'done',
+    (error) => error,
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(1100);
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].headers.get('Last-Event-ID'), 'group:g:1');
+    assert.equal(
+      requests.every((r) => r.url.includes('/events/stream')),
+      true,
+    );
+    process.emit('SIGINT');
+    assert.equal(await settled, 'done');
+    assert.equal(cancel.mock.calls.length, 1);
+    assert.equal(process.listenerCount('SIGINT'), listeners);
+  } finally {
+    process.emit('SIGINT');
+    await settled;
+  }
+});
+
+test('top-level group JSON reports refusal codes and ambiguous write timeout without resend', async () => {
+  const stderr: string[] = [];
+  const stdout: string[] = [];
+  const exitCode = process.exitCode;
+  vi.spyOn(console, 'error').mockImplementation((...args) =>
+    stderr.push(args.join(' ')),
+  );
+  vi.spyOn(console, 'log').mockImplementation((...args) =>
+    stdout.push(args.join(' ')),
+  );
+  try {
+    for (const failure of ['refusal', 'timeout']) {
+      stderr.length = 0;
+      const fetch = vi.fn(async (_url, init) => {
+        if (failure === 'refusal')
+          return new Response(
+            JSON.stringify({ success: false, code: 'group_stale' }),
+            { status: 409 },
+          );
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener(
+            'abort',
+            () => reject(init.signal.reason),
+            { once: true },
+          );
+        });
+      });
+      vi.stubGlobal('fetch', fetch);
+      if (failure === 'timeout') vi.stubEnv('STATION_REQUEST_TIMEOUT_MS', '5');
+      const operation = runCli([
+        'group',
+        'run',
+        'g',
+        '--operation=o',
+        '--revision=2',
+        '--json',
+        '--api-base=https://station.test',
+        '--credential=fixture',
+      ]).catch(reportCliError);
+
+      await operation;
+      assert.equal(stderr.length, 1);
+      const result = JSON.parse(stderr[0]);
+      assert.equal(result.success, false);
+      if (failure === 'refusal') {
+        assert.equal(result.code, 'group_stale');
+        assert.equal(result.status, 409);
+      } else {
+        assert.equal(result.code, 'request_timeout');
+        assert.equal(result.mutation, true);
+        assert.equal(result.retryable, false);
+      }
+      assert.equal(process.exitCode, 1);
+      assert.equal(fetch.mock.calls.length, 1);
+      assert.equal(stdout.length, 0);
+      vi.useRealTimers();
+    }
+  } finally {
+    process.exitCode = exitCode;
   }
 });

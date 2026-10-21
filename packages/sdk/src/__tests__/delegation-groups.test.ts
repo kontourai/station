@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import type {
+  DelegationGroupEventPage,
+  DelegationGroupMemberEventPage,
+  DelegationGroupView,
+} from '@kontourai/station-contracts/delegation-group';
+import { afterEach, test, vi } from 'vitest';
 import {
+  cancelDelegationGroup,
   createDelegationGroup,
   getDelegationGroup,
+  launchDelegationGroup,
+  listDelegationGroups,
   readDelegationGroupEvents,
   readDelegationGroupMemberEvents,
+  readDelegationGroupMemberOutput,
   subscribeDelegationGroupEvents,
   subscribeDelegationGroupMemberEvents,
 } from '../client/delegation-groups';
@@ -16,7 +25,14 @@ test('group commands project intent and keep revision/sequence identities on dis
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
     return new Response(
-      JSON.stringify({ success: true, data: { observed: true } }),
+      JSON.stringify({
+        success: true,
+        data: String(url).includes('/members/')
+          ? memberPage(83, 83, 'group/one', 'seat?two')
+          : String(url).includes('/events')
+            ? groupPage(7, 7, 'group/one')
+            : { replayed: false, group: groupView() },
+      }),
     );
   };
   try {
@@ -54,7 +70,7 @@ test('group commands project intent and keep revision/sequence identities on dis
   }
 });
 
-test('group callers retain refusal codes and enforce body limits before projection', async () => {
+test('group callers retain refusal codes and enforce body limits after command projection and before dispatch', async () => {
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {
@@ -141,6 +157,7 @@ test('group and member stream callers deliver matching pages and close pending r
           nextSequence: 24,
           events: [],
           hasMore: false,
+          unavailable: [],
           state: 'available',
         }
       : {
@@ -149,6 +166,7 @@ test('group and member stream callers deliver matching pages and close pending r
           nextRevision: 4,
           events: [],
           hasMore: false,
+          unavailable: [],
         };
     return new Response(
       new ReadableStream({
@@ -229,6 +247,7 @@ test('reconnect retains only the last delivered group checkpoint', async () => {
       nextRevision,
       events: [],
       hasMore: false,
+      unavailable: [],
     };
     return new Response(
       `event: group-events\nid: group:g:${nextRevision}\ndata: ${JSON.stringify(page)}\n\n`,
@@ -257,5 +276,468 @@ test('reconnect retains only the last delivered group checkpoint', async () => {
     stream.close();
     await stream.completed;
     globalThis.fetch = original;
+  }
+});
+
+function groupView(): DelegationGroupView {
+  return {
+    version: 'station.delegation-group/v1',
+    groupId: 'g',
+    revision: 0,
+    execution: 'idle',
+    cancellation: 'none',
+    terminal: 'unproven',
+    acceptance: 'unassessed',
+    executionCapability: {
+      status: 'unavailable',
+      code: 'physical_adapter_unqualified',
+    },
+    topology: { kind: 'independent-advisory' },
+    members: [],
+  };
+}
+function groupPage(
+  afterRevision = 0,
+  nextRevision = 1,
+  groupId = 'g',
+): DelegationGroupEventPage {
+  return {
+    groupId,
+    afterRevision,
+    nextRevision,
+    events:
+      nextRevision > afterRevision
+        ? [{ revision: nextRevision, kind: 'observed' }]
+        : [],
+    hasMore: false,
+    unavailable: [],
+  };
+}
+function memberPage(
+  after = 0,
+  nextSequence = 1,
+  groupId = 'g',
+  seatId = 's',
+): DelegationGroupMemberEventPage {
+  return {
+    groupId,
+    seatId,
+    nextSequence,
+    events:
+      nextSequence > after
+        ? [
+            {
+              eventId: `e${nextSequence}`,
+              sequence: nextSequence,
+              kind: 'observed',
+            },
+          ]
+        : [],
+    state: 'available',
+    hasMore: false,
+    unavailable: [],
+  };
+}
+function frame(
+  member: boolean,
+  page: DelegationGroupEventPage | DelegationGroupMemberEventPage,
+) {
+  return `event: ${member ? 'member-events' : 'group-events'}\nid: ${member ? `member:g:s:${'nextSequence' in page ? page.nextSequence : 0}` : `group:g:${'nextRevision' in page ? page.nextRevision : 0}`}\ndata: ${JSON.stringify(page)}\n\n`;
+}
+function subscribe(
+  member: boolean,
+  callbacks: { onPage(page: unknown): void; onError?(error: unknown): void },
+  options = {},
+) {
+  return member
+    ? subscribeDelegationGroupMemberEvents(
+        'https://station.test',
+        'g',
+        's',
+        0,
+        callbacks,
+        options,
+      )
+    : subscribeDelegationGroupEvents(
+        'https://station.test',
+        'g',
+        0,
+        callbacks,
+        options,
+      );
+}
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
+  vi.useRealTimers();
+});
+
+for (const member of [false, true]) {
+  test(`live ${member ? 'member' : 'group'} authority is checked before every callback and checkpoint`, async () => {
+    let current = true;
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    let opened!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      opened = resolve;
+    });
+    const cancel = vi.fn();
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              body = c;
+            },
+            cancel,
+          }),
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    setClientCredentialResolver(() => ({
+      credential: 'fixture',
+      origin: 'https://station.test',
+      requestAuthority: {
+        apiBase: 'https://station.test',
+        authorityKey: 'captured',
+        isCurrent: () => current,
+      },
+    }));
+    const pages: unknown[] = [];
+    const errors: unknown[] = [];
+    const callbacks = {
+      onPage(page: unknown) {
+        pages.push(page);
+        current = false;
+      },
+      onError(error: unknown) {
+        errors.push(error);
+      },
+      onOpen: opened,
+    };
+    const stream = member
+      ? subscribeDelegationGroupMemberEvents(
+          'https://station.test',
+          'g',
+          's',
+          0,
+          callbacks,
+          {
+            requestScope: {
+              apiBase: 'https://station.test',
+              authorityKey: 'captured',
+            },
+          },
+        )
+      : subscribeDelegationGroupEvents(
+          'https://station.test',
+          'g',
+          0,
+          callbacks,
+          {
+            requestScope: {
+              apiBase: 'https://station.test',
+              authorityKey: 'captured',
+            },
+          },
+        );
+    try {
+      await ready;
+      current = false;
+      body.enqueue(
+        new TextEncoder().encode(
+          frame(member, member ? memberPage() : groupPage()),
+        ),
+      );
+      await vi.waitFor(() => assert.equal(errors.length, 1));
+      assert.equal(pages.length, 0);
+      assert.equal(cancel.mock.calls.length, 1);
+      assert.equal(fetch.mock.calls.length, 1);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+  test(`pre-aborted ${member ? 'member' : 'group'} subscription never dispatches`, async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(frame(member, member ? memberPage() : groupPage())),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const stop = new AbortController();
+    stop.abort();
+    const onPage = vi.fn();
+    const stream = subscribe(member, { onPage }, { signal: stop.signal });
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(fetch.mock.calls.length, 0);
+      assert.equal(onPage.mock.calls.length, 0);
+      assert.equal(stream.signal.aborted, true);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+  test(`${member ? 'member' : 'group'} replay filters duplicate events but delivers same-cursor status`, async () => {
+    const page = member ? memberPage(0, 7) : groupPage();
+    const empty = member
+      ? { ...memberPage(7, 7), state: 'unavailable' as const }
+      : {
+          ...groupPage(1, 1),
+          unavailable: [{ cursor: 1, code: 'item_too_large' as const }],
+        };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            frame(member, page) + frame(member, page) + frame(member, empty),
+          ),
+      ),
+    );
+    const pages: unknown[] = [];
+    const stream = subscribe(member, {
+      onPage(page) {
+        pages.push(page);
+      },
+    });
+    try {
+      await vi.waitFor(() => assert.equal(pages.length, 2));
+      assert.deepEqual(pages, [page, empty]);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+  test(`${member ? 'member' : 'group'} rejects foreign id-only checkpoints`, async () => {
+    const errors: unknown[] = [];
+    const fetch = vi.fn(
+      async () =>
+        new Response(
+          `id: ${member ? 'group:g:700' : 'member:foreign:s:700'}\n\n`,
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const stream = subscribe(member, {
+      onPage() {},
+      onError(error) {
+        errors.push(error);
+      },
+    });
+    try {
+      await vi.waitFor(() => assert.equal(errors.length, 1));
+      assert.match(String(errors[0]), /cursor|checkpoint/i);
+      assert.equal(fetch.mock.calls.length, 1);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+}
+
+test('all HTTP group responses validate required shapes and requested identities', async () => {
+  const operations = [
+    {
+      call: () => getDelegationGroup('https://station.test', 'g'),
+      good: groupView(),
+      bad: [
+        null,
+        {},
+        { ...groupView(), groupId: 'foreign' },
+        { ...groupView(), revision: -1 },
+        { ...groupView(), members: [{ seatId: 's' }] },
+      ],
+    },
+    {
+      call: () => listDelegationGroups('https://station.test'),
+      good: {
+        groups: [groupView()],
+        nextGroupId: null,
+        hasMore: false,
+        unavailable: [],
+      },
+      bad: [
+        null,
+        { groups: [], hasMore: false },
+        { groups: [null], nextGroupId: null, hasMore: false, unavailable: [] },
+      ],
+    },
+    {
+      call: () =>
+        createDelegationGroup('https://station.test', {
+          preparationId: 'p',
+          operationId: 'o',
+        }),
+      good: { replayed: false, group: groupView() },
+      bad: [null, { group: groupView() }, { replayed: false, group: null }],
+    },
+    {
+      call: () =>
+        launchDelegationGroup('https://station.test', 'g', {
+          operationId: 'o',
+          expectedRevision: 0,
+        }),
+      good: { replayed: true, group: groupView() },
+      bad: [{ replayed: true, group: { ...groupView(), groupId: 'other' } }],
+    },
+    {
+      call: () =>
+        cancelDelegationGroup('https://station.test', 'g', {
+          operationId: 'o',
+          expectedRevision: 0,
+        }),
+      good: { disposition: 'pending', group: groupView() },
+      bad: [{ disposition: 'finished', group: groupView() }],
+    },
+    {
+      call: () => readDelegationGroupEvents('https://station.test', 'g'),
+      good: groupPage(),
+      bad: [
+        null,
+        { ...groupPage(), groupId: 'other' },
+        { ...groupPage(), afterRevision: 8 },
+        { ...groupPage(), events: [{ revision: 999, kind: 'x' }] },
+        { ...groupPage(), events: 'wrong' },
+        { ...groupPage(), unavailable: undefined },
+        { ...groupPage(), events: [{ revision: 1 }] },
+      ],
+    },
+    {
+      call: () =>
+        readDelegationGroupMemberEvents('https://station.test', 'g', 's'),
+      good: memberPage(0, 71),
+      bad: [
+        null,
+        { ...memberPage(), seatId: 'other' },
+        { ...memberPage(), events: [{ sequence: 1, kind: 'x' }] },
+        { ...memberPage(), state: 'bogus' },
+      ],
+    },
+    {
+      call: () =>
+        readDelegationGroupMemberOutput('https://station.test', 'g', 's'),
+      good: {
+        reference: { id: 'o', domain: 'output', digest: 'sha' },
+        raw: null,
+        rawResult: { text: 'ok' },
+      },
+      bad: [
+        null,
+        { reference: {}, raw: null, rawResult: null },
+        { reference: { id: 'o', domain: 'output', digest: 'sha' }, raw: null },
+      ],
+    },
+  ];
+  for (const { call, good, bad } of operations) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () => new Response(JSON.stringify({ success: true, data: good })),
+      ),
+    );
+    assert.deepEqual(await call(), good);
+    for (const data of bad) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () => new Response(JSON.stringify({ success: true, data })),
+        ),
+      );
+      await assert.rejects(call(), /Invalid|Missing/);
+    }
+  }
+});
+
+test('malformed SSE pages are rejected without delivery or reconnect', async () => {
+  for (const member of [false, true]) {
+    const badPages = member
+      ? [
+          null,
+          { ...memberPage(), nextSequence: -1 },
+          { ...memberPage(), unavailable: undefined },
+          {
+            ...memberPage(),
+            events: [{ eventId: 'e', sequence: 999, kind: 'x' }],
+          },
+        ]
+      : [
+          null,
+          {
+            ...groupPage(),
+            afterRevision: 8,
+            nextRevision: 9,
+            events: [{ revision: 999, kind: 'x' }],
+          },
+          { ...groupPage(), hasMore: undefined },
+        ];
+    for (const page of badPages) {
+      const fetch = vi.fn(
+        async () =>
+          new Response(
+            `event: ${member ? 'member-events' : 'group-events'}\nid: ${member ? 'member:g:s:1' : 'group:g:1'}\ndata: ${JSON.stringify(page)}\n\n`,
+          ),
+      );
+      vi.stubGlobal('fetch', fetch);
+      const onPage = vi.fn();
+      const errors: unknown[] = [];
+      const stream = subscribe(member, {
+        onPage,
+        onError(error) {
+          errors.push(error);
+        },
+      });
+      try {
+        await vi.waitFor(() => assert.equal(errors.length, 1));
+        assert.equal(onPage.mock.calls.length, 0);
+        assert.match(String(errors[0]), /Invalid/);
+        assert.equal(fetch.mock.calls.length, 1);
+      } finally {
+        stream.close();
+        await stream.completed;
+      }
+    }
+  }
+});
+
+test('group subscriptions enforce the configured frame byte cap before delimiter', async () => {
+  for (const member of [false, true]) {
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(c) {
+                body = c;
+              },
+              cancel,
+            }),
+          ),
+      ),
+    );
+    const errors: unknown[] = [];
+    const onPage = vi.fn();
+    const stream = subscribe(member, {
+      onPage,
+      onError(error) {
+        errors.push(error);
+      },
+    });
+    try {
+      await vi.waitFor(() => assert.ok(body));
+      body.enqueue(new TextEncoder().encode('data: ' + 'x'.repeat(131072)));
+      await Promise.resolve();
+      assert.equal(errors.length, 0);
+      body.enqueue(new TextEncoder().encode('x'.repeat(131072)));
+      await vi.waitFor(() => assert.equal(errors.length, 1));
+      assert.match(String(errors[0]), /byte limit/);
+      assert.equal(cancel.mock.calls.length, 1);
+      assert.equal(onPage.mock.calls.length, 0);
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
   }
 });

@@ -28,6 +28,8 @@ import {
 import { existsSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import {
+  StationHttpError,
+  StationRequestTimeoutError,
   TaskToolResultRequestError,
   TaskUserInputReferenceRequestError,
 } from '@kontourai/station-sdk/client';
@@ -1420,6 +1422,28 @@ async function runCoreCliAction(
   try {
     await runCoreCommand(command, rawArgs);
   } catch (error) {
+    if (command === 'group' && rawArgs.includes('--json')) {
+      console.error(
+        JSON.stringify({
+          success: false,
+          error: describeCliError(error),
+          ...(error instanceof StationHttpError
+            ? { status: error.status, code: error.code }
+            : {}),
+          ...(error instanceof StationRequestTimeoutError
+            ? {
+                code: 'request_timeout',
+                timeoutMs: error.timeoutMs,
+                mutation: error.mutation,
+                retryable: error.mutation === false,
+                outcome: error.mutation === false ? 'failed' : 'unknown',
+              }
+            : {}),
+        }),
+      );
+      process.exitCode = 1;
+      return;
+    }
     const action = rawArgs[0] ?? '';
     const isTaskProtectedAction =
       command === 'tasks' && TASK_PROTECTED_REFERENCE_ACTIONS.has(action);

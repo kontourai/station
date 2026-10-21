@@ -75,7 +75,7 @@ export async function runGroupCommand(
           terminalSafeJson(page).split('\n').map(terminalSafeText).join('\n'),
         );
       },
-      onError(error: unknown) {
+      onTerminal(error: unknown) {
         failure = error;
         stop.abort();
       },
