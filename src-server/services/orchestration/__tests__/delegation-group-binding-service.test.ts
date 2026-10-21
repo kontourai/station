@@ -15,6 +15,8 @@ import {
   FileDelegationGroupBindingStore,
 } from '../delegation-group-binding-store.js';
 
+const makeTempDir = trackTempDirs();
+
 let dir: string;
 let store: FileDelegationGroupBindingStore;
 const fixtureAuthority = (): undefined => undefined;
@@ -283,8 +285,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { setImmediate as immediate } from 'node:timers/promises';
-
-const makeTempDir = trackTempDirs();
 const invalidResult = () => {
   if (variant === 'rejecting') return (async () => {
     await Promise.resolve();
