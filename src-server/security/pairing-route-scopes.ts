@@ -2670,6 +2670,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel',
     },
+    // Approve and Decline of a check-back an unconfined session's agent asked
+    // for: the same gate as Cancel (sending to the conversation, never a
+    // request that may be an agent's).
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/decline',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/approve',
+    },
     {
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',

@@ -332,11 +332,7 @@ import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
 import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
-import {
-  type AgentSchedulePerson,
-  createAgentScheduleRoutes,
-  createJobProposalApproval,
-} from '../../routes/orchestration/agent-schedule.js';
+import { createAgentScheduleRoutes } from '../../routes/orchestration/agent-schedule.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
@@ -553,7 +549,6 @@ import type { WebPushService } from '../../services/notifications/web-push-servi
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
-import { AgentWakeUpDelivery } from '../../services/orchestration/agent-schedule.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
@@ -771,6 +766,10 @@ import type {
   AgentConfigurationMutationRunner,
   RuntimeContext,
 } from '../types.js';
+import {
+  agentWakeUpConversation,
+  composeAgentSchedule,
+} from './agent-schedule-composition.js';
 import {
   API_DOCS_LAUNCH_HEADERS,
   renderApiDocsLaunchPage,
@@ -2051,8 +2050,10 @@ export function configureRuntimeRoutes(
         ),
       // A wake-up a cancel names: the conversation it was recorded for.
       wakeUpConversation: (wakeUpId) =>
-        context.orchestrationEventStore?.agentScheduleStore().wakeUp(wakeUpId)
-          ?.conversationId,
+        agentWakeUpConversation(
+          context.orchestrationEventStore?.agentScheduleStore(),
+          wakeUpId,
+        ),
       // Slices C1, C2a and C3: the thread a scoped `/commands` command names.
       commandThread: (threadId) =>
         stationControlDispatchScope.target({
@@ -4723,74 +4724,38 @@ export function configureRuntimeRoutes(
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
   // (hosted), the tool answers that check-backs are unavailable.
-  const agentScheduleStore =
-    context.orchestrationEventStore?.agentScheduleStore();
-  // The person behind a UI request, for their own view of and actions on
-  // what an agent scheduled in a conversation.
-  const agentSchedulePerson = (c: Context): AgentSchedulePerson | undefined => {
-    if (!isRequestPrincipalCurrent(c.req.raw)) return undefined;
-    const userId = resolveOrchestrationRequestPrincipal(c).id;
-    const readAuthority = sessionReadAuthorityFromRequest(
-      userId,
-      getTenantRequestContext(c.req.raw),
-      hostedTenantRegistry,
-    );
-    const tenant = tenantExecutionContextForRequest(c.req.raw);
-    const service = context.orchestrationService;
-    return {
-      userId,
-      mayRead: (conversationId) =>
-        service.canUserReadSession(conversationId, readAuthority),
-      mayMutate: (conversationId) =>
-        service.canUserMutateSession(
-          service.currentConversationSessionId(conversationId),
-          userId,
-          tenant,
-        ),
-    };
-  };
-  const agentWakeUps =
-    threadInbox && agentScheduleStore
-      ? new AgentWakeUpDelivery({
-          store: agentScheduleStore,
-          submit: (input) => threadInbox.submit(input),
-          logger: context.logger,
-        })
-      : undefined;
+  const agentSchedule = composeAgentSchedule({
+    store: context.orchestrationEventStore?.agentScheduleStore(),
+    threadInbox,
+    scope: stationControlDispatchScope,
+    orchestration: context.orchestrationService,
+    hosted: hostedTenantRegistry !== undefined,
+    isInternalRequest: isStationInternalRequest,
+    isRequestPrincipalCurrent,
+    requestUserId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    readAuthorityFor: (c, userId) =>
+      sessionReadAuthorityFromRequest(
+        userId,
+        getTenantRequestContext(c.req.raw),
+        hostedTenantRegistry,
+      ),
+    tenantFor: (c) => tenantExecutionContextForRequest(c.req.raw),
+    dispatchActor: (c) =>
+      resolveDispatchActor(
+        {
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          resolveAgentDispatchActor,
+        },
+        c,
+      ),
+    agentProject: async (agentSlug) =>
+      (await context.agentService.getAgent(agentSlug)).project,
+    logger: context.logger,
+  });
+  const agentWakeUps = agentSchedule.delivery;
   context.app.route(
     '/api/orchestration',
-    createAgentScheduleRoutes({
-      isInternalRequest: isStationInternalRequest,
-      scope: stationControlDispatchScope,
-      store: agentScheduleStore,
-      delivery: agentWakeUps,
-      dispatchActor: (c) =>
-        resolveDispatchActor(
-          {
-            resolvePrincipal: resolveOrchestrationRequestPrincipal,
-            resolveAgentDispatchActor,
-          },
-          c,
-        ),
-      person: agentSchedulePerson,
-      // The conversation's current Session's stop, when it waits for a known
-      // reset; the same projection the usage-limit banner reads.
-      usageLimitResume: async (conversationId) => {
-        const threadId =
-          context.orchestrationService.currentConversationSessionId(
-            conversationId,
-          );
-        const recovery =
-          await context.orchestrationService.readUsageLimitRecovery(threadId);
-        return recovery?.outcome === 'armed' && recovery.dueAt
-          ? {
-              threadId,
-              dueAt: recovery.dueAt,
-              autoResume: recovery.autoResume === true,
-            }
-          : undefined;
-      },
-    }),
+    createAgentScheduleRoutes(agentSchedule.routeDeps),
   );
   context.app.route(
     '/api/orchestration',
@@ -7448,10 +7413,7 @@ export function configureRuntimeRoutes(
       // Mode only: the scheduler is hidden when hosted, whoever asks.
       readAuthorityForRequest,
       // A person approving an agent's `propose_job`.
-      jobProposals: createJobProposalApproval({
-        store: agentScheduleStore,
-        person: agentSchedulePerson,
-      }),
+      jobProposals: agentSchedule.jobProposals,
     }),
   );
   context.app.route(

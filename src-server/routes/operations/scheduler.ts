@@ -66,8 +66,11 @@ export interface JobProposalApproval {
     c: Context,
     proposalId: string,
     body: Record<string, unknown>,
-  ):
-    | { readonly ok: true; settle(): void }
+  ): /**
+   * Admitted and claimed: `commit` after the job is created, `revert` if
+   * creating it failed.
+   */
+    | { readonly ok: true; commit(): void; revert(): void }
     | {
         readonly ok: false;
         readonly status: 403 | 404 | 409;
@@ -253,8 +256,14 @@ export function createSchedulerRoutes(
           approval.status,
         );
       schedulerJobRuns.add(1, { op: 'create_job' });
-      const output = await schedulerService.addJob(body);
-      approval?.settle();
+      let output: Awaited<ReturnType<SchedulerService['addJob']>>;
+      try {
+        output = await schedulerService.addJob(body);
+      } catch (error) {
+        approval?.revert();
+        throw error;
+      }
+      approval?.commit();
       return c.json({ success: true, data: { output } });
     } catch (error: unknown) {
       logger.error('Failed to add job', { error });

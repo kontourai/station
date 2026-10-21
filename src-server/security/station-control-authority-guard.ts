@@ -256,10 +256,11 @@ function wakeUpConversationId(
   )
     return undefined;
   if (method.toUpperCase() === 'DELETE') {
-    const wakeUpId = decodeURIComponent(
-      path.split('/').filter(Boolean).at(-1) ?? '',
-    );
+    // A malformed escape names nothing: refused like an unknown id.
     try {
+      const wakeUpId = decodeURIComponent(
+        path.split('/').filter(Boolean).at(-1) ?? '',
+      );
       return options.wakeUpConversation?.(wakeUpId) ?? null;
     } catch {
       return null;

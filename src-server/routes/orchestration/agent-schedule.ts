@@ -16,14 +16,21 @@
  * and each one refuses a request that may be an agent's besides. Approving a
  * job proposal is not here: the scheduler's own create route does it
  * (`routes/operations/scheduler.ts`), under the person's credential.
+ *
+ * A wake-up from a caller the scope rule refuses only because its session
+ * runs unconfined (`host`) is not refused: it is recorded `needs_approval`
+ * and the person approves or declines it here.
  */
 import {
   AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION,
+  AGENT_SCHEDULE_RATE_WINDOW_MS,
+  AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW,
   AGENT_WAKE_UP_MAX_HORIZON_MS,
   AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
   AGENT_WAKE_UP_MIN_DELAY_MS,
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
   type AgentJobProposalJob,
+  type AgentJobProposalRefusalCode,
   type AgentWakeUpRefusalCode,
   CONVERSATION_SCHEDULED_JOBS_LIMIT,
   type ConversationAgentSchedule,
@@ -33,7 +40,10 @@ import {
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import type {
+  StationControlDispatchScope,
+  StationControlResolvedDispatchTarget,
+} from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
@@ -45,13 +55,14 @@ import {
 } from '../../services/orchestration/agent-schedule.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import {
+  type StationControlPolicyCaller,
   stationControlOutOfScopeRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
+  stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
 import type { JobProposalApproval } from '../operations/scheduler.js';
 import { addJobSchema } from '../schemas/schema-definitions/scheduler.js';
-import { refuseOutOfScopeDispatch } from './dispatch-scope.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -62,10 +73,36 @@ export const WAKE_UP_REFUSAL_COPY: Record<AgentWakeUpRefusalCode, string> = {
   wake_up_too_far: `Pick a time within ${AGENT_WAKE_UP_MAX_HORIZON_MS / 3_600_000} hours. For later or repeating work, use propose_job.`,
   wake_up_limit_reached: `This chat already has ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} check-backs waiting. Cancel one first.`,
   wake_up_note_too_long: `Keep the note to ${AGENT_WAKE_UP_NOTE_MAX_CHARS} characters or fewer.`,
+  wake_up_rate_limited: `This chat scheduled ${AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW} check-backs in the last ${AGENT_SCHEDULE_RATE_WINDOW_MS / 3_600_000} hour. Try again later.`,
   wake_up_unavailable: "Check-backs aren't available on this Station.",
 };
 
-const JOB_PROPOSAL_LIMIT_COPY = `This chat already has ${AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION} job proposals waiting. Wait for the person to answer one.`;
+/** What the agent reads when its check-back waits for the person. */
+export const WAKE_UP_NEEDS_APPROVAL_COPY =
+  'Waiting for the person to approve it. It is sent only if they do before it is due.';
+
+const JOB_PROPOSAL_REFUSAL_COPY: Record<
+  Exclude<AgentJobProposalRefusalCode, 'job_proposal_invalid'>,
+  string
+> = {
+  job_proposal_limit_reached: `This chat already has ${AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION} job proposals waiting. Wait for the person to answer one.`,
+  job_proposal_rate_limited:
+    'This chat proposed too many jobs in the last hour. Try again later.',
+  job_proposal_agent_out_of_scope:
+    'That agent is outside this chat’s Project. Name an agent from this Project, or none.',
+  job_proposal_unavailable: "Job proposals aren't available on this Station.",
+};
+
+const proposalRefusal = (
+  c: Context,
+  code: keyof typeof JOB_PROPOSAL_REFUSAL_COPY,
+  status: 403 | 409 | 503,
+) =>
+  c.json(
+    { success: false, code, error: JOB_PROPOSAL_REFUSAL_COPY[code] },
+    status,
+    NO_STORE,
+  );
 
 const wakeUpBodySchema = z
   .object({
@@ -121,6 +158,20 @@ export interface AgentScheduleRoutesDeps {
   usageLimitResume?(
     conversationId: string,
   ): Promise<ConversationUsageLimitResume | undefined>;
+  /**
+   * The scope rule's target for the Agent a job proposal names, owned by
+   * the caller's owner: its Project (or the global space). `undefined` when
+   * Station cannot read the Agent, which refuses.
+   */
+  jobAgentTarget?(
+    agentSlug: string,
+    ownerId: string | undefined,
+  ): Promise<StationControlResolvedDispatchTarget | undefined>;
+  /**
+   * A hosted Station: proposals are refused, since the scheduler that
+   * would approve them is not offered there.
+   */
+  hosted?: boolean;
   now?: () => number;
 }
 
@@ -141,7 +192,13 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
   /** The verified caller's own conversation, or the response refusing it. */
   const callerOf = (
     c: Context,
-  ): { conversationId: string; sessionId: string } | { refused: Response } => {
+  ):
+    | {
+        conversationId: string;
+        sessionId: string;
+        policy: StationControlPolicyCaller;
+      }
+    | { refused: Response } => {
     if (!deps.isInternalRequest(c.req.raw))
       return {
         refused: c.json({ error: { code: 'not_found' } }, 404, NO_STORE),
@@ -161,6 +218,7 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
     return {
       conversationId: caller.conversationId ?? caller.sessionId,
       sessionId: caller.sessionId,
+      policy: caller,
     };
   };
   const otherConversation = (c: Context) =>
@@ -186,15 +244,21 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
     const caller = callerOf(c);
     if ('refused' in caller) return caller.refused;
     // A wake-up sends a turn into the caller's own Session later, so it
-    // answers the one scope rule a send answers: a caller that is not bound
-    // never schedules into a Session that runs `host`, nor one whose Project
-    // Station cannot confirm.
-    const refused = refuseOutOfScopeDispatch(c, deps.scope, () => ({
-      kind: 'thread',
-      threadId: caller.sessionId,
-      remote: false,
-    }));
-    if (refused) return refused;
+    // answers the one scope rule a send answers. Owner decision 2026-10-20:
+    // a caller refused only because its Session runs `host` (unconfined)
+    // asks the person instead, who approves it with one click; any other
+    // refusal stands.
+    const refusal = stationControlScopeRefusal(
+      caller.policy,
+      deps.scope?.target({
+        kind: 'thread',
+        threadId: caller.sessionId,
+        remote: false,
+      }),
+    );
+    const needsApproval = refusal?.reason === 'host';
+    if (refusal && !needsApproval)
+      return c.json(stationControlRefusalBody(refusal), 403, NO_STORE);
     const parsed = wakeUpBodySchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success)
       return c.json(
@@ -222,8 +286,10 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         attribution: actor.ownerAttribution ?? 'unattributed-agent',
         ...(actor.principal ? { principal: actor.principal } : {}),
       },
+      caller: caller.policy,
       note: parsed.data.note,
       delayMs: parsed.data.delayMs,
+      needsApproval,
     });
     if (result.outcome === 'refused')
       return c.json(
@@ -235,7 +301,15 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         result.code === 'wake_up_unavailable' ? 503 : 409,
         NO_STORE,
       );
-    return c.json({ success: true, data: result.wakeUp }, 200, NO_STORE);
+    return c.json(
+      {
+        success: true,
+        data: result.wakeUp,
+        ...(needsApproval ? { message: WAKE_UP_NEEDS_APPROVAL_COPY } : {}),
+      },
+      200,
+      NO_STORE,
+    );
   });
 
   app.get('/station-control/wake-ups', (c) => {
@@ -270,7 +344,9 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
   app.post('/station-control/job-proposals', async (c) => {
     const caller = callerOf(c);
     if ('refused' in caller) return caller.refused;
-    if (!deps.store) return unavailable(c);
+    // Nobody could approve it here: the scheduler is not offered hosted.
+    if (!deps.store || deps.hosted)
+      return proposalRefusal(c, 'job_proposal_unavailable', 503);
     const raw = await readJson(c.req.raw);
     const parsed = jobProposalBodySchema.safeParse(raw);
     // The scheduler's own validation decides whether the job itself is one
@@ -294,6 +370,23 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         400,
         NO_STORE,
       );
+    // The Agent a job runs is decided by the same scope rule a dispatch
+    // answers: one outside the caller's Project (or one Station cannot
+    // read) is not proposable, so a person is never asked to approve a job
+    // that would run an Agent this chat could not reach itself.
+    if (job.data.agent) {
+      const ownerId = caller.policy.principal?.elevationEligible
+        ? caller.policy.principal.id
+        : undefined;
+      let target: StationControlResolvedDispatchTarget | undefined;
+      try {
+        target = await deps.jobAgentTarget?.(job.data.agent, ownerId);
+      } catch {
+        target = undefined;
+      }
+      if (stationControlScopeRefusal(caller.policy, target))
+        return proposalRefusal(c, 'job_proposal_agent_out_of_scope', 403);
+    }
     const proposedJob: AgentJobProposalJob = {
       name: job.data.name,
       schedule: job.data.schedule as AgentJobProposalJob['schedule'],
@@ -308,15 +401,9 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       now: now(),
     });
     if (result.outcome === 'limit-reached')
-      return c.json(
-        {
-          success: false,
-          code: 'job_proposal_limit_reached',
-          error: JOB_PROPOSAL_LIMIT_COPY,
-        },
-        409,
-        NO_STORE,
-      );
+      return proposalRefusal(c, 'job_proposal_limit_reached', 409);
+    if (result.outcome === 'rate-limited')
+      return proposalRefusal(c, 'job_proposal_rate_limited', 409);
     // The agent learns only what it proposed and that a person decides.
     return c.json(
       {
@@ -380,22 +467,69 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
     return c.json({ success: true, data }, 200, NO_STORE);
   });
 
-  app.post('/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel', (c) => {
-    const conversationId = c.req.param('conversationId');
+  /** The conversation's wake-up a person's request names, or a 404. */
+  const personWakeUp = (c: Context) => {
+    const conversationId = c.req.param('conversationId') ?? '';
     const person = personFor(c, conversationId, 'mutate');
     if (person instanceof Response) return person;
-    const record = deps.store?.wakeUp(c.req.param('wakeUpId'));
+    const record = deps.store?.wakeUp(c.req.param('wakeUpId') ?? '');
     if (!record || record.conversationId !== conversationId || !deps.delivery)
       return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    return { person, record, delivery: deps.delivery };
+  };
+
+  // Cancel and Decline are the same act: the wake-up will not be sent.
+  const cancelByPerson = (c: Context) => {
+    const found = personWakeUp(c);
+    if (found instanceof Response) return found;
     return c.json(
       {
         success: true,
-        data: { canceled: deps.delivery.cancel(record.id, 'person') },
+        data: { canceled: found.delivery.cancel(found.record.id, 'person') },
       },
       200,
       NO_STORE,
     );
-  });
+  };
+  app.post(
+    '/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel',
+    cancelByPerson,
+  );
+  app.post(
+    '/agent-schedule/:conversationId/wake-ups/:wakeUpId/decline',
+    cancelByPerson,
+  );
+
+  /**
+   * A person approves a check-back an unconfined session's agent asked for.
+   * The person gate is propose_job's: a request that may be an agent's is
+   * refused, and one from a person who may not send here reads as missing.
+   */
+  app.post(
+    '/agent-schedule/:conversationId/wake-ups/:wakeUpId/approve',
+    (c) => {
+      const found = personWakeUp(c);
+      if (found instanceof Response) return found;
+      const result = found.delivery.approve(
+        found.record.id,
+        found.person.userId,
+      );
+      if (result.outcome === 'settled')
+        return c.json(
+          {
+            success: false,
+            code: 'wake_up_settled',
+            error:
+              result.state === 'needs_approval' || result.state === 'failed'
+                ? 'Its time has passed.'
+                : `It was already ${result.state === 'pending' ? 'approved' : result.state}.`,
+          },
+          409,
+          NO_STORE,
+        );
+      return c.json({ success: true, data: result.wakeUp }, 200, NO_STORE);
+    },
+  );
 
   app.post(
     '/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
@@ -406,8 +540,10 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       const record = deps.store?.jobProposal(c.req.param('proposalId'));
       if (!record || record.conversationId !== conversationId)
         return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
-      const declined = deps.store!.settleJobProposal(
+      // Only from `open`: an Approve that already claimed it wins.
+      const declined = deps.store!.transitionJobProposal(
         record.id,
+        'open',
         'declined',
         person.userId,
         now(),
@@ -431,8 +567,10 @@ const APPROVABLE_FIELDS: ReadonlySet<string> = new Set([
  * The scheduler create route's approval of a job proposal. A person's own
  * request (never one that may be an agent's) that may act on the proposal's
  * conversation, naming a proposal still open, with a body that is exactly
- * the proposed job and nothing more: then the route creates the job and
- * `settle` records the proposal approved by that person.
+ * the proposed job and nothing more. Admission CLAIMS the proposal
+ * (`open` -> `approving`, one conditional UPDATE), so a Decline after it
+ * changes nothing; the route then creates the job and `commit`s
+ * (`approved`), or `revert`s to `open` if creating it failed.
  */
 export function createJobProposalApproval(deps: {
   store: AgentScheduleStore | undefined;
@@ -475,14 +613,46 @@ export function createJobProposalApproval(deps: {
           code: 'job_proposal_mismatch',
           error: 'That is not the job the agent proposed.',
         };
+      const store = deps.store!;
+      const at = () => deps.now?.() ?? Date.now();
+      if (
+        !store.transitionJobProposal(
+          proposal.id,
+          'open',
+          'approving',
+          person.userId,
+          at(),
+        )
+      ) {
+        const state = store.jobProposalState(proposal.id);
+        return {
+          ok: false,
+          status: 409,
+          code: 'job_proposal_settled',
+          error:
+            state === 'approving'
+              ? 'This proposal is already being approved.'
+              : `This proposal was already ${state ?? 'removed'}.`,
+        };
+      }
       return {
         ok: true,
-        settle: () => {
-          deps.store?.settleJobProposal(
+        commit: () => {
+          store.transitionJobProposal(
             proposal.id,
+            'approving',
             'approved',
             person.userId,
-            deps.now?.() ?? Date.now(),
+            at(),
+          );
+        },
+        revert: () => {
+          store.transitionJobProposal(
+            proposal.id,
+            'approving',
+            'open',
+            null,
+            at(),
           );
         },
       };

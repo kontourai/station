@@ -43,13 +43,15 @@ const scheduleSchema = z.discriminatedUnion('kind', [
 export function registerScheduleTools(registry: StationControlToolRegistry) {
   registry.tool(
     'schedule_wake_up',
-    `Check back in this chat later: Station sends you one follow-up turn after \`minutes\`, carrying your \`note\`. It runs with this chat's current permissions. Only this chat; at most ${MAX_HOURS} hours ahead, ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} waiting at once, a note of ${AGENT_WAKE_UP_NOTE_MAX_CHARS} characters. If a turn is running then, it waits for it to end. The person sees it in the chat and can cancel it.`,
+    `Check back in this chat later: Station sends you one follow-up turn after \`minutes\`, quoting your \`note\`. It runs with this chat's current permissions. Only this chat; at most ${MAX_HOURS} hours ahead, ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} waiting at once, a note of ${AGENT_WAKE_UP_NOTE_MAX_CHARS} characters. If a turn is running then, it waits for it to end. The person sees it in the chat and can cancel it. In a session that runs unconfined, the person must approve it first: the result's state is \`needs_approval\`, and it is sent only if they approve before it is due.`,
     {
       minutes: z.number().describe('How many minutes from now (at least 1).'),
       note: z
         .string()
         .min(1)
-        .describe('What to check when you wake; sent back to you verbatim.'),
+        .describe(
+          'What to check when you wake; quoted back to you, and shown to the person.',
+        ),
     },
     async ({ minutes, note }) =>
       jsonToolResult(

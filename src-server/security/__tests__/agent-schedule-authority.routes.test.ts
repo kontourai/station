@@ -1,11 +1,16 @@
 /**
  * Agent wake-ups and job proposals through the REAL boundary: a listening
  * server with the production runtime security boundary, the production
- * station-control guard, the production agent-schedule and scheduler
- * routes over a real SQLite store, the production HTTP MCP route serving
- * the real tool registrations, and real token mints per delivery channel.
- * Only the thread inbox the wake-up is handed to and the scheduler service
- * are recording stubs.
+ * station-control guard, and the production agent-schedule composition
+ * (`composeAgentSchedule`: its person gate, fire-time scope decision,
+ * routes and the scheduler's proposal approval) over a real SQLite store,
+ * handing due wake-ups to a REAL thread inbox (its own refusals and
+ * capacity) on a real SQLite inbox store. The production HTTP MCP route
+ * serves the real tool registrations, with real token mints per delivery
+ * channel. Stubbed: the orchestration reads (who may read or send to a
+ * conversation, set per test), the dispatch scope's records, the inbox's
+ * turn starts (every conversation reads busy, so nothing is started), and
+ * the scheduler service.
  *
  * Session ids name what the server records for them: `op-` is owned by the
  * operator, `host-` runs unconfined; each session's conversation is
@@ -15,6 +20,9 @@ import type { AddressInfo } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import {
+  AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW,
+  AGENT_SCHEDULE_RATE_WINDOW_MS,
+  AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW,
   AGENT_WAKE_UP_MAX_HORIZON_MS,
   AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
@@ -33,7 +41,7 @@ import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import {
   createAgentScheduleRoutes,
-  createJobProposalApproval,
+  WAKE_UP_NEEDS_APPROVAL_COPY,
 } from '../../routes/orchestration/agent-schedule.js';
 import { resolveDispatchActor } from '../../routes/orchestration/orchestration.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
@@ -42,11 +50,17 @@ import {
   resolveStationControlCallerForRequest,
   type StationControlCallerRecordResolver,
 } from '../../runtime/mcp/station-control-caller.js';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  type AgentScheduleComposition,
+  admitWakeUpAtFire,
+  composeAgentSchedule,
+} from '../../runtime/routes/agent-schedule-composition.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
@@ -56,8 +70,14 @@ import {
   AgentWakeUpDelivery,
   createSqliteAgentScheduleStore,
   wakeUpClientTurnId,
+  wakeUpMessage,
 } from '../../services/orchestration/agent-schedule.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import {
+  createSqliteThreadInboxStore,
+  ThreadInboxDelivery,
+  type ThreadInboxStore,
+} from '../../services/orchestration/thread-inbox.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import {
@@ -98,59 +118,153 @@ function quietLogger(): Logger {
   } as unknown as Logger;
 }
 
-let server: ReturnType<typeof serve>;
-let baseUrl: string;
-let port: number;
-let store: AgentScheduleStore;
-let delivery: AgentWakeUpDelivery;
-const clock = { now: 1_800_000_000_000 };
-const refusals: string[] = [];
-const submitted: Array<{
-  conversationId: string;
-  clientTurnId: string;
-  payload: any;
-}> = [];
-const addJob = vi.fn(
-  async (opts: { name: string }) => `Job '${opts.name}' created`,
-);
+/** Facts the stubbed records answer, set per test. */
+const facts = {
+  /** Conversations whose sessions run unconfined now (beyond `host-` ids). */
+  hostNow: new Set<string>(),
+  /** Conversations the person may not send to (or act on). */
+  mayNotSend: new Set<string>(),
+  /** Conversations the person may not read as a whole. */
+  mayNotRead: new Set<string>(),
+  /** Agents and their Project slug (`null`: global); absent: no such agent. */
+  agents: new Map<string, string | null>([
+    ['writer', 'project-a'],
+    ['global-writer', null],
+    ['elsewhere', 'project-b'],
+  ]),
+};
 
-function newDelivery(now: () => number) {
-  return new AgentWakeUpDelivery({
-    store,
-    submit: (input) => {
-      submitted.push(input);
+const sessionOf = (conversationId: string) =>
+  conversationId.startsWith('conv-')
+    ? conversationId.slice('conv-'.length)
+    : conversationId;
+
+/** The dispatch scope's records, as the stubbed sessions read. */
+const scope: StationControlDispatchScope = {
+  target: (ref) => {
+    const thread =
+      ref.kind === 'thread'
+        ? ref.threadId
+        : ref.kind === 'conversation'
+          ? sessionOf(ref.conversationId)
+          : undefined;
+    if (thread !== undefined)
       return {
-        outcome: 'queued',
-        entry: {
-          conversationId: input.conversationId,
-          clientTurnId: input.clientTurnId,
-          kind: 'follow-up',
-          state: 'queued',
-          message: input.payload.message,
-          createdAt: '',
-          updatedAt: '',
+        ownerId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        scope: { kind: 'project', id: 'local-project-a' },
+        host: thread.startsWith('host-') || facts.hostNow.has(`conv-${thread}`),
+        remote: false,
+        ownerHoldsAction: true,
+      };
+    if (ref.kind === 'new' && ref.projectSlug !== undefined)
+      return {
+        ownerId: ref.ownerId,
+        scope: {
+          kind: 'project',
+          id: ref.projectSlug === 'project-a' ? 'local-project-a' : 'other',
         },
-      } as never;
-    },
-    logger: quietLogger(),
-    now,
-  });
+        host: false,
+        remote: false,
+        ownerHoldsAction: true,
+      };
+    return undefined;
+  },
+  conversationExists: () => true,
+  ownProjectSlug: () => undefined,
+};
+
+const clock = { now: 1_800_000_000_000 };
+
+interface World {
+  baseUrl: string;
+  port: number;
+  store: AgentScheduleStore;
+  inboxStore: ThreadInboxStore;
+  inbox: ThreadInboxDelivery;
+  composition: AgentScheduleComposition;
+  refusals: string[];
+  /** Every hand-off to the inbox, with the inbox's own answer. */
+  submitted: Array<{
+    conversationId: string;
+    clientTurnId: string;
+    payload: any;
+    outcome: string;
+  }>;
+  addJob: ReturnType<typeof vi.fn>;
+  close(): Promise<void>;
 }
 
-/** The person behind a credential request; never an internal one. */
-const person = (c: any) =>
-  getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.kind === 'credential'
-    ? {
-        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-        mayRead: () => true,
-        mayMutate: () => true,
-      }
-    : undefined;
-
-beforeAll(async () => {
-  __resetStationServerSelfAttestationForTests();
-  store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
-  delivery = newDelivery(() => clock.now);
+async function boot(options: { hosted: boolean }): Promise<World> {
+  const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
+  const inboxStore = createSqliteThreadInboxStore(
+    new DatabaseSync(':memory:') as never,
+  );
+  const inbox = new ThreadInboxDelivery({
+    store: inboxStore,
+    foldEvents: () => [],
+    headSequence: () => 0,
+    // Every conversation is busy: entries wait, nothing is started.
+    coordinatorBusy: () => true,
+    conversationOf: (id) => id,
+    currentSessionId: (id) => id,
+    mayContinue: (conversationId) => !facts.mayNotSend.has(conversationId),
+    inspectDelivery: () => ({ outcome: 'not-received' }),
+    start: () => Promise.reject(new Error('no starts in this test')),
+    subscribe: () => () => {},
+    logger: quietLogger(),
+    retryDelaysMs: [3_600_000],
+    maxRetries: 0,
+    now: () => clock.now,
+  });
+  const refusals: string[] = [];
+  const submitted: World['submitted'] = [];
+  const addJob = vi.fn(
+    async (opts: { name: string }) => `Job '${opts.name}' created`,
+  );
+  const composition = composeAgentSchedule({
+    store,
+    threadInbox: options.hosted
+      ? undefined
+      : {
+          submit: (input) => {
+            const result = inbox.submit(input);
+            submitted.push({ ...input, outcome: result.outcome });
+            return result;
+          },
+        },
+    scope,
+    orchestration: {
+      canUserReadConversation: (conversationId) =>
+        !facts.mayNotRead.has(conversationId),
+      canUserMutateSession: (threadId) => !facts.mayNotSend.has(threadId),
+      currentConversationSessionId: (conversationId) => conversationId,
+      readUsageLimitRecovery: async () => undefined,
+    },
+    hosted: options.hosted,
+    isInternalRequest: (request) =>
+      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
+    // A person's credential request is current; nothing else is a person.
+    isRequestPrincipalCurrent: (request) =>
+      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'credential',
+    requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+    readAuthorityFor: () => ({ mode: 'personal' }) as never,
+    tenantFor: () => undefined,
+    dispatchActor: (c) =>
+      resolveDispatchActor(
+        {
+          resolvePrincipal: () => OPERATOR,
+          resolveAgentDispatchActor:
+            createAgentDispatchActorResolver(resolveRecord),
+        },
+        c as never,
+      ),
+    agentProject: async (slug) => {
+      if (!facts.agents.has(slug)) throw new Error('no such agent');
+      return facts.agents.get(slug) ?? undefined;
+    },
+    logger: quietLogger(),
+    now: () => clock.now,
+  });
   const app = new Hono();
   configureRuntimeHttp({
     app: app as never,
@@ -174,8 +288,8 @@ beforeAll(async () => {
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(request, resolveRecord),
       isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
-      // The production composition's read.
-      wakeUpConversation: (wakeUpId) => store.wakeUp(wakeUpId)?.conversationId,
+      // The composition's own read, as production wires it.
+      wakeUpConversation: composition.wakeUpConversation,
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -183,67 +297,80 @@ beforeAll(async () => {
   const listening = new Promise<number>((resolve) => {
     resolvePort = resolve;
   });
-  server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }, (info) =>
-    resolvePort((info as AddressInfo).port),
+  const server = serve(
+    { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
+    (info) => resolvePort((info as AddressInfo).port),
   );
-  port = await listening;
-  baseUrl = `http://127.0.0.1:${port}`;
-  process.env.STATION_API_BASE = baseUrl;
+  const port = await listening;
+  const baseUrl = `http://127.0.0.1:${port}`;
   app.route(
     '',
     createStationControlMcpRoutes({ port, resolveCallerRecord: resolveRecord }),
   );
-  const resolveAgentDispatchActor =
-    createAgentDispatchActorResolver(resolveRecord);
   app.route(
     '/api/orchestration',
-    createAgentScheduleRoutes({
-      isInternalRequest: (request) =>
-        getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal',
-      scope: {
-        target: (ref) =>
-          ref.kind === 'thread'
-            ? {
-                ownerId: LOCAL_OPERATOR_PRINCIPAL_ID,
-                scope: { kind: 'project', id: 'local-project-a' },
-                host: ref.threadId.startsWith('host-'),
-                remote: false,
-                ownerHoldsAction: true,
-              }
-            : undefined,
-        conversationExists: () => true,
-        ownProjectSlug: () => undefined,
-      },
-      store,
-      delivery,
-      dispatchActor: (c) =>
-        resolveDispatchActor(
-          { resolvePrincipal: () => OPERATOR, resolveAgentDispatchActor },
-          c as never,
-        ),
-      person,
-      now: () => clock.now,
-    }),
+    createAgentScheduleRoutes(composition.routeDeps),
   );
   app.route(
     '/scheduler',
     createSchedulerRoutes(
       { addJob } as unknown as SchedulerService,
       quietLogger(),
-      {
-        jobProposals: createJobProposalApproval({
-          store,
-          person,
-          now: () => clock.now,
-        }),
-      },
+      { jobProposals: composition.jobProposals },
     ),
   );
+  return {
+    baseUrl,
+    port,
+    store,
+    inboxStore,
+    inbox,
+    composition,
+    refusals,
+    submitted,
+    addJob,
+    close: async () => {
+      composition.delivery?.stop();
+      inbox.stop();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+let world: World;
+let store: AgentScheduleStore;
+let delivery: AgentWakeUpDelivery;
+let baseUrl: string;
+let port: number;
+let refusals: string[];
+let submitted: World['submitted'];
+let addJob: World['addJob'];
+
+/** Another delivery over the same store and inbox: a restart. */
+function newDelivery(now: () => number) {
+  return new AgentWakeUpDelivery({
+    store,
+    admit: (record) => admitWakeUpAtFire(scope, record),
+    submit: (input) => {
+      const result = world.inbox.submit(input);
+      submitted.push({ ...input, outcome: result.outcome });
+      return result;
+    },
+    logger: quietLogger(),
+    now,
+  });
+}
+
+beforeAll(async () => {
+  __resetStationServerSelfAttestationForTests();
+  world = await boot({ hosted: false });
+  ({ store, baseUrl, port, refusals, submitted, addJob } = world);
+  delivery = world.composition.delivery!;
+  process.env.STATION_API_BASE = baseUrl;
 });
 
 afterAll(async () => {
-  delivery.stop();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await world.close();
   delete process.env.STATION_API_BASE;
   __resetStationServerSelfAttestationForTests();
 });
@@ -253,17 +380,24 @@ beforeEach(() => {
   refusals.length = 0;
   submitted.length = 0;
   addJob.mockClear();
+  facts.hostNow.clear();
+  facts.mayNotSend.clear();
+  facts.mayNotRead.clear();
 });
 
 type Channel = 'bound' | 'delegated-custody' | 'bearer-exposed';
 
 /** The credential a tool of this channel forwards on its REST calls. */
-function forwardedCaller(channel: Channel, sessionId: string): string {
+function forwardedCaller(
+  channel: Channel,
+  sessionId: string,
+  atPort = port,
+): string {
   switch (channel) {
     case 'bound':
       return mintStationControlMcpToken(sessionId, 'sdk-in-process').token;
     case 'delegated-custody':
-      return mintStationControlMcpHeaderAuth(port, sessionId).token;
+      return mintStationControlMcpHeaderAuth(atPort, sessionId).token;
     case 'bearer-exposed':
       return mintStationControlMcpToken(sessionId, 'url-token').token;
   }
@@ -278,8 +412,9 @@ async function agent(
   method: string,
   path: string,
   body?: unknown,
+  at: { baseUrl: string; port: number } = { baseUrl, port },
 ): Promise<{ status: number; body: any }> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${at.baseUrl}${path}`, {
     method,
     headers: {
       'content-type': 'application/json',
@@ -288,6 +423,7 @@ async function agent(
       [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
         channel,
         sessionId,
+        at.port,
       ),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -299,8 +435,9 @@ async function personRequest(
   method: string,
   path: string,
   body?: unknown,
+  at = baseUrl,
 ): Promise<{ status: number; body: any }> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${at}${path}`, {
     method,
     headers: {
       'content-type': 'application/json',
@@ -314,6 +451,8 @@ async function personRequest(
 const WAKE_UPS = '/api/orchestration/station-control/wake-ups';
 const PROPOSALS = '/api/orchestration/station-control/job-proposals';
 const FIVE_MINUTES = 5 * 60_000;
+const schedulePath = (conversationId: string) =>
+  `/api/orchestration/agent-schedule/${conversationId}`;
 
 describe('schedule_wake_up: the caller’s own chat, bounded', () => {
   for (const channel of [
@@ -491,7 +630,7 @@ describe('schedule_wake_up: the caller’s own chat, bounded', () => {
     expect(at.body.data.note).toHaveLength(AGENT_WAKE_UP_NOTE_MAX_CHARS);
   });
 
-  test('a caller that is not bound does not schedule into its own unconfined session', async () => {
+  test('a caller that is not bound asks the person before scheduling into its own unconfined session', async () => {
     const response = await agent(
       'delegated-custody',
       nextSession('host-'),
@@ -502,20 +641,17 @@ describe('schedule_wake_up: the caller’s own chat, bounded', () => {
         note: 'x',
       },
     );
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'station_control_out_of_scope',
-      reason: 'host',
+    expect(response.status).toBe(200);
+    expect(response.body.data.state).toBe('needs_approval');
+    expect(response.body.message).toBe(WAKE_UP_NEEDS_APPROVAL_COPY);
+    // A bound caller keeps its own session, armed at once.
+    const bound = await agent('bound', nextSession('host-'), 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
     });
-    // A bound caller keeps its own session.
-    expect(
-      (
-        await agent('bound', nextSession('host-'), 'POST', WAKE_UPS, {
-          delayMs: FIVE_MINUTES,
-          note: 'x',
-        })
-      ).status,
-    ).toBe(200);
+    expect(bound.status).toBe(200);
+    expect(bound.body.data.state).toBe('pending');
+    expect(bound.body.message).toBeUndefined();
   });
 
   test('list_wake_ups answers only the caller’s own conversation', async () => {
@@ -555,7 +691,7 @@ describe('a due wake-up goes to the caller’s own conversation, as its recorded
         conversationId: `conv-${sessionId}`,
         clientTurnId: wakeUpClientTurnId(id),
         payload: {
-          message: 'Scheduled check-back: check CI',
+          message: wakeUpMessage('check CI'),
           // A copyable credential never launders its owner: the same
           // attribution its own dispatch would carry.
           actor: expect.objectContaining({
@@ -565,6 +701,7 @@ describe('a due wake-up goes to the caller’s own conversation, as its recorded
             actor: { kind: 'internal' },
           }),
         },
+        outcome: 'queued',
       },
     ]);
     expect(store.wakeUp(id)?.state).toBe('sent');
@@ -859,5 +996,523 @@ describe('add_job’s refusal names what the agent can do instead', () => {
     expect(response.body.error).toContain('schedule_wake_up');
     expect(response.body.error).toContain('propose_job');
     expect(addJob).not.toHaveBeenCalled();
+  });
+});
+
+/** A check-back the agent of an unconfined session asked for. */
+async function hostCheckBack(note = 'check the deploy') {
+  const sessionId = nextSession('host-');
+  const created = await agent(
+    'delegated-custody',
+    sessionId,
+    'POST',
+    WAKE_UPS,
+    {
+      delayMs: FIVE_MINUTES,
+      note,
+    },
+  );
+  expect(created.status).toBe(200);
+  expect(created.body.data.state).toBe('needs_approval');
+  return {
+    sessionId,
+    conversationId: `conv-${sessionId}`,
+    id: created.body.data.id as string,
+  };
+}
+
+const wakeUpAction = (conversationId: string, id: string, action: string) =>
+  `${schedulePath(conversationId)}/wake-ups/${id}/${action}`;
+
+describe('owner decision: a check-back in an unconfined session waits for one click', () => {
+  test('the person sees it waiting, with its note, and nothing is armed to send', async () => {
+    const { conversationId, id } = await hostCheckBack('look at the logs');
+    const read = await personRequest('GET', schedulePath(conversationId));
+    expect(read.body.data.wakeUps).toEqual([
+      expect.objectContaining({
+        id,
+        state: 'needs_approval',
+        note: 'look at the logs',
+      }),
+    ]);
+    // Due without an approval: never sent.
+    const late = newDelivery(() => clock.now + FIVE_MINUTES);
+    try {
+      late.fire(id);
+    } finally {
+      late.stop();
+    }
+    expect(submitted).toEqual([]);
+    expect(store.wakeUp(id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'not_approved',
+    });
+  });
+
+  test('Approve arms it; when due it is sent, admitted by that approval', async () => {
+    const { conversationId, id } = await hostCheckBack();
+    const approved = await personRequest(
+      'POST',
+      wakeUpAction(conversationId, id, 'approve'),
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.body.data).toMatchObject({
+      id,
+      state: 'pending',
+      approved: true,
+    });
+    delivery.fire(id);
+    expect(submitted.map((entry) => entry.outcome)).toEqual(['queued']);
+    expect(store.wakeUp(id)?.state).toBe('sent');
+  });
+
+  test('without the approval, the same wake-up made pending is refused at fire time', async () => {
+    const { id } = await hostCheckBack();
+    // The same row armed with no person's approval behind it: the
+    // fire-time scope decision refuses it.
+    expect(
+      store.approveWakeUp(id, LOCAL_OPERATOR_PRINCIPAL_ID, clock.now),
+    ).toBe(true);
+    const record = store.wakeUp(id)!;
+    expect(admitWakeUpAtFire(scope, record)).toBe(true);
+    expect(admitWakeUpAtFire(scope, { ...record, approvedBy: undefined })).toBe(
+      false,
+    );
+  });
+
+  test('Decline cancels it; a later Approve is refused and arms nothing', async () => {
+    const { conversationId, id } = await hostCheckBack();
+    const declined = await personRequest(
+      'POST',
+      wakeUpAction(conversationId, id, 'decline'),
+    );
+    expect(declined.body.data).toEqual({ canceled: true });
+    expect(store.wakeUp(id)).toMatchObject({
+      state: 'canceled',
+      canceledBy: 'person',
+    });
+    const approve = await personRequest(
+      'POST',
+      wakeUpAction(conversationId, id, 'approve'),
+    );
+    expect(approve.status).toBe(409);
+    expect(approve.body.code).toBe('wake_up_settled');
+    delivery.fire(id);
+    expect(submitted).toEqual([]);
+  });
+
+  test('an Approve after it came due is refused', async () => {
+    const { conversationId, id } = await hostCheckBack();
+    const saved = clock.now;
+    clock.now += FIVE_MINUTES;
+    try {
+      const approve = await personRequest(
+        'POST',
+        wakeUpAction(conversationId, id, 'approve'),
+      );
+      expect(approve.status).toBe(409);
+      expect(approve.body.error).toBe('Its time has passed.');
+      expect(store.wakeUp(id)?.state).toBe('needs_approval');
+    } finally {
+      clock.now = saved;
+    }
+  });
+
+  test('an agent cannot approve or decline, not even a bound operator', async () => {
+    const { sessionId, conversationId, id } = await hostCheckBack();
+    for (const action of ['approve', 'decline'])
+      for (const channel of ['bound', 'delegated-custody'] as const) {
+        const response = await agent(
+          channel,
+          sessionId,
+          'POST',
+          wakeUpAction(conversationId, id, action),
+        );
+        expect(response.status).toBe(403);
+        expect(response.body.code).toBe('station_control_route_unmapped');
+      }
+    expect(store.wakeUp(id)?.state).toBe('needs_approval');
+  });
+
+  test('a person who may not send to the chat cannot approve or decline it: it reads as missing', async () => {
+    const { conversationId, id } = await hostCheckBack();
+    facts.mayNotSend.add(conversationId);
+    for (const action of ['approve', 'decline', 'cancel']) {
+      const response = await personRequest(
+        'POST',
+        wakeUpAction(conversationId, id, action),
+      );
+      expect(response.status).toBe(404);
+    }
+    expect(store.wakeUp(id)?.state).toBe('needs_approval');
+  });
+
+  test('a waiting check-back counts toward the chat’s cap', async () => {
+    const sessionId = nextSession('host-');
+    for (let i = 0; i < AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION; i += 1)
+      expect(
+        (
+          await agent('delegated-custody', sessionId, 'POST', WAKE_UPS, {
+            delayMs: FIVE_MINUTES,
+            note: `n${i}`,
+          })
+        ).status,
+      ).toBe(200);
+    const over = await agent('delegated-custody', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
+    });
+    expect(over.body.code).toBe('wake_up_limit_reached');
+  });
+});
+
+describe('the scope rule is decided again when a wake-up fires', () => {
+  test('a confined chat that now runs unconfined: its wake-up is not sent', async () => {
+    const sessionId = nextSession();
+    const created = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      WAKE_UPS,
+      {
+        delayMs: FIVE_MINUTES,
+        note: 'x',
+      },
+    );
+    expect(created.body.data.state).toBe('pending');
+    facts.hostNow.add(`conv-${sessionId}`);
+    delivery.fire(created.body.data.id);
+    expect(submitted).toEqual([]);
+    expect(store.wakeUp(created.body.data.id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'not_permitted',
+    });
+  });
+
+  test('a bound caller’s wake-up is still admitted', async () => {
+    const sessionId = nextSession();
+    const created = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
+    });
+    facts.hostNow.add(`conv-${sessionId}`);
+    delivery.fire(created.body.data.id);
+    expect(store.wakeUp(created.body.data.id)?.state).toBe('sent');
+  });
+});
+
+describe('the inbox decides placement: its own refusals settle the wake-up', () => {
+  test('a sender who may no longer send: not_permitted, nothing queued', async () => {
+    const sessionId = nextSession();
+    const created = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
+    });
+    facts.mayNotSend.add(`conv-${sessionId}`);
+    delivery.fire(created.body.data.id);
+    expect(submitted.map((entry) => entry.outcome)).toEqual(['not-permitted']);
+    expect(world.inboxStore.list(`conv-${sessionId}`)).toEqual([]);
+    expect(store.wakeUp(created.body.data.id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'not_permitted',
+    });
+  });
+
+  test('a full inbox: capacity', async () => {
+    const sessionId = nextSession();
+    const conversationId = `conv-${sessionId}`;
+    for (let i = 0; i < 50; i += 1)
+      expect(
+        world.inbox.submit({
+          conversationId,
+          clientTurnId: `filler-${i}`,
+          payload: {
+            message: `m${i}`,
+            actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+          },
+        }).outcome,
+      ).toBe('queued');
+    const created = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
+    });
+    delivery.fire(created.body.data.id);
+    expect(submitted.at(-1)?.outcome).toBe('capacity');
+    expect(store.wakeUp(created.body.data.id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'capacity',
+    });
+  });
+
+  test('what is queued carries the message, the recorded sender and the origin: no grant or posture', async () => {
+    const sessionId = nextSession();
+    const created = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'x',
+    });
+    delivery.fire(created.body.data.id);
+    const [entry] = world.inboxStore.list(`conv-${sessionId}`);
+    expect(entry?.key).toBe(wakeUpClientTurnId(created.body.data.id));
+    expect(Object.keys(JSON.parse(entry!.payload)).sort()).toEqual([
+      'actor',
+      'clientOrigin',
+      'message',
+    ]);
+  });
+});
+
+describe('the person’s read covers the whole conversation', () => {
+  test('a conversation the person may not read as a whole reads as missing', async () => {
+    const sessionId = nextSession();
+    facts.mayNotRead.add(`conv-${sessionId}`);
+    const response = await personRequest(
+      'GET',
+      schedulePath(`conv-${sessionId}`),
+    );
+    expect(response.status).toBe(404);
+  });
+});
+
+describe('Approve claims the proposal before the job is created', () => {
+  async function proposeOne() {
+    const sessionId = nextSession();
+    const response = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      PROPOSALS,
+      PROPOSED,
+    );
+    expect(response.status).toBe(200);
+    return {
+      conversationId: `conv-${sessionId}`,
+      id: response.body.data.id as string,
+    };
+  }
+
+  test('a Decline while the job is being created changes nothing; the Approve completes', async () => {
+    const { conversationId, id } = await proposeOne();
+    let release!: () => void;
+    addJob.mockImplementationOnce(
+      (opts: { name: string }) =>
+        new Promise((resolve) => {
+          release = () => resolve(`Job '${opts.name}' created`);
+        }),
+    );
+    const approving = personRequest('POST', '/scheduler/jobs', {
+      ...PROPOSED,
+      proposalId: id,
+    });
+    await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
+    const declined = await personRequest(
+      'POST',
+      `${schedulePath(conversationId)}/job-proposals/${id}/decline`,
+    );
+    expect(declined.body.data).toEqual({ declined: false });
+    // A second Approve meanwhile is refused too.
+    const twice = await personRequest('POST', '/scheduler/jobs', {
+      ...PROPOSED,
+      proposalId: id,
+    });
+    expect(twice.body.code).toBe('job_proposal_settled');
+    release();
+    expect((await approving).status).toBe(200);
+    expect(store.jobProposal(id)?.state).toBe('approved');
+    expect(addJob).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed create gives the proposal back', async () => {
+    const { id } = await proposeOne();
+    addJob.mockImplementationOnce(async () => {
+      throw new Error('scheduler unavailable');
+    });
+    const response = await personRequest('POST', '/scheduler/jobs', {
+      ...PROPOSED,
+      proposalId: id,
+    });
+    expect(response.status).toBe(500);
+    expect(store.jobProposal(id)?.state).toBe('open');
+  });
+});
+
+describe('a proposed job’s Agent is in the chat’s scope', () => {
+  for (const [agentSlug, why] of [
+    ['elsewhere', 'another Project'],
+    ['global-writer', 'the global space'],
+    ['nope', 'an Agent Station cannot read'],
+  ] as const)
+    test(`an Agent in ${why} is refused`, async () => {
+      const response = await agent(
+        'delegated-custody',
+        nextSession(),
+        'POST',
+        PROPOSALS,
+        {
+          ...PROPOSED,
+          agent: agentSlug,
+        },
+      );
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('job_proposal_agent_out_of_scope');
+    });
+
+  test('the chat’s own Project’s Agent, or none, is fine', async () => {
+    for (const body of [PROPOSED, { ...PROPOSED, agent: undefined }])
+      expect(
+        (
+          await agent(
+            'delegated-custody',
+            nextSession(),
+            'POST',
+            PROPOSALS,
+            body,
+          )
+        ).status,
+      ).toBe(200);
+  });
+});
+
+describe('creating is rate limited per chat, and settled rows are pruned', () => {
+  test('schedule-and-cancel churn: the window’s limit is accepted, one more is refused', async () => {
+    expect(AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW).toBe(20);
+    expect(AGENT_SCHEDULE_RATE_WINDOW_MS).toBe(3_600_000);
+    const sessionId = nextSession();
+    const ids: string[] = [];
+    for (let i = 0; i < AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW; i += 1) {
+      const created = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+        delayMs: FIVE_MINUTES,
+        note: `n${i}`,
+      });
+      expect(created.status).toBe(200);
+      ids.push(created.body.data.id);
+      await agent(
+        'bound',
+        sessionId,
+        'DELETE',
+        `${WAKE_UPS}/${created.body.data.id}`,
+      );
+    }
+    const over = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+      delayMs: FIVE_MINUTES,
+      note: 'one more',
+    });
+    expect(over.status).toBe(409);
+    expect(over.body.code).toBe('wake_up_rate_limited');
+    const saved = clock.now;
+    clock.now += AGENT_SCHEDULE_RATE_WINDOW_MS;
+    try {
+      const later = await agent('bound', sessionId, 'POST', WAKE_UPS, {
+        delayMs: FIVE_MINUTES,
+        note: 'later',
+      });
+      expect(later.status).toBe(200);
+      // The canceled rows from the last window are gone.
+      expect(ids.map((id) => store.wakeUp(id))).toEqual(
+        ids.map(() => undefined),
+      );
+    } finally {
+      clock.now = saved;
+    }
+  });
+
+  test('proposals: the window’s limit is accepted, one more is refused', async () => {
+    expect(AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW).toBe(10);
+    const sessionId = nextSession();
+    for (let i = 0; i < AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW; i += 1) {
+      const proposed = await agent(
+        'delegated-custody',
+        sessionId,
+        'POST',
+        PROPOSALS,
+        {
+          ...PROPOSED,
+          name: `job-${i}`,
+        },
+      );
+      expect(proposed.status).toBe(200);
+      await personRequest(
+        'POST',
+        `${schedulePath(`conv-${sessionId}`)}/job-proposals/${proposed.body.data.id}/decline`,
+      );
+    }
+    const over = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      PROPOSALS,
+      PROPOSED,
+    );
+    expect(over.status).toBe(409);
+    expect(over.body.code).toBe('job_proposal_rate_limited');
+  });
+});
+
+describe('a malformed wake-up id', () => {
+  test('is refused as naming nothing, not a server error', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'DELETE',
+      `${WAKE_UPS}/%E0%A4%A`,
+    );
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ reason: 'other-conversation' });
+  });
+});
+
+describe('hosted: nothing to approve with, so nothing is offered', () => {
+  let hosted: World;
+  beforeAll(async () => {
+    hosted = await boot({ hosted: true });
+  });
+  afterAll(async () => {
+    await hosted.close();
+  });
+
+  test('propose_job and schedule_wake_up are unavailable; Approve finds nothing', async () => {
+    const at = { baseUrl: hosted.baseUrl, port: hosted.port };
+    const sessionId = nextSession();
+    const proposed = await agent(
+      'delegated-custody',
+      sessionId,
+      'POST',
+      PROPOSALS,
+      PROPOSED,
+      at,
+    );
+    expect(proposed.status).toBe(503);
+    expect(proposed.body.code).toBe('job_proposal_unavailable');
+    const wakeUp = await agent(
+      'delegated-custody',
+      nextSession('host-'),
+      'POST',
+      WAKE_UPS,
+      {
+        delayMs: FIVE_MINUTES,
+        note: 'x',
+      },
+      at,
+    );
+    expect(wakeUp.status).toBe(503);
+    expect(wakeUp.body.code).toBe('wake_up_unavailable');
+    // Even a proposal already on file is not approvable there.
+    const filed = hosted.store.insertJobProposal({
+      conversationId: `conv-${sessionId}`,
+      sessionId,
+      job: PROPOSED as never,
+      now: clock.now,
+    });
+    expect(filed.outcome).toBe('proposed');
+    const approve = await personRequest(
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...PROPOSED,
+        proposalId: (filed as { proposal: { id: string } }).proposal.id,
+      },
+      hosted.baseUrl,
+    );
+    expect(approve.status).toBe(404);
+    expect(hosted.addJob).not.toHaveBeenCalled();
   });
 });

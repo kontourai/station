@@ -27,8 +27,37 @@ export const AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION = 3;
 export const AGENT_WAKE_UP_NOTE_MAX_CHARS = 1000;
 /** Open job proposals one conversation may have at once. */
 export const AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION = 3;
+/**
+ * The window the create limits below count over. Settled rows older than it
+ * are pruned, so a conversation's stored history stays bounded too.
+ */
+export const AGENT_SCHEDULE_RATE_WINDOW_MS = 60 * 60 * 1000;
+/**
+ * Wake-ups one conversation may create per window, whatever happened to
+ * them since. Canceling does not give the slot back, so scheduling and
+ * canceling in a loop cannot churn without bound.
+ */
+export const AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW = 20;
+/** Job proposals one conversation may create per window. */
+export const AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW = 10;
 
-export type AgentWakeUpState = 'pending' | 'sent' | 'canceled' | 'failed';
+/**
+ * - `needs_approval`: an agent whose session runs unconfined asked for it; it
+ *   is sent only if a person approves it before it is due.
+ * - `pending`: armed; it is sent when due.
+ */
+export type AgentWakeUpState =
+  | 'needs_approval'
+  | 'pending'
+  | 'sent'
+  | 'canceled'
+  | 'failed';
+
+/** States that still count toward the per-conversation cap. */
+export const AGENT_WAKE_UP_OPEN_STATES: readonly AgentWakeUpState[] = [
+  'needs_approval',
+  'pending',
+];
 
 export interface AgentWakeUp {
   readonly id: string;
@@ -37,8 +66,10 @@ export interface AgentWakeUp {
   readonly dueAt: string;
   readonly note: string;
   readonly state: AgentWakeUpState;
-  /** Who canceled it, when it was. */
+  /** Who canceled it, when it was. A person's Decline is a cancel. */
   readonly canceledBy?: 'agent' | 'person';
+  /** A person approved it (it needed approval). */
+  readonly approved?: true;
   /** Why a `failed` wake-up was not sent. */
   readonly reasonCode?: AgentWakeUpFailureCode;
   readonly createdAt: string;
@@ -53,7 +84,9 @@ export type AgentWakeUpFailureCode =
   /** Station was not running when it was due, and is now over a day late. */
   | 'expired'
   /** The send itself failed. */
-  | 'send_failed';
+  | 'send_failed'
+  /** It needed a person's approval and was still waiting when it came due. */
+  | 'not_approved';
 
 /** Why Station refused to schedule a wake-up. */
 export type AgentWakeUpRefusalCode =
@@ -61,6 +94,7 @@ export type AgentWakeUpRefusalCode =
   | 'wake_up_too_far'
   | 'wake_up_limit_reached'
   | 'wake_up_note_too_long'
+  | 'wake_up_rate_limited'
   | 'wake_up_unavailable';
 
 /** The job a proposal asks for: the scheduler's own create body, minus what a person must choose. */
@@ -124,7 +158,32 @@ export const CONVERSATION_SCHEDULED_JOBS_LIMIT = 20;
 
 export type AgentJobProposalRefusalCode =
   | 'job_proposal_limit_reached'
-  | 'job_proposal_invalid';
+  | 'job_proposal_rate_limited'
+  | 'job_proposal_invalid'
+  | 'job_proposal_agent_out_of_scope'
+  | 'job_proposal_unavailable';
+
+/** The key a wake-up is handed to its conversation's inbox under. */
+export function wakeUpClientTurnId(id: string): string {
+  return `${WAKE_UP_CLIENT_TURN_PREFIX}${id}`;
+}
+
+const WAKE_UP_CLIENT_TURN_PREFIX = 'wake-up:';
+const WAKE_UP_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * The wake-up a turn's send key names, parsed, or `undefined`. Only Station
+ * stamps a turn's `clientTurnId` (an adapter's is discarded), so a key that
+ * parses here on a Station-originated turn is a check-back Station sent.
+ */
+export function parseWakeUpClientTurnId(
+  clientTurnId: string | undefined,
+): string | undefined {
+  if (!clientTurnId?.startsWith(WAKE_UP_CLIENT_TURN_PREFIX)) return undefined;
+  const id = clientTurnId.slice(WAKE_UP_CLIENT_TURN_PREFIX.length);
+  return WAKE_UP_ID.test(id) ? id : undefined;
+}
 
 /**
  * Whether a scheduler create body asks for exactly the job a proposal named.
