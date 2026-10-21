@@ -1179,11 +1179,14 @@ async function emitExactTurn(page: Page, path: ProductPath) {
       },
     });
   await emit('started', 'turn.started', { prompt: path.prompt });
-  await expect(page.locator('.streaming-message')).toBeVisible();
+  // Before its first content the composer pill carries the turn; the
+  // streaming row draws nothing until then.
+  await expect(page.locator('[data-chat-status-pill="working"]')).toBeVisible();
   await emit('delta-1', 'content.text-delta', {
     itemId: `item-${path.profile}`,
     delta: 'STATION_',
   });
+  await expect(page.locator('.streaming-message')).toBeVisible();
   await emit('delta-2', 'content.text-delta', {
     itemId: `item-${path.profile}`,
     delta: 'SMOKE_OK',
