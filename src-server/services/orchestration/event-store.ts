@@ -54,6 +54,7 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
+import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
@@ -1704,9 +1705,18 @@ function snapshotEvent(
       )
         ? htmlReplyReference(payload.output)
         : undefined;
+    // A station-control refusal is the tool's whole result, as JSON: the
+    // excerpt below no longer parses, so its code and sentence ride along
+    // whole (bounded), read from the full text before the cut.
+    const toolName =
+      typeof payload.toolName === 'string' ? payload.toolName : undefined;
+    const refusal =
+      parseStationControlRefusal(toolName, payload.error) ??
+      parseStationControlRefusal(toolName, payload.output);
     snapshotPayload = {
       ...payload,
       ...(pageReference ? { htmlReply: pageReference } : {}),
+      ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
       ...(output ? { output: output.text } : {}),
     };

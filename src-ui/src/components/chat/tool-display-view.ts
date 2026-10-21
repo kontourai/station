@@ -40,38 +40,3 @@ export function toolDisplayView(value: unknown) {
     purpose,
   };
 }
-
-/**
- * A station-control refusal, recognised by the exact envelope the server
- * writes (`stationControlRefusalBody` in `src-server/tools/
- * station-control-policy.ts`: `{ success: false, code, error }`, sent as
- * pretty-printed JSON text by `jsonToolResult`). The whole value is parsed;
- * text that merely contains such JSON is not a refusal.
- */
-export function stationControlRefusal(
-  value: unknown,
-): { code: string; message: string } | undefined {
-  let body: unknown = value;
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text.startsWith('{')) return undefined;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      return undefined;
-    }
-  }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return undefined;
-  }
-  const record = body as Record<string, unknown>;
-  if (
-    record.success !== false ||
-    typeof record.code !== 'string' ||
-    typeof record.error !== 'string' ||
-    !record.error.trim()
-  ) {
-    return undefined;
-  }
-  return { code: record.code, message: record.error.trim() };
-}

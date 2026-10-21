@@ -3,6 +3,7 @@ import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
 } from '@kontourai/station-contracts/runtime-events';
+import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
   ConversationMessage,
@@ -903,6 +904,8 @@ export function projectRuntimeEventsToMessages(
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
+          const refusal = stationControlRefusalView(ev.stationControlRefusal);
+          if (refusal) existing.stationControlRefusal = refusal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
@@ -985,6 +988,13 @@ export function projectRuntimeEventsToMessages(
             state: derivedState,
             output: ev.output,
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
+            ...(stationControlRefusalView(ev.stationControlRefusal)
+              ? {
+                  stationControlRefusal: stationControlRefusalView(
+                    ev.stationControlRefusal,
+                  ),
+                }
+              : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),

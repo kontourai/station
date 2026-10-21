@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
@@ -10,6 +11,7 @@ import {
   DocumentGlyph,
   PlugGlyph,
 } from '../components/icons/Glyph';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 import { unansweredApprovalRequests } from '../hooks/orchestration/pendingRequestRows';
 
 // archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
@@ -1152,6 +1154,81 @@ describe('ToolCallDisplay — failed calls', () => {
     expect(
       document.querySelector('.tool-call__status-footer')?.textContent,
     ).toContain('Failed');
+  });
+
+  test('a refusal read back from history: its sentence, from what Station kept whole, not the cut excerpt', () => {
+    const sentence =
+      'This action needs a credential that stayed inside Station. Ask the person to do it in Station.';
+    const envelope = JSON.stringify(
+      {
+        success: false,
+        code: 'station_control_assurance_insufficient',
+        error: sentence,
+      },
+      null,
+      2,
+    );
+    // The served event's shape: the error cut to the window's 84-character
+    // excerpt, the refusal kept beside it.
+    const served = {
+      eventId: 'done',
+      provider: 'claude',
+      threadId: 't',
+      turnId: 'turn',
+      createdAt: '2026-10-20T12:00:00.000Z',
+      method: 'tool.completed',
+      itemId: 'c',
+      toolCallId: 'c',
+      toolName: 'mcp__station-control__add_job',
+      status: 'error',
+      error: envelope.slice(0, 84),
+      stationControlRefusal: {
+        code: 'station_control_assurance_insufficient',
+        message: sentence,
+      },
+    };
+    const part = projectRuntimeEventsToMessages([
+      {
+        eventId: 'start',
+        provider: 'claude',
+        threadId: 't',
+        turnId: 'turn',
+        createdAt: '2026-10-20T12:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'x',
+      },
+      served,
+    ] as never)
+      .flatMap((message) => message.parts)
+      .find((p) => p.toolCallId === 'c')!;
+    const [toolCall] = conversationPartToContentParts(part);
+    render(<ToolCallDisplay toolCall={toolCall as never} />);
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(screen.getByText(sentence).className).toContain(
+      'tool-call__refusal',
+    );
+  });
+
+  test('another tool whose output is exactly a refusal’s JSON is not read as one', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'lookalike',
+          toolName: 'mcp__other__add_job',
+          args: {},
+          state: 'error',
+          result: JSON.stringify({
+            success: false,
+            code: 'station_control_role_required',
+            error: 'Only the operator can do this.',
+          }),
+        }}
+      />,
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(document.querySelector('.tool-call__refusal')).toBeNull();
+    expect(screen.getByText('Response:')).toBeTruthy();
   });
 
   test('an ordinary failure keeps its raw output as the response, with no refusal section', () => {

@@ -126,6 +126,7 @@ export type ChatContentPart = {
   result?: any;
   output?: any;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   error?: string;
   errorText?: string;
   state?: string;

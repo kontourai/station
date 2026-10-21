@@ -1,4 +1,9 @@
 import {
+  parseStationControlRefusal,
+  type StationControlRefusalView,
+  stationControlRefusalView,
+} from '@kontourai/station-contracts/station-control-refusal';
+import {
   hasHiddenCharacters,
   revealHiddenCharacters,
 } from '@kontourai/station-shared/display-reveal';
@@ -58,7 +63,7 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
-import { stationControlRefusal, toolDisplayView } from './tool-display-view';
+import { toolDisplayView } from './tool-display-view';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
@@ -87,6 +92,8 @@ export interface ToolCallData {
   output?: any;
   error?: string;
   errorText?: string;
+  /** A station-control refusal, kept whole by Station (history reads). */
+  stationControlRefusal?: StationControlRefusalView;
   state?: string;
   progressMessage?: string;
   outputTruncated?: boolean;
@@ -204,6 +211,13 @@ function ToolCallDisplayComponent({
   const args = display.args;
   const result = display.result;
   const error = display.error;
+  // A station-control refusal: the one Station kept whole on a history
+  // read (where the output is an excerpt), else the live call's own whole
+  // result. Only a station-control tool's result is ever read as one.
+  const refusal =
+    stationControlRefusalView(toolCall.stationControlRefusal) ??
+    parseStationControlRefusal(toolName, error) ??
+    parseStationControlRefusal(toolName, result);
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
   // station#1558: a call whose SESSION ended before any result arrived. Both
   // write paths stamp the same state — `runtime-event-projection.ts` on
@@ -393,6 +407,7 @@ function ToolCallDisplayComponent({
           args={args}
           result={result}
           error={error}
+          refusal={refusal}
           failed={failed}
           cancelled={cancelled}
           unresolved={unresolved}
@@ -440,6 +455,7 @@ function ToolCallDisplayComponent({
                   args={args}
                   result={result}
                   error={error}
+                  refusal={refusal}
                   failed={failed}
                   cancelled={cancelled}
                   unresolved={unresolved}
@@ -864,6 +880,7 @@ function ToolCallDetails({
   args,
   result,
   error,
+  refusal,
   failed,
   cancelled,
   unresolved,
@@ -877,6 +894,7 @@ function ToolCallDetails({
   args: any;
   result?: any;
   error?: string;
+  refusal?: StationControlRefusalView;
   /** The call reached a failure terminal (`state: 'error'`), which an engine
    * can report with its output and no separate error text. */
   failed?: boolean;
@@ -963,9 +981,8 @@ function ToolCallDetails({
         ? 'These arguments contain hidden characters, shown below as «U+…».'
         : undefined;
 
-  // A station-control refusal arrives as its JSON envelope; its `error` is
-  // the sentence written for a person, so that is what the row shows first.
-  const refusal = stationControlRefusal(error) ?? stationControlRefusal(result);
+  // A station-control refusal's sentence is written for a person, so that
+  // is what the row shows first.
   const rawOutcome = (
     <>
       {result !== undefined && (
