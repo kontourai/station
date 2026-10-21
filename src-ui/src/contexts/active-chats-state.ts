@@ -383,6 +383,8 @@ export type ChatUIState = {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /** The window holding this copy is proven closed. */
+    heldByClosedWindow?: true;
     /**
      * Pending, but an earlier row of the same chat was not sent: the outbox
      * keeps a chat's order, so this one waits until that one is retried or

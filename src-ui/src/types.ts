@@ -374,6 +374,8 @@ export interface ChatSession {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /** The window holding this copy is proven closed. */
+    heldByClosedWindow?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;
