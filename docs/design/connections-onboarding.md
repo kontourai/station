@@ -491,7 +491,7 @@ The Connections hub answers four plain questions: **which computers can I use**,
   setup remain explicit choices. Detection is useful context, never a configuration action.
 - **One Add flow reports the result.** Selecting a catalog item or entering a custom command
   remains in the same dialog or sheet while Station checks it. The result is one of
-  **Checking**, **Ready**, **Setup needed**, **Unavailable**, or **Off**, with one clear next
+  **Checking**, **Ready**, **Setup required**, **Unavailable**, or **Off**, with one clear next
   action. A failed or incomplete check must not be represented as Ready. Raw command, argument,
   working-directory, and diagnostic details are available only under **Advanced**.
 - **Developer services is one home.** Git, GitHub, GitLab, and MCP tool
