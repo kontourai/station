@@ -148,6 +148,7 @@ import {
   findCliBinaryAsync,
   runCliCommand,
 } from '../auth/cli-auth.js';
+import { observeExecutableInvocation } from '../auth/executable-observation.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
@@ -3172,8 +3173,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async observeExecutionAuthentication(
     input: ProviderExecutionAuthInput,
   ): Promise<ProviderExecutionAuthObservation> {
+    await input.assertCurrent();
+    let versionIdentity: string | undefined;
+    let versionResult: InstalledVersionObservation | undefined;
     const context = async () => {
-      const executable = await this.resolveClaudeExecutable();
       const home = await this.resolveAppHomeEnv(
         input.credentialProfileRef ?? undefined,
       );
@@ -3191,47 +3194,122 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           (entry): entry is [string, string] => entry[1] !== undefined,
         ),
       );
+      const executable = await this.resolveClaudeExecutable(async (binary) => {
+        const script = binary.toLowerCase().endsWith('.js')
+          ? binary
+          : undefined;
+        const command = script ? process.execPath : binary;
+        const identity = await observeExecutableInvocation(command, script);
+        if (
+          !identity ||
+          (versionIdentity !== undefined && identity !== versionIdentity)
+        )
+          return { kind: 'unreadable' };
+        versionIdentity = identity;
+        if (versionResult) return versionResult;
+        versionResult = await this.installedClaudeVersion(
+          binary,
+          async (_binary, args) =>
+            runCliCommand(
+              command,
+              script ? [script, ...args] : args,
+              undefined,
+              overlay,
+              {
+                cwd: input.cwd,
+                timeoutMs: 10_000,
+                maxBuffer: 16_384,
+                killSignal: 'SIGKILL',
+                assertCurrent: async () => {
+                  if (
+                    (await observeExecutableInvocation(command, script)) !==
+                    versionIdentity
+                  )
+                    throw new Error(
+                      'Execution authentication executable changed',
+                    );
+                  await input.assertCurrent();
+                },
+              },
+            ),
+        );
+        return versionResult;
+      });
+      const binary = executable.spawnable;
+      const script = binary?.toLowerCase().endsWith('.js') ? binary : undefined;
+      const command = script ? process.execPath : binary;
+      const executableIdentity = command
+        ? await observeExecutableInvocation(command, script)
+        : undefined;
       const hash = crypto
         .createHash('sha256')
         .update(
           JSON.stringify({
             input,
             executable,
+            executableIdentity,
             env: Object.entries(overlay).sort(),
             profile: home?.profileRef,
           }),
         )
         .digest('hex');
-      return { executable, env: overlay, hash };
+      return {
+        executable,
+        executableIdentity,
+        env: overlay,
+        hash,
+        command,
+        script,
+      };
     };
     const before = await context();
     const executable = before.executable;
     const supported =
       input.connectionId === this.metadata.connectionId &&
       executable.launch === 'installed' &&
-      executable.spawnable &&
+      before.executableIdentity &&
+      before.executableIdentity === versionIdentity &&
       executable.installedVersion &&
       compareClaudeCodeVersions(
         executable.installedVersion,
         CLAUDE_AUTH_STATUS_MIN_VERSION,
       ) >= 0;
-    const binary = executable.spawnable;
-    const [command, args] = binary?.toLowerCase().endsWith('.js')
-      ? [process.execPath, [binary, ...CLAUDE_AUTH_STATUS_ARGS]]
-      : [binary, CLAUDE_AUTH_STATUS_ARGS];
     const result =
-      supported && command
-        ? await runCliCommand(command, args, undefined, before.env, {
-            cwd: input.cwd,
-            timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
-            maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
-            killSignal: 'SIGKILL',
-          })
+      supported && before.command
+        ? await runCliCommand(
+            before.command,
+            before.script
+              ? [before.script, ...CLAUDE_AUTH_STATUS_ARGS]
+              : CLAUDE_AUTH_STATUS_ARGS,
+            undefined,
+            before.env,
+            {
+              cwd: input.cwd,
+              timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+              maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+              killSignal: 'SIGKILL',
+              assertCurrent: async () => {
+                if (
+                  !before.command ||
+                  (await observeExecutableInvocation(
+                    before.command,
+                    before.script,
+                  )) !== before.executableIdentity
+                )
+                  throw new Error(
+                    'Execution authentication executable changed',
+                  );
+                await input.assertCurrent();
+              },
+            },
+          )
         : null;
     const after = await context();
     return {
       state:
-        before.hash === after.hash ? parseClaudeAuthStatus(result) : 'unknown',
+        before.executableIdentity && before.hash === after.hash
+          ? parseClaudeAuthStatus(result)
+          : 'unknown',
       contextHash: `sha256:${before.hash}`,
       checkedAt: Date.now(),
       modelEntitlement: 'not-checked',
@@ -4598,7 +4676,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * Degrades to `null` rather than throwing: a resolver failure must fall
    * back to the bundled CLI (today's behavior), never block session start.
    */
-  private async resolveClaudeExecutable(): Promise<ClaudeExecutableResolution> {
+  private async resolveClaudeExecutable(
+    freshVersion?: (executable: string) => Promise<InstalledVersionObservation>,
+  ): Promise<ClaudeExecutableResolution> {
     // Read before anything can fail, so every branch below — the catch
     // included — reports the bundled version it actually knows.
     let bundledVersion: string | null = null;
@@ -4643,7 +4723,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         };
       }
       const executable = spawnable.executable;
-      const observed = await this.installedClaudeVersion(executable);
+      const observed = await (freshVersion
+        ? freshVersion(executable)
+        : this.installedClaudeVersion(executable));
       const base = {
         resolved,
         spawnable: executable,
@@ -4688,6 +4770,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         reason: installedIsOlder ? 'installed-older' : 'installed-not-older',
       };
     } catch (error) {
+      if (freshVersion) throw error;
       (this.options.logger ?? console).warn?.(
         `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${errorMessage(error)}`,
       );
@@ -4720,11 +4803,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async installedClaudeVersion(
     executable: string,
+    freshProbe?: (
+      executable: string,
+      args: string[],
+    ) => Promise<CliCommandResult | null>,
   ): Promise<InstalledVersionObservation> {
-    const result = await this.executableVersionProbe(
-      executable,
-      CLAUDE_VERSION_ARGS,
-    );
+    const result = await (freshProbe
+      ? freshProbe(executable, CLAUDE_VERSION_ARGS)
+      : this.executableVersionProbe(executable, CLAUDE_VERSION_ARGS));
     if (!result || result.code !== 0) return { kind: 'unreadable' };
     const version = parseClaudeCodeVersion(
       `${result.stdout}\n${result.stderr}`,

@@ -17,6 +17,7 @@ import type {
 import type { ModelOption } from '@kontourai/station-contracts/tool';
 import {
   type ExecutionTargetResolverDependencies,
+  type PreparationDefinitions,
   resolveExecutionTarget,
 } from '../execution-target/execution-target-resolver.js';
 
@@ -123,6 +124,7 @@ export interface EnsembleAuthenticationRequest {
   readonly target: ExecutionTarget;
   readonly resolution: ExecutionResolutionReceipt;
   readonly selectionHash: string;
+  readonly definitions?: PreparationDefinitions;
 }
 
 /** Host-only observation after checking the actual future child execution context. */
@@ -276,6 +278,9 @@ export async function prepareEnsemble(
             target,
             resolution,
             selectionHash,
+            ...(resolved.preparationDefinitions
+              ? { definitions: resolved.preparationDefinitions }
+              : {}),
           }),
         ),
       ),

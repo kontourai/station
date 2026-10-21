@@ -82,27 +82,36 @@ export type ClaudeAuthStatusProbe = () => Promise<CliCommandResult | null>;
 
 /**
  * Reads `claude auth status` output. Only an explicit boolean `loggedIn` is an
- * answer, taken from stdout whatever the exit code (the CLI exits 1 when logged
- * out, still printing the JSON). A timeout, output cut at the capture bound,
- * or anything unparseable is `unknown`: a probe failure must never read as authenticated.
+ * answer. A signed-out report may accompany exit 1; positive reports require
+ * a successful command without contradictory signed-out output. A timeout,
+ * truncated output, or an unparseable answer is `unknown`.
  */
 export function parseClaudeAuthStatus(
   result: CliCommandResult | null,
 ): CliAuthState {
   if (!result || result.timedOut || result.outputTruncated) return 'unknown';
-  const output = result.stdout.trim();
-  if (output.length === 0) return 'unknown';
-  try {
-    const parsed: unknown = JSON.parse(output);
-    const loggedIn =
-      parsed && typeof parsed === 'object'
-        ? (parsed as { loggedIn?: unknown }).loggedIn
-        : undefined;
-    if (loggedIn === true) return 'authenticated';
-    if (loggedIn === false) return 'unauthenticated';
-  } catch {
-    // Not JSON (a banner, or a CLI that does not know the command): unknown.
-  }
+  if (
+    /\bnot\b[^.\n]{0,40}logged\s+in|login required|authentication required/i.test(
+      `${result.stdout}\n${result.stderr}`,
+    )
+  )
+    return 'unauthenticated';
+  const reported = (output: string): boolean | undefined => {
+    try {
+      const parsed: unknown = JSON.parse(output);
+      const loggedIn =
+        parsed && typeof parsed === 'object'
+          ? (parsed as { loggedIn?: unknown }).loggedIn
+          : undefined;
+      return typeof loggedIn === 'boolean' ? loggedIn : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const stdout = reported(result.stdout);
+  if (stdout === false || reported(result.stderr) === false)
+    return 'unauthenticated';
+  if (stdout === true && result.code === 0) return 'authenticated';
   return 'unknown';
 }
 

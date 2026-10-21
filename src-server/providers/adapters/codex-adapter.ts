@@ -91,6 +91,7 @@ import {
   type CliCommandResult,
   runCliCommand,
 } from '../auth/cli-auth.js';
+import { observeExecutableInvocation } from '../auth/executable-observation.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -868,6 +869,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   async observeExecutionAuthentication(
     input: ProviderExecutionAuthInput,
   ): Promise<ProviderExecutionAuthObservation> {
+    await input.assertCurrent();
     const context = async () => {
       const home = await this.resolveAppHomeEnv(
         input.credentialProfileRef ?? undefined,
@@ -879,11 +881,15 @@ export class CodexAdapter implements ProviderAdapterShape {
           (entry): entry is [string, string] => entry[1] !== undefined,
         ),
       );
+      const executableIdentity = await observeExecutableInvocation(
+        spawn.binary,
+      );
       const hash = crypto
         .createHash('sha256')
         .update(
           JSON.stringify({
             input,
+            executableIdentity,
             binary: spawn.binary,
             env: Object.entries(env).sort(),
             profile: home?.profileRef,
@@ -893,6 +899,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         .digest('hex');
       return {
         ...spawn,
+        executableIdentity,
         env,
         hash,
         routed: Boolean(launch.route) || launch.args.length > 0,
@@ -902,6 +909,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     // Login status does not authenticate a custom model-provider route.
     const result =
       before.routed ||
+      !before.executableIdentity ||
       !isAbsolute(before.binary) ||
       input.connectionId !== this.metadata.connectionId
         ? null
@@ -912,6 +920,16 @@ export class CodexAdapter implements ProviderAdapterShape {
             before.env,
             {
               cwd: input.cwd,
+              assertCurrent: async () => {
+                if (
+                  (await observeExecutableInvocation(before.binary)) !==
+                  before.executableIdentity
+                )
+                  throw new Error(
+                    'Execution authentication executable changed',
+                  );
+                await input.assertCurrent();
+              },
               timeoutMs: 10_000,
               maxBuffer: 16_384,
               killSignal: 'SIGKILL',

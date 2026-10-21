@@ -9,6 +9,7 @@ import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runti
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   type CurrentRuntimeRequestPrincipalSecurity,
+  isBoundLocalGrantMintedOperator,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
 import {
@@ -121,6 +122,7 @@ export class EnsembleExecutionContext {
       if (
         !this.personalRequest(request) ||
         !isOperatorInPersonNotAgent(request) ||
+        !isBoundLocalGrantMintedOperator(request) ||
         principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID ||
         !isRuntimeRequestPrincipalCurrent(request, this.owners.security)
       ) {
@@ -177,11 +179,18 @@ export class EnsembleExecutionContext {
             this.owners.inventory,
             { purpose: 'preparation' },
           );
-          const comparable = ({
-            resolvedAt: _at,
-            ...receipt
-          }: typeof resolved.receipt) => JSON.stringify(receipt);
-          if (comparable(resolved.receipt) !== comparable(selection.resolution))
+          const comparable = (
+            receipt: typeof resolved.receipt,
+            definitions: typeof resolved.preparationDefinitions,
+          ) => {
+            const { resolvedAt: _at, ...binding } = receipt;
+            return JSON.stringify({ binding, definitions });
+          };
+          if (
+            !resolved.preparationDefinitions ||
+            comparable(resolved.receipt, resolved.preparationDefinitions) !==
+              comparable(selection.resolution, selection.definitions)
+          )
             throw new EnsemblePreparationRefusal(
               'ensemble_context_changed',
               'Ensemble execution binding changed.',
@@ -220,16 +229,40 @@ export class EnsembleExecutionContext {
               'ensemble_auth_unsupported',
               'This engine has no supported actual-context authentication probe.',
             );
-          const executionAgent = await this.owners.inventory.getAgent(
-            resolved.access,
-            resolved.executionAgentId ?? resolved.agentId,
-          );
           const credentialProfileRef =
-            executionAgent.execution?.credentialProfileRef;
-          assertAuthority();
+            resolved.preparationDefinitions.executionAgent.execution
+              ?.credentialProfileRef;
+          const assertCurrent = async () => {
+            assertAuthority();
+            const current = await resolveExecutionTarget(
+              selection.target,
+              this.owners.inventory,
+              { purpose: 'preparation' },
+            );
+            const currentDirectory = await stat(workspace.cwd);
+            if (
+              directory.dev !== currentDirectory.dev ||
+              directory.ino !== currentDirectory.ino ||
+              comparable(current.receipt, current.preparationDefinitions) !==
+                comparable(resolved.receipt, resolved.preparationDefinitions) ||
+              (await realpath(workspace.cwd)) !== workspace.cwd ||
+              (await loadEnsemblePreset(source.path)).sha256 !== source.sha256
+            )
+              throw new EnsemblePreparationRefusal(
+                'ensemble_context_changed',
+                'Ensemble execution binding changed.',
+              );
+            assertAuthority();
+          };
+          await assertCurrent();
           const probeStartedAt = Date.now();
           const observation = await adapter.observeExecutionAuthentication({
             principalId: principal.id,
+            bindingHash: createHash('sha256')
+              .update(
+                comparable(resolved.receipt, resolved.preparationDefinitions),
+              )
+              .digest('hex'),
             connectionId: resolved.engine.connectionId,
             cwd: workspace.cwd,
             model: selection.member.model,
@@ -237,32 +270,9 @@ export class EnsembleExecutionContext {
             ...(credentialProfileRef !== undefined
               ? { credentialProfileRef }
               : {}),
+            assertCurrent,
           });
-          assertAuthority();
-          const current = await resolveExecutionTarget(
-            selection.target,
-            this.owners.inventory,
-            { purpose: 'preparation' },
-          );
-          const currentAgent = await this.owners.inventory.getAgent(
-            current.access,
-            current.executionAgentId ?? current.agentId,
-          );
-          const currentDirectory = await stat(workspace.cwd);
-          assertAuthority();
-          if (
-            directory.dev !== currentDirectory.dev ||
-            directory.ino !== currentDirectory.ino ||
-            currentAgent.execution?.credentialProfileRef !==
-              credentialProfileRef ||
-            comparable(current.receipt) !== comparable(resolved.receipt) ||
-            (await realpath(workspace.cwd)) !== workspace.cwd ||
-            (await loadEnsemblePreset(source.path)).sha256 !== source.sha256
-          )
-            throw new EnsemblePreparationRefusal(
-              'ensemble_context_changed',
-              'Ensemble execution binding changed.',
-            );
+          await assertCurrent();
           if (
             observation.state !== 'authenticated' ||
             !Number.isFinite(observation.checkedAt) ||

@@ -154,7 +154,14 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
+export interface PreparationDefinitions {
+  readonly agent: ExecutionTargetAgentView;
+  readonly executionAgent: ExecutionTargetAgentView;
+}
+
 interface ResolvedExecutionTarget {
+  /** Private receiver-owned snapshots, available only for non-launch preparation. */
+  preparationDefinitions?: PreparationDefinitions;
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
@@ -576,8 +583,15 @@ export async function resolveExecutionTarget(
   const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
   const trustedEnvironmentId = environmentId(access.environmentId);
-  const agent = await deps.getAgent(access, resolvedAgentId);
-  if (agent.slug && agent.slug !== resolvedAgentId) {
+  const observedAgent = await deps.getAgent(access, resolvedAgentId);
+  const agent =
+    options.purpose === 'preparation'
+      ? structuredClone(observedAgent)
+      : observedAgent;
+  if (
+    (options.purpose === 'preparation' || agent.slug) &&
+    agent.slug !== resolvedAgentId
+  ) {
     throw new Error(
       `Agent binding changed while resolving '${resolvedAgentId}'; select it again`,
     );
@@ -605,9 +619,13 @@ export async function resolveExecutionTarget(
     typeof target.agent === 'string'
       ? undefined
       : agentId(executionBindingAgentId(target.agent));
-  const executionAgent = executionAgentId
+  const observedExecutionAgent = executionAgentId
     ? await deps.getAgent(access, executionAgentId)
     : agent;
+  const executionAgent =
+    options.purpose === 'preparation'
+      ? structuredClone(observedExecutionAgent)
+      : observedExecutionAgent;
   if (
     executionAgentId &&
     (executionAgent.slug !== executionAgentId ||
@@ -738,6 +756,9 @@ export async function resolveExecutionTarget(
   };
 
   return {
+    ...(options.purpose === 'preparation'
+      ? { preparationDefinitions: { agent, executionAgent } }
+      : {}),
     access,
     agentId: resolvedAgentId,
     ...(executionAgentId ? { executionAgentId } : {}),

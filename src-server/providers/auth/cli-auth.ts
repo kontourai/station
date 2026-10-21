@@ -354,11 +354,13 @@ export async function runCliCommand(
    */
   bounds?: {
     cwd?: string;
+    assertCurrent?: () => Promise<void>;
     timeoutMs?: number;
     maxBuffer?: number;
     killSignal?: NodeJS.Signals;
   },
 ): Promise<CliCommandResult | null> {
+  let authorityRefused = false;
   try {
     const augmented = await augmentedSpawnEnv();
     const env = envOverlay
@@ -368,6 +370,14 @@ export async function runCliCommand(
           TMPDIR: augmented.TMPDIR,
         })
       : augmented;
+    if (bounds?.assertCurrent) {
+      try {
+        await bounds.assertCurrent();
+      } catch (error) {
+        authorityRefused = true;
+        throw error;
+      }
+    }
     const { stdout, stderr } = await execFile(command, args, {
       encoding: 'utf-8',
       ...(bounds?.cwd ? { cwd: bounds.cwd } : {}),
@@ -387,6 +397,7 @@ export async function runCliCommand(
       code: 0,
     };
   } catch (error) {
+    if (authorityRefused) throw error;
     throwIfAborted(signal);
     if (error && typeof error === 'object') {
       const result = error as {

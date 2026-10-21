@@ -416,11 +416,14 @@ export function isProviderInterruptTurnResult(
 /** Server-only fresh-session login observation; it grants no execution authority. */
 export interface ProviderExecutionAuthInput {
   readonly principalId: string;
+  readonly bindingHash: string;
   readonly connectionId: string;
   readonly cwd: string;
   readonly model: string;
   readonly modelOptions: Readonly<Record<string, unknown>>;
   readonly credentialProfileRef?: string | null;
+  /** Request-owned authority and exact receiver binding, checked at each CLI spawn. */
+  readonly assertCurrent: () => Promise<void>;
 }
 
 export interface ProviderExecutionAuthObservation {

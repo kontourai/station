@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
@@ -20,6 +20,7 @@ import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../../../providers/app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../../../providers/app-home/credential-profile-registry.js';
+import { observeExecutableInvocation } from '../../../providers/auth/executable-observation.js';
 import { createEnsemblePreparationRoutes } from '../../../routes/orchestration/ensemble-preparation.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
@@ -39,8 +40,19 @@ vi.mock('node:child_process', async (original) => {
   return {
     ...actual,
     execFile: (command: string, ...args: unknown[]) => {
-      if (/\/(codex|claude)$/.test(command)) return execFile(command, ...args);
-      return Reflect.apply(actual.execFile, undefined, [command, ...args]);
+      const argv = args[0];
+      if (
+        /\/(codex|claude)$/.test(command) ||
+        (command === process.execPath &&
+          Array.isArray(argv) &&
+          typeof argv[0] === 'string' &&
+          argv[0].includes('/ensemble-context-') &&
+          argv[0].endsWith('.js'))
+      )
+        return execFile(command, ...args);
+      if (command === 'ps' || command === '/bin/ps')
+        return Reflect.apply(actual.execFile, undefined, [command, ...args]);
+      throw new Error(`Unexpected external process: ${command}`);
     },
   };
 });
@@ -51,29 +63,33 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
-  execFile.mockImplementation((_command, args, _options, callback) =>
+  execFile.mockImplementation((_command, args, _options, callback) => {
+    const argv = args[0]?.endsWith('.js') ? args.slice(1) : args;
     callback(null, {
       stdout:
-        args[0] === '--version'
+        argv[0] === '--version'
           ? '99.0.0 (Claude Code)'
-          : args[0] === 'auth'
+          : argv[0] === 'auth'
             ? '{"loggedIn":true}'
             : 'Logged in using ChatGPT',
       stderr: '',
-    }),
-  );
+    });
+  });
 });
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
-async function fixture(engine: 'claude' | 'codex' = 'codex') {
+async function fixture(
+  engine: 'claude' | 'codex' = 'codex',
+  javascript = false,
+) {
   const root = await realpath(tempDir('ensemble-context-'));
   vi.stubEnv('STATION_HOME', join(root, 'station-home'));
   const bin = join(root, 'bin');
   await mkdir(bin);
-  const executable = join(bin, engine);
+  const executable = join(bin, javascript ? 'cli.js' : engine);
   await writeFile(executable, '', { mode: 0o755 });
   vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
   const cwd = join(root, 'project');
@@ -113,11 +129,18 @@ async function fixture(engine: 'claude' | 'codex' = 'codex') {
     homeDir,
     loadConnectionSettings: async () => settings,
   });
-  const getConnectionLaunch = async () =>
-    engineProxyLaunch(engine, settings.config, []);
+  let onConnectionRead: (() => Promise<void>) | undefined;
+  const getConnectionLaunch = async () => {
+    await onConnectionRead?.();
+    return engineProxyLaunch(engine, settings.config, []);
+  };
   const adapter =
     engine === 'claude'
-      ? new ClaudeAdapter({ getAppHomeEnv, getConnectionLaunch })
+      ? new ClaudeAdapter({
+          getAppHomeEnv,
+          getConnectionLaunch,
+          ...(javascript ? { findBinary: async () => executable } : {}),
+        })
       : new CodexAdapter({ getAppHomeEnv, getConnectionLaunch });
   const starts = vi.spyOn(adapter, 'startSession');
   const turns = vi.spyOn(adapter, 'sendTurn');
@@ -158,7 +181,30 @@ async function fixture(engine: 'claude' | 'codex' = 'codex') {
   const security = new EnvironmentSecurityService({
     homeDir: join(root, 'security'),
   });
-  const { credential: operator } = await security.initialize();
+  const { credential: rawOperator } = await security.initialize();
+  const offer = security.devicePairing.createOffer({
+    endpoint: 'http://127.0.0.1',
+  });
+  const requested = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Local host grant',
+  });
+  security.devicePairing.confirmRequest(requested.requestId, {
+    kind: 'local-grant',
+  });
+  const local = security.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: requested.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const operator = local.credential;
+  const revokeCurrent = async () => {
+    security.devicePairing.revokeDevice(local.device.id, 'operator-credential');
+  };
   const service = new EnsembleExecutionContext({ inventory, security });
   const app = new Hono();
   configureRuntimeHttp({
@@ -182,6 +228,8 @@ async function fixture(engine: 'claude' | 'codex' = 'codex') {
         security.identifyDevice(candidate)?.id,
       resolveCredentialLocality: (candidate) =>
         security.credentialLocality(candidate),
+      resolveCredentialMintKind: (candidate) =>
+        security.credentialMintKind(candidate),
       allowedOrigins: [],
     },
   });
@@ -226,15 +274,25 @@ async function fixture(engine: 'claude' | 'codex' = 'codex') {
     body.expectedPresetHash = `sha256:${createHash('sha256').update(json).digest('hex')}`;
   };
   await save();
-  const send = async (credential = operator, input: unknown = body) => {
-    const response = await app.request(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${credential}`,
-        'Content-Type': 'application/json',
+  const send = async (
+    credential = operator,
+    input: unknown = body,
+    remoteAddress = '127.0.0.1',
+    headers: Record<string, string> = {},
+  ) => {
+    const response = await app.request(
+      endpoint,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify(input),
       },
-      body: JSON.stringify(input),
-    });
+      { incoming: { socket: { remoteAddress } } },
+    );
     return {
       status: response.status,
       body: z
@@ -270,6 +328,11 @@ async function fixture(engine: 'claude' | 'codex' = 'codex') {
     inventory,
     security,
     operator,
+    rawOperator,
+    revokeCurrent,
+    setConnectionRead: (read: () => Promise<void>) => {
+      onConnectionRead = read;
+    },
     preset,
     path,
     body,
@@ -614,13 +677,296 @@ describe('production Ensemble preparation authentication', () => {
     f.assertNoInvocations();
   });
 
+  test.each(['127.0.0.1', '203.0.113.42'])(
+    'refuses raw operator credentials from %s before opening a preset, even with local-looking headers',
+    async (address) => {
+      const f = await fixture();
+      const result = await f.send(
+        f.rawOperator,
+        { ...f.body, path: '/missing/preset.json' },
+        address,
+        {
+          Host: '127.0.0.1',
+          'X-Forwarded-For': '127.0.0.1',
+          'X-Station-Client-Origin': 'local',
+        },
+      );
+      expect(result.status).toBe(403);
+      expect(result.body.code).toBe('ensemble_preparation_authority_required');
+      expect(execFile.mock.calls.length).toBe(0);
+      f.assertNoInvocations();
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    'a credential revoked during %s private connection resolution starts no CLI, including version commands',
+    async (engine) => {
+      const f = await fixture(engine);
+      f.setConnectionRead(async () => {
+        await Promise.resolve();
+        await f.revokeCurrent();
+      });
+      const result = await f.send();
+      expect(result.status).toBe(403);
+      expect(result.body.code).toBe('ensemble_preparation_authority_required');
+      expect(execFile.mock.calls.length).toBe(0);
+      f.assertNoInvocations();
+    },
+  );
+
+  test('a credential revoked during the fresh Claude version command cannot start login status', async () => {
+    const f = await fixture('claude');
+    execFile.mockImplementation((_command, args, _options, callback) => {
+      expect(args).toEqual(['--version']);
+      void f
+        .revokeCurrent()
+        .then(() =>
+          callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' }),
+        );
+    });
+    expect((await f.send()).body.code).toBe(
+      'ensemble_preparation_authority_required',
+    );
+    expect(execFile.mock.calls.map((call) => call[1])).toEqual([['--version']]);
+    f.assertNoInvocations();
+  });
+
+  test.each([
+    'slug',
+    'missing-slug',
+    'connection',
+    'profile',
+    'fingerprint',
+  ] as const)(
+    'rejects a substituted receiver %s at the pre-spawn definition read before using its profile',
+    async (change) => {
+      const f = await fixture();
+      const original = f.inventory.getAgent;
+      let reads = 0;
+      f.inventory.getAgent = async (...args) => {
+        const agent = await original(...args);
+        if (++reads !== 3) return agent;
+        if (change === 'slug') return { ...agent, slug: 'different-agent' };
+        if (change === 'missing-slug') return { ...agent, slug: undefined };
+        if (change === 'connection')
+          return {
+            ...agent,
+            execution: {
+              agentConnectionId: engineConnectionId('claude'),
+              credentialProfileRef: 'untrusted-pin',
+            },
+          };
+        if (change === 'profile')
+          return {
+            ...agent,
+            execution: {
+              ...agent.execution,
+              credentialProfileRef: 'untrusted-pin',
+            },
+          };
+        return { ...agent, definitionFingerprint: `sha256:${'1'.repeat(64)}` };
+      };
+      const result = await f.send();
+      expect(result.status).toBe(422);
+      expect(result.body.observation).toBeUndefined();
+      expect(execFile.mock.calls.length).toBe(0);
+      f.assertNoInvocations();
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    'revalidates the full %s receiver binding after private asynchronous setup',
+    async (engine) => {
+      const f = await fixture(engine);
+      f.setConnectionRead(async () => {
+        await Promise.resolve();
+        f.execution.agentConnectionId = engineConnectionId(
+          engine === 'codex' ? 'claude' : 'codex',
+        );
+        f.execution.credentialProfileRef = 'changed-pin';
+      });
+      const result = await f.send();
+      expect(result.status).toBe(422);
+      expect(result.body.observation).toBeUndefined();
+      expect(execFile.mock.calls.length).toBe(0);
+      f.assertNoInvocations();
+    },
+  );
+
+  test.each([
+    ['{"loggedIn":true}', 'Not logged in', 1, 'unauthenticated'],
+    ['{"loggedIn":true}', '', 1, 'unknown'],
+    ['{"loggedIn":true}', '{"loggedIn":false}', 0, 'unauthenticated'],
+    ['{"loggedIn":false}', '{"loggedIn":true}', 1, 'unauthenticated'],
+    ['{"loggedIn":true}', '', 0, 'authenticated'],
+  ] as const)(
+    'Claude status %s / %s with exit %s reports %s',
+    async (stdout, stderr, code, state) => {
+      const f = await fixture('claude');
+      execFile.mockImplementation((_command, args, _options, callback) => {
+        if (args[0] === '--version')
+          return callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' });
+        callback(
+          code
+            ? Object.assign(new Error('status exit'), { code, stdout, stderr })
+            : null,
+          { stdout, stderr },
+        );
+      });
+      const result = await f.send();
+      expect(result.body.observation?.state).toBe(state);
+      expect(result.body.code).toBe(
+        state === 'authenticated'
+          ? 'ensemble_execution_guarantees_unavailable'
+          : 'ensemble_auth_unverified',
+      );
+      f.assertNoInvocations();
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    'rejects same-path %s executable byte replacement during the CLI probe',
+    async (engine) => {
+      const f = await fixture(engine);
+      execFile.mockImplementation((_command, args, _options, callback) => {
+        if (args[0] === '--version')
+          return callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' });
+        void writeFile(f.executable, 'replacement executable bytes').then(() =>
+          callback(null, {
+            stdout:
+              engine === 'codex'
+                ? 'Logged in using ChatGPT'
+                : '{"loggedIn":true}',
+            stderr: '',
+          }),
+        );
+      });
+      const result = await f.send();
+      expect(result.body).toMatchObject({
+        code: 'ensemble_auth_unverified',
+        observation: { state: 'unknown' },
+      });
+      f.assertNoInvocations();
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    'rejects replacement of the %s executable inode even when its bytes are identical',
+    async (engine) => {
+      const f = await fixture(engine);
+      execFile.mockImplementation((_command, args, _options, callback) => {
+        if (args[0] === '--version')
+          return callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' });
+        void rename(f.executable, `${f.executable}.old`)
+          .then(() => writeFile(f.executable, '', { mode: 0o755 }))
+          .then(() =>
+            callback(null, {
+              stdout:
+                engine === 'codex'
+                  ? 'Logged in using ChatGPT'
+                  : '{"loggedIn":true}',
+              stderr: '',
+            }),
+          );
+      });
+      expect((await f.send()).body).toMatchObject({
+        code: 'ensemble_auth_unverified',
+        observation: { state: 'unknown' },
+      });
+      f.assertNoInvocations();
+    },
+  );
+
+  test('Claude authentication does not reuse a successful readiness version cache', async () => {
+    const f = await fixture('claude');
+    await f.adapter.getPrerequisites();
+    expect(execFile.mock.calls.map((call) => call[1])).toEqual([['--version']]);
+    execFile.mockClear();
+    execFile.mockImplementation((_command, args, _options, callback) => {
+      expect(args).toEqual(['--version']);
+      callback(null, { stdout: 'version unavailable', stderr: '' });
+    });
+    expect((await f.send()).body).toMatchObject({
+      code: 'ensemble_auth_unverified',
+      observation: { state: 'unknown' },
+    });
+    expect(execFile.mock.calls.map((call) => call[1])).toEqual([['--version']]);
+    f.assertNoInvocations();
+  });
+
+  test.each(['codex', 'claude'] as const)(
+    'an unbound shebang interpreter for %s is refused without executing it',
+    async (engine) => {
+      const f = await fixture(engine);
+      await writeFile(f.executable, '#!/unbound/interpreter\n');
+      expect((await f.send()).body).toMatchObject({
+        code: 'ensemble_auth_unverified',
+        observation: { state: 'unknown' },
+      });
+      expect(execFile.mock.calls.length).toBe(0);
+      f.assertNoInvocations();
+    },
+  );
+
+  test('a Claude JavaScript entry binds the exact script and Node interpreter argv, then refuses script replacement', async () => {
+    const f = await fixture('claude', true);
+    const result = await f.send();
+    expect(result.body.observation?.state).toBe('authenticated');
+    expect(execFile.mock.calls.map((call) => [call[0], call[1]])).toEqual([
+      [process.execPath, [f.executable, '--version']],
+      [process.execPath, [f.executable, 'auth', 'status', '--json']],
+    ]);
+    execFile.mockImplementation((_command, args, _options, callback) => {
+      if (args.includes('--version'))
+        return callback(null, { stdout: '99.0.0 (Claude Code)', stderr: '' });
+      void writeFile(f.executable, '// replaced JavaScript entry').then(() =>
+        callback(null, { stdout: '{"loggedIn":true}', stderr: '' }),
+      );
+    });
+    expect((await f.send()).body).toMatchObject({
+      code: 'ensemble_auth_unverified',
+      observation: { state: 'unknown' },
+    });
+    f.assertNoInvocations();
+  });
+
+  test('the shared invocation observation binds interpreter bytes as well as JavaScript source', async () => {
+    const root = await realpath(tempDir('ensemble-interpreter-'));
+    const interpreter = join(root, 'node');
+    const script = join(root, 'cli.js');
+    await writeFile(interpreter, 'fixture interpreter');
+    await writeFile(script, '// fixture source');
+    const before = await observeExecutableInvocation(interpreter, script);
+    expect(before).toMatch(/^[0-9a-f]{64}$/);
+    await writeFile(interpreter, 'replacement interpreter');
+    expect(await observeExecutableInvocation(interpreter, script)).not.toBe(
+      before,
+    );
+  });
+
+  test.each(['codex', 'claude'] as const)(
+    'an explicit null Agent pin for %s retains the connection active profile',
+    async (engine) => {
+      const f = await fixture(engine);
+      f.execution.credentialProfileRef = null;
+      expect((await f.send()).body.observation?.state).toBe('authenticated');
+      const call = execFile.mock.calls.find((entry) =>
+        entry[1].includes('status'),
+      );
+      expect(
+        call?.[2].env[engine === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR'],
+      ).toBe(credentialProfileAppHomeDir(engine, 'selected', f.homeDir));
+      f.assertNoInvocations();
+    },
+  );
+
   test('rechecks the actual credential after asynchronous resolution, before any auth command', async () => {
     const f = await fixture();
     const original = f.inventory.getProject;
     let resolutions = 0;
     f.inventory.getProject = async (...args) => {
       const project = await original(...args);
-      if (++resolutions === 2) await f.security.rotateCredential();
+      if (++resolutions === 2) await f.revokeCurrent();
       return project;
     };
     expect((await f.send()).body.code).toBe(
@@ -633,8 +979,8 @@ describe('production Ensemble preparation authentication', () => {
   test('rechecks credential currency after the process observation', async () => {
     const f = await fixture();
     execFile.mockImplementation((_command, _args, _options, callback) => {
-      void f.security
-        .rotateCredential()
+      void f
+        .revokeCurrent()
         .then(() =>
           callback(null, { stdout: 'Logged in using ChatGPT', stderr: '' }),
         );
