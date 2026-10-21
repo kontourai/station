@@ -33,11 +33,10 @@ export function EngineInstallHint({
   const [copyFailed, setCopyFailed] = useState(false);
   const command = recipe?.command;
   return (
-    <div
+    <fieldset
       className="engine-install-hint"
       data-testid="engine-install-hint"
       aria-label={`How to install ${name}`}
-      role="group"
     >
       <HostAction
         id="engine-install-command"
@@ -96,6 +95,6 @@ export function EngineInstallHint({
           </Button>
         ) : null}
       </div>
-    </div>
+    </fieldset>
   );
 }
