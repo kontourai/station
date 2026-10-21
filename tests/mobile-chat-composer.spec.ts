@@ -1287,6 +1287,14 @@ test('stages a current-host attachment before dispatching only its opaque refere
   await mockChatShell(page);
 
   await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/inbox',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(json({ success: true, data: { entries: [] } }));
+    },
+  );
+  await page.route(
     '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
     (route) =>
       route.fulfill({
