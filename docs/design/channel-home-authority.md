@@ -367,7 +367,8 @@ consult that seal inside their commit transactions. Reads and exact duplicate
 receipts remain available. There is no unseal operation.
 
 Task memory (#4003: the Task summary and keyed records in the event store's
-migration-017 tables) is written through the room's request authority but is
+migration-020 tables, with Learning's dismissal and promotion rows from
+migrations 021 and 022) is written through the room's request authority but is
 not room history. It does not consult the source seal, and the seal's document
 digest does not cover it. Fencing it, or carrying it as transferred content,
 remains part of target activation.
