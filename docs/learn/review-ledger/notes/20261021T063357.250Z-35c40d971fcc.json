@@ -1,0 +1,7 @@
+{
+  "revision": "ab07b37209dee0989752d88edeb37c6e2e3ad4f7",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed actual-first-turn retention in both EventStore summary readers at c23186f: real SQLite regression reproduces origin misattribution before fix, 344 after, removed batched slot mutant fails and restored229 pass. First prompt title remains separate. Reviewed delegated transcript posture slice through ab07: ChatDockBody supplies real session record; list derives badge, bubbles require own execution identity, streaming uses current execution. Recorded delegation is not read-only/sandbox/tool authority. Mounted list tests current+older execution and worker/task/read-only/absent transitions; guard removal fails and byte-identical restoration passes. Existing phone metadata remains in row Details. Prior browser7 at761 source only, new posture browser/native/live and final epic acceptance remain unverified.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
+  ]
+}

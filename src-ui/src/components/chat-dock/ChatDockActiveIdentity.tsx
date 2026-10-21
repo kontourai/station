@@ -5,6 +5,10 @@ import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { ChatSession } from '../../types';
 import { agentEngineDescriptor } from '../../utils/engine';
+import {
+  delegationOriginDescription,
+  delegationOriginLabel,
+} from '../../utils/sessionDisplay';
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -41,14 +45,11 @@ export function ChatDockActiveIdentity({
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
-  const initiator = inputOrigin?.initiator;
-  const originSurface = initiator?.reportedSurface;
-  const originText =
-    originSurface && originSurface !== 'unknown'
-      ? `Delegation · ${originSurface === 'cli' || originSurface === 'mcp' ? originSurface.toUpperCase() : originSurface} (reported)`
-      : 'Driven from delegation';
+  const originText = inputOrigin
+    ? delegationOriginLabel(inputOrigin)
+    : undefined;
   const originTitle = inputOrigin
-    ? `${inputOrigin.title ? `Driven from delegated task: ${inputOrigin.title}` : `Driven from delegated task ${inputOrigin.taskId}`}${initiator ? ` · ${initiator.actor === 'unknown' ? 'Caller not recorded' : `Authenticated caller: ${initiator.actor}`} · Client surface is self-reported` : ''}`
+    ? delegationOriginDescription(inputOrigin)
     : undefined;
 
   const engine = agent

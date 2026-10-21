@@ -1,5 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { OrchestrationInputOrigin } from '@kontourai/station-contracts/orchestration';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -241,6 +242,31 @@ export function sessionProjectLabel(
  * the display site. Every assertion this function carried was kept, retargeted
  * onto `sessionProjectLabel` in `sessionProjectSection.test.ts`.
  */
+
+export function delegationOriginLabel(
+  origin: OrchestrationInputOrigin,
+): string {
+  const surface = origin.initiator?.reportedSurface;
+  if (!surface || surface === 'unknown') return 'Driven from delegation';
+  const label =
+    surface === 'cli' || surface === 'mcp' ? surface.toUpperCase() : surface;
+  return `Delegation · ${label} (reported)`;
+}
+
+export function delegationOriginDescription(
+  origin: OrchestrationInputOrigin,
+): string {
+  const task = origin.title
+    ? `Driven from delegated task: ${origin.title}`
+    : `Driven from delegated task ${origin.taskId}`;
+  const initiator = origin.initiator;
+  if (!initiator) return task;
+  const caller =
+    initiator.actor === 'unknown'
+      ? 'Caller not recorded'
+      : `Authenticated caller: ${initiator.actor}`;
+  return `${task} · ${caller} · Client surface is self-reported`;
+}
 
 /** Recorded session posture, not a claim about sandboxing or tool authority. */
 export type PermissionPosture =

@@ -100,6 +100,11 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
           source: 'manual',
           messages: [],
         }}
+        orchestrationSession={{
+          threadId: 'parity-streaming-session',
+          controlMode: 'station-owned',
+          delegation: { taskId: 'child', mode: 'isolated-child' },
+        }}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -132,6 +137,11 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
             },
           ],
         }}
+        orchestrationSession={{
+          threadId: 'parity-persisted-session',
+          controlMode: 'station-owned',
+          delegation: { taskId: 'child', mode: 'isolated-child' },
+        }}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -142,6 +152,8 @@ describe('streaming vs. persisted row attribution parity (station#1424 review ro
     // Agent identity text is present, identically, on both rows.
     expect(within(streaming).getByText('Dev Agent')).toBeTruthy();
     expect(within(persisted).getByText('Dev Agent')).toBeTruthy();
+    expect(within(streaming).getByText('Delegated worker')).toBeTruthy();
+    expect(within(persisted).getByText('Delegated worker')).toBeTruthy();
 
     // Owner chip text is present, identically, on both rows.
     expect(within(streaming).getByText(/via Casey Example/)).toBeTruthy();

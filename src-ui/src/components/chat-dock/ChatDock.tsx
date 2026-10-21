@@ -116,7 +116,11 @@ import {
   type EffectiveModelSource,
   isSessionWorkActive,
 } from '../../utils/execution';
-import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  delegationOriginLabel,
+  displayProvider,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   openChatInboxRows,
@@ -1484,7 +1488,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'input-origin',
-            label: `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`,
+            label: delegationOriginLabel(
+              activeOrchestrationSession.inputOrigin,
+            ),
             disabled: true,
             onSelect: () => {},
           },
@@ -2783,7 +2789,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? (sessionProjectName ?? activeSession.projectSlug)
                   : null,
                 inputOriginLabel: activeOrchestrationSession?.inputOrigin
-                  ? `Driven from delegated task: ${activeOrchestrationSession.inputOrigin.title ?? activeOrchestrationSession.inputOrigin.taskId}`
+                  ? delegationOriginLabel(
+                      activeOrchestrationSession.inputOrigin,
+                    )
                   : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
