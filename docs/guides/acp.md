@@ -519,7 +519,11 @@ without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
 lists as a credential variable). A plugin entry is also refused when it
-carries `launchEnv` or reuses a built-in entry's id; the built-in card stays.
+carries `launchEnv`, reuses a built-in entry's id, or has a name that reads as
+a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
+Greek look-alikes), and every entry from a plugin provider registered as
+"Station", "Kontour" or a built-in engine's name is refused; the built-in card
+stays.
 A plugin entry's `sourceName` is always the identity its provider registered
 under, whatever the entry says, and its install recipe is shown with
 "Provided by" and that name.
