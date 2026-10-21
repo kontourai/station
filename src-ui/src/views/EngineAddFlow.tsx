@@ -2,11 +2,11 @@ import { engineId as toEngineId } from '@kontourai/station-contracts/agent-ident
 import type { AgentConnectionView as AgentConnectionViewData } from '@kontourai/station-contracts/tool';
 import { useSaveAgentConnectionMutation } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { useACPConnectionSetupOwner } from '../components/acp-connections/useACPConnectionSetupOwner';
 import { useStartChatWithEngine } from '../components/acp-connections/useStartChatWithEngine';
-import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';

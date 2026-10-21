@@ -1020,7 +1020,7 @@ test.describe('Connections CRUD', () => {
       .locator('.engine-catalog__row')
       .filter({ hasText: 'Kiro CLI' });
     await expect(kiroRow).toContainText(
-      'Found on this computer — not yet connected to this Station.',
+      'Found on the computer Station runs on — not yet connected.',
     );
     const kiro = kiroRow.getByRole('button', { name: 'Connect Kiro CLI' });
 
@@ -1128,9 +1128,9 @@ test.describe('Connections CRUD', () => {
     }) => {
       await installVisualViewportFixture(page);
       await page.goto('/connections/engines');
-      const add = page
-        .locator('.page__actions')
-        .getByRole('button', { name: 'Add engine', exact: true });
+      // On a phone the page's one add action floats rather than taking a
+      // header row (PageCreateAction); its name is the same.
+      const add = page.getByRole('button', { name: 'Add engine', exact: true });
       // Measured before opening: the trigger itself has to be tappable.
       expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
         MIN_TOUCH_TARGET_PX,

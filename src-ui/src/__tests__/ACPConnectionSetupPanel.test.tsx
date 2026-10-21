@@ -157,13 +157,11 @@ describe('ACPConnectionSetupPanel', () => {
         entry={kiro}
         connections={[]}
         onAdd={vi.fn()}
-        onInstallRegistryEntry={vi
-          .fn()
-          .mockResolvedValue({
-            ...failedFirstAddResponse,
-            status: 'available',
-            lastError: undefined,
-          })}
+        onInstallRegistryEntry={vi.fn().mockResolvedValue({
+          ...failedFirstAddResponse,
+          status: 'available',
+          lastError: undefined,
+        })}
         onDone={onDone}
         onStartChat={onStartChat}
       />,
