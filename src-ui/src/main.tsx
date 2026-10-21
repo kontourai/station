@@ -59,6 +59,7 @@ import { SyntaxHighlighterProvider } from './contexts/SyntaxHighlighterContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { TranscriptAppWorkspaceProvider } from './contexts/TranscriptAppWorkspaceProvider';
 import { VoiceProviderContext } from './contexts/VoiceProviderContext';
+import { WorkClaimsProvider } from './contexts/WorkClaimsContext';
 import { PermissionManager } from './core/PermissionManager';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
@@ -333,7 +334,9 @@ function renderApp(): void {
                                                   >
                                                     <RegionModelProvider>
                                                       <BrandingThemeBridge />
-                                                      <App />
+                                                      <WorkClaimsProvider>
+                                                        <App />
+                                                      </WorkClaimsProvider>
                                                     </RegionModelProvider>
                                                     <NotificationContainer />
                                                   </LocaleProvider>

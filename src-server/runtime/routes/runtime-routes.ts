@@ -350,6 +350,7 @@ import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createSessionWorkClaimRoutes } from '../../routes/orchestration/session-work-claims.js';
 import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
@@ -357,6 +358,7 @@ import {
   createTaskRoutes,
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
+import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
@@ -5137,9 +5139,25 @@ export function configureRuntimeRoutes(
   // their own per-Session scope check; their own prefix so nothing above
   // changes.
   if (context.orchestrationEventStore) {
+    // #3413 part B: the claims agents declare, shown on their activity rows.
+    const workClaims = context.orchestrationEventStore.createWorkClaimStore({
+      maxActivePerClaimant: WORK_CLAIM_MAX_ACTIVE_PER_SESSION,
+    });
     context.app.route(
       '/api/orchestration/session-activity',
       createSessionProjectActivityRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+        workClaims,
+      }),
+    );
+    context.app.route(
+      '/api/orchestration/work-claims',
+      createSessionWorkClaimRoutes({
+        workClaims,
         orchestrationService: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
         stationControlDispatchScope,

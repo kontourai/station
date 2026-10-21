@@ -81,6 +81,8 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_project_activity` and `get_session_digest` to see which Sessions are
   active in the caller's Project and what has happened in one of them
   ([Project activity](#project-activity))
+- `claim_work`, `renew_claim` and `release_claim` to say what the Session is
+  working on, so peers in its Project see it ([Work claims](#work-claims))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -452,11 +454,45 @@ operator's reach for a digest, as for `read_conversation`, but the list is the
 caller's own Project for every caller. A Session on another Station, in a saved
 Environment, or an Activity record of a paired Station's work is never listed or
 summarized, and a delegated child the caller may not see is left out of a digest.
-A request without a verified station-control caller is refused. There is no
-`claim` field: claiming work is separate. The
+A request without a verified station-control caller is refused. A row carries
+`claims` when its Session holds active [work claims](#work-claims): a row other
+than the caller's own shows only claims in the caller's own scope, so a
+conversation that moved to another Project does not carry its old Project's
+claims there, and a Session that has ended shows none. The
 [route](../../src-server/routes/orchestration/session-project-activity.ts) and
 the [digest fold](../../src-server/services/orchestration/session-digest.ts) own
 these rules.
+
+### Work claims
+
+`claim_work`, `renew_claim` and `release_claim` let an agent say what it has
+taken, so other Sessions in its Project see it in `list_project_activity` and
+in the Station UI's Session rows and do not duplicate it.
+
+- A claim names a work item (`workItemRef`, such as `owner/repo#123`), paths,
+  or both, with an optional one-line `note`. It is information, not a lock:
+  nothing is refused because of it, and two Sessions may claim the same item.
+- The claimant is the calling Session. The inputs are strict and name no
+  Session, owner or Project, so an agent cannot claim for another. Only the
+  claimant, or a later Session of its conversation, renews or releases a
+  claim; another Session's claim id reads as not found.
+- A claim expires after `ttlSeconds` (default 30 minutes, at most 4 hours)
+  unless renewed, and stops showing once released or once its Session ends.
+  Expiry, release and the Session's end are decided when claims are read,
+  never stored as a label. Claiming an item the Session already holds renews
+  that claim. A Session holds at most 10 active claims; a bound past its limit
+  is refused, never cut.
+- A claim belongs to the claimant's Project, or the global space, and is
+  visible only there. A Session whose Project cannot be confirmed claims
+  nothing. A Session dispatched for a Task stamps the Task id on its claims, so
+  a Task's brief can say who is on what.
+
+Claims live in Station's own orchestration database. They do not yet use Flow
+Agents' assignment contract (kontourai/flow-agents#1436), whose claim is
+exclusive and stored beside the repository; the
+[store](../../src-server/services/orchestration/work-claims.ts) is the one seam
+that could adopt it. See the
+[routes](../../src-server/routes/orchestration/session-work-claims.ts).
 
 ## Recommended setup pattern
 

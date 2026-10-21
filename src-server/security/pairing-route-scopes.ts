@@ -2632,6 +2632,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3413 part B work claims. The three POST leaves are agent-only at the
+    // route (403 `station_control_caller_required` without a verified
+    // station-control caller), and the claimant is that caller's own Session.
+    // The GET leaf is the UI's read, owner-scoped to the Sessions the
+    // requester may read.
+    { method: 'POST', path: '/api/orchestration/work-claims' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+    { method: 'GET', path: '/api/orchestration/work-claims' },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on

@@ -682,6 +682,34 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
   },
 
+  // ── operations: work claims (#3413 part B) ─────────────────────────────
+  // A Session's own declaration of what it is on. Any verified caller with a
+  // recorded owner; the routes take the claimant from the verified caller and
+  // read another Session's claim as absent. Each writes a durable record, so
+  // mutating (as `declare_pull_request`), not a bounded write. Each owns its
+  // leaf and shares none.
+  claim_work: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims')],
+  },
+  renew_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/renew')],
+  },
+  release_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/release')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,

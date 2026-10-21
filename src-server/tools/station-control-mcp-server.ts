@@ -38,6 +38,7 @@ import {
 } from './station-control-shared.js';
 import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
 import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
+import { registerWorkClaimTools } from './station-control-work-claim-tools.js';
 import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
@@ -96,6 +97,8 @@ function stationControlToolMetadata(name: string) {
     ['Agents', /agent/],
     // The Sessions in a Project: a chat-level read, not a Project record.
     ['Chats', /^list_project_activity$/],
+    // #3413 B: what a Session says it is on, shown with Project activity.
+    ['Chats', /^(claim_work|renew_claim|release_claim)$/],
     ['Projects', /project|layout|^board_|personal_board/],
     ['Chats', /conversation|session|message/],
     ['Tasks', /task|delegat|ssh_environment|pull_request/],
@@ -297,6 +300,7 @@ export function createSelectedStationControlMcpServer(
   registerSessionSearchTools(registry);
   registerSessionTools(registry);
   registerProjectActivityTools(registry);
+  registerWorkClaimTools(registry);
   registerNotifyTools(registry);
   registerHtmlReplyTools(registry);
   registerDeclarePullRequestTools(registry);

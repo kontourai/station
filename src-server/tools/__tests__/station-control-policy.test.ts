@@ -896,3 +896,84 @@ describe('station-control authority table: declare_pull_request and Task close-o
       ]).toEqual([name, false]);
   });
 });
+
+// #3413 part B: the work-claim tools. Written out here, independently of the
+// table: a Session's own declaration, any assurance with a recorded owner,
+// mutating (a durable record), each on its own leaf.
+describe('station-control authority table: work claims (#3413 B)', () => {
+  const LEAVES = {
+    claim_work: { method: 'POST', path: '/api/orchestration/work-claims' },
+    renew_claim: {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    release_claim: {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+  } as const;
+
+  test('each is self-role, any assurance, mutating, never person-only, and owns exactly its own leaf', () => {
+    for (const [name, leaf] of Object.entries(LEAVES)) {
+      const policy = STATION_CONTROL_TOOL_POLICY[
+        name as keyof typeof LEAVES
+      ] as StationControlToolPolicy;
+      expect([
+        name,
+        policy.assurance,
+        policy.role,
+        policy.toolClass,
+        policy.personOnly,
+        policy.routes,
+      ]).toEqual([name, 'any', 'self', 'mutating', 'never', [leaf]]);
+      const concrete = leaf.path.replace(':claimId', 'claim_abc');
+      expect([
+        name,
+        matchStationControlRoute('POST', concrete)?.owners,
+      ]).toEqual([name, [name]]);
+    }
+  });
+
+  test('a caller with a recorded owner reaches each leaf at every assurance; one without, or none, is refused', () => {
+    for (const leaf of Object.values(LEAVES)) {
+      const path = leaf.path.replace(':claimId', 'claim_abc');
+      for (const caller of [
+        CALLERS['bound-operator'],
+        CALLERS['bound-other-person'],
+        CALLERS['delegated-operator'],
+        CALLERS['bearer-operator'],
+      ])
+        expect(
+          authorizeStationControlRequest('POST', path, {
+            caller,
+            isOperatorPrincipal,
+          }),
+        ).toBeUndefined();
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller: { assurance: 'bound' },
+          isOperatorPrincipal,
+        })?.code,
+      ).toBe('station_control_role_required');
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller: null,
+          isOperatorPrincipal,
+        })?.code,
+      ).toBe('station_control_caller_required');
+    }
+  });
+
+  test('no tool reaches the UI read of claims', () => {
+    const route = '/api/orchestration/work-claims';
+    expect(matchStationControlRoute('GET', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('GET', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+  });
+});
