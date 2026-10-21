@@ -57,6 +57,21 @@ posture. Delegation does not imply read-only execution or sandbox guarantees.
 Independent source review and mounted checks passed; final exact-head browser
 and native acceptance remain open.
 
+#600 has a reviewed local preset/preparation increment: the public Ensemble contract parses
+versioned named members and renders roster-aware briefs; the server loads exact file bytes/hash
+and prepares frozen member options through existing resolution plus mandatory authentication
+receipts. Unsupported option values and ancestor/descriptor substitutions refuse. Forty-six
+focused tests and bounded independent review cover these source boundaries. Actual-context
+credentials, launch/session identity persistence, preset CLI/UI entry points and roster delivery
+still need adoption evidence; this does not complete #600.
+
+The upstream feature branch now has source entry points for v2 authority/grants, ancestor
+allocations and invocation holds, a durable group controller, Flow-owned scheduling, mailbox
+admission and bounded no-tools context acknowledgement. These are unpublished source APIs.
+Local controlled-runtime and filesystem evidence does not establish production host fencing,
+provider metering, isolated writers or Station adoption. Flow itself stays at the lifecycle
+coordinator's canonical 5.2.0 pin; Dispatch/Relay 0.7.1 supply physical reservation APIs.
+
 Retain the folded detail records #73, #107, #205, #432, #453, and #600 as
 acceptance obligations. Closed-as-batched is not implemented. In particular,
 permission posture, envelope authority, context ACKs, team presets, and topology
