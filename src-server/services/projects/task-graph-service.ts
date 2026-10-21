@@ -3282,6 +3282,7 @@ export class TaskGraphService {
               const built = await taskBrief.forDispatch(
                 reservation.task,
                 reservation.sessionId,
+                input.ownerUserId,
               );
               brief = { digest: built.brief.digest, text: built.brief.text };
               workItemObservedAt = built.workItemObservedAt;

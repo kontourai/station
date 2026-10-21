@@ -2776,6 +2776,7 @@ export function configureRuntimeRoutes(
     taskGraph: context.taskGraphService,
     eventStore: context.orchestrationEventStore,
     sessionReadModel: context.orchestrationService,
+    readAuthorityForUser: readAuthorityForExecution,
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
     logger: context.logger,

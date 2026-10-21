@@ -223,7 +223,8 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
         hasSessionStartRecord: () => true,
         currentConversationSessionId: (conversationId: string) =>
           conversationId,
-        canUserReadSession: () => true,
+        // Another person's Session of the same Task (review F10).
+        canUserReadSession: (threadId: string) => threadId !== 'carol-bound',
         firstStartedMetadataOfThread: () => ({
           adoptedFromThreadId: 'attached',
           [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: 'project-a',
@@ -271,6 +272,11 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
                   sessionId: 'op-caller-bound',
                   provider: 'codex',
                   createdAt: '2026-10-20T02:00:00.000Z',
+                },
+                {
+                  sessionId: 'carol-bound',
+                  provider: 'codex',
+                  createdAt: '2026-10-20T03:00:00.000Z',
                 },
               ]
             : [],
@@ -358,6 +364,9 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       expect(json.data.taskId).toBe('task-bound');
       expect(json.data.version).toBe('station.task-brief/v1');
       expect(json.data.text).toContain('\n> Title: The bound Task\n');
+      // Only Sessions the caller's owner may read (review F10): another
+      // person's Session of this Task, and its last request, never show.
+      expect(json.data.text).not.toContain('carol-bound');
       expect(json.data.text).not.toContain('Somebody else');
       // Every Session of the Task, with the status word and digest facts
       // the activity and digest reads report; the caller is marked.

@@ -83,7 +83,10 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -290,7 +293,11 @@ export async function loadStablePreToolPolicySpec(options: {
 
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
-import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
+import {
+  currentTenantExecutionContext,
+  isHostedTenantExecutionRequired,
+  loadHostedTenantRegistryFromEnvironment,
+} from './runtime-tenant-context.js';
 
 const CONFIGURATION_RECONCILIATION_DELAYS_MS = [250, 1_000, 5_000] as const;
 /**
@@ -3968,6 +3975,8 @@ export class StationRuntime {
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
             // route or capability can read runtime context.
+            const briefTenantRegistry =
+              loadHostedTenantRegistryFromEnvironment();
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
@@ -3980,6 +3989,16 @@ export class StationRuntime {
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
                   sessionReadModel: this.orchestrationService,
+                  // The dispatched Session's owner reads its brief: the
+                  // runtime routes' `readAuthorityForExecution`, with tenancy.
+                  readAuthorityForUser: (userId) => {
+                    const execution = currentTenantExecutionContext();
+                    return sessionReadAuthorityFromRequest(
+                      userId,
+                      execution ? { tenantId: execution.tenantId } : undefined,
+                      briefTenantRegistry,
+                    );
+                  },
                   roomRuntime: () => this.projectTaskRoomRuntime,
                   // The same reader the routes get (`workItemObserver` in
                   // the route context), so dispatch and get_task_brief

@@ -16,6 +16,12 @@
  * dispatch, and `forSession` / `listingForSession` derive the Task from the
  * Session's immutable server-owned room execution binding, never from an
  * argument.
+ *
+ * Whose Sessions (review F10): the brief's Session lines and claims name
+ * only Sessions the receiving Session's owner may read (`canUserReadSession`
+ * under that owner's read authority), as `list_project_activity` does; the
+ * receiving Session itself is always shown. With no owner known, no other
+ * Session is shown.
  */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
@@ -25,7 +31,10 @@ import type {
   TaskMemoryRecord,
   TaskSummaryRevision,
 } from '@kontourai/station-contracts/task-memory';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  type SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import type { EventStore } from '../orchestration/event-store.js';
 import {
@@ -88,6 +97,13 @@ export interface TaskBriefSourceDeps {
    * running, and Session lines carry no claims.
    */
   workClaims?: Pick<ActiveWorkClaimReader, 'listActiveClaims'>;
+  /**
+   * Whether `viewerUserId` may read `sessionId`. Absent: every Session of
+   * the Task is shown (tests that compose no read model).
+   */
+  canViewerRead?(viewerUserId: string, sessionId: string): boolean;
+  /** The recorded owner of a Session, for `forSession`'s viewer. */
+  ownerOf?(sessionId: string): string | undefined;
   /** Recorded facts per Session; a Session it cannot read is absent. */
   sessionFacts?(
     sessionIds: readonly string[],
@@ -130,6 +146,8 @@ export interface TaskBriefSource {
   forDispatch(
     task: TaskRecord,
     sessionId: string,
+    /** The dispatched Session's owner: whose read authority the lines use. */
+    ownerUserId?: string,
   ): Promise<TaskBriefForDispatch>;
   /** The current brief for the Task the Session is bound to. */
   forSession(sessionId: string): Promise<TaskBriefForSession>;
@@ -210,10 +228,22 @@ export function createTaskBriefSource(
   const sessions = async (
     task: TaskRecord,
     sessionId: string,
+    viewerUserId: string | undefined,
   ): Promise<TaskBriefSessionFacts[]> => {
     const taskId = task.id;
-    const claims = await claimsBySession(task);
-    const dispatched = [...deps.listTaskSessions(taskId)];
+    // Only Sessions the viewer may read, and always the viewer's own.
+    const visible = (id: string) =>
+      id === sessionId ||
+      !deps.canViewerRead ||
+      (viewerUserId !== undefined && deps.canViewerRead(viewerUserId, id));
+    const claims = new Map(
+      [...(await claimsBySession(task))].filter(([claimant]) =>
+        visible(claimant),
+      ),
+    );
+    const dispatched = deps
+      .listTaskSessions(taskId)
+      .filter((session) => visible(session.sessionId));
     // A claim's Session was bound to this Task when it claimed (the Task id is
     // stamped from that binding), so a claimant missing from the dispatch
     // list is still one of the Task's Sessions: give it a line rather than
@@ -337,11 +367,11 @@ export function createTaskBriefSource(
   };
 
   return {
-    async forDispatch(task, sessionId) {
+    async forDispatch(task, sessionId, ownerUserId) {
       const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
-        sessions(task, sessionId),
+        sessions(task, sessionId, ownerUserId),
       ]);
       const brief = buildTaskBrief({
         task,
@@ -365,7 +395,7 @@ export function createTaskBriefSource(
       const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
-        sessions(task, sessionId),
+        sessions(task, sessionId, deps.ownerOf?.(sessionId)),
       ]);
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
@@ -459,7 +489,18 @@ export function composeTaskBriefSource(input: {
       options: { threadIds: readonly string[] },
     ): Promise<OrchestrationSessionSummary[]>;
     currentConversationSessionId(conversationId: string): string;
+    canUserReadSession(
+      threadId: string,
+      authority: SessionReadAuthority,
+    ): boolean;
+    sessionRecordedOwnerId(threadId: string): string | undefined;
   };
+  /**
+   * A person's Session read authority (the runtime's own construction, with
+   * its tenancy): the brief shows another Session only when the viewer's
+   * owner may read it.
+   */
+  readAuthorityForUser: (userId: string) => SessionReadAuthority;
   /** Read lazily: the room runtime is composed after the dispatcher. */
   roomRuntime: () =>
     | {
@@ -483,6 +524,17 @@ export function composeTaskBriefSource(input: {
         : { kind: 'unavailable', reason: 'the Task room is not running' };
     },
     ...(store ? { memory: store.taskMemoryStore() } : {}),
+    ...(input.sessionReadModel
+      ? {
+          canViewerRead: (viewerUserId: string, sessionId: string) =>
+            input.sessionReadModel!.canUserReadSession(
+              sessionId,
+              input.readAuthorityForUser(viewerUserId),
+            ),
+          ownerOf: (sessionId: string) =>
+            input.sessionReadModel!.sessionRecordedOwnerId(sessionId),
+        }
+      : {}),
     // The read API the claims routes and `list_project_activity` share.
     // Reads never reach the per-claimant bound; it is the store's write rule.
     ...(store && input.sessionReadModel

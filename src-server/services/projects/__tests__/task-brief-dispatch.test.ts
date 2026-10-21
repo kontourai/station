@@ -17,6 +17,7 @@ import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/p
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type { TaskRecordWrite } from '@kontourai/station-contracts/task-memory';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -215,6 +216,8 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       memory?: TaskRecordWrite[];
       /** Dispatch this existing Task again instead of creating one. */
       taskId?: string;
+      /** Who dispatches; the Station operator by default. */
+      ownerUserId?: string;
     } = {},
   ) {
     const task = options.taskId
@@ -272,6 +275,8 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
         taskGraph: graph,
         eventStore,
         sessionReadModel: service,
+        readAuthorityForUser: (userId) =>
+          sessionReadAuthorityFromRequest(userId, undefined, undefined),
         roomRuntime: () => ({
           readTaskDocumentForBrief: async () => ({
             kind: 'available',
@@ -291,7 +296,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       }),
     });
     const outcome = await dispatcher.dispatch(task.id, {
-      ownerUserId: 'human:local:operator',
+      ownerUserId: options.ownerUserId ?? 'human:local:operator',
       fullAccessGrant: null,
       runtimeConfig: { provider, cwd: tmp },
     });
@@ -544,6 +549,41 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     expect(lines.filter((line) => line.startsWith('  claimed:'))).toHaveLength(
       1,
     );
+  });
+
+  test("a dispatched Session's brief names only the Task's Sessions its owner may read (review F10)", async () => {
+    const first = await dispatch('codex');
+    await graph.updateTaskStatus(first.task.id, 'blocked');
+    await graph.updateTaskStatus(first.task.id, 'ready');
+    // Another person dispatches the same Task.
+    const second = await dispatch('claude', {
+      taskId: first.task.id,
+      ownerUserId: 'human:local:carol',
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: second.sessionId, input: 'Go.' },
+    });
+    const input = adapters.find((a) => a.provider === 'claude')!.sendTurn.mock
+      .calls[0]![0].input as string;
+    // The brief is built before the new Session is recorded on the Task, so
+    // the only other Session is the first, which carol may not read.
+    expect(input).toContain(
+      '## Sessions in this Task (newest activity first)\nNone.\n',
+    );
+    expect(input).not.toContain(first.sessionId);
+    // The same owner's next dispatch does name it.
+    await graph.updateTaskStatus(first.task.id, 'blocked');
+    await graph.updateTaskStatus(first.task.id, 'ready');
+    const third = await dispatch('station-agent', { taskId: first.task.id });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: third.sessionId, input: 'Go.' },
+    });
+    const own = adapters.find((a) => a.provider === 'station-agent')!.sendTurn
+      .mock.calls[0]![0].input as string;
+    expect(own).toContain(`- ${first.sessionId} (codex)`);
+    expect(own).not.toContain(`- ${second.sessionId}`);
   });
 
   test('a Task with no linked work item gets a brief with no tracker wording', async () => {
