@@ -5070,8 +5070,8 @@ or false reuses a completed guide for the current head.
 ## Ensemble configuration inspection
 
 The local source client exports `inspectEnsemble(apiBase, input, options?)` from
-`@kontourai/station-sdk/client`; the `ensembles` client domain exposes the same
-operation. `useInspectEnsemble(scope)` is an explicit mutation hook with no
+`@kontourai/station-sdk/client`. The root SDK exports `useInspectEnsemble(scope)`,
+an explicit mutation hook with no
 automatic retry and zero retention time. Its scope includes `apiBase`,
 `authorityKey` and `isCurrent`; responses are checked against current authority
 before becoming available. Keep preset paths in the POST body, outside URLs and
