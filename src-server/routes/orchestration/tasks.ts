@@ -40,6 +40,7 @@ import {
   readTaskProposal,
   taskProposalBrief,
 } from '@kontourai/station-contracts/task-graph';
+import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -383,6 +384,14 @@ export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
     taskDispatcher: TaskDispatcher;
+    /**
+     * #4003: open Task-memory questions per Task incarnation, so the Tasks
+     * list carries `openQuestionCount` and Home and the inbox derive "Needs
+     * you" from it. Personal mode only, like the Task room it reads.
+     */
+    openQuestionCounts?: (
+      tasks: readonly TaskRecord[],
+    ) => ReadonlyMap<string, number>;
     proposalBriefAvailable?: () => boolean;
     seedProposalBrief?: (input: {
       taskId: string;
@@ -686,7 +695,20 @@ export function createTaskRoutes(
     // route seam without changing personal mode.
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: [] });
-    const data = service.listTasks(c.req.query('projectId'));
+    const tasks = service.listTasks(c.req.query('projectId'));
+    let counts: ReadonlyMap<string, number> | undefined;
+    try {
+      counts = options.openQuestionCounts?.(tasks);
+    } catch {
+      // The count is an attention hint; the Tasks list never fails on it.
+      counts = undefined;
+    }
+    const data: Array<TaskRecord & Partial<TaskMemoryAttention>> = counts
+      ? tasks.map((task) => {
+          const openQuestionCount = counts.get(task.id) ?? 0;
+          return openQuestionCount > 0 ? { ...task, openQuestionCount } : task;
+        })
+      : tasks;
     return c.json({ success: true, data });
   });
 

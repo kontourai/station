@@ -37,6 +37,7 @@ import {
   jsonToolResult,
 } from './station-control-shared.js';
 import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
+import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
 import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
 
 /**
@@ -301,6 +302,8 @@ export function createSelectedStationControlMcpServer(
   registerDeclarePullRequestTools(registry);
   // Epic #4003: the caller's own Task brief.
   registerTaskBriefTools(registry);
+  // #4003: the caller's own Task summary and records.
+  registerTaskMemoryTools(registry);
   registerReviewGuideTools(registry);
   return server;
 }

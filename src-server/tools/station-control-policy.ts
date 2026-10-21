@@ -892,6 +892,26 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/task-brief')],
   },
+  // #4003: write the Task memory of the caller's OWN Session's Task: one
+  // summary revision, or one keyed record version. The routes read the
+  // Session from the verified caller and the Task from its immutable room
+  // execution binding, never the body, and hold it to the one scope rule.
+  // Bounded writes: every bound is a refusal, every earlier revision or
+  // version is kept, and neither reaches the room document or Task status.
+  task_summary_update: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-summary')],
+  },
+  task_record: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-record')],
+  },
 
   // ── notify ─────────────────────────────────────────────────────────────
   html_render: {

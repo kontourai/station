@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { TASK_BRIEF_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TaskRecordWrite } from '@kontourai/station-contracts/task-memory';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ProviderAdapterShape,
@@ -129,18 +130,26 @@ async function waitFor(check: () => boolean, timeoutMs = 2000) {
   }
 }
 
+/** The Task document is the person-authored brief only. */
 const DOCUMENT = [
   '# Ship the brief',
   'Seeded from the issue: make dispatched Sessions start with context.',
-  '## Decisions',
-  '- Use the first-turn channel on every engine. (session-a, 2026-10-20)',
-  '## Done',
-  '- Parser landed. (session-a)',
-  '## In progress',
-  '- session-a: wiring the route',
-  '## Open questions',
-  '- Should get_task_brief re-read the tracker? @owner',
 ].join('\n');
+
+/** Task memory, written to the real store before dispatch. */
+const SUMMARY = 'Parser landed. Next: wire the route.';
+const MEMORY: TaskRecordWrite[] = [
+  {
+    kind: 'decision',
+    key: 'first-turn',
+    text: 'Use the first-turn channel on every engine.',
+  },
+  {
+    kind: 'question',
+    key: 'tracker-reread',
+    text: 'Should get_task_brief re-read the tracker?',
+  },
+];
 
 describe('Task dispatch delivers the Task brief with the first turn', () => {
   let tmp: string;
@@ -194,6 +203,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       workItemRef?: string;
       observeWorkItem?: WorkItemObserver['observeWorkItem'];
       document?: string;
+      memory?: TaskRecordWrite[];
       /** Dispatch this existing Task again instead of creating one. */
       taskId?: string;
     } = {},
@@ -208,6 +218,25 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
             ? { sourceProvider: 'github', workItemRef: options.workItemRef }
             : {}),
         });
+    if (!options.taskId) {
+      const write = {
+        projectId: task.projectId,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        author: { kind: 'session', sessionId: 'session-a' } as const,
+      };
+      if (!options.memory)
+        expect(
+          eventStore
+            .taskMemoryStore()
+            .updateSummary({ ...write, text: SUMMARY, baseRevision: 0 }).kind,
+        ).toBe('updated');
+      for (const record of options.memory ?? MEMORY)
+        expect(
+          eventStore.taskMemoryStore().writeRecord({ ...write, write: record })
+            .kind,
+        ).toBe('recorded');
+    }
     const dispatcher = composeTaskDispatcher(graph, {
       orchestrationService: service,
       // A namespaced workItemRef routes through dispatch-as-claim; stub the
@@ -273,10 +302,22 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       expect(first.input).toContain('# Station Task brief');
       expect(first.input).toContain(`Task id: ${task.id}`);
       expect(first.input).toContain('Task document revision: rev-7');
+      // Memory comes from the store; the document is shown as written.
       expect(first.input).toContain(
-        '- Use the first-turn channel on every engine.',
+        `## Task summary (revision 1, by session session-a at `,
       );
-      expect(first.input).toContain('`task_note`');
+      expect(first.input).toContain(`\n${SUMMARY}\n`);
+      expect(first.input).toContain(
+        '## Standing decisions (newest first)\n- `first-turn`: Use the first-turn channel on every engine.',
+      );
+      expect(first.input).toContain(
+        '- `tracker-reread`: Should get_task_brief re-read the tracker? (asked by session session-a)',
+      );
+      expect(first.input).toContain(
+        '## Task document\n# Ship the brief\nSeeded from the issue',
+      );
+      expect(first.input).toContain('`task_summary_update`');
+      expect(first.input).toContain('`task_record`');
       expect(first.input.endsWith('Start on the route.')).toBe(true);
       expect(first.ambientContext).toContain('# Station Task brief');
       // The transcript keeps the typed text only.
@@ -401,10 +442,11 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
   });
 
   test('a Task with no linked work item gets a brief with no tracker wording', async () => {
-    // The shared DOCUMENT mentions a tracker in its own memory; this one does
-    // not, so any tracker wording would be Station's.
+    // The shared MEMORY mentions a tracker; this one does not, so any
+    // tracker wording would be Station's.
     const { sessionId } = await dispatch('codex', {
-      document: '# Local work\n## Decisions\n- Keep it local.',
+      document: '# Local work',
+      memory: [{ kind: 'decision', key: 'local', text: 'Keep it local.' }],
     });
     await service.dispatch({
       type: 'sendTurn',
@@ -413,10 +455,11 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     const input = adapters.find((a) => a.provider === 'codex')!.sendTurn.mock
       .calls[0]![0].input;
     expect(input).toContain('# Station Task brief');
-    expect(input).toContain('- Keep it local.');
-    expect(input).toContain('1. Record decisions');
+    expect(input).toContain('- `local`: Keep it local.');
+    expect(input).toContain('1. Keep the Task summary current');
+    expect(input).toContain('2. Record decisions');
     expect(input).not.toMatch(/tracker/i);
-    expect(input).not.toContain('2. ');
+    expect(input).not.toContain('3. ');
   });
 
   test('a caller-supplied brief in start metadata is stripped, never composed', async () => {

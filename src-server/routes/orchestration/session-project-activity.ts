@@ -56,6 +56,7 @@ import {
   digestTurn,
   encodeDigestCursor,
   fitDigestPage,
+  sessionDigestLineage,
 } from '../../services/orchestration/session-digest.js';
 import {
   sameScope,
@@ -489,18 +490,10 @@ export function createSessionProjectActivityRoutes(
     caller: StationControlCaller,
     requestedId: string,
   ) => {
-    const conversationId =
-      deps.eventStore.conversationForSession(requestedId)?.conversationId ??
-      requestedId;
-    const lineage = [
-      ...new Set([
-        conversationId,
-        requestedId,
-        ...deps.eventStore
-          .conversationSessions(conversationId)
-          .map((entry) => entry.sessionId),
-      ]),
-    ];
+    const { conversationId, lineage } = sessionDigestLineage(
+      deps.eventStore,
+      requestedId,
+    );
     const currentId =
       deps.orchestrationService.currentConversationSessionId(conversationId);
     const subjectId = lineage.includes(currentId) ? currentId : requestedId;

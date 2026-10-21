@@ -1,8 +1,9 @@
 /**
  * Gathers what a Task brief is built from (epic #4003): the Task record, the
- * shared Task document, the Task's other Sessions and a fresh read of the
- * linked tracker item. The builder itself is pure (`task-brief.ts`); this
- * module owns the reads and their failure words.
+ * Task document (the person-authored brief it was seeded with), Task memory
+ * (summary and records), the Task's Sessions with their digest facts, and a
+ * fresh read of the linked tracker item. The builder itself is pure
+ * (`task-brief.ts`); this module owns the reads and their failure words.
  *
  * Both dispatch and `get_task_brief` re-read the item through the runtime's
  * one `WorkItemObserver`, asking for comments since
@@ -12,21 +13,57 @@
  * comments from the next Session dispatched.
  *
  * Authority is the caller's: `forDispatch` runs inside an already admitted
- * dispatch, and `forSession` derives the Task from the Session's immutable
- * server-owned room execution binding, never from an argument.
+ * dispatch, and `forSession` / `listingForSession` derive the Task from the
+ * Session's immutable server-owned room execution binding, never from an
+ * argument.
  */
+
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskMemoryRecord,
+  TaskSummaryRevision,
+} from '@kontourai/station-contracts/task-memory';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import type { EventStore } from '../orchestration/event-store.js';
+import {
+  type DigestTurn,
+  readSessionDigestHead,
+} from '../orchestration/session-digest.js';
+import type { TaskMemoryIncarnation } from '../orchestration/task-memory-store.js';
 import type { WorkItemObserver } from '../work-item-providers/github-work-item-observer.js';
 import {
   buildTaskBrief,
+  renderTaskRecordListing,
+  renderTaskSummaryHistory,
+  TASK_BRIEF_SUMMARY_HISTORY_REVISIONS,
+  type TaskBriefInclude,
   type TaskBriefInput,
   type TaskBriefObservation,
-  type TaskBriefSessionLine,
+  type TaskBriefSessionFacts,
   type TaskBriefSnapshot,
 } from './task-brief.js';
 
 /** A tracker read longer than this is abandoned; dispatch never waits on it. */
 export const TASK_BRIEF_OBSERVE_TIMEOUT_MS = 10_000;
+
+export interface TaskBriefSessionFactsRead {
+  /** The ladder word `list_project_activity` reports. */
+  status?: string;
+  turnCount?: number;
+  lastTurn?: DigestTurn;
+}
+
+/** The Task memory reads a brief needs: `TaskMemoryStore`'s own. */
+export interface TaskBriefMemoryReader {
+  readSummary(input: TaskMemoryIncarnation): TaskSummaryRevision | undefined;
+  listRecords(input: TaskMemoryIncarnation): TaskMemoryRecord[];
+  listSummaryRevisions(input: TaskMemoryIncarnation & { limit: number }): {
+    revisions: TaskSummaryRevision[];
+    total: number;
+  };
+}
 
 export interface TaskBriefSourceDeps {
   readTask(taskId: string): TaskRecord | null;
@@ -35,7 +72,12 @@ export interface TaskBriefSourceDeps {
     taskId: string,
   ): readonly { sessionId: string; provider?: string; createdAt: string }[];
   readDocument(taskId: string): Promise<TaskBriefInput['document']>;
-  sessionStatus?(sessionId: string): string | undefined;
+  /** Absent: the Task memory store is not running. */
+  memory?: TaskBriefMemoryReader;
+  /** Recorded facts per Session; a Session it cannot read is absent. */
+  sessionFacts?(
+    sessionIds: readonly string[],
+  ): Promise<ReadonlyMap<string, TaskBriefSessionFactsRead>>;
   /** The immutable Session → Task binding (`project_task_room_execution_bindings`). */
   readBinding(
     sessionId: string,
@@ -48,6 +90,14 @@ export interface TaskBriefSourceDeps {
 
 export type TaskBriefForSession =
   | { kind: 'brief'; brief: TaskBriefSnapshot }
+  | { kind: 'unbound' }
+  | { kind: 'unavailable'; reason: string };
+
+export type TaskBriefListingForSession =
+  | {
+      kind: 'listing';
+      listing: { taskId: string; include: TaskBriefInclude; text: string };
+    }
   | { kind: 'unbound' }
   | { kind: 'unavailable'; reason: string };
 
@@ -69,11 +119,21 @@ export interface TaskBriefSource {
   ): Promise<TaskBriefForDispatch>;
   /** The current brief for the Task the Session is bound to. */
   forSession(sessionId: string): Promise<TaskBriefForSession>;
+  /** What the brief only counts: every record, or the summary's history. */
+  listingForSession(
+    sessionId: string,
+    include: TaskBriefInclude,
+  ): Promise<TaskBriefListingForSession>;
 }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+const incarnationOf = (task: TaskRecord): TaskMemoryIncarnation => ({
+  taskId: task.id,
+  taskCreatedAt: task.createdAt,
+});
 
 export function createTaskBriefSource(
   deps: TaskBriefSourceDeps,
@@ -88,26 +148,54 @@ export function createTaskBriefSource(
     }
   };
 
-  const otherSessions = (
+  const readMemory = (task: TaskRecord): TaskBriefInput['memory'] => {
+    if (!deps.memory)
+      return { kind: 'unavailable', reason: 'Task memory is not running' };
+    try {
+      const incarnation = incarnationOf(task);
+      const summary = deps.memory.readSummary(incarnation);
+      return {
+        kind: 'available',
+        ...(summary ? { summary } : {}),
+        records: deps.memory.listRecords(incarnation),
+      };
+    } catch (error) {
+      return { kind: 'unavailable', reason: errorText(error) };
+    }
+  };
+
+  const sessions = async (
     taskId: string,
     sessionId: string,
-  ): TaskBriefSessionLine[] =>
-    deps
-      .listTaskSessions(taskId)
-      .filter((session) => session.sessionId !== sessionId)
-      .map((session) => {
-        let status: string | undefined;
-        try {
-          status = deps.sessionStatus?.(session.sessionId);
-        } catch {
-          status = undefined;
-        }
-        return {
-          sessionId: session.sessionId,
-          ...(session.provider ? { provider: session.provider } : {}),
-          ...(status ? { status } : {}),
-        };
+  ): Promise<TaskBriefSessionFacts[]> => {
+    const dispatched = deps.listTaskSessions(taskId);
+    let facts: ReadonlyMap<string, TaskBriefSessionFactsRead> = new Map();
+    try {
+      facts =
+        (await deps.sessionFacts?.(
+          dispatched.map((session) => session.sessionId),
+        )) ?? facts;
+    } catch (error) {
+      // Facts are the brief's extra; without them each line says only what
+      // the dispatch recorded.
+      deps.logger?.warn('Task brief Session facts read failed', {
+        taskId,
+        error: errorText(error),
       });
+    }
+    return dispatched.map((session) => {
+      const read = facts.get(session.sessionId);
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        ...(session.provider ? { provider: session.provider } : {}),
+        ...(read?.status ? { status: read.status } : {}),
+        ...(read?.turnCount !== undefined ? { turnCount: read.turnCount } : {}),
+        ...(read?.lastTurn ? { lastTurn: read.lastTurn } : {}),
+        ...(session.sessionId === sessionId ? { self: true } : {}),
+      };
+    });
+  };
 
   const observe = async (
     task: TaskRecord,
@@ -150,16 +238,36 @@ export function createTaskBriefSource(
     }
   };
 
+  /** The bound Task, or why there is none. */
+  const boundTask = (
+    sessionId: string,
+  ):
+    | { kind: 'task'; task: TaskRecord; projectId: string }
+    | { kind: 'unbound' }
+    | { kind: 'unavailable'; reason: string } => {
+    const binding = deps.readBinding(sessionId);
+    if (!binding) return { kind: 'unbound' };
+    const task = deps.readTask(binding.taskId);
+    if (!task || task.projectId !== binding.projectId)
+      return {
+        kind: 'unavailable',
+        reason: 'The Task this session was dispatched for no longer exists.',
+      };
+    return { kind: 'task', task, projectId: binding.projectId };
+  };
+
   return {
     async forDispatch(task, sessionId) {
-      const [document, observation] = await Promise.all([
+      const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
+        sessions(task.id, sessionId),
       ]);
       const brief = buildTaskBrief({
         task,
         document,
-        sessions: otherSessions(task.id, sessionId),
+        memory: readMemory(task),
+        sessions: lines,
         ...(observation ? { observation } : {}),
       });
       return {
@@ -171,25 +279,21 @@ export function createTaskBriefSource(
     },
 
     async forSession(sessionId) {
-      const binding = deps.readBinding(sessionId);
-      if (!binding) return { kind: 'unbound' };
-      const task = deps.readTask(binding.taskId);
-      if (!task || task.projectId !== binding.projectId)
-        return {
-          kind: 'unavailable',
-          reason: 'The Task this session was dispatched for no longer exists.',
-        };
-      const [document, observation] = await Promise.all([
+      const bound = boundTask(sessionId);
+      if (bound.kind !== 'task') return bound;
+      const { task } = bound;
+      const [document, observation, lines] = await Promise.all([
         readDocument(task.id),
         observe(task),
+        sessions(task.id, sessionId),
       ]);
       // The binding is immutable, but the Task can be replaced while the
       // document read crosses its worker boundary.
-      const current = deps.readTask(binding.taskId);
+      const current = deps.readTask(task.id);
       if (
         !current ||
         current.createdAt !== task.createdAt ||
-        current.projectId !== binding.projectId
+        current.projectId !== bound.projectId
       )
         return {
           kind: 'unavailable',
@@ -200,10 +304,38 @@ export function createTaskBriefSource(
         brief: buildTaskBrief({
           task: current,
           document,
-          sessions: otherSessions(current.id, sessionId),
+          memory: readMemory(current),
+          sessions: lines,
           ...(observation ? { observation } : {}),
         }),
       };
+    },
+
+    async listingForSession(sessionId, include) {
+      const bound = boundTask(sessionId);
+      if (bound.kind !== 'task') return bound;
+      const { task } = bound;
+      if (!deps.memory)
+        return { kind: 'unavailable', reason: 'Task memory is not running.' };
+      try {
+        const incarnation = incarnationOf(task);
+        const text =
+          include === 'all_records'
+            ? renderTaskRecordListing({
+                task,
+                records: deps.memory.listRecords(incarnation),
+              })
+            : renderTaskSummaryHistory({
+                task,
+                ...deps.memory.listSummaryRevisions({
+                  ...incarnation,
+                  limit: TASK_BRIEF_SUMMARY_HISTORY_REVISIONS,
+                }),
+              });
+        return { kind: 'listing', listing: { taskId: task.id, include, text } };
+      } catch (error) {
+        return { kind: 'unavailable', reason: errorText(error) };
+      }
     },
   };
 }
@@ -221,13 +353,29 @@ export function composeTaskBriefSource(input: {
     ): readonly { sessionId: string; provider?: string; createdAt: string }[];
   };
   eventStore:
-    | {
+    | (Pick<
+        EventStore,
+        | 'conversationForSession'
+        | 'conversationSessions'
+        | 'readTurnDigestFacts'
+      > & {
         readProjectTaskRoomExecutionBinding(
           sessionId: string,
         ): { projectId: string; taskId: string } | undefined;
-        readSessionByThread(sessionId: string): { status?: string } | undefined;
-      }
+        taskMemoryStore(): TaskBriefMemoryReader;
+      })
     | undefined;
+  /**
+   * The Session read model `list_project_activity` words its status from.
+   * Read with the internal scope: every Session read here was dispatched
+   * for the one Task the caller is bound to (or is dispatching).
+   */
+  sessionReadModel?: {
+    listSessionReadModel(
+      authority: typeof INTERNAL_SESSION_READ_SCOPE,
+      options: { threadIds: readonly string[] },
+    ): Promise<OrchestrationSessionSummary[]>;
+  };
   /** Read lazily: the room runtime is composed after the dispatcher. */
   roomRuntime: () =>
     | {
@@ -239,6 +387,7 @@ export function composeTaskBriefSource(input: {
   workItemObserver: WorkItemObserver;
   logger?: TaskBriefSourceDeps['logger'];
 }): TaskBriefSource {
+  const store = input.eventStore;
   return createTaskBriefSource({
     readTask: (taskId) => input.taskGraph.readTaskView(taskId),
     listTaskSessions: (taskId) =>
@@ -249,10 +398,40 @@ export function composeTaskBriefSource(input: {
         ? runtime.readTaskDocumentForBrief(taskId)
         : { kind: 'unavailable', reason: 'the Task room is not running' };
     },
-    sessionStatus: (sessionId) =>
-      input.eventStore?.readSessionByThread(sessionId)?.status,
+    ...(store ? { memory: store.taskMemoryStore() } : {}),
+    sessionFacts: async (sessionIds) => {
+      const facts = new Map<string, TaskBriefSessionFactsRead>();
+      if (!sessionIds.length) return facts;
+      const summaries = input.sessionReadModel
+        ? await input.sessionReadModel.listSessionReadModel(
+            INTERNAL_SESSION_READ_SCOPE,
+            { threadIds: sessionIds },
+          )
+        : [];
+      const status = new Map(
+        summaries.map((summary) => [
+          summary.threadId,
+          sessionLadderWord(summary),
+        ]),
+      );
+      for (const sessionId of sessionIds) {
+        let head: ReturnType<typeof readSessionDigestHead> | undefined;
+        try {
+          head = store ? readSessionDigestHead(store, sessionId) : undefined;
+        } catch {
+          // One Session's unreadable digest leaves only its line bare.
+          head = undefined;
+        }
+        const word = status.get(sessionId);
+        facts.set(sessionId, {
+          ...(word ? { status: word } : {}),
+          ...(head ?? {}),
+        });
+      }
+      return facts;
+    },
     readBinding: (sessionId) =>
-      input.eventStore?.readProjectTaskRoomExecutionBinding(sessionId),
+      store?.readProjectTaskRoomExecutionBinding(sessionId),
     workItemObserver: input.workItemObserver,
     ...(input.logger ? { logger: input.logger } : {}),
   });

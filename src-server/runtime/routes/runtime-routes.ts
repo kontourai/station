@@ -162,6 +162,7 @@ import {
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
+  type TaskRecord,
 } from '@kontourai/station-contracts';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import {
@@ -350,6 +351,7 @@ import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
+import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import {
   createTaskRoutes,
@@ -2699,6 +2701,7 @@ export function configureRuntimeRoutes(
   const taskBriefSource = composeTaskBriefSource({
     taskGraph: context.taskGraphService,
     eventStore: context.orchestrationEventStore,
+    sessionReadModel: context.orchestrationService,
     roomRuntime: () => projectTaskRoomRuntime,
     workItemObserver,
     logger: context.logger,
@@ -2709,6 +2712,39 @@ export function configureRuntimeRoutes(
       isInternalRequest: isStationInternalRequest,
       scope: stationControlDispatchScope,
       readBrief: (sessionId) => taskBriefSource.forSession(sessionId),
+      readListing: (sessionId, include) =>
+        taskBriefSource.listingForSession(sessionId, include),
+    }),
+  );
+  // #4003 `task_summary_update` and `task_record`'s REST side: the verified
+  // caller's own Session; the room runtime derives its Task from the
+  // immutable execution binding. Composed later in this function, so the
+  // runtime is read at request time.
+  context.app.route(
+    '/api/orchestration',
+    createTaskMemoryRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      get updateSummary() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['updateTaskSummaryForSession']
+              >[0],
+            ) => runtime.updateTaskSummaryForSession(input)
+          : undefined;
+      },
+      get writeRecord() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['writeTaskRecordForSession']
+              >[0],
+            ) => runtime.writeTaskRecordForSession(input)
+          : undefined;
+      },
     }),
   );
   context.app.route(
@@ -4003,6 +4039,23 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
+      // #4003: an open Task-memory question is a "Needs you" signal; hosted
+      // tenancy composes no Task room, so it reads no Task memory either.
+      ...(context.orchestrationEventStore
+        ? {
+            openQuestionCounts: (tasks: readonly TaskRecord[]) =>
+              projectTaskRoomRuntime && !isHostedTenantExecutionRequired()
+                ? context
+                    .orchestrationEventStore!.taskMemoryStore()
+                    .countOpenQuestions(
+                      tasks.map((task) => ({
+                        taskId: task.id,
+                        taskCreatedAt: task.createdAt,
+                      })),
+                    )
+                : new Map(),
+          }
+        : {}),
       workItemObserver,
       resolveProviderWorkItem: async ({ projectId, workItemRef }) => {
         const workingDirectory = resolveWorkspacePath(projectId);
@@ -4280,6 +4333,11 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readExecutionBinding: (sessionId) =>
+        context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+          sessionId,
+        ),
+      memory: context.orchestrationEventStore!.taskMemoryStore(),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,

@@ -170,9 +170,44 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
         }),
         conversationForSession: () => undefined,
         conversationSessions: () => [],
-        readSessionByThread: (threadId: string) =>
-          threadId === 'op-sibling-bound' ? { status: 'running' } : undefined,
         readProjectTaskRoomExecutionBinding: bindingOf,
+        // One recorded turn per Session: the digest facts the Session lines
+        // fold. The real store and fold are covered end to end by
+        // runtime-routes-task-memory-engine.test.ts.
+        readTurnDigestFacts: (threadIds: readonly string[]) => ({
+          turns: [
+            {
+              threadId: threadIds[0],
+              turnId: `${threadIds[0]}-turn`,
+              startedAt: '2026-10-20T04:00:00.000Z',
+              startSequence: 1,
+              promptPrefix: `Request of ${threadIds[0]}`,
+              terminal: { method: 'turn.completed', finishReason: 'stop' },
+              toolCalls: [],
+              toolKindsReported: false,
+              filesTotal: 0,
+              files: [],
+              declaredPullRequests: [],
+            },
+          ],
+          hasMore: false,
+          totalTurns: 1,
+        }),
+        // The store's read shape, for the bound Task only.
+        taskMemoryStore: () => ({
+          readSummary: ({ taskId }: { taskId: string }) =>
+            taskId === 'task-bound'
+              ? {
+                  taskId,
+                  revision: 3,
+                  text: 'Read the bound Task only.',
+                  author: { kind: 'session', sessionId: 'op-sibling-bound' },
+                  createdAt: '2026-10-20T05:00:00.000Z',
+                }
+              : undefined,
+          listRecords: () => [],
+          listSummaryRevisions: () => ({ revisions: [], total: 0 }),
+        }),
       }),
       orchestrationService: deepStub({
         resolveSessionActingPrincipal: (threadId: string) =>
@@ -194,6 +229,22 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
         }),
         firstStartedEngineOfThread: () => 'codex',
         sessionRunsHost: () => false,
+        // The read model `list_project_activity` words status from.
+        listSessionReadModel: async (
+          _authority: unknown,
+          options: { threadIds: readonly string[] },
+        ) =>
+          options.threadIds
+            .filter((threadId) => threadId === 'op-sibling-bound')
+            .map((threadId) => ({
+              threadId,
+              provider: 'claude',
+              status: 'running',
+              lifecycleState: 'running',
+              hasActiveTurn: true,
+              createdAt: '2026-10-20T01:00:00.000Z',
+              updatedAt: '2026-10-20T01:00:00.000Z',
+            })),
       }),
       storageAdapter: deepStub({
         getProject: () => {
@@ -307,9 +358,14 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       expect(json.data.version).toBe('station.task-brief/v1');
       expect(json.data.text).toContain('Task: The bound Task');
       expect(json.data.text).not.toContain('Somebody else');
-      // The other Session in the Task, with its status word; not the caller.
-      expect(json.data.text).toContain('- op-sibling-bound (claude): running');
-      expect(json.data.text).not.toContain('op-caller-bound');
+      // Every Session of the Task, with the status word and digest facts
+      // the activity and digest reads report; the caller is marked.
+      expect(json.data.text).toMatch(
+        /- op-sibling-bound \(claude\): [A-Z][a-z ]+; 1 turn; last turn completed: "Request of op-sibling-bound"/,
+      );
+      expect(json.data.text).toContain(
+        '- op-caller-bound (codex, this session): status unknown; 1 turn; last turn completed: "Request of op-caller-bound"',
+      );
       // get_task_brief re-reads the linked item, for comments after the
       // Task's recorded observation only.
       expect(json.data.text).toContain('Title: The bound issue');
@@ -319,8 +375,36 @@ describe('configureRuntimeRoutes: get_task_brief', () => {
       expect(json.data.text).not.toContain('Already seen at dispatch.');
       expect(json.data.text).not.toContain('linked item not re-read');
       expect(json.data.text).toContain('## Tracker guidance');
+      expect(json.data.text).toContain(
+        '## Task summary (revision 3, by session op-sibling-bound at 2026-10-20T05:00:00Z)\nRead the bound Task only.',
+      );
+      expect(json.data.summaryRevision).toBe(3);
     },
   );
+
+  test("include lists what the brief only counts, for the caller's own Task; an unknown include is refused", async () => {
+    const base = await setup();
+    const history = await get(
+      base,
+      as('op-caller-bound'),
+      '?include=summary_history&taskId=task-other',
+    );
+    expect(history.status).toBe(200);
+    expect(history.json.data).toMatchObject({
+      taskId: 'task-bound',
+      include: 'summary_history',
+    });
+    expect(history.json.data.text).toContain('The newest 0 of 0 revisions');
+    const bad = await get(base, as('op-caller-bound'), '?include=everything');
+    expect(bad.status).toBe(400);
+    expect(bad.json.code).toBe('task_brief_include_invalid');
+    const unbound = await get(
+      base,
+      as('op-caller-free'),
+      '?include=all_records',
+    );
+    expect(unbound.json).toMatchObject({ code: 'no_task_binding' });
+  });
 
   test('a caller whose session has no Task binding is refused', async () => {
     const base = await setup();

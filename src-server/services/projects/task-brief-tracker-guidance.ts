@@ -17,8 +17,9 @@ Task gets the detail.
 
 ### Where things go
 
-- Execution detail (decisions, completed work, questions, what you are doing
-  now) goes to the Task memory with the \`task_note\` tool.
+- Execution detail goes to the Task memory: rewrite the Task summary with
+  \`task_summary_update\`, and record decisions, open questions and dead
+  ends with \`task_record\`.
 - To catch up on what other Sessions did, call \`get_task_brief\`.
 - A short progress note for people goes on the tracker item, only at a
   milestone.

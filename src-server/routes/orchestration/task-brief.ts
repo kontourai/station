@@ -13,7 +13,14 @@
 import { Hono } from 'hono';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
-import type { TaskBriefForSession } from '../../services/projects/task-brief-source.js';
+import {
+  TASK_BRIEF_INCLUDES,
+  type TaskBriefInclude,
+} from '../../services/projects/task-brief.js';
+import type {
+  TaskBriefForSession,
+  TaskBriefListingForSession,
+} from '../../services/projects/task-brief-source.js';
 import {
   stationControlRefusal,
   stationControlRefusalBody,
@@ -29,6 +36,11 @@ interface TaskBriefRoutesDeps {
   scope: StationControlDispatchScope | undefined;
   /** Absent: this Station composes no Task brief source. */
   readBrief?(sessionId: string): Promise<TaskBriefForSession>;
+  /** `?include=`: what the brief only counts, listed in full. */
+  readListing?(
+    sessionId: string,
+    include: TaskBriefInclude,
+  ): Promise<TaskBriefListingForSession>;
 }
 
 export function createTaskBriefRoutes(deps: TaskBriefRoutesDeps) {
@@ -55,7 +67,23 @@ export function createTaskBriefRoutes(deps: TaskBriefRoutesDeps) {
       remote: false,
     }));
     if (refused) return refused;
-    if (!deps.readBrief)
+    const includeParam = c.req.query('include');
+    const include = (TASK_BRIEF_INCLUDES as readonly string[]).includes(
+      includeParam ?? '',
+    )
+      ? (includeParam as TaskBriefInclude)
+      : undefined;
+    if (includeParam !== undefined && !include)
+      return c.json(
+        {
+          success: false,
+          code: 'task_brief_include_invalid',
+          error: `include must be ${TASK_BRIEF_INCLUDES.map((value) => `"${value}"`).join(' or ')}, or absent for the brief.`,
+        },
+        400,
+        NO_STORE,
+      );
+    if (!deps.readBrief || (include && !deps.readListing))
       return c.json(
         {
           success: false,
@@ -65,7 +93,9 @@ export function createTaskBriefRoutes(deps: TaskBriefRoutesDeps) {
         409,
         NO_STORE,
       );
-    const outcome = await deps.readBrief(sessionId);
+    const outcome = include
+      ? await deps.readListing!(sessionId, include)
+      : await deps.readBrief(sessionId);
     if (outcome.kind === 'unbound')
       return c.json(
         {
@@ -87,7 +117,14 @@ export function createTaskBriefRoutes(deps: TaskBriefRoutesDeps) {
         409,
         NO_STORE,
       );
-    return c.json({ success: true, data: outcome.brief }, 200, NO_STORE);
+    return c.json(
+      {
+        success: true,
+        data: outcome.kind === 'brief' ? outcome.brief : outcome.listing,
+      },
+      200,
+      NO_STORE,
+    );
   });
 
   return app;

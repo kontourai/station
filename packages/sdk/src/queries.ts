@@ -725,6 +725,7 @@ export {
   type TaskDispatchInput,
   type TaskDispatchResult,
   type TaskGraph,
+  type TaskListRecord,
   type TaskRecord,
   type TaskReferenceInput,
   type TaskReferenceKind,
@@ -748,6 +749,23 @@ export {
   useTaskTurnReferencesQuery,
   useUpdateTaskStatusMutation,
 } from './query-domains/taskGraph';
+export {
+  fetchTaskMemory,
+  fetchTaskSummaryHistory,
+  type TaskMemoryRecord,
+  type TaskMemoryView,
+  type TaskRecordWrite,
+  TaskSummaryConflictError,
+  type TaskSummaryHistoryView,
+  type TaskSummaryRevision,
+  taskMemoryQueryKey,
+  updateTaskSummary,
+  useTaskMemoryQuery,
+  useTaskSummaryHistoryQuery,
+  useUpdateTaskSummaryMutation,
+  useWriteTaskRecordMutation,
+  writeTaskRecord,
+} from './query-domains/taskMemory';
 export {
   checkTelemetryConnection,
   fetchTelemetryDeliveryStatus,

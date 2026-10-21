@@ -3868,6 +3868,7 @@ export class StationRuntime {
                 taskBrief: composeTaskBriefSource({
                   taskGraph: this.taskGraphService,
                   eventStore: this.orchestrationEventStore,
+                  sessionReadModel: this.orchestrationService,
                   roomRuntime: () => this.projectTaskRoomRuntime,
                   // The same reader the routes get (`workItemObserver` in
                   // the route context), so dispatch and get_task_brief

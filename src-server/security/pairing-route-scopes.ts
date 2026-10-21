@@ -2646,6 +2646,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // (404 otherwise) and keyed on the verified station-control caller's own
     // Task binding, so a paired credential reaches nothing through it.
     { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #4003 `task_summary_update` and `task_record`'s REST side.
+    // Internal-only at the route like the leaf above; the Task they write is
+    // the verified caller Session's own bound Task, and each write is one
+    // bounded Task-memory revision or record version.
+    { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
+    { method: 'POST', path: '/api/orchestration/station-control/task-record' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -2721,6 +2727,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // No station-control tool names either route.
     { method: 'POST', path: '/api/tasks/from-work-item' },
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // #4003 Task memory from the Task workspace: the summary and records of
+    // the exact Task the paired caller's room authority resolves, read at
+    // the read tier and written (one bounded revision or record version,
+    // every earlier one kept) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
+    { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/records' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',

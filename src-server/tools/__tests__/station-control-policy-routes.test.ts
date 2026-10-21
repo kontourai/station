@@ -161,6 +161,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
     repository: { owner: 'o', name: 'r' },
     ref: '1',
   },
+  task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
+  task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },

@@ -108,6 +108,7 @@ import {
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
 import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import { migrateSessionParentMentions } from '../../domain/migrations/016-session-parent-mentions.js';
+import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/017-task-memory.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -297,6 +298,10 @@ import {
   TURN_DEDUP_MAX_ENTRIES,
   turnDedupKey,
 } from './sqlite-turn-dedup-persistence.js';
+import {
+  createSqliteTaskMemoryStore,
+  type TaskMemoryStore,
+} from './task-memory-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -2044,6 +2049,7 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private taskMemory?: TaskMemoryStore;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
   /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
@@ -2286,6 +2292,9 @@ export class EventStore {
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
+      // #4003: Task memory (summary revisions and keyed records), apart from
+      // the room document.
+      this.db.exec(TASK_MEMORY_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -12087,6 +12096,12 @@ export class EventStore {
   threadInboxStore(): ThreadInboxStore {
     this.threadInbox ??= createSqliteThreadInboxStore(this.db);
     return this.threadInbox;
+  }
+
+  /** #4003: Task memory (summary and keyed records). Authority is the caller's. */
+  taskMemoryStore(): TaskMemoryStore {
+    this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
+    return this.taskMemory;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
