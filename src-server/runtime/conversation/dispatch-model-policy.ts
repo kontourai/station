@@ -52,6 +52,8 @@ import {
   type AuthorizedTurnCorrelation,
   currentAuthorizedTurnCorrelation,
 } from './authorized-turn-correlation.js';
+import { guardBoundedApiModel } from './bounded-api-model.js';
+import { assertBoundedApiExecutionAvailable } from './bounded-api-turn-grant.js';
 import { createFleetInferenceModel } from './fleet-inference-model.js';
 import { buildFleetRoutingEnvelope } from './fleet-routing-envelope.js';
 
@@ -1526,6 +1528,7 @@ export async function createConfiguredDispatchModel(
 ): Promise<LanguageModelV3 | null> {
   const dispatch = readDispatchConfig(spec.execution?.modelOptions?.dispatch);
   if (!dispatch) return null;
+  assertBoundedApiExecutionAvailable('Dispatch construction');
 
   warnIfPolicyNeedsEvidenceSource(spec, config, dispatch.policy);
 
@@ -1595,7 +1598,7 @@ export async function createConfiguredDispatchModel(
   const pendingRouting = new Map<string, PendingFleetRouting>();
   let missingCorrelationLogged = false;
 
-  return createAiSdkDispatchModel({
+  const model = createAiSdkDispatchModel({
     id: 'station-dispatch',
     capabilities: {
       structuredTools: true,
@@ -1760,6 +1763,7 @@ export async function createConfiguredDispatchModel(
       }
     },
   });
+  return guardBoundedApiModel(model);
 }
 
 /**
@@ -1920,13 +1924,15 @@ async function buildFleetPlanContext(
   const resolution = await config.fleetRouting.resolveCandidates();
   const shells = buildFleetCandidateShells(resolution.candidates);
   resolution.candidates.forEach((candidate, index) => {
-    models[shells[index]!.runtimeId] = createFleetInferenceModel({
-      environmentId: candidate.environmentId,
-      environmentLabel: candidate.environmentLabel,
-      apiBase: candidate.apiBase,
-      credential: candidate.credential,
-      modelId: candidate.modelId,
-    });
+    models[shells[index]!.runtimeId] = guardBoundedApiModel(
+      createFleetInferenceModel({
+        environmentId: candidate.environmentId,
+        environmentLabel: candidate.environmentLabel,
+        apiBase: candidate.apiBase,
+        credential: candidate.credential,
+        modelId: candidate.modelId,
+      }),
+    );
   });
   return {
     routing: config.fleetRouting,

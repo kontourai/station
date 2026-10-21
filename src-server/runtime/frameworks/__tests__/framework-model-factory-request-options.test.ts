@@ -101,10 +101,16 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   }
 
   test.each(Object.keys(providers) as Array<keyof typeof providers>)(
-    '%s: installs no wrapper for empty or missing defaults',
-    (type) => {
-      expect(providerFetch(undefined, type)).toBeUndefined();
-      expect(providerFetch({}, type)).toBeUndefined();
+    '%s: preserves unbound transport bytes for empty or missing defaults',
+    async (type) => {
+      const init = { method: 'POST', body: '{"model":"m","messages":[]}' };
+      for (const defaults of [undefined, {}]) {
+        await providerFetch(defaults, type)!('http://host/v1/messages', init);
+        expect(upstream).toHaveBeenLastCalledWith(
+          'http://host/v1/messages',
+          init,
+        );
+      }
     },
   );
 

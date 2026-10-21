@@ -39,6 +39,8 @@ import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
 } from '../conversation/authorized-turn-correlation.js';
+import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
+import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
@@ -447,18 +449,20 @@ class StrandsAgentWrapper implements IAgent {
     // Use structuredOutputSchema if provided for native structured output
     const schema = _options?.structuredOutputSchema;
     if (schema) {
-      const tempAgent = new StrandsAgent({
-        model: this.strandsAgent.model,
-        systemPrompt: (this.strandsAgent as any).systemPrompt,
-        tools: [],
-        structuredOutputSchema: schema._zod
-          ? schema
-          : z.fromJSONSchema(
-              (await asSchema(schema).jsonSchema) as Parameters<
-                typeof z.fromJSONSchema
-              >[0],
-            ),
-      });
+      const tempAgent = guardBoundedApiModel(
+        new StrandsAgent({
+          model: this.strandsAgent.model,
+          systemPrompt: (this.strandsAgent as any).systemPrompt,
+          tools: [],
+          structuredOutputSchema: schema._zod
+            ? schema
+            : z.fromJSONSchema(
+                (await asSchema(schema).jsonSchema) as Parameters<
+                  typeof z.fromJSONSchema
+                >[0],
+              ),
+        }),
+      );
       const result = await tempAgent.invoke(prompt);
       const text = result.toString();
       return {
@@ -538,16 +542,18 @@ export class StrandsFramework {
         typeof opts.processedPrompt === 'function'
           ? opts.processedPrompt()
           : opts.processedPrompt;
-      const strandsAgent = new StrandsAgent({
-        model,
-        messages: history,
-        systemPrompt: resolvedPrompt,
-        tools: createStrandsFunctionTools(
-          viewTools,
-          deniedToolCalls,
-          purposeEnabledToolNames,
-        ),
-      });
+      const strandsAgent = guardBoundedApiModel(
+        new StrandsAgent({
+          model,
+          messages: history,
+          systemPrompt: resolvedPrompt,
+          tools: createStrandsFunctionTools(
+            viewTools,
+            deniedToolCalls,
+            purposeEnabledToolNames,
+          ),
+        }),
+      );
 
       const invocationCtx: InvocationContext = ownedInvocation ?? {
         agentSlug: slug,
@@ -684,16 +690,18 @@ export class StrandsFramework {
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
-      const agent = new StrandsAgent({
-        model: opts.model,
-        messages: history,
-        systemPrompt: resolved,
-        tools: createStrandsFunctionTools(
-          viewTools,
-          deniedToolCalls,
-          purposeEnabledToolNames,
-        ),
-      });
+      const agent = guardBoundedApiModel(
+        new StrandsAgent({
+          model: opts.model,
+          messages: history,
+          systemPrompt: resolved,
+          tools: createStrandsFunctionTools(
+            viewTools,
+            deniedToolCalls,
+            purposeEnabledToolNames,
+          ),
+        }),
+      );
       // Agent-scoped BASE identity shared by the gate and the wrapper
       // (mirrors createAgent) — agentSlug only, never mutated. Per-request
       // identity (conversationId/userId/delegation) travels per invocation:
@@ -791,6 +799,7 @@ export class StrandsFramework {
     spec: AgentSpec,
     config: AgentCreationConfig,
   ): Promise<{ model: any; resolvedModel: string }> {
+    assertBoundedApiExecutionAvailable('managed Strands model resolution');
     const binding = await resolveManagedModelBinding(spec, {
       appConfig: config.appConfig,
       listProviderConnections: config.listProviderConnections,

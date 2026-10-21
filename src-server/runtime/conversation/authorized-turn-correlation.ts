@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import type { DispatchReceipt } from '@kontourai/dispatch';
 import type { NativeOutputRelayCompanion } from '../native-output-turn-grant.js';
+import { assertBoundedApiExecutionAvailable } from './bounded-api-turn-grant.js';
 import type { NativeForegroundRelayCompanion } from './native-foreground-invocation.js';
 import type { NativeMemoryHistoryCompanion } from './native-memory-history.js';
 
@@ -156,6 +157,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
   nativeForeground?: NativeForegroundRelayCompanion,
   skillExperienceContext?: string,
 ): string {
+  assertBoundedApiExecutionAvailable('loopback turn handoff');
   if (
     skillExperienceContext &&
     Buffer.byteLength(skillExperienceContext) > 384 * 1024

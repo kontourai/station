@@ -19,6 +19,9 @@ import {
   bedrockStrandsCredentials,
 } from '../../providers/llm/bedrock-credentials.js';
 import { resolveBedrockRegion } from '../../providers/llm/bedrock-region.js';
+import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
+import { boundedApiTransport } from '../conversation/bounded-api-transport.js';
+import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
 
 export interface FrameworkModelOptions {
   providerConnection: ProviderConnectionConfig | null;
@@ -72,52 +75,61 @@ export function buildAiSdkLanguageModel(
     case 'openai-compat':
     case 'ollama': {
       const baseURL = normalizeOpenAICompatibleBaseUrl(opts.type, baseUrl);
-      return createOpenAICompatible({
-        name: opts.type || 'openai-compatible',
-        baseURL,
-        // Ollama ONLY: ask for `stream_options: { include_usage: true }`
-        // so streamed turns carry usage even under strict OpenAI streaming
-        // semantics (archive#4197). Deliberately NOT set for generic
-        // 'openai-compat' connections — that type fronts a population of
-        // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
-        // where some reject unrecognized request params, and a 4xx on
-        // stream_options would break previously-working chat turns to fix
-        // a maybe-missing usage figure. Ollama's own
-        // compat layer accepts the param.
-        ...(opts.type === 'ollama' ? { includeUsage: true } : {}),
-        ...(apiKey ? { apiKey } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).chatModel(opts.modelId);
+      return guardBoundedApiModel(
+        createOpenAICompatible({
+          name: opts.type || 'openai-compatible',
+          baseURL,
+          // Ollama ONLY: ask for `stream_options: { include_usage: true }`
+          // so streamed turns carry usage even under strict OpenAI streaming
+          // semantics (archive#4197). Deliberately NOT set for generic
+          // 'openai-compat' connections — that type fronts a population of
+          // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
+          // where some reject unrecognized request params, and a 4xx on
+          // stream_options would break previously-working chat turns to fix
+          // a maybe-missing usage figure. Ollama's own
+          // compat layer accepts the param.
+          ...(opts.type === 'ollama' ? { includeUsage: true } : {}),
+          ...(apiKey ? { apiKey } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).chatModel(opts.modelId),
+      );
     }
     case 'anthropic': {
-      return createAnthropic({
-        ...(apiKey ? { apiKey } : {}),
-        ...(baseUrl ? { baseURL: baseUrl } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).languageModel(opts.modelId);
+      return guardBoundedApiModel(
+        createAnthropic({
+          ...(apiKey ? { apiKey } : {}),
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).languageModel(opts.modelId),
+      );
     }
     case 'google': {
-      return createGoogleGenerativeAI({
-        ...(apiKey ? { apiKey } : {}),
-        ...(baseUrl ? { baseURL: baseUrl } : {}),
-        ...(fetchOverride ? { fetch: fetchOverride } : {}),
-      }).languageModel(opts.modelId);
+      return guardBoundedApiModel(
+        createGoogleGenerativeAI({
+          ...(apiKey ? { apiKey } : {}),
+          ...(baseUrl ? { baseURL: baseUrl } : {}),
+          ...(fetchOverride ? { fetch: fetchOverride } : {}),
+        }).languageModel(opts.modelId),
+      );
     }
     case 'bedrock': {
-      return createAmazonBedrock({
-        // archive#1557: the caller has already resolved through
-        // `resolveBedrockRegion`; a second default here would be a third
-        // opinion about the region, reachable only when a caller forgets.
-        region: resolveBedrockRegion({
-          configRegion: opts.region,
-          env: process.env,
-        }).region,
-        ...bedrockAiSdkCredentials({
-          authMode: opts.authMode,
-          profile: opts.profile,
-          apiKey,
-        }),
-      }).languageModel(opts.modelId);
+      assertBoundedApiExecutionAvailable('Bedrock construction');
+      return guardBoundedApiModel(
+        createAmazonBedrock({
+          // archive#1557: the caller has already resolved through
+          // `resolveBedrockRegion`; a second default here would be a third
+          // opinion about the region, reachable only when a caller forgets.
+          region: resolveBedrockRegion({
+            configRegion: opts.region,
+            env: process.env,
+          }).region,
+          ...bedrockAiSdkCredentials({
+            authMode: opts.authMode,
+            profile: opts.profile,
+            apiKey,
+          }),
+        }).languageModel(opts.modelId),
+      );
     }
     default:
       throw new Error(
@@ -164,9 +176,10 @@ function isCompletionEndpoint(url: string): boolean {
  */
 function requestBodyDefaultsFetch(
   defaults: Record<string, unknown> | undefined,
-): typeof fetch | undefined {
+): typeof fetch {
+  const transport = boundedApiTransport();
   const entries = Object.entries(defaults ?? {});
-  if (entries.length === 0) return undefined;
+  if (entries.length === 0) return transport;
   return async (input, init) => {
     const url =
       typeof input === 'string'
@@ -181,20 +194,20 @@ function requestBodyDefaultsFetch(
       typeof body !== 'string' ||
       !isCompletionEndpoint(url)
     ) {
-      return fetch(input, init);
+      return transport(input, init);
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch {
-      return fetch(input, init);
+      return transport(input, init);
     }
     if (
       parsed === null ||
       typeof parsed !== 'object' ||
       Array.isArray(parsed)
     ) {
-      return fetch(input, init);
+      return transport(input, init);
     }
     const merged = parsed as Record<string, unknown>;
     let changed = false;
@@ -209,8 +222,8 @@ function requestBodyDefaultsFetch(
         changed = true;
       }
     }
-    if (!changed) return fetch(input, init);
-    return fetch(input, { ...init, body: JSON.stringify(merged) });
+    if (!changed) return transport(input, init);
+    return transport(input, { ...init, body: JSON.stringify(merged) });
   };
 }
 
@@ -236,25 +249,28 @@ export function createVoltAgentManagedModel(
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
+    assertBoundedApiExecutionAvailable('native VoltAgent Bedrock construction');
     // archive#1557 review fix: pass the RAW scopes, not a pre-resolved value
     // in both fields. Pre-resolving made `createBedrockProvider`'s own
     // resolution a no-op that always hit its first branch, so the env
     // fallback it advertises was unreachable from the only caller it has.
-    return createBedrockProvider({
-      appConfig: {
-        defaultModel: options.modelId,
-        region: options.appConfig.region,
-      } as AppConfig,
-      agentSpec: {
-        model: options.modelId,
-        region: options.spec.region,
-      } as AgentSpec,
-      connectionRegion:
-        typeof options.providerConnection?.config.region === 'string'
-          ? options.providerConnection.config.region
-          : undefined,
-      auth: resolveBedrockAuth(options),
-    });
+    return guardBoundedApiModel(
+      createBedrockProvider({
+        appConfig: {
+          defaultModel: options.modelId,
+          region: options.appConfig.region,
+        } as AppConfig,
+        agentSpec: {
+          model: options.modelId,
+          region: options.spec.region,
+        } as AgentSpec,
+        connectionRegion:
+          typeof options.providerConnection?.config.region === 'string'
+            ? options.providerConnection.config.region
+            : undefined,
+        auth: resolveBedrockAuth(options),
+      }),
+    );
   }
 
   return createManagedLanguageModel(options);
@@ -267,28 +283,33 @@ export async function createStrandsManagedModel(
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
+    assertBoundedApiExecutionAvailable('native Strands Bedrock construction');
     const { BedrockModel } = await import('@strands-agents/sdk');
-    return new BedrockModel({
-      modelId: options.modelId,
-      region: bedrockRegionFor(options),
-      ...bedrockStrandsCredentials(resolveBedrockAuth(options)),
+    return guardBoundedApiModel(
+      new BedrockModel({
+        modelId: options.modelId,
+        region: bedrockRegionFor(options),
+        ...bedrockStrandsCredentials(resolveBedrockAuth(options)),
+        maxTokens:
+          options.spec.guardrails?.maxTokens ??
+          options.appConfig.defaultMaxOutputTokens,
+        temperature: options.spec.guardrails?.temperature,
+        topP: options.spec.guardrails?.topP,
+      }),
+    );
+  }
+
+  const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
+  return guardBoundedApiModel(
+    new VercelModel({
+      provider: createManagedLanguageModel(options),
       maxTokens:
         options.spec.guardrails?.maxTokens ??
         options.appConfig.defaultMaxOutputTokens,
       temperature: options.spec.guardrails?.temperature,
       topP: options.spec.guardrails?.topP,
-    });
-  }
-
-  const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  return new VercelModel({
-    provider: createManagedLanguageModel(options),
-    maxTokens:
-      options.spec.guardrails?.maxTokens ??
-      options.appConfig.defaultMaxOutputTokens,
-    temperature: options.spec.guardrails?.temperature,
-    topP: options.spec.guardrails?.topP,
-  });
+    }),
+  );
 }
 
 function createManagedLanguageModel(
@@ -345,14 +366,16 @@ export async function createStrandsAiSdkModel(
   options: Pick<FrameworkModelOptions, 'spec' | 'appConfig'>,
 ): Promise<VercelModel> {
   const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  return new VercelModel({
-    provider,
-    maxTokens:
-      options.spec.guardrails?.maxTokens ??
-      options.appConfig.defaultMaxOutputTokens,
-    temperature: options.spec.guardrails?.temperature,
-    topP: options.spec.guardrails?.topP,
-  });
+  return guardBoundedApiModel(
+    new VercelModel({
+      provider,
+      maxTokens:
+        options.spec.guardrails?.maxTokens ??
+        options.appConfig.defaultMaxOutputTokens,
+      temperature: options.spec.guardrails?.temperature,
+      topP: options.spec.guardrails?.topP,
+    }),
+  );
 }
 
 function resolveRawBaseUrl(
