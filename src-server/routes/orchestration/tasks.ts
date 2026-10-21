@@ -896,7 +896,7 @@ export function createTaskRoutes(
           {
             success: false,
             code: 'work_item_has_open_task',
-            error: error.message,
+            error: 'This work item already has an open Task.',
             data: {
               taskId: error.existing.id,
               projectId: error.existing.projectId,
