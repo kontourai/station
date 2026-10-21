@@ -1206,7 +1206,7 @@ interface DelegateTaskRequest {
   fullAccessGrant: FullAccessGrant | null;
   /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
   dispatchCwdAdmission?: DispatchCwdAdmission;
-  delegationGroupAdmission?: { assertCurrent(): void };
+  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
   initialClientTurnId?: string;
   clientOrigin?: ClientOrigin;
   /**
@@ -3672,6 +3672,7 @@ export function createOrchestrationRoutes(
     sent: z.infer<typeof delegateTaskSchema>,
     delegationGroupAdmission?: {
       assertCurrent(): void;
+      signal: AbortSignal;
       sessionId: string;
       initialClientTurnId: string;
     },

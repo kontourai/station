@@ -22,6 +22,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -45,6 +46,7 @@ afterEach(async () => {
 
 class MemberAdapter extends GateTestAdapter {
   readonly starts: ProviderSessionStartInput[] = [];
+  startGate: Promise<void> = Promise.resolve();
   private readonly sessions = new Map<
     string,
     Awaited<ReturnType<GateTestAdapter['startSession']>>
@@ -52,6 +54,7 @@ class MemberAdapter extends GateTestAdapter {
   readonly turns: ProviderSendTurnInput[] = [];
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    await this.startGate;
     const session = await super.startSession(input);
     this.sessions.set(input.threadId, session);
     this.events.push({
@@ -109,6 +112,7 @@ async function fixture() {
   let prepare: () => Promise<void> = async () => {};
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
+    resourcePosture: createRuntimeResourcePostureController(),
     eventBus: bus,
     eventStore: store,
     logger: { debug() {}, warn() {} },
@@ -231,6 +235,10 @@ async function create(f: Awaited<ReturnType<typeof fixture>>, seats = 3) {
 
 test('registered CLI and SDK create three real orchestration sessions and initial turns joined to durable Flow completion', async () => {
   const f = await fixture();
+  let releaseStart!: () => void;
+  f.adapter.startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
   const output: string[] = [];
   vi.spyOn(console, 'log').mockImplementation((value) => {
     output.push(String(value));
@@ -256,6 +264,23 @@ test('registered CLI and SDK create three real orchestration sessions and initia
   ]);
   let completed = false;
   try {
+    await vi.waitFor(() => expect(f.adapter.starts).toHaveLength(1), {
+      timeout: 5000,
+    });
+    await vi.waitFor(
+      async () => {
+        const response = await f.app.request(
+          `/api/orchestration/session-groups/${group.groupId}`,
+        );
+        const observed = (
+          (await response.json()) as { data: CliSessionGroupView }
+        ).data;
+        expect(observed.dispatchCount).toBe(2);
+      },
+      { timeout: 5000 },
+    );
+    expect(f.adapter.starts).toHaveLength(1);
+    releaseStart();
     await vi.waitFor(
       async () => {
         const observed = await f.app.request(
@@ -280,6 +305,7 @@ test('registered CLI and SDK create three real orchestration sessions and initia
     );
     completed = true;
   } finally {
+    releaseStart();
     if (!completed) process.emit('SIGINT');
     await running;
   }

@@ -123,6 +123,7 @@ export interface CliSessionGroupHost<T> {
     input: T,
     admission: {
       assertCurrent(): void;
+      signal: AbortSignal;
       sessionId: string;
       initialClientTurnId: string;
     },
@@ -559,6 +560,7 @@ export class CliSessionGroups<T> {
       execution.signal.throwIfAborted();
       const dispatched = host
         .dispatch(this.parseInput(launch.seat.input), {
+          signal: execution.signal,
           sessionId: z.string().min(1).parse(launch.seat.reservedSessionId),
           initialClientTurnId: z
             .string()

@@ -396,7 +396,7 @@ interface DelegationEnvironmentSelection {
 
 export interface DelegateTaskInput {
   /** Trusted group admission, checked synchronously at initial session/turn effects. */
-  delegationGroupAdmission?: { assertCurrent(): void };
+  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
   /** Server-minted first-turn join for a durable session group. */
   initialClientTurnId?: string;
   /** Server-only current-host staging authority, composed by the authenticated route. */

@@ -157,7 +157,7 @@ export type SessionCommandInternalOptions = {
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-owned initial group dispatch fence; never public command JSON. */
-  delegationGroupAdmission?: { assertCurrent(): void };
+  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
   receiverExecutionAdmission?: ReceiverExecutionEffectAdmission;
   executionWorkspace?: ExecutionWorkspaceBinding;

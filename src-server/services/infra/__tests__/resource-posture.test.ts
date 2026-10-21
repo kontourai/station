@@ -85,6 +85,36 @@ describe('runtime resource diagnostics', () => {
     expect(sample).toHaveBeenCalledOnce();
   });
 
+  test('supervised starts wait FIFO, canceled waiters release their place, and ordinary starts still refuse', async () => {
+    const controller = createRuntimeResourcePostureController();
+    const first = controller.reserveEngineStart();
+    const cancelled = new AbortController();
+    const active = new AbortController();
+    const abandoned = controller.waitForEngineStart(cancelled.signal);
+    const refusal = expect(abandoned).rejects.toBe('cancelled');
+    let admitted = false;
+    const next = controller.waitForEngineStart(active.signal).then((lease) => {
+      admitted = true;
+      return lease;
+    });
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    cancelled.abort('cancelled');
+    await refusal;
+    expect(admitted).toBe(false);
+    first.release();
+    const second = await next;
+    expect(admitted).toBe(true);
+    first.release();
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    second.release();
+    const final = controller.reserveEngineStart();
+    final.release();
+  });
+
   test('classifies malformed observations as unavailable', () => {
     expect(deriveRuntimeResourcePosture({ source: 'test' })).toMatchObject({
       kind: 'unavailable',

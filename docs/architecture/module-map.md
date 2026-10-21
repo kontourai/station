@@ -3484,6 +3484,10 @@ server-derived intent labels but does not use them or CPU posture to prioritize
 work. Other Station runtimes have their own controllers; this is not the
 verification coordinator's host-wide scheduler. A competing cold start can
 receive `resource_engine_start_capacity` until the existing lease settles.
+A supervised CLI session group instead waits FIFO for this same startup lease,
+with at most 128 waiters and its group cancellation signal. This serializes
+cold starts without serializing the accepted model turns. It does not retry an
+ambiguous session or bypass the ordinary refusal policy for other callers.
 
 **Composition and limits.** [Runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 creates the controller and supplies it to orchestration and the diagnostic route.

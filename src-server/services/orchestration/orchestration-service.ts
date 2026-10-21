@@ -534,7 +534,7 @@ interface OrchestrationDispatchInternalOptions {
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-owned initial group dispatch fence; never public command JSON. */
-  delegationGroupAdmission?: { assertCurrent(): void };
+  delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
    * the provider-effect path (start/sendTurn) adjacent to the adapter
@@ -6659,6 +6659,9 @@ export class OrchestrationService {
             internal?.resourceAdmissionIntent ?? 'interactive_user',
             {
               binding: input.threadId,
+              ...(internal?.delegationGroupAdmission
+                ? { waitForCapacity: internal.delegationGroupAdmission.signal }
+                : {}),
             },
           );
           let session: ProviderSession;

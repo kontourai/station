@@ -1655,7 +1655,8 @@ activate the separate hard-cap API group runtime or complete #205.
 Creation takes `operationId`, `maxConcurrent` (1–32), an absolute `deadlineAt`
 within 30 minutes, and 1–32 `members`. Each member has `seatId`, `prompt`, a local
 execution `target`, optional `parentTaskId` and optional `needs` naming predecessor
-seats. The target must include its expected engine connection. Station reuses the
+seats. The target must include its expected engine connection. Station waits for its existing engine-start lease during group dispatch;
+accepted member turns can still overlap. Station reuses the
 ordinary delegation route's actor, posture, full-access, workspace, receiver and
 lineage decisions; a group does not authorize anything those decisions refuse.
 The authenticated credential/caller binding owns the group. Another credential
