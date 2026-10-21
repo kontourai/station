@@ -122,7 +122,9 @@ test('shows actual server states and keeps keyless entries read-only without per
     ),
   );
   const { client } = mount();
-  await screen.findByText('2 pending');
+  // Every row the list shows counts (queued, sending, may have been sent);
+  // a sent one is not listed, so it does not.
+  await screen.findByText('3 pending');
   expand();
   expect(screen.getByText('another sender')).toBeTruthy();
   expect(screen.getByText('May have been sent')).toBeTruthy();

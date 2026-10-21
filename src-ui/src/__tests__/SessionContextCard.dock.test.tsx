@@ -495,13 +495,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderDock() {
+function renderDock(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={client}>
       <KeyboardShortcutsProvider>
         <NavigationProvider>
           <DockedChat />
@@ -558,6 +556,56 @@ describe('session context card visibility follows the dock body width', () => {
     expect(aside.textContent).toContain('Background tasks — 2 running');
     expect(aside.textContent).toContain('1 pending message');
     expect(aside.textContent).toContain('Demo project');
+  });
+
+  test('the card counts what the pending list lists: this window’s follow-ups, its outbox and what Station holds', async () => {
+    fixture.authority = AUTHORITY;
+    fixture.session = {
+      ...SESSION,
+      queuedMessages: ['first follow-up', 'second follow-up'],
+      queuedMessageMetadata: [
+        { id: 'local-1', mode: 'queue' },
+        { id: 'local-2', mode: 'queue' },
+      ],
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'outbox-1',
+          content: 'from a closed window',
+          createdAt: 1,
+          status: 'pending',
+          heldElsewhere: true,
+        },
+      ],
+    } as unknown as ChatSession;
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const held = (clientTurnId: string, state: string) => ({
+      conversationId: 'conversation-1',
+      clientTurnId,
+      message: clientTurnId,
+      state,
+      createdAt: '2026-10-21T00:00:00.000Z',
+    });
+    // The list's own inbox read: Station holds the second follow-up (one
+    // row, not two) and one that may have been sent; a sent one is gone.
+    client.setQueryData(
+      [
+        'conversation-inbox',
+        'http://test.local',
+        'authority-1',
+        'conversation-1',
+      ],
+      [
+        held('local-2', 'queued'),
+        held('station-1', 'unconfirmed'),
+        held('done', 'sent'),
+      ],
+    );
+    renderDock(client);
+    await waitFor(() => expect(card()).not.toBeNull());
+    // 1 local + 2 Station-held + 1 outbox: the list's "4 pending".
+    expect(card()!.textContent).toContain('4 pending messages');
   });
 
   test('a narrow dock folds the card behind a chip; the bar keeps only the running count', async () => {

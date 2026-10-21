@@ -68,8 +68,12 @@ describe('one queue surface: the outbox joins the pending list', () => {
         metadata={[{ id: 'local-1', mode: 'queue' }]}
         outbox={{
           count: 3,
+          inOrder: 0,
           needsReview: true,
-          node: <div className="queued-message">held in a closed window</div>,
+          notSent: false,
+          render: () => (
+            <div className="queued-message">held in a closed window</div>
+          ),
         }}
       />,
     );
@@ -97,8 +101,10 @@ describe('one queue surface: the outbox joins the pending list', () => {
         metadata={[{ id: 'local-1', mode: 'queue' }]}
         outbox={{
           count: 1,
+          inOrder: 0,
           needsReview: false,
-          node: <div className="queued-message">offline send</div>,
+          notSent: false,
+          render: () => <div className="queued-message">offline send</div>,
         }}
       />,
     );
@@ -114,13 +120,119 @@ describe('one queue surface: the outbox joins the pending list', () => {
         messages={[]}
         outbox={{
           count: 1,
+          inOrder: 0,
           needsReview: false,
-          node: <div className="queued-message">offline send</div>,
+          notSent: false,
+          render: () => <div className="queued-message">offline send</div>,
         }}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: '1 pending message' }));
     expect(screen.getByText('offline send')).toBeTruthy();
+  });
+});
+
+describe('one send order and one count across the list', () => {
+  const heldEntry = (
+    clientTurnId: string,
+    state: 'queued' | 'unconfirmed',
+    position?: number,
+  ) =>
+    ({
+      conversationId: 'c1',
+      clientTurnId,
+      message: `station ${clientTurnId}`,
+      state,
+      position,
+      createdAt: '2026-10-21T00:00:00.000Z',
+    }) as never;
+  const held = (entries: never[]) => ({
+    entries,
+    unavailable: false,
+    removing: false,
+    removalError: false,
+    onRemove: vi.fn(),
+    onRetry: vi.fn(),
+  });
+
+  it('numbers rows in the order they send, next to send lowest: Station’s, the outbox’s, then this window’s', () => {
+    const render_ = vi.fn((part: string, orderStart: number) => (
+      <div className="queued-message">
+        <span className="queued-message__order">
+          {part === 'ordered' ? orderStart + 1 : ''}
+        </span>
+        <span className="queued-message__body">outbox {part}</span>
+      </div>
+    ));
+    const { container } = renderQueue(
+      <QueuedMessages
+        sessionId="s1"
+        messages={['local next', 'local later']}
+        metadata={[
+          { id: 'l1', mode: 'queue' },
+          { id: 'l2', mode: 'queue' },
+        ]}
+        held={held([
+          heldEntry('h2', 'queued', 2),
+          heldEntry('h1', 'queued', 1),
+          heldEntry('h3', 'unconfirmed'),
+        ])}
+        outbox={{
+          count: 2,
+          inOrder: 1,
+          needsReview: false,
+          notSent: false,
+          render: render_,
+        }}
+      />,
+    );
+    // Station sends its two first, so the outbox starts after them.
+    expect(render_).toHaveBeenCalledWith('ordered', 2);
+    const rows = [...container.querySelectorAll('.queued-message')].map(
+      (row) =>
+        `${row.querySelector('.queued-message__order')?.textContent ?? ''}:${
+          row.querySelector('.queued-message__body')?.textContent
+        }`,
+    );
+    expect(rows).toEqual([
+      ':outbox attention',
+      '5:local later',
+      '4:local next',
+      '3:outbox ordered',
+      ':station h3',
+      '2:station h2',
+      '1:station h1',
+    ]);
+    // Every row listed is counted, whatever its state.
+    expect(
+      screen.getByRole('button', { name: /^7 pending messages/ }),
+    ).toBeTruthy();
+  });
+
+  it('a send that fails is shown and announced while the list is closed', () => {
+    const outbox = (notSent: boolean) => ({
+      count: 1,
+      inOrder: 0,
+      needsReview: notSent,
+      notSent,
+      render: () => <div className="queued-message">offline send</div>,
+    });
+    const { container, rerender } = render(
+      <QueuedMessages sessionId="s1" messages={[]} outbox={outbox(false)} />,
+    );
+    const live = container.querySelector('[aria-live="polite"]')!;
+    expect(live.textContent).toBe('');
+    rerender(
+      <QueuedMessages sessionId="s1" messages={[]} outbox={outbox(true)} />,
+    );
+    const toggle = screen.getByRole('button', {
+      name: '1 pending message, not sent',
+    });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.textContent).toContain('Not sent');
+    // The announcement is not inside the collapsed rows.
+    expect(live.closest('[hidden]')).toBeNull();
+    expect(live.textContent).toBe('A pending message was not sent');
   });
 });
 

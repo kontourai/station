@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import {
   type QueryClient,
+  skipToken,
   useMutation,
   useQuery,
   useQueryClient,
@@ -42,6 +43,37 @@ export function visibleInboxEntries(
 export const INBOX_ACTIVE_POLL_MS = 2_000;
 export const INBOX_IDLE_POLL_MS = 15_000;
 
+function inboxQueryKey(
+  scope: ReturnType<typeof useHostRequestAuthorityScope>,
+  conversationId: string,
+) {
+  return [
+    'conversation-inbox',
+    scope?.apiBase,
+    scope?.authorityKey,
+    conversationId,
+  ];
+}
+
+/**
+ * The entries the pending list shows now, read from the same query without
+ * reading the inbox again: for a second view of that list (the chat's
+ * context card). Empty while the list's own read has no current answer.
+ */
+export function useConversationInboxSnapshot(
+  conversationId: string,
+): ConversationInboxEntry[] {
+  const scope = useHostRequestAuthorityScope();
+  const query = useQuery<ConversationInboxEntry[]>({
+    queryKey: inboxQueryKey(scope, conversationId),
+    queryFn: skipToken,
+    gcTime: 0,
+  });
+  return query.status === 'success' && query.fetchStatus !== 'paused'
+    ? visibleInboxEntries(query.data)
+    : [];
+}
+
 export function useConversationInbox(
   conversationId: string,
   { active = false }: { active?: boolean } = {},
@@ -49,12 +81,7 @@ export function useConversationInbox(
   const scope = useHostRequestAuthorityScope();
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
-  const queryKey = [
-    'conversation-inbox',
-    scope?.apiBase,
-    scope?.authorityKey,
-    conversationId,
-  ];
+  const queryKey = inboxQueryKey(scope, conversationId);
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,

@@ -55,7 +55,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
 
   it('a copy held by another or a closed window offers Send and Discard only, and Send releases it', async () => {
     sendHeldMock.mockResolvedValue(undefined);
-    render(
+    const { rerender } = render(
       <OutboundQueuedMessages
         sessionId="session-1"
         turns={[
@@ -76,14 +76,39 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       screen.getAllByRole('button', { name: 'Edit message' }),
     ).toHaveLength(1);
     expect(screen.queryByRole('button', { name: /Merge/ })).toBeNull();
-    // One short line; the full explanation is its tooltip.
-    const note = screen.getByText(/From another window\. Not sent\./);
+    // An open window's copy is its ordinary follow-up: one short line; the
+    // full explanation is its tooltip.
+    const open = screen.getByText(/Queued in another window\./);
+    expect(open.getAttribute('title')).toMatch(/sends it when this turn ends/);
+    rerender(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+            heldByClosedWindow: true,
+          },
+          { clientTurnId: 'after', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    const note = screen.getByText(/From a closed window\. Not sent\./);
     expect(note.getAttribute('title')).toMatch(/only when you press Send/);
+    // Its remove action says what it does.
+    expect(
+      screen.getAllByRole('button', { name: 'Discard message' }),
+    ).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(sendHeldMock).toHaveBeenCalledWith('held-away'));
   });
 
-  it('deletes a pending offline message immediately', async () => {
+  it('discards a pending offline message immediately', async () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -96,7 +121,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard message' }));
 
     await waitFor(() =>
       expect(discardOutboundTurnMock).toHaveBeenCalledWith('turn-1'),
@@ -119,14 +144,14 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onStartNewChat={vi.fn()}
       />,
     );
-    const [first] = screen.getAllByRole('button', { name: 'Delete message' });
+    const [first] = screen.getAllByRole('button', { name: 'Discard message' });
     fireEvent.click(first);
     await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
 
     discardOutboundTurnMock.mockRejectedValueOnce(new Error('store gone'));
     onDiscarded.mockClear();
     fireEvent.click(
-      screen.getAllByRole('button', { name: 'Delete message' })[1],
+      screen.getAllByRole('button', { name: 'Discard message' })[1],
     );
     await waitFor(() => expect(onError).toHaveBeenCalled());
     expect(onDiscarded).not.toHaveBeenCalled();
@@ -179,6 +204,76 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     await waitFor(() =>
       expect(reorderOutboundTurnMock).toHaveBeenCalledWith('second', 'up'),
     );
+  });
+
+  it('the ordered part numbers its rows after the earlier ones, next to send lowest', async () => {
+    const turns = [
+      {
+        clientTurnId: 'held-away',
+        content: 'held elsewhere',
+        status: 'pending' as const,
+        heldElsewhere: true as const,
+      },
+      {
+        clientTurnId: 'first',
+        content: 'goes first',
+        status: 'pending' as const,
+      },
+      {
+        clientTurnId: 'second',
+        content: 'goes second',
+        status: 'pending' as const,
+      },
+    ];
+    const { container } = render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={turns}
+        part="ordered"
+        orderStart={2}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    // Only the rows this window sends on its own; the held copy is not one.
+    expect(screen.queryByText('held elsewhere')).toBeNull();
+    const rows = [...container.querySelectorAll('.queued-message')].map(
+      (row) => [
+        row.querySelector('.queued-message__order')?.textContent,
+        row.querySelector('.queued-message__body')?.textContent,
+      ],
+    );
+    // Two rows send before these (Station's), so they are 3 and 4, and the
+    // next to send sits lowest, like the list's own follow-ups.
+    expect(rows).toEqual([
+      ['4', 'goes second'],
+      ['3', 'goes first'],
+    ]);
+    // Visual up on the lower row moves it later in the queue.
+    const ups = screen.getAllByRole('button', { name: 'Move message up' });
+    expect((ups[0] as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(ups[1]!);
+    await waitFor(() =>
+      expect(reorderOutboundTurnMock).toHaveBeenCalledWith('first', 'down'),
+    );
+
+    const attention = render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={turns}
+        part="attention"
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    const held = attention.container.querySelector('.queued-message')!;
+    expect(held.textContent).toContain('held elsewhere');
+    expect(held.querySelector('.queued-message__order')?.textContent).toBe('');
+    expect(
+      attention.container.querySelectorAll('.queued-message'),
+    ).toHaveLength(1);
   });
 
   it('keeps merging opt-in, previews the text, and offers a pre-send undo', async () => {

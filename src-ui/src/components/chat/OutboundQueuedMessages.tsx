@@ -7,6 +7,7 @@ import {
   AWAITING_CONFIRMATION_LABEL,
   MAY_HAVE_REACHED_LABEL,
 } from './deliveryLabels';
+import { outboxSendsInOrder } from './pendingMessages';
 import {
   UnconfirmedDiscardConfirm,
   useUnconfirmedDiscardDisclosure,
@@ -25,6 +26,10 @@ interface OutboundQueuedTurn {
   waitingForStation?: string;
   /** Held by another window or a closed one; sent only on Send. */
   heldElsewhere?: true;
+  /** The window holding this copy is proven closed. */
+  heldByClosedWindow?: true;
+  /** Pending behind an earlier row of its chat that was not sent. */
+  behindUnsent?: true;
   /** No answer came back; Station's delivery lookup decides it. */
   awaitingLookup?: true;
   /** Claimed by a window that is still running: its send is under way there. */
@@ -67,12 +72,21 @@ interface OutboundQueuedMessagesProps {
     attachments: FileAttachment[] | undefined,
     clientTurnId: string,
   ) => void | Promise<void>;
+  /**
+   * Which rows to render: the ones this window's flush sends in order
+   * (`ordered`, numbered), or the rest, which wait on the person or are
+   * under way (`attention`, unnumbered). Both by default.
+   */
+  part?: 'attention' | 'ordered';
+  /** How many rows of the list send before this one's first ordered row. */
+  orderStart?: number;
 }
 
 /**
  * Rows for the persisted offline queue; accepted rows have already executed.
  * They render inside the one pending-message list above the composer
- * (`QueuedMessages`), which owns the frame, the count and the disclosure.
+ * (`QueuedMessages`), which owns the frame, the count, the order numbers
+ * and the disclosure.
  */
 export function OutboundQueuedMessages({
   sessionId,
@@ -82,6 +96,8 @@ export function OutboundQueuedMessages({
   onDiscarded,
   onRetry,
   onStartNewChat,
+  part,
+  orderStart = 0,
 }: OutboundQueuedMessagesProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -100,6 +116,17 @@ export function OutboundQueuedMessages({
     setEditValue('');
   };
 
+  const reorder = (clientTurnId: string, direction: 'up' | 'down') =>
+    void import('../../lib/outboundQueue')
+      .then(({ outboundDispatch }) =>
+        outboundDispatch.reorder(clientTurnId, direction),
+      )
+      .catch((error) =>
+        onError(
+          `Could not reorder queued message: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+
   const saveEdit = async () => {
     if (!editingId) return;
     const content = editValue.trim();
@@ -116,9 +143,23 @@ export function OutboundQueuedMessages({
     }
   };
 
+  // Rows this window sends in order, first to send first. They render
+  // reversed, like the list's own follow-ups: the next to send sits lowest,
+  // so visual up is later in the order.
+  const ordered = turns.filter(outboxSendsInOrder);
+  const shown = turns
+    .map((turn, index) => ({ turn, index }))
+    .filter(({ turn }) =>
+      part === undefined
+        ? true
+        : (part === 'ordered') === outboxSendsInOrder(turn),
+    );
+  const reversed = part === 'ordered';
+  const rowsInView = reversed ? [...shown].reverse() : shown;
   const rows = (
     <>
-      {turns.map((turn, index) => {
+      {rowsInView.map(({ turn, index }) => {
+        const orderIndex = ordered.indexOf(turn);
         const workspaceRefused = isWorkspaceRefusedTurn(turn);
         const refusedAt = turn.createdAt;
         // 'May have been answered' requires an ANSWER: only a newer
@@ -145,13 +186,14 @@ export function OutboundQueuedMessages({
           mergePreviewId === turn.clientTurnId && canMergeWithNext;
         return (
           <div className="queued-message" key={turn.clientTurnId}>
-            {/* A held copy is in no send order: no number, like the rows
-                Station holds. */}
+            {/* Only a row this window sends on its own has a place in the
+                send order; a held copy, a failed send or one under way does
+                not. */}
             <span
               className="queued-message__order"
-              aria-hidden={turn.heldElsewhere ? true : undefined}
+              aria-hidden={orderIndex === -1 ? true : undefined}
             >
-              {turn.heldElsewhere ? null : index + 1}
+              {orderIndex === -1 ? null : orderStart + orderIndex + 1}
             </span>
             {editingId === turn.clientTurnId ? (
               <input
@@ -291,20 +333,18 @@ export function OutboundQueuedMessages({
               <>
                 {turn.status === 'pending' && !turn.heldElsewhere ? (
                   <>
+                    {/* The ordered part is shown next-to-send lowest, so
+                        there visual up moves a row later ('down'). */}
                     <button
                       type="button"
                       onClick={() =>
-                        void import('../../lib/outboundQueue')
-                          .then(({ outboundDispatch }) =>
-                            outboundDispatch.reorder(turn.clientTurnId, 'up'),
-                          )
-                          .catch((error) =>
-                            onError(
-                              `Could not reorder queued message: ${error instanceof Error ? error.message : String(error)}`,
-                            ),
-                          )
+                        reorder(turn.clientTurnId, reversed ? 'down' : 'up')
                       }
-                      disabled={index === 0}
+                      disabled={
+                        reversed
+                          ? orderIndex === ordered.length - 1
+                          : index === 0
+                      }
                       className="queued-message__btn"
                       aria-label="Move message up"
                     >
@@ -313,17 +353,11 @@ export function OutboundQueuedMessages({
                     <button
                       type="button"
                       onClick={() =>
-                        void import('../../lib/outboundQueue')
-                          .then(({ outboundDispatch }) =>
-                            outboundDispatch.reorder(turn.clientTurnId, 'down'),
-                          )
-                          .catch((error) =>
-                            onError(
-                              `Could not reorder queued message: ${error instanceof Error ? error.message : String(error)}`,
-                            ),
-                          )
+                        reorder(turn.clientTurnId, reversed ? 'up' : 'down')
                       }
-                      disabled={index === turns.length - 1}
+                      disabled={
+                        reversed ? orderIndex === 0 : index === turns.length - 1
+                      }
                       className="queued-message__btn"
                       aria-label="Move message down"
                     >
@@ -389,8 +423,8 @@ export function OutboundQueuedMessages({
                       )
                   }
                   className="queued-message__btn queued-message__btn--danger"
-                  title={workspaceRefused ? 'Dismiss' : 'Delete'}
-                  aria-label={workspaceRefused ? 'Dismiss' : 'Delete message'}
+                  title={workspaceRefused ? 'Dismiss' : 'Discard'}
+                  aria-label={workspaceRefused ? 'Dismiss' : 'Discard message'}
                 >
                   {workspaceRefused ? 'Dismiss' : '×'}
                 </button>
@@ -401,11 +435,10 @@ export function OutboundQueuedMessages({
       })}
     </>
   );
+  // Announcements live outside the collapsed list (`QueuedMessages`), which
+  // a live region in here could not make while hidden.
   return (
-    <div
-      className="queued-messages--outbox queued-messages__outbox"
-      aria-live="polite"
-    >
+    <div className="queued-messages--outbox queued-messages__outbox">
       {rows}
     </div>
   );
@@ -419,7 +452,11 @@ function HeldCopyNotice({
   turn,
   onError,
 }: {
-  turn: { clientTurnId: string; heldElsewhere?: true };
+  turn: {
+    clientTurnId: string;
+    heldElsewhere?: true;
+    heldByClosedWindow?: true;
+  };
   onError: (message: string) => void;
 }) {
   if (!turn.heldElsewhere) return null;
@@ -427,9 +464,15 @@ function HeldCopyNotice({
   return (
     <span
       className="queued-messages__label queued-messages__label--held"
-      title="Queued in another window, or one that closed. It is sent only when you press Send; messages after it still send."
+      title={
+        turn.heldByClosedWindow
+          ? 'Queued in a window that closed. It is sent only when you press Send; messages after it still send.'
+          : 'Queued in another open window, which sends it when this turn ends. Send sends it from here instead.'
+      }
     >
-      From another window. Not sent.{' '}
+      {turn.heldByClosedWindow
+        ? 'From a closed window. Not sent.'
+        : 'Queued in another window.'}{' '}
       <button
         type="button"
         onClick={() =>

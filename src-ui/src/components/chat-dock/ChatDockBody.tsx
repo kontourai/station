@@ -94,6 +94,8 @@ import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
+import { outboxNeedsReview, outboxSendsInOrder } from '../chat/pendingMessages';
+import type { OutboxRows } from '../chat/QueuedMessages';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { hasActiveToolCall } from '../chat/tool-call-labels';
@@ -1385,17 +1387,15 @@ export function ChatDockBody({
   // This browser's outbox: rows in the one pending-message list above the
   // composer, not a list of its own.
   const outboundTurns = activeSession.outboundQueuedTurns ?? [];
-  const outboxRows = outboundTurns.length
+  const outboxRows: OutboxRows | undefined = outboundTurns.length
     ? {
         count: outboundTurns.length,
-        needsReview: outboundTurns.some(
-          (turn) =>
-            turn.status === 'failed' ||
-            turn.status === 'may-have-started' ||
-            turn.heldElsewhere === true,
-        ),
-        node: (
+        inOrder: outboundTurns.filter(outboxSendsInOrder).length,
+        needsReview: outboundTurns.some(outboxNeedsReview),
+        notSent: outboundTurns.some((turn) => turn.status === 'failed'),
+        render: (part, orderStart) => (
           <LazyBoundary
+            key={part}
             load={loadOutboundQueuedMessages}
             pending={
               <SkeletonList
@@ -1405,6 +1405,8 @@ export function ChatDockBody({
               />
             }
             componentProps={{
+              part,
+              orderStart,
               sessionId: activeSession.id,
               turns: outboundTurns,
               messages: renderedSession.messages,

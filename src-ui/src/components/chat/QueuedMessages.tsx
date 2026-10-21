@@ -9,6 +9,7 @@ import {
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
+import { heldSendsInOrder, pendingMessageCount } from './pendingMessages';
 import './QueuedMessages.css';
 
 interface QueuedMessagesProps {
@@ -43,9 +44,10 @@ interface QueuedMessagesProps {
   held?: HeldMessages;
   /**
    * This browser's durable outbox for the chat (sends that failed, got no
-   * answer, or wait in a window that closed): its rows join this list, at
-   * the top, rather than forming a second list. One that waits on the person
-   * marks the collapsed list "Needs review".
+   * answer, or wait in a window that closed): its rows join this list rather
+   * than forming a second list. Rows it sends on its own take their place in
+   * the send order; the rest lead the list. One that waits on the person
+   * marks the collapsed list "Needs review", or "Not sent".
    */
   outbox?: OutboxRows;
 }
@@ -53,9 +55,17 @@ interface QueuedMessagesProps {
 export interface OutboxRows {
   /** How many outbox messages the rows show. */
   count: number;
-  /** One of them needs the person: failed, may have reached, or held. */
+  /** How many of them this window sends on its own, in order. */
+  inOrder: number;
+  /** One of them needs the person (`outboxNeedsReview`). */
   needsReview: boolean;
-  node: ReactNode;
+  /** One of them was not sent. */
+  notSent: boolean;
+  /**
+   * The rows of one part: those that send in order (numbered from
+   * `orderStart + 1`), or the rest.
+   */
+  render: (part: 'attention' | 'ordered', orderStart: number) => ReactNode;
 }
 
 export interface HeldMessages {
@@ -150,39 +160,70 @@ export function QueuedMessages({
   const localRows = rows.flatMap((row, idx) =>
     metadata?.[idx]?.id && heldKeys.has(metadata[idx].id) ? [] : [{ row, idx }],
   );
-  const heldPending = heldEntries.filter(
-    (entry) => entry.state === 'queued' || entry.state === 'sending',
-  ).length;
-  const pendingCount = localRows.length + heldPending + outboxCount;
-  const needsReview = Boolean(
+  // Every row listed, the same count the chat's context card shows.
+  const pendingCount = pendingMessageCount({
+    localIds: messages.map((_, idx) => metadata?.[idx]?.id),
+    held: heldEntries,
+    outboxCount,
+  });
+  const notSent = Boolean(
     failure ||
+      (outboxCount > 0 && outbox?.notSent) ||
+      heldEntries.some((entry) => entry.state === 'refused'),
+  );
+  const needsReview = Boolean(
+    notSent ||
       (outboxCount > 0 && outbox?.needsReview) ||
       metadata?.some((entry) => entry.delivery === 'indeterminate') ||
       held?.removalError ||
       held?.unavailable ||
-      heldEntries.some(
-        (entry) => entry.state === 'unconfirmed' || entry.state === 'refused',
-      ),
+      heldEntries.some((entry) => entry.state === 'unconfirmed'),
   );
+  const attention = notSent ? 'Not sent' : 'Needs review';
+
+  // One send order, numbered from 1 = next to send: Station sends what it
+  // holds when the turn ends, then this window's outbox goes, then its own
+  // follow-ups. Rows in no automatic order (a copy another window holds, a
+  // failed or unconfirmed send) carry no number.
+  const heldOrder = new Map(
+    heldEntries
+      .filter(heldSendsInOrder)
+      .sort(
+        (a, b) =>
+          (a.position ?? Number.MAX_SAFE_INTEGER) -
+          (b.position ?? Number.MAX_SAFE_INTEGER),
+      )
+      .map((entry, index) => [entry, index + 1]),
+  );
+  const outboxOrderStart = heldOrder.size;
+  const localOrderStart = outboxOrderStart + (outbox?.inOrder ?? 0);
   const visible =
     outboxCount > 0 ||
     localRows.length > 0 ||
     heldEntries.length > 0 ||
     Boolean(held?.unavailable);
 
-  // Top to bottom: this browser's outbox (it sends on its own, or on Send,
-  // outside this queue's order), local follow-ups newest first (the next to
-  // send last, as before), then what Station holds, which it sends itself
-  // when the current turn ends, in its own send order (its next at the very
-  // bottom).
+  // Top to bottom: outbox rows in no send order (they wait on the person or
+  // are under way), then the send order with its next at the very bottom:
+  // local follow-ups newest first, the outbox rows this window sends on its
+  // own, then what Station holds, which it sends itself when the turn ends.
+  const outboxAttention = outbox ? outbox.count - outbox.inOrder : 0;
   const displayRows: { key: string; node: ReactNode }[] = [
-    ...(outboxCount > 0 && outbox
-      ? [{ key: 'outbox', node: outbox.node }]
+    ...(outbox && outboxAttention > 0
+      ? [{ key: 'outbox', node: outbox.render('attention', 0) }]
       : []),
     ...[...localRows].reverse().map(({ row, idx }) => ({
       key: `local:${row.id}`,
       node: renderLocalRow(row, idx),
     })),
+    ...(outbox && outbox.inOrder > 0
+      ? [
+          {
+            key: 'outbox:ordered',
+            node: outbox.render('ordered', outboxOrderStart),
+          },
+        ]
+      : []),
     ...[...heldEntries]
       .map((entry, index) => ({ entry, index }))
       .sort(
@@ -203,7 +244,8 @@ export function QueuedMessages({
 
   function renderLocalRow(row: QueueRow, idx: number) {
     const msg = row.message;
-    const orderNum = idx + 1; // 1-based order (1 = next to send)
+    // 1 = next to send, after what Station holds and the outbox sends.
+    const orderNum = localOrderStart + idx + 1;
     return (
       <div className="queued-message">
         <span className="queued-message__order">{orderNum}</span>
@@ -359,9 +401,15 @@ export function QueuedMessages({
     const removable =
       key && ['queued', 'unconfirmed', 'refused'].includes(entry.state);
     const verb = entry.state === 'queued' ? 'Remove' : 'Dismiss';
+    const order = heldOrder.get(entry);
     return (
       <div className="queued-message queued-message--held">
-        <span className="queued-message__order" aria-hidden="true" />
+        <span
+          className="queued-message__order"
+          aria-hidden={order === undefined ? true : undefined}
+        >
+          {order}
+        </span>
         <span className="queued-message__text" title={entry.message}>
           <span className="queued-message__body">{entry.message}</span>
           <span
@@ -409,7 +457,7 @@ export function QueuedMessages({
         aria-controls={queueId}
         aria-label={
           pendingCount > 0
-            ? `${pendingCount} pending message${pendingCount !== 1 ? 's' : ''}${needsReview ? ', needs review' : ''}`
+            ? `${pendingCount} pending message${pendingCount !== 1 ? 's' : ''}${needsReview ? `, ${attention.toLowerCase()}` : ''}`
             : 'Held messages need review'
         }
         onClick={() => setExpanded((value) => !value)}
@@ -427,10 +475,19 @@ export function QueuedMessages({
         </svg>
         {pendingCount > 0 && <span>{pendingCount} pending</span>}
         {needsReview && (
-          <span className="queued-messages__attention">Needs review</span>
+          <span className="queued-messages__attention">{attention}</span>
         )}
         <ArrowDownGlyph />
       </button>
+      {/* Outside the collapsible rows, so a send that fails is announced
+          while the list is closed. */}
+      <span className="sr-only" aria-live="polite">
+        {needsReview
+          ? notSent
+            ? 'A pending message was not sent'
+            : 'A pending message needs review'
+          : ''}
+      </span>
       {held?.unavailable && (
         <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">

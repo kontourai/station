@@ -71,6 +71,7 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -121,6 +122,7 @@ import { Button } from '../Button';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
+import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
@@ -2388,8 +2390,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeTaskItem?.orchestrationThreadId ??
     activeSession?.currentSessionId ??
     activeSession?.conversationId;
-  const sessionContextPendingMessages =
-    activeSession?.queuedMessages.length ?? 0;
+  // The pending list's own count (every row it lists), from the same facts:
+  // this window's follow-ups, its outbox and what Station holds.
+  const sessionContextHeld = useConversationInboxSnapshot(
+    activeSession && !activeSession.replay
+      ? (activeSession.conversationId ?? '')
+      : '',
+  );
+  const sessionContextPendingMessages = activeSession
+    ? pendingMessageCount({
+        localIds: activeSession.queuedMessages.map(
+          (_, index) => activeSession.queuedMessageMetadata?.[index]?.id,
+        ),
+        held: sessionContextHeld,
+        outboxCount: activeSession.outboundQueuedTurns?.length ?? 0,
+      })
+    : 0;
   const sessionContextLayoutSlug =
     !scopedProjectSlug && sessionContextProjectSlug
       ? (sessionCodingLayout?.slug ?? null)

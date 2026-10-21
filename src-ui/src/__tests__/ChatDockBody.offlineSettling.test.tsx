@@ -94,10 +94,23 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 const queuedMessagesProps = vi.hoisted(() => vi.fn());
 vi.mock('../components/chat/QueuedMessages', () => ({
-  // The outbox's rows render inside this one list.
-  QueuedMessages: (props: { outbox?: { node: ReactNode } }) => {
+  // The outbox's rows render inside this one list, in their two parts.
+  QueuedMessages: (props: {
+    outbox?: {
+      count: number;
+      inOrder: number;
+      render: (part: 'attention' | 'ordered', orderStart: number) => ReactNode;
+    };
+  }) => {
     queuedMessagesProps(props);
-    return props.outbox?.node ?? null;
+    const outbox = props.outbox;
+    if (!outbox) return null;
+    return (
+      <>
+        {outbox.count > outbox.inOrder ? outbox.render('attention', 0) : null}
+        {outbox.inOrder > 0 ? outbox.render('ordered', 0) : null}
+      </>
+    );
   },
 }));
 vi.mock('../components/chat/ChatMessageList', () => ({
@@ -215,6 +228,84 @@ function DockFixture({ current }: { current: ChatSession }) {
 function dock(current: ChatSession) {
   return <DockFixture current={current} />;
 }
+
+describe('the outbox facts the pending list reads', () => {
+  test('only a row the person must settle needs review; an open window’s copy is its own follow-up', async () => {
+    const withTurns = (
+      turns: NonNullable<ChatSession['outboundQueuedTurns']>,
+    ): ChatSession => ({ ...session(0), outboundQueuedTurns: turns });
+    const lastOutbox = () =>
+      queuedMessagesProps.mock.lastCall?.[0]?.outbox as {
+        count: number;
+        inOrder: number;
+        needsReview: boolean;
+        notSent: boolean;
+      };
+    const { rerender } = render(
+      dock(
+        withTurns([
+          {
+            clientTurnId: 'held-open',
+            content: 'queued in another window',
+            createdAt: 1,
+            status: 'pending',
+            heldElsewhere: true,
+          },
+          {
+            clientTurnId: 'next',
+            content: 'sends on its own',
+            createdAt: 2,
+            status: 'pending',
+          },
+        ]),
+      ),
+    );
+    await waitFor(() =>
+      expect(lastOutbox()).toMatchObject({
+        count: 2,
+        inOrder: 1,
+        needsReview: false,
+        notSent: false,
+      }),
+    );
+    rerender(
+      dock(
+        withTurns([
+          {
+            clientTurnId: 'held-closed',
+            content: 'queued in a window that closed',
+            createdAt: 1,
+            status: 'pending',
+            heldElsewhere: true,
+            heldByClosedWindow: true,
+          },
+        ]),
+      ),
+    );
+    await waitFor(() =>
+      expect(lastOutbox()).toMatchObject({
+        inOrder: 0,
+        needsReview: true,
+        notSent: false,
+      }),
+    );
+    rerender(
+      dock(
+        withTurns([
+          {
+            clientTurnId: 'failed',
+            content: 'not sent',
+            createdAt: 1,
+            status: 'failed',
+          },
+        ]),
+      ),
+    );
+    await waitFor(() =>
+      expect(lastOutbox()).toMatchObject({ needsReview: true, notSent: true }),
+    );
+  });
+});
 
 describe('ChatDockBody offline settling (station#2605)', () => {
   test('dismissing the refused turn returns the composer to normal', async () => {
