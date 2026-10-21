@@ -176,6 +176,7 @@ import {
   type WorkspacePathResolver,
 } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -3855,6 +3856,14 @@ export class StationRuntime {
                 orchestrationService: this.orchestrationService,
                 assignmentClaimService: this.taskDispatchAssignmentClaims,
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+                // Epic #4003: the brief a dispatched Session's first turn
+                // carries. The room runtime is composed later; read lazily.
+                taskBrief: composeTaskBriefSource({
+                  taskGraph: this.taskGraphService,
+                  eventStore: this.orchestrationEventStore,
+                  roomRuntime: () => this.projectTaskRoomRuntime,
+                  logger: this.logger,
+                }),
               },
               {
                 prepareAgentStarted: (result) => {

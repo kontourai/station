@@ -2642,6 +2642,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // Epic #4003 `get_task_brief`'s REST side. Internal-only at the route
+    // (404 otherwise) and keyed on the verified station-control caller's own
+    // Task binding, so a paired credential reaches nothing through it.
+    { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.

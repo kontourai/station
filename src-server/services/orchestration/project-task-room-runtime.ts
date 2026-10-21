@@ -603,6 +603,50 @@ export class ProjectTaskRoomRuntime {
     };
   }
 
+  /**
+   * Epic #4003: server-only read of the shared Task document for a Task
+   * brief. No request principal: the callers hold their own authority (an
+   * admitted dispatch, or a Session's immutable room execution binding).
+   * Hosted mode and a closed runtime have no document to read.
+   */
+  async readTaskDocumentForBrief(taskId: string): Promise<
+    | {
+        readonly kind: 'available';
+        readonly revision: string;
+        readonly text: string;
+      }
+    | { readonly kind: 'unavailable'; readonly reason: string }
+  > {
+    if (this.#closed || this.#deps.hosted?.())
+      return { kind: 'unavailable', reason: 'the Task room is not running' };
+    const scope = this.#scope(taskId);
+    if (!scope) return { kind: 'unavailable', reason: 'the Task has no room' };
+    const document = { ...scope, documentId: documentIdFor(scope) };
+    const result = await this.#deps.working.read({ scope: document });
+    const current = this.#scope(taskId);
+    if (
+      !current ||
+      !sameDocument(
+        { ...current, documentId: documentIdFor(current) },
+        document,
+      )
+    )
+      return {
+        kind: 'unavailable',
+        reason: 'the Task changed during the read',
+      };
+    if (
+      result.kind !== 'snapshot' ||
+      typeof result.revision !== 'string' ||
+      typeof result.text !== 'string'
+    )
+      return {
+        kind: 'unavailable',
+        reason: 'the Task document is unavailable',
+      };
+    return { kind: 'available', revision: result.revision, text: result.text };
+  }
+
   /** Server-only ingress from canonical session.exited. */
   async publishAgentFinished(input: {
     taskId: string;
