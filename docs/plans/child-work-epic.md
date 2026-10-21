@@ -112,22 +112,34 @@ that path. Preserve the existing candidates and fail-closed behavior; hold
 upstream publication and generalized authority migration until a concrete
 Station consumer demonstrates the necessary contract changes.
 
-The next increment must connect one real authenticated preparation, member
-session, reserved invocation and durable output/event projection. A sealed,
-no-tools API pilot is progress, not a substitute for the original cross-family,
-peer/SSH lineage, elicitation, retry/reconnect and actual-session ACK obligations.
-Keep the full epic and one-final-Station-PR rule intact. Reconcile changed
-contracts and actual readiness failures without expanding into unrelated stale
-document cleanup or resetting the freshness baseline.
+The first working group will use existing signed-in CLI engines and Station's
+existing session authority, permissions and confinement. This is the owner's
+chosen first integration path. Portable Flow-envelope lineage remains explicitly
+unbound/incomplete; #205's full lineage and restriction requirements remain open.
+Hard dollar caps, physical-attempt limits and native token bounds must be reported
+unavailable when the selected engine cannot enforce them. Unknown cost is never
+zero. Direct API qualification and tariff work remain preserved for a later path.
+
+Keep the full epic and one-final-Station-PR rule intact. The CLI increment does
+not complete peer/SSH lineage, context synchronization or the remaining folded
+requirements. Hold upstream publication and generalized authority migration
+until an actual consumer requires them.
 
 ## Production adoption sequence
 
-Station's existing delegation route owns authenticated caller resolution, execution-target
-placement, session creation and initial-turn delivery. Reuse that path and its persisted events;
-a session/turn is not one physical model invocation. Group identity must durably join seat,
-envelope generation, task/session, client turn, provider turn and actual invocation identities.
-Admission must cover every physical model request, including retries, rather than wrapping an
-entire `delegateTask` call as one Relay invocation.
+Reuse the authenticated delegation route for caller resolution, permission
+posture, execution-target placement, attachments, receiver admission, session
+creation and initial-turn delivery. Persist group membership against the actual
+returned task/session/turn identities. Observe, reply, interrupt and continue
+through the existing authenticated session paths.
+
+Use published Flow scheduling for readiness and claims, with Station dispatch
+count and occupied-seat concurrency bounds. Unknown or ambiguous starts retain
+their seat and must not be automatically resent. A deadline stops new dispatch
+and requests interruption; it does not prove that a provider physically stopped.
+A session/turn is not one physical model invocation. The separate hard-cap API
+path must still admit every physical request, including retries, and must not
+accept fabricated envelopes or fiscal allocations for CLI sessions.
 
 A local production preparation caller now consumes fresh login observations bound to executable,
 connection/profile environment, receiver-owned Agent profile pin, workspace, principal and model.

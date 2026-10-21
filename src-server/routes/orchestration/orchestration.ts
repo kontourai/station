@@ -781,7 +781,8 @@ const stagedAttachmentReferencesSchema = z
       digest: z
         .string()
         .max(71)
-        .regex(/^sha256-[0-9a-f]{64}$/),
+        .regex(/^sha256-[0-9a-f]{64}$/)
+        .transform((value): `sha256-${string}` => `sha256-${value.slice(7)}`),
       expiresAt: z.string().max(40).datetime(),
     }),
   )
@@ -3655,7 +3656,10 @@ export function createOrchestrationRoutes(
     },
   );
 
-  app.post('/delegations', validateFiles(delegateTaskSchema), async (c) => {
+  async function dispatchAuthorizedDelegation(
+    c: Context,
+    sent: z.infer<typeof delegateTaskSchema>,
+  ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
         { success: false, error: 'Task delegation is unavailable' },
@@ -3663,7 +3667,6 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const sent = getBody(c);
       // A station-control caller's new task with no workspace starts in its
       // own Project (owner decision 2026-10-13): decided before every check
       // below, so each one reads the target that is dispatched.
@@ -3717,7 +3720,7 @@ export function createOrchestrationRoutes(
           !deps.hydrateStagedAttachments ||
           !deps.acceptStagedAttachments ||
           !deps.releaseStagedAttachments ||
-          body.target.environment.kind !== 'current' ||
+          (body.target.environment?.kind ?? 'current') !== 'current' ||
           body.target.workspace?.kind === 'project-portable' ||
           body.target.workspace?.kind === 'project-portable-prepared' ||
           body.attemptId ||
@@ -3904,7 +3907,7 @@ export function createOrchestrationRoutes(
         if (
           !work ||
           !principal ||
-          body.target.environment.kind !== 'current' ||
+          (body.target.environment?.kind ?? 'current') !== 'current' ||
           body.target.workspace?.kind !== 'project'
         )
           return c.json(
@@ -4147,7 +4150,11 @@ export function createOrchestrationRoutes(
         400,
       );
     }
-  });
+  }
+
+  app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>
+    dispatchAuthorizedDelegation(c, getBody(c)),
+  );
 
   app.post(
     '/delegations/options',
