@@ -469,6 +469,9 @@ SDK HOOKS A PANE CAN USE (all imported from "@kontourai/station-sdk"):
 - useToast() → `{ showToast }`; call `showToast({ type: "info" | "success" | "warning" | "error", message })`.
 - useAuth() → the signed-in person and auth status.
 - useServerFetch() → a function that fetches a URL through Station's server; it needs the "network.fetch" permission.
+- useHost() → `clipboard.writeText(text)`, `openExternal(url)` (http and https only), and Station's `prompt({ title, label, initial })` and `confirm({ title, message })` dialogs. Each returns a promise that resolves with the outcome and never rejects.
+- useHostFacts() → `{ device: { isMobile } }`, re-rendering when it changes.
+- useShortcut({ id, keys: { key, modifiers }, description, when?, run }) → registers a shortcut in Station's shortcut list and returns `{ ok: true, registryId }` or `{ ok: false, reason, message }`. Station refuses the command palette, Settings and shortcut-list chords (⌘K, ⌘, and ⌘/) and the text-editing chords (⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z, ⌘A, Ctrl+Y), and registers shortcuts only for a verified plugin's pane. useShortcutScope(name, active) turns on a scope that `when` can name.
 Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, and render a loading and an empty state.
 
 PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:

@@ -28,6 +28,7 @@ import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
+import { KERNEL_RESERVED_SHORTCUTS } from '../contexts/kernelReservedShortcuts';
 import { useNavigation } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
@@ -524,9 +525,9 @@ export function CommandPalette() {
   }, []);
 
   useKeyboardShortcut(
-    'command-palette',
-    'k',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.id,
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.modifiers],
     'Open command palette',
     openPalette,
   );

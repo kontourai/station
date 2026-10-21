@@ -4,6 +4,7 @@ import {
   _setApiBase,
   _setProviderFunctions,
   type SDKContextValue,
+  type SDKHost,
   SDKProvider,
   type SDKToast,
   type ToastAction,
@@ -34,6 +35,13 @@ import {
   useOpenConversation,
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
+import { copyToClipboard } from '../lib/clipboard';
+import { openPluginExternalLink } from '../platform/openExternalLink';
+import {
+  usePaneConfirmChrome,
+  usePaneHostFacts,
+  usePanePromptChrome,
+} from '../workspace-panes/paneHostShellChrome';
 import {
   configureProvider,
   getActiveProviderId,
@@ -41,6 +49,7 @@ import {
   hasProvider,
   registerProvider,
 } from './layoutProviders';
+import { useSDKShortcutsHost } from './sdkShortcutsHost';
 
 const EMPTY_LAYOUTS: never[] = [];
 
@@ -193,6 +202,35 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
+  // The installed plugin this pane belongs to, as the host admitted it. Only
+  // `PluginWorkspacePaneSDKBoundary` passes one; the layout routes
+  // (LayoutView, PersonalBoardView, LayoutWorkspacePane) mount layouts whose
+  // `plugin` field is editable config, so they have no verified identity.
+  const verifiedPlugin = boundPluginName;
+
+  // Host services. The dialogs are the shell's own chrome, rendered here
+  // beside the plugin: this adapter is mounted exactly while it renders its
+  // children, so `active` is constant and unmount settles an open request.
+  // They name who asked, so a plugin's dialog cannot pass as Station's.
+  const requester = verifiedPlugin ?? 'an unverified layout';
+  const { confirm, confirmChrome } = usePaneConfirmChrome(
+    true,
+    undefined,
+    requester,
+  );
+  const { prompt, promptChrome } = usePanePromptChrome(true, requester);
+  const facts = usePaneHostFacts();
+  const sdkHost = useMemo<SDKHost>(
+    () => ({
+      clipboard: { writeText: copyToClipboard },
+      openExternal: openPluginExternalLink,
+      prompt,
+      confirm,
+    }),
+    [prompt, confirm],
+  );
+  const shortcuts = useSDKShortcutsHost(verifiedPlugin);
+
   // Create SDK context value with injected contexts. The agents, navigation,
   // toast and auth slots are the SDK's published contracts (#2399), so this
   // object is where the host is checked against them.
@@ -213,6 +251,8 @@ export function SDKAdapter({
           toast: { useToast: () => sdkToast },
           config: { useApiBase: () => ({ apiBase }) },
           auth: { useAuth: () => auth },
+          host: { useHost: () => sdkHost, facts },
+          ...(shortcuts ? { shortcuts } : {}),
           activeChats: {
             useSendMessage: () => sendMessage,
             useCreateChatSession: () => createChatSession,
@@ -240,8 +280,17 @@ export function SDKAdapter({
       openConversation,
       launchChat,
       auth,
+      sdkHost,
+      facts,
+      shortcuts,
     ],
   );
 
-  return <SDKProvider value={sdkValue}>{children}</SDKProvider>;
+  return (
+    <SDKProvider value={sdkValue}>
+      {children}
+      {confirmChrome}
+      {promptChrome}
+    </SDKProvider>
+  );
 }

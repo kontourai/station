@@ -313,13 +313,14 @@ or use client functions that take an explicit API base and request options.
 | Surface | Current default Station binding |
 | --- | --- |
 | Agents, navigation, toast, auth | Bound host contexts |
+| `useHost`, `useHostFacts`, `useShortcut`, `useShortcutScope` | Bound; see [Host service hooks](#host-service-hooks) and [Keyboard Hooks](#keyboard-hooks) |
 | Layout list/detail | Bound list and selected-layout projection |
 | `useApiBase` | Returns `{ apiBase }`, not a string |
 | Create/send/open chat | Bound host callbacks; see their UI identity/async distinctions below |
 | `useActiveChatActions(id)` | Forwards the host's unbound store-actions object; the supplied id is not bound to those actions |
 | `useConversations(agentSlug?)` | Forwards the adapter's captured list; the argument is not forwarded to the core query |
 | `useConfig`, `useConversation`, `useConversationMessages`, `useActiveChatState` | Corresponding methods are not supplied; calling them through this adapter fails |
-| Model, stats, workflow and keyboard contexts; slash-command/tool-approval hook slots | Not supplied by this adapter |
+| Model, stats and workflow contexts; the deprecated keyboard slots; slash-command/tool-approval hook slots | Not supplied by this adapter |
 
 The unbound hooks remain exported custom-host contracts, not deprecated or
 removed APIs. A custom `SDKProvider` may implement their slots. Default plugin
@@ -809,20 +810,117 @@ Returns stats for a specific conversation.
 
 ### Keyboard Hooks
 
-These require optional host slots absent from the default Station adapter.
-The following registration example describes a custom host that supplies them.
+#### `useShortcut(shortcut: SDKShortcut): SDKShortcutRegistration`
+
+Registers a shortcut in Station's shortcut registry while the component is
+mounted. It appears in the shortcut list and Settings, the user can rebind it,
+and an open modal suppresses it like Station's own shortcuts.
+
+```tsx
+const result = useShortcut({
+  id: 'open-picker',
+  keys: { key: 'p', modifiers: ['cmd', 'shift'] }, // cmd: ⌘ on a Mac, Ctrl elsewhere
+  description: 'Open the picker',
+  when: { not: 'composerFocused' },
+  run: () => setOpen(true), // return false to leave the key alone
+});
+```
+
+`id` is 1-64 letters, digits, `-` or `_`; Station lists it as
+`plugin.<plugin>.<id>`, with the installed plugin's name percent-encoded. The
+result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
+`reason` one of `'unbound'`, `'reserved'`, `'invalid-id'`, `'invalid-keys'` or
+`'invalid-when'`. A refused shortcut is not registered.
+
+- `'unbound'`: the pane has no installed-plugin identity Station verified.
+  Only an installed plugin's Workspace Pane has one; a project layout's own
+  `plugin` field does not count.
+- `'reserved'`: the command palette (⌘K), Settings (⌘,) and the shortcut list
+  (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
+  Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
+
+Plugin shortcuts rank below Station's own: a Station shortcut on the same
+chord wins whichever registered first. See
+[plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
+
+A `when` string is a host context key (`'composerFocused'`,
+`'terminalFocused'`, `'dialogOpen'`, `'dockFocused'`) or one of your own scope
+names; combine them with `{ not }`, `{ and: [] }` and `{ or: [] }`.
+
+#### `useShortcutScope(name: string, active = true): void`
+
+Turns on one of your plugin's scopes while mounted and `active`. A scope is
+visible only to your plugin's shortcuts. A host context key, an invalid name
+or a pane without a verified plugin identity throws.
+
+```tsx
+const [editing, setEditing] = useState(false);
+useShortcutScope('editor', editing);
+useShortcut({ id: 'save', keys: { key: 's', modifiers: ['cmd', 'alt'] },
+  description: 'Save', when: 'editor', run: save });
+```
 
 #### `useKeyboardShortcut(key: string, callback: () => void, deps?: any[]): void`
 
-Registers a keyboard shortcut for the lifetime of the component.
-
-```tsx
-useKeyboardShortcut('cmd+k', () => setOpen(true));
-```
+Deprecated: use `useShortcut`. This signature has no id or description, so the
+registry could not list it or check it against reserved chords. Station's
+adapter does not supply it, and calling it there throws. A custom host may
+still supply the slot.
 
 #### `useKeyboardShortcuts()`
 
-Returns all registered keyboard shortcuts.
+Deprecated: use `useShortcut`. It would hand a plugin the raw registry, which
+can replace and rebind Station's shortcuts. Station's adapter does not supply
+it.
+
+---
+
+### Host service hooks
+
+#### `useHost(): SDKHost`
+
+Requests Station carries out with its own chrome and platform plumbing. None of
+the promises rejects.
+
+```tsx
+const host = useHost();
+const copied = await host.clipboard.writeText(command); // false: no clipboard or refused
+const opened = await host.openExternal(pullRequest.url); // http(s) only
+const name = await host.prompt({ title: 'Rename', label: 'New name', initial: file });
+const decision = await host.confirm({ title: 'Delete?', message: 'This cannot be undone.' });
+```
+
+- `clipboard.writeText` resolves `true` only for a write the platform
+  accepted. Over plain `http://` there is no clipboard, so it resolves `false`.
+- `openExternal` opens `http:` and `https:` URLs in the desktop app's system
+  opener or a new browser tab, so the Station app is never replaced. It hands
+  on the parsed, normalised URL. Any other scheme, or a URL with a user name or
+  password, resolves `false`, and Station tells the user. The desktop app's own
+  link policy may also refuse a link.
+- `prompt` shows Station's prompt dialog and resolves the trimmed text, or
+  `null` when cancelled. A newer prompt cancels an open one. A prompt the pane
+  outlives resolves `null`, and so does a call after the pane has gone. Empty
+  text cannot be submitted.
+- `confirm` shows Station's confirm dialog and resolves `'confirmed'` or
+  `'cancelled'`, with the [pane-host contract](../design/pane-host-contract.md)'s
+  semantics; a call after the pane has gone resolves `'cancelled'`.
+
+Both dialogs are Station's standard modal chrome with a close button, drawn by
+the host rather than the plugin, and headed "From <plugin>" (or "From an
+unverified layout"). They are not trust or approval prompts, and an
+in-process plugin can draw lookalike dialogs.
+
+#### `useHostFacts(): PaneHostFacts`
+
+The pane host's environment facts, `{ device: { isMobile } }`. It re-renders
+when they change. `isMobile` is Station's single phone and coarse-pointer
+derivation, the same value a Workspace Pane receives as `host.facts`.
+
+These hooks serve in-process plugins. A sandboxed frame plugin uses the
+pane-host messages instead, which do not yet include prompt, clipboard,
+external links or shortcuts. `station dev` supplies all four hooks with
+browser stand-ins (`window.prompt`, `window.confirm`, a window key listener)
+that apply the same refusals.
 
 ---
 
