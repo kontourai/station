@@ -164,7 +164,7 @@ describe('SessionInventoryCompact, current-answer scope', () => {
     ).toBeTruthy();
   });
 
-  test('an unavailable Basis answer keeps the scope's other groups (#3853)', async () => {
+  test("an unavailable Basis answer keeps the scope's other groups (#3853)", async () => {
     expect(partial.basis.answer.state).toBe('unavailable');
     vi.stubGlobal(
       'fetch',
