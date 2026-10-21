@@ -136,7 +136,7 @@ describe('System Routes', () => {
       undefined,
       () => true,
       undefined,
-      [{ id: 'kiro', name: 'Kiro CLI' }],
+      [{ id: 'kiro', name: 'Kiro CLI', detected: true }],
     );
     expect(readiness).toEqual({
       ready: false,
@@ -155,12 +155,50 @@ describe('System Routes', () => {
     });
   });
 
+  test('GET /status lists an undetected catalogue Engine as not installed, with its install recipe', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        listUnconnectedACPRegistryEntries: async () => [
+          {
+            id: 'goose',
+            name: 'Goose',
+            detected: false,
+            install: { command: 'brew install block-goose-cli' },
+          },
+          { id: 'qwen-code', name: 'Qwen Code', detected: false },
+        ],
+      } as any,
+      mockLogger,
+    );
+    const body = await waitForStatusDiscovery(app);
+    const goose = body.externalEngines.find(
+      (engine: { engineId: string }) => engine.engineId === 'goose',
+    );
+    expect(goose).toEqual({
+      engineId: 'goose',
+      name: 'Goose',
+      detected: false,
+      ready: false,
+      source: null,
+      reason: 'not_installed',
+      install: { command: 'brew install block-goose-cli' },
+    });
+    // Never connectable from first run: no registry id until it is found.
+    expect(goose).not.toHaveProperty('registryEntryId');
+    expect(
+      body.externalEngines.find(
+        (engine: { engineId: string }) => engine.engineId === 'qwen-code',
+      ),
+    ).toMatchObject({ reason: 'not_installed', detected: false });
+  });
+
   test('GET /status projects a detected ACP registry Engine as not connected', async () => {
     const app = createSystemRoutes(
       {
         ...createMockDeps(),
-        listDetectedACPRegistryEntries: async () => [
-          { id: 'kiro', name: 'Kiro CLI' },
+        listUnconnectedACPRegistryEntries: async () => [
+          { id: 'kiro', name: 'Kiro CLI', detected: true },
         ],
       } as any,
       mockLogger,
@@ -195,8 +233,8 @@ describe('System Routes', () => {
       () => true,
       undefined,
       [
-        { id: 'claude', name: 'Claude (registry)' },
-        { id: 'kiro', name: 'Kiro CLI' },
+        { id: 'claude', name: 'Claude (registry)', detected: true },
+        { id: 'kiro', name: 'Kiro CLI', detected: true },
       ],
     );
     const claudeRows = readiness.engines.filter(

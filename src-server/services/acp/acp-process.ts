@@ -72,6 +72,12 @@ export interface ACPProcessOptions {
    * the start before anything is spawned.
    */
   spawnEnv?: (base: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+  /**
+   * The engine descriptor's non-secret launch variables. Applied UNDER the
+   * environment Station would otherwise launch with, so a value the user
+   * already set wins; `spawnEnv` then runs over the merged result.
+   */
+  launchEnv?: Readonly<Record<string, string>>;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -381,7 +387,10 @@ export class ACPProcess extends EventEmitter {
     // otherwise a service-launched Station can resolve the binary but the
     // engine subprocess itself still cannot find nix/mise/homebrew-managed
     // tools it shells out to internally.
-    const baseEnv = await augmentedSpawnEnv();
+    const augmentedEnv = await augmentedSpawnEnv();
+    const baseEnv = this.opts.launchEnv
+      ? { ...this.opts.launchEnv, ...augmentedEnv }
+      : augmentedEnv;
     const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide

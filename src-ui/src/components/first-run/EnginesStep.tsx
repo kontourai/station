@@ -49,6 +49,7 @@ import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
+import { EngineInstallHint } from '../engine-install/EngineInstallHint';
 import { hostActionCopy } from '../host-action/host-action-copy';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './EnginesStep.css';
@@ -365,6 +366,13 @@ export function EnginesStep({
                       <span className="first-run-engines__note">
                         {option.note}
                       </span>
+                    ) : null}
+                    {option.install ? (
+                      <EngineInstallHint
+                        name={option.name}
+                        recipe={option.install}
+                        devicePresentation={devicePresentation}
+                      />
                     ) : null}
                   </li>
                 ))}

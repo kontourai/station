@@ -495,6 +495,51 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
+### Catalogue descriptors
+
+`GET /acp/registry` lists the catalogue engines from every
+`acpConnectionRegistry` provider: the built-in list in
+[builtin-acp-engines.ts](../../src-server/providers/llm/builtin-acp-engines.ts)
+and any a plugin contributes. Besides the launch fields above, an entry
+(`ACPConnectionRegistryEntry` in
+[the ACP contract](../../packages/contracts/src/acp.ts)) may carry:
+
+| Field | Description |
+|---|---|
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`). The environment Station already launches with wins a conflict. |
+| `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
+| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Data only, not yet applied: nothing runs or reads these yet. |
+| `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+
+`validateACPEngineDescriptor` checks these fields and the entry's `name`,
+`description` and `sourceName`. An entry that fails is left out of the
+catalogue and logged rather than shown with some fields dropped: an unknown
+platform, a URL that is not https, an over-long value, text with
+control characters, line breaks or bidi override marks, a `launchEnv` name
+without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
+proxy variable is refused), or one that looks like a credential (a `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
+lists as a credential variable). A plugin entry is also refused when it
+carries `launchEnv`, reuses a built-in entry's id, or has a name that reads as
+a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
+Greek look-alikes), and every entry from a plugin provider registered as
+"Station", "Kontour" or a built-in engine's name is refused; the built-in card
+stays.
+A plugin entry's `sourceName` is always the identity its provider registered
+under, whatever the entry says, and its install recipe is shown with
+"Provided by" and that name.
+
+`POST /acp/registry/recheck` re-reads the login-shell `PATH`, then answers
+like `GET /acp/registry`, so an engine whose installer added its own bin
+directory to the shell rc after Station started can be found. Because it runs
+the host user's shell it needs `orchestration:operate`, while the `GET` never
+re-reads anything. The re-read is bounded by the login-shell timeout, runs at
+most once every 10 seconds, is shared by every request that arrives while one
+is running (including during the startup capture), and a failed re-read keeps
+the `PATH` Station already had. **Check again** uses it; a device without that
+scope is told so and still gets the plain list.
+
 ### Runtime API
 
 Connections are managed at runtime via the REST API — unchanged by this cutover, since it only manages connection lifecycle, not chat turns:
@@ -506,6 +551,8 @@ PUT    /acp/connections/:id            Update connection configuration and its p
 DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
+GET    /acp/registry                   List catalogue engines, with host detection and install recipe
+POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a

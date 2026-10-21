@@ -9,6 +9,7 @@ import type { DeploymentCapabilities } from '../../capabilities/deployment-capab
 import type { ManagedChatBinding } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
+import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import type { BootHistoryRecord } from './boot-history.js';
 
 export interface SystemStatusDeps {
@@ -81,9 +82,12 @@ export interface SystemStatusDeps {
       enabled: boolean;
     }>
   >;
-  /** Detected local-command Engine registry entries not yet connected. */
-  listDetectedACPRegistryEntries?: () => Promise<
-    Array<{ id: string; name: string }>
+  /**
+   * Local-command Engine registry entries not yet connected, found on the
+   * host or not, with the host platform's install recipe.
+   */
+  listUnconnectedACPRegistryEntries?: () => Promise<
+    UnconnectedACPRegistryEntry[]
   >;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;

@@ -11,6 +11,7 @@ import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
 import {
   type AcpDeclaredHandshake,
   parseAcpSessionModelState,
@@ -846,6 +847,7 @@ export class ACPProbe {
         command: this.config.command,
         args: this.config.args,
         cwd,
+        launchEnv: registryLaunchEnvFor(this.config),
         createClient: () => createProbeClient(this.inboundExtensionPolicy),
         clientCapabilities: {},
         logger: this.logger,
@@ -1223,6 +1225,7 @@ export class ACPProbe {
       command: this.config.command,
       args: this.config.args,
       cwd,
+      launchEnv: registryLaunchEnvFor(this.config),
       createClient: () => createProbeClient(this.inboundExtensionPolicy),
       clientCapabilities: {},
       logger: this.logger,
