@@ -460,8 +460,10 @@ of the retained bytes, so later failures for the same request preserve earlier
 reports. The changed receipt
 and its attached diagnostic bind the retained paths and SHA-256 digests; PR CI
 uploads this failed-report directory separately from canonical text artifacts
-under verification-output. Raw reports exceeding 16 MiB and
-missing reports produce explicit omission files. If retention cannot write,
+under verification-output. Retention parses each raw report as JSON, redacts the structured values, then serializes
+it as JSON. Missing or invalid JSON reports, raw reports exceeding 16 MiB, and redacted
+serialized reports exceeding that limit produce explicit omission files; malformed input
+is not repaired. If retention cannot write,
 `retentionFailure` names the error and private temporary directory, which is
 preserved for recovery. Reporter diagnostics and retention failures never turn
 a failed run into a pass or change test selection or deadlines.
