@@ -623,8 +623,11 @@ describe('persisted telemetry configuration during Agent activation', () => {
           saveSettled = true;
           return response;
         });
-        await vi.waitFor(() =>
-          expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
+        // Persistence uses real filesystem I/O before activation can enter.
+        // This observes entry, not a one-second configuration-save deadline.
+        await vi.waitFor(
+          () => expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
+          { timeout: 10_000 },
         );
         const persisted = await loader.loadAppConfig();
         for (const [key, value] of Object.entries(update)) {
