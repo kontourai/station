@@ -581,21 +581,19 @@ describe('MessageBubble phone copy and details actions', () => {
         turnId: 'turn-1',
       });
       expect(document.querySelector('.message__task-input-action')).toBeNull();
-      expect(
-        screen.queryByRole('button', { name: 'Add input to Task' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Add to Task/ })).toBeNull();
       fireEvent.click(
         await screen.findByRole('button', { name: 'More message actions' }),
       );
       const menu = await screen.findByRole('menu', { name: 'Message actions' });
       fireEvent.click(
         await within(menu).findByRole('menuitem', {
-          name: 'Add input to Task',
+          name: 'Add to Task: message',
         }),
       );
       // The picker opens from the menu and stays open after the menu hides.
       expect(
-        await screen.findByRole('dialog', { name: /Add input to Task/ }),
+        await screen.findByRole('dialog', { name: 'Add to Task' }),
       ).toBeTruthy();
       expect(menu.hidden).toBe(true);
     } finally {
@@ -603,7 +601,7 @@ describe('MessageBubble phone copy and details actions', () => {
     }
   });
 
-  it('an image-only message keeps its desktop ⋯ with Add input to Task', async () => {
+  it('an image-only message keeps its desktop ⋯ with Add to Task', async () => {
     mobile.current = false;
     try {
       renderRow({
@@ -626,7 +624,7 @@ describe('MessageBubble phone copy and details actions', () => {
       const menu = await screen.findByRole('menu', { name: 'Message actions' });
       expect(
         await within(menu).findByRole('menuitem', {
-          name: 'Add input to Task',
+          name: 'Add to Task: message',
         }),
       ).toBeTruthy();
       // The text actions need text: none is offered for an image.
