@@ -72,6 +72,17 @@ const TARGET_FLAGS = [
 ];
 
 const VERBS: Record<string, VerbSpec> = {
+  ensemble: {
+    group: 'Core Workspace',
+    summary: 'Inspect an Ensemble preset file and its member roster',
+    usage: ['station ensemble inspect <file> [--json]'],
+    actions: ['inspect'],
+    detail: [
+      'Shows the file digest, version, members, models, options, colors, and Stationmaster.',
+      'Inspection only; no members launched.',
+      '--json prints the inspection as JSON.',
+    ],
+  },
   start: {
     group: 'Lifecycle',
     summary: 'Start the application (auto-builds if needed)',
