@@ -90,11 +90,4 @@ patchedDependencies:
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
 enableGlobalVirtualStore: false
-# flow-agents 6.5.1 hosts dispatch 0.3, whose optional datum peer requires 0.7.
-# Give that parent its own datum instead of inheriting contracts' 0.8.
-packageExtensions:
-  "@kontourai/flow-agents@6.5.1":
-    dependencies:
-      "@kontourai/datum": 0.7.0
-
 # Managed bootstrap owns install, exact-hook preflight, and artifact proofs.
