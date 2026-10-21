@@ -669,7 +669,6 @@ function formatProblem(
   }
 }
 
-/** The name a person sees for a field, in errors and in the renderer. */
 /** Bound on {@link inputRequestSummary}. */
 const INPUT_REQUEST_SUMMARY_MAX_CHARS = 160;
 
@@ -684,9 +683,13 @@ export function inputRequestSummary(message: string): string {
   const first = lines.find((line) => line !== '') ?? '';
   const more = lines.filter((line) => line !== '').length > 1;
   if (first.length <= INPUT_REQUEST_SUMMARY_MAX_CHARS && !more) return first;
-  return `${first.slice(0, INPUT_REQUEST_SUMMARY_MAX_CHARS).trimEnd()}…`;
+  let shown = first.slice(0, INPUT_REQUEST_SUMMARY_MAX_CHARS);
+  // Never end on half of a surrogate pair.
+  if (/[\uD800-\uDBFF]$/.test(shown)) shown = shown.slice(0, -1);
+  return `${shown.trimEnd()}…`;
 }
 
+/** The name a person sees for a field, in errors and in the renderer. */
 export function inputRequestFieldLabel(field: InputRequestField): string {
   return field.title?.trim() || field.name;
 }

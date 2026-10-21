@@ -204,6 +204,62 @@ describe('handlePlanUpdatedEvent', () => {
     ]);
   });
 
+  test("a later turn's own prose plan replaces an earlier typed plan at completion", async () => {
+    // The final, unterminated line is only parsed when the turn commits; a
+    // canonical plan from an earlier turn must not shadow that parse.
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const send = (event: Record<string, unknown>) =>
+      handleOrchestrationEvent('http://station.test', {
+        provider: 'acp',
+        threadId,
+        createdAt: '2026-07-03T00:00:00.000Z',
+        ...event,
+      } as never);
+    send({ eventId: 'a1', turnId: 'turn-1', method: 'turn.started' });
+    send({
+      eventId: 'a2',
+      turnId: 'turn-1',
+      method: 'plan.updated',
+      entries: [
+        { content: 'Old A', status: 'pending' },
+        { content: 'Old B', status: 'pending' },
+      ],
+    });
+    send({
+      eventId: 'a3',
+      turnId: 'turn-1',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    send({ eventId: 'b1', turnId: 'turn-2', method: 'turn.started' });
+    send({
+      eventId: 'b2',
+      turnId: 'turn-2',
+      method: 'content.text-delta',
+      itemId: 'item-2',
+      delta: 'Doing this:\n1. New A\n',
+    });
+    send({
+      eventId: 'b3',
+      turnId: 'turn-2',
+      method: 'content.text-delta',
+      itemId: 'item-2',
+      delta: '2. New B',
+    });
+    send({
+      eventId: 'b4',
+      turnId: 'turn-2',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+
+    const artifact = activeChatsStore.getSnapshot()[threadId]?.planArtifact;
+    expect(artifact?.steps.map((step) => step.content)).toEqual([
+      'New A',
+      'New B',
+    ]);
+  });
+
   test('ignores an event for a thread with no active chat', () => {
     handlePlanUpdatedEvent({
       eventId: 'evt-1',
