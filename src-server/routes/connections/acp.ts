@@ -654,9 +654,14 @@ export function createACPRoutes(ctx: RuntimeContext) {
             const connected = await connectNewACPConnection(ctx, next);
             if (connected) {
               await registerPersistedACPConnection(ctx, id, next.name);
+            } else {
+              ctx.acpBridge.continueFirstContact?.(id);
             }
             acpOps.add(1, { op: 'update' });
-            return c.json({ success: true, data: config.connections[idx] });
+            return c.json({
+              success: true,
+              data: connectionStatusView(next, ctx.acpBridge.getStatus()),
+            });
           },
         ),
       );

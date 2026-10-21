@@ -189,6 +189,58 @@ export async function fetchACPConnectionRegistry(): Promise<
   return result.data ?? [];
 }
 
+/** Command-line words from the setup form; blank means no arguments. */
+export function splitACPArgs(args: string): string[] {
+  const trimmed = args.trim();
+  return trimmed ? trimmed.split(/\s+/) : [];
+}
+
+/**
+ * Saved connections whose engine never registered (a failed first add).
+ * Not part of `fetchACPConnections`: they are not installed engines.
+ */
+export async function fetchUnregisteredACPConnections(): Promise<
+  ACPConnectionInfo[]
+> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/connections/unregistered`,
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPConnectionInfo[];
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to fetch engines'));
+  }
+  return result.data ?? [];
+}
+
+/**
+ * Retry check: re-probe a saved connection from its saved config and
+ * register it when it connects. Answers its status (`probing` while a first
+ * start continues on the server).
+ */
+export async function checkACPConnection(
+  id: string,
+): Promise<ACPConnectionInfo | undefined> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/connections/${encodeURIComponent(id)}/check`,
+    { method: 'POST' },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ACPConnectionInfo;
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to check the engine'));
+  }
+  return result.data;
+}
+
 export async function createACPConnection(data: {
   id: string;
   name?: string;
@@ -204,7 +256,7 @@ export async function createACPConnection(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...data,
-      args: typeof data.args === 'string' ? data.args.split(/\s+/) : data.args,
+      args: typeof data.args === 'string' ? splitACPArgs(data.args) : data.args,
     }),
   });
   const result = (await response.json()) as {
@@ -434,6 +486,39 @@ export function useACPConnectionProbeStatusesQuery(
   );
 }
 
+export function useUnregisteredACPConnectionsQuery(
+  config?: QueryConfig<ACPConnectionInfo[]>,
+) {
+  return useApiQuery(
+    ['acp-unregistered-connections'],
+    () => fetchUnregisteredACPConnections(),
+    {
+      staleTime: config?.staleTime ?? 5_000,
+      gcTime: config?.gcTime,
+      enabled: config?.enabled ?? true,
+    },
+  );
+}
+
+export function useCheckACPConnectionMutation(
+  options?: MutationOptions<ACPConnectionInfo | undefined, string>,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ACPConnectionInfo | undefined, Error, string>({
+    mutationFn: async (id) => checkACPConnection(id),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
+      queryClient.invalidateQueries({ queryKey: ['acp-connection-registry'] });
+    },
+    onSuccess: (data, variables) => options?.onSuccess?.(data, variables),
+    onError: (error, variables) =>
+      options?.onError?.(error as Error, variables),
+  });
+}
+
 export function useACPConnectionRegistryQuery(
   config?: QueryConfig<ACPConnectionRegistryEntry[]>,
 ) {
@@ -480,6 +565,9 @@ export function useCreateACPConnectionMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
       queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
+      queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
       options?.onSuccess?.(data, variables);
@@ -498,6 +586,9 @@ export function useInstallACPConnectionRegistryEntryMutation(
     mutationFn: async (id) => installACPConnectionRegistryEntry(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
@@ -524,6 +615,9 @@ export function useUpdateACPConnectionMutation(
     mutationFn: async ({ id, updates }) => updateACPConnection(id, updates),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -540,6 +634,9 @@ export function useDeleteACPConnectionMutation(
     mutationFn: async (id: string) => deleteACPConnection(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       queryClient.invalidateQueries({
         queryKey: ['acp-connection-registry'],
       });
@@ -559,6 +656,9 @@ export function useReconnectACPConnectionMutation(
     mutationFn: async (id: string) => reconnectACPConnection(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['acp-unregistered-connections'],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

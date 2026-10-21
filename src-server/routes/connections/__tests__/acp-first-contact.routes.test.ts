@@ -424,6 +424,32 @@ describe('first-contact continuation of a cold engine add', () => {
       expect(await registered(configLoader)).toEqual(['stub']);
     });
 
+    // Edit setup saves the corrected command through PUT, which re-probes;
+    // its answer carries the probe status the setup dialog shows.
+    test('an edit that connects answers its status and registers the engine', async () => {
+      const { script, createProbe } = scriptedProbes();
+      script.request.push({ ok: false, message: 'spawn stub-acp ENOENT' });
+      script.request.push({ ok: true });
+      const { ctx, configLoader } = await createContext(createProbe);
+      const app = asOperator(createACPRoutes(ctx));
+      await create(app);
+
+      const body = await json(
+        await app.request('/connections/stub', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: 'stub-acp-fixed' }),
+        }),
+      );
+
+      expect(body.data).toMatchObject({
+        id: 'stub',
+        command: 'stub-acp-fixed',
+        status: 'available',
+      });
+      expect(await registered(configLoader)).toEqual(['stub']);
+    });
+
     test('a re-check of an id with no saved connection is not found', async () => {
       const { createProbe } = scriptedProbes();
       const { ctx } = await createContext(createProbe);

@@ -7,8 +7,13 @@ vi.mock('../api', () => ({
 const authenticatedFetch = vi.hoisted(() => vi.fn());
 vi.mock('../client/http', () => ({ authenticatedFetch }));
 
-const { connectAndMaterializeACPRegistryEngine, EngineStillStartingError } =
-  await import('../query-domains/acpWorkspace');
+const {
+  checkACPConnection,
+  connectAndMaterializeACPRegistryEngine,
+  createACPConnection,
+  EngineStillStartingError,
+  fetchUnregisteredACPConnections,
+} = await import('../query-domains/acpWorkspace');
 
 describe('connectAndMaterializeACPRegistryEngine', () => {
   beforeEach(() => authenticatedFetch.mockReset());
@@ -113,5 +118,63 @@ describe('connectAndMaterializeACPRegistryEngine', () => {
     await expect(
       connectAndMaterializeACPRegistryEngine('kiro'),
     ).rejects.toThrow("Connection 'kiro' already exists");
+  });
+});
+
+describe('custom engine connections', () => {
+  beforeEach(() => authenticatedFetch.mockReset());
+
+  // A custom engine added with no arguments must launch with none, not with
+  // one empty-string argument.
+  test('blank arguments send no arguments, and words split on whitespace', async () => {
+    authenticatedFetch.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ success: true, data: { id: 'stub' } })),
+    );
+
+    await createACPConnection({ id: 'stub', command: 'stub', args: '' });
+    await createACPConnection({
+      id: 'stub',
+      command: 'stub',
+      args: '  --acp  -v ',
+    });
+
+    const sent = authenticatedFetch.mock.calls.map(
+      ([, init]) => JSON.parse(init.body).args,
+    );
+    expect(sent).toEqual([[], ['--acp', '-v']]);
+  });
+
+  test('re-checks a saved connection and reads the unregistered ones', async () => {
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { id: 'stub', status: 'available' },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: [{ id: 'stub', status: 'unavailable' }],
+          }),
+        ),
+      );
+
+    await expect(checkACPConnection('stub')).resolves.toMatchObject({
+      status: 'available',
+    });
+    await expect(fetchUnregisteredACPConnections()).resolves.toEqual([
+      { id: 'stub', status: 'unavailable' },
+    ]);
+    expect(
+      authenticatedFetch.mock.calls.map(([url, init]) => [url, init?.method]),
+    ).toEqual([
+      ['http://station.test/acp/connections/stub/check', 'POST'],
+      ['http://station.test/acp/connections/unregistered', undefined],
+    ]);
   });
 });
