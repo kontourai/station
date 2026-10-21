@@ -1,0 +1,7 @@
+{
+  "revision": "b1caa8e3c4be8c3af10d65468623cd31c200e360",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reconciled execution-plan status with the completed independent R3 retention report and unchanged e56427 runtime blob, committed final-fetch and credential-observation owners, their separate retained managed receipts, and the 3004ad1e real-read-queue fixture/mutation/type receipt. The plan remains scope/status classification with no cited source-review inputs; historical implementation counts remain revision-bound. Isolated sealed-source, rounds, stream and tariff candidates remain unadopted. No boot, route, provider, native, hosted or release acceptance is established by this note.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
