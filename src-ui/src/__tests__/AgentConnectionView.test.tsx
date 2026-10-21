@@ -1236,8 +1236,11 @@ describe('AgentConnectionView', () => {
     const group = screen.getByRole('region', {
       name: 'From the public registry',
     });
-    // Station's own catalogue keeps its built-in, with the listing's facts.
+    // Station's own catalogue keeps its built-in, with the listing's facts,
+    // and the registry's engines appear only in their group.
     expect(within(group).queryByText('Goose')).toBeNull();
+    expect(screen.getAllByText('Stakpak')).toHaveLength(1);
+    expect(screen.getAllByText('Gemini CLI')).toHaveLength(1);
     expect(screen.getByText('By Block · version 1.55.0')).toBeTruthy();
 
     const stakpak = within(group).getByTestId('public-registry-entry-stakpak');
