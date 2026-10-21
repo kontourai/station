@@ -1537,7 +1537,8 @@ dynamically allocated-port fixtures overlap. A test that owns host-global
 leases, fencing, or coordinator capacity belongs in process-exclusive. The
 1,026-part model-runtime outbox keeper also uses that group: it owns a fresh
 one-worker lifecycle for its WAL/FULL transactions and one-at-a-time ACKs,
-while retaining the original 30-second bound and complete replay geometry. New
+with a 120-second liveness guard and complete replay geometry. The keeper
+asserts durable completion and readiness, not a 30-second performance target. New
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.

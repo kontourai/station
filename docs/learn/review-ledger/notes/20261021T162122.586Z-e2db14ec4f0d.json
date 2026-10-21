@@ -1,0 +1,7 @@
+{
+  "revision": "268e734e06a94c0d0dc489b6eb32be82f54c6269",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the fixture-only TelemetryConsent.routes clock/admission delta against the existing visible-interaction notice contract and controlled UI-route evidence claims. The two daily-flush rows now defer the real disclosure route response behind one owned animation-frame gate and use a fake-aware wait to advance the clock while awaiting the actual dialog. Shared-response release/cancel cleanup is explicit; the canonical Testing Library timeout is preserved. Existing 40ms/12s progression, no-notice/no-send, pending Off-save, visible dismissal, final persisted tiers and real local route responses remain unchanged. No production behavior, receipt authority, deadline, native or live publisher claim changes. The original hosted6dead81 dismiss failure occurred before privacy assertions and remains retained; local baseline40PASS does not establish exact hosted causality. Controlled old-wait failure establishes scheduler-harness robustness only. Document prose remains accurate for this changed input; all other source inputs and historical execution claims are outside this delta review.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
+  ]
+}
