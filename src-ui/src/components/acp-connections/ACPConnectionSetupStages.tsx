@@ -7,6 +7,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import type { ACPConnectionDraft } from './types';
 import type {
+  ACPConnectionSetupAttempt,
   ACPConnectionSetupErrorKind,
   ACPConnectionSetupStage,
 } from './useACPConnectionSetup';
@@ -22,15 +23,17 @@ export function ACPConnectionSetupHeader({
 }) {
   const custom = stage === 'custom';
   const subtitle =
-    stage === 'confirm'
-      ? 'Review what connecting this engine changes.'
-      : stage === 'checking'
-        ? 'Station is checking this engine now.'
-        : stage === 'result'
-          ? 'Here is the current readiness result.'
-          : stage === 'error'
-            ? 'Your setup is still here. Try again or edit it.'
-            : 'Choose an engine to set up, or enter a custom command.';
+    editing && stage === 'custom'
+      ? "Change this engine's setup, then check it."
+      : stage === 'confirm'
+        ? 'Review what connecting this engine changes.'
+        : stage === 'checking'
+          ? 'Station is checking this engine now.'
+          : stage === 'result'
+            ? 'Here is the current readiness result.'
+            : stage === 'error'
+              ? 'Your setup is still here. Try again or edit it.'
+              : 'Choose an engine to set up, or enter a custom command.';
   return (
     <div className="acp-add-dialog__header">
       <div>
@@ -360,6 +363,16 @@ export function ACPConnectionConfirmStage({
   );
 }
 
+/**
+ * A command with whitespace that does not look like a path is most often a
+ * program plus its arguments typed into one field; a path to a program may
+ * itself contain spaces.
+ */
+function commandHasArguments(command: string): boolean {
+  const value = command.trim();
+  return /\s/.test(value) && !/^([~/.]|[A-Za-z]:[\\/])/.test(value);
+}
+
 export function ACPConnectionCustomStage({
   draft,
   advancedOpen,
@@ -403,6 +416,12 @@ export function ACPConnectionCustomStage({
         />
       </label>
       {input('Command', 'command', 'gemini')}
+      {commandHasArguments(draft.command) && (
+        <p className="acp-add-dialog__field-note">
+          This looks like a program and its arguments. Put arguments in Advanced
+          → Arguments and keep only the program here.
+        </p>
+      )}
       <details
         className="acp-add-dialog__advanced"
         open={advancedOpen}
@@ -425,6 +444,7 @@ export function ACPConnectionSetupStatus({
   reason,
   pending,
   firstContact = false,
+  attempt = 'add',
   engineName,
 }: {
   stage: ACPConnectionSetupStage;
@@ -440,18 +460,27 @@ export function ACPConnectionSetupStatus({
   pending: boolean;
   /** The engine's first start is still running in the background. */
   firstContact?: boolean;
+  /** A first add, a re-check, or a saved edit: they are said differently. */
+  attempt?: ACPConnectionSetupAttempt;
   engineName?: string;
 }) {
+  const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>Checking</strong>
         <span>
           {firstContact
-            ? `Starting ${engineName ?? 'this engine'} for the first time. A first start can take up to a minute.`
-            : pending
-              ? 'Adding the engine and checking its readiness.'
-              : 'Waiting for the refreshed connection result.'}
+            ? attempt === 'add'
+              ? `Starting ${engine} for the first time. A first start can take up to a minute.`
+              : `Starting ${engine}. A first start can take up to a minute.`
+            : !pending
+              ? 'Waiting for the refreshed connection result.'
+              : attempt === 'recheck'
+                ? `Checking ${engine} again.`
+                : attempt === 'edit'
+                  ? `Saving your changes and checking ${engine}.`
+                  : 'Adding the engine and checking its readiness.'}
         </span>
       </div>
     );
@@ -472,21 +501,26 @@ export function ACPConnectionSetupStatus({
         {label !== 'Ready' && reason && (
           <>
             <span className="acp-add-dialog__result-reason">
-              {`${reason.phase}: ${reason.message}`}
+              {reason.message}
             </span>
-            <span className="acp-add-dialog__result-action">
-              {/*
-                Derived from the phase the probe actually failed in, not
-                guessed from the message: before `initialize` the command
-                never ran, and after it the command is running and answering.
-                Anything more specific would be a claim about a failure
-                Station cannot classify.
-*/}
-              {reason.phase === 'spawn' ||
-              reason.phase === 'workspace preparation'
-                ? 'Station could not start this engine’s command. Install it and make it runnable on the computer Station runs on, then check it again.'
-                : 'The command started but did not finish connecting. Resolve what it reported above in the engine itself, then check it again.'}
-            </span>
+            {/*
+              Derived from the phase the probe actually failed in, not guessed
+              from the message. A command that never launched is reported by
+              the server with its own remedy (acp-process.ts), so no second
+              hint repeats it; after launch the command is running and
+              answering, so the remedy lies in the engine.
+            */}
+            {reason.phase === 'workspace preparation' ? (
+              <span className="acp-add-dialog__result-action">
+                Station could not prepare a folder for this engine. Check its
+                working directory under Advanced, then check it again.
+              </span>
+            ) : reason.phase !== 'spawn' ? (
+              <span className="acp-add-dialog__result-action">
+                The command started but did not finish connecting. Resolve what
+                it reported above in the engine itself, then check it again.
+              </span>
+            ) : null}
           </>
         )}
       </div>

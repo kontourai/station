@@ -171,9 +171,11 @@ describe('ACPAddConnectionModal', () => {
         connections={[
           {
             ...connection('unavailable'),
+            // What the probe records for a command it cannot find.
             lastError: {
               phase: 'spawn',
-              message: 'spawn kiro ENOENT',
+              message:
+                'Station could not start kiro: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.',
             },
           },
         ]}
@@ -189,11 +191,12 @@ describe('ACPAddConnectionModal', () => {
       );
     });
     const status = screen.getByRole('status');
-    expect(status.textContent).toContain('spawn kiro ENOENT');
-    expect(status.textContent).toContain('spawn:');
     expect(status.textContent).toContain(
-      'make it runnable on the computer Station runs on',
+      'Station could not start kiro: it is not installed',
     );
+    // No raw phase name, and the remedy is said once, not twice.
+    expect(status.textContent).not.toContain('spawn:');
+    expect(status.textContent?.match(/Install it/g)).toHaveLength(1);
   });
 
   // The action is derived from the phase: after `initialize` the command IS
@@ -235,9 +238,8 @@ describe('ACPAddConnectionModal', () => {
       );
     });
     const status = screen.getByRole('status');
-    expect(status.textContent).toContain(
-      'session creation: Authentication required',
-    );
+    expect(status.textContent).toContain('Authentication required');
+    expect(status.textContent).not.toContain('session creation:');
     expect(status.textContent).toContain('did not finish connecting');
     expect(status.textContent).not.toContain('Install it');
   });
@@ -301,7 +303,7 @@ describe('ACPAddConnectionModal', () => {
     });
     expect(screen.queryByText('Checking')).toBeNull();
     expect(screen.getByRole('status').textContent).toContain(
-      'initialize: Timed out after 10000ms',
+      'Timed out after 10000ms',
     );
     expect(
       screen.getByRole('button', { name: 'Choose another engine' }),
@@ -347,7 +349,7 @@ describe('ACPAddConnectionModal', () => {
       );
     });
     expect(screen.getByRole('status').textContent).toContain(
-      'spawn: spawn gemini ENOENT',
+      'spawn gemini ENOENT',
     );
     expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
@@ -415,7 +417,7 @@ describe('ACPAddConnectionModal', () => {
         ),
       );
       expect(screen.getByRole('status').textContent).toContain(
-        'initialize: Timed out after 60000ms',
+        'Timed out after 60000ms',
       );
       expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
     });
@@ -487,7 +489,7 @@ describe('ACPAddConnectionModal', () => {
       });
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toContain(
-          'initialize: the NEW failure',
+          'the NEW failure',
         ),
       );
     });
@@ -668,6 +670,127 @@ describe('ACPAddConnectionModal', () => {
       cwd: '/srv/stub',
     });
     expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  // Retry check and Edit setup do not add anything, and a re-check of an
+  // engine that never connected is still its first start, said without
+  // "for the first time" being claimed for a second try.
+  describe('wording for re-checks and edits', () => {
+    test('Retry check says it is checking again, not adding', async () => {
+      const onInstallRegistryEntry = vi
+        .fn()
+        .mockResolvedValueOnce(failedFirstAddResponse)
+        .mockReturnValueOnce(new Promise(() => {}));
+      render(
+        <ACPAddConnectionModal
+          registryEntries={[kiro]}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={onInstallRegistryEntry}
+          onCancel={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Retry check' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Checking Kiro CLI again.',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).not.toContain('Adding');
+    });
+
+    test('a re-check that continues a first start does not call it the first time', async () => {
+      const onInstallRegistryEntry = vi
+        .fn()
+        .mockResolvedValueOnce(failedFirstAddResponse)
+        .mockResolvedValueOnce({
+          ...failedFirstAddResponse,
+          status: 'probing',
+          lastError: undefined,
+        });
+      render(
+        <ACPAddConnectionModal
+          registryEntries={[kiro]}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={onInstallRegistryEntry}
+          onCancel={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Retry check' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Starting Kiro CLI. A first start can take up to a minute.',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).not.toContain(
+        'for the first time',
+      );
+    });
+
+    test('Edit setup speaks of changing and saving, not choosing or adding', async () => {
+      render(
+        <ACPAddConnectionModal
+          registryEntries={[kiro]}
+          connections={[]}
+          editConnection={{
+            ...failedFirstAddResponse,
+            id: 'stub',
+            name: 'Stub Engine',
+            command: 'stub-acp',
+          }}
+          onAdd={vi.fn()}
+          onUpdate={() => new Promise(() => {})}
+          onCancel={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText("Change this engine's setup, then check it."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Choose an engine to set up/)).toBeNull();
+      fireEvent.change(screen.getByLabelText('Command'), {
+        target: { value: 'stub-acp-fixed' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+      expect(screen.getByRole('status').textContent).toContain(
+        'Saving your changes and checking Stub Engine.',
+      );
+    });
+  });
+
+  // `node /tmp/x.mjs` typed into Command is a program and its argument; the
+  // engine would be reported "not installed" under that whole name.
+  test('a command with arguments in it says where arguments go', () => {
+    render(
+      <ACPAddConnectionModal
+        registryEntries={[]}
+        onAdd={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'node /tmp/x.mjs' },
+    });
+    expect(
+      screen.getByText(
+        'This looks like a program and its arguments. Put arguments in Advanced → Arguments and keep only the program here.',
+      ),
+    ).toBeTruthy();
+
+    // A path to a program can contain spaces.
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: '/Applications/My App/bin/engine' },
+    });
+    expect(screen.queryByText(/Put arguments in Advanced/)).toBeNull();
   });
 
   test('focuses the first custom field and contains Tab at the shared dialog boundary', () => {

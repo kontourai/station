@@ -171,7 +171,13 @@ export function ACPAddConnectionModal({
           reason={resultConnection?.lastError ?? null}
           pending={isPending}
           firstContact={awaitingFirstContact}
-          engineName={resultConnection?.name}
+          attempt={state.attempt}
+          engineName={
+            resultConnection?.name ??
+            state.selectedEntry?.name ??
+            editConnection?.name ??
+            (state.draft.name || undefined)
+          }
         />
       </div>
       <ACPConnectionSetupActions

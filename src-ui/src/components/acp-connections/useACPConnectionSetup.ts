@@ -31,6 +31,8 @@ interface ACPConnectionSetupState {
   addedConnection: ACPConnectionInfo | null;
   /** When the add answered (epoch ms); polls fetched before it are stale. */
   completedAt: number | null;
+  /** What the running check is: a first add, a re-check, or a saved edit. */
+  attempt: ACPConnectionSetupAttempt;
   mutationComplete: boolean;
   error: string | null;
   errorKind: ACPConnectionSetupErrorKind | null;
@@ -40,13 +42,20 @@ interface ACPConnectionSetupState {
 
 export type ACPConnectionSetupErrorKind = 'mutation' | 'refresh';
 
+export type ACPConnectionSetupAttempt = 'add' | 'recheck' | 'edit';
+
 type SetupAction =
   | { type: 'custom' }
   | { type: 'catalog' }
   | { type: 'confirm'; entry: ACPConnectionRegistryEntry }
   | { type: 'advanced'; open: boolean }
   | { type: 'draft'; field: keyof ACPConnectionDraft; value: string }
-  | { type: 'submit'; entry: ACPConnectionRegistryEntry | null; id: string }
+  | {
+      type: 'submit';
+      entry: ACPConnectionRegistryEntry | null;
+      id: string;
+      attempt: ACPConnectionSetupAttempt;
+    }
   | { type: 'refresh' }
   | {
       type: 'complete';
@@ -112,6 +121,7 @@ function reduceACPConnectionSetup(
         resultConnectionId: action.id,
         addedConnection: null,
         completedAt: null,
+        attempt: action.attempt,
         mutationComplete: false,
         error: null,
         errorKind: null,
@@ -181,6 +191,7 @@ function initialState({
     resultConnectionId: null,
     addedConnection: null,
     completedAt: null,
+    attempt: 'add',
     mutationComplete: false,
     error: null,
     errorKind: null,
@@ -295,14 +306,20 @@ function useSetupSubmit(
           state.draft.command,
           state.draft.name,
         );
-      dispatch({ type: 'submit', entry, id });
+      // Editing: an unchanged form, or Retry check, re-checks the saved
+      // engine. The update would save nothing and probe nothing.
+      const recheckSaved =
+        editConnection &&
+        onCheck &&
+        (recheck || sameDraft(state.draft, draftFor(editConnection)));
+      dispatch({
+        type: 'submit',
+        entry,
+        id,
+        attempt:
+          recheck || recheckSaved ? 'recheck' : editConnection ? 'edit' : 'add',
+      });
       try {
-        // Editing: an unchanged form, or Retry check, re-checks the saved
-        // engine. The update would save nothing and probe nothing.
-        const recheckSaved =
-          editConnection &&
-          onCheck &&
-          (recheck || sameDraft(state.draft, draftFor(editConnection)));
         const response = entry
           ? await onInstallRegistryEntry?.(entry.id)
           : recheckSaved
