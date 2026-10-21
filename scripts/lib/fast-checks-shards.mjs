@@ -421,7 +421,7 @@ export function verifyFastChecks({
  * A pass over such a plan is provisional: the merge queue's full regression
  * keys on the same list, so it owns the deferred work before merge.
  */
-export function suiteDeferrals(plan) {
+function suiteDeferrals(plan) {
   return (plan?.deferredLanes ?? [])
     .map((lane) => lane.id)
     .filter((id) => FULL_REGRESSION_LANES.includes(id));

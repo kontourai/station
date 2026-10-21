@@ -63,7 +63,7 @@ function realish(path: string): string {
  * The directory OpenCode treats as the project root for `cwd`: the nearest
  * ancestor holding `.git` (a directory or a worktree's file), or `undefined`.
  */
-export function openCodeGitRoot(cwd: string): string | undefined {
+function openCodeGitRoot(cwd: string): string | undefined {
   let dir = realish(resolve(cwd));
   for (;;) {
     if (existsSync(join(dir, '.git'))) return dir;
@@ -79,7 +79,7 @@ export function openCodeGitRoot(cwd: string): string | undefined {
  * depth (a session can start in a nested directory). Compared without case,
  * as a case-insensitive file system resolves it.
  */
-export function isOpenCodeConfigPath(path: string): boolean {
+function isOpenCodeConfigPath(path: string): boolean {
   const parts = path.split(/[\\/]+/).map((part) => part.toLowerCase());
   const name = parts.at(-1) ?? '';
   return (

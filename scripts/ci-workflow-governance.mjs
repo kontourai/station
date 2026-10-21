@@ -488,7 +488,7 @@ export const FAST_CHECKS_AGGREGATE_STEP_IF =
   "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
-export const FAST_CHECKS_AGGREGATE_STEP_ID = 'verify';
+const FAST_CHECKS_AGGREGATE_STEP_ID = 'verify';
 export const FAST_CHECKS_PROVISIONAL_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ steps.verify.outputs.provisional == 'true' }}";
