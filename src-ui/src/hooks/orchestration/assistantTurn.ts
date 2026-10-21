@@ -171,13 +171,13 @@ export function finalizeAssistantTurn(
     // parsed now) replaces the plan; otherwise a typed plan (`plan.updated`)
     // stays, and only without one is the plan re-derived from history.
     planArtifact:
-      deriveLatestPlanArtifactFromMessages([finalizedMessage] as any) ??
+      deriveLatestPlanArtifactFromMessages([finalizedMessage]) ??
       (chat.planArtifact?.source === 'canonical'
         ? chat.planArtifact
         : deriveLatestPlanArtifactFromMessages([
             ...priorMessages,
             finalizedMessage,
-          ] as any)),
+          ])),
     streamingMessage: undefined,
     status: 'idle',
     orchestrationStatus: 'idle',

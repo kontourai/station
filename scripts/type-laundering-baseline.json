@@ -2667,12 +2667,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/hooks/orchestration/assistantTurn.ts",
-      "rule": "as-any",
-      "fingerprint": "a6582a09fc80b0562335fd257d9ad3d5383884dd1fa8b18be96b49639b0a3d2d",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/hooks/orchestration/rehydrateChatSession.ts",
       "rule": "as-any",
       "fingerprint": "4e153e8fe0e5282d3016da92f8493ca2978b13e1ef3ab021168c3bfb7100a300",
