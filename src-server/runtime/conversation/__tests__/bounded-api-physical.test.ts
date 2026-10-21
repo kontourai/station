@@ -404,8 +404,8 @@ test.each(['volt', 'strands'] as const)(
         { status: 'fulfilled', value: undefined },
       ]);
       await rejectUnstartedStrandsStream(agent);
-      await cancelStartedStrandsStream(agent);
       await cancelPendingStrandsStream(agent);
+      await cancelStartedStrandsStream(agent);
     }
     if ('raw' in agent && agent.raw instanceof Agent) {
       const raw = agent.raw;
@@ -458,8 +458,8 @@ test.each(['volt', 'strands'] as const)(
         { status: 'fulfilled', value: undefined },
       ]);
       await rejectUnstartedStrandsStream(bundle.agent);
-      await cancelStartedStrandsStream(bundle.agent);
       await cancelPendingStrandsStream(bundle.agent);
+      await cancelStartedStrandsStream(bundle.agent);
     }
     if ('raw' in bundle.agent && bundle.agent.raw instanceof Agent) {
       const raw = bundle.agent.raw;
