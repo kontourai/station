@@ -63,7 +63,9 @@ const CONFUSABLE_SKELETON: Readonly<Record<string, string>> = {
 };
 
 /** The form two names are compared in: NFKC, case-folded, confusables mapped, spacing collapsed. */
-function nameSkeleton(name: string): string {
+function nameSkeleton(name: unknown): string {
+  // Entries come from plugin code, so a missing or non-string name is possible.
+  if (typeof name !== 'string') return '';
   return [...name.normalize('NFKC').toLowerCase()]
     .map((char) => CONFUSABLE_SKELETON[char] ?? char)
     .join('')
@@ -83,6 +85,7 @@ function refusalReasons(
 ): string[] {
   const errors = validateACPEngineDescriptor(entry);
   if (builtin) return errors;
+  if (nameSkeleton(entry.name) === '') errors.push('name is required');
   // The card and its "Provided by" line are what a person trusts the install
   // command by, so neither may read as a built-in engine or as Station.
   if (builtinNames.has(nameSkeleton(entry.name)))

@@ -492,6 +492,37 @@ describe('ACP Routes', () => {
     ]);
   });
 
+  test('a plugin entry without a usable name is refused without breaking the listing', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        type: 'acpConnectionRegistry',
+        provider: {
+          listAvailable: () => [
+            { id: 'nameless', command: 'nameless' },
+            { id: 'numbered', name: 7, command: 'numbered' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const response = await app.request('/registry');
+    expect(response.status).toBe(200);
+    expect(
+      (await json(response)).data.map((entry: { id: string }) => entry.id),
+    ).toEqual(['acme', 'goose']);
+  });
+
   test('a plugin entry is attributed to its registered provider, and unsafe names are refused', async () => {
     providerEntries = [
       {
