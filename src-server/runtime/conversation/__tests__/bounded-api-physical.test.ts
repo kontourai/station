@@ -47,6 +47,7 @@ const appConfig = {
   defaultModel: 'fixture',
   invokeModel: 'fixture',
   structureModel: 'fixture',
+  defaultMaxOutputTokens: 7,
 };
 const spec: AgentSpec = {
   name: 'physical-test',
