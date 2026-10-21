@@ -1,9 +1,62 @@
+import { createHash } from 'node:crypto';
 import {
   CONVERSATION_HANDOFF_CARRIED_FIELDS,
   CONVERSATION_HANDOFF_RESET_FIELDS,
+  type ConversationContextSeedReceipt,
   type ConversationHandoffCarriedField,
   type ConversationHandoffResetField,
 } from '@kontourai/station-contracts/orchestration';
+import { z } from 'zod';
+
+export interface ConversationContextSeedPin
+  extends ConversationContextSeedReceipt {
+  text: string;
+}
+
+const contextSeedSchema = z
+  .object({
+    text: z.string(),
+    seedDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    sourceCutoffs: z.array(
+      z
+        .object({
+          sessionId: z.string().min(1),
+          afterSequence: z.number().int().nonnegative(),
+          throughSequence: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    omission: z
+      .object({
+        totalMessages: z.number().int().nonnegative(),
+        includedMessages: z.number().int().nonnegative(),
+        omittedMessages: z.number().int().nonnegative(),
+        newestShortened: z.boolean(),
+        nonTextMessages: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+/** Corrupt persisted context must refuse rather than reconstruct different text. */
+export function readConversationContextSeedPin(
+  json: string,
+): ConversationContextSeedPin {
+  const seed = contextSeedSchema.parse(JSON.parse(json));
+  if (
+    createHash('sha256').update(seed.text).digest('hex') !== seed.seedDigest ||
+    seed.omission.includedMessages + seed.omission.omittedMessages !==
+      seed.omission.totalMessages ||
+    new Set(seed.sourceCutoffs.map((cutoff) => cutoff.sessionId)).size !==
+      seed.sourceCutoffs.length ||
+    seed.sourceCutoffs.some(
+      (cutoff) => cutoff.throughSequence < cutoff.afterSequence,
+    )
+  ) {
+    throw new Error('The pinned conversation context is invalid.');
+  }
+  return seed;
+}
 
 /**
  * Deep authority for an explicit Agent/engine handoff.  A caller gets one
@@ -23,6 +76,7 @@ export interface ConversationHandoffMarker {
   messageDigest: string;
   nativeReturnSourceSessionId?: string;
   nativeReturnSourceEventId?: string;
+  contextSeed?: ConversationContextSeedPin;
   createdAt: string;
 }
 
@@ -82,7 +136,22 @@ export interface ConversationHandoffModule {
 function snapshot(
   marker: ConversationHandoffMarker,
 ): Readonly<ConversationHandoffMarker> {
-  return Object.freeze({ ...marker });
+  return Object.freeze({
+    ...marker,
+    ...(marker.contextSeed
+      ? {
+          contextSeed: Object.freeze({
+            ...marker.contextSeed,
+            sourceCutoffs: Object.freeze(
+              marker.contextSeed.sourceCutoffs.map((cutoff) =>
+                Object.freeze({ ...cutoff }),
+              ),
+            ),
+            omission: Object.freeze({ ...marker.contextSeed.omission }),
+          }),
+        }
+      : {}),
+  });
 }
 
 /** The module's disclosure is structural, stable, and never provider-derived. */

@@ -102,6 +102,7 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffContextSeedColumn,
   ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
   ensureConversationHandoffNativeReturnColumn,
@@ -203,6 +204,7 @@ import {
   type ConversationHandoffMarker,
   type ConversationHandoffModule,
   createConversationHandoffModule,
+  readConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
   type ConversationSessionLineage,
@@ -2253,6 +2255,7 @@ export class EventStore {
       ensureConversationHandoffMessageDigestColumn(this.db);
       ensureConversationHandoffNativeReturnColumn(this.db);
       ensureConversationHandoffExecutionAgentColumn(this.db);
+      ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -10906,26 +10909,29 @@ export class EventStore {
       ...(row.native_return_source_event_id
         ? { nativeReturnSourceEventId: row.native_return_source_event_id }
         : {}),
+      ...(row.context_seed_json !== null && row.context_seed_json !== undefined
+        ? { contextSeed: readConversationContextSeedPin(row.context_seed_json) }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -10947,8 +10953,8 @@ export class EventStore {
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
          target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -10963,7 +10969,8 @@ export class EventStore {
       left.targetModelId === right.targetModelId &&
       left.messageDigest === right.messageDigest &&
       left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
-      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId &&
+      JSON.stringify(left.contextSeed) === JSON.stringify(right.contextSeed);
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -10984,6 +10991,18 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            // The cutoffs precede projection. Under the write transaction,
+            // reject any intervening append rather than acknowledge text
+            // against a different event snapshot.
+            for (const cutoff of input.contextSeed?.sourceCutoffs ?? []) {
+              if (
+                this.readSessionInventoryHighWater(cutoff.sessionId) !==
+                cutoff.throughSequence
+              )
+                throw new Error(
+                  'Conversation context changed before its handoff reservation.',
+                );
             }
             const predecessor = lineage.get(input.predecessorSessionId) as
               | { conversation_id: string; ordinal: number }
@@ -11033,6 +11052,13 @@ export class EventStore {
               input.messageDigest,
               input.nativeReturnSourceSessionId ?? null,
               input.nativeReturnSourceEventId ?? null,
+              input.contextSeed
+                ? JSON.stringify(
+                    readConversationContextSeedPin(
+                      JSON.stringify(input.contextSeed),
+                    ),
+                  )
+                : null,
               input.createdAt,
             );
             if (input.nativeReturnSourceSessionId) {
@@ -11077,7 +11103,7 @@ export class EventStore {
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
                       target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);

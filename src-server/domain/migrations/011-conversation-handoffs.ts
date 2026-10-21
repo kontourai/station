@@ -17,12 +17,34 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_handoffs (
   message_digest TEXT NOT NULL,
   native_return_source_session_id TEXT,
   native_return_source_event_id TEXT,
+  context_seed_json TEXT,
   created_at TEXT NOT NULL,
   UNIQUE (conversation_id, idempotency_key)
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_handoffs_conversation
   ON orchestration_conversation_handoffs(conversation_id, created_at ASC);
 `;
+
+/** Legacy reservations have no recoverable immutable seed and remain unqualified. */
+export function ensureConversationHandoffContextSeedColumn(db: {
+  prepare(sql: string): { all(): unknown[] };
+  exec(sql: string): void;
+}): void {
+  const hasColumn = () =>
+    (
+      db
+        .prepare('PRAGMA table_info(orchestration_conversation_handoffs)')
+        .all() as Array<{ name?: unknown }>
+    ).some((column) => column.name === 'context_seed_json');
+  if (hasColumn()) return;
+  try {
+    db.exec(
+      'ALTER TABLE orchestration_conversation_handoffs ADD COLUMN context_seed_json TEXT',
+    );
+  } catch (error) {
+    if (!hasColumn()) throw error;
+  }
+}
 
 /**
  * `CREATE TABLE IF NOT EXISTS` preserves the handoff table introduced before

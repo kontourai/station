@@ -735,14 +735,30 @@ export class ConversationLineage {
           'The native return acceptance boundary changed; no replacement activation was started.',
         );
       }
+      if (nativeReturn) {
+        if (!existing.contextSeed)
+          throw new Error(
+            'This legacy native-return reservation has no pinned context; reconcile it before dispatch.',
+          );
+        for (const cutoff of existing.contextSeed.sourceCutoffs) {
+          if (!(await this.deps.readSession(cutoff.sessionId, authority)))
+            throw new Error(
+              'The reserved native-return context is no longer authorized.',
+            );
+        }
+      }
       return {
         ...store.describeConversationHandoff(existing, 'existing'),
         ...(contextBoundary ? { contextBoundary } : {}),
-        ...(nativeReturn ??
-          handoffTranscriptContext(
-            contextBoundary,
-            this.readConversationTranscriptMessages(conversationId, authority),
-          )),
+        ...(nativeReturn
+          ? { ...nativeReturn, transcriptSeed: existing.contextSeed!.text }
+          : handoffTranscriptContext(
+              contextBoundary,
+              this.readConversationTranscriptMessages(
+                conversationId,
+                authority,
+              ),
+            )),
       };
     }
     const lineage = store.conversationSessions(conversationId);
@@ -804,6 +820,7 @@ export class ConversationLineage {
         ? {
             nativeReturnSourceSessionId: nativeReturn.sourceSessionId,
             nativeReturnSourceEventId: nativeReturn.sourceEventId,
+            contextSeed: nativeReturn.contextSeed,
           }
         : {}),
       targetAgentId: target.agentId,
@@ -947,21 +964,45 @@ export class ConversationLineage {
             ),
       );
     if (invalidated) return undefined;
-    const messages = lineage
-      .slice(index + 1, throughIndex + 1)
-      .flatMap((entry) =>
-        this.deps.readSessionMessages(entry.sessionId, authority),
-      );
+    const sources = lineage.slice(index + 1, throughIndex + 1);
+    for (const entry of sources) {
+      if (!(await this.deps.readSession(entry.sessionId, authority)))
+        throw new Error('Native-return context is not authorized.');
+    }
+    const sourceCutoffs = sources.map((entry) => ({
+      sessionId: entry.sessionId,
+      afterSequence: 0,
+      throughSequence: this.deps.eventStore!.readSessionInventoryHighWater(
+        entry.sessionId,
+      ),
+    }));
+    const messages = sources.flatMap((entry) =>
+      this.deps.readSessionMessages(entry.sessionId, authority),
+    );
+    const seedSource = transcriptSeedSource(messages);
+    const seed = buildTranscriptSeed({
+      heading:
+        'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+      ...seedSource,
+    });
     return {
       sourceSessionId,
       sourceEventId: terminal.eventId,
       resumeCursor: source.session.resumeCursor,
       nativeResumeBindingKey: key,
-      transcriptSeed: buildTranscriptSeed({
-        heading:
-          'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
-        ...transcriptSeedSource(messages),
-      }).text,
+      transcriptSeed: seed.text,
+      contextSeed: {
+        text: seed.text,
+        seedDigest: crypto.createHash('sha256').update(seed.text).digest('hex'),
+        sourceCutoffs,
+        omission: {
+          totalMessages: seed.totalMessages,
+          includedMessages: seed.includedMessages,
+          omittedMessages: seed.omittedMessages,
+          newestShortened: seed.newestShortened,
+          nonTextMessages: seedSource.nonTextMessages,
+        },
+      },
     };
   }
 
@@ -1150,6 +1191,22 @@ export class ConversationLineage {
       marker: store.projectConversationHandoff(marker),
       ...(providerTurnId ? { providerTurnId } : {}),
       ...(nativeResumeIdentity ? { nativeResumeIdentity } : {}),
+      ...(marker.contextSeed
+        ? {
+            contextDelivery: {
+              seedDigest: marker.contextSeed.seedDigest,
+              sourceCutoffs: marker.contextSeed.sourceCutoffs,
+              omission: marker.contextSeed.omission,
+              status,
+              ...(status === 'completed' &&
+              nativeResumeIdentity === 'matched' &&
+              marker.contextSeed.omission.omittedMessages === 0 &&
+              !marker.contextSeed.omission.newestShortened
+                ? { acceptedTextThrough: marker.contextSeed.sourceCutoffs }
+                : {}),
+            },
+          }
+        : {}),
     };
   }
 

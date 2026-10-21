@@ -1516,6 +1516,23 @@ export type ConversationHandoffEffectStatus =
   | 'indeterminate';
 
 /** Authorized durable effect truth; never re-resolves mutable Agent setup. */
+export interface ConversationContextSeedReceipt {
+  seedDigest: string;
+  /** Session-local sequence intervals; never compare across Sessions. */
+  sourceCutoffs: readonly {
+    sessionId: string;
+    afterSequence: number;
+    throughSequence: number;
+  }[];
+  omission: {
+    totalMessages: number;
+    includedMessages: number;
+    omittedMessages: number;
+    newestShortened: boolean;
+    nonTextMessages: number;
+  };
+}
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;
@@ -1523,6 +1540,12 @@ export interface ConversationHandoffStatusProjection {
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+  /** A pinned native-return catch-up, not proof of provider transcript retention. */
+  contextDelivery?: ConversationContextSeedReceipt & {
+    status: ConversationHandoffEffectStatus;
+    /** Complete text projection only; omitted/shortened history is never acknowledged. */
+    acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
+  };
 }
 
 /**
