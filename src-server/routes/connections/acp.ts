@@ -467,9 +467,13 @@ export function createACPRoutes(ctx: RuntimeContext) {
           }
           const config = await ctx.configLoader.loadACPConfig();
           const providerConns = getProviderConnections();
-          if (providerConns.some((conn) => conn.id === id)) {
+          const provided = providerConns.find((conn) => conn.id === id);
+          if (provided) {
             return c.json(
-              { success: false, error: `Connection '${id}' already exists` },
+              {
+                success: false,
+                error: `${provided.name || id} is already provided by a plugin.`,
+              },
               409,
             );
           }
@@ -501,7 +505,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
           const existing = config.connections.find((conn) => conn.id === id);
           if (existing && !isDeepStrictEqual(existing, newConn)) {
             return c.json(
-              { success: false, error: `Connection '${id}' already exists` },
+              {
+                success: false,
+                error: `${existing.name || id} is already saved with different settings. Use Edit setup on it, or remove it first.`,
+              },
               409,
             );
           }
@@ -585,10 +592,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
             (connection) => connection.id === newConn.id,
           );
           if (existing && !isDeepStrictEqual(existing, newConn)) {
+            const name = existing.name || body.id;
             return c.json(
               {
                 success: false,
-                error: `Connection '${body.id}' already exists`,
+                error: `${name} already uses the ID "${body.id}". Choose a different ID under Advanced, or use Edit setup on ${name}.`,
               },
               409,
             );

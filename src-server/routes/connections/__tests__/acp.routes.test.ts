@@ -415,11 +415,15 @@ describe('ACP Routes', () => {
     ];
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'kiro', command: 'kiro-cli' }],
+      connections: [{ id: 'kiro', name: 'My Kiro', command: 'kiro-cli' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/registry/kiro/install', { method: 'POST' });
     expect(res.status).toBe(409);
+    // A person's sentence naming the engine already saved, not an id.
+    expect((await json(res)).error).toBe(
+      'My Kiro is already saved with different settings. Use Edit setup on it, or remove it first.',
+    );
   });
 
   test('POST /registry/:id/install repairs a persisted config after registry commit failure', {
@@ -899,7 +903,7 @@ describe('ACP Routes', () => {
   test('POST /connections returns 409 for duplicate', async () => {
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'test', command: 'x' }],
+      connections: [{ id: 'test', name: 'Test Engine', command: 'x' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/connections', {
@@ -908,6 +912,9 @@ describe('ACP Routes', () => {
       body: JSON.stringify({ id: 'test', command: 'kiro-cli' }),
     });
     expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe(
+      'Test Engine already uses the ID "test". Choose a different ID under Advanced, or use Edit setup on Test Engine.',
+    );
     expect(ctx.beginAgentConfigurationMutation).not.toHaveBeenCalled();
   });
 
