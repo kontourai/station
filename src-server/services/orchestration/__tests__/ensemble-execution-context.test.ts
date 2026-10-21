@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { mkdir, realpath, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
+import type {
+  AgentExecutionConfig,
+  AgentMetadata,
+} from '@kontourai/station-contracts/agent';
 import {
   agentId,
   engineConnectionId,
@@ -16,6 +19,8 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../../../providers/app-home/credential-profile-env.js';
@@ -25,7 +30,9 @@ import { createEnsemblePreparationRoutes } from '../../../routes/orchestration/e
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createLogger } from '../../../utils/logger.js';
+import { AgentService } from '../../agents/agent-service.js';
 import { engineProxyLaunch } from '../../connections/engine-proxy-routing.js';
+import { ProviderService } from '../../connections/provider-service.js';
 import { resolveExecutionTarget } from '../../execution-target/execution-target-resolver.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
@@ -123,16 +130,75 @@ async function fixture(
       activeProfileRef: 'selected',
     },
   };
+  const execution: AgentExecutionConfig = {
+    agentConnectionId: engineConnectionId(engine),
+  };
+  const configurationHome = join(root, 'configuration');
+  await mkdir(configurationHome);
+  const configLoader = new ConfigLoader({ projectHomeDir: configurationHome });
+  const storage = new FileStorageAdapter(configurationHome);
+  const metadata = new Map<string, AgentMetadata>();
+  const agentService = new AgentService(
+    configLoader,
+    storage,
+    new Map(),
+    metadata,
+    new Map(),
+    createLogger({ name: 'ensemble-agent-test', level: 'error' }),
+  );
+  const providers = new ProviderService(storage, () =>
+    configLoader.loadAppConfig(),
+  );
+  let persistedSettings = '';
+  let persistedExecution = '';
+  const persist = async () => {
+    const nextSettings = JSON.stringify(settings);
+    const nextExecution = JSON.stringify(execution);
+    if (nextSettings !== persistedSettings) {
+      await configLoader.saveAppConfig({
+        defaultModel: 'default/model',
+        invokeModel: '',
+        structureModel: '',
+        systemPrompt: 'Fixture',
+        agentConnections: { [engine]: settings },
+      });
+      persistedSettings = nextSettings;
+    }
+    if (nextExecution !== persistedExecution) {
+      await configLoader.saveAgent('coordinator', {
+        name: 'Coordinator',
+        prompt: 'Fixture',
+        execution,
+      });
+      persistedExecution = nextExecution;
+    }
+  };
+  await persist();
+  await storage.createProject({
+    id: 'project-1',
+    name: 'Project',
+    slug: 'project',
+    workingDirectory: cwd,
+    defaultWorkspaceIsolation: 'shared',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
   const homeDir = join(root, 'credentials');
   const getAppHomeEnv = createCredentialProfileAppHomeEnvResolver({
     engine,
     homeDir,
-    loadConnectionSettings: async () => settings,
+    loadConnectionSettings: async () =>
+      (await configLoader.loadAppConfig()).agentConnections?.[engine],
   });
   let onConnectionRead: (() => Promise<void>) | undefined;
   const getConnectionLaunch = async () => {
     await onConnectionRead?.();
-    return engineProxyLaunch(engine, settings.config, []);
+    await persist();
+    return engineProxyLaunch(
+      engine,
+      (await configLoader.loadAppConfig()).agentConnections?.[engine]?.config,
+      providers.listProviderConnections(),
+    );
   };
   const adapter =
     engine === 'claude'
@@ -155,26 +221,19 @@ async function fixture(
     config: { provider: engine },
     prerequisites: [],
   };
-  const execution: AgentExecutionConfig = {
-    agentConnectionId: engineConnectionId(engine),
-  };
   const modelCatalog = vi.spyOn(adapter, 'listModelCatalog');
   const inventory = createLocalEnsembleInventory({
     environmentId: () => 'test-station',
-    getAgent: async (id) => ({ slug: id, execution }),
+    captureAgentConfigurationFence: (ids) =>
+      agentService.capturePreparationConfigurationFence(ids),
+    getProjectRevision: (slug) => storage.projectRevision(slug),
+    getProviderRevision: () => providers.getLaunchabilityRevision(),
+    getAgent: (id) => agentService.getAgent(id),
     listEngineConnectionIdentities: async () => [
       { id: engineConnectionId(connection.id), engineId: engine, type: engine },
     ],
-    loadAppConfig: async () => ({
-      defaultModel: '',
-      invokeModel: '',
-      structureModel: '',
-      agentConnections: { [engine]: settings },
-    }),
-    getProject: () => ({
-      workingDirectory: cwd,
-      defaultWorkspaceIsolation: 'shared',
-    }),
+    loadAppConfig: () => configLoader.loadAppConfig(),
+    getProject: (slug) => storage.getProject(slug),
     getProviderAdapter: (provider) =>
       provider === engine ? adapter : undefined,
   });
@@ -280,6 +339,7 @@ async function fixture(
     remoteAddress = '127.0.0.1',
     headers: Record<string, string> = {},
   ) => {
+    await persist();
     const response = await app.request(
       endpoint,
       {
@@ -322,6 +382,13 @@ async function fixture(
     cwd,
     executable,
     settings,
+    persist,
+    configLoader,
+    storage,
+    agentService,
+    providers,
+    metadata,
+    configurationHome,
     homeDir,
     connection,
     execution,
@@ -448,13 +515,14 @@ describe('production Ensemble preparation authentication', () => {
         profiles: [{ ref: 'replacement' }],
         activeProfileRef: 'replacement',
       };
-      callback(null, { stdout: 'Logged in using ChatGPT', stderr: '' });
+      void f
+        .persist()
+        .then(() =>
+          callback(null, { stdout: 'Logged in using ChatGPT', stderr: '' }),
+        );
     });
     const result = await f.send();
-    expect(result.body).toMatchObject({
-      code: 'ensemble_auth_unverified',
-      observation: { state: 'unknown' },
-    });
+    expect(result.body.code).toBe('ensemble_context_changed');
     f.assertNoInvocations();
   });
 
@@ -536,13 +604,15 @@ describe('production Ensemble preparation authentication', () => {
       ).toBe(credentialProfileAppHomeDir(f.engine, 'pinned-a', f.homeDir));
       execFile.mockImplementation((_command, _args, _options, callback) => {
         f.execution.credentialProfileRef = 'default-b';
-        callback(null, {
-          stdout:
-            f.engine === 'claude'
-              ? '{"loggedIn":true}'
-              : 'Logged in using ChatGPT',
-          stderr: '',
-        });
+        void f.persist().then(() =>
+          callback(null, {
+            stdout:
+              f.engine === 'claude'
+                ? '{"loggedIn":true}'
+                : 'Logged in using ChatGPT',
+            stderr: '',
+          }),
+        );
       });
       expect((await f.send()).body.code).toBe('ensemble_context_changed');
       f.assertNoInvocations();
@@ -937,11 +1007,11 @@ describe('production Ensemble preparation authentication', () => {
     await writeFile(interpreter, 'fixture interpreter');
     await writeFile(script, '// fixture source');
     const before = await observeExecutableInvocation(interpreter, script);
-    expect(before).toMatch(/^[0-9a-f]{64}$/);
+    expect(before?.fingerprint).toMatch(/^[0-9a-f]{64}$/);
     await writeFile(interpreter, 'replacement interpreter');
-    expect(await observeExecutableInvocation(interpreter, script)).not.toBe(
-      before,
-    );
+    expect(
+      (await observeExecutableInvocation(interpreter, script))?.fingerprint,
+    ).not.toBe(before?.fingerprint);
   });
 
   test.each(['codex', 'claude'] as const)(
@@ -957,6 +1027,168 @@ describe('production Ensemble preparation authentication', () => {
         call?.[2].env[engine === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR'],
       ).toBe(credentialProfileAppHomeDir(engine, 'selected', f.homeDir));
       f.assertNoInvocations();
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    '%s finalizes original owner snapshots after the last Project await',
+    async (engine) => {
+      for (const change of [
+        'pin',
+        'pin-aba',
+        'project-aba',
+        'provider-aba',
+        'connection',
+        'active-profile',
+        'profile-overlay',
+        'project',
+        'projection',
+        'provider',
+        'executable',
+      ] as const) {
+        const f = await fixture(engine);
+        let privateSetup = false;
+        let changed = false;
+        f.setConnectionRead(async () => {
+          privateSetup = true;
+        });
+        const original = f.inventory.getProject;
+        f.inventory.getProject = async (...args) => {
+          const result = await original(...args);
+          if (!privateSetup || changed) return result;
+          changed = true;
+          await Promise.resolve();
+          if (change === 'pin') {
+            f.execution.credentialProfileRef = 'new-pin';
+            await f.persist();
+          }
+          if (change === 'pin-aba') {
+            f.execution.credentialProfileRef = 'temporary';
+            await f.persist();
+            delete f.execution.credentialProfileRef;
+            await f.persist();
+          }
+          if (change === 'project-aba') {
+            const initial = f.storage.getProject('project');
+            await f.storage
+              .projectRevision('project')
+              .replace({ ...initial, name: 'Temporary Project' });
+            await f.storage.projectRevision('project').replace(initial);
+          }
+          if (change === 'provider-aba') {
+            await f.providers.saveProviderConnection({
+              id: 'temporary-proxy',
+              type: 'openai-compat',
+              name: 'Temporary',
+              enabled: true,
+              capabilities: ['llm'],
+              config: {
+                apiKey: 'fixture',
+                baseUrl: 'https://example.invalid/v1',
+              },
+            });
+            await f.providers.deleteProviderConnection('temporary-proxy');
+          }
+          if (change === 'connection') {
+            f.execution.agentConnectionId = engineConnectionId(
+              engine === 'codex' ? 'claude' : 'codex',
+            );
+            await f.persist();
+          }
+          if (change === 'active-profile') {
+            f.settings.credentialRecovery = {
+              profiles: [{ ref: 'changed' }],
+              activeProfileRef: 'changed',
+            };
+            await f.persist();
+          }
+          if (change === 'profile-overlay') {
+            f.settings.credentialRecovery = {
+              profiles: [
+                { ref: 'selected', env: { ROUTING_LAYER: 'new-profile' } },
+              ],
+              activeProfileRef: 'selected',
+            };
+            await f.persist();
+          }
+          if (change === 'project') {
+            const revision = f.storage.projectRevision('project');
+            await revision.replace({
+              ...revision.value,
+              name: 'Changed Project',
+            });
+          }
+          if (change === 'projection')
+            f.metadata.set('default', {
+              slug: agentId('station'),
+              name: 'Station',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              execution: { agentConnectionId: engineConnectionId(engine) },
+            });
+          if (change === 'provider')
+            await f.providers.saveProviderConnection({
+              id: 'unused-proxy',
+              type: 'openai-compat',
+              name: 'Unused',
+              enabled: true,
+              capabilities: ['llm'],
+              config: {
+                apiKey: 'fixture',
+                baseUrl: 'https://example.invalid/v1',
+              },
+            });
+          if (change === 'executable')
+            await writeFile(
+              f.executable,
+              'changed during final asynchronous guard',
+            );
+          return result;
+        };
+        const response = await f.send();
+        expect(changed, change).toBe(true);
+        expect(response.body.observation, change).toBeUndefined();
+        expect(response.status, change).toBe(422);
+        expect(execFile.mock.calls.length, change).toBe(0);
+        f.assertNoInvocations();
+      }
+    },
+  );
+
+  test.each(['codex', 'claude'] as const)(
+    '%s refuses private active-profile and overlay drift after app-home capture',
+    async (engine) => {
+      for (const change of [
+        'active-profile',
+        'profile-overlay',
+        'connection-env',
+      ] as const) {
+        const f = await fixture(engine);
+        let changed = false;
+        f.setConnectionRead(async () => {
+          if (changed) return;
+          changed = true;
+          await Promise.resolve();
+          if (change === 'active-profile')
+            f.settings.credentialRecovery = {
+              profiles: [{ ref: 'new-account' }],
+              activeProfileRef: 'new-account',
+            };
+          if (change === 'profile-overlay')
+            f.settings.credentialRecovery = {
+              profiles: [
+                { ref: 'selected', env: { ROUTING_LAYER: 'new-profile' } },
+              ],
+              activeProfileRef: 'selected',
+            };
+          if (change === 'connection-env')
+            f.settings.config = { env: { ROUTING_LAYER: 'new-connection' } };
+          await f.persist();
+        });
+        const response = await f.send();
+        expect(response.body.code, change).toBe('ensemble_context_changed');
+        expect(execFile.mock.calls.length, change).toBe(0);
+        f.assertNoInvocations();
+      }
     },
   );
 

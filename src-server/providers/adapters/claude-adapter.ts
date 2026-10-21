@@ -3173,7 +3173,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async observeExecutionAuthentication(
     input: ProviderExecutionAuthInput,
   ): Promise<ProviderExecutionAuthObservation> {
-    await input.assertCurrent();
+    (await input.assertCurrent())();
     let versionIdentity: string | undefined;
     let versionResult: InstalledVersionObservation | undefined;
     const context = async () => {
@@ -3199,7 +3199,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ? binary
           : undefined;
         const command = script ? process.execPath : binary;
-        const identity = await observeExecutableInvocation(command, script);
+        const identity = (await observeExecutableInvocation(command, script))
+          ?.fingerprint;
         if (
           !identity ||
           (versionIdentity !== undefined && identity !== versionIdentity)
@@ -3221,14 +3222,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 maxBuffer: 16_384,
                 killSignal: 'SIGKILL',
                 assertCurrent: async () => {
-                  if (
-                    (await observeExecutableInvocation(command, script)) !==
-                    versionIdentity
-                  )
+                  const observed = await observeExecutableInvocation(
+                    command,
+                    script,
+                  );
+                  if (!observed || observed.fingerprint !== versionIdentity)
                     throw new Error(
                       'Execution authentication executable changed',
                     );
-                  await input.assertCurrent();
+                  const finalize = await input.assertCurrent();
+                  return () => {
+                    observed.assertCurrent();
+                    finalize();
+                  };
                 },
               },
             ),
@@ -3239,7 +3245,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const script = binary?.toLowerCase().endsWith('.js') ? binary : undefined;
       const command = script ? process.execPath : binary;
       const executableIdentity = command
-        ? await observeExecutableInvocation(command, script)
+        ? (await observeExecutableInvocation(command, script))?.fingerprint
         : undefined;
       const hash = crypto
         .createHash('sha256')
@@ -3289,17 +3295,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
               killSignal: 'SIGKILL',
               assertCurrent: async () => {
+                const observed = before.command
+                  ? await observeExecutableInvocation(
+                      before.command,
+                      before.script,
+                    )
+                  : undefined;
                 if (
-                  !before.command ||
-                  (await observeExecutableInvocation(
-                    before.command,
-                    before.script,
-                  )) !== before.executableIdentity
+                  !observed ||
+                  observed.fingerprint !== before.executableIdentity
                 )
                   throw new Error(
                     'Execution authentication executable changed',
                   );
-                await input.assertCurrent();
+                const finalize = await input.assertCurrent();
+                return () => {
+                  observed.assertCurrent();
+                  finalize();
+                };
               },
             },
           )

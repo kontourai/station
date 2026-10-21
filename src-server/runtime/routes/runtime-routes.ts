@@ -4947,6 +4947,15 @@ export function configureRuntimeRoutes(
       new EnsembleExecutionContext({
         security: context.environmentSecurityService,
         inventory: createLocalEnsembleInventory({
+          captureAgentConfigurationFence: (ids) =>
+            context.agentService.capturePreparationConfigurationFence(
+              ids,
+              context.getAgentConfigurationRevision,
+            ),
+          getProjectRevision: (slug) =>
+            context.storageAdapter.projectRevision(slug),
+          getProviderRevision: () =>
+            context.providerService.getLaunchabilityRevision(),
           environmentId: () =>
             context.environmentSecurityService.devicePairing.environmentId(),
           getAgent: (id) => context.agentService.getAgent(id),

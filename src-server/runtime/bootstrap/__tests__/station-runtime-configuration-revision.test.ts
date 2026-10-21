@@ -1,5 +1,12 @@
+import { realpath } from 'node:fs/promises';
 import { AgentRegistry } from '@voltagent/core';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
+import { ProviderService } from '../../../services/connections/provider-service.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   loadStablePreToolPolicySpec,
   StationRuntime,
@@ -17,7 +24,77 @@ function installStablePackageSelection(runtime: any): void {
     runtime.captureSelectedPackageFingerprint();
 }
 
+const preparationTempHome = trackTempDirs();
+
 describe('StationRuntime agent configuration revision', () => {
+  test('preparation consumes the actual stable runtime revision across projection A-to-B-to-A', async () => {
+    const home = await realpath(
+      preparationTempHome('preparation-runtime-owner-'),
+    );
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    await loader.saveAppConfig({
+      defaultModel: 'default/model',
+      invokeModel: '',
+      structureModel: '',
+      systemPrompt: 'Fixture',
+    });
+    const storage = new FileStorageAdapter(home);
+    const providers = new ProviderService(storage, () =>
+      loader.loadAppConfig(),
+    );
+    const metadata = new Map();
+    const service = new AgentService(
+      loader,
+      storage,
+      new Map(),
+      metadata,
+      new Map(),
+      createLogger({ name: 'preparation-owner-test', level: 'error' }),
+    );
+    expect(() =>
+      service.capturePreparationConfigurationFence(['station']),
+    ).toThrow('stable owner revision');
+    const runtime = Object.create(StationRuntime.prototype);
+    installStablePackageSelection(runtime);
+    runtime.agentConfigurationRevision = 0;
+    runtime.agentConfigurationMutationQueue = Promise.resolve();
+    runtime.agentConfigurationMutationsClosed = false;
+    runtime.providerService = providers;
+    runtime.configLoader = loader;
+    runtime.loadedProviderLaunchabilityRevision =
+      providers.getLaunchabilityRevision();
+    runtime.loadedAppConfigLaunchabilityRevision =
+      loader.getLaunchabilityRevision();
+    runtime.appConfig = await loader.loadAppConfig();
+    const context = runtime.buildRuntimeContext();
+    const current = service.capturePreparationConfigurationFence(
+      ['station'],
+      context.getAgentConfigurationRevision,
+    );
+    expect(current).not.toThrow();
+    await runtime.mutateAgentConfiguration(async () => {
+      expect(() =>
+        service.capturePreparationConfigurationFence(
+          ['station'],
+          context.getAgentConfigurationRevision,
+        ),
+      ).toThrow('reconciling');
+      metadata.set('default', { execution: { agentConnectionId: 'claude' } });
+      expect(context.getAgentConfigurationRevision()).toBeNull();
+      expect(current).toThrow();
+      await Promise.resolve();
+      metadata.delete('default');
+    });
+    expect(metadata.size).toBe(0);
+    expect(current).toThrow('runtime Agent projection changed');
+    expect(
+      service.capturePreparationConfigurationFence(
+        ['station'],
+        context.getAgentConfigurationRevision,
+      ),
+    ).not.toThrow();
+  });
+
   test.each([
     ['null before loading', [null], 'not stable'],
     ['changed while loading', [4, 5], 'changed during'],

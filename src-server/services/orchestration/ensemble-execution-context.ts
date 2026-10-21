@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  executionBindingAgentId,
+  executionProfileAgentId,
+} from '@kontourai/station-contracts/execution-target';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { ProviderExecutionAuthObservation } from '../../providers/adapter-shape.js';
@@ -26,6 +30,12 @@ import {
 /** Non-probing composition: configuration is not evidence of readiness. */
 export function createLocalEnsembleInventory(owners: {
   environmentId: () => string;
+  captureAgentConfigurationFence: (ids: readonly string[]) => () => void;
+  getProjectRevision: (slug: string) => {
+    value: unknown;
+    assertCurrent?: () => void;
+  };
+  getProviderRevision: () => number;
   getAgent: (
     id: string,
   ) => ReturnType<ExecutionTargetResolverDependencies['getAgent']>;
@@ -39,6 +49,50 @@ export function createLocalEnsembleInventory(owners: {
   getProviderAdapter: ExecutionTargetResolverDependencies['getProviderAdapter'];
 }): ExecutionTargetResolverDependencies {
   return {
+    capturePreparationFence: (targets) => {
+      const ids = targets.flatMap((target) => [
+        executionProfileAgentId(target.agent),
+        executionBindingAgentId(target.agent),
+      ]);
+      const agents = owners.captureAgentConfigurationFence(ids);
+      const projects = [
+        ...new Set(
+          targets
+            .map((target) =>
+              target.workspace?.kind === 'project'
+                ? target.workspace.projectSlug
+                : undefined,
+            )
+            .filter((slug): slug is string => slug !== undefined),
+        ),
+      ].map((slug) => owners.getProjectRevision(slug));
+      for (const project of projects)
+        if (!project.assertCurrent)
+          throw new Error('Project preparation fence unavailable');
+      const providers = owners.getProviderRevision();
+      const adapters = ['codex', 'claude'].map((id) => ({
+        id,
+        adapter: owners.getProviderAdapter(id),
+        metadata: JSON.stringify(owners.getProviderAdapter(id)?.metadata),
+      }));
+      const environment = owners.environmentId();
+      const ambient = JSON.stringify(Object.entries(process.env).sort());
+      return () => {
+        agents();
+        for (const project of projects) project.assertCurrent?.();
+        if (
+          owners.getProviderRevision() !== providers ||
+          owners.environmentId() !== environment ||
+          JSON.stringify(Object.entries(process.env).sort()) !== ambient ||
+          adapters.some(
+            (entry) =>
+              owners.getProviderAdapter(entry.id) !== entry.adapter ||
+              JSON.stringify(entry.adapter?.metadata) !== entry.metadata,
+          )
+        )
+          throw new Error('Preparation runtime configuration changed');
+      };
+    },
     resolveEnvironmentAccess: async (target) => {
       if (target.environment.kind !== 'current')
         throw new EnsemblePreparationRefusal(
@@ -52,7 +106,10 @@ export function createLocalEnsembleInventory(owners: {
         apiBase: '',
       };
     },
-    getAgent: (_access, id) => owners.getAgent(id),
+    getAgent: async (_access, id) => ({
+      slug: id,
+      ...(await owners.getAgent(id)),
+    }),
     getConnection: async (_access, id) => {
       const identity = (await owners.listEngineConnectionIdentities()).find(
         (entry) => entry.id === id,
@@ -133,6 +190,13 @@ export class EnsembleExecutionContext {
       }
     };
     assertAuthority();
+    const capture = this.owners.inventory.capturePreparationFence;
+    if (!capture)
+      throw new EnsemblePreparationRefusal(
+        'ensemble_auth_unsupported',
+        'Configuration currency cannot be established.',
+      );
+    const configurationCurrent = capture(Object.values(input.bindings));
     const source = await loadEnsemblePreset(input.path);
     if (source.sha256 !== input.expectedPresetHash)
       throw new EnsemblePreparationRefusal(
@@ -252,9 +316,19 @@ export class EnsembleExecutionContext {
                 'ensemble_context_changed',
                 'Ensemble execution binding changed.',
               );
-            assertAuthority();
+            return () => {
+              try {
+                configurationCurrent();
+              } catch {
+                throw new EnsemblePreparationRefusal(
+                  'ensemble_context_changed',
+                  'Ensemble configuration changed during preparation.',
+                );
+              }
+              assertAuthority();
+            };
           };
-          await assertCurrent();
+          (await assertCurrent())();
           const probeStartedAt = Date.now();
           const observation = await adapter.observeExecutionAuthentication({
             principalId: principal.id,
@@ -272,7 +346,7 @@ export class EnsembleExecutionContext {
               : {}),
             assertCurrent,
           });
-          await assertCurrent();
+          (await assertCurrent())();
           if (
             observation.state !== 'authenticated' ||
             !Number.isFinite(observation.checkedAt) ||

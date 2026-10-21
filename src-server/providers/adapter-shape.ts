@@ -423,7 +423,7 @@ export interface ProviderExecutionAuthInput {
   readonly modelOptions: Readonly<Record<string, unknown>>;
   readonly credentialProfileRef?: string | null;
   /** Request-owned authority and exact receiver binding, checked at each CLI spawn. */
-  readonly assertCurrent: () => Promise<void>;
+  readonly assertCurrent: () => Promise<() => void>;
 }
 
 export interface ProviderExecutionAuthObservation {

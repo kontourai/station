@@ -178,6 +178,13 @@ export class FileStorageAdapter implements IStorageAdapter {
     }
     return Object.freeze({
       value: stored.value,
+      assertCurrent: () => {
+        if (!stored.assertCurrent)
+          throw new FileStorageUnavailableError(
+            'Project preparation fence is unavailable',
+          );
+        stored.assertCurrent();
+      },
       withCurrentRead: <R>(operation: (value: ProjectConfig) => Promise<R>) =>
         stored.withCurrentRead!(operation),
       replaceManifest: (expected: unknown, next: unknown) => {

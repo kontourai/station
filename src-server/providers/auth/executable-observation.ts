@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type BigIntStats, constants } from 'node:fs';
+import { type BigIntStats, constants, lstatSync, realpathSync } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
 import { extname, isAbsolute } from 'node:path';
 
@@ -61,16 +61,31 @@ async function observeFile(path: string) {
 export async function observeExecutableInvocation(
   command: string,
   script?: string,
-): Promise<string | undefined> {
+): Promise<{ fingerprint: string; assertCurrent: () => void } | undefined> {
   try {
     const executable = await observeFile(command);
     // A direct shebang launcher has an unbound interpreter; refuse it.
     if (!executable || executable.script) return undefined;
     const source = script ? await observeFile(script) : undefined;
     if (script && !source) return undefined;
-    return createHash('sha256')
+    const fingerprint = createHash('sha256')
       .update(JSON.stringify({ executable, source }))
       .digest('hex');
+    return {
+      fingerprint,
+      assertCurrent: () => {
+        for (const observed of source ? [executable, source] : [executable]) {
+          const named = lstatSync(observed.canonical, { bigint: true });
+          if (
+            !named.isFile() ||
+            named.isSymbolicLink() ||
+            identity(named) !== observed.identity ||
+            realpathSync(observed.path) !== observed.canonical
+          )
+            throw new Error('Execution authentication executable changed');
+        }
+      },
+    };
   } catch {
     return undefined;
   }

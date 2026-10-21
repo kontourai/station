@@ -145,6 +145,22 @@ afterEach(async () => {
 });
 
 describe('project file transactions', () => {
+  test('a synchronous preparation revision accepts unchanged bytes and rejects A-to-B-to-A replacement', async () => {
+    const home = tempHome();
+    const adapter = new FileStorageAdapter(home);
+    await adapter.createProject(project());
+    const original = adapter.projectRevision('acme');
+    expect(original.assertCurrent).toBeTypeOf('function');
+    expect(() => original.assertCurrent?.()).not.toThrow();
+    await adapter.projectRevision('acme').replace(project({ name: 'Changed' }));
+    await adapter.projectRevision('acme').replace(project());
+    expect(adapter.getProject('acme')).toEqual(original.value);
+    expect(() => original.assertCurrent?.()).toThrow('Project changed');
+    expect(() =>
+      adapter.projectRevision('acme').assertCurrent?.(),
+    ).not.toThrow();
+  });
+
   test('manifest replacement compares semantic identity while publishing under the Project revision', async () => {
     const home = tempHome();
     const adapter = new FileStorageAdapter(home);

@@ -84,6 +84,8 @@ export type ExecutionTargetConnectionView = Omit<ConnectionConfig, 'status'> & {
 };
 
 export interface ExecutionTargetResolverDependencies {
+  /** Synchronous, owner-backed fence; absent means no actual-context authentication support. */
+  capturePreparationFence?: (targets: readonly ExecutionTarget[]) => () => void;
   resolveEnvironmentAccess: (
     target: ExecutionTarget,
   ) => Promise<EnvironmentAccess>;

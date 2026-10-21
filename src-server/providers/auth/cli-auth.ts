@@ -354,7 +354,7 @@ export async function runCliCommand(
    */
   bounds?: {
     cwd?: string;
-    assertCurrent?: () => Promise<void>;
+    assertCurrent?: () => Promise<() => void>;
     timeoutMs?: number;
     maxBuffer?: number;
     killSignal?: NodeJS.Signals;
@@ -372,7 +372,8 @@ export async function runCliCommand(
       : augmented;
     if (bounds?.assertCurrent) {
       try {
-        await bounds.assertCurrent();
+        const finalize = await bounds.assertCurrent();
+        finalize();
       } catch (error) {
         authorityRefused = true;
         throw error;

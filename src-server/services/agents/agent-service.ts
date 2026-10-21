@@ -367,6 +367,33 @@ export class AgentService {
     }
   }
 
+  /** Bind source bytes and the runtime-only Station engine projection without watcher timing. */
+  capturePreparationConfigurationFence(
+    ids: readonly string[],
+    getStableRevision?: () => number | null,
+  ): () => void {
+    if (ids.some(isStationAgentIdentity) && !getStableRevision)
+      throw new Error(
+        'Runtime-projected preparation requires a stable owner revision',
+      );
+    const revision = getStableRevision?.();
+    if (getStableRevision && revision === null)
+      throw new Error('Runtime Agent configuration is reconciling');
+    const source = this.configLoader.capturePreparationConfigurationFence(ids);
+    const projection = JSON.stringify(
+      runtimeStationEngineExecution(this.agentMetadataMap),
+    );
+    return () => {
+      source();
+      if (
+        (getStableRevision && getStableRevision() !== revision) ||
+        JSON.stringify(runtimeStationEngineExecution(this.agentMetadataMap)) !==
+          projection
+      )
+        throw new Error('Preparation runtime Agent projection changed');
+    };
+  }
+
   /**
    * One Agent's spec as every reader should see it — the persisted record with
    * the Station-identity projection applied (`projectStationEngineBinding`).

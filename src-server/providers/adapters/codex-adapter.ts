@@ -869,7 +869,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   async observeExecutionAuthentication(
     input: ProviderExecutionAuthInput,
   ): Promise<ProviderExecutionAuthObservation> {
-    await input.assertCurrent();
+    (await input.assertCurrent())();
     const context = async () => {
       const home = await this.resolveAppHomeEnv(
         input.credentialProfileRef ?? undefined,
@@ -881,9 +881,9 @@ export class CodexAdapter implements ProviderAdapterShape {
           (entry): entry is [string, string] => entry[1] !== undefined,
         ),
       );
-      const executableIdentity = await observeExecutableInvocation(
-        spawn.binary,
-      );
+      const executableIdentity = (
+        await observeExecutableInvocation(spawn.binary)
+      )?.fingerprint;
       const hash = crypto
         .createHash('sha256')
         .update(
@@ -921,14 +921,21 @@ export class CodexAdapter implements ProviderAdapterShape {
             {
               cwd: input.cwd,
               assertCurrent: async () => {
+                const executable = await observeExecutableInvocation(
+                  before.binary,
+                );
                 if (
-                  (await observeExecutableInvocation(before.binary)) !==
-                  before.executableIdentity
+                  !executable ||
+                  executable.fingerprint !== before.executableIdentity
                 )
                   throw new Error(
                     'Execution authentication executable changed',
                   );
-                await input.assertCurrent();
+                const finalize = await input.assertCurrent();
+                return () => {
+                  executable.assertCurrent();
+                  finalize();
+                };
               },
               timeoutMs: 10_000,
               maxBuffer: 16_384,
