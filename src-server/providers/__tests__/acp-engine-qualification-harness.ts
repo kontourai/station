@@ -77,7 +77,7 @@ export function fakeEngineConnection(
     command: process.execPath,
     args: [
       FAKE_AGENT,
-      '--profile',
+      '--engine-profile',
       profilePath,
       ...(options.fail ? ['--fail', options.fail] : []),
       ...(options.initializeDelayMs

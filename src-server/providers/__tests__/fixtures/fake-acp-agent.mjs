@@ -4,7 +4,7 @@
 // directory's README). The agent side is the real ACP SDK, so every frame on
 // the wire is the SDK's own serialization of the profile's shapes.
 //
-//   fake-acp-agent.mjs --profile <path> [--fail <mode>]
+//   fake-acp-agent.mjs --engine-profile <path> [--fail <mode>]
 //     [--initialize-delay-ms <ms>] [--record <path>]
 //
 // Failure modes for onboarding tests:
@@ -28,9 +28,9 @@ if (fail === 'exit-on-start') {
   process.stderr.write('fake-acp-agent: exiting on start\n');
   process.exit(3);
 }
-const profilePath = flag('profile');
+const profilePath = flag('engine-profile');
 if (!profilePath) {
-  process.stderr.write('fake-acp-agent: --profile is required\n');
+  process.stderr.write('fake-acp-agent: --engine-profile is required\n');
   process.exit(2);
 }
 const profile = JSON.parse(readFileSync(profilePath, 'utf8'));
