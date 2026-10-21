@@ -68,6 +68,7 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
+import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
   type AcpInboundExtensionRefusalReason,
   createAcpInboundExtensionRequestHandler,
@@ -1184,11 +1185,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: a governed OpenCode is launched on Station's floor for its mode,
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
+    const launchEnv = registryLaunchEnvFor(config);
     const launch = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
         args: config.args,
         cwd,
+        launchEnv,
         // #3957: not offered, because OpenCode's own tools already write
         // every edit; its client write would only be a redundant copy. The
         // bridge refuses one it sends anyway (`fileMethodsOffered`).

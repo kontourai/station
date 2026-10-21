@@ -7,9 +7,8 @@ vi.mock('../api', () => ({
 const authenticatedFetch = vi.hoisted(() => vi.fn());
 vi.mock('../client/http', () => ({ authenticatedFetch }));
 
-const { connectAndMaterializeACPRegistryEngine } = await import(
-  '../query-domains/acpWorkspace'
-);
+const { connectAndMaterializeACPRegistryEngine, recheckACPConnectionRegistry } =
+  await import('../query-domains/acpWorkspace');
 
 describe('connectAndMaterializeACPRegistryEngine', () => {
   beforeEach(() => authenticatedFetch.mockReset());
@@ -67,5 +66,46 @@ describe('connectAndMaterializeACPRegistryEngine', () => {
     await expect(
       connectAndMaterializeACPRegistryEngine('kiro'),
     ).rejects.toThrow("Connection 'kiro' already exists");
+  });
+});
+
+describe('recheckACPConnectionRegistry', () => {
+  beforeEach(() => authenticatedFetch.mockReset());
+
+  // The body the runtime's scope gate writes (runtime-http.ts).
+  test('a scope denial reads as not permitted', async () => {
+    authenticatedFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: 'insufficient_scope' } }), {
+        status: 403,
+      }),
+    );
+    await expect(recheckACPConnectionRegistry()).resolves.toEqual({
+      status: 'not-permitted',
+    });
+  });
+
+  test.each(['origin_required', 'origin_forbidden'])(
+    'a %s refusal is an error, not a permission answer',
+    async (code) => {
+      authenticatedFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code } }), { status: 403 }),
+      );
+      await expect(recheckACPConnectionRegistry()).rejects.toThrow(code);
+    },
+  );
+
+  test('a success returns the fresh entries', async () => {
+    authenticatedFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: [{ id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' }],
+        }),
+      ),
+    );
+    await expect(recheckACPConnectionRegistry()).resolves.toEqual({
+      status: 'rechecked',
+      entries: [{ id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' }],
+    });
   });
 });

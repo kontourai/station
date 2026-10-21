@@ -28,6 +28,7 @@
  * adapter Station could not probe is an unknown, not an absence.
  */
 
+import type { ACPEngineInstallRecipe } from '@kontourai/station-contracts/acp';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   DevicePresentation,
@@ -69,6 +70,8 @@ export interface FirstRunEngineOption {
   selectable: boolean;
   /** Why this row reads the way it does. Absent only for a plain `available`. */
   note?: string;
+  /** How to install it on the host. Only an `undetected` catalogue row carries one. */
+  install?: ACPEngineInstallRecipe;
 }
 
 interface FirstRunEnablePlanItem {
@@ -242,6 +245,7 @@ function toOption(
     // host and says where the CLI would have to be installed. It still claims
     // nothing about installation state — see `notReadyNote`'s restraint.
     note: hostActionCopy('engine-missing', devicePresentation),
+    ...(engine.install ? { install: engine.install } : {}),
   };
 }
 

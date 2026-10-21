@@ -18,6 +18,7 @@ import {
   renderHook,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
@@ -260,6 +261,47 @@ describe('the checklist', () => {
     expect(
       screen.getByTestId('first-run-engine-opencode').querySelector('input'),
     ).toBeNull();
+  });
+
+  test('an uninstalled catalogue engine is listed under "also works with" with how to install it', () => {
+    // The exact row `/api/system/status` writes for a catalogue engine whose
+    // command the host lookup did not find.
+    const GOOSE = {
+      engineId: 'goose',
+      name: 'Goose',
+      detected: false,
+      ready: false,
+      source: null,
+      reason: 'not_installed',
+      install: {
+        command: 'brew install block-goose-cli',
+        docsUrl: 'https://goose-docs.ai/docs/getting-started/installation',
+      },
+    } as ExternalEngineReadinessProjection;
+    renderChapter([CODEX, GOOSE]);
+
+    const goose = row('goose');
+    expect(goose.closest('details')).not.toBeNull();
+    expect(goose.querySelector('input')).toBeNull();
+    expect(goose.textContent).toContain('Not found on this machine.');
+    const hint = within(goose).getByRole('group', {
+      name: 'How to install Goose',
+    });
+    expect(within(hint).getByText('brew install block-goose-cli')).toBeTruthy();
+    expect(
+      within(hint).getByRole('link', { name: 'Goose install guide' }),
+    ).toBeTruthy();
+    // First run cannot re-run the host lookup on demand, so it offers none.
+    expect(
+      within(hint).queryByRole('button', { name: /Check again/ }),
+    ).toBeNull();
+    // Nothing to connect: confirming creates nothing for it.
+    fireEvent.click(screen.getByRole('button', { name: /Set up|Continue/ }));
+    expect(connectAndMaterializeEngine).not.toHaveBeenCalled();
+    expect(materializeEngineAgent).not.toHaveBeenCalledWith(
+      'goose',
+      expect.anything(),
+    );
   });
 
   test('says nothing about other engines when there are none', () => {
