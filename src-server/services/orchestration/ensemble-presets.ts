@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { open, realpath } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { type BigIntStats, constants } from 'node:fs';
+import { lstat, open, realpath } from 'node:fs/promises';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import {
   composeEnsembleBrief,
   ENSEMBLE_MAX_BYTES,
@@ -14,6 +14,7 @@ import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
+import type { ModelOption } from '@kontourai/station-contracts/tool';
 import {
   type ExecutionTargetResolverDependencies,
   resolveExecutionTarget,
@@ -31,6 +32,19 @@ function hash(bytes: string | Buffer): string {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
 
+function sameEntry(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function sameFile(left: BigIntStats, right: BigIntStats): boolean {
+  return (
+    sameEntry(left, right) &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
 /** Explicit canonical paths only; imports neither discover files nor follow symlinks. */
 export async function loadEnsemblePreset(
   path: string,
@@ -43,14 +57,35 @@ export async function loadEnsemblePreset(
   ) {
     throw new Error('Ensemble: expected an explicit canonical .json path');
   }
+  const ancestors: Array<{ path: string; stat: BigIntStats }> = [];
+  for (let parent = dirname(path); ; parent = dirname(parent)) {
+    const stat = await lstat(parent, { bigint: true });
+    if (!stat.isDirectory())
+      throw new Error('Ensemble: preset file identity changed');
+    ancestors.push({ path: parent, stat });
+    if (dirname(parent) === parent) break;
+  }
+  const expected = await lstat(path, { bigint: true });
   const file = await open(
     path,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   );
   try {
-    const stat = await file.stat();
+    const assertIdentity = async () => {
+      const opened = await file.stat({ bigint: true });
+      const named = await lstat(path, { bigint: true });
+      if (!sameFile(expected, opened) || !sameFile(opened, named))
+        throw new Error('Ensemble: preset file identity changed');
+      for (const ancestor of ancestors) {
+        const current = await lstat(ancestor.path, { bigint: true });
+        if (!current.isDirectory() || !sameEntry(ancestor.stat, current))
+          throw new Error('Ensemble: preset file identity changed');
+      }
+    };
+    const stat = await file.stat({ bigint: true });
     if (!stat.isFile() || stat.size > ENSEMBLE_MAX_BYTES)
       throw new Error('Ensemble: invalid preset file');
+    await assertIdentity();
     const buffer = Buffer.alloc(ENSEMBLE_MAX_BYTES + 1);
     let length = 0;
     while (length < buffer.length) {
@@ -65,6 +100,7 @@ export async function loadEnsemblePreset(
     }
     if (length > ENSEMBLE_MAX_BYTES)
       throw new Error('Ensemble: preset exceeds byte limit');
+    await assertIdentity();
     const bytes = buffer.subarray(0, length);
     const json = bytes.toString('utf8');
     if (!Buffer.from(json, 'utf8').equals(bytes))
@@ -190,6 +226,32 @@ export async function prepareEnsemble(
       resolved.modelId !== member.model
     ) {
       throw new Error(`Ensemble: member ${member.id} engine/model changed`);
+    }
+    if (Object.keys(options).length) {
+      const adapter = host.inventory.getProviderAdapter(resolved.provider);
+      const catalog = await adapter?.listModelCatalog?.();
+      const model: ModelOption | undefined = catalog?.models.find(
+        (entry) =>
+          entry.id === member.model || entry.originalId === member.model,
+      );
+      const capabilities = model?.capabilities;
+      for (const [key, value] of Object.entries(options)) {
+        const supported =
+          ((key === 'effort' || key === 'reasoningEffort') &&
+            typeof value === 'string' &&
+            capabilities?.supportsEffort === true &&
+            capabilities.supportedEffortLevels?.includes(value) === true) ||
+          (key === 'fastMode' &&
+            typeof value === 'boolean' &&
+            capabilities?.supportsFastMode === true) ||
+          (key === 'thinking' &&
+            typeof value === 'boolean' &&
+            capabilities?.supportsAdaptiveThinking === true);
+        if (!supported)
+          throw new Error(
+            `Ensemble: member ${member.id} unsupported model option value '${key}'`,
+          );
+      }
     }
     const resolution = freeze(structuredClone(resolved.receipt));
     const selectionHash = hash(

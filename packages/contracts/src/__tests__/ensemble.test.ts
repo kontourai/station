@@ -162,7 +162,9 @@ describe('Ensemble JSON contract', () => {
     [
       'reasoning alias',
       (value: ReturnType<typeof declaration>) => {
-        Object.assign(value.members[0].reasoning, { option: 'automatic' });
+        Object.assign(value.members[0], {
+          reasoning: { option: 'automatic', value: 'high' },
+        });
       },
     ],
   ])('refuses %s without silently stripping fields', (_name, change) => {
@@ -170,6 +172,16 @@ describe('Ensemble JSON contract', () => {
     change(value);
     expect(() => parseEnsemblePreset(JSON.stringify(value))).toThrow();
   });
+
+  test.each(['ultra', 'futureEffort'])(
+    'preserves declared %s for validation against the selected engine catalog',
+    (value) => {
+      const input = declaration();
+      input.members[0].reasoning = { option: 'effort', value };
+      const member = parseEnsemblePreset(JSON.stringify(input)).members[0];
+      expect(member.reasoning).toEqual({ option: 'effort', value });
+    },
+  );
 
   test('bounds encoded UTF-8 bytes before parsing and refuses malformed JSON', () => {
     expect(() =>

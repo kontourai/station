@@ -1,14 +1,27 @@
 import { createHash } from 'node:crypto';
-import { realpath, symlink, writeFile } from 'node:fs/promises';
+import {
+  link,
+  mkdir,
+  open,
+  realpath,
+  rename,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { ENSEMBLE_PRESET_VERSION } from '@kontourai/station-contracts/ensemble';
+import {
+  ENSEMBLE_PRESET_VERSION,
+  parseEnsemblePreset,
+} from '@kontourai/station-contracts/ensemble';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ClaudeAdapter } from '../../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import {
   type EnsembleAuthenticationReceipt,
@@ -18,6 +31,19 @@ import {
   type PrepareEnsembleInput,
   prepareEnsemble,
 } from '../ensemble-presets.js';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
+
+const { mockQuery } = vi.hoisted(() => ({ mockQuery: vi.fn() }));
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  deleteSession: vi.fn(),
+  forkSession: vi.fn(),
+  listSessions: vi.fn(),
+  query: mockQuery,
+}));
 
 const tempDir = trackTempDirs();
 
@@ -113,7 +139,22 @@ async function setup() {
       })),
       getConnection: vi.fn(async () => connection),
       getProject: async () => undefined,
-      getProviderAdapter: () => new CodexAdapter(),
+      getProviderAdapter: () => {
+        const adapter = new CodexAdapter();
+        vi.spyOn(adapter, 'listModelCatalog').mockResolvedValue({
+          models: ['gpt-6.1-sol', 'gpt-6-sol'].map((id) => ({
+            id,
+            name: id,
+            originalId: id,
+            capabilities: {
+              supportsEffort: true,
+              supportedEffortLevels: ['medium', 'high'],
+              supportsFastMode: true,
+            },
+          })),
+        });
+        return adapter;
+      },
     },
     authenticateMember,
     now: () => now,
@@ -134,6 +175,214 @@ async function setup() {
 }
 
 describe('Ensemble file preparation', () => {
+  test.each(['ultra', 'max'])(
+    'checks Claude %s against the real catalog and mapper before authenticating',
+    async (effort) => {
+      const fixture = await setup();
+      const declaration = parseEnsemblePreset(fixture.json);
+      const json = JSON.stringify({
+        ...declaration,
+        members: [
+          {
+            ...declaration.members[0],
+            engine: 'claude',
+            model: 'sonnet',
+            reasoning: { option: 'effort', value: effort },
+            options: {},
+          },
+        ],
+      });
+      await writeFile(fixture.path, json);
+      const input = {
+        ...fixture.input,
+        bindings: { lead: fixture.input.bindings.lead },
+        expectedPresetHash: `sha256:${createHash('sha256').update(json).digest('hex')}`,
+      };
+      fixture.connection.type = 'claude';
+      fixture.connection.config = { provider: 'claude' };
+      mockQuery.mockImplementation(() => ({
+        async *[Symbol.asyncIterator]() {},
+        supportedModels: async () => [
+          {
+            value: 'sonnet',
+            displayName: 'Sonnet',
+            supportsEffort: true,
+            supportedEffortLevels: ['high', 'max', 'ultra'],
+          },
+        ],
+        close: vi.fn(),
+      }));
+      const adapter = new ClaudeAdapter({ findBinary: async () => null });
+      const host: EnsemblePreparationHost = {
+        ...fixture.host,
+        inventory: {
+          ...fixture.host.inventory,
+          getProviderAdapter: () => adapter,
+        },
+      };
+      try {
+        await adapter.startSession({
+          threadId: `ensemble-mapper-${effort}`,
+          provider: 'claude',
+          modelId: 'sonnet',
+          modelOptions: { effort },
+        });
+        expect(mockQuery.mock.calls.at(-1)?.[0].options.effort).toBe(
+          effort === 'max' ? 'max' : undefined,
+        );
+        if (effort === 'ultra') {
+          await expect(prepareEnsemble(input, host)).rejects.toThrow(
+            'unsupported model option value',
+          );
+          expect(fixture.authenticateMember).not.toHaveBeenCalled();
+        } else {
+          const plan = await prepareEnsemble(input, host);
+          expect(plan.members[0].target.model?.options).toEqual({
+            effort: 'max',
+          });
+          expect(Object.isFrozen(plan.members[0].target.model?.options)).toBe(
+            true,
+          );
+          expect(fixture.authenticateMember).toHaveBeenCalledTimes(1);
+        }
+      } finally {
+        await adapter.stopSession(`ensemble-mapper-${effort}`);
+      }
+    },
+  );
+
+  test.each([
+    'symlink-left',
+    'restored-before-validation',
+    'replacement-directory',
+  ])('refuses ancestor substitution at open: %s', async (race) => {
+    const fixture = await setup();
+    const directory = join(fixture.directory, 'selected');
+    const saved = join(fixture.directory, 'saved');
+    const peer = join(fixture.directory, 'peer');
+    await mkdir(directory);
+    await mkdir(peer);
+    const path = join(directory, 'team.json');
+    const peerJson = fixture.json.replace('"name": "Team"', '"name": "Peer"');
+    await writeFile(path, fixture.json);
+    if (race === 'replacement-directory')
+      await link(path, join(peer, 'team.json'));
+    else await writeFile(join(peer, 'team.json'), peerJson);
+    const actual =
+      await vi.importActual<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      );
+    let injected = false;
+    vi.mocked(open).mockImplementation(async (...args) => {
+      if (args[0] !== path || injected) return actual.open(...args);
+      injected = true;
+      await rename(directory, saved);
+      if (race === 'replacement-directory') await rename(peer, directory);
+      else await symlink(peer, directory);
+      const file = await actual.open(...args);
+      if (race === 'restored-before-validation') {
+        await unlink(directory);
+        await rename(saved, directory);
+      }
+      return file;
+    });
+    try {
+      await expect(loadEnsemblePreset(path)).rejects.toThrow(
+        'preset file identity changed',
+      );
+      expect(injected).toBe(true);
+    } finally {
+      vi.mocked(open).mockImplementation(actual.open);
+    }
+  });
+
+  test.each([
+    'unknown-effort',
+    'missing-catalog',
+    'missing-capabilities',
+    'unsupported-fast-mode',
+  ])(
+    'refuses %s without dropping or translating authored options',
+    async (failure) => {
+      const fixture = await setup();
+      const json =
+        failure === 'unknown-effort'
+          ? fixture.json.replace('"value": "high"', '"value": "invented"')
+          : fixture.json;
+      await writeFile(fixture.path, json);
+      const adapter = new CodexAdapter();
+      vi.spyOn(adapter, 'listModelCatalog').mockResolvedValue({
+        models:
+          failure === 'missing-catalog'
+            ? []
+            : [
+                {
+                  id: 'gpt-6.1-sol',
+                  name: 'Lead',
+                  originalId: 'gpt-6.1-sol',
+                  ...(failure === 'missing-capabilities'
+                    ? {}
+                    : {
+                        capabilities: {
+                          supportsEffort: true,
+                          supportedEffortLevels: ['high'],
+                          supportsFastMode: failure !== 'unsupported-fast-mode',
+                        },
+                      }),
+                },
+              ],
+      });
+      await expect(
+        prepareEnsemble(
+          {
+            ...fixture.input,
+            expectedPresetHash: `sha256:${createHash('sha256').update(json).digest('hex')}`,
+          },
+          {
+            ...fixture.host,
+            inventory: {
+              ...fixture.host.inventory,
+              getProviderAdapter: () => adapter,
+            },
+          },
+        ),
+      ).rejects.toThrow('unsupported model option value');
+      expect(fixture.authenticateMember).not.toHaveBeenCalled();
+    },
+  );
+
+  test('refuses bytes rewritten while the opened file is being read', async () => {
+    const fixture = await setup();
+    const actual =
+      await vi.importActual<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      );
+    let injected = false;
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const file = await actual.open(...args);
+      if (args[0] === fixture.path) {
+        const read = file.read.bind(file);
+        vi.spyOn(file, 'read').mockImplementationOnce(async (...readArgs) => {
+          injected = true;
+          await writeFile(
+            fixture.path,
+            fixture.json.replace('"name": "Team"', '"name": "Peer"'),
+          );
+          return read(...readArgs);
+        });
+      }
+      return file;
+    });
+    try {
+      await expect(loadEnsemblePreset(fixture.path)).rejects.toThrow(
+        'preset file identity changed',
+      );
+      expect(injected).toBe(true);
+    } finally {
+      vi.mocked(open).mockImplementation(actual.open);
+    }
+  });
+
   test('reopens exact bytes and prepares every resolved member with immutable identities, options and roster briefs', async () => {
     const fixture = await setup();
     const first = await loadEnsemblePreset(fixture.path);
@@ -216,6 +465,11 @@ describe('Ensemble file preparation', () => {
     );
     const alias = join(fixture.directory, 'alias.json');
     await symlink(fixture.path, alias);
+    const directoryAlias = join(fixture.directory, 'directory-alias');
+    await symlink(fixture.directory, directoryAlias);
+    await expect(
+      loadEnsemblePreset(join(directoryAlias, 'team.json')),
+    ).rejects.toThrow('explicit canonical');
     await expect(loadEnsemblePreset(alias)).rejects.toThrow(
       'explicit canonical',
     );

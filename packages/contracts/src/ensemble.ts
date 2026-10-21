@@ -19,7 +19,7 @@ export interface EnsembleMember {
   /** Expected provider, never a connection or credential selector. */
   readonly engine: string;
   readonly model: string;
-  /** Explicit option spelling avoids translating reasoning levels between engines. */
+  /** Preserved verbatim; preparation validates values against the selected engine catalog. */
   readonly reasoning: {
     readonly option: 'effort' | 'reasoningEffort';
     readonly value: string;
