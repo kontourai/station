@@ -330,8 +330,60 @@ function connectionStatusView(
   };
 }
 
+/**
+ * Registers a saved connection that a background probe (the cold first-contact
+ * continuation, or the periodic sweep) just handshaked for the first time.
+ * The result counts only for the config that probe ran: the saved entry must
+ * still match it exactly, or the result is dropped. Already-registered
+ * connections never enter the configuration queue; the cold probe itself ran
+ * outside it.
+ */
+export async function registerFirstHandshakeACPConnection(
+  ctx: RuntimeContext,
+  probed: ACPConnectionConfig,
+): Promise<'registered' | 'already-registered' | 'config-changed' | 'skipped'> {
+  if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') {
+    return 'skipped';
+  }
+  if (
+    (await registeredRuntimeConnectionIds(ctx.configLoader))?.has(probed.id)
+  ) {
+    return 'already-registered';
+  }
+  const { value } = await captureConfigurationMutation(
+    ctx.applyAgentConfigurationMutation,
+    async (beginMutation) => {
+      const saved = (await ctx.configLoader.loadACPConfig()).connections.find(
+        (connection) => connection.id === probed.id,
+      );
+      if (!saved || !isDeepStrictEqual(saved, probed)) {
+        return 'config-changed' as const;
+      }
+      if (
+        (await registeredRuntimeConnectionIds(ctx.configLoader))?.has(probed.id)
+      ) {
+        return 'already-registered' as const;
+      }
+      beginMutation();
+      await registerPersistedACPConnection(ctx, probed.id, probed.name);
+      return 'registered' as const;
+    },
+  );
+  return value;
+}
+
 export function createACPRoutes(ctx: RuntimeContext) {
   const app = new Hono();
+
+  // Background first handshakes register here; nothing awaits them.
+  ctx.acpBridge.onFirstHandshake?.((config) => {
+    void registerFirstHandshakeACPConnection(ctx, config).catch((error) => {
+      ctx.logger?.warn?.('ACP first-handshake registration failed', {
+        id: config.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  });
 
   app.get('/status', (c) => {
     return c.json({ success: true, data: ctx.acpBridge.getStatus() });
@@ -414,6 +466,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
           // identity below registers — and a later install/re-check of the
           // same entry re-probes and materializes once the engine works.
           const connected = await connectNewACPConnection(ctx, newConn);
+          // A never-connected engine that ran out of the request budget gets
+          // its cold retry in the background; the response reads `probing`.
+          if (!connected) ctx.acpBridge.continueFirstContact?.(newConn.id);
           const agent = connected
             ? await registerPersistedACPConnection(
                 ctx,
@@ -495,6 +550,8 @@ export function createACPRoutes(ctx: RuntimeContext) {
           const connected = await connectNewACPConnection(ctx, newConn);
           if (connected) {
             await registerPersistedACPConnection(ctx, newConn.id, newConn.name);
+          } else {
+            ctx.acpBridge.continueFirstContact?.(newConn.id);
           }
           acpOps.add(1, { op: 'create' });
           return c.json({

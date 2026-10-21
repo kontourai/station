@@ -144,6 +144,35 @@ export async function fetchACPConnections(): Promise<ACPConnectionInfo[]> {
   return result.data ?? [];
 }
 
+/**
+ * Live probe status for every connection the server is probing, including a
+ * saved connection whose engine is not registered yet (which
+ * `fetchACPConnections` does not list). `probing` while a first contact is
+ * still running.
+ */
+export interface ACPConnectionProbeStatus {
+  id: string;
+  name: string;
+  status: string;
+  lastError?: { message: string; phase: string };
+}
+
+export async function fetchACPConnectionProbeStatuses(): Promise<
+  ACPConnectionProbeStatus[]
+> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(`${apiBase}/acp/status`);
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: { connections?: ACPConnectionProbeStatus[] };
+    error?: string;
+  };
+  if (!result.success) {
+    throw new Error(apiErrorMessage(result, 'Failed to fetch engine status'));
+  }
+  return result.data?.connections ?? [];
+}
+
 export async function fetchACPConnectionRegistry(): Promise<
   ACPConnectionRegistryEntry[]
 > {
@@ -371,6 +400,21 @@ export function useACPConnectionsQuery(
     gcTime: config?.gcTime,
     enabled: config?.enabled ?? true,
   });
+}
+
+export function useACPConnectionProbeStatusesQuery(
+  config?: QueryConfig<ACPConnectionProbeStatus[]>,
+) {
+  return useApiQuery(
+    ['acp-connection-probe-status'],
+    () => fetchACPConnectionProbeStatuses(),
+    {
+      staleTime: config?.staleTime ?? 0,
+      gcTime: config?.gcTime,
+      enabled: config?.enabled ?? true,
+      refetchInterval: config?.refetchInterval,
+    },
+  );
 }
 
 export function useACPConnectionRegistryQuery(

@@ -193,6 +193,51 @@ process.stdin.on('data', (chunk) => {
     expect(process.newSession).not.toHaveBeenCalled();
   });
 
+  // The first-contact continuation retries only a cold start: a
+  // never-connected engine that ran out of time, not one that failed.
+  test('reports a first contact that timed out, and not one that failed outright', async () => {
+    const hung = {
+      start: vi.fn(() => new Promise(() => {})),
+      newSession: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: () => false,
+      releaseIfConfirmedGone: () => {},
+    };
+    const config = {
+      id: 'kiro',
+      name: 'Kiro',
+      command: 'kiro-cli',
+      enabled: true,
+    };
+    const timedOut = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () => hung as unknown as ACPProcess,
+      10,
+    );
+    await expect(timedOut.probe()).resolves.toBe(false);
+    expect(timedOut.firstContactTimedOut()).toBe(true);
+
+    const failing = {
+      ...hung,
+      start: vi.fn(() => Promise.reject(new Error('exited with code 1'))),
+    };
+    const failed = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () => failing as unknown as ACPProcess,
+      10,
+    );
+    await expect(failed.probe()).resolves.toBe(false);
+    expect(failed.firstContactTimedOut()).toBe(false);
+
+    await timedOut.dispose();
+    await failed.dispose();
+    expect(timedOut.firstContactTimedOut()).toBe(false);
+  });
+
   test('bounds asynchronous command discovery before a process is spawned', async () => {
     const probe = new ACPProbe(
       {

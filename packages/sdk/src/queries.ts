@@ -13,6 +13,7 @@ export {
 
 export {
   type ACPConnectionInfo,
+  type ACPConnectionProbeStatus,
   type ACPConnectionRegistryEntry,
   type ACPRegistryInstallAgentReceipt,
   type AcpSlashCommandDescriptor,
@@ -21,11 +22,13 @@ export {
   deleteACPConnection,
   type FileSystemBrowseEntry,
   type FileSystemBrowseResult,
+  fetchACPConnectionProbeStatuses,
   fetchACPConnectionRegistry,
   fetchACPConnections,
   installACPConnectionRegistryEntry,
   reconnectACPConnection,
   updateACPConnection,
+  useACPConnectionProbeStatusesQuery,
   useACPConnectionRegistryQuery,
   useACPConnectionsQuery,
   useCreateACPConnectionMutation,

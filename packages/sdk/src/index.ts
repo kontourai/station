@@ -378,6 +378,7 @@ export {
 } from './providers';
 export {
   type ACPConnectionInfo,
+  type ACPConnectionProbeStatus,
   type ACPConnectionRegistryEntry,
   type ACPRegistryInstallAgentReceipt,
   type AcceptFlowExceptionInput,
@@ -511,6 +512,7 @@ export {
   type FlowRunConsoleVM,
   type FlowRunSummaryVM,
   type FlowWorkspaceStatusVM,
+  fetchACPConnectionProbeStatuses,
   fetchACPConnectionRegistry,
   fetchACPConnections,
   fetchAgentConversationPage,
@@ -794,6 +796,7 @@ export {
   updateAppConfig,
   updateAppLogLevel,
   updateTaskStatus,
+  useACPConnectionProbeStatusesQuery,
   useACPConnectionRegistryQuery,
   useACPConnectionsQuery,
   useAchievementsQuery,
