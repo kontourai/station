@@ -43,7 +43,6 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/chatRuntime.ts': 'sdk-export',
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
-    'src-server/routes/projects/layout-working-directory.ts': 'persistence',
     // #2062: the admission `POST /api/projects/:slug/layouts` applies before
     // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
     // the same answer instead of carrying a second copy that drifts. The scan
