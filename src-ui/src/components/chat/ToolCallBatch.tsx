@@ -12,7 +12,9 @@ import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
 import { KIND_GLYPH } from './ToolCallDisplay';
 import { ToolCallElapsed } from './ToolCallElapsed';
 import { classifyToolCallRun, type ToolCallGroup } from './tool-call-groups';
+import { runningCallLabelParts } from './tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
+import { toolDisplayView } from './tool-display-view';
 import './chat.css';
 
 // The sheet body (ResponsiveDialogSurface + per-row ToolCallDisplay detail)
@@ -287,6 +289,15 @@ function LiveCallRow({
     typeof call.part.progressMessage === 'string'
       ? call.part.progressMessage.trim()
       : '';
+  // The pulse already says it is running, so the row spends its width on
+  // what is running; the verb stays for screen readers and the tooltip.
+  const parts = call.inProgress
+    ? runningCallLabelParts(
+        call.kind,
+        toolDisplayView(call.part).args,
+        call.label,
+      )
+    : undefined;
   return (
     <div
       className={
@@ -313,8 +324,16 @@ function LiveCallRow({
             ? 'tool-call__label tool-call__label--active'
             : 'tool-call__label'
         }
+        title={call.label}
       >
-        {call.label}
+        {parts ? (
+          <>
+            <span className="sr-only">{parts.verb} </span>
+            {parts.target}
+          </>
+        ) : (
+          call.label
+        )}
       </span>
       {progress && (
         <span className="tool-call-batch__child-progress">{progress}</span>

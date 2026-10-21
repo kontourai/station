@@ -152,6 +152,8 @@ type Measurement = {
   visible: boolean;
   left: number;
   right: number;
+  top: number;
+  bottom: number;
   inkLeft: number;
 };
 
@@ -218,6 +220,8 @@ describe.skipIf(!chromiumAvailable).each([
               visible: box.width > 0,
               left: box.left,
               right: box.right,
+              top: box.top,
+              bottom: box.bottom,
               inkLeft: text.getBoundingClientRect().left,
             };
           }),
@@ -278,19 +282,43 @@ describe.skipIf(!chromiumAvailable).each([
       },
     );
 
-    test('when the row is squeezed (560px), the agent and engine give up their width before the title does', async () => {
-      const measurements = await measure(560);
-      const title = measurements.find(
-        (m) => m.selector === '.chat-dock__active-identity-title',
-      )!;
-      const context = measurements.find(
-        (m) => m.selector === '.chat-dock__active-identity-context',
-      )!;
-      // The row is squeezed here, so this is not vacuous: the title is cut.
-      expect(doesNotFit(title)).toBe(true);
-      // And its context holds no more than a sliver of width while it is:
-      // the context yields first (flex-shrink 100 to 1).
-      expect(context.clientWidth).toBeLessThan(8);
+    const find = (measurements: Measurement[], selector: string) =>
+      measurements.find((m) => m.selector === selector)!;
+    // Below the row's one clipped line: stepped aside, not squeezed.
+    const offTheLine = (part: Measurement, row: Measurement) =>
+      part.top >= row.bottom - 1;
+
+    test.each([320, 560, 800])(
+      'squeezed (%ipx): while the title is cut, the agent and engine are off its line',
+      async (width) => {
+        const measurements = await measure(width);
+        const row = find(measurements, '.chat-dock__active-identity-text');
+        const title = find(measurements, '.chat-dock__active-identity-title');
+        const agent = find(measurements, '.chat-dock__active-identity-agent');
+        const engine = find(measurements, '.chat-dock__active-identity-engine');
+        // Not vacuous at the narrowest width: the title is cut there.
+        if (width === 320) expect(doesNotFit(title)).toBe(true);
+        if (doesNotFit(title)) {
+          expect(offTheLine(agent, row)).toBe(true);
+          expect(offTheLine(engine, row)).toBe(true);
+        }
+        // The engine goes before the agent.
+        if (!offTheLine(engine, row))
+          expect(offTheLine(agent, row)).toBe(false);
+      },
+    );
+
+    test('with room (1200px), the title is whole and the agent and engine share its line', async () => {
+      const measurements = await measure(1200);
+      const row = find(measurements, '.chat-dock__active-identity-text');
+      expect(
+        doesNotFit(find(measurements, '.chat-dock__active-identity-title')),
+      ).toBe(false);
+      for (const selector of [
+        '.chat-dock__active-identity-agent',
+        '.chat-dock__active-identity-engine',
+      ])
+        expect(offTheLine(find(measurements, selector), row)).toBe(false);
     });
   },
 );

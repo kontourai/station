@@ -746,6 +746,22 @@ function extractTarget(
   return pathValue && fileName(pathValue) ? fileName(pathValue) : null;
 }
 
+/**
+ * A running call's label split into its verb and target ("Running" and
+ * "npm run build"), when the label is exactly the two; undefined otherwise
+ * (no target, or a label that names the tool too). A live row whose pulse
+ * already says it is running can show the target alone.
+ */
+export function runningCallLabelParts(
+  kind: ToolCallKind,
+  args: unknown,
+  label: string,
+): { verb: string; target: string } | undefined {
+  const target = extractTarget(kind, args, true);
+  const verb = KIND_VERBS[kind].progressiveVerb;
+  return target && label === `${verb} ${target}` ? { verb, target } : undefined;
+}
+
 /** e.g. "Read app.tsx" (done), "Running npm run build:ui" (in flight),
  * "Edit approved.txt" (proposed, awaiting approval), "Edit config.json"
  * (unresolved — denied, cancelled, or never resolved), "Ran npm test" /

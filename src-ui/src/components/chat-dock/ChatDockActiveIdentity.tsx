@@ -28,7 +28,7 @@ interface ChatDockActiveIdentityProps {
   onClose: (id: string) => void;
 }
 
-/** One line: the conversation title, then the agent and engine, muted; the context truncates before the title. */
+/** One line: the conversation title, then the agent and engine, muted; the engine and then the agent step aside before the title truncates. */
 export function ChatDockActiveIdentity({
   session,
   agent,
@@ -121,7 +121,10 @@ export function ChatDockActiveIdentity({
       <div className="chat-dock__active-identity-text">
         <span
           className="chat-dock__active-identity-title"
-          title={session.title}
+          // The agent and engine may have stepped aside for the title.
+          title={
+            contextTitle ? `${session.title}\n${contextTitle}` : session.title
+          }
         >
           {session.title}
         </span>

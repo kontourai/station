@@ -110,7 +110,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     ).toBe('Driven from delegated task: Review Station');
   });
 
-  test('the title and the context each carry their full text as a tooltip, because each ellipsizes', () => {
+  test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -122,7 +122,9 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
 
     expect(
       screen.getByText('Polish the Station dock').getAttribute('title'),
-    ).toBe('Polish the Station dock');
+    ).toBe(
+      'Polish the Station dock\nCodex · Claude Code · Opus 5 (1M context)',
+    );
     expect(
       document
         .querySelector('.chat-dock__active-identity-context')

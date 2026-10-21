@@ -3,7 +3,8 @@
  *
  * Browser geometry for the real title/assistant markup and application CSS.
  * Protects the one-line identity (title, then agent and engine) and a legible
- * title at the smallest side dock: the context yields its width first.
+ * title at the smallest side dock: the agent and engine step off the line
+ * before the title is cut.
  */
 
 import { dirname, resolve } from 'node:path';
@@ -133,6 +134,13 @@ describe.skipIf(!chromiumAvailable)(
             };
             return {
               title: box('.chat-dock__active-identity-title'),
+              titleCut: (() => {
+                const t = document.querySelector<HTMLElement>(
+                  '.chat-dock__active-identity-title',
+                )!;
+                return t.scrollWidth > t.clientWidth + 1;
+              })(),
+              row: box('.chat-dock__active-identity-text'),
               agent: box('.chat-dock__active-identity-agent'),
               close: box('.chat-dock__active-identity-close'),
               header: box('.chat-dock__header'),
@@ -141,18 +149,30 @@ describe.skipIf(!chromiumAvailable)(
           expect(geometry.title.width).toBeGreaterThanOrEqual(
             width >= 420 ? 110 : 48,
           );
-          // One line: the agent follows the title on the same row.
-          expect(
-            Math.abs(geometry.agent.top - geometry.title.top),
-          ).toBeLessThan(6);
-          expect(geometry.title.right).toBeLessThanOrEqual(
-            geometry.agent.left + 1,
-          );
-          // With room, the agent is readable; squeezed, it yields first.
-          if (width >= 700) expect(geometry.agent.width).toBeGreaterThan(24);
-          expect(geometry.agent.right).toBeLessThanOrEqual(
-            geometry.close.left + 1,
-          );
+          // One line. The agent follows the title on it, or, once they do
+          // not both fit, steps off it (below the clipped row) before the
+          // title is cut: never squeezed beside a cut title.
+          const agentOnLine =
+            Math.abs(geometry.agent.top - geometry.title.top) < 6;
+          if (agentOnLine) {
+            expect(geometry.titleCut).toBe(false);
+            expect(geometry.title.right).toBeLessThanOrEqual(
+              geometry.agent.left + 1,
+            );
+            expect(geometry.agent.right).toBeLessThanOrEqual(
+              geometry.close.left + 1,
+            );
+          } else {
+            expect(geometry.agent.top).toBeGreaterThanOrEqual(
+              geometry.row.bottom - 1,
+            );
+          }
+          // Not vacuous: at the smallest docks this long title is cut, so
+          // its agent is off the line there.
+          if (width <= 320) {
+            expect(geometry.titleCut).toBe(true);
+            expect(agentOnLine).toBe(false);
+          }
           for (const item of [geometry.title, geometry.close]) {
             expect(item.left).toBeGreaterThanOrEqual(geometry.header.left);
             expect(item.right).toBeLessThanOrEqual(geometry.header.right + 1);
