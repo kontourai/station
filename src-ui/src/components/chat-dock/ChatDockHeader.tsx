@@ -23,10 +23,6 @@ import {
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
 
-const loadChatDockSessionInventoryHost = () =>
-  import('./ChatDockWorkspaceControls').then((module) => ({
-    default: module.ChatDockSessionInventoryHost,
-  }));
 const loadChatDockWorkspaceActions = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceActions,
@@ -301,17 +297,9 @@ export function ChatDockHeader({
   // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
   // picker with the legacy docked-Home path. #2046 2b took the placement grab
   // too: it moved to the region bar with the tab strip, since it moves the
-  // REGION and not this pane. What is left is the invisible inventory host
-  // and the pane's own identity.
+  // REGION and not this pane. What is left is the pane's own identity.
   const leading = (
     <>
-      {inventory ? (
-        <LazyBoundary
-          load={loadChatDockSessionInventoryHost}
-          pending={null}
-          componentProps={{ sessionInventory: inventory }}
-        />
-      ) : null}
       {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}

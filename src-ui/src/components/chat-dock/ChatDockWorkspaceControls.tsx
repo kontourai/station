@@ -18,21 +18,7 @@ const loadSessionInventoryEntryPoint = () =>
     default: module.SessionInventoryEntryPoint,
   }));
 
-/**
- * The session inventory's host: the authority-scoped registration the store
- * matches an occurrence against, and the portal the panel renders through. No
- * visible chrome of its own.
- *
- * #1536 F moved the inventory's BUTTON into the dock header's More menu, which
- * is not this component and holds no authority scope — so the two halves are
- * split by what each one needs. The row presses
- * `toggleSessionInventoryOccurrence`, which reads the identity out of the
- * registration written here; this stays mounted for as long as the pane is
- * open, so a menu closing behind an open panel cannot unmount its host.
- *
- * Still behind a `LazyBoundary`: this reads the authority scope and the
- * occurrence store, and pulls the panel's own chunk on demand.
- */
+/** Authority-scoped registration and panel portal, mounted once by the chat pane. */
 export function ChatDockSessionInventoryHost({
   sessionInventory: inventory,
 }: {

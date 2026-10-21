@@ -2518,14 +2518,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventoryProjectId,
     activeOrchestrationSessionRead,
   ]);
-  /**
-   * The inventory's host registration, ONE per dock: the desktop header
-   * mounts it, and on a phone the dock mounts it beside the mobile header
-   * (the phone's header has no host of its own). Both the More menu's row and
-   * the session context card's footer press the same host, and so does the
-   * per-answer Basis chip — `openSessionInventoryOccurrence` admits an
-   * occurrence only when exactly one host is registered for the chat.
-   */
+  // The pane owns one host across desktop/mobile header replacement. Header
+  // remounts must not retire an exact-answer inspection during streaming.
   const sessionInventoryControls =
     sessionInventoryOffered && inventoryExecutionId
       ? {
@@ -2671,10 +2665,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               grip) is `DockShell`'s job now for a docked placement —
               rendered once outside every occupant (station#4460). A
               full-screen placement never had one. */}
-          {/* A phone's inventory host: the desktop header mounts its own
-              (`ChatDockHeader`), the mobile header has none. Exactly one is
-              mounted per dock either way. */}
-          {isMobile && sessionInventoryControls ? (
+          {sessionInventoryControls ? (
             <LazyBoundary
               load={loadChatDockSessionInventoryHost}
               pending={null}
