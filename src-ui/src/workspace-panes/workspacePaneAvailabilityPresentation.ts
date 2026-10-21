@@ -54,7 +54,7 @@ interface WorkspacePaneAvailabilityPresentation {
   reasonLabel: string;
   action?: WorkspacePaneAvailabilityAction;
   actionLabel?: string;
-  reviewInRegistry?: boolean;
+  reviewExtensions?: boolean;
   /**
    * This presentation reports a fact still being determined, not a verdict.
    * A host may render a skeleton; every host at least stops saying "unavailable".
@@ -162,11 +162,10 @@ export function presentWorkspacePaneAvailability(
   if (extensionsDisabled) {
     return {
       state: availability.state,
-      stateLabel: 'Extensions are disabled for this Station',
+      stateLabel: 'Extensions are off on this device',
       reasonCode: availability.reason.code,
-      reasonLabel:
-        'Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.',
-      reviewInRegistry: true,
+      reasonLabel: 'This pane needs extension code from the selected Station.',
+      reviewExtensions: true,
     };
   }
   // Only where the UNSETTLED fact is the one that produced the refusal. A pane

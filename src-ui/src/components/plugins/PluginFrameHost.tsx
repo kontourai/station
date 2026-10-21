@@ -1,7 +1,7 @@
 import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
-import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { authenticatedFetch, SDKContext } from '@kontourai/station-sdk';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigationOptional } from '../../contexts/NavigationContext';
@@ -108,9 +108,13 @@ export function PluginFrameHost({
   // Bumped when the bridge effect tears the plugin document down, so an open
   // confirm cannot survive into the document that replaces it.
   const [frameGeneration, setFrameGeneration] = useState(0);
+  // The occurrence's related-pane capability: the same host object the SDK
+  // provider around this placement gives a direct pane.
+  const relatedPanes = useContext(SDKContext)?.relatedPanes;
   const { confirmChrome, receive: receivePaneHostMessage } = useFramePaneHost({
     pluginName: plugin.name,
     skillExperience,
+    relatedPanes,
     authorizeExperience: authorize,
     granted: plugin.granted,
     generation: frameGeneration,

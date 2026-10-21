@@ -571,6 +571,8 @@ function ChatMessageListComponent({
     !activeSession.replay &&
     turnLandmarks.length >= TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS;
   const turnRailRef = useRef<HTMLElement>(null);
+  // Reported by the rail; until it measures, assume the wide layout.
+  const [turnRailAvailable, setTurnRailAvailable] = useState(true);
   const turnViewport = useTranscriptTurnViewport({
     enabled: turnNavigation,
     scrollElement: messagesContainerRef,
@@ -1321,16 +1323,20 @@ function ChatMessageListComponent({
     },
     [jumpToTurn, hasOlderMessages],
   );
-  // What was said names a position in one chat's loaded window: a chat
-  // switch or a change in what is loaded makes it stale, so it goes.
+  // What was said names a position in one chat's loaded window ("Loaded
+  // turn 5 of 10"): a chat switch, older history finishing loading, or a
+  // change in how many turns are loaded (another page of older history, or
+  // a new turn) makes it stale, so it goes.
+  const loadedTurnCount = turnLandmarks.length;
   useEffect(() => {
     void activeSession.id;
     void hasOlderMessages;
+    void loadedTurnCount;
     if (announceFrameRef.current !== undefined)
       cancelAnimationFrame(announceFrameRef.current);
     announceFrameRef.current = undefined;
     setTurnAnnouncement('');
-  }, [activeSession.id, hasOlderMessages]);
+  }, [activeSession.id, hasOlderMessages, loadedTurnCount]);
   useEffect(
     () => () => {
       if (announceFrameRef.current !== undefined)
@@ -1606,6 +1612,16 @@ function ChatMessageListComponent({
     ) : null;
   // #342: previous/next turn travel with the return-to-latest control, which
   // is the transcript's one place for "you are not at the end" actions.
+  // #3862: at the latest message that control is gone, and a column too
+  // narrow for the rail (a phone) would have no turn navigation at all, so
+  // Previous turn alone stays in the same composer slot. Same component in
+  // the same place: stepping keeps focus on the Previous button as the
+  // group grows to its away-from-the-end form.
+  const latestTurnStep =
+    !scrollToBottomControl &&
+    turnNavigation &&
+    !turnRailAvailable &&
+    Boolean(scrollControlsTarget);
   const scrollControls =
     scrollToBottomControl && turnNavigation ? (
       <TranscriptTurnActions
@@ -1616,6 +1632,14 @@ function ChatMessageListComponent({
       >
         {scrollToBottomControl}
       </TranscriptTurnActions>
+    ) : latestTurnStep ? (
+      <TranscriptTurnActions
+        previousTurn={previousTurn}
+        nextTurn={undefined}
+        onJump={stepToTurn}
+        floating={false}
+        latest
+      />
     ) : (
       scrollToBottomControl
     );
@@ -1876,6 +1900,9 @@ function ChatMessageListComponent({
           </div>
           {turnNavigation && (
             <TranscriptTurnRail
+              // A chat switch starts the rail over: a hover or a dismissed
+              // preview names a turn index in the chat it was made in.
+              key={activeSession.id}
               landmarks={turnLandmarks}
               rowCount={transcriptRows.length}
               scrollElement={messagesContainerRef}
@@ -1883,6 +1910,7 @@ function ChatMessageListComponent({
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
               olderHistory={Boolean(hasOlderMessages)}
+              onAvailableChange={setTurnRailAvailable}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region

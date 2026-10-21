@@ -1,0 +1,25 @@
+{
+  "revision": "306f9c6763f8519210a96be7449d92be4fab724a",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Lane B Appearance page: routing.ts gained only the `appearance` path builder and a null parent. Re-read the Developer route allowlist, tab not-found and /developer redirect claims against routing.ts; unchanged. No prose change.","inputs":["docs/design/developer-surface.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/modality-ladder.md","note":"Lane B Appearance page: routing.ts gained `/appearance` (a top-level page whose parent is null, so Escape does not leave it). Re-read the page-rung, Escape-pops-one-rung and dirty-form claims; still accurate. No prose change.","inputs":["docs/design/modality-ladder.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Lane B Appearance page: destination-registry.ts gained the `appearance` destination and a Customize entry for Settings; routing.ts its path. The shell-versus-pane criterion and the registry/router ownership claims are unchanged; the new page is shell chrome by the same rule as Settings. No prose change.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Lane B Appearance page: page-frame-registry.ts gained an `appearance` frame (title, subtitle, narrow). Re-read the frame-registry Record/type-error, fallback-title-from-destination-label and view-never-writes-header claims; the new entry follows them. No prose change.","inputs":["docs/design/shell-skeletons.md","src-ui/src/app-shell/page-frame-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Lane B Appearance page: destination-registry.ts gained the `appearance` destination. The glossary's definition of destinations (APP_DESTINATION_REGISTRY, palette and sidebar targets) and the Skills/Customize wording still hold. No prose change.","inputs":["docs/glossary.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Lane B Appearance page: routing.ts gained only `/appearance`. The guide's route claims concern Agent chat and editor routes, which did not change. No prose change.","inputs":["docs/guides/agents.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Lane B Appearance page: routing.ts gained only `/appearance`; the guide's UI-placement and route claims concern agent configuration and delegation surfaces, unchanged. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Lane B Appearance page: routing.ts gained only `/appearance`; the example's configuration and UI caller claims are unchanged. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/app-shell/routing.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Lane B Appearance page: SettingsView's Appearance section now renders Theme (mode toggle plus Open Appearance) and Accent color (Open Appearance) as link rows with unchanged catalog ids. Added a Moves-so-far entry. Checked highlight=theme and highlight=accent-color reveal their rows in settings-catalog-completeness.test.tsx (executed).","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"scripts/AGENTS.md","note":"Lane B Appearance page: added appearance-page-keyboard.test.ts (owns Chromium) to PROCESS_HEAVY_VITEST_FILES in vitest-resource-manifest.mjs, following the rule this file states. vitest-resource-manifest.test.ts passes (executed). No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -62,7 +62,17 @@
 
     "packages/contracts/package.json#/name",
 
-    "packages/contracts/package.json#/exports"
+    "packages/contracts/package.json#/exports",
+
+    "src-server/services/projects/task-room-conversation-module.ts",
+
+    "src-server/services/projects/__tests__/task-room-conversation-module.test.ts",
+
+    "src-ui/src/__tests__/TaskRoomPage.test.tsx",
+
+    "src-ui/src/__tests__/ProjectTaskRoomConversation.test.tsx",
+
+    "src-ui/src/workspace-panes/BasisWorkspacePane.tsx"
   ],
 
   "checks": [

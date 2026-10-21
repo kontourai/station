@@ -288,6 +288,11 @@ export class SessionEventReads {
     return {
       protocolVersion: 1,
       session: eventWindowSessionSummary(fullSession),
+      latestTool:
+        this.deps.eventStore?.readCurrentTurnLatestTool(
+          threadId,
+          window.watermark,
+        ) ?? null,
       events: window.events.map((event) => ({
         // The GLOBAL sequence, in the same space as `watermark` (the
         // thread-filtered stream head) and as the live SSE ids a reader

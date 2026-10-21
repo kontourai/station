@@ -103,7 +103,7 @@ export function TaskTurnReferenceView({
       <div className="task-workspace__section-heading">
         <div>
           <h3 id="task-answer-basis" className="task-workspace__section-title">
-            Kept answers
+            Answer details
           </h3>
           <p>
             Kept answers reopen from their exact Task reference. Execution
@@ -120,7 +120,7 @@ export function TaskTurnReferenceView({
             )
           }
         >
-          Open Whole Task Basis
+          Inspect Task evidence
         </Button>
       </div>
       {notice && (
@@ -196,7 +196,7 @@ export function TaskTurnReferenceView({
                           )
                         }
                       >
-                        Open Basis
+                        Inspect evidence
                       </Button>
                     </div>
                   );
@@ -206,7 +206,7 @@ export function TaskTurnReferenceView({
                 className="task-workspace__answer"
                 aria-label={`Answer from session ${selected.sessionId}, turn ${selected.turnId}`}
               >
-                <div className="task-workspace__answer-content">
+                <div className="task-workspace__answer-content task-room-answer">
                   <LazyMarkdown>{selected.answer.content}</LazyMarkdown>
                 </div>
                 <div className="task-workspace__answer-provenance">

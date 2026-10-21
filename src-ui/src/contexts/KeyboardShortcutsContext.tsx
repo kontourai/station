@@ -18,6 +18,10 @@ import {
   writeShortcutOverrides,
   writeSkillShortcuts,
 } from '../settings/shortcutPreferences';
+import {
+  EDITING_RESERVED_CHORDS,
+  KERNEL_RESERVED_SHORTCUTS,
+} from './kernelReservedShortcuts';
 
 export interface KeyboardShortcut {
   id: string;
@@ -51,17 +55,72 @@ export type ShortcutContextKey =
   | 'terminalFocused'
   | 'dialogOpen'
   | 'dockFocused';
+export const SHORTCUT_CONTEXT_KEYS: readonly ShortcutContextKey[] = [
+  'composerFocused',
+  'terminalFocused',
+  'dialogOpen',
+  'dockFocused',
+];
+/**
+ * A scope a plugin turns on with the SDK's `useShortcutScope`. The host writes
+ * the owner into the key (`scope:<owner>/<name>`), so one plugin's scope can
+ * never satisfy another's `when`, and none can set a kernel context key.
+ */
+type ShortcutScopeKey = `scope:${string}`;
 export type ShortcutWhen =
   | ShortcutContextKey
+  | ShortcutScopeKey
   | { not: ShortcutWhen }
   | { and: ShortcutWhen[] }
   | { or: ShortcutWhen[] };
 
 const shortcutContexts = new Map<ShortcutContextKey, boolean>();
+/** Active-mount count per scope: two mounts of one scope stay on until both go. */
+const shortcutScopes = new Map<ShortcutScopeKey, number>();
 const warnedWhenDepths = new Set<number>();
 
 export function setShortcutContext(key: ShortcutContextKey, value: boolean) {
   shortcutContexts.set(key, value);
+}
+
+/** Turn a scope on; the returned function turns this activation off once. */
+export function activateShortcutScope(key: ShortcutScopeKey): () => void {
+  shortcutScopes.set(key, (shortcutScopes.get(key) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = (shortcutScopes.get(key) ?? 1) - 1;
+    if (next > 0) shortcutScopes.set(key, next);
+    else shortcutScopes.delete(key);
+  };
+}
+
+/** Prefix of every shortcut id a plugin registers through the SDK. */
+export const PLUGIN_SHORTCUT_ID_PREFIX = 'plugin.';
+
+function isPluginShortcutId(id: string): boolean {
+  return id.startsWith(PLUGIN_SHORTCUT_ID_PREFIX);
+}
+
+const RESERVED_SHORTCUT_IDS: ReadonlySet<string> = new Set(
+  Object.values(KERNEL_RESERVED_SHORTCUTS).map((entry) => entry.id),
+);
+
+/**
+ * The physical chord a binding fires on this platform: off a Mac, `cmd` IS
+ * Control (see the dispatcher), so `cmd+k` and `ctrl+k` are one chord there.
+ */
+function effectiveChordSignature(
+  binding: { key: string; modifiers: readonly ShortcutModifier[] },
+  mac: boolean = isMac,
+): string {
+  const modifiers = new Set(
+    binding.modifiers.map((modifier) =>
+      !mac && modifier === 'cmd' ? 'ctrl' : modifier,
+    ),
+  );
+  return `${[...modifiers].sort().join('+')}|${binding.key.toLowerCase()}`;
 }
 
 /**
@@ -93,12 +152,9 @@ export function evaluateShortcutWhen(
     return false;
   }
   if (typeof when === 'string') {
-    return [
-      'composerFocused',
-      'terminalFocused',
-      'dialogOpen',
-      'dockFocused',
-    ].includes(when)
+    if (when.startsWith('scope:'))
+      return (shortcutScopes.get(when as ShortcutScopeKey) ?? 0) > 0;
+    return (SHORTCUT_CONTEXT_KEYS as readonly string[]).includes(when)
       ? lookup(when as ShortcutContextKey)
       : false;
   }
@@ -134,6 +190,14 @@ function areDirectComplements(left?: ShortcutWhen, right?: ShortcutWhen) {
  */
 interface ShortcutRegistryStore {
   register: (shortcut: KeyboardShortcut) => () => void;
+  /**
+   * The reserved kernel shortcut a binding would collide with, or null. Reads
+   * the live registry without subscribing to it (archive#3736).
+   */
+  findReservedConflict: (binding: {
+    key: string;
+    modifiers: readonly ShortcutModifier[];
+  }) => { id: string } | null;
   getDisplay: (id: string) => string;
   getAllShortcuts: () => KeyboardShortcut[];
   setBinding: (id: string, binding: ShortcutBinding | null) => void;
@@ -265,6 +329,19 @@ export function shouldIgnoreShortcut(
       ) || targetElement?.closest('[data-escape-owner]'),
     );
   }
+  if (isPluginShortcutId(shortcut.id)) {
+    // A plugin chord without Cmd/Ctrl/Alt is a printable key: it must not
+    // swallow what the user is typing into a kernel field (the composer).
+    if (
+      shortcut.modifiers.some((m) => m === 'cmd' || m === 'ctrl' || m === 'alt')
+    )
+      return false;
+    return Boolean(
+      targetElement?.matches(
+        'input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]',
+      ),
+    );
+  }
   if (!shortcut.id.startsWith('dock.')) return false;
   return Boolean(
     targetElement?.matches(
@@ -374,6 +451,32 @@ export function KeyboardShortcutsProvider({
     [resolveShortcut],
   );
 
+  /** Signatures of every reserved chord: defaults plus live resolved bindings. */
+  const reservedChords = useCallback(() => {
+    const chords = new Map<string, string>();
+    for (const entry of [
+      ...Object.values(KERNEL_RESERVED_SHORTCUTS),
+      ...EDITING_RESERVED_CHORDS,
+    ])
+      chords.set(effectiveChordSignature(entry.binding), entry.id);
+    for (const id of RESERVED_SHORTCUT_IDS) {
+      const registered = shortcutsRef.current.get(id);
+      if (!registered) continue;
+      const live = resolveShortcut(registered);
+      if (!live.disabled && live.key)
+        chords.set(effectiveChordSignature(live), id);
+    }
+    return chords;
+  }, [resolveShortcut]);
+
+  const findReservedConflict = useCallback(
+    (binding: { key: string; modifiers: readonly ShortcutModifier[] }) => {
+      const id = reservedChords().get(effectiveChordSignature(binding));
+      return id ? { id } : null;
+    },
+    [reservedChords],
+  );
+
   const setBinding = useCallback(
     (id: string, binding: ShortcutBinding | null) => {
       if (id.startsWith('skill.')) {
@@ -429,9 +532,17 @@ export function KeyboardShortcutsProvider({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const shortcuts = orderShortcuts(shortcutsRef.current.values());
+      let reserved: Map<string, string> | null = null;
       for (const registered of shortcuts) {
         const shortcut = resolveShortcut(registered);
         if (shortcut.disabled) continue;
+        // A plugin never shadows a reserved kernel chord, including one the
+        // user rebound after the plugin registered, or a plugin binding the
+        // user moved onto it.
+        if (isPluginShortcutId(shortcut.id)) {
+          reserved ??= reservedChords();
+          if (reserved.has(effectiveChordSignature(shortcut))) continue;
+        }
         if (shortcut.when && !evaluateShortcutWhen(shortcut.when)) continue;
         if (shouldIgnoreShortcut(shortcut, e)) continue;
         const hasPrimary = shortcut.modifiers.includes('cmd');
@@ -455,11 +566,12 @@ export function KeyboardShortcutsProvider({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [resolveShortcut]);
+  }, [resolveShortcut, reservedChords]);
 
   const store = useMemo<ShortcutRegistryStore>(
     () => ({
       register,
+      findReservedConflict,
       getDisplay,
       getAllShortcuts,
       setBinding,
@@ -470,6 +582,7 @@ export function KeyboardShortcutsProvider({
     }),
     [
       register,
+      findReservedConflict,
       getDisplay,
       getAllShortcuts,
       setBinding,
@@ -494,6 +607,17 @@ function useShortcutStore(): ShortcutRegistryStore {
     );
   }
   return context;
+}
+
+/**
+ * `useKeyboardShortcuts` for a mount that may sit outside the provider (the
+ * plugin SDK adapter): undefined there instead of a throw, so the SDK reports
+ * its shortcut slot as unavailable.
+ */
+export function useOptionalKeyboardShortcuts():
+  | ReturnType<typeof useKeyboardShortcuts>
+  | undefined {
+  return useContext(KeyboardShortcutsContext);
 }
 
 /**

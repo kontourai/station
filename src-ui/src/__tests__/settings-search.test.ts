@@ -36,12 +36,13 @@ describe('settings catalog search', () => {
 
   test('every catalog title finds its own exact row', () => {
     for (const entry of SETTINGS_CATALOG) {
-      // `isOperator: true` so the enumeration covers every row; the
-      // operator-conditional filtering is asserted on its own below.
+      // Explicitly admit every conditional row for this search contract.
       expect(
-        matchingSettingsRows(entry.title, { isOperator: true }).map(
-          ({ id }) => id,
-        ),
+        matchingSettingsRows(entry.title, {
+          isOperator: true,
+          developerToolsEnabled: true,
+          experimentalTrustEnabled: true,
+        }).map(({ id }) => id),
         entry.id,
       ).toContain(entry.id);
     }
@@ -100,7 +101,20 @@ describe('settings catalog search', () => {
       isMobile: false,
       isDesktop: false,
     });
-    expect(desktop).toHaveLength(SETTINGS_CATALOG.length);
+    for (const id of [
+      'experimental-flow',
+      'experimental-readiness',
+      'experimental-trust',
+      'surface-trust',
+    ]) {
+      expect(desktop.map((command) => command.id)).not.toContain(
+        `settings:${id}`,
+      );
+      expect(matchingSettingsRows(id).map((entry) => entry.id)).not.toContain(
+        id,
+      );
+    }
+    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 4);
     expect(desktop.find((command) => command.id === 'settings:theme')).toEqual(
       expect.objectContaining({ view: 'appearance', highlight: 'theme' }),
     );
@@ -147,6 +161,8 @@ describe('settings catalog search', () => {
     const commands = settingsPaletteCommands({
       isMobile: false,
       isDesktop: false,
+      developerToolsEnabled: true,
+      experimentalTrustEnabled: true,
     }).map((command) => ({
       ...command,
       label: pseudoLocalize(command.label),

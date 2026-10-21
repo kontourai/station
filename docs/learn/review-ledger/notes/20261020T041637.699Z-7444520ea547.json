@@ -1,0 +1,7 @@
+{
+  "revision": "59fbcc4e320b577584f6ea9c54f58e4f212eac00",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-read against the #3551 session-api.md addition (idle attached-session no-write rule, source-event updatedAt, attached subject fence). This ADR only routes readers to the session API for today's chat contract; that pointer remains accurate and no claim here concerns attached-session persistence. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

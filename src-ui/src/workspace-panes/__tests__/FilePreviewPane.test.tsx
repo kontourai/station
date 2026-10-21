@@ -1154,7 +1154,7 @@ describe('FilePreviewPane', () => {
       expect(colours.length).toBeGreaterThan(0);
       for (const colour of colours) {
         expect(colour, `a token was painted with "${colour}"`).toMatch(
-          /^var\(--(syntax-(keyword|number|string|function|tag|variable)|text-muted)\)$/,
+          /^var\(--syntax-(keyword|number|string|function|tag|variable|comment|deleted)\)$/,
         );
       }
       const rungOf = (text: string) =>
@@ -1176,7 +1176,7 @@ describe('FilePreviewPane', () => {
         tokens.some(
           (node) =>
             node.textContent?.includes('done') &&
-            node.style.color === 'var(--text-muted)',
+            node.style.color === 'var(--syntax-comment)',
         ),
       ).toBe(true);
     },
@@ -1263,7 +1263,7 @@ describe('FilePreviewPane', () => {
 
   test('refuses tokens that do not reproduce the text and says so', async () => {
     tokenizeOverride.current = async () => [
-      [{ content: 'const forged = true;', color: '#F97583' }],
+      [{ content: 'const forged = true;', color: 'var(--syntax-keyword)' }],
     ];
     previewQuery.mockReturnValue({
       isLoading: false,
@@ -1286,6 +1286,35 @@ describe('FilePreviewPane', () => {
     expect(
       container.querySelectorAll('[data-file-preview-token]'),
     ).toHaveLength(0);
+  });
+
+  test('paints only Station syntax roles; any other colour stays plain text', async () => {
+    tokenizeOverride.current = async () => [
+      [
+        { content: 'const', color: 'var(--syntax-keyword)' },
+        { content: ' ', color: 'var(--syntax-foreground)' },
+        { content: 'real', color: '#F97583' },
+        { content: ' = ', color: 'red; background: url(x)' },
+        { content: '1;', color: 'var(--syntax-number)' },
+      ],
+    ];
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'const real = 1;',
+      },
+    });
+    const { container } = renderPane();
+    const tokens = await highlightedTokens(container);
+    expect(tokens.map((node) => [node.textContent, node.style.color])).toEqual([
+      ['const', 'var(--syntax-keyword)'],
+      ['1;', 'var(--syntax-number)'],
+    ]);
+    expect(container.textContent).toContain('const real = 1;');
   });
 
   test('a highlighter failure leaves plain text and a stated reason', async () => {
@@ -1325,7 +1354,7 @@ describe('FilePreviewPane', () => {
           .split(' ')
           .flatMap((word, index) => [
             ...(index ? [{ content: ' ' }] : []),
-            { content: word, color: '#F97583' },
+            { content: word, color: 'var(--syntax-keyword)' },
           ]),
       );
     previewQuery.mockReturnValue({

@@ -22,6 +22,15 @@ regexes = ['''^[a-z][A-Za-z0-9]{2,40}Enabled$''']
 paths = ['''(^|/)src-ui/src/views/settings/VoiceFeaturesSection\.tsx$''']
 
 [[allowlists]]
+# Review notes are immutable prose; `generic-api-key` read the words after
+# "per-token remote access," as a token value. Pinned to that exact phrase.
+description = "Prose phrase 'expiry/revocation' in documentation review notes (not a secret)"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^expiry/revocation$''']
+paths = ['''(^|/)docs/learn/review-ledger/notes/[^/]+\.json$''']
+
+[[allowlists]]
 description = "Self-signed logical.test TLS private key used only by the plugin dev transport test fixture"
 paths = ['''(^|/)packages/cli/src/__tests__/fixtures/logical\.test-key\.pem$''']
 

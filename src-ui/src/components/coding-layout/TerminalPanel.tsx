@@ -17,6 +17,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
 import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { observeRootTheme } from '../../lib/root-theme';
 import {
   BrowserWebSocketAuthGate,
   isRemoteEndpoint,
@@ -27,6 +28,7 @@ import {
   buildTerminalSelectionHandoff,
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
+import { readTerminalTheme } from './terminalTheme';
 
 /** Server events that belong to one terminal session (`TerminalEvent`). */
 const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
@@ -82,6 +84,19 @@ export function TerminalPanel({
   const sendTextRef = useRef<((text: string) => boolean) | null>(null);
   const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
 
+  // The canvas cannot follow the cascade: re-read the terminal variables
+  // after any light/dark, palette, accent or branding change on the root.
+  useEffect(
+    () =>
+      observeRootTheme(() => {
+        const terminal = terminalRef.current;
+        const container = containerRef.current;
+        if (terminal && container)
+          terminal.options.theme = readTerminalTheme(container);
+      }),
+    [],
+  );
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this socket with the same terminal identity.
   useEffect(() => {
     if (!containerRef.current) return;
@@ -103,28 +118,7 @@ export function TerminalPanel({
       fontSize: isMobileViewport ? 14 : 12,
       fontFamily:
         "'MesloLGS NF', 'MesloLGM Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', Menlo, courier-new, courier, monospace",
-      theme: {
-        background: '#1a1a2e',
-        foreground: '#e0e0e0',
-        cursor: '#7ec8e3',
-        selectionBackground: '#3a3a5e',
-        black: '#1a1a2e',
-        brightBlack: '#4a4a6e',
-        red: '#f44336',
-        brightRed: '#ef5350',
-        green: '#4caf50',
-        brightGreen: '#66bb6a',
-        yellow: '#ffeb3b',
-        brightYellow: '#fff176',
-        blue: '#2196f3',
-        brightBlue: '#42a5f5',
-        magenta: '#9c27b0',
-        brightMagenta: '#ab47bc',
-        cyan: '#7ec8e3',
-        brightCyan: '#80deea',
-        white: '#e0e0e0',
-        brightWhite: '#ffffff',
-      },
+      theme: readTerminalTheme(containerRef.current),
     });
     terminalRef.current = terminal;
 
@@ -619,7 +613,7 @@ function CommandExecutor({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#1a1a2e',
+        background: 'var(--terminal-background)',
         fontFamily: 'monospace',
         fontSize: '12px',
       }}
@@ -647,10 +641,12 @@ function CommandExecutor({
             style={{
               color:
                 l.type === 'cmd'
-                  ? '#7ec8e3'
+                  ? 'var(--terminal-cyan)'
                   : l.type === 'err'
-                    ? '#f44336'
-                    : '#b0b0b0',
+                    ? 'var(--terminal-red)'
+                    : // Output a step quieter than the input line (#b0b0b0 on
+                      // the dark terminal, as before).
+                      'color-mix(in srgb, var(--terminal-foreground) 75%, var(--terminal-background))',
               lineHeight: '1.5',
             }}
           >
@@ -667,7 +663,7 @@ function CommandExecutor({
           flexShrink: 0,
         }}
       >
-        <span style={{ color: '#7ec8e3' }}>$</span>
+        <span style={{ color: 'var(--terminal-cyan)' }}>$</span>
         <input
           ref={inputRef}
           className="coding-terminal-command-executor__input"
@@ -686,7 +682,7 @@ function CommandExecutor({
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            color: '#e0e0e0',
+            color: 'var(--terminal-foreground)',
             fontFamily: 'inherit',
             fontSize: 'inherit',
           }}

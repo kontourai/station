@@ -132,3 +132,58 @@ test('ignores gesture-less link messages and permanently mutes this reply after 
   request();
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+
+test('re-sends resolved tokens on a palette change, not on a geometry write', async () => {
+  const sheet = document.createElement('style');
+  sheet.textContent =
+    ':root{--k-bg:#0a0e13}:root[data-color-theme="latte"]{--k-bg:#eff1f5}';
+  document.head.append(sheet);
+  const root = document.documentElement;
+  try {
+    render(<HtmlReply page={page} frameOrigin={origin} theme="dark" />);
+    const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'html-reply-ready' },
+          source: frame.contentWindow,
+          origin,
+        }),
+      );
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'html-reply-theme',
+        tokens: expect.objectContaining({ background: '#0a0e13' }),
+      }),
+      origin,
+    );
+    post.mockClear();
+    // Same light/dark setting, new palette: no rerender, only the root
+    // attribute changes (MutationObserver delivers on a microtask).
+    await act(async () => {
+      root.setAttribute('data-color-theme', 'latte');
+      await Promise.resolve();
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'html-reply-theme',
+        theme: 'dark',
+        tokens: expect.objectContaining({ background: '#eff1f5' }),
+      }),
+      origin,
+    );
+    post.mockClear();
+    // A keyboard-inset write is geometry, not theme.
+    await act(async () => {
+      root.style.setProperty('--visual-viewport-bottom-inset', '120px');
+      await Promise.resolve();
+    });
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    sheet.remove();
+    root.removeAttribute('data-color-theme');
+    root.style.removeProperty('--visual-viewport-bottom-inset');
+  }
+});

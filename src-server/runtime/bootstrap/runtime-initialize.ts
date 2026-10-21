@@ -737,6 +737,8 @@ export async function initializeRuntime(
     logger,
     invalidateSessionOwner: (threadId) =>
       orchestrationService.invalidateSessionOwner(threadId),
+    canBindNewAttachedSubject: (threadId) =>
+      orchestrationService.canBindNewAttachedSubject(threadId),
     listProjects: () => storageAdapter.listProjects(),
     // #3386: the operator's "Conversations outside projects" setting.
     outsideProjectsEnabled: () =>

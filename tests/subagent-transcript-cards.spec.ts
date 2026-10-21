@@ -36,6 +36,7 @@ const runningChild = {
   title: '[opus] review station#3657 ADR freeze',
   kindLabel: 'general-purpose',
   model: { id: 'claude-opus-5-5', source: 'subagent-reply' },
+  latestTool: 'Read',
   transcript: {
     kind: 'claude-subagent',
     sessionId: '3f1c9b2e-8d4a-4c11-9e2f-5b7a6c0d1e2f',
@@ -179,6 +180,135 @@ test.describe('subagent transcript cards', () => {
     );
   });
 
+  for (const theme of ['dark', 'light'] as const)
+    test(`a ${theme} child roster stays compact and exposes failures before expansion`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 1100 });
+      await page.route(/\/api\/me\/preferences(?:\?.*)?$/, (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: { schemaVersion: 1, values: { theme } },
+          },
+        }),
+      );
+      await page.addInitScript((theme) => {
+        localStorage.setItem(
+          'station-device-settings-v1',
+          JSON.stringify({
+            version: 2,
+            values: { developerToolsEnabled: true, theme },
+          }),
+        );
+      }, theme);
+      await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+      await dismissSetupLauncher(page);
+      await openChatRegion(page);
+      await waitForMockOrchestrationSse(page);
+      await emit(page, {
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Run six reviews',
+      });
+      await emit(page, {
+        method: 'tool.started',
+        turnId: 'turn-1',
+        itemId: TOOL_CALL,
+        toolCallId: TOOL_CALL,
+        toolName: 'workflow',
+        arguments: {},
+      });
+      const children = Array.from({ length: 6 }, (_, index) => ({
+        ...runningChild,
+        childId: `review-${index}`,
+        title: `Review ${index + 1}`,
+        progress: 'Reading the decision records',
+      }));
+      await emit(page, {
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: SESSION_ID,
+          running: children,
+        },
+      });
+      await emit(page, {
+        method: 'tool.completed',
+        turnId: 'turn-1',
+        itemId: TOOL_CALL,
+        toolCallId: TOOL_CALL,
+        toolName: 'workflow',
+        status: 'success',
+        output: 'Reviews started',
+      });
+      await emit(page, {
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+      });
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const group = page.locator('.subagent-group');
+      const heading = group.locator('.subagent-group__heading');
+      await expect(heading).toContainText('6 subagents');
+      await expect(heading).toContainText('6 running');
+      await expect(
+        group.getByText('Review 1', { exact: true }),
+      ).not.toBeVisible();
+      await heading.focus();
+      await page.keyboard.press('Enter');
+      await expect(group.getByText('Review 1', { exact: true })).toBeVisible();
+      await expect(group.getByTestId('subagent-card')).toHaveCount(6);
+      await group.screenshot({
+        path: testInfo.outputPath(
+          `subagent-roster-expanded-desktop-${theme}.png`,
+        ),
+      });
+      await heading.click();
+      await emit(page, {
+        createdAt: ENDED_AT,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: SESSION_ID,
+          childId: children[0].childId,
+          status: 'failed',
+          identity: { ...children[0], endedAt: ENDED_AT },
+          result: { summary: 'Could not read the project' },
+        },
+      });
+      await expect(heading).toContainText('5 running');
+      await expect(heading).toContainText('1 failed');
+      await group.screenshot({
+        path: testInfo.outputPath(`subagent-roster-collapsed-${theme}.png`),
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page
+        .getByRole('button', { name: 'Chat actions', exact: true })
+        .click();
+      await page
+        .getByRole('menu', { name: 'Chat actions' })
+        .getByRole('menuitem', { name: 'Full screen', exact: true })
+        .click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await heading.click();
+      const card = group.getByTestId('subagent-card').first();
+      await card.getByRole('button', { expanded: false }).click();
+      await expect(card.getByText('Could not read the project')).toHaveCount(1);
+      await expect(card.getByText('claude-opus-5-5')).toBeVisible();
+      const box = await group.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+      expect((await heading.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await group.screenshot({
+        path: testInfo.outputPath(
+          `subagent-roster-expanded-mobile-${theme}.png`,
+        ),
+      });
+    });
+
   for (const standalone of [false, true])
     test(`a captured Codex ${standalone ? 'standalone' : 'inline'} card fits desktop and full-screen mobile`, async ({
       page,
@@ -241,8 +371,9 @@ test.describe('subagent transcript cards', () => {
           ),
         ).toBe(true);
       }
+      await expect(card.getByRole('img', { name: 'Codex' })).toBeVisible();
       await expect(card.getByText('Completed')).toBeVisible();
-      await expect(card.getByText('gpt-5.5')).toBeVisible();
+      await expect(card.getByText('gpt-5.5')).toHaveCount(0);
       await expect(card.getByText('done', { exact: true })).toBeVisible();
       await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
       await card.scrollIntoViewIfNeeded();
@@ -267,7 +398,7 @@ test.describe('subagent transcript cards', () => {
       await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
       await card.getByRole('button').click();
       await card.scrollIntoViewIfNeeded();
-      await expect(card.getByText('done', { exact: true })).toHaveCount(2);
+      await expect(card.getByText('done', { exact: true })).toHaveCount(1);
       await expectDockFits(page);
       const box = await card.boundingBox();
       expect(box).not.toBeNull();
@@ -354,9 +485,26 @@ test.describe('subagent transcript cards', () => {
     const card = page.getByTestId('subagent-card');
     await expect(card).toHaveCount(1);
     await expect(card.getByText(runningChild.title)).toBeVisible();
+    await expect(card.getByRole('img', { name: 'Claude Code' })).toBeVisible();
+    await expect(card.locator('.brand-icon--claude svg')).toBeVisible();
     await expect(card.getByText('Running')).toBeVisible();
     await expect(card.getByText('Reading the decision records')).toBeVisible();
-    await expect(card.getByText('claude-opus-5-5')).toBeVisible();
+    const activity = card.locator('.child-work-activity__tool');
+    await expect(activity).toContainText('Read');
+    expect(
+      await activity.evaluate(
+        (element) => getComputedStyle(element, '::after').animationName,
+      ),
+    ).toBe('child-work-activity-sweep');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await activity.evaluate((element) =>
+        parseFloat(getComputedStyle(element, '::after').animationDuration),
+      ),
+    ).toBeLessThan(0.001);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    await expect(card.getByText('claude-opus-5-5')).toHaveCount(0);
     await expect(card.getByText('6:12')).toBeVisible();
     await expectDockFits(page);
     await card.screenshot({
@@ -404,6 +552,7 @@ test.describe('subagent transcript cards', () => {
     });
 
     await expect(page.getByText(/Background task finished/)).toHaveCount(0);
+    await expect(card.locator('.child-work-activity')).toHaveCount(0);
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(

@@ -12,6 +12,7 @@ import {
   GIT_DIFF_FILE_BREAK_REGEX,
   parsePatchFiles,
   preloadHighlighter,
+  registerCustomTheme,
 } from '@pierre/diffs';
 import {
   CodeView,
@@ -107,12 +108,23 @@ interface ActiveComposer {
 const sideLineKey = (side: DiffCommentSide, lineNumber: number) =>
   `${side}:${lineNumber}`;
 
-// Map Station's light/dark theme (stored on <html data-theme> by ThemeToggle)
-// to the diff themes registered by @pierre/diffs.
-const DIFF_THEME_NAMES = {
-  light: 'pierre-light',
-  dark: 'pierre-dark',
-} as const;
+// One diff theme for every mode and palette: github-dark's scope rules with
+// each colour a Station variable (`--syntax-*`, `--diff-*`; see
+// highlight/station-syntax-theme.ts). @pierre/diffs renders inside a shadow
+// root, and custom properties inherit across it, so a light/dark, palette,
+// accent or branding change restyles a mounted diff through the cascade
+// without re-tokenizing. pierre-light/pierre-dark were literal pigments.
+/**
+ * Must equal `STATION_DIFF_THEME_NAME`: @pierre/diffs refuses a loader whose
+ * theme name differs, and DiffPanel.test then finds no `var(--diff-*)` in the
+ * rendered diff.
+ */
+const DIFF_THEME = 'station-diff';
+registerCustomTheme(DIFF_THEME, () =>
+  import('../../highlight/station-syntax-theme').then((module) =>
+    module.createStationDiffTheme(),
+  ),
+);
 
 type StationTheme = 'light' | 'dark';
 
@@ -340,8 +352,9 @@ export function ObservedDiffPanel({
   const deleteComment = useDeleteDiffCommentMutation(projectSlug ?? '');
   const [composer, setComposer] = useState<ActiveComposer | null>(null);
 
+  // Light/dark still matters to @pierre/diffs: it sets the diff's
+  // color-scheme, which picks the strength of its added/removed tints.
   const theme = useStationTheme();
-  const diffTheme = DIFF_THEME_NAMES[theme];
 
   // Sticky view preferences, persisted via the device-settings store
   // (archive#settings-revamp — previously their own raw
@@ -367,10 +380,10 @@ export function ObservedDiffPanel({
   // off-main-thread tokenization; large files remain bounded by CodeView's
   // existing virtualization and tokenizeMaxLineLength option.
   useEffect(() => {
-    void preloadHighlighter({ themes: [diffTheme], langs: [] }).catch(() => {
+    void preloadHighlighter({ themes: [DIFF_THEME], langs: [] }).catch(() => {
       // Highlighter preload is best-effort; CodeView still renders plain text.
     });
-  }, [diffTheme]);
+  }, []);
 
   const files = useMemo(() => parseDiffFiles(diff), [diff]);
 
@@ -705,8 +718,9 @@ export function ObservedDiffPanel({
 
   const codeView = (
     <CodeView<DiffCommentAnnotation>
-      // Remount so the main-thread renderer re-tokenizes for the new theme.
-      key={diffTheme}
+      // Remount on a light/dark flip so the new color-scheme is applied; the
+      // token colours themselves are variables and need no re-tokenizing.
+      key={theme}
       disableWorkerPool
       items={items}
       renderAnnotation={
@@ -718,7 +732,7 @@ export function ObservedDiffPanel({
       renderHeaderPrefix={renderHeaderPrefix}
       renderHeaderMetadata={renderHeaderMetadata}
       options={{
-        theme: diffTheme,
+        theme: DIFF_THEME,
         themeType: theme,
         diffStyle,
         lineDiffType: 'none',

@@ -1,0 +1,7 @@
+{
+  "revision": "d0ea33cc1b8b828bbbea64619d426cbdc4d65129",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the External transcripts and Approval actions sections against the current approval inbox producer and respondToRequest caller. The read-only-attached ownership check precedes scheduling; the browser standing-grant action is payload-gated, dispatches acceptForSession with typed server scope, and binds the originating request event. Orchestration forwards server scope only for acceptForSession while preserving approval-mode authority and current-request checks. Native push actions and background delivery are unchanged. Source review only; focused UI tests passed 56/56 at d0ea33cc1b, no live provider, native delivery or raster determinism claim.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -58,6 +58,7 @@ import {
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
   ServerEvent,
@@ -147,7 +148,10 @@ interface StationAgentResumeCursor {
   tenantExecutionContext?: TenantExecutionContext;
 }
 
+type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
+
 interface StationAgentSessionRecord {
+  conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
@@ -157,10 +161,16 @@ interface StationAgentSessionRecord {
   tenantExecutionContext?: TenantExecutionContext;
   activeTurnId?: string;
   activeController?: AbortController;
+  activeOrigin?: TurnOrigin;
   abortPublished?: boolean;
   pendingRequests: Map<
     string,
-    { toolName?: string; turnId?: string; elicitation?: true }
+    {
+      toolName?: string;
+      turnId: string;
+      origin: TurnOrigin;
+      elicitation?: true;
+    }
   >;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
@@ -197,7 +207,10 @@ interface StationAgentSessionRecord {
    * order-only — which is safe today only because it never emits an id-less
    * CALL, so nothing is queued for such a result to claim.
    */
-  openToolCalls: Map<string, { toolName: string; turnId: string }>;
+  openToolCalls: Map<
+    string,
+    { toolName: string; turnId: string; origin: TurnOrigin }
+  >;
 }
 
 interface StationAgentAdapterOptions {
@@ -542,6 +555,7 @@ export function mapStationAgentStreamEvent(options: {
   event: Record<string, unknown>;
   threadId: string;
   turnId: string;
+  invocationId?: string;
   publish(event: CanonicalRuntimeEvent): void;
   now?: () => Date;
   /**
@@ -608,6 +622,9 @@ export function mapStationAgentStreamEvent(options: {
     provider: PROVIDER,
     threadId,
     turnId,
+    ...(options.invocationId === undefined
+      ? {}
+      : { invocationId: options.invocationId }),
     createdAt,
   };
 
@@ -925,6 +942,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
           ?.mode === 'worktree',
       session,
+      conversationTitle: derivedConversationTitle(
+        stringField(input.metadata?.delegationTitle),
+      ),
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
@@ -969,6 +989,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const invocationId = input.invocationId;
+    const origin: TurnOrigin =
+      invocationId === undefined ? {} : { invocationId };
     const record = this.requireSession(input.threadId);
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
@@ -1011,6 +1034,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const controller = new AbortController();
     record.activeTurnId = turnId;
     record.activeController = controller;
+    record.activeOrigin = origin;
     beginNativeKnowledgeTurn(input.threadId, turnId, controller.signal);
     record.abortPublished = false;
     // archive#796: a Station agent's session is started without a model — the UI
@@ -1053,6 +1077,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       turnId,
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
@@ -1148,6 +1173,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                 : {}),
               options: {
                 conversationId: input.threadId,
+                ...(record.conversationTitle
+                  ? { title: record.conversationTitle }
+                  : {}),
                 ...(record.userId ? { userId: record.userId } : {}),
                 ...(record.delegation ? { delegation: record.delegation } : {}),
                 ...(modelId ? { model: modelId } : {}),
@@ -1213,7 +1241,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       }
     } catch (error) {
       nativeForeground?.refuse();
-      this.failTurn(record, turnId, controller, rejectionReason);
+      this.failTurn(record, turnId, controller, origin, rejectionReason);
       throw error;
     }
 
@@ -1221,6 +1249,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       record,
       turnId,
       controller,
+      origin,
       response,
       modelMetadata,
     )
@@ -1229,6 +1258,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record,
           turnId,
           controller,
+          origin,
           error instanceof StationAgentStreamStallError
             ? error.message
             : undefined,
@@ -1244,6 +1274,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record,
           turnId,
           controller,
+          origin,
           'The captured native action was not admitted.',
         );
         throw error;
@@ -1260,6 +1291,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const record = this.requireSession(threadId);
     const activeTurnId = record.activeTurnId;
     const activeController = record.activeController;
+    const origin = record.activeOrigin;
     if (!activeTurnId || !activeController) {
       return { outcome: 'no-active-turn' } as const;
     }
@@ -1275,6 +1307,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         turnId: activeTurnId,
+        ...origin,
         createdAt: this.now().toISOString(),
         method: 'turn.aborted',
         reason: 'interrupted',
@@ -1391,13 +1424,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const createdAt = this.now().toISOString();
     const entries = [...record.openToolCalls];
     record.openToolCalls.clear();
-    for (const [toolCallId, { toolName, turnId }] of entries) {
+    for (const [toolCallId, { toolName, turnId, origin }] of entries) {
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
         threadId: record.session.threadId,
         createdAt,
         turnId,
+        ...origin,
         itemId: toolCallId,
         method: 'tool.completed',
         toolCallId,
@@ -1440,6 +1474,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record: StationAgentSessionRecord,
     turnId: string,
     controller: AbortController,
+    origin: TurnOrigin,
     response: Response,
     modelMetadata: ReturnType<typeof effectiveModelMetadata>,
   ): Promise<void> {
@@ -1485,22 +1520,33 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             event,
             threadId: record.session.threadId,
             turnId,
+            ...origin,
             publish: (next) => this.publish(next),
             now: this.options.now,
             pendingIdlessToolCalls,
           });
           if (mapped.approvalOpened) {
-            this.trackApproval(record, turnId, mapped.approvalOpened);
+            this.trackApproval(record, turnId, origin, mapped.approvalOpened);
           }
           // station#1569 (item 4): what the session-end settle reads. Kept
           // here rather than inside the relay so that function stays pure.
-          if (mapped.toolOpened) {
+          if (
+            mapped.toolOpened &&
+            !controller.signal.aborted &&
+            this.sessions.get(record.session.threadId) === record &&
+            record.activeController === controller
+          ) {
             record.openToolCalls.set(mapped.toolOpened.toolCallId, {
               toolName: mapped.toolOpened.toolName,
               turnId,
+              origin,
             });
           }
-          if (mapped.toolSettled) {
+          if (
+            mapped.toolSettled &&
+            record.openToolCalls.get(mapped.toolSettled.toolCallId)?.origin ===
+              origin
+          ) {
             record.openToolCalls.delete(mapped.toolSettled.toolCallId);
           }
           // `mapped.unpairedToolResult` is deliberately not tracked here:
@@ -1536,6 +1582,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
         record.activeController = undefined;
+        record.activeOrigin = undefined;
       }
       return;
     }
@@ -1551,6 +1598,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId: record.session.threadId,
         turnId,
+        ...origin,
         createdAt: this.now().toISOString(),
         method: 'turn.completed',
         finishReason: resolvedFinishReason,
@@ -1581,12 +1629,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
+    record.activeOrigin = undefined;
   }
 
   private failTurn(
     record: StationAgentSessionRecord,
     turnId: string,
-    controller = record.activeController,
+    controller: AbortController,
+    origin: TurnOrigin,
     reason?: string,
   ): void {
     if (
@@ -1601,6 +1651,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: record.session.threadId,
       turnId,
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'runtime.error',
       ...providerFailure('provider_error'),
@@ -1614,6 +1665,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
+    record.activeOrigin = undefined;
   }
 
   /**
@@ -1678,6 +1730,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private trackApproval(
     record: StationAgentSessionRecord,
     turnId: string,
+    origin: TurnOrigin,
     approval: { requestId: string; toolName?: string; elicitation?: true },
   ): void {
     const resolvedStatus = record.resolvedBeforeOpen.get(approval.requestId);
@@ -1688,11 +1741,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         approval.requestId,
         resolvedStatus,
         turnId,
+        origin,
       );
       return;
     }
     record.pendingRequests.set(approval.requestId, {
       turnId,
+      origin,
       ...(approval.toolName ? { toolName: approval.toolName } : {}),
       ...(approval.elicitation ? { elicitation: true as const } : {}),
     });
@@ -1722,6 +1777,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         requestId,
         effectiveStatus,
         pending.turnId,
+        pending.origin,
       );
       return;
     }
@@ -1738,13 +1794,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record: StationAgentSessionRecord,
     requestId: string,
     status: ApprovalStatus,
-    turnId?: string,
+    turnId: string,
+    origin: TurnOrigin,
   ): void {
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
       threadId: record.session.threadId,
       ...(turnId ? { turnId } : {}),
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'request.resolved',
       requestId,

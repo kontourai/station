@@ -1,0 +1,9 @@
+{
+  "revision": "f2119d470668fcf1cbd968fb0ab3fa432312a04e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed f2119d4706 MessageBubble delta and existing composer interaction/route claims: only mobile-state data attributes were added to live incoming/normal rows; canonical useIsMobile replaces page-local media rules. 44px phone targets/cause disclosure and desktop behavior retained. Sending, approval, draft, navigation-guard and keyboard contracts are unchanged; current 29 focused caller tests and exact CSS ratchet are diagnostic, not new native/runtime incoming evidence.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed f2119d4706 MessageBubble delta against workspace restore claims: no checkpoint capture/action/eligibility/restore/fork paths changed, only presentation mobile-state attributes controlling incoming cause/link styling. Existing restore behavior and evidence limits remain accurate. No prose change needed; recorded source inspection does not renew historical restore/runtime proof.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

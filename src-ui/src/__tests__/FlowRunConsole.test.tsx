@@ -9,7 +9,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   clipboardAbsent,
   clipboardRefuses,
@@ -81,6 +81,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const RUNS = [
   {
@@ -234,7 +235,15 @@ const CONSOLE_PROJECTION = {
   },
 };
 
+afterEach(() =>
+  deviceSettingsStore.resetMany([
+    'developerToolsEnabled',
+    'experimentalFlowEnabled',
+  ]),
+);
 beforeEach(() => {
+  deviceSettingsStore.set('developerToolsEnabled', true);
+  deviceSettingsStore.set('experimentalFlowEnabled', true);
   runsState.data = undefined;
   runsState.isLoading = false;
   runsState.error = null;
@@ -260,6 +269,15 @@ beforeEach(() => {
 });
 
 describe('FlowRunConsole', () => {
+  test('a direct console stays off without its opt-in and never reads run details', () => {
+    deviceSettingsStore.set('experimentalFlowEnabled', false);
+    runsState.data = RUNS;
+    consoleState.data = CONSOLE_PROJECTION;
+    render(<FlowRunConsole projectSlug="dev" />);
+    expect(screen.getByText('Flow delivery preview is off')).toBeTruthy();
+    expect(consoleQueryArgs).toEqual([]);
+    expect(screen.queryByRole('button', { name: /dogfood-005/ })).toBeNull();
+  });
   test('renders the run list and the most recent run detail', () => {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
@@ -415,7 +433,7 @@ describe('FlowRunConsole', () => {
   test('inspects and keeps only the captured public evaluation reference', async () => {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     evaluationState.data = {
       originalVerdict: 'route-back',
       currentStanding: 'current',
@@ -479,7 +497,7 @@ describe('FlowRunConsole', () => {
   test('closes a captured Task picker before a replacement authority can use it', async () => {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     const view = render(<FlowRunConsole />);
 
     fireEvent.click(
@@ -505,7 +523,7 @@ describe('FlowRunConsole', () => {
   function startDeferredKeep() {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
-    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
+    taskState.data = [{ id: 'task-a', title: 'Task A', status: 'todo' }];
     let release: (() => void) | undefined;
     attachMutation.mutateAsync.mockImplementation(
       () => new Promise<void>((resolve) => (release = resolve)),

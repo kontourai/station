@@ -1,0 +1,101 @@
+{
+  "path": "packages/agent-runtime/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Private experimental model-only Cut 0/1 contract: retained native entry/request and completed stream replay, one-shot grants, SQLite BLOB/journal/outbox/ready ownership, explicit cancellation, bounded replay retention, denied tools and supported codec limits.",
+
+  "limits": "Source approval is bound to 2f15ae2e04fae8c00958876263f4c43a53ad8882 and is not whole-head execution qualification. Evidence uses actual SQLite and native framework construction with scripted transports; process SIGKILL controls cover BLOB commit boundaries only. Stable/default30s completion remains NOT_VERIFIED; historical timeouts and pressure-qualified passes are retained. No Station chat/FileMemory/boot/terminal adoption, durable tools/approvals, independent second-product/Tier2 qualification, live-provider/full fidelity/native Bedrock/stateful support, disk reclamation/GC, packed plain-Node/registry release or publication is established.",
+
+  "sources": [
+    "packages/agent-runtime/package.json#/private",
+
+    "packages/agent-runtime/package.json#/version",
+
+    "packages/agent-runtime/package.json#/exports",
+
+    "packages/agent-runtime/package.json#/peerDependencies",
+
+    "packages/agent-runtime/package.json#/peerDependenciesMeta",
+
+    "packages/agent-runtime/package.json#/engines",
+
+    "packages/agent-runtime/src/index.ts",
+
+    "packages/agent-runtime/src/types.ts",
+
+    "packages/agent-runtime/src/policy.ts",
+
+    "packages/agent-runtime/src/coordinator.ts",
+
+    "packages/agent-runtime/src/decisions.ts",
+
+    "packages/agent-runtime/src/receipts.ts",
+
+    "packages/agent-runtime/src/records.ts",
+
+    "packages/agent-runtime/src/command-codec.ts",
+
+    "packages/agent-runtime/src/codecs.ts",
+
+    "packages/agent-runtime/src/encoding.ts",
+
+    "packages/agent-runtime/src/memory.ts",
+
+    "packages/agent-runtime/src/sqlite.ts",
+
+    "packages/agent-runtime/src/outbox.ts",
+
+    "packages/agent-runtime/src/retention.ts",
+
+    "packages/agent-runtime/src/ai-sdk.ts",
+
+    "packages/agent-runtime/src/voltagent.ts",
+
+    "packages/agent-runtime/src/strands.ts",
+
+    "packages/agent-runtime/src/__tests__/journal.test.ts",
+
+    "packages/agent-runtime/src/__tests__/bodies.test.ts",
+
+    "packages/agent-runtime/src/__tests__/stream.test.ts",
+
+    "packages/agent-runtime/src/__tests__/frameworks.test.ts",
+
+    "packages/agent-runtime/src/__tests__/body-process.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-ownership.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-first-template.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-public-cancel.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-stream.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-codecs.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-outbox.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-native-controls.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-pinned-equality.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-admission.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-receipts.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r3-ready.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "packages/agent-runtime/package.json#/dependencies/zod"
+  ],
+
+  "checks": []
+}

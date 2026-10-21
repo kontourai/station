@@ -1,4 +1,4 @@
-import type { DiscoveredRepo, ReposResult } from '../../hooks/useGitActions';
+import type { DiscoveredRepo, ReposResult } from '@kontourai/station-sdk';
 
 /**
  * Normalize a path for prefix comparison: strip a trailing slash so that

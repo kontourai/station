@@ -41,7 +41,19 @@ and Android universal APK/AAB. Stable additionally inventories the iOS simulator
 archive and device IPA. Preview excludes iOS from this GitHub asset inventory
 while its separate Beta TestFlight job remains required by draft assembly.
 Every desktop updater bundle must have its
-matching Tauri `.sig` file. Artifact names are canonicalized by
+matching Tauri `.sig` file, and that signature must name the manifest's
+version in its trusted comment (`version:`): assembling `latest.json`
+(`scripts/lib/tauri-updater-manifest.mjs`) refuses an unversioned or
+mismatched one. The macOS archive is signed with `tauri signer sign
+--app-version` from the staged app's `CFBundleShortVersionString`; the
+desktop app needs the version bound to restore a downloaded update after a
+restart. The check reads the comment only; the app verifies the signature. `publish-release`
+runs this policy from the default branch, so re-running publication, or a
+break-glass pointer repair, for a tag built before this rule (whose macOS
+signatures name no version) is refused at "Assemble and validate the rolling
+desktop updater channel", before the updater channel is uploaded (the
+host-stream manifest attach runs earlier in that job). Rebuilding such a tag signs with its own,
+older script, so its updater channel can be published only by a new release. Artifact names are canonicalized by
 `scripts/release-artifacts.mjs`; do not rename files in Actions or by hand.
 
 Inventory schema v2 additionally admits exactly four canonical SBOM assets:

@@ -6,6 +6,9 @@
  */
 
 import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
+import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -17,6 +20,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ChildWorkRowModel } from '../childWorkSelectors';
 
 const useOrchestrationSessionQuery = vi.fn();
+const useOrchestrationSessionActivityQuery = vi.fn();
 const interruptMutate = vi.fn();
 const stopMutate = vi.fn();
 // #2486 review: a configurable mock so a test can drive the mutation's own
@@ -35,6 +39,8 @@ const { FakeStationHttpError } = vi.hoisted(() => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useOrchestrationSessionActivityQuery: (...args: unknown[]) =>
+    useOrchestrationSessionActivityQuery(...args),
   useOrchestrationSessionQuery: (...args: unknown[]) =>
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: () => ({
@@ -89,6 +95,9 @@ function mount(model: ChildWorkRowModel, now = 100_000) {
 
 beforeEach(() => {
   useOrchestrationSessionQuery.mockReturnValue({ data: undefined });
+  useOrchestrationSessionActivityQuery
+    .mockReset()
+    .mockReturnValue({ data: undefined });
   useStopProviderTaskMutation.mockReturnValue({
     mutate: stopMutate,
     isPending: false,
@@ -101,6 +110,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 test('an unreported start and unreported usage render absent, not as zero', () => {
@@ -123,8 +134,11 @@ test('reported values print — including a reported zero', () => {
     100_000,
   );
   expect(container.querySelector('.child-work-row__meta')?.textContent).toBe(
-    'Explore · 1:00 · 0 tokens · 1 tool use · ran 1:01',
+    'Explore · 1:00',
   );
+  expect(screen.queryByText('0 tokens · 1 tool use · ran 1:01')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Survey the repo/ }));
+  expect(screen.getByText('0 tokens · 1 tool use · ran 1:01')).toBeTruthy();
 });
 
 test('a settled child with no reported end shows no elapsed', () => {
@@ -169,6 +183,220 @@ test('a transcript-file handle gets no button; a session handle opens that sessi
   );
   fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
   expect(onOpenSession).toHaveBeenCalledWith('d-1');
+});
+
+test('a collapsed delegate polls one bounded turn, shows its own tool, and clears it on a new turn', async () => {
+  vi.useFakeTimers();
+  const sdk = await vi.importActual<typeof import('@kontourai/station-sdk')>(
+    '@kontourai/station-sdk',
+  );
+  useOrchestrationSessionActivityQuery.mockImplementation(
+    (threadId, _apiBase, config) =>
+      sdk.useOrchestrationSessionActivityQuery(
+        threadId,
+        'http://station.test',
+        config,
+      ),
+  );
+  const base = {
+    provider: 'codex' as const,
+    createdAt: '2026-10-20T00:00:00.000Z',
+    turnId: 'turn-old',
+    threadId: 'delegate-live',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      ...base,
+      eventId: 'start',
+      method: 'turn.started',
+      prompt: 'Check the source',
+    },
+    {
+      ...base,
+      eventId: 'old-tool',
+      method: 'tool.started',
+      toolName: 'OldTool',
+      itemId: 'old-tool',
+      toolCallId: 'old-tool',
+      arguments: {},
+    },
+    {
+      ...base,
+      turnId: 'turn-new',
+      eventId: 'next',
+      method: 'turn.started',
+      prompt: 'Continue',
+    },
+    {
+      ...base,
+      turnId: 'turn-new',
+      eventId: 'tool',
+      method: 'tool.started',
+      toolName: 'Read',
+      itemId: 'tool-1',
+      toolCallId: 'tool-1',
+      arguments: {},
+    },
+    ...['exec-1', 'sibling'].map(
+      (threadId): CanonicalRuntimeEvent => ({
+        ...base,
+        eventId: threadId,
+        method: 'tool.started',
+        threadId,
+        toolName: `${threadId}-tool`,
+        itemId: threadId,
+        toolCallId: threadId,
+        arguments: {},
+      }),
+    ),
+  ];
+  let latestTool: OrchestrationSessionEventWindow['latestTool'];
+  const fetcher = vi.fn(async (_url: string, _init?: RequestInit) =>
+    Response.json({
+      success: true,
+      data: {
+        protocolVersion: 1,
+        latestTool,
+        session: {
+          threadId: 'delegate-live',
+          provider: 'codex',
+          status: 'running',
+          createdAt: base.createdAt,
+          updatedAt: base.createdAt,
+          controlMode: 'station-owned',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 10_000,
+          answerability: { answerable: true },
+        },
+        events: events.map((event, sequence) => ({ sequence, event })),
+        hasMore: true,
+        nextCursor: 'older-history',
+        watermark: events.length,
+      } satisfies OrchestrationSessionEventWindow,
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const model = row({
+    producer: 'station-delegate',
+    childId: 'delegate-live',
+    progress: 'Working',
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ul>
+        <ChildWorkRow
+          row={model}
+          now={100_000}
+          showProvenance={false}
+          onOpenSession={onOpenSession}
+        />
+      </ul>
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  expect(
+    screen.getByText('Read', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('OldTool')).toBeNull();
+  expect(screen.queryByText('exec-1-tool')).toBeNull();
+  expect(screen.queryByText('sibling-tool')).toBeNull();
+  expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
+
+  events.push({
+    ...base,
+    turnId: 'turn-new',
+    eventId: 'steer',
+    method: 'turn.started',
+    prompt: 'Continue the same work',
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.getByText('Read', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+
+  events.push({
+    ...base,
+    turnId: undefined,
+    eventId: 'untagged-old-tool',
+    method: 'tool.started',
+    toolName: 'UntaggedOldTool',
+    itemId: 'untagged-old',
+    toolCallId: 'untagged-old',
+    arguments: {},
+  });
+  events.push({
+    ...base,
+    turnId: 'turn-next',
+    eventId: 'reset',
+    method: 'turn.started',
+    prompt: 'Next task',
+  });
+  events.push({
+    ...base,
+    turnId: 'turn-new',
+    eventId: 'late-old-turn-tool',
+    method: 'tool.started',
+    toolName: 'LateOldTool',
+    itemId: 'late-old',
+    toolCallId: 'late-old',
+    arguments: {},
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(screen.queryByText('Read')).toBeNull();
+  expect(screen.queryByText('LateOldTool')).toBeNull();
+  expect(screen.queryByText('UntaggedOldTool')).toBeNull();
+
+  latestTool = { turnId: 'turn-next', name: 'Write' };
+  events.length = 0;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.getByText('Write', { selector: '.child-work-activity__name' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Read')).toBeNull();
+
+  latestTool = null;
+  events.push({
+    ...base,
+    eventId: 'capped-older-tool',
+    method: 'tool.started',
+    toolName: 'OlderTool',
+    itemId: 'older-tool',
+    toolCallId: 'older-tool',
+    arguments: {},
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_050);
+  });
+  expect(
+    screen.queryByText('Write', { selector: '.child-work-activity__name' }),
+  ).toBeNull();
+  expect(screen.queryByText('OlderTool')).toBeNull();
+  expect(screen.getByText('Working')).toBeTruthy();
+  expect(useOrchestrationSessionQuery).not.toHaveBeenCalled();
+  expect(fetcher).toHaveBeenCalledTimes(5);
+  for (const [url] of fetcher.mock.calls) {
+    expect(url).toBe(
+      'http://station.test/api/orchestration/sessions/delegate-live/event-window?direction=newest&turnLimit=1',
+    );
+  }
+  view.unmount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(4_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(5);
+  client.clear();
 });
 
 test('Stop renders only from the row model, and reaches the matching seam', () => {

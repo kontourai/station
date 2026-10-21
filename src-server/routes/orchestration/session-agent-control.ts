@@ -1,3 +1,4 @@
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * #3160 (epic #3167): the REST side of Station Control's Session tools —
  * `send_to_session`, `interrupt_session` and `wait_session`. An agent can wait
@@ -36,6 +37,7 @@ import {
   type SessionMessageDeliveryPorts,
   type SessionSendMode,
 } from '@kontourai/monument';
+import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type HostedTenantRegistry,
@@ -62,6 +64,7 @@ import {
 } from '../../services/orchestration/session-control-request-keys.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
+import { sessionSenderIdentity } from '../../services/orchestration/session-sender-identity.js';
 import {
   evaluateSessionWait,
   SESSION_WAIT_MAX_TIMEOUT_MS,
@@ -187,10 +190,20 @@ export interface SessionAgentControlDeps {
   eventStore: Pick<
     EventStore,
     | 'conversationForSession'
+    | 'conversationRootFirstPromptedTurn'
+    | 'firstTurnStartedWithPrompt'
     | 'listEventsByMethods'
+    | 'readSessionByThread'
     | 'readSessionInventoryHighWater'
+    | 'sessionAgentPresentation'
     | 'sessionControlRequestKeys'
-  >;
+  > &
+    Partial<
+      Pick<
+        EventStore,
+        'readInvocationTerminal' | 'readInputlessTurnDisposition'
+      >
+    >;
   /** Server events; an appended orchestration event wakes a wait. */
   eventBus: {
     subscribe(
@@ -245,6 +258,16 @@ function sessionTurnWaitPorts(
     // that needed it; it is exactly `MAX(sequence)` for the thread).
     headSequence: (threadId) =>
       deps.eventStore.readSessionInventoryHighWater(threadId),
+    readInputlessTurnDisposition: (threadId) =>
+      deps.eventStore.readInputlessTurnDisposition?.(threadId) ?? {
+        kind: 'unknown',
+      },
+    readInvocationTerminal: (threadId, invocationId, turnId) =>
+      deps.eventStore.readInvocationTerminal?.(
+        threadId,
+        invocationId,
+        turnId,
+      ) ?? { kind: 'unknown' },
     coordinatorBusy: (threadId) =>
       deps.orchestrationService.hasActiveTurn(threadId),
     subscribe: (threadId, listener) =>
@@ -534,6 +557,26 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         key: body.requestKey,
       };
       const actor = resolveDispatchActor(deps, c);
+      // #3419: who is sending, from the verified caller and Station's own
+      // record of that Session (never the request body). It rides the turn's
+      // `clientOrigin` beside the unchanged `actor`, so the turn stays a
+      // non-person's, and it names the sender in the frame the engine reads.
+      const sender = clientOriginSender({
+        sender: {
+          kind: 'agent-session',
+          sessionId: caller.sessionId,
+          ...sessionSenderIdentity(deps.eventStore, caller.sessionId),
+          requestKey: body.requestKey,
+        },
+      });
+      if (!sender)
+        return c.json(
+          {
+            success: false,
+            error: 'Station could not identify the Session that is sending.',
+          },
+          400,
+        );
       const context = {
         userId: actor.userId,
         ...(actor.ownerAttribution
@@ -541,7 +584,10 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           : {}),
         principal: actor.principal,
         tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
-        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        clientOrigin: {
+          ...resolveClientOriginForRequest(c.req.raw),
+          sender,
+        },
       };
       let refusedPinned: Response | undefined;
       const outcome = await runWithSessionControlKey<
@@ -570,6 +616,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           const cursorBefore =
             deps.eventStore.readSessionInventoryHighWater(threadId);
           const ports: SessionMessageDeliveryPorts = {
+            prepareText: (text) => frameAgentMessage(sender, text),
             isBusy,
             start: async ({ text, clientTurnId }) => {
               try {

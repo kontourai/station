@@ -1,0 +1,7 @@
+{
+  "revision": "d9b88f154cb28fb2646edc8552b2d6a70018ecf2",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 permission profiles: rewrote the Codex workspace-configuration section against codex-confinement.ts, codex-approval-mode.ts and the adapter start/fork/turn paths. Spawn args, profile deny globs (bare and subtree), no workspace-write mode on thread or turn outside host, posture requiring activePermissionProfile, network via the profile, checked-in config still honoured, Linux snapshot residual. Live-checked on codex-cli 0.162.1 macOS (turns and codex sandbox) and 0.160.0 Linux (codex sandbox only).","inputs":["docs/design/approval-posture-server-ordered.md","src-server/providers/adapters/codex-confinement.ts"]}
+  ]
+}

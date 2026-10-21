@@ -85,7 +85,13 @@ export function AnswerBasisAffordance({
       ref={ref}
       type="button"
       className={className ?? 'station-basis-affordance'}
-      title={standing?.description ?? 'Open the basis for this answer'}
+      // A narrow row may cut the standing short on screen (the host
+      // ellipsizes it), so the tooltip repeats the full label.
+      title={
+        cue && standing
+          ? `${text}. ${standing.description}`
+          : (standing?.description ?? 'Open the basis for this answer')
+      }
       aria-label={
         cue
           ? `${text} for ${target}`
@@ -98,7 +104,15 @@ export function AnswerBasisAffordance({
         onOpen(event.currentTarget)
       }
     >
-      {text}
+      {cue ? (
+        <>
+          {/* "Basis · " never shrinks; only Surface's label may be cut. */}
+          <span className="station-basis-affordance__lead">Basis · </span>
+          <span className="station-basis-affordance__standing">{cue}</span>
+        </>
+      ) : (
+        text
+      )}
     </button>
   );
 }

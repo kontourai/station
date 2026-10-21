@@ -6,7 +6,7 @@ can read that answer, without signing in, until it expires or you revoke it.
 ## Create a link
 
 1. Under the answer, open **More answer actions** and choose
-   **Turn provenance**.
+   **Answer details**.
 2. In the **Provenance** dialog, choose **Share answer**.
 3. Station copies the link and says it expires in 7 days. If the browser does
    not allow copying, the link stays on screen so you can copy it yourself.

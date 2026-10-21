@@ -24,8 +24,11 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../../services/notifications/web-push-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { orchestrationStreamPresenceSubjectForSession } from '../../../services/orchestration/orchestration-stream-presence.js';
+import { wireTurnCompletionNotifications } from '../../../services/orchestration/turn-completion-notifications.js';
 import { FocusPresence } from '../../../services/presence/focus-presence.js';
 import { ClientConnectionPresence } from '../../../services/ssh/client-connection-presence.js';
 import { pairedDevicePrincipal } from '../../bootstrap/orchestration-request-principal.js';
@@ -107,8 +110,13 @@ const openStreams: AbortController[] = [];
 
 type Caller = 'operator' | 'laptop';
 
-function harness() {
-  const eventBus = new EventBus();
+function harness(
+  options: {
+    eventBus?: EventBus;
+    getNotification?: (id: string) => Promise<Notification | undefined>;
+  } = {},
+) {
+  const eventBus = options.eventBus ?? new EventBus();
   const focusPresence = new FocusPresence();
   const clientStreams = createClientStreamPresence({
     devices: new ClientConnectionPresence(),
@@ -162,9 +170,11 @@ function harness() {
         credential === laptopCredential.credential
           ? { id: 'laptop', kind: 'device' }
           : null,
+      // What the request resolver gives the ui-bootstrap credential: it was
+      // minted with home-possession, so it reads as the operator.
       resolvePrincipalId: (c) =>
         c.req.header('x-test-caller') === 'laptop'
-          ? pairedDevicePrincipal(LAPTOP).id
+          ? pairedDevicePrincipal(LAPTOP, 'home-possession').id
           : LOCAL_OPERATOR_PRINCIPAL_ID,
     }),
   );
@@ -178,6 +188,7 @@ function harness() {
     logger,
     devicePairing: {
       listDevices: () => [...DEVICES, LAPTOP],
+      deviceLocality: (id) => (id === 'laptop' ? 'home-possession' : undefined),
       listPushSubscriptions: () =>
         DEVICES.map(({ id }) => ({
           deviceId: id,
@@ -191,7 +202,7 @@ function harness() {
     webPushService: { send },
     // The operator and every device can read the session.
     canUserReadSession: () => true,
-    getNotification: async (id) => store.get(id),
+    getNotification: options.getNotification ?? (async (id) => store.get(id)),
     focus: focusPresence,
     inAppLiveness: clientStreams.inAppLiveness,
   });
@@ -376,6 +387,78 @@ describe('focus presence gated by per-tab stream liveness (#2620)', () => {
       h.deliver(done());
       await flush();
       expect(h.pushedTo()).toEqual([]);
+    });
+  });
+
+  /**
+   * A turn failure the person watched: the real producer's record, read on
+   * the focused laptop the way a client showing the chat reads it
+   * (`NotificationService.markRead`). The laptop's ui-bootstrap credential
+   * reads as the operator, so its focus holds the failure back from the
+   * owner's phones; reading it then cancels the escalation.
+   */
+  describe('a turn failure on the focused laptop', () => {
+    async function watchedFailure() {
+      const eventBus = new EventBus();
+      const notifications = new NotificationService(
+        eventBus,
+        makeTempDir('delivery-focus-records-'),
+        999_999,
+      );
+      const h = harness({
+        eventBus,
+        getNotification: (id) => notifications.get(id),
+      });
+      await h.openStream('laptop', TAB);
+      await h.report('laptop', TAB, 'focused');
+      wireTurnCompletionNotifications(
+        eventBus,
+        {
+          isReadOnlyAttachedSession: () => false,
+          isEphemeralSession: () => false,
+          resolveSessionPresenceSubject: () =>
+            orchestrationStreamPresenceSubjectForSession('owner-1'),
+        },
+        notifications,
+        { warn: vi.fn() },
+      );
+      await notifications.start();
+      const turn = {
+        createdAt: NOW.toISOString(),
+        provider: 'claude',
+        threadId: 'session-1',
+        turnId: 'turn-1',
+      };
+      eventBus.emit('orchestration:event', {
+        event: { ...turn, method: 'turn.started', prompt: 'go' },
+      } as never);
+      eventBus.emit('orchestration:event', {
+        event: { ...turn, method: 'runtime.error', message: 'boom' },
+      } as never);
+      await notifications.drainAsyncDispatch();
+      await flush();
+      const [record] = await notifications.list();
+      expect(record?.category).toBe('turn-failed');
+      return { h, notifications, record: record! };
+    }
+
+    test('is held back from the phones, and reaches them if still unread', async () => {
+      const { h, notifications } = await watchedFailure();
+      expect(h.pushedTo()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(DEFAULT_NOTIFICATION_ESCALATE_AFTER_MS);
+      expect(h.pushedTo()).toEqual(['phone', 'tablet']);
+      await notifications.shutdown();
+    });
+
+    test('read on the laptop before the deferral ends, it never reaches them', async () => {
+      const { h, notifications, record } = await watchedFailure();
+      expect(await notifications.markRead(record.id, 'device:laptop')).toBe(
+        'read',
+      );
+      await flush();
+      await vi.advanceTimersByTimeAsync(DEFAULT_NOTIFICATION_ESCALATE_AFTER_MS);
+      expect(h.pushedTo()).toEqual([]);
+      await notifications.shutdown();
     });
   });
 });

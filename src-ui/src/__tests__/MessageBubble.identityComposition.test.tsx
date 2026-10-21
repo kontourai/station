@@ -126,7 +126,7 @@ async function openProvenanceDialog() {
   fireEvent.click(
     await screen.findByRole('button', { name: 'More answer actions' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
   await screen.findByLabelText(/^Answer provenance/);
 }
 
