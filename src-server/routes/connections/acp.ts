@@ -338,7 +338,7 @@ function connectionStatusView(
  * connections never enter the configuration queue; the cold probe itself ran
  * outside it.
  */
-export async function registerFirstHandshakeACPConnection(
+async function registerFirstHandshakeACPConnection(
   ctx: RuntimeContext,
   probed: ACPConnectionConfig,
 ): Promise<'registered' | 'already-registered' | 'config-changed' | 'skipped'> {
