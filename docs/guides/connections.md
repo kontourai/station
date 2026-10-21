@@ -734,27 +734,45 @@ catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-1. Select a detected or supported engine, or choose the custom option.
-2. For custom setup, enter a name and command. Command arguments, working directory, and other
-   raw setup details stay under **Advanced**.
-3. Keep the same dialog or sheet open while Station shows **Checking**. An
+Add engine opens one catalogue in the Engines detail pane, beside your
+engine list: saved engines that are **Not connected yet**, the native apps
+Station supports, the built-in command engines (**Found, not connected** or
+**Not installed**), and a custom command. Everything that follows stays in
+that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+opens on that entry's first step.
+
+1. Choose an engine. An engine that is **Not installed** offers only its
+   install command and **Check again**; it can be connected once Station finds
+   it, or through the custom option.
+2. Confirm. Every choice first says what connecting it changes and waits for
+   **Connect** (or **Add** for a native app). For custom setup, enter a name
+   and command instead. Command arguments, working directory, and other raw
+   setup details stay under **Advanced**.
+3. Stay on the page while Station shows **Checking**. An
    engine that is starting for the first time can take up to a minute; the
-   dialog says so and keeps checking. If it has not finished after about 90
-   seconds, the dialog stops waiting; Station keeps checking the engine while
+   page says so and keeps checking. If it has not finished after about 90
+   seconds, it stops waiting; Station keeps checking the engine while
    it runs. Station does not check it at startup after a restart; use its
    **Retry check** (or add it again) if it was not ready by then.
 4. Read the readiness result and its detail. If it is not Ready, the result
    names the phase that failed and its reason. Use **Retry check** after fixing
-   the cause, or edit the setup or choose another engine, before closing. The
-   engine's Agent is added only once its check succeeds.
+   the cause, or **Edit setup** for a custom engine. The engine's Agent is
+   added only once its check succeeds.
+5. When it is **Ready**, **Start a chat with** the engine opens New chat with
+   its Agent selected, in the dock's current Project when it has one and
+   otherwise without a Project, or choose **Done**.
 
-A configured engine that reads **Setup required** offers **Retry check** too, on its card and on its engine page.
-An engine whose first check never succeeded is saved but has no Agent yet; its
-card reads **Not connected yet** and offers **Retry check**, **Remove**, and,
-for a custom engine, **Edit setup**. It is not counted as one of your engines
-until a check succeeds.
-In the Add catalogue, an app that still needs setup offers **Add and set up**: it
-adds the engine and opens it, where setup continues. Station does not check
+A configured engine that reads **Setup required** offers **Retry check** on its
+engine page; a Ready engine offers **Check connection** instead.
+An engine whose first check never succeeded is saved but has no Agent yet; it
+is listed on the Engines page and at the top of Add engine as **Not connected
+yet**, and its page offers **Retry check**, **Remove**, and, for a custom
+engine, **Edit setup**. It is not counted as one of your engines until a check
+succeeds. A command engine's page also opens its **Connection details**: what
+it reported when it connected and the tool servers Station passes to it.
+In the Add catalogue, an app that still needs setup offers **Add and set up**:
+after its confirm step it is added, and **Finish setup** opens its page, where
+setup continues. Station does not check
 whether a command-backed engine is signed in, so its login row says so and does
 not block chats.
 
@@ -772,7 +790,9 @@ The first-run Engines chapter shows the detected, not-yet-connected local Engine
 one there explicitly connects the Engine and creates its default Agent binding.
 That discovery action is separate from the automatic startup adoption above.
 Catalogue engines Station did not find are listed under **Station also works
-with**, each with its install command, and cannot be selected there.
+with**, each with its install command and **Check again**, and cannot be
+selected until Station finds them. The list opens on its own when nothing else
+can be chosen.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:
