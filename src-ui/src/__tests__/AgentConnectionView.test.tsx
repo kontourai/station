@@ -334,8 +334,16 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
-const refetchRegistry = vi.fn();
+const checkOrder: string[] = [];
+const refetchRegistry = vi.fn(async () => {
+  checkOrder.push('refetch');
+});
+const recheckRegistry = vi.fn(async () => {
+  checkOrder.push('recheck');
+  return [];
+});
 vi.mock('../hooks/useACPConnections', () => ({
+  recheckACPConnectionRegistry: () => recheckRegistry(),
   useACPConnections: () => ({ data: acpBridgeConnections }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
@@ -778,10 +786,38 @@ describe('AgentConnectionView', () => {
     ).toBeNull();
     expect(screen.queryByText(/cli\.kiro\.dev/)).toBeNull();
 
+    checkOrder.length = 0;
     fireEvent.click(
       within(goose).getByRole('button', { name: 'Check again for Goose' }),
     );
-    expect(refetchRegistry).toHaveBeenCalledTimes(1);
+    // The server re-reads the login-shell PATH first, then the catalogue is read.
+    await waitFor(() => expect(checkOrder).toEqual(['recheck', 'refetch']));
+    // Built-in recipes carry no plugin attribution.
+    expect(within(goose).queryByText(/Provided by/)).toBeNull();
+  });
+
+  test("a plugin's install command says which plugin provides it", async () => {
+    acpRegistryEntries = [
+      {
+        id: 'acme-agent',
+        name: 'Acme Agent',
+        command: 'acme-agent',
+        installed: false,
+        detected: false,
+        source: 'plugin',
+        sourceName: 'acme-presets',
+        hostInstall: { command: 'curl -fsSL https://acme.example/i | sh' },
+      },
+    ];
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    const hint = screen.getByRole('group', {
+      name: 'How to install Acme Agent',
+    });
+    expect(within(hint).getByText('Provided by acme-presets')).toBeTruthy();
   });
 
   test('on a paired device the install command names the host it has to run on', async () => {

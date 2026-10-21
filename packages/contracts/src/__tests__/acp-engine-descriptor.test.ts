@@ -14,7 +14,8 @@ const valid = {
     linux: { note: 'No Linux build yet.' },
     win32: { docsUrl: 'https://example.com/install#windows' },
   },
-  launchEnv: { GOOSE_DISABLE_KEYRING: '1', ENGINE_AUTO_UPDATE: 'false' },
+  launchEnv: { GOOSE_DISABLE_KEYRING: '1', DROID_DISABLE_AUTO_UPDATE: 'true' },
+  platforms: ['darwin', 'linux'] as Array<'darwin' | 'linux'>,
   auth: {
     statusCommand: ['engine', 'status'],
     signInHint: 'Run engine login.',
@@ -71,27 +72,27 @@ describe('validateACPEngineDescriptor', () => {
     expect(
       validateACPEngineDescriptor({
         launchEnv: {
-          ENGINE_API_KEY: 'x',
+          GOOSE_API_KEY: 'x',
           AUGMENT_SESSION_AUTH: 'x',
-          GH_TOKEN: 'x',
+          FACTORY_TOKEN: 'x',
           // KEYRING is not KEY: this one is allowed.
           GOOSE_DISABLE_KEYRING: '1',
         },
       }),
     ).toEqual([
-      'launchEnv.ENGINE_API_KEY: credentials never go in launchEnv',
+      'launchEnv.GOOSE_API_KEY: credentials never go in launchEnv',
       'launchEnv.AUGMENT_SESSION_AUTH: credentials never go in launchEnv',
-      'launchEnv.GH_TOKEN: credentials never go in launchEnv',
+      'launchEnv.FACTORY_TOKEN: credentials never go in launchEnv',
     ]);
   });
 
   test('refuses a launch variable the descriptor itself names as a credential', () => {
     expect(
       validateACPEngineDescriptor({
-        launchEnv: { ENGINE_LOGIN: 'x' },
-        auth: { credentialEnvVars: ['ENGINE_LOGIN'] },
+        launchEnv: { GOOSE_LOGIN: 'x' },
+        auth: { credentialEnvVars: ['GOOSE_LOGIN'] },
       }),
-    ).toEqual(['launchEnv.ENGINE_LOGIN: credentials never go in launchEnv']);
+    ).toEqual(['launchEnv.GOOSE_LOGIN: credentials never go in launchEnv']);
   });
 
   test('refuses text one character over the bound, accepts it at the bound', () => {
@@ -119,19 +120,80 @@ describe('validateACPEngineDescriptor', () => {
     ).toEqual(['auth.credentialEnvVars must be a list of 1-16 entries']);
     expect(
       validateACPEngineDescriptor({
-        launchEnv: Object.fromEntries(names(17).map((name) => [name, '1'])),
+        launchEnv: Object.fromEntries(
+          names(17).map((name) => [`GOOSE_${name}`, '1']),
+        ),
       }),
     ).toEqual(['launchEnv may set at most 16 variables']);
+  });
+
+  test('refuses loader, path, proxy and runtime variables: only engine-scoped prefixes are allowed', () => {
+    const refused = [
+      'NODE_OPTIONS',
+      'LD_PRELOAD',
+      'DYLD_INSERT_LIBRARIES',
+      'HTTPS_PROXY',
+      'http_proxy',
+      'NODE_TLS_REJECT_UNAUTHORIZED',
+      'PATH',
+      'HOME',
+      'PYTHONPATH',
+      'ELECTRON_RUN_AS_NODE',
+      'OPENCODE_CONFIG_CONTENT',
+    ];
+    expect(
+      validateACPEngineDescriptor({
+        launchEnv: Object.fromEntries(refused.map((name) => [name, '1'])),
+      }),
+    ).toEqual(
+      refused.map(
+        (name) => `launchEnv.${name}: not an engine-scoped launch variable`,
+      ),
+    );
+    expect(
+      validateACPEngineDescriptor({
+        launchEnv: {
+          GOOSE_DISABLE_KEYRING: '1',
+          DROID_DISABLE_AUTO_UPDATE: 'true',
+          FACTORY_DROID_AUTO_UPDATE_ENABLED: 'false',
+          AUGMENT_DISABLE_AUTO_UPDATE: '1',
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  test('refuses control characters, line breaks and bidi overrides in shown text', () => {
+    expect(
+      validateACPEngineDescriptor({
+        install: {
+          darwin: { command: 'brew install engine\nrm -rf ~' },
+          linux: { command: 'curl https://x.example | sh\u202E' },
+          win32: { note: 'Run\u0007 it', docsUrl: 'https://x.example' },
+        },
+        auth: { signInHint: 'Sign in\u2066 here' },
+      }),
+    ).toEqual([
+      'install.darwin.command is not valid',
+      'install.linux.command is not valid',
+      'install.win32.note is not valid',
+      'auth.signInHint is not valid',
+    ]);
+  });
+
+  test('refuses an unknown platform in platforms', () => {
+    expect(
+      validateACPEngineDescriptor({ platforms: ['darwin', 'beos'] as never }),
+    ).toEqual(['platforms[1]: unknown platform']);
   });
 
   test('refuses a malformed status command and env names', () => {
     expect(
       validateACPEngineDescriptor({
-        launchEnv: { 'NOT-A-NAME': '1' },
+        launchEnv: { 'GOOSE-NOT-A-NAME': '1' },
         auth: { statusCommand: [], credentialEnvVars: ['1BAD'] },
       }),
     ).toEqual([
-      'launchEnv.NOT-A-NAME: not a variable name',
+      'launchEnv.GOOSE-NOT-A-NAME: not a variable name',
       'auth.statusCommand must be a list of 1-16 entries',
       'auth.credentialEnvVars[0] is not valid',
     ]);

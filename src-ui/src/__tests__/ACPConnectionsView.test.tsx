@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const acpRegistryState = vi.hoisted(() => ({
@@ -23,6 +29,7 @@ const installRegistryEntry = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', () => ({
   useACPConnectionsQuery: () => acpConnectionsState,
+  fetchACPConnectionRegistry: () => Promise.resolve([]),
   useACPConnectionRegistryQuery: () => ({
     data: acpRegistryState.data,
     refetch: acpRegistryState.refetch,
@@ -176,7 +183,7 @@ describe('ACPConnectionsView', () => {
     expect(installRegistryEntry).toHaveBeenCalledWith('kiro');
   });
 
-  it('a routed undetected engine shows how to install it, and the hint follows Check again', () => {
+  it('a routed undetected engine shows how to install it, and the hint follows Check again', async () => {
     const goose = {
       id: 'goose',
       name: 'Goose',
@@ -198,7 +205,9 @@ describe('ACPConnectionsView', () => {
     fireEvent.click(
       within(hint).getByRole('button', { name: 'Check again for Goose' }),
     );
-    expect(acpRegistryState.refetch).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(acpRegistryState.refetch).toHaveBeenCalledTimes(1),
+    );
 
     // The re-check found it: the dialog's own copy of the entry is still the
     // undetected one, but the hint reads the live catalogue.

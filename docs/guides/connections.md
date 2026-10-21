@@ -695,7 +695,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
-| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol; Google ships the server as a download, so put it on `PATH` yourself |
+| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol, macOS only; Google ships the server as a download, so put it on `PATH` yourself |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
@@ -720,14 +720,17 @@ the [ACP guide](acp.md) covers protocol details.
 An engine Station did not find reads **Not installed**. Its card shows the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
-after you install it. Station shows the command and never runs it. On a paired
+after you install it, re-reading your login shell's `PATH` so a directory the
+installer added there is searched too. Station shows the command and never runs it. On a paired
 device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
 them, such as `GOOSE_DISABLE_KEYRING=1` for Goose (its keychain lookup can hang
 without a terminal) and the auto-update switches for Factory Droid. A value
-already set in the environment Station launches with wins. These settings never
-carry credentials; a catalogue entry that tries is refused.
+already set in the environment Station launches with wins. Only Station's own
+catalogue sets them, and only engine-scoped names; they never carry
+credentials. A custom connection running the same program, even by full path,
+gets the same settings.
 
 1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other

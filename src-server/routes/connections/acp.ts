@@ -4,6 +4,7 @@ import {
   type ACPConnectionRegistryEntry,
   type ACPEngineInstallRecipe,
   ACPStatus,
+  engineSupportsPlatform,
   installRecipeForPlatform,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
@@ -18,6 +19,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { nativeRuntimeConnectionIds } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { recaptureLoginShellPath } from '../../providers/auth/cli-auth.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
@@ -164,6 +166,10 @@ function getRegistryEntries(
     );
     entriesById.set(registryEntry.id, {
       ...registryEntry,
+      // An entry that does not launch on this host is never connectable here.
+      ...(engineSupportsPlatform(registryEntry, process.platform)
+        ? {}
+        : { detected: false }),
       source: builtin ? 'core' : 'plugin',
       sourceName: registryEntry.sourceName ?? providerSource,
       installed: installedSources.has(registryEntry.id),
@@ -339,6 +345,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
   });
 
   app.get('/registry', async (c) => {
+    // "Check again" after an install: pick up a bin directory the installer
+    // added to the shell rc since Station started (rate-limited, bounded).
+    if (c.req.query('recheck') === '1') await recaptureLoginShellPath();
     const entries = getRegistryEntries(
       await installedACPConnections(ctx.configLoader),
     );

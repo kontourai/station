@@ -21,8 +21,11 @@ export function EngineInstallHint({
   devicePresentation,
   onCheckAgain,
   checking = false,
+  provenance,
 }: {
   name: string;
+  /** The plugin that supplied this recipe; absent for Station's own catalogue. */
+  provenance?: string;
   recipe: ACPEngineInstallRecipe | undefined;
   devicePresentation: DevicePresentation | undefined;
   /** Re-runs detection. Absent where the surface cannot re-detect on demand. */
@@ -65,6 +68,9 @@ export function EngineInstallHint({
           </div>
         ) : null}
       </HostAction>
+      {provenance ? (
+        <p className="engine-install-hint__note">Provided by {provenance}</p>
+      ) : null}
       {recipe?.note ? (
         <p className="engine-install-hint__note">{recipe.note}</p>
       ) : null}

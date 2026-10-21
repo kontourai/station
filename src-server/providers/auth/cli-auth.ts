@@ -154,11 +154,12 @@ export async function resolveLoginShellPath(): Promise<string> {
   }
 }
 
-// Resolved at most once per process lifetime -- this is what makes an
-// otherwise-expensive spawn-a-login-shell operation safe to call from a
-// hot path like findCliBinary.
+// Resolved once per process lifetime on the hot path -- this is what makes an
+// otherwise-expensive spawn-a-login-shell operation safe to call from
+// findCliBinary. Only an explicit `recaptureLoginShellPath` refreshes it.
 let cachedLoginPathPromise: Promise<string> | null = null;
 let cachedLoginPathValue: string | null = null;
+let lastLoginPathCaptureAt = 0;
 
 function ensureLoginPathResolutionStarted(): Promise<string> {
   if (cachedLoginPathValue !== null) {
@@ -171,13 +172,45 @@ function ensureLoginPathResolutionStarted(): Promise<string> {
   if (!cachedLoginPathPromise) {
     cachedLoginPathPromise = resolveLoginShellPath().then((resolved) => {
       cachedLoginPathValue = resolved;
+      lastLoginPathCaptureAt = Date.now();
       return resolved;
     });
   }
   return cachedLoginPathPromise;
 }
 
-// The combined search-PATH directories: process.env.PATH first (so a
+// The fewest milliseconds between two login-shell captures. An explicit
+// re-check ("Check again" after installing an engine) can ask for a fresh
+// capture, but each one runs the user's shell rc files, so a burst of
+// requests shares one capture instead of spawning a shell per click.
+const LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS = 10_000;
+let recapturePromise: Promise<void> | null = null;
+
+// Re-runs the login-shell PATH capture so a directory an installer added to
+// the shell rc after Station started (e.g. ~/.opencode/bin) becomes
+// searchable. Bounded by the capture's own timeout, rate-limited, joined while
+// one is in flight, and never throws. A capture that fails or comes back empty
+// keeps the PATH already held rather than dropping its directories.
+export async function recaptureLoginShellPath(
+  now: number = Date.now(),
+): Promise<void> {
+  if (isWindows() || isLoginPathResolveDisabled()) return;
+  if (recapturePromise) return recapturePromise;
+  await ensureLoginPathResolutionStarted();
+  if (now - lastLoginPathCaptureAt < LOGIN_PATH_RECAPTURE_MIN_INTERVAL_MS)
+    return;
+  recapturePromise = resolveLoginShellPath()
+    .then((resolved) => {
+      lastLoginPathCaptureAt = now;
+      if (resolved) cachedLoginPathValue = resolved;
+    })
+    .finally(() => {
+      recapturePromise = null;
+    });
+  return recapturePromise;
+}
+
+// The combined search-PATH directories:// The combined search-PATH directories: process.env.PATH first (so a
 // pinned/hardened deployments own PATH always wins -- never displaced),
 // then the resolved login-shell PATH (once available), then the
 // well-known install-dir backstop. Deduped. process.env.PATH and the

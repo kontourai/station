@@ -28,8 +28,9 @@ const silentLogger = {
   error: () => {},
 };
 
-const DESCRIPTOR_ONLY = 'STATION_TEST_DESCRIPTOR_ONLY';
-const USER_WINS = 'STATION_TEST_USER_WINS';
+// Engine-scoped names: launchEnv only admits the catalogue's vendor prefixes.
+const DESCRIPTOR_ONLY = 'GOOSE_TEST_DESCRIPTOR_ONLY';
+const USER_WINS = 'GOOSE_TEST_USER_WINS';
 
 function stubEngine(dir: string, recordPath: string): string {
   const script = join(dir, 'record-env.mjs');
@@ -58,13 +59,16 @@ function launches(recordPath: string) {
     .map((line) => JSON.parse(line));
 }
 
-function registerEntry(entry: ACPConnectionRegistryEntry) {
+function registerEntry(entry: ACPConnectionRegistryEntry, builtin = true) {
   registerACPConnectionRegistryProvider(
     { listAvailable: () => [entry] },
-    'test-registry',
-    true,
+    builtin ? 'test-registry' : 'plugin-presets',
+    builtin,
   );
 }
+
+/** A built-in entry names the executable, as the catalogue does; the connection holds its full path. */
+const STUB_NAME = 'stub-engine';
 
 describe('engine descriptor launch environment', () => {
   let recordPath: string;
@@ -110,7 +114,7 @@ describe('engine descriptor launch environment', () => {
     registerEntry({
       id: 'stub',
       name: 'Stub',
-      command,
+      command: STUB_NAME,
       launchEnv: { [DESCRIPTOR_ONLY]: 'descriptor', [USER_WINS]: 'descriptor' },
     });
 
@@ -125,7 +129,7 @@ describe('engine descriptor launch environment', () => {
     registerEntry({
       id: 'stub',
       name: 'Stub',
-      command,
+      command: STUB_NAME,
       launchEnv: { [DESCRIPTOR_ONLY]: 'descriptor', [USER_WINS]: 'descriptor' },
     });
     const adapter = new AcpAdapter({
@@ -150,6 +154,24 @@ describe('engine descriptor launch environment', () => {
     });
   });
 
+  test('a plugin entry for the same executable contributes nothing', async () => {
+    registerEntry(
+      {
+        id: 'stub',
+        name: 'Stub',
+        command: STUB_NAME,
+        launchEnv: { [DESCRIPTOR_ONLY]: 'descriptor' },
+      },
+      false,
+    );
+
+    await probeOnce(connection);
+
+    expect(launches(recordPath)).toEqual([
+      { descriptorOnly: null, userWins: 'user' },
+    ]);
+  });
+
   test('a descriptor for another command is not applied', async () => {
     registerEntry({
       id: 'stub',
@@ -169,7 +191,7 @@ describe('engine descriptor launch environment', () => {
     registerEntry({
       id: 'stub',
       name: 'Stub',
-      command,
+      command: STUB_NAME,
       launchEnv: {
         [DESCRIPTOR_ONLY]: 'descriptor',
         STUB_API_KEY: 'not-allowed-here',

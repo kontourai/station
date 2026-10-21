@@ -505,16 +505,27 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | Field | Description |
 |---|---|
 | `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
-| `launchEnv` | Non-secret variables set when Station starts the entry's `command` (matched by command, so a custom connection running the same command gets them). The environment Station already launches with wins a conflict. |
-| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Descriptive only: nothing derives sign-in state from these yet. |
-| `homepageUrl` | An https link to the engine's docs. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`). The environment Station already launches with wins a conflict. |
+| `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected. |
+| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Data only, not yet applied: nothing runs or reads these yet. |
+| `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
 
 `validateACPEngineDescriptor` checks these fields. An entry that fails is left
 out of the catalogue and logged rather than shown with some fields dropped:
-an unknown platform, a URL that is not https, an over-long value, or a
-`launchEnv` name that looks like a credential (a `KEY`, `TOKEN`, `SECRET`,
-`PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry lists as a
-credential variable).
+an unknown platform, a URL that is not https, an over-long value, text with
+control characters, line breaks or bidi override marks, a `launchEnv` name
+without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
+proxy variable is refused), or one that looks like a credential (a `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
+lists as a credential variable). A plugin entry is also refused when it
+carries `launchEnv` or reuses a built-in entry's id; the built-in card stays.
+A plugin's install recipe is shown with "Provided by" and the plugin's name.
+
+`GET /acp/registry?recheck=1` re-reads the login-shell `PATH` before
+detecting, so an engine whose installer added its own bin directory to the
+shell rc after Station started can be found. The re-read is bounded by the
+login-shell timeout, at most once every 10 seconds, and a failed re-read keeps
+the `PATH` Station already had. **Check again** uses it.
 
 ### Runtime API
 
@@ -527,7 +538,7 @@ PUT    /acp/connections/:id            Update connection configuration and its p
 DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
-GET    /acp/registry                   List catalogue engines, with host detection and install recipe
+GET    /acp/registry                   List catalogue engines, with host detection and install recipe (?recheck=1 re-reads the login-shell PATH first)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a

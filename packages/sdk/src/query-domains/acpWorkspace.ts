@@ -144,11 +144,18 @@ export async function fetchACPConnections(): Promise<ACPConnectionInfo[]> {
   return result.data ?? [];
 }
 
-export async function fetchACPConnectionRegistry(): Promise<
-  ACPConnectionRegistryEntry[]
-> {
+/**
+ * `recheck: true` asks the host to re-read its login-shell PATH before
+ * detecting, so an engine installed since it started can be found. The host
+ * rate-limits that re-read.
+ */
+export async function fetchACPConnectionRegistry(
+  options: { recheck?: boolean } = {},
+): Promise<ACPConnectionRegistryEntry[]> {
   const apiBase = await _getApiBase();
-  const response = await authenticatedFetch(`${apiBase}/acp/registry`);
+  const response = await authenticatedFetch(
+    `${apiBase}/acp/registry${options.recheck ? '?recheck=1' : ''}`,
+  );
   const result = (await response.json()) as {
     success: boolean;
     data?: ACPConnectionRegistryEntry[];

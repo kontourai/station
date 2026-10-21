@@ -178,4 +178,17 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
       provider.listAvailable().find((entry) => entry.id === 'goose')?.launchEnv,
     ).toEqual({ GOOSE_DISABLE_KEYRING: '1' });
   });
+
+  test('Antigravity launches only on macOS: Linux and Windows carry a note, no install command', () => {
+    const antigravity = new BuiltinACPConnectionRegistryProvider(
+      () => true,
+      () => false,
+    )
+      .listAvailable()
+      .find((entry) => entry.id === 'antigravity');
+    expect(antigravity?.platforms).toEqual(['darwin']);
+    expect(antigravity?.install?.linux?.command).toBeUndefined();
+    expect(antigravity?.install?.linux?.note).toMatch(/Linux/);
+    expect(antigravity?.install?.win32?.command).toBeUndefined();
+  });
 });

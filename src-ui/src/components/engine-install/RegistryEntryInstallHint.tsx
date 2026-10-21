@@ -1,5 +1,9 @@
 import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
-import { useACPConnectionRegistry } from '../../hooks/useACPConnections';
+import { useState } from 'react';
+import {
+  recheckACPConnectionRegistry,
+  useACPConnectionRegistry,
+} from '../../hooks/useACPConnections';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { EngineInstallHint } from './EngineInstallHint';
 import { registryEntryDiscovery } from './registryEntryDiscovery';
@@ -26,6 +30,7 @@ function LiveRegistryEntryInstallHint({
   entry: ACPConnectionRegistryEntry;
 }) {
   const devicePresentation = useDevicePresentation();
+  const [rechecking, setRechecking] = useState(false);
   const {
     data: entries,
     refetch,
@@ -43,8 +48,17 @@ function LiveRegistryEntryInstallHint({
       name={current.name}
       recipe={current.hostInstall}
       devicePresentation={devicePresentation}
-      onCheckAgain={() => void refetch()}
-      checking={isFetching}
+      provenance={current.source === 'core' ? undefined : current.sourceName}
+      onCheckAgain={() => {
+        setRechecking(true);
+        // The re-read updates the host's search PATH; the refetch then
+        // carries the fresh detection into the shared catalogue query.
+        void recheckACPConnectionRegistry()
+          .catch(() => undefined)
+          .then(() => refetch())
+          .finally(() => setRechecking(false));
+      }}
+      checking={rechecking || isFetching}
     />
   );
 }

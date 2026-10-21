@@ -3,6 +3,8 @@
  * launch, with what onboarding needs to install and describe each one.
  * Install recipes are copied from each vendor's own install docs; Station
  * shows them and never runs them. Windows commands are PowerShell.
+ * `auth` and `homepageUrl` are data only, not yet applied: nothing reads them
+ * until the sign-in work does.
  */
 
 import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
@@ -273,6 +275,10 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     icon: 'AG',
     tags: ['acp', 'antigravity', 'google'],
     homepageUrl: 'https://antigravity.google/docs/ide/extensions/zed',
+    // Google's Linux build is launched with an undocumented `--uid=` flag and
+    // its Windows build is a differently named .exe; one entry cannot express
+    // either, so this entry only launches on macOS.
+    platforms: ['darwin'],
     install: {
       darwin: {
         docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',
@@ -280,7 +286,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
       linux: {
         docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',
-        note: 'Google ships this server as a download, not an installer. Unzip it and put agy_acp_server.par on your PATH.',
+        note: "Station's built-in Antigravity entry does not support Linux yet.",
       },
       win32: {
         docsUrl: 'https://antigravity.google/docs/ide/extensions/zed',

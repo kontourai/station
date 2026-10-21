@@ -45,12 +45,20 @@ export interface ACPConnectionRegistryEntry {
   /** How to install the engine's CLI, per host platform. Station never runs it. */
   install?: ACPEngineInstallRecipes;
   /**
-   * Non-secret variables Station sets when it launches `command`. The
-   * environment Station would otherwise launch with wins on a conflict.
+   * Non-secret variables Station sets when it launches a connection whose
+   * executable has this entry's `command` name. Applied only from built-in
+   * entries; a plugin entry that carries any is refused. The environment
+   * Station would otherwise launch with wins on a conflict.
    */
   launchEnv?: Record<string, string>;
-  /** Descriptive sign-in facts. Nothing in Station derives sign-in state from them yet. */
+  /**
+   * The host platforms this entry launches on; absent means all. On any other
+   * platform the server reports the entry as not detected.
+   */
+  platforms?: ACPEngineInstallPlatform[];
+  /** Data only, not yet applied: read by the sign-in work, not by Station today. */
   auth?: ACPEngineAuthDescriptor;
+  /** Data only, not yet applied: nothing renders it today. */
   homepageUrl?: string;
   /**
    * Server projection: `install` for the platform Station runs on. Not part
@@ -79,20 +87,48 @@ export type ACPEngineInstallRecipes = Partial<
   Record<ACPEngineInstallPlatform, ACPEngineInstallRecipe>
 >;
 
+/** Data only, not yet applied: nothing in Station runs or reads these yet. */
 export interface ACPEngineAuthDescriptor {
-  /** A non-interactive command (argv) that reports the engine's sign-in status. */
+  /** A non-interactive command (argv) documented to report sign-in status. Never run today. */
   statusCommand?: string[];
   /** How to sign in, in one or two sentences. */
   signInHint?: string;
   /** Names of credential environment variables the engine accepts. Names only. */
   credentialEnvVars?: string[];
-  /** ACP auth method ids Station should not offer. */
+  /** ACP auth method ids meant to be hidden; nothing hides them yet. */
   hiddenAuthMethodIds?: string[];
 }
 
 const ACP_DESCRIPTOR_TEXT_MAX = 400;
 const ACP_DESCRIPTOR_LIST_MAX = 16;
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * The only prefixes a `launchEnv` name may carry: engine-scoped vendor
+ * settings the built-in catalogue actually sets. Anything else (a loader,
+ * PATH, proxy, TLS or language-runtime variable) can change what the launched
+ * process runs or trusts, so it is refused rather than reviewed case by case.
+ * Add a prefix only alongside the built-in entry that needs it.
+ */
+export const ACP_LAUNCH_ENV_PREFIXES = [
+  'GOOSE_',
+  'DROID_',
+  'FACTORY_',
+  'AUGMENT_',
+] as const;
+/** C0/C1 controls (including line breaks) and bidi embedding/override/isolate marks. */
+function hasUnsafeTextChar(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (
+      code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+    )
+      return true;
+  }
+  return false;
+}
 /**
  * Name segments that mark a variable as credential-bearing. Matched per
  * `_`-separated segment so `GOOSE_DISABLE_KEYRING` is not mistaken for a key.
@@ -122,6 +158,7 @@ function isBoundedText(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.trim().length > 0 &&
+    !hasUnsafeTextChar(value) &&
     value.length <= ACP_DESCRIPTOR_TEXT_MAX
   );
 }
@@ -164,16 +201,32 @@ function boundedStringList(
 
 /**
  * Validates the descriptor fields of a registry entry (`install`,
- * `launchEnv`, `auth`, `homepageUrl`). Returns every problem found; an empty
- * list means the descriptor is usable. Fields that are absent are valid.
+ * `launchEnv`, `platforms`, `auth`, `homepageUrl`). Returns every problem
+ * found; an empty list means the descriptor is usable. Fields that are absent
+ * are valid.
  */
 export function validateACPEngineDescriptor(
   entry: Pick<
     ACPConnectionRegistryEntry,
-    'install' | 'launchEnv' | 'auth' | 'homepageUrl'
+    'install' | 'launchEnv' | 'platforms' | 'auth' | 'homepageUrl'
   >,
 ): string[] {
   const errors: string[] = [];
+  if (entry.platforms !== undefined) {
+    if (!Array.isArray(entry.platforms) || entry.platforms.length === 0) {
+      errors.push('platforms must be a non-empty list');
+    } else {
+      entry.platforms.forEach((platform, index) => {
+        if (
+          !(ACP_ENGINE_INSTALL_PLATFORMS as readonly string[]).includes(
+            platform,
+          )
+        ) {
+          errors.push(`platforms[${index}]: unknown platform`);
+        }
+      });
+    }
+  }
   if (entry.homepageUrl !== undefined && !isHttpsUrl(entry.homepageUrl)) {
     errors.push('homepageUrl must be an https URL');
   }
@@ -239,9 +292,16 @@ export function validateACPEngineDescriptor(
           credentialEnvVars.has(name)
         ) {
           errors.push(`launchEnv.${name}: credentials never go in launchEnv`);
+        } else if (
+          !ACP_LAUNCH_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))
+        ) {
+          errors.push(
+            `launchEnv.${name}: not an engine-scoped launch variable`,
+          );
         }
         if (
           typeof value !== 'string' ||
+          hasUnsafeTextChar(value) ||
           value.length > ACP_DESCRIPTOR_TEXT_MAX
         ) {
           errors.push(`launchEnv.${name}: value must be a short string`);
@@ -279,6 +339,17 @@ export function validateACPEngineDescriptor(
     }
   }
   return errors;
+}
+
+/** Whether an entry launches on a host platform (`process.platform` value). */
+export function engineSupportsPlatform(
+  entry: Pick<ACPConnectionRegistryEntry, 'platforms'>,
+  platform: string,
+): boolean {
+  return (
+    !entry.platforms ||
+    (entry.platforms as readonly string[]).includes(platform)
+  );
 }
 
 /** The install recipe for one host platform (`process.platform` values). */
