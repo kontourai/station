@@ -391,7 +391,7 @@ describe('#2457 Claude child work, replayed from real captures', () => {
               ...message,
               patch: {
                 ...message.patch,
-                status: 'failed',
+                status: 'failed' as const,
                 error: 'Native task failure',
               },
             },

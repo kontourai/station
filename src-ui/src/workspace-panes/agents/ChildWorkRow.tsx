@@ -230,6 +230,9 @@ export function ChildWorkRow({
               progress={item.progress}
             />
           ) : null}
+          {item.status === 'completed' && !summary && (
+            <span className="child-work-row__note">No summary reported</span>
+          )}
           {showProvenance && (
             <span className="child-work-row__provenance">
               {provenanceText(row.provenance)}
