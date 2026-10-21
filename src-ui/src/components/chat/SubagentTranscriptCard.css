@@ -270,7 +270,7 @@
   min-width: var(--k-space-5);
   min-height: var(--k-space-5);
   border: var(--k-border-thin, 1px) solid var(--k-line);
-  border-radius: var(--k-radius-pill);
+  border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);

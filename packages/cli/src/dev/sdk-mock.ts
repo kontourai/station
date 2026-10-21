@@ -75,6 +75,8 @@ var __voiceRegistry={registerSTT:__stt.add,registerTTS:__tts.add,unregisterSTT:n
 var __voiceSessionAdapterRegistry={register:function(adapter){return{adapter:adapter,dispose:__voiceSessions.add(adapter)}},get:function(id){return __voiceSessions.items().find(function(a){return a.descriptor&&a.descriptor.id===id})},getAll:__voiceSessions.items,subscribe:__voiceSessions.subscribe};
 function __serverFetch(url,opts){return fetch('/api/plugins/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,method:opts&&opts.method,headers:opts&&opts.headers,body:opts&&opts.body})}).then(function(r){return r.json()}).then(function(d){if(!d.success)throw new Error(d.error);return d})}
 
+var __relatedUnavailable=Object.freeze({status:'unavailable',reason:'unsupported'});
+var __previewRelatedPanes=Object.freeze({version:1,supported:false,open:function(){return Promise.resolve(__relatedUnavailable)},reveal:function(){return Promise.resolve(__relatedUnavailable)},close:function(){return Promise.resolve(__relatedUnavailable)},target:function(){return Promise.resolve(null)}});
 window.__station_ai_sdk_mock={
   // Hooks
   useAgents:function(){return[]},
@@ -90,6 +92,7 @@ window.__station_ai_sdk_mock={
   useSendToChat:function(slug){return function(msg){window.__devToast&&window.__devToast('→ chat('+slug+'): '+(typeof msg==='string'?msg:JSON.stringify(msg).slice(0,120)))}},
   useApiBase:function(){return __devApiBase},
   useHost:function(){return __host},
+  useRelatedPanes:function(){return __previewRelatedPanes},
   useHostFacts:__useHostFacts,
   useShortcut:__useShortcut,
   useShortcutScope:__useShortcutScope,

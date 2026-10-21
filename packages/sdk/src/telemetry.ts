@@ -18,11 +18,13 @@ export function instrument<T extends (...args: any[]) => Promise<any>>(
   name: string,
   fn: T,
 ): T {
+  const nodeEnvironment = (
+    globalThis as { process?: { env?: { NODE_ENV?: string } } }
+  ).process?.env?.NODE_ENV;
   const meta = import.meta;
   const environment = 'env' in meta ? meta.env : undefined;
   if (
-    (typeof process !== 'undefined' &&
-      process.env.NODE_ENV === 'development') ||
+    nodeEnvironment === 'development' ||
     (environment &&
       typeof environment === 'object' &&
       'DEV' in environment &&

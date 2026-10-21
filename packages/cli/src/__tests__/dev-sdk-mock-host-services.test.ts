@@ -25,6 +25,18 @@ afterEach(() => vi.restoreAllMocks());
 const isMac = /mac/i.test(win.navigator.platform);
 
 describe('station dev SDK mock host services', () => {
+  test('related panes remain a stable unsupported preview capability', async () => {
+    const related = mock.useRelatedPanes();
+    expect(mock.useRelatedPanes()).toBe(related);
+    expect(related).toMatchObject({ version: 1, supported: false });
+    for (const name of ['open', 'reveal', 'close'])
+      await expect(related[name]()).resolves.toEqual({
+        status: 'unavailable',
+        reason: 'unsupported',
+      });
+    await expect(related.target()).resolves.toBeNull();
+  });
+
   test('exports every public host-service hook', () => {
     for (const name of [
       'useHost',

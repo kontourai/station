@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../../domain/migrations/009-project-task-room-revision-attribution.js';
 import type { Logger } from '../../../utils/logger.js';
@@ -30,6 +30,7 @@ const { DatabaseSync } = require('node:sqlite') as {
 };
 
 const scope = { projectId: 'project', taskId: 'task', documentId: 'document' };
+const makeTempDir = trackTempDirs();
 let directory = '';
 afterEach(() => {
   if (directory) rmSync(directory, { recursive: true, force: true });
@@ -75,7 +76,7 @@ async function finishPublication(
 
 describe('project task room working state', () => {
   test('acknowledges only the exact persisted lifecycle intent and preserves it across restart', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-agent-outbox-'));
+    directory = makeTempDir('station-agent-outbox-');
     const path = join(directory, 'orchestration.sqlite');
     const first = createProjectTaskRoomWorkingState(path);
     const input = {
@@ -127,7 +128,7 @@ describe('project task room working state', () => {
   });
 
   test('migrates existing human publication rows explicitly and idempotently', () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-migrate-'));
+    directory = makeTempDir('station-room-working-migrate-');
     const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
     database.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
     database
@@ -171,7 +172,7 @@ describe('project task room working state', () => {
   });
 
   test('settles an owned nonresponsive worker and makes future requests fail closed', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const workerSourceUrl = new URL(
       'data:text/javascript,import { parentPort } from "node:worker_threads"; parentPort.on("message", () => {});',
@@ -210,7 +211,7 @@ describe('project task room working state', () => {
   ] as const)(
     'reports %s without exposing worker payload or changing refusal',
     async (reason, source) => {
-      directory = mkdtempSync(join(tmpdir(), 'station-room-working-reason-'));
+      directory = makeTempDir('station-room-working-reason-');
       const working = createProjectTaskRoomWorkingState(
         join(directory, 'orchestration.sqlite'),
         {
@@ -244,7 +245,7 @@ describe('project task room working state', () => {
   );
 
   test('reports a real postMessage clone failure without serializing the request payload', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-clone-'));
+    directory = makeTempDir('station-room-working-clone-');
     const working = createProjectTaskRoomWorkingState(
       join(directory, 'orchestration.sqlite'),
     );
@@ -271,9 +272,7 @@ describe('project task room working state', () => {
   });
 
   test('keeps the unavailable result and owned shutdown when the diagnostic sink fails', async () => {
-    directory = mkdtempSync(
-      join(tmpdir(), 'station-room-working-log-failure-'),
-    );
+    directory = makeTempDir('station-room-working-log-failure-');
     warnings.mockImplementation(() => {
       throw new Error('diagnostic sink failed');
     });
@@ -288,7 +287,7 @@ describe('project task room working state', () => {
   });
 
   test('persists an atomically settled batch, returns text-only projections, and detects duplicate/equivocation', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const first = createProjectTaskRoomWorkingState(path);
     expect(
@@ -351,7 +350,7 @@ describe('project task room working state', () => {
   });
 
   test('serializes ordinary requests across the asynchronous pre-commit fence', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const working = createProjectTaskRoomWorkingState(path);
     let releaseCommit: ((allowed: boolean) => void) | undefined;
@@ -415,7 +414,7 @@ describe('project task room working state', () => {
   });
 
   test('rolls back a denied pre-commit batch without exposing its text', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const working = createProjectTaskRoomWorkingState(path);
     await expect(
@@ -440,7 +439,7 @@ describe('project task room working state', () => {
   });
 
   test('retains the configured recent revision window across settlements and reports a gap beyond its floor', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const working = createProjectTaskRoomWorkingState(path, {
       maxRetainedOperations: 1,
@@ -501,7 +500,7 @@ describe('project task room working state', () => {
   });
 
   test('observes a committed change from a second worker only while watched', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const first = createProjectTaskRoomWorkingState(path);
     const second = createProjectTaskRoomWorkingState(path);
@@ -535,7 +534,7 @@ describe('project task room working state', () => {
   });
 
   test('persists a bounded publication outbox and advances the exact evidence parent across restart', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const first = createProjectTaskRoomWorkingState(path);
     await first.settle({
@@ -583,7 +582,7 @@ describe('project task room working state', () => {
   });
 
   test('fails a tampered oversized publication closed before JSON materialization', async () => {
-    directory = mkdtempSync(join(tmpdir(), 'station-room-working-'));
+    directory = makeTempDir('station-room-working-');
     const path = join(directory, 'orchestration.sqlite');
     const working = createProjectTaskRoomWorkingState(path);
     await working.settle({
