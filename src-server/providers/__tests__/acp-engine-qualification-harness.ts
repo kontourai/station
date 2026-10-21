@@ -63,7 +63,7 @@ export type FakeEngineFailure =
   | 'auth-required-on-session-new'
   | 'auth-required-on-prompt';
 
-export const FAKE_ENGINE_CONNECTION_ID = 'engine-under-test';
+const FAKE_ENGINE_CONNECTION_ID = 'engine-under-test';
 
 /** A connection that launches the fake agent with one engine profile. */
 export function fakeEngineConnection(
