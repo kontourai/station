@@ -128,9 +128,9 @@ export const NOTIFICATION_TTL_MS: Record<NotificationOutcome, number> = {
 const CATEGORY_OUTCOME: Record<string, NotificationOutcome> = {
   'approval-request': 'needs-input',
   'job-failure': 'failed',
-  // station#1225 (offline slice 3): a turn that finishes/fails while its
-  // owning user isn't connected to watch it render — see
-  // `turn-completion-notifications.ts`. These are the first categories to
+  // station#1225: a turn that finishes/fails — see
+  // `turn-completion-notifications.ts`; the delivery router decides which
+  // surfaces it interrupts. These are the first categories to
   // exercise the 'done'/'running' tiers this ranking already reserved TTLs
   // for (see `NOTIFICATION_TTL_MS` above) but that nothing previously
   // scheduled.

@@ -90,59 +90,68 @@ function createApp(projectHomeDir: string) {
 }
 
 describe('plugin-install-routes', () => {
-  test('preview returns a valid local manifest with its declared components', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));
-    cleanupDirs.push(root);
-    const sourceDir = join(root, 'source-plugin');
-    mkdirSync(sourceDir, { recursive: true });
-    writeFileSync(
-      join(sourceDir, 'plugin.json'),
-      JSON.stringify({
-        agents: [{ slug: 'assistant', source: 'agent.json' }],
-        name: 'preview-plugin',
-        version: '1.0.0',
-        workspacePanes: [
-          {
-            version: '1.0',
+  test.each([false, true])(
+    'preview returns its declared components and staged bundle presence %s',
+    async (hasBundle) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));
+      cleanupDirs.push(root);
+      const sourceDir = join(root, 'source-plugin');
+      mkdirSync(join(sourceDir, 'dist'), { recursive: true });
+      if (hasBundle)
+        writeFileSync(
+          join(sourceDir, 'dist', 'bundle.js'),
+          'export const components = {};',
+        );
+      writeFileSync(
+        join(sourceDir, 'plugin.json'),
+        JSON.stringify({
+          agents: [{ slug: 'assistant', source: 'agent.json' }],
+          name: 'preview-plugin',
+          version: '1.0.0',
+          workspacePanes: [
+            {
+              version: '1.0',
+              id: 'preview-review',
+              name: 'Preview Review',
+              rendererId: 'preview-plugin.review',
+              renderer: { kind: 'plugin-component', name: 'review' },
+              placement: { supportedRegions: ['primary'] },
+              modes: [{ id: 'default' }],
+              provenance: { origin: 'plugin', pluginId: 'preview-plugin' },
+              lifecycle: { stage: 'stable' },
+            },
+          ],
+        }),
+      );
+
+      const response = await createApp(root).request('/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: sourceDir }),
+      });
+      const body = await readJson(response);
+
+      expect(response.status).toBe(200);
+      expect(body).toMatchObject({
+        valid: true,
+        hasBundle,
+        manifest: { name: 'preview-plugin' },
+        components: [
+          expect.objectContaining({
+            id: 'assistant',
+            type: 'agent',
+          }),
+          expect.objectContaining({
             id: 'preview-review',
+            type: 'pane',
             name: 'Preview Review',
-            rendererId: 'preview-plugin.review',
-            renderer: { kind: 'plugin-component', name: 'review' },
-            placement: { supportedRegions: ['primary'] },
-            modes: [{ id: 'default' }],
-            provenance: { origin: 'plugin', pluginId: 'preview-plugin' },
-            lifecycle: { stage: 'stable' },
-          },
+            detail: 'plugin-component:preview-plugin.review',
+          }),
         ],
-      }),
-    );
-
-    const response = await createApp(root).request('/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: sourceDir }),
-    });
-    const body = await readJson(response);
-
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      valid: true,
-      manifest: { name: 'preview-plugin' },
-      components: [
-        expect.objectContaining({
-          id: 'assistant',
-          type: 'agent',
-        }),
-        expect.objectContaining({
-          id: 'preview-review',
-          type: 'pane',
-          name: 'Preview Review',
-          detail: 'plugin-component:preview-plugin.review',
-        }),
-      ],
-      conflicts: [],
-    });
-  });
+        conflicts: [],
+      });
+    },
+  );
 
   test('preview refuses a registry id whose source no longer matches the pinned one as a conflict, not a fault', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-preview-'));

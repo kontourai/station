@@ -141,3 +141,7 @@ src-desktop/station-client-build.json
 # at dependency install, `build:basis-pane`, and the ci:fast static lane.
 packages/basis-pane/src/*.generated.ts
 packages/basis-pane/src/*.generated.ts.*.tmp
+# proof-repo-guardrails-fail-closed.test.ts copies the proof into a repo-root
+# sibling of scripts/ so its ../ reads resolve. Ignored so a concurrent
+# clean-source check (native-fresh-relay-fixture) never sees it as dirty.
+/.proof-guardrails-negative-*/

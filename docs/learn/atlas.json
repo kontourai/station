@@ -35,7 +35,7 @@
         "docs/architecture.md#data-flow-chat-request",
         "docs/reference/session-api.md",
         "docs/design/orchestration-decomposition-map.md",
-        "docs/guides/agents.md",
+        "docs/guides/agent-configuration.md",
         "docs/guides/acp.md",
         "docs/user/workspace-checkpoints.md"
       ],
@@ -227,6 +227,7 @@
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
         "ProductTelemetryReceiver",
+        "PluginTelemetryPublisher",
         "CanonicalUsageExport",
         "Native notification feed"
       ],

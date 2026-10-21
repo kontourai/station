@@ -2266,6 +2266,66 @@ describe('lifecycle instance state', () => {
     ).not.toThrow();
   });
 
+  it.each([true, false])(
+    'prints a first-start notice before asynchronous server receipt publication (new=%s)',
+    async (fresh) => {
+      ensureDir(TEST_CWD);
+      ensureBuildOutputs('notice-test');
+      ensureDir(join(TEST_ALT_HOME, 'config'));
+      ensureStationHomeSchemaSync(TEST_ALT_HOME);
+      const { LITE_TELEMETRY_INVENTORY_REVISION } = await import(
+        '@kontourai/station-shared/product-telemetry'
+      );
+      const receipt = (shownAt: string) =>
+        writeFileSync(
+          join(TEST_ALT_HOME, 'config', 'telemetry-daily.json'),
+          JSON.stringify({
+            notices: Object.fromEntries(
+              ['kontour', 'operator'].map((publisher) => [
+                publisher,
+                {
+                  publisher,
+                  inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+                  shownAt,
+                },
+              ]),
+            ),
+          }),
+        );
+      if (!fresh) receipt('2020-01-01T00:00:00.000Z');
+      const spawn = vi
+        .fn()
+        .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
+        .mockReturnValueOnce({ pid: 41002, unref: vi.fn() });
+      vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal: unknown,
+      ) => {
+        if (signal === 0 && (pid === 41001 || pid === 41002)) return true;
+        throw new Error('Unexpected process signal');
+      }) as typeof process.kill);
+      vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(), spawn },
+        platformOverrides: { sleepSync: vi.fn() },
+      });
+      await lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        homeSource: '--base',
+        instanceName: 'notice-test',
+        serverPort: 43180,
+        uiPort: 43190,
+      });
+      expect(
+        stderr.mock.calls.filter(([message]) =>
+          String(message).includes('Station usage sharing:'),
+        ),
+      ).toHaveLength(fresh ? 1 : 0);
+    },
+  );
+
   it('writes per-instance state and injects instance env on start', async () => {
     vi.stubEnv('STATION_HOME_SOURCE', '--temp-home');
     ensureDir(TEST_CWD);

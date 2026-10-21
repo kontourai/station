@@ -3,8 +3,9 @@
  * Dispatches server-pushed events to React Query invalidations and callbacks.
  */
 
+import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { fetchSSE } from '@kontourai/station-sdk';
+import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -47,10 +48,22 @@ function reloadPluginRegistry(): void {
 export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
 
 /**
- * NOTIFICATION_DELIVERED data handler: shows a toast for every delivered
- * notification except `approval-request` (which has its own dedicated
- * approval UI and would otherwise double-surface). Exported so it's
- * directly unit-testable without standing up the full SSE hook.
+ * The server's turn-completion listener (`turn-completion-notifications.ts`)
+ * writes its records under this source. A connected client already toasts a
+ * turn ending itself (`turnAttentionNotifications.ts`: a toast for a
+ * background chat, none for the chat in front of the user), so toasting the
+ * record as well would show the same news twice.
+ */
+const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
+
+/**
+ * NOTIFICATION_DELIVERED data handler. Every delivery plays its category's
+ * sound — turn ends included, even for the chat the user is watching (owner
+ * decision: always chime). It then shows a toast, except for an
+ * `approval-request` (its own approval UI) and a turn-completion record (the
+ * client's own end-of-turn toast owns it), either of which would otherwise
+ * double-surface. Exported so it's directly unit-testable without standing
+ * up the full SSE hook.
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
@@ -62,7 +75,10 @@ export function handleNotificationDeliveredToast(
       deviceSettingsStore.get('featureSettings').notificationSounds,
     );
   }
-  if (data.category === 'approval-request') {
+  if (
+    data.category === 'approval-request' ||
+    data.source === TURN_COMPLETION_SOURCE
+  ) {
     return;
   }
   const title = data.title as string | undefined;
@@ -297,6 +313,20 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
               .catch(() => {});
           } catch {
             // A malformed scoped notification has no cache effect.
+          }
+          return;
+        }
+        if (event === SERVER_EVENTS.SERVER_UPDATE_CHANGED) {
+          // #3851: the payload IS the server's update state; written straight
+          // into its query, so clients follow a download without polling.
+          try {
+            applyServerUpdateStateEvent(
+              queryClient,
+              apiBase,
+              JSON.parse(message.data),
+            );
+          } catch {
+            // A malformed payload leaves the last known state.
           }
           return;
         }

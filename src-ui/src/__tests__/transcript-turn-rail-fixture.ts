@@ -119,7 +119,8 @@ export interface TurnRailFixtureOptions {
 /**
  * The real ChatMessageList (real virtualizer, real MessageBubble rows, real
  * stylesheets) in Chromium, inside a dock-shaped column whose composer
- * activity row receives the scroll controls, as ChatDockBody's does.
+ * activity row receives the scroll controls, as ChatDockBody's does, beside
+ * a settings row holding one chip.
  * `window.__growTail()` grows the newest reply the way a projected live turn
  * streams; `window.__session` is the current session.
  */
@@ -165,7 +166,7 @@ export async function turnRailBrowserFixture({
       return <QueryClientProvider client={client}>
         <div className="chat-dock__body" style={{height:${dockHeight},display:'flex',flexDirection:'column'}}>
           <ChatMessageList activeSession={session} fontSize={14} showReasoning={false} showToolDetails={false} scrollControlsTarget={activity}/>
-          <div className="chat-input" style={{flex:'none'}}><div className="chat-input__meta" style={{display:'flex',minHeight:44,padding:8}}><div className="chat-input__activity" ref={setActivity}/></div></div>
+          <div className="chat-input" style={{flex:'none'}}><div className="chat-input__meta" style={{display:'flex',minHeight:44,padding:8}}><div className="chat-input__settings"><button type="button" className="choice-trigger" style={{minHeight:44}}>Agent: Dev Agent</button></div><div className="chat-input__activity" ref={setActivity}/></div></div>
         </div>
       </QueryClientProvider>;
     }

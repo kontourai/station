@@ -19,18 +19,24 @@ export {
   decideInboxSubmit,
   inboxHead,
 } from './decisions/inbox.js';
+export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
 export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
   type RequestKeyClaimInputs,
 } from './decisions/request-keys.js';
 export {
+  decidePreparedTurnSettlement,
+  decideTurnBoundaryBeginInvocation,
   decideTurnBoundaryCreate,
   decideTurnBoundaryObserveTerminal,
+  decideTurnBoundaryPrepare,
   decideTurnBoundaryReconcile,
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
+  decideTurnBoundaryResumePrepared,
   decideTurnBoundaryTransition,
+  isPreparedTurnIntent,
   planTurnBoundaryReconcile,
   turnBoundaryAcceptCollides,
 } from './decisions/turn-boundary.js';

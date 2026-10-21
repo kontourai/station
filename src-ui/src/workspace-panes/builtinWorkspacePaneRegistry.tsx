@@ -2,6 +2,10 @@ import { WORKSPACE_BASIS_PANE_RENDERER_NAME } from '@kontourai/station-basis-pan
 import { WORKSPACE_BOARD_PANE_RENDERER_NAME } from '@kontourai/station-board-pane/workspace-board-pane';
 import type { ConversationPullRequestLinkObservation } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { WORKSPACE_ACTIVITY_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  isCanonicalWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_RENDERER_NAME } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -65,6 +69,7 @@ import {
   type ReactNode,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useState,
@@ -94,10 +99,15 @@ import {
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
-  useOpenFilePreviewInRegion,
-  useOpenPullRequestInRegion,
-} from '../contexts/useOpenInRegion';
+  describeRelatedOpenRefusal,
+  useOpenRelatedFilePreview,
+} from '../contexts/openRelatedFilePreview';
+import { toastStore } from '../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
+import { useOpenPullRequestInRegion } from '../contexts/useOpenInRegion';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
+import { filesOpener } from '../regions/pane-opener';
 import { BrowserPreviewWorkspacePane } from './BrowserPreviewWorkspacePane';
 import {
   type BuiltinWorkspacePaneRendererName,
@@ -116,6 +126,7 @@ import {
 } from './filePreviewPaneStateStorage';
 import type { OpenFilePreviewIntent } from './openFilePreviewIntent';
 import { ProjectTaskRoomConversation } from './ProjectTaskRoomConversation';
+import { FencedRelatedPane, RelatedPaneStrip } from './RelatedPaneStrip';
 import { TaskRoomEditorPane } from './TaskRoomEditorPane';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
@@ -358,7 +369,25 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
   // selected the row and opened nothing. The region opener places the
   // preview as a sibling tab instead. Null in a layout mount, where the
   // host route below is still the one that works.
-  const openPreviewInRegion = useOpenFilePreviewInRegion();
+  // A related open: the Files pane owns one reusable preview per Project,
+  // the way a file tree's single click previews and does not pile up tabs.
+  // The opener carries the Project the pane is bound to, so Up returns to
+  // that Project's Files whatever the dock shows later.
+  const filesOwner = useContext(UnsavedGuardOwnerContext);
+  const projectName =
+    identity.state === 'resolved' ? identity.project.name : undefined;
+  const opener = useMemo(
+    () =>
+      projectId && projectSlug
+        ? filesOpener(filesOwner ?? 'coding:file-browser', {
+            projectId,
+            projectSlug,
+            projectName,
+          })
+        : null,
+    [filesOwner, projectId, projectName, projectSlug],
+  );
+  const openPreviewInRegion = useOpenRelatedFilePreview(opener);
   const { openFilePreviewIntent, setLayout } = useNavigation();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const workingDir = codingWorkingDirectory(
@@ -387,11 +416,16 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
           from: 'pane',
         });
       if (!layoutSlug && openPreviewInRegion) {
-        openPreviewInRegion({
+        void openPreviewInRegion({
           projectId,
           projectSlug: intent.projectSlug,
           path: intent.path,
           ...(intent.lineRange ? { lineRange: intent.lineRange } : {}),
+        }).then((outcome) => {
+          // A refused open says why; Cancel on an unsaved-changes guard is
+          // the user's own answer and needs no notice.
+          if (!outcome.ok && outcome.reason !== 'guard-cancelled')
+            toastStore.show(describeRelatedOpenRefusal(outcome.reason));
         });
         return;
       }
@@ -642,7 +676,19 @@ export function workflowPlanRuntimeState(
   };
 }
 
-function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
+function WorkspacePlanPane(props: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
+  if (!developerFeatures.flow)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable Flow delivery preview in Settings → Advanced → Developer tools."
+      />
+    );
+  return <EnabledWorkspacePlanPane {...props} />;
+}
+
+function EnabledWorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const projectSlug =
     identity.state === 'resolved' ? identity.project.slug : '';
@@ -684,7 +730,15 @@ function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function WorkspaceReadinessPane({ instance }: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
   const identity = useResolvedPaneIdentity(instance, false);
+  if (!developerFeatures.readiness)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable this tool in Settings → Advanced → Developer tools on this device."
+      />
+    );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceReadinessPaneInstance(instance))
@@ -697,7 +751,15 @@ function WorkspaceReadinessPane({ instance }: BuiltinWorkspacePaneProps) {
 }
 
 function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
+  const developerFeatures = useDeveloperFeatures();
   const identity = useResolvedPaneIdentity(instance, false);
+  if (!developerFeatures.trust)
+    return (
+      <Empty
+        label="Experimental tool is off"
+        description="Enable this tool in Settings → Advanced → Developer tools on this device."
+      />
+    );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   if (!isCanonicalWorkspaceTrustPaneInstance(instance))
@@ -709,7 +771,19 @@ function WorkspaceTrustPane({ instance }: BuiltinWorkspacePaneProps) {
   return <TrustInspectorContent projectSlug={identity.project.slug} />;
 }
 
-function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+/**
+ * A File Preview occurrence: gated by its Station fence before anything below
+ * reads its identity or its file (`FencedRelatedPane`).
+ */
+function FilePreviewWorkspacePane(props: BuiltinWorkspacePaneProps) {
+  return (
+    <FencedRelatedPane instanceId={String(props.instance.instanceId)}>
+      <FilePreviewWorkspaceReader {...props} />
+    </FencedRelatedPane>
+  );
+}
+
+function FilePreviewWorkspaceReader({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const stateKey = instance.stateKey;
   // SUBSCRIBED, not read at render time (#2085). The read was never stale —
@@ -738,17 +812,20 @@ function FilePreviewWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       />
     );
   return (
-    <Suspense
-      fallback={
-        <SkeletonBlock count={3} label="Loading bounded file preview" />
-      }
-    >
-      <LazyFilePreviewPane
-        projectSlug={identity.project.slug}
-        stateKey={instance.stateKey}
-        state={state}
-      />
-    </Suspense>
+    <div className="related-pane">
+      <RelatedPaneStrip instanceId={String(instance.instanceId)} />
+      <Suspense
+        fallback={
+          <SkeletonBlock count={3} label="Loading bounded file preview" />
+        }
+      >
+        <LazyFilePreviewPane
+          projectSlug={identity.project.slug}
+          stateKey={instance.stateKey}
+          state={state}
+        />
+      </Suspense>
+    </div>
   );
 }
 
@@ -1004,10 +1081,37 @@ function BoardWorkspacePaneEntry(props: BuiltinWorkspacePaneProps) {
   );
 }
 
+const LazyActivityReview = lazy(() =>
+  import('./RegionActivityReviewPane').then((m) => ({
+    default: m.RegionActivityReviewPane,
+  })),
+);
+function ActivityReviewWorkspacePaneEntry({
+  instance,
+}: BuiltinWorkspacePaneProps) {
+  if (!isCanonicalWorkspaceActivityReviewPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <UnsavedGuardOwnerContext.Provider value={String(instance.instanceId)}>
+      <Suspense
+        fallback={<SkeletonBlock count={3} label="Loading Activity review" />}
+      >
+        <LazyActivityReview instance={instance} />
+      </Suspense>
+    </UnsavedGuardOwnerContext.Provider>
+  );
+}
+
 const builtinWorkspacePaneRegistry: Record<
   BuiltinWorkspacePaneRendererName,
   BuiltinWorkspacePaneComponent
 > = {
+  [WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME]:
+    ActivityReviewWorkspacePaneEntry,
   'flow-run-console': FlowRunConsolePane,
   [WORKSPACE_CHAT_PANE_RENDERER_NAME]: ChatPane,
   [WORKSPACE_TASK_ROOM_EDITOR_RENDERER_NAME]: TaskRoomEditor,

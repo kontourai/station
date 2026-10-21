@@ -3,7 +3,18 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
 const CI_PATH = '.github/workflows/ci.yml';
+const METADATA_RUN_NAME =
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}";
 const SHA = /^[a-f0-9]{40}$/;
+/**
+ * #1706: the fast-checks aggregate runs this step only when it passed a plan
+ * that deferred ci-fast or test-full. The jobs API reports step names and
+ * conclusions, so the required status can say its green was provisional
+ * without trusting an artifact. ci-workflow-governance pins the step.
+ */
+export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
+const PROVISIONAL_NOTE =
+  ' (provisional: ci-fast/test-full deferred to Merge-queue regression)';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
@@ -53,7 +64,35 @@ function proofRows(jobs) {
         'Fork pull-request smoke',
       ].includes(job.name),
     )
-    .map((job) => [job.id, job.name, job.status, job.conclusion]);
+    .map((job) => [
+      job.id,
+      job.name,
+      job.status,
+      job.conclusion,
+      ...(['fast-checks', 'Fast checks execution'].includes(job.name)
+        ? [
+            Array.isArray(job.steps)
+              ? {
+                  inventory: 'present',
+                  markers: job.steps
+                    .filter(
+                      (step) => step?.name === FAST_CHECKS_PROVISIONAL_STEP,
+                    )
+                    .map((step) => [
+                      step.number ?? null,
+                      step.name,
+                      step.status,
+                      step.conclusion,
+                    ]),
+                }
+              : {
+                  inventory: Object.hasOwn(job, 'steps')
+                    ? 'non-array'
+                    : 'absent',
+                },
+          ]
+        : []),
+    ]);
 }
 
 function jobState(job) {
@@ -79,11 +118,14 @@ const METADATA_AGGREGATE_NAMES = [
   "github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks'",
 ];
 
-function isCompletedMetadata(jobs, run) {
+function isCompletedMetadata(jobs, run, trustedCancelledMetadata) {
   if (new Set(jobs.map((job) => job.name)).size !== jobs.length) return false;
   if (
     run.status !== 'completed' ||
-    !['success', 'failure'].includes(run.conclusion)
+    !(
+      ['success', 'failure'].includes(run.conclusion) ||
+      (trustedCancelledMetadata && run.conclusion === 'cancelled')
+    )
   )
     return false;
   const aggregate = jobs.filter((job) =>
@@ -97,20 +139,24 @@ function isCompletedMetadata(jobs, run) {
     jobState(aggregate[0]) !== 'skipped' ||
     title.length !== 1 ||
     title[0].status !== 'completed' ||
-    !['success', 'failure'].includes(title[0].conclusion)
+    (run.conclusion === 'cancelled' && title[0].conclusion !== 'cancelled') ||
+    !(
+      ['success', 'failure'].includes(title[0].conclusion) ||
+      (trustedCancelledMetadata && title[0].conclusion === 'cancelled')
+    )
   )
     return false;
   return jobs.every((job) => job === title[0] || jobState(job) === 'skipped');
 }
 
-function sourceVerdict(jobs, fork, run) {
+function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
   const forkSmoke = jobState(proofJob(jobs, 'Fork pull-request smoke'));
   // Skipped check names may be literal GitHub expressions. Discriminate by
   // the actual producer jobs, never the aggregate's display-name expression.
   if (plan === 'skipped' && statics === 'skipped' && forkSmoke === 'skipped') {
-    if (isCompletedMetadata(jobs, run)) return null;
+    if (isCompletedMetadata(jobs, run, trustedCancelledMetadata)) return null;
     const aggregate = jobState(
       proofJob(jobs, ['fast-checks', 'Fast checks execution']),
     );
@@ -140,11 +186,23 @@ function sourceVerdict(jobs, fork, run) {
       ];
   if (required.includes('failure'))
     return failure('Newest source proof failed or was cancelled');
-  if (required.every((state) => state === 'success'))
+  if (required.every((state) => state === 'success')) {
+    const provisional =
+      !fork &&
+      (
+        proofJob(jobs, ['fast-checks', 'Fast checks execution'])?.steps ?? []
+      ).some(
+        (step) =>
+          step?.name === FAST_CHECKS_PROVISIONAL_STEP &&
+          step?.conclusion === 'success',
+      );
     return {
       state: 'success',
-      description: 'Newest exact-owner source proof succeeded',
+      description: `Newest exact-owner source proof succeeded${provisional ? PROVISIONAL_NOTE : ''}`,
     };
+  }
+  if (run.status === 'completed' && run.conclusion === 'cancelled')
+    return failure('Newest source proof failed or was cancelled');
   return pending('Newest source proof is incomplete or unavailable');
 }
 
@@ -263,6 +321,52 @@ export async function reconcileSourceVerification({
     } else if (eventName !== 'workflow_dispatch')
       throw new Error('Unsupported reconciliation event');
 
+    const metadataWorkflows = new Map();
+    const trustedCancelledMetadata = async (run, sourceBase) => {
+      if (
+        run.status !== 'completed' ||
+        run.conclusion !== 'cancelled' ||
+        run.event !== 'pull_request_target' ||
+        run.name !== 'PR metadata' ||
+        run.display_title !== 'PR metadata'
+      )
+        return false;
+      const refs = (run.referenced_workflows ?? []).filter(
+        (ref) =>
+          SHA.test(ref.sha ?? '') &&
+          ref.path ===
+            `${repository}/.github/workflows/source-verification-policy.yml@${ref.sha}` &&
+          ref.ref === 'refs/heads/main',
+      );
+      if (refs.length !== 1) return false;
+      const revision = refs[0].sha;
+      if (revision !== sourceBase) {
+        const comparison = await request(`compare/${revision}...${sourceBase}`);
+        if (
+          !['ahead', 'identical'].includes(comparison.status) ||
+          comparison.merge_base_commit?.sha !== revision
+        )
+          return false;
+      }
+      if (!metadataWorkflows.has(revision)) {
+        const file = await request(`contents/${CI_PATH}?ref=${revision}`);
+        if (
+          file.path !== CI_PATH ||
+          file.encoding !== 'base64' ||
+          typeof file.content !== 'string'
+        )
+          throw new Error('Unavailable immutable metadata workflow');
+        const header = Buffer.from(file.content, 'base64')
+          .toString('utf8')
+          .split(/\r?\n/);
+        metadataWorkflows.set(
+          revision,
+          header[0] === 'name: "PR: CI"' && header[1] === METADATA_RUN_NAME,
+        );
+      }
+      return metadataWorkflows.get(revision) ? revision : false;
+    };
+
     const snapshot = async () => {
       const associated = await pages(`commits/${sha}/pulls`);
       const owners = associated.filter(
@@ -349,10 +453,15 @@ export async function reconcileSourceVerification({
             `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
             'jobs',
           );
+          const verifiedMetadata = await trustedCancelledMetadata(
+            run,
+            sourceBase,
+          );
           const classified = sourceVerdict(
             jobs,
             owner.head.repo.id !== repo.id,
             run,
+            Boolean(verifiedMetadata),
           );
           const proof = classified;
           examined.push([
@@ -364,6 +473,7 @@ export async function reconcileSourceVerification({
             compatibleBase,
             classified === null ? run.status : null,
             proofRows(jobs),
+            verifiedMetadata || null,
           ]);
           if (proof) {
             selectedTime = started;
@@ -423,7 +533,7 @@ export async function reconcileSourceVerification({
       const verdict = verdicts.find((value) => value.state === 'failure') ??
         verdicts.find((value) => value.state === 'pending') ?? {
           state: 'success',
-          description: 'All exact-owner source proofs succeeded',
+          description: `All exact-owner source proofs succeeded${verdicts.some((value) => value.description.endsWith(PROVISIONAL_NOTE)) ? PROVISIONAL_NOTE : ''}`,
         };
       return {
         verdict,

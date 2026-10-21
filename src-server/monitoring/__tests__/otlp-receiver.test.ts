@@ -17,7 +17,7 @@ import { MonitoringEmitter } from '../emitter.js';
 import { createOtlpReceiverRoutes } from '../otlp-receiver.js';
 
 const ingestEvent = (tool: Record<string, unknown>) => ({
-  schema_version: '1.0',
+  schema_version: '0.2.0',
   event_id: 'e1',
   session_id: 's1',
   timestamp: '2026-08-17T00:00:00.000Z',
@@ -36,6 +36,7 @@ describe('OTLP agent-event ingest', () => {
         emitted.push(event as unknown as Record<string, unknown>);
       },
       () => STATION_USER,
+      () => undefined,
     );
 
     const response = await app.request('/v1/agent-events', {
@@ -60,6 +61,7 @@ describe('OTLP agent-event ingest', () => {
         emitted.push(event as unknown as Record<string, unknown>);
       },
       () => STATION_USER,
+      () => undefined,
     );
 
     await app.request('/v1/agent-events', {
@@ -106,6 +108,7 @@ describe('ingested events carry the user the monitoring read scopes by', () => {
     const app = createOtlpReceiverRoutes(
       (event) => emitter.emitRaw(event),
       resolveUserId,
+      () => undefined,
     );
 
     // `persist` names the file by TODAY, and `queryEvents` filters on the
@@ -159,6 +162,7 @@ describe('ingested events carry the user the monitoring read scopes by', () => {
         emitted.push(event as unknown as Record<string, unknown>);
       },
       () => STATION_USER,
+      () => undefined,
     );
 
     await app.request('/v1/traces', {

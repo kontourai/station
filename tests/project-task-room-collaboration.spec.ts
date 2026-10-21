@@ -1,6 +1,8 @@
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
+import type { ProjectTaskRoomLiveCommand } from '@kontourai/station-sdk/client';
 import { expect, type Page, type Route } from '@playwright/test';
 import {
   seedE2EFirstRunDecision,
@@ -76,33 +78,77 @@ async function documentReceipt(
   };
 }
 
-async function clickLiveCommand(
+async function liveFixtureCommand(
   page: Page,
-  name: string | RegExp,
-  expectedOutcomes: readonly string[] = ['updated'],
+  taskId: string,
+  command: ProjectTaskRoomLiveCommand,
+  expected = 'updated',
 ) {
-  const response = page.waitForResponse(
-    (candidate) =>
-      candidate.request().method() === 'POST' &&
-      new URL(candidate.url()).pathname.endsWith('/room/live'),
-  );
-  await page.getByRole('button', { name }).click();
-  const settled = await response;
-  const body = (await settled.json()) as {
-    data?: { result?: { outcome?: string } };
-  };
-  expect(
-    {
-      status: settled.status(),
-      outcome: body.data?.result?.outcome,
+  // Explicit server fixture seam for the retained cursor/watch protocol. The
+  // product journey below uses implicit presence and the visible Brief/Chat tabs.
+  const response = await page.evaluate(
+    async ({ taskId, command }) => {
+      const result = await fetch(
+        `/api/tasks/${encodeURIComponent(taskId)}/room/live`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(command),
+        },
+      );
+      return { status: result.status, body: await result.json() };
     },
-    `live command ${String(name)}`,
-  ).toMatchObject({
-    status: 200,
-    outcome: expect.stringMatching(
-      new RegExp(`^(?:${expectedOutcomes.join('|')})$`),
-    ),
+    { taskId, command },
+  );
+  expect(response.status).toBe(200);
+  const envelope = response.body as { data: Record<string, unknown> };
+  const snapshot = parseProjectTaskRoomBrowserLiveSnapshot({
+    type: 'live',
+    ...envelope.data,
   });
+  if (!snapshot)
+    throw new Error('Live fixture command returned an invalid projection');
+  expect(snapshot.result?.outcome).toBe(expected);
+  return snapshot;
+}
+
+function participants(page: Page) {
+  return page
+    .getByRole('region', { name: 'Here now' })
+    .getByRole('list', { name: 'Live room participants' })
+    .getByRole('listitem');
+}
+async function rawHistory(page: Page) {
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
+  const disclosure = page
+    .locator('details')
+    .filter({ has: page.getByText('Raw room history', { exact: true }) });
+  await disclosure.locator('summary').click();
+  return disclosure.locator('pre');
+}
+async function expectAgentPresence(
+  page: Page,
+  taskId: string,
+  sessionId: string,
+  runId: string,
+) {
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const live = await liveFixtureCommand(
+    page,
+    taskId,
+    { command: 'heartbeat' },
+    'refreshed',
+  );
+  const agent = live.participants.find(
+    (participant) =>
+      participant.actor.kind === 'agent' &&
+      participant.work.sessionId === sessionId,
+  );
+  expect(agent?.work.runId).toBe(runId);
+  if (!agent) throw new Error('Published Agent is missing');
+  await expect(
+    page.locator(`.task-room-rail [data-actor-id="${agent.actor.actorId}"]`),
+  ).toContainText(agent.actor.label);
 }
 
 test.describe
@@ -160,7 +206,7 @@ test.describe
         );
     });
 
-    test('shows an actual server refusal before an explicit successful Join', async ({
+    test('shows an actual implicit-presence refusal and recovers when the Task is reopened', async ({
       page,
     }, testInfo) => {
       await pairBrowser(page, {
@@ -172,19 +218,7 @@ test.describe
       const repository = join(fixtureRoot, 'refusal-worktree');
       await createRepository(repository, 'room-refusal');
       await createProject(page, 'room-refusal', repository);
-      const taskId = await createTaskFromProject(
-        page,
-        live,
-        'room-refusal',
-        'Live room refusal',
-        repository,
-        'room-refusal',
-      );
-      await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
-      await expect(page.getByText('Live room connected.')).toBeVisible({
-        timeout: 15_000,
-      });
-      const pattern = `**/api/tasks/${encodeURIComponent(taskId)}/room/live`;
+      const pattern = '**/api/tasks/*/room/live';
       let refused = 0;
       // Deliberate command-transport fault: before any membership exists, ask
       // the real server to announce. Forward its canonical forbidden receipt
@@ -210,17 +244,25 @@ test.describe
         await route.fulfill({ response });
       });
       try {
-        await page.getByRole('button', { name: 'Join room' }).click();
-        const alert = page.getByRole('alert').filter({
-          hasText: 'This live collaboration action is not allowed.',
-        });
+        await createTaskFromProject(
+          page,
+          live,
+          'room-refusal',
+          'Live room refusal',
+          repository,
+          'room-refusal',
+        );
+
+        const alert = page
+          .getByRole('region', { name: 'Task room conversation' })
+          .getByRole('alert')
+          .filter({ hasText: 'Presence could not join this Task.' });
         await expect(alert).toBeVisible();
         await expect(
-          page.getByRole('button', { name: 'Announce work' }),
-        ).toBeDisabled();
-        await expect(
-          page.getByRole('button', { name: 'Leave room' }),
-        ).toBeDisabled();
+          page.getByRole('button', {
+            name: /Join room|Announce work|Leave room/,
+          }),
+        ).toHaveCount(0);
         expect(refused).toBe(1);
         const visualRoot = mkdtempSync(
           join(process.cwd(), '.kontourai', 'live-refusal-browser-'),
@@ -239,21 +281,19 @@ test.describe
             join(visualRoot, `live-refusal-${width}.png`),
           );
         }
-        await clickLiveCommand(page, 'Join room', ['joined', 'refreshed']);
+        await page.unroute(pattern);
+        await page.reload();
+        await expect(
+          page.getByRole('region', { name: 'Here now' }).getByRole('listitem'),
+        ).toHaveCount(1);
         await expect(alert).toHaveCount(0);
-        await expect(
-          page.getByRole('button', { name: 'Announce work' }),
-        ).toBeEnabled();
-        await expect(
-          page.getByRole('button', { name: 'Leave room' }),
-        ).toBeEnabled();
         expect(refused).toBe(1);
       } finally {
         await page.unroute(pattern);
       }
     });
 
-    test('joins, announces, watches, follows, edits, revokes, and restores through the shipped UI', async ({
+    test('implicitly joins, autosaves, converges, revokes, and restores with retained live-command fixtures', async ({
       browser,
       page: owner,
     }, testInfo) => {
@@ -350,110 +390,121 @@ test.describe
             status: 200,
           });
           await expect(
-            context.getByRole('heading', { name: 'Live collaboration' }),
-            `${name} live collaboration UI`,
-          ).toBeVisible({ timeout: 15_000 });
+            context.getByRole('tab', { name: 'Chat', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true');
           await expect(
-            context.getByRole('textbox', { name: 'Task document' }),
+            context.getByRole('textbox', { name: 'Message the Task' }),
           ).toBeVisible();
-          await expect(
-            context.getByRole('textbox', { name: 'Message' }),
-          ).toBeVisible();
-          await expect(
-            context.getByText('Live room connected.'),
-            `${name} shared room stream`,
-          ).toBeVisible({ timeout: 15_000 });
+          await expect(participants(context)).toHaveCount(2, {
+            timeout: 15_000,
+          });
         }
 
-        await clickLiveCommand(owner, 'Join room', ['joined', 'refreshed']);
-        await expect(
-          owner.getByRole('button', { name: 'Announce work' }),
-        ).toBeEnabled();
-        await clickLiveCommand(owner, 'Announce work');
-        await clickLiveCommand(peer, 'Join room', ['joined', 'refreshed']);
-        await clickLiveCommand(peer, 'Announce work');
-        await expect(
-          owner
-            .getByRole('list', { name: 'Live room participants' })
-            .getByRole('listitem'),
-        ).toHaveCount(2);
-        await expect(
-          peer
-            .getByRole('list', { name: 'Live room participants' })
-            .getByRole('listitem'),
-        ).toHaveCount(2);
-
         await owner.reload();
-        await expect(owner.getByText('Live room connected.')).toBeVisible({
-          timeout: 15_000,
+        await expect(participants(owner)).toHaveCount(2, { timeout: 15_000 });
+        await expect(
+          owner.getByRole('button', {
+            name: /Join room|Announce work|Leave room/,
+          }),
+        ).toHaveCount(0);
+        const peerActorId = await peer
+          .locator('[data-viewer-actor-id]')
+          .first()
+          .getAttribute('data-viewer-actor-id');
+        if (!peerActorId)
+          throw new Error('Peer viewer identity is unavailable');
+        const paneId = `task-room-editor:${taskId}`;
+        await liveFixtureCommand(owner, taskId, {
+          command: 'watch',
+          paneId,
+          targetActorId: peerActorId,
         });
-        await expect(
+        await liveFixtureCommand(owner, taskId, {
+          command: 'follow',
+          paneId,
+          targetActorId: peerActorId,
+        });
+        await Promise.all([
+          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+        ]);
+        await Promise.all([
           owner
-            .getByRole('list', { name: 'Live room participants' })
-            .getByRole('listitem'),
-        ).toHaveCount(2);
-        await expect(
-          owner.getByRole('button', { name: 'Announce work' }),
-        ).toBeEnabled();
-        await expect(
-          owner.getByRole('button', { name: 'Leave room' }),
-        ).toBeEnabled();
-        await expect(
-          owner.getByRole('button', { name: /^Watch Participant/ }),
-        ).toHaveCount(1);
-
-        await clickLiveCommand(owner, /^Watch Participant/);
-        await expect(owner.getByText(/^Watching Participant/)).toBeVisible();
-        await clickLiveCommand(owner, /^Follow Participant/);
-        await expect(owner.getByText(/^Following Participant/)).toBeVisible();
-
+            .getByRole('button', { name: 'Edit brief', exact: true })
+            .click(),
+          peer.getByRole('button', { name: 'Edit brief', exact: true }).click(),
+        ]);
         const ownerDocument = owner.getByRole('textbox', {
-          name: 'Task document',
+          name: 'Task brief',
         });
         await ownerDocument.fill('Owner and peer share this durable text.');
+        const stoppedAfterEdit = await liveFixtureCommand(
+          owner,
+          taskId,
+          { command: 'heartbeat' },
+          'refreshed',
+        );
+        expect(
+          stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId)?.state,
+        ).toBe('paused');
+
         await expect(
-          owner.getByRole('button', { name: 'Stop watching' }),
-        ).toHaveCount(0);
-        await owner
-          .getByRole('button', { name: 'Save shared document' })
-          .click();
-        await expect(
-          peer.getByRole('textbox', { name: 'Task document' }),
+          peer.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveValue('Owner and peer share this durable text.');
-        await clickLiveCommand(owner, /^Follow Participant/);
+        await liveFixtureCommand(owner, taskId, {
+          command: 'follow',
+          paneId,
+          targetActorId: peerActorId,
+        });
         const peerCursorResponse = peer.waitForResponse(
           (response) =>
             response.request().method() === 'POST' &&
-            new URL(response.url()).pathname.endsWith('/room/live'),
+            new URL(response.url()).pathname.endsWith('/room/live') &&
+            (response.request().postDataJSON() as ProjectTaskRoomLiveCommand)
+              .command === 'cursor',
         );
         const peerDocument = peer.getByRole('textbox', {
-          name: 'Task document',
+          name: 'Task brief',
         });
         await peerDocument.click();
         await peerDocument.press('ControlOrMeta+A');
         const peerCursor = await peerCursorResponse;
         const peerCursorBody = (await peerCursor.json()) as {
-          data?: { snapshot?: { result?: { outcome?: string } } };
+          data?: { result?: { outcome?: string } };
         };
-        expect(peerCursorBody.data?.snapshot?.result?.outcome).toBe('updated');
+        expect(peerCursorBody.data?.result?.outcome).toBe('updated');
         await expect(
           owner.getByRole('complementary', { name: 'Remote selections' }),
         ).toContainText('selection 0–39');
-        await owner.getByRole('textbox', { name: 'Task document' }).click();
-        await expect(
-          owner.getByRole('button', { name: 'Stop watching' }),
-        ).toHaveCount(0);
+        await owner.getByRole('textbox', { name: 'Task brief' }).click();
+        const stoppedAfterInput = await liveFixtureCommand(
+          owner,
+          taskId,
+          { command: 'heartbeat' },
+          'refreshed',
+        );
+        expect(
+          stoppedAfterInput.panes.find((pane) => pane.paneId === paneId)?.state,
+        ).toBe('paused');
 
+        await Promise.all([
+          owner.getByRole('tab', { name: 'Chat', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Chat', exact: true }).click(),
+        ]);
         await peer
-          .getByRole('textbox', { name: 'Message' })
+          .getByRole('textbox', { name: 'Message the Task' })
           .fill('Peer is working in the same Task room.');
         await peer.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
           owner.getByRole('list', { name: 'Task room history' }),
         ).toContainText('Peer is working in the same Task room.');
-        await expect(
-          owner.getByRole('list', { name: 'Task room history' }),
-        ).toContainText(/Revision revision-evidence-v1:/);
+        await expect(await rawHistory(owner)).toContainText(
+          'revision-evidence-v1:',
+        );
+        await Promise.all([
+          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+        ]);
 
         const sharedBase = 'Owner and peer share this durable text.';
         const ownerConcurrent =
@@ -468,10 +519,6 @@ test.describe
         ]);
         await ownerDocument.fill(ownerConcurrent);
         await peerDocument.fill(peerConcurrent);
-        await Promise.all([
-          owner.getByRole('button', { name: 'Save shared document' }).click(),
-          peer.getByRole('button', { name: 'Save shared document' }).click(),
-        ]);
         const [heldOwnerBatch, heldPeerBatch] = await Promise.all([
           ownerBatchHold.promise,
           peerBatchHold.promise,
@@ -589,29 +636,20 @@ test.describe
         });
         for (const context of [owner, peer]) {
           await expect(
-            context.getByRole('textbox', { name: 'Task document' }),
+            context.getByRole('textbox', { name: 'Task brief' }),
           ).toHaveValue(agentText);
-          const agentParticipant = context
-            .getByRole('list', { name: 'Live room participants' })
-            .getByRole('listitem')
-            .filter({ hasText: 'Agent station' });
-          await expect(agentParticipant).toHaveCount(1);
-          await expect(
-            agentParticipant.getByRole('link', { name: 'View agent session' }),
-          ).toHaveAttribute(
-            'href',
-            `/?surface=activity&session=${encodeURIComponent(agentEdit.sessionId)}`,
-          );
-          await expect(
-            agentParticipant.getByRole('link', { name: 'View agent run' }),
-          ).toHaveAttribute(
-            'href',
-            `/projects/room-acceptance/flow-console?run=${encodeURIComponent(agentEdit.runId)}`,
+          await expectAgentPresence(
+            context,
+            taskId,
+            agentEdit.sessionId,
+            agentEdit.runId,
           );
         }
-        await expect(
-          owner.getByRole('list', { name: 'Task room history' }),
-        ).toContainText('Agent station');
+        await expect(await rawHistory(owner)).toContainText(
+          agentEdit.sessionId,
+        );
+        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
+        await peer.getByRole('tab', { name: 'Brief', exact: true }).click();
 
         const revoked = await fetch(
           `${live.api}/api/pairing/devices/${encodeURIComponent(paired.device.id)}`,
@@ -622,7 +660,7 @@ test.describe
         );
         expect(revoked.status).toBe(200);
         await owner
-          .getByRole('textbox', { name: 'Message' })
+          .getByRole('textbox', { name: 'Message the Task' })
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
@@ -631,13 +669,14 @@ test.describe
           ),
         ).toBeVisible();
         await expect(
-          peer.getByRole('textbox', { name: 'Task document' }),
+          peer.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveValue(agentText);
         await expect(
-          peer.getByRole('textbox', { name: 'Task document' }),
+          peer.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveAttribute('readonly', '');
+        await peer.getByRole('tab', { name: 'Chat', exact: true }).click();
         await expect(
-          peer.getByRole('textbox', { name: 'Message' }),
+          peer.getByRole('textbox', { name: 'Message the Task' }),
         ).toBeDisabled();
 
         await owner.screenshot({
@@ -662,32 +701,18 @@ test.describe
           throw new Error(
             `restarted room endpoint ${restartedRoomProbe.status}: ${restartedRoomProbe.body}`,
           );
-        await expect(owner.getByText('Live room connected.')).toBeVisible({
-          timeout: 15_000,
-        });
-        const restartedAgentParticipant = owner
-          .getByRole('list', { name: 'Live room participants' })
-          .getByRole('listitem')
-          .filter({ hasText: 'Agent station' });
-        await expect(restartedAgentParticipant).toHaveCount(1);
-        await expect(
-          restartedAgentParticipant.getByRole('link', {
-            name: 'View agent session',
-          }),
-        ).toHaveAttribute(
-          'href',
-          `/?surface=activity&session=${encodeURIComponent(agentEdit.sessionId)}`,
+        await expectAgentPresence(
+          owner,
+          taskId,
+          agentEdit.sessionId,
+          agentEdit.runId,
         );
+        await owner.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner
+          .getByRole('button', { name: 'Edit brief', exact: true })
+          .click();
         await expect(
-          restartedAgentParticipant.getByRole('link', {
-            name: 'View agent run',
-          }),
-        ).toHaveAttribute(
-          'href',
-          `/projects/room-acceptance/flow-console?run=${encodeURIComponent(agentEdit.runId)}`,
-        );
-        await expect(
-          owner.getByRole('textbox', { name: 'Task document' }),
+          owner.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveValue(agentText);
         await expect(
           owner.getByRole('complementary', { name: 'Remote selections' }),
@@ -695,6 +720,7 @@ test.describe
         await expect(
           owner.getByRole('button', { name: 'Stop watching' }),
         ).toHaveCount(0);
+        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
         await expect(
           owner.getByRole('list', { name: 'Task room history' }),
         ).toContainText('Peer is working in the same Task room.');

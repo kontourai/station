@@ -126,7 +126,8 @@ describe('DesktopHostChannel', () => {
         title: 'Approve running the migration',
         body: 'builder wants to run db:migrate',
         urgency: 'attention',
-        link: '/approvals',
+        // The click's link names the record it opens.
+        link: '/approvals?openedNotification=n-1',
         at: expect.any(String),
       },
     ]);

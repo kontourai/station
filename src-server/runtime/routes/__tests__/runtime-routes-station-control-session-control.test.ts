@@ -15,6 +15,7 @@
 import type { AddressInfo } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -121,6 +122,10 @@ function projectOf(threadId: string): string | undefined {
   return 'project-a';
 }
 
+/** What the engine is handed for `text` sent by the `op-caller-a` Session. */
+const framedFromCaller = (text: string) =>
+  frameAgentMessage({ kind: 'agent-session', sessionId: 'op-caller-a' }, text);
+
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-session-control';
 const makeTempDir = trackTempDirs();
 const ASSURANCE = 'station_control_assurance_insufficient';
@@ -211,6 +216,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: deepStub({
+        readInputlessTurnDisposition: () => ({ kind: 'inputless' as const }),
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
@@ -649,9 +655,16 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     );
     expect(input).toMatchObject({
       conversationId: 'op-thread-a',
-      message: 'please look at this',
+      // #3419: the engine is told it is another agent's message, by name.
+      message: framedFromCaller('please look at this'),
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       fullAccessGrant: null,
+      // The turn is recorded as the agent's, with who sent it, so it is
+      // never a person's (`actor`) and never anonymous (`sender`).
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'agent-session', sessionId: 'op-caller-a' },
+      },
     });
     expect(String(input!.clientTurnId)).toMatch(/^sc-[0-9a-f]{40}$/);
   });
@@ -691,7 +704,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       expect(support.commands).toHaveLength(1);
       expect(support.commands[0]).toMatchObject({
         type: 'steerTurn',
-        input: 'please look at this',
+        input: framedFromCaller('please look at this'),
       });
       expect(support.commands[0]!.clientInputId).toMatch(/^sc-[0-9a-f]{40}$/);
     });

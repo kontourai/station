@@ -10,7 +10,9 @@
  * place it in the order compiles, and the toolbar silently offers one fewer
  * toggle than the model has regions. Asserted through the HOOK, not against
  * the constant, which is module-private: with every dock placement available
- * the hook must yield one toggle per `DOCK_REGION_IDS` member.
+ * and Left in use the hook must yield one toggle per `DOCK_REGION_IDS` member.
+ * Left is the one advanced region: unused, it has no default toggle
+ * (`isDefaultRegionToggle`).
  */
 
 import { renderHook } from '@testing-library/react';
@@ -86,7 +88,19 @@ function publishApplier(region: 'left' | 'right' | 'bottom') {
 
 describe('the toolbar has a toggle for every dock region the model declares', () => {
   test('one toggle per DOCK_REGION_IDS member, each derived from the region', () => {
+    harness.regions.left = {
+      visible: false,
+      size: 400,
+      panes: ['activity'] as never[],
+      occupant: 'activity' as never,
+    };
     const { result } = renderHook(() => useRegionSurfaceMenu());
+    harness.regions.left = {
+      visible: false,
+      size: 400,
+      panes: [],
+      occupant: null,
+    };
 
     const toggles = result.current.regionToggles;
     // Membership is the model's; order is the toolbar's own (the edges as
@@ -98,7 +112,7 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
     expect(toggles).toHaveLength(DOCK_REGION_IDS.length);
 
     // Bottom holds Chat and is visible: a pressed toggle naming its pane.
-    // Left is empty and hidden. Since #2155 the two differ only in those
+    // Right is empty and hidden. Since #2155 the two differ only in those
     // facts — there is no third shape, no offer list and no inert state.
     const bottom = toggles.find((toggle) => toggle.region === 'bottom');
     expect(bottom).toMatchObject({
@@ -106,16 +120,21 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
       paneTitles: ['Chat'],
       visible: true,
     });
-    const left = toggles.find((toggle) => toggle.region === 'left');
-    expect(left).toMatchObject({
-      label: 'Left',
+    const right = toggles.find((toggle) => toggle.region === 'right');
+    expect(right).toMatchObject({
+      label: 'Right',
       paneTitles: [],
+      visible: false,
+    });
+    expect(toggles.find((toggle) => toggle.region === 'left')).toMatchObject({
+      label: 'Left',
+      paneTitles: ['Activity'],
       visible: false,
     });
     // #2155 retired `offers` outright: every key a toggle carries is one of
     // these five, so a re-added offer list fails here rather than shipping a
     // second answer to "what goes in this region" beside the chooser (#2154).
-    expect(Object.keys(left ?? {}).sort()).toEqual([
+    expect(Object.keys(right ?? {}).sort()).toEqual([
       'label',
       'onToggle',
       'paneTitles',
@@ -152,15 +171,22 @@ describe('the toolbar has a toggle for every dock region the model declares', ()
    * rides along — a region with no shell has no maximized rendering to come
    * back to, and nothing may carry a maximize across a hide.
    */
+  test('an unused Left has no default toggle; Bottom and Right always do', () => {
+    const { result } = renderHook(() => useRegionSurfaceMenu());
+    expect(result.current.regionToggles.map((toggle) => toggle.region)).toEqual(
+      ['bottom', 'right'],
+    );
+  });
+
   test('with no shell mounted for the region, the toggle writes the model itself', () => {
     const { result } = renderHook(() => useRegionSurfaceMenu());
     harness.setRegion.mockClear();
 
     result.current.regionToggles
-      .find((toggle) => toggle.region === 'left')
+      .find((toggle) => toggle.region === 'right')
       ?.onToggle();
 
-    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+    expect(harness.setRegion).toHaveBeenCalledWith('right', {
       visible: true,
       maximized: false,
     });

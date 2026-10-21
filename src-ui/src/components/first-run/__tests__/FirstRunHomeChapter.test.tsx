@@ -820,7 +820,7 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
 
     expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
     expect(screen.getByText('Step 1 of 3')).toBeTruthy();
-    expect(screen.getByText('What Station sends')).toBeTruthy();
+    expect(screen.getByText('Usage sharing')).toBeTruthy();
     // The engines step is BEHIND it, not beside it.
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 

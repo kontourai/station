@@ -5,9 +5,9 @@
 
   "state": "partial",
 
-  "summary": "Scoped delta review: Reviewed the experimental command port, bound boundary layouts, optional host sequence fence, terminal-fact replacement and nested transaction ownership.",
+  "summary": "Scoped delta review: Reviewed the experimental command port, bound boundary layouts, optional host sequence fence, terminal-fact replacement and nested transaction ownership, including bounded Station source adoption through 029068f7728.",
 
-  "limits": "API and SQLite fixture evidence. Station boundary wiring, runtime terminal read reconciliation and an older executable rollout remain follow-on work. Existing unchanged primitive descriptions are not a new subsystem-wide audit.",
+  "limits": "API and SQLite/service fixture evidence. Station boundary wiring and current/witness terminal reads are implemented and source-approved at 029068f7728; installed native-origin fidelity, older executables, concurrent writers, whole-runtime qualification and release remain unverified. Existing unchanged primitive descriptions are not a new subsystem-wide audit.",
 
   "sources": [
     "packages/monument/src/sqlite.ts",
@@ -46,7 +46,57 @@
 
     "packages/monument/src/session-message-delivery.ts",
 
-    "packages/monument/src/__tests__/session-message-delivery.test.ts"
+    "packages/monument/src/__tests__/session-message-delivery.test.ts",
+
+    "packages/monument/src/testing/crash-point-store.ts",
+
+    "packages/monument/src/__tests__/crash-point-compatibility.test.ts",
+
+    "packages/agent-runtime/src/retention.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
+
+    "packages/monument/src/index.ts",
+
+    "packages/monument/src/__tests__/sqlite-prepared-intent.test.ts",
+
+    "packages/monument/src/__tests__/participants.test.ts",
+
+    "packages/monument/src/__tests__/decisions.test.ts",
+
+    "packages/monument/src/decisions/prepared-settlement.ts",
+
+    "packages/monument/src/__tests__/sqlite-prepared-settlement.test.ts",
+
+    "src-server/services/turn-idempotency.ts",
+
+    "src-server/services/orchestration/session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
+    "packages/monument/src/decisions/invocation-terminal.ts",
+
+    "packages/monument/src/__tests__/invocation-terminal.test.ts",
+
+    "packages/monument/src/__tests__/sqlite-invocation-terminal.test.ts",
+
+    "src-server/services/orchestration/prepared-turn-intent.ts"
   ],
 
   "checks": []

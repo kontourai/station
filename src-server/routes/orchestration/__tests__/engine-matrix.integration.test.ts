@@ -221,6 +221,7 @@ class MatrixAdapter implements ProviderAdapterShape {
       provider: this.eventProvider ?? this.provider,
       threadId: input.threadId,
       turnId,
+      invocationId: input.invocationId,
       createdAt: new Date().toISOString(),
     };
     this.events.push({

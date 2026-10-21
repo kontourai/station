@@ -12,6 +12,8 @@ mod desktop_companion;
 #[cfg(not(mobile))]
 mod desktop_installation;
 #[cfg(not(mobile))]
+mod desktop_update;
+#[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
@@ -13199,10 +13201,11 @@ If a stable instance is running, this launch will focus its window and exit.",
         if updater_configured {
             builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
         }
-        // Config-free, so this is always registered: it is the only way the
-        // webview can relaunch the process, which the update-install flow
-        // needs after `updater_configured` is true, but restart is also
-        // reasonable chrome to offer regardless of that.
+        // Config-free, so this is always registered. Since #3851 no
+        // capability grants the webview its commands: the native updater
+        // (`desktop_update`) restarts through `AppHandle::request_restart`
+        // itself. Dropping the plugin and its npm/Cargo packages is a
+        // separate dependency-lifecycle change.
         builder = builder.plugin(tauri_plugin_process::init());
     }
 
@@ -13353,7 +13356,12 @@ If a stable instance is running, this launch will focus its window and exit.",
         ssh_launch_start,
         ssh_launch_status,
         ssh_launch_cancel,
-        ssh_launch_mark_identity_verified
+        ssh_launch_mark_identity_verified,
+        desktop_update::desktop_update_state,
+        desktop_update::desktop_update_check,
+        desktop_update::desktop_update_download,
+        desktop_update::desktop_update_install,
+        desktop_update::desktop_update_set_policy
     ]);
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -13467,6 +13475,11 @@ If a stable instance is running, this launch will focus its window and exit.",
                     "desktop updater plugin not registered; this build has no updater plugin configuration"
                 );
             }
+            // Before any setup step that can end early: the update commands
+            // read this managed state, and an unconfigured build still
+            // answers them (as `disabled`).
+            #[cfg(not(mobile))]
+            desktop_update::manage(app.handle(), updater_configured);
 
             #[cfg(not(mobile))]
             {

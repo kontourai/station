@@ -195,6 +195,13 @@ export const credentialProfileEnvRequestSchema = z.object({
 
 export const credentialRecoveryPolicyRequestSchema = z.object({
   automatic: z.boolean(),
+  allowancePreference: z
+    .object({
+      windowId: z.string().min(1).max(128),
+      minimumRemainingPercent: z.number().finite().min(1).max(100),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const credentialProfileImportRequestSchema = z.object({

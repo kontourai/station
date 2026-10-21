@@ -1,0 +1,7 @@
+{
+  "revision": "47bc787d4b2585e1c5103eec0f2fdae90338f177",
+
+  "notes": [
+    {"path":"docs/guides/workspace-packages.md","note":"#1706 follow-up: ci.yml's fast-checks aggregate gained a pinned 'Mark fast-checks provisional' step (allowlisted in actionlint-gate, pinned by ci-workflow-governance) that runs when the aggregate writes provisional=true; source-verification-policy reads that step from existing job evidence and keeps success with a provisional description. Checked this document's claims against the change; none contradicts it.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

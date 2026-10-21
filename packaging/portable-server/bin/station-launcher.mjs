@@ -1448,7 +1448,10 @@ class Launcher {
     log(
       `could not restore ${this.home} after ${restoreAttempts} attempts to roll back the update to ${update.targetVersion} (${reason}); ` +
         `its backup is kept at ${this.backupDir(update)}. Station stays stopped. ` +
-        `Fix the cause shown above, then retry the restore with: station service stop --instance=${this.instance} && station service start --instance=${this.instance}`,
+        // The home is named: a service installed with --base finds its
+        // manifest only there (#3851 review round 3; this frozen copy only
+        // reaches services installed or reinstalled after the change).
+        `Fix the cause shown above, then retry the restore with: station service stop --instance=${this.instance} --base="${this.home}" && station service start --instance=${this.instance} --base="${this.home}"`,
     );
   }
 

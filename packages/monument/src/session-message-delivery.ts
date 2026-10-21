@@ -9,6 +9,10 @@
  * The host deduplicates `deliveryId` as the `clientTurnId` of a start and the
  * `clientInputId` of a steer. `decided` pins a prior attempt, so a re-drive
  * never switches from steer to start because the turn ended in between.
+ *
+ * Message validation, attribution and framing belong to the host. Text is
+ * opaque to this sequence. An optional host preparation port runs only for
+ * a deliverable branch, before the decision is recorded or an effect begins.
  */
 
 export type SessionSendMode = 'auto' | 'start' | 'steer';
@@ -77,6 +81,8 @@ export type SessionStartResult =
   | { readonly outcome: 'indeterminate' };
 
 export interface SessionMessageDeliveryPorts {
+  /** Host-owned synchronous message preparation; may refuse by throwing. */
+  prepareText?(text: string): string;
   /** Whether the Session has a turn open or in flight right now. */
   isBusy(threadId: string): boolean;
   /** Start a turn with this text; throws when the start was cleanly refused. */
@@ -122,6 +128,7 @@ export async function deliverSessionMessage(
   ports: SessionMessageDeliveryPorts,
   input: {
     readonly threadId: string;
+    /** Opaque host text, optionally transformed before recording or effect. */
     readonly text: string;
     readonly mode: SessionSendMode;
     /** The id the layers below deduplicate on (see the module note). */
@@ -138,12 +145,13 @@ export async function deliverSessionMessage(
   if (decision.kind === 'session_busy')
     return { outcome: 'session_busy', reason: decision.reason };
   if (decision.kind === 'no_active_turn') return { outcome: 'no_active_turn' };
+  const text = ports.prepareText ? ports.prepareText(input.text) : input.text;
   if (!input.decided) input.recordDecision?.(decision.branch);
 
   if (decision.branch === 'start') {
     const started = await ports.start({
       threadId: input.threadId,
-      text: input.text,
+      text,
       clientTurnId: input.deliveryId,
     });
     return started.outcome === 'started'
@@ -153,7 +161,7 @@ export async function deliverSessionMessage(
 
   const steered = await ports.steer({
     threadId: input.threadId,
-    text: input.text,
+    text,
     clientInputId: input.deliveryId,
   });
   switch (steered.outcome) {

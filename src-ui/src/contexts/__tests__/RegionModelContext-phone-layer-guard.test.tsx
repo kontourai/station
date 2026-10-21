@@ -88,6 +88,7 @@ import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../UnsavedGuardOwnerContext';
+import { settledStorageSnapshot } from './paneRelationsHarness';
 
 const PR = 'pr:github.com/kontourai/station#2049';
 let model: ReturnType<typeof useRegionModel> | null = null;
@@ -189,6 +190,51 @@ afterEach(() => {
 });
 
 describe('leaving a phone layer asks before discarding a review draft', () => {
+  test.each(['replacement layer', 'new owner guard', 'caller withdrawn'])(
+    'a pending explicit close is superseded by %s',
+    async (change) => {
+      const comment = await mountWithDraft();
+      const afterClose = vi.fn();
+      let admitted = true;
+      let unregister = () => {};
+      const newGuard = vi.fn();
+      try {
+        act(() => {
+          void current().closePhoneLayer(afterClose, () => admitted);
+        });
+        await screen.findByRole('dialog', { name: /Unsaved Changes/ });
+        act(() => {
+          if (change === 'replacement layer')
+            current().openSurfaceInRegion('activity');
+          if (change === 'new owner guard')
+            unregister = navigationStore.registerNavigationGuard(
+              Symbol('new layer draft'),
+              newGuard,
+              PR,
+            );
+          if (change === 'caller withdrawn') admitted = false;
+        });
+        const arrangement = structuredClone(current().regions);
+        const layer = current().readPhoneLayer();
+        const before = await settledStorageSnapshot();
+        fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+        await waitFor(() =>
+          expect(
+            screen.queryByRole('dialog', { name: /Unsaved Changes/ }),
+          ).toBeNull(),
+        );
+        expect(current().readPhoneLayer()).toEqual(layer);
+        expect(current().regions).toEqual(arrangement);
+        expect(await settledStorageSnapshot()).toEqual(before);
+        expect(comment.value).toBe('Half-written review');
+        expect(afterClose).not.toHaveBeenCalled();
+        expect(newGuard).not.toHaveBeenCalled();
+      } finally {
+        unregister();
+      }
+    },
+  );
+
   test('Back asks; Cancel keeps the pane, its draft and a live history entry; Discard returns to Chat', async () => {
     const comment = await mountWithDraft();
 
@@ -331,7 +377,9 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
         current().openSurfaceInRegion(PR);
       });
       await waitFor(() => expect(onLayerEntry()).toBe(true));
-      act(() => current().closePhoneLayer());
+      act(() => {
+        void current().closePhoneLayer();
+      });
       await waitFor(() => expect(current().phoneLayer).toBeNull());
       expect(unrelated).not.toHaveBeenCalled();
       expect(
@@ -412,7 +460,9 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
   test('"‹ Chat" asks too; Cancel keeps the layer, Discard closes it', async () => {
     const comment = await mountWithDraft();
 
-    act(() => current().closePhoneLayer());
+    act(() => {
+      void current().closePhoneLayer();
+    });
     await screen.findByRole('dialog', { name: /Unsaved Changes/ });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() =>
@@ -424,7 +474,9 @@ describe('leaving a phone layer asks before discarding a review draft', () => {
     expect(onLayerEntry()).toBe(true);
     expect(comment.value).toBe('Half-written review');
 
-    act(() => current().closePhoneLayer());
+    act(() => {
+      void current().closePhoneLayer();
+    });
     await screen.findByRole('dialog', { name: /Unsaved Changes/ });
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(current().phoneLayer).toBeNull());

@@ -10,9 +10,15 @@ vi.mock('../views/monitoring-utils', () => ({
   getAgentColor: () => '#00aa88',
 }));
 
+const historical = vi.hoisted(() => ({ slugs: ['historical-agent'] }));
+
 vi.mock('../views/monitoring/view-utils', () => ({
-  getHistoricalAgentSlugs: () => ['historical-agent'],
+  getHistoricalAgentSlugs: () => historical.slugs,
   getMonitoringAgentCountLabel: () => '2 agents',
+  getProducerAgentSlugs: (events: unknown[]) =>
+    events.length > 0
+      ? [{ slug: 'producer:flow-agents:default', producer: 'flow-agents' }]
+      : [],
   getRunningConversations: () => [{ id: 'conv:abc12345', color: '#00aa88' }],
 }));
 
@@ -193,6 +199,51 @@ describe('MonitoringSidebar', () => {
     while (node) {
       expect(node.getAttribute('role')).not.toBe('button');
       node = node.parentElement;
+    }
+  });
+
+  test('lists external producer agents in their own labelled group', () => {
+    render(
+      <MonitoringSidebar
+        stats={{ summary: {}, agents: [] } as any}
+        events={[]}
+        filteredEvents={[{} as any]}
+        selectedAgents={[]}
+        onAgentClick={vi.fn()}
+        onConversationClick={vi.fn()}
+        resolveModelName={(modelId) => modelId}
+      />,
+    );
+    expect(screen.getByText('External producers')).toBeTruthy();
+    // The producer's own agent name as the title, the producer as a
+    // sublabel, and the namespaced id only as the tooltip.
+    expect(screen.getByText('default').getAttribute('title')).toBe(
+      'producer:flow-agents:default',
+    );
+    expect(screen.getByText('via flow-agents')).toBeTruthy();
+    expect(screen.queryByText('producer:flow-agents:default')).toBeNull();
+    expect(screen.getByText('External')).toBeTruthy();
+  });
+
+  test('a producer-looking Historical slug is shown as sent, never as a producer', () => {
+    // Text alone: no producer row delivered it, so no "via" and no parsing.
+    historical.slugs = ['producer:flow-agents:codex'];
+    try {
+      render(
+        <MonitoringSidebar
+          stats={{ summary: {}, agents: [] } as any}
+          events={[]}
+          filteredEvents={[]}
+          selectedAgents={[]}
+          onAgentClick={vi.fn()}
+          onConversationClick={vi.fn()}
+          resolveModelName={(modelId) => modelId}
+        />,
+      );
+      expect(screen.getByText('producer:flow-agents:codex')).toBeTruthy();
+      expect(screen.queryByText(/^via /)).toBeNull();
+    } finally {
+      historical.slugs = ['historical-agent'];
     }
   });
 });

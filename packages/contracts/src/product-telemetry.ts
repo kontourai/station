@@ -1,3 +1,8 @@
+import type {
+  PluginDailyPing,
+  PluginTelemetryBatch,
+  PluginTelemetryEvent,
+} from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
   'productTelemetryAcknowledgement';
@@ -22,6 +27,14 @@ export interface TelemetryTierResolution {
 /** A publisher's effective resolution alongside its separately saved choice. */
 export interface TelemetryPublisherStatus extends TelemetryTierResolution {
   userChoice?: TelemetryTier;
+  /** Absent on older servers; consumers must wait for explicit availability. */
+  fullAvailable?: boolean;
+  destination?: string;
+  endpointConfigured?: boolean;
+  liteInventoryRevision?: string;
+  liteInventory?: Record<string, unknown>;
+  fullInventoryRevision?: string;
+  liteNoticeShown?: boolean;
 }
 
 /** Policies affect defaults only; an identifying stream is never a default. */
@@ -224,8 +237,16 @@ export interface TelemetryOutboxEntry {
     | 'unconfigured'
     | 'overflow'
     | 'expired'
-    | 'transport';
-  payload: StationDailyPing | ProductTelemetryBatch | TelemetryFeedback;
+    | 'transport'
+    | 'invalid';
+  payload:
+    | StationDailyPing
+    | PluginDailyPing
+    | PluginTelemetryEvent
+    | PluginTelemetryBatch
+    | ProductTelemetryBatch
+    | TelemetryFeedback
+    | { event: 'telemetry_dropped'; count: number };
 }
 
 /** The single public inventory for Station product usage telemetry. */
@@ -411,15 +432,16 @@ export const PRODUCT_TELEMETRY_ENVELOPE = {
     inventory_revision:
       'SHA-256 of the disclosed envelope and event inventory.',
     distinct_id:
-      'SHA-256 of a separate random installation UUID concatenated with the UTC YYYY-MM; rotates monthly and is not a person identity.',
+      'SHA-256 of a separate random installation UUID concatenated with the publisher ID and UTC YYYY-MM; rotates monthly and is not a person identity.',
     events: 'One through twenty inventory observations.',
   },
   observation: {
     event_id: 'Random UUID assigned once at observation; unchanged on retry.',
     event: 'One name from the classified event inventory.',
     occurred_at:
-      'Canonical UTC producer wall-clock time when track was called.',
-    observed_at: 'Canonical UTC producer wall-clock time at buffer admission.',
+      'Canonical UTC producer wall-clock time when track was called, rounded down to the minute.',
+    observed_at:
+      'Canonical UTC producer wall-clock time at buffer admission, rounded down to the minute.',
     build:
       'Allowlisted immutable process build metadata; missing facts stay absent.',
     properties: 'Only the event-specific classified properties below.',

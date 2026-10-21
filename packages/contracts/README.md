@@ -47,6 +47,10 @@ For the plugin walkthrough these contracts describe, see the
 [`@kontourai/station-sdk`](../sdk/README.md)
 README.
 
+The `/child-work` contract's optional `latestTool` carries only a reported child
+tool name, independently of its progress summary. Reducers retain it across
+updates and settlement; no tool arguments or inferred activity are added.
+
 ## Subpaths without a reference section
 
 The [contracts reference](../../docs/reference/contracts.md) documents most
@@ -112,6 +116,7 @@ names what the module owns. Read the module before depending on it.
 - `/workspace-coding-file-composition`, `/workspace-coding-diff-composition`,
   `/workspace-coding-evidence-composition`: coding pane selection and read grants.
 - Built-in pane descriptors and instances: `/workspace-activity-pane`,
+  `/workspace-activity-review-pane` (docked, occurrence-only review),
   `/workspace-agents-pane`, `/workspace-chat-pane`, `/workspace-coding-panels`,
   `/workspace-device-pane`, `/workspace-evidence-panels`, `/workspace-home-pane`,
   `/workspace-layout-pane`, `/workspace-plugin-draft-pane`,

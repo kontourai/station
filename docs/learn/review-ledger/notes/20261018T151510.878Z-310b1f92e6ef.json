@@ -1,0 +1,7 @@
+{
+  "revision": "9bdcdb028beec4f2c3d890123456c06fbd1a5e80",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 2 polish: traced Settings pending select and target heading through TelemetryTierSettings and TelemetryFeedbackPrompt; Cancel/Escape discard pending state without config writes or unsaved changes. Reviewed outbox disclosure, retained region label, and route limit validation. Focused tests pass (121); select-binding fault produces two intended failures. Transport and persistence contracts unchanged; no external receiver or native evidence.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/TelemetryFeedbackPrompt.tsx","src-ui/src/components/TelemetryPrivacy.css","src-ui/src/views/settings/TelemetryOutbox.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx","tests/screenshots.spec.ts"]}
+  ]
+}

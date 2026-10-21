@@ -1,4 +1,4 @@
-import type { KernelCommand, KernelResult } from '../commands.js';
+import type { KernelAtomicProtocol, KernelCommand } from '../commands.js';
 import type {
   CommitParticipant,
   KernelContext,
@@ -71,46 +71,129 @@ export interface CrashPointStore {
   dispose(): Promise<void>;
 }
 
-interface Incarnation {
-  readonly inner: KernelStorage;
+export interface AtomicCase {
+  readonly command: { readonly type: string };
+  readonly result: unknown;
+}
+export type AtomicProtocol = Readonly<Record<string, AtomicCase>>;
+export type AtomicCommand<P extends AtomicProtocol> = P[keyof P]['command'];
+export type AtomicResult<
+  P extends AtomicProtocol,
+  C extends AtomicCommand<P>,
+> = P[C['type'] & keyof P]['result'];
+export interface AtomicPort<P extends AtomicProtocol, Context> {
+  execute<C extends AtomicCommand<P>>(
+    command: C,
+    context: Context,
+  ): Promise<AtomicResult<P, C>>;
+  close(): Promise<void>;
+}
+export interface AtomicParticipant<
+  P extends AtomicProtocol,
+  Host,
+  Refusal = never,
+> {
+  readonly name: string;
+  readonly observeReads?: boolean;
+  /** Actual internal maintenance writes, after an otherwise refused command. */
+  maintenance?(value: { readonly command: AtomicCommand<P> }, host: Host): void;
+  admit?(
+    command: AtomicCommand<P>,
+    host: Host,
+  ): { readonly refuse: string } | undefined;
+  commit?(
+    value: {
+      readonly command: AtomicCommand<P>;
+      readonly result: Exclude<P[keyof P]['result'], Refusal>;
+    },
+    host: Host,
+  ): void;
+}
+export interface AtomicLocation<
+  P extends AtomicProtocol,
+  Context,
+  Host = never,
+  Refusal = never,
+> {
+  open(options?: {
+    readonly participants?: readonly AtomicParticipant<P, Host, Refusal>[];
+  }): Promise<AtomicPort<P, Context>>;
+  dispose(): Promise<void>;
+}
+export interface AtomicHeldCommit<P extends AtomicProtocol> {
+  readonly entered: Promise<AtomicCommand<P>>;
+  release(): void;
+}
+export interface AtomicCrashPointStore<P extends AtomicProtocol, Context> {
+  readonly storage: AtomicPort<P, Context>;
+  holdNextCommit(): AtomicHeldCommit<P>;
+  failNextCommit(error?: Error): void;
+  crash(): Promise<void>;
+  reopen(): Promise<AtomicPort<P, Context>>;
+  dispose(): Promise<void>;
+}
+
+export function openCrashPointStore(
+  location: KernelStorageLocation,
+  options: { readonly participants?: readonly CommitParticipant<never>[] } = {},
+): Promise<CrashPointStore> {
+  return openAtomicCrashPointStore<
+    KernelAtomicProtocol,
+    KernelContext,
+    never,
+    import('../commands.js').ParticipantRefusal
+  >(location, options);
+}
+
+interface Incarnation<P extends AtomicProtocol, Context> {
+  readonly inner: AtomicPort<P, Context>;
   crashed: boolean;
   readonly heldGates: Set<() => void>;
 }
 
-export async function openCrashPointStore(
-  location: KernelStorageLocation,
-  options: { readonly participants?: readonly CommitParticipant<never>[] } = {},
-): Promise<CrashPointStore> {
+export async function openAtomicCrashPointStore<
+  P extends AtomicProtocol,
+  Context,
+  Host = never,
+  Refusal = never,
+>(
+  location: AtomicLocation<P, Context, Host, Refusal>,
+  options: {
+    readonly participants?: readonly AtomicParticipant<P, Host, Refusal>[];
+  } = {},
+): Promise<AtomicCrashPointStore<P, Context>> {
   let failArmed: Error | undefined;
   let pendingHold:
     | {
-        signal(command: KernelCommand): void;
+        signal(command: AtomicCommand<P>): void;
         gate: Promise<void>;
         open(): void;
       }
     | undefined;
-  const failure: CommitParticipant<unknown> = {
+  const failCommit = () => {
+    if (!failArmed) return;
+    const error = failArmed;
+    failArmed = undefined;
+    throw error;
+  };
+  const failure: AtomicParticipant<P, Host, Refusal> = {
     name: 'crash-point-store',
-    commit() {
-      if (!failArmed) return;
-      const error = failArmed;
-      failArmed = undefined;
-      throw error;
-    },
+    commit: failCommit,
+    maintenance: failCommit,
   };
   const participants = [...(options.participants ?? []), failure];
-  const openIncarnation = async (): Promise<Incarnation> => ({
+  const openIncarnation = async (): Promise<Incarnation<P, Context>> => ({
     inner: await location.open({ participants }),
     crashed: false,
     heldGates: new Set(),
   });
   let current = await openIncarnation();
 
-  const storage: KernelStorage = {
-    async execute<C extends KernelCommand>(
+  const storage: AtomicPort<P, Context> = {
+    async execute<C extends AtomicCommand<P>>(
       command: C,
-      context: KernelContext,
-    ): Promise<KernelResult<C>> {
+      context: Context,
+    ): Promise<AtomicResult<P, C>> {
       const incarnation = current;
       if (incarnation.crashed) throw new KernelCrashError();
       const hold = pendingHold;
@@ -142,9 +225,9 @@ export async function openCrashPointStore(
     storage,
     holdNextCommit() {
       if (pendingHold) throw new Error('A commit is already being held.');
-      let signal!: (command: KernelCommand) => void;
+      let signal!: (command: AtomicCommand<P>) => void;
       let open!: () => void;
-      const entered = new Promise<KernelCommand>((resolve) => {
+      const entered = new Promise<AtomicCommand<P>>((resolve) => {
         signal = resolve;
       });
       const gate = new Promise<void>((resolve) => {

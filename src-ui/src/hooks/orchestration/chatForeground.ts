@@ -1,3 +1,5 @@
+import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/NavigationContext';
 
 /**
@@ -22,8 +24,7 @@ export function registerFullscreenChatSurface(): () => void {
 /**
  * Is this chat the one on screen: the page is visible, a Chat surface is
  * showing, and the chat it shows is this one (by chat key, execution session,
- * or conversation). A hidden tab keeps its event stream, so the server sends
- * no push for it; this toast is then the only signal the user gets.
+ * or conversation).
  */
 export function isChatInForeground(ids: {
   chatKey?: string;
@@ -45,4 +46,27 @@ export function isChatInForeground(ids: {
     (id) =>
       navigation.activeChat === id || navigation.activeConversation === id,
   );
+}
+
+/**
+ * Does this page show a chat whose turn is still running? The focus reporter
+ * keeps a focused window present without input while this holds (a person
+ * watching a turn finish is not typing), and lets it lapse once the turn
+ * ends.
+ */
+export function isWatchingRunningTurn(): boolean {
+  for (const [chatKey, chat] of Object.entries(
+    activeChatsStore.getSnapshot(),
+  )) {
+    if (!isTurnInFlight(chat)) continue;
+    if (
+      isChatInForeground({
+        chatKey,
+        threadId: chat.currentSessionId ?? chatKey,
+        conversationId: chat.conversationId,
+      })
+    )
+      return true;
+  }
+  return false;
 }

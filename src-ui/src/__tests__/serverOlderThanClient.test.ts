@@ -430,3 +430,34 @@ describe('readableVersions', () => {
     expect(readableVersions(left, right)).toEqual(expected);
   });
 });
+
+describe('a server that downloads and restarts as separate steps (#3851)', () => {
+  test('the banner sends the person to Settings instead of restarting the server', () => {
+    expect(
+      deriveServerOlderOffer(
+        facts({ status: serviceArchive({ stagedUpdates: true }) }),
+      ),
+    ).toMatchObject({
+      kind: 'manual',
+      remedy: expect.stringContaining('from Settings'),
+    });
+    expect(
+      deriveServerOlderOffer(
+        facts({
+          status: serviceArchive({
+            stagedUpdates: true,
+            serviceUpdate: {
+              state: 'staged',
+              requestId: 'r-1',
+              version: '0.1.11-nightly.246500',
+              stagedAt: '2026-10-19T10:00:00.000Z',
+            } as ServiceUpdateProgress,
+          }),
+        }),
+      ),
+    ).toMatchObject({
+      kind: 'manual',
+      remedy: expect.stringContaining('0.1.11-nightly.246500 is downloaded'),
+    });
+  });
+});

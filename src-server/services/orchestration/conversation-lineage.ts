@@ -35,6 +35,7 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   buildTranscriptSeed,
   transcriptSeedSource,
@@ -1073,18 +1074,37 @@ export class ConversationLineage {
       timeoutMs: 1,
       intervalMs: 1,
     });
+    const invocationId = providerTurnId
+      ? store.preparedInvocationForClientTurn(marker.sessionId, clientTurnId)
+      : undefined;
     const turnEvents = providerTurnId
       ? store
           .listEvents(marker.sessionId)
-          .filter((event) => event.turnId === providerTurnId)
+          .filter(
+            (event) =>
+              event.turnId === providerTurnId &&
+              (invocationId === undefined ||
+                event.payload.invocationId === invocationId),
+          )
       : [];
-    const terminal = turnEvents
-      .filter((event) =>
-        ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
-          event.method,
-        ),
-      )
-      .at(-1)?.method;
+    const disposition =
+      invocationId === undefined
+        ? undefined
+        : store.readInvocationTerminal(
+            marker.sessionId,
+            invocationId,
+            providerTurnId,
+          );
+    const terminal =
+      disposition && disposition.kind !== 'found'
+        ? undefined
+        : turnEvents
+            .filter((event) =>
+              ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+                event.method,
+              ),
+            )
+            .at(-1)?.method;
     const status =
       terminal === 'turn.completed'
         ? ('completed' as const)
@@ -1162,7 +1182,9 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
-      title: conversationTitle(messages),
+      title:
+        derivedConversationTitle(detail.session.delegation?.title) ??
+        conversationTitle(messages),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)

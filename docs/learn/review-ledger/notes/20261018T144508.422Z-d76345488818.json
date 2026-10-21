@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed the product-path table and publisher disclosure/delivery claims against the status-only service delta. New Full-availability metadata grants no consent and changes no emitter, destination, OTel, local-monitoring, receipt or receiver behavior. Existing distinctions and limits remain accurate.","inputs":["docs/guides/monitoring.md","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

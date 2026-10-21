@@ -169,13 +169,18 @@ class RecordingEngine implements ProviderAdapterShape {
   }
 
   /** Ends the open turn `turnId` on `threadId`. */
-  completeTurn(threadId: string, turnId: string) {
+  completeTurn(
+    threadId: string,
+    turnId: string,
+    invocationId: ProviderSendTurnInput['invocationId'],
+  ) {
     this.events.push({
       provider: this.provider,
       threadId,
       turnId,
       createdAt: new Date().toISOString(),
       eventId: `${turnId}:completed`,
+      invocationId,
       method: 'turn.completed',
       outputText: 'done',
     } as CanonicalRuntimeEvent);
@@ -186,6 +191,7 @@ class RecordingEngine implements ProviderAdapterShape {
     const turnId = `${this.provider}-turn-${this.turns.length}`;
     if (this.openTurns)
       this.events.push({
+        invocationId: input.invocationId,
         provider: this.provider,
         threadId: input.threadId,
         turnId,
@@ -199,6 +205,7 @@ class RecordingEngine implements ProviderAdapterShape {
         provider: this.provider,
         threadId: input.threadId,
         turnId,
+        invocationId: input.invocationId,
         createdAt: new Date().toISOString(),
       } as const;
       this.events.push({
@@ -1843,6 +1850,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     );
     const threadId = f.claude.starts.at(-1)!.threadId;
     const firstTurn = `claude-turn-${f.claude.turns.length}`;
+    const firstInvocationId = f.claude.turns.at(-1)!.invocationId;
     // `dispatch` answers with the command's own result.
     const steer = async (input: string) => ({
       result: await f.service.dispatch({ type: 'steerTurn', threadId, input }),
@@ -1866,7 +1874,7 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(f.claude.steers).toHaveLength(1);
 
     // The unconfined turn ends; the next one runs confined and can be steered.
-    f.claude.completeTurn(threadId, firstTurn);
+    f.claude.completeTurn(threadId, firstTurn, firstInvocationId);
     await vi.waitFor(async () =>
       expect((await steer('between')).result).toMatchObject({
         outcome: 'no-active-turn',

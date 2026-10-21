@@ -1,0 +1,82 @@
+/* The accent picker renders on the Appearance page, which does not load
+   Settings' stylesheet, so its rules travel with the component. */
+.settings__accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--k-space-2);
+  /* Each control's own 44px box spaces it; this lines the first circle up
+     with the copy above. */
+  margin-left: -8px;
+}
+/* 44px touch targets at every width without a page-local media query: each
+   control IS a 44px box, and only its middle 28px is painted. (A pseudo-
+   element hit area does not work here: a button does not hit-test outside
+   its own box.) */
+.settings__accent-swatch,
+.settings__accent-custom-hit {
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+/* `:hover` too: the global `button:hover` background shorthand outranks the
+   bare class and would reset the clip, painting the whole 44px box. */
+.settings__accent-swatch,
+.settings__accent-swatch:hover {
+  background-clip: content-box;
+}
+.settings__accent-swatch {
+  position: relative;
+}
+/* Selection (and hover) is a ring just outside the painted circle, drawn
+   inside the 44px box. Not an outline: the product's :focus-visible rule
+   (index.css) owns the outline with !important and would replace it, so a
+   focused swatch would look the same chosen or not. With the ring here,
+   focus is the outer outline and selection the inner ring, in every mode
+   and on channel builds. */
+.settings__accent-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.settings__accent-swatch:hover::after {
+  border-color: var(--text-secondary);
+}
+.settings__accent-swatch--active::after,
+.settings__accent-swatch--active:hover::after {
+  border-color: var(--text-primary);
+}
+.settings__accent-custom-hit {
+  display: inline-grid;
+  place-items: center;
+}
+.settings__accent-custom {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.settings__accent-reset {
+  min-height: 44px;
+  margin-left: var(--k-space-2);
+  font-size: var(--k-text-sm);
+  padding: 0.25rem 0.75rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.settings__accent-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}

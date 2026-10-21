@@ -67,29 +67,15 @@ const loadHelpMenu = () =>
   import('./HelpMenu').then((m) => ({ default: m.HelpMenu }));
 const loadOverflowMenu = () =>
   import('./OverflowMenu').then((m) => ({ default: m.OverflowMenu }));
-/**
- * #1552 D1's avatar menu, deferred on the same grounds as the two above: its
- * first statement is `if (!isOpen) return null` and its only pre-return hook
- * (`useMenuFocus`) already returns early while closed, so mounting it on open
- * leaves the rendered output identical and keeps its markup — and the two
- * glyphs it pulls — out of the first-paint chunk.
- */
-const loadProfileMenu = () =>
-  import('./ProfileMenu').then((m) => ({ default: m.ProfileMenu }));
-
 interface HeaderActionsProps {
-  currentViewType?: string;
   helpPrompts: HeaderHelpPrompt[];
-  settingsShortcut: string;
   showHelp: boolean;
   showNotifications: boolean;
   showOverflow: boolean;
-  showProfileMenu: boolean;
   userInitials: string;
   onCloseHelp: () => void;
   onCloseNotifications: () => void;
   onCloseOverflow: () => void;
-  onCloseProfileMenu: () => void;
   onHelpPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
   onOpenProfile: () => void;
@@ -97,9 +83,7 @@ interface HeaderActionsProps {
   onOpenHelp: () => void;
   /** Opens the notification popover. Never a toggle — see `useMenuTriggerToggle`. */
   onOpenNotifications: () => void;
-  onToggleSettings: () => void;
   onToggleOverflow: () => void;
-  onToggleProfileMenu: () => void;
   onViewAllNotifications: () => void;
 }
 
@@ -163,26 +147,20 @@ function ConnectionNameHint({
 }
 
 export function HeaderActions({
-  currentViewType,
   helpPrompts,
-  settingsShortcut,
   showHelp,
   showNotifications,
   showOverflow,
-  showProfileMenu,
   userInitials,
   onCloseHelp,
   onCloseNotifications,
   onCloseOverflow,
-  onCloseProfileMenu,
   onHelpPrompt,
   onOpenConnections,
   onOpenProfile,
   onOpenHelp,
   onOpenNotifications,
-  onToggleSettings,
   onToggleOverflow,
-  onToggleProfileMenu,
   onViewAllNotifications,
 }: HeaderActionsProps) {
   const profile = usePlatformProfile();
@@ -245,13 +223,14 @@ export function HeaderActions({
    * a toggle on the open path would shut a popover that a hotkey or deep link
    * had opened in the meantime.
    *
-   * The other two menus in this row are NOT wired this way, and that is a
-   * finding rather than an omission — see #2081. Each renders a full-viewport
-   * dismiss backdrop one layer under itself (`ProfileMenu.tsx:118-132`,
-   * `OverflowMenu.tsx:101-118`, both at `--layer-navigation - 1` = 9349) while
+   * The overflow menu in this row is NOT wired this way, and that is a
+   * finding rather than an omission — see #2081. It renders a full-viewport
+   * dismiss backdrop one layer under itself (`OverflowMenu.tsx`, at
+   * `--layer-navigation - 1` = 9349; the sidebar's account menu,
+   * `ProfileMenu.tsx`, carries the same backdrop) while
    * this toolbar sits at `--layer-sticky` (100) on mobile and at no layer at
-   * all otherwise, so while either of those menus is open its backdrop covers
-   * its own trigger and the press lands on the backdrop, which closes it. The
+   * all otherwise, so while either menu is open its backdrop covers its own
+   * trigger and the press lands on the backdrop, which closes it. The
    * stylesheet states the same invariant for the dock's More menu
    * (`index.css:1944-1950`). This popover is the one with no backdrop.
    *
@@ -371,7 +350,6 @@ export function HeaderActions({
       onCloseHelp();
       onCloseNotifications();
       onCloseOverflow();
-      onCloseProfileMenu();
       if (connections.length === 0) onOpenConnections();
       else setConnectionMenuOpen(true);
     },
@@ -544,48 +522,6 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* archive#3311: secondary on mobile — the profile moves into the ⋯
-          overflow menu there, freeing the toolbar slot the connection
-          status now occupies.
-
-          #1552 D1: on a fine pointer it is a MENU trigger. "Ask Station for
-          help" and "Open settings" were two more unlabelled glyphs in this row;
-          they are rows of that menu now, and the row is four controls —
-          Layout, the status dot, Notifications, this. Profile itself is the
-          menu's first row, so the destination the button used to navigate to
-          straight away is still one press plus one row away, and is now
-          named. */}
-      <div className="app-toolbar__action--secondary">
-        <button
-          type="button"
-          className={`app-toolbar__icon-btn ${currentViewType === 'profile' || showProfileMenu ? 'is-active' : ''}`}
-          onClick={onToggleProfileMenu}
-          title="Profile and settings"
-          aria-label="Profile and settings"
-          aria-haspopup="menu"
-          aria-expanded={showProfileMenu}
-        >
-          {userInitials}
-        </button>
-        {showProfileMenu && (
-          <LazyBoundary
-            load={loadProfileMenu}
-            componentProps={{
-              isOpen: showProfileMenu,
-              isProfileActive: currentViewType === 'profile',
-              isSettingsActive: currentViewType === 'settings',
-              settingsShortcut,
-              userInitials,
-              onClose: onCloseProfileMenu,
-              onOpenProfile,
-              onOpenHelp,
-              onToggleSettings,
-            }}
-            pending={null}
-          />
-        )}
-      </div>
-
       {showHelp && (
         <LazyBoundary
           load={loadHelpMenu}
@@ -629,8 +565,8 @@ export function HeaderActions({
           footer (`ProjectSidebarFooter`), which the hamburger beside the brand
           opens on every viewport — so a phone reaches it in two taps without
           spending a permanent slot in the row that runs out of width first.
-          `onToggleSettings` stays a prop because the desktop avatar menu's
-          Settings row still dispatches through it. */}
+          The account menu that used to sit at this row's end is the footer's
+          `SidebarAccountControl`; the region glyphs took its place. */}
     </div>
   );
 }

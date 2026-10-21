@@ -2,7 +2,11 @@
  * @vitest-environment jsdom
  */
 
-import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
+import type {
+  ServerUpdateRunningTurns,
+  ServerUpdateState,
+  ServiceUpdateProgress,
+} from '@kontourai/station-contracts/system-status';
 import type {
   CoreUpdateRestartExpectation,
   CoreUpdateRestartStatus,
@@ -55,9 +59,33 @@ let serviceProgressOptions:
     }
   | undefined;
 const applyReset = vi.fn();
+/** #3851: the pushed server update state, the action mutation and the turns. */
+const serverUpdateQuery: { data: ServerUpdateState | undefined } = {
+  data: undefined,
+};
+const serverUpdateActions: unknown[] = [];
+const runningTurnsQuery: {
+  data: ServerUpdateRunningTurns | undefined;
+  isPending: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+} = { data: undefined, isPending: false, isError: false, isSuccess: false };
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCoreUpdateStatusQuery: () => queryState,
+  useServerUpdateStateQuery: () => serverUpdateQuery,
+  useServerUpdateRunningTurnsQuery: () => runningTurnsQuery,
+  useServerUpdateActionMutation: () => ({
+    mutate: (
+      request: unknown,
+      options?: { onSuccess?: (data: { requestId: string | null }) => void },
+    ) => {
+      serverUpdateActions.push(request);
+      options?.onSuccess?.({ requestId: 'r-applied' });
+    },
+    isPending: false,
+    error: null,
+  }),
   useServiceUpdateProgressQuery: (
     _apiBase: string,
     options: typeof serviceProgressOptions,
@@ -1336,5 +1364,203 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     expect(waiting.textContent).toContain(
       'station service status --instance=view-instance',
     );
+  });
+});
+
+describe('download, then a confirmed restart (#3851)', () => {
+  const STAGED = '0.8.0-preview.2';
+  function stagedService(
+    overrides: Partial<CoreUpdateStatus> = {},
+  ): CoreUpdateStatus {
+    return {
+      installKind: 'archive-service',
+      applyMethod: 'service-update',
+      channel: 'preview',
+      currentVersion: '0.8.0-preview.1',
+      latestVersion: STAGED,
+      releaseCheck: 'verified',
+      updateAvailable: true,
+      serverIdentity: ANSWER_IDENTITY,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
+      selfUpdateUnavailableCode: null,
+      serviceUpdate: { state: 'idle' },
+      stagedUpdates: true,
+      ...overrides,
+    };
+  }
+  function pushed(
+    progress: ServiceUpdateProgress,
+    overrides: Partial<ServerUpdateState> = {},
+  ): ServerUpdateState {
+    return {
+      supported: true,
+      currentVersion: '0.8.0-preview.1',
+      availability: null,
+      progress,
+      downloadPolicy: 'after-24h',
+      autoDownloadAt: null,
+      applyWhenIdle: null,
+      ...overrides,
+    };
+  }
+  afterEach(() => {
+    serverUpdateQuery.data = undefined;
+    serverUpdateActions.length = 0;
+    runningTurnsQuery.data = undefined;
+    runningTurnsQuery.isSuccess = false;
+  });
+
+  test('offers Download, never the one-click update, and downloading restarts nothing', () => {
+    serverUpdateQuery.data = pushed({ state: 'idle' });
+    renderWith(stagedService());
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: `Download ${STAGED}` }));
+    expect(serverUpdateActions).toEqual([{ action: 'stage' }]);
+  });
+
+  test('shows measured download bytes while staging, and no Download button', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staging',
+      requestId: 'r-1',
+      intent: 'stage',
+      stagePhase: 'downloading',
+      downloadedBytes: 25 * 1024 * 1024,
+      totalBytes: 100 * 1024 * 1024,
+    });
+    renderWith(stagedService());
+    expect(
+      screen.getByText('Downloading the release: 25.0 of 100.0 MB (25%)…'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
+  });
+
+  test('a staged version asks before restarting, naming the turns it interrupts', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    runningTurnsQuery.data = {
+      turns: [
+        {
+          sessionId: 's-1',
+          conversationId: 'c-1',
+          title: 'Fix the build',
+          engine: 'codex',
+          startedAt: null,
+        },
+      ],
+      hiddenCount: 1,
+    };
+    runningTurnsQuery.isSuccess = true;
+    renderWith(stagedService());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Restart server to update to ${STAGED}`,
+      }),
+    );
+    // Nothing is requested by opening the confirmation.
+    expect(serverUpdateActions).toEqual([]);
+    expect(
+      screen.getByText('These 2 agent turns will be interrupted:'),
+    ).toBeTruthy();
+    expect(screen.getByText('Fix the build (codex)')).toBeTruthy();
+    expect(screen.getByText('1 turn you cannot see')).toBeTruthy();
+    expect(screen.queryByText(/resume/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(serverUpdateActions).toEqual([]);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Restart server to update to ${STAGED}`,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'When idle' }));
+    expect(serverUpdateActions).toEqual([
+      { action: 'apply-when-idle', version: STAGED },
+    ]);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Restart server to update to ${STAGED}`,
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+    expect(serverUpdateActions.at(-1)).toEqual({
+      action: 'apply',
+      version: STAGED,
+    });
+  });
+
+  test('an update-when-idle intent says so and can be cancelled', () => {
+    serverUpdateQuery.data = pushed(
+      {
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      },
+      {
+        applyWhenIdle: { version: STAGED, requestedAt: '2026-10-19T10:01:00Z' },
+      },
+    );
+    renderWith(stagedService());
+    expect(
+      screen.getByText(
+        `The server restarts into ${STAGED} once no agent turn is running.`,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel update when idle' }),
+    );
+    expect(serverUpdateActions).toEqual([{ action: 'cancel-apply-when-idle' }]);
+  });
+
+  test('once the offered release is staged, only the staged line speaks (review F11)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService());
+    expect(
+      screen.getByText(
+        new RegExp(`Station ${STAGED} is downloaded and verified`),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(new RegExp(`${STAGED} is available`))).toBeNull();
+  });
+
+  test('a release newer than the staged one is offered for download again (review F7)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService({ latestVersion: '0.8.0-preview.3' }));
+    expect(
+      screen.getByRole('button', { name: 'Download 0.8.0-preview.3' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: `Restart server to update to ${STAGED}`,
+      }),
+    ).toBeTruthy();
+  });
+
+  test('a server without stagedUpdates keeps the one-click update', () => {
+    renderWith(stagedService({ stagedUpdates: undefined }));
+    expect(
+      screen.getByRole('button', { name: `Update server to ${STAGED}` }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
   });
 });

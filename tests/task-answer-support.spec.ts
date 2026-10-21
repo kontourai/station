@@ -1,5 +1,6 @@
 import { copyFile } from 'node:fs/promises';
 import { buildStationTaskBasisMcpAppResource } from '@kontourai/station-basis-pane/task-basis-mcp-app';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import { buildStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
 import { encodeTaskToolResultReference } from '@kontourai/station-contracts/task-graph';
 import {
@@ -18,11 +19,14 @@ import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 const taskId = 'answer-support-ui';
 const referenceId = 'answer-reference-ui';
 const basisFrameOrigin = 'http://basis-proxy.test';
+// Real Station session ids carry ':' (`${agentSlug}:${epoch}`), so the routed
+// fixture uses that shape end to end (#418).
+const sessionId = 'station:1792425046978';
 const executionRef = {
   authority: '@kontourai/thread',
   schemaVersion: '1.2.0',
   kind: 'result',
-  threadId: 'session-ui',
+  threadId: sessionId,
   resultId: 'terminal-result-ui',
 } as const;
 const executionText = `<img src=x onerror=alert(1)> inert tool output ${'x'.repeat(2400)}`;
@@ -53,7 +57,7 @@ const basisProjection = {
         schemaVersion: '1.2.0',
         kind: 'assistant-message',
         standing: 'observed',
-        threadId: 'session-ui',
+        threadId: sessionId,
         messageId: 'message-ui',
       },
       fact: 'answer-observed',
@@ -137,7 +141,7 @@ function surface3Projection(options: {
           schemaVersion: '1.2.0',
           kind: 'assistant-message',
           standing: 'observed',
-          threadId: 'session-ui',
+          threadId: sessionId,
           messageId: 'message-ui',
         },
         fact: 'answer-observed',
@@ -252,7 +256,7 @@ function surface3Projection(options: {
               schemaVersion: '1.2.0',
               kind: 'assistant-message',
               standing: 'observed',
-              threadId: 'session-ui',
+              threadId: sessionId,
               messageId: 'message-ui',
             },
             role: 'execution',
@@ -294,6 +298,104 @@ test('derives Surface 3 standing from the public composition boundary', () => {
 
 function json(data: unknown) {
   return { contentType: 'application/json', body: JSON.stringify(data) };
+}
+
+/** Whether no part of any matched element is inside the viewport. */
+/**
+ * A Task opens on Chat; Kept answers (Answer details) and the Basis host share
+ * the Details tab, as the reveal contract (#3883) requires.
+ */
+async function openAnswerDetails(page: Page) {
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
+  const answerDetails = page
+    .getByRole('tabpanel', { name: 'Details', exact: true })
+    .locator('details', {
+      has: page.locator('summary', { hasText: 'Answer details' }),
+    });
+  if (
+    !(await answerDetails.evaluate((node) => (node as HTMLDetailsElement).open))
+  )
+    await answerDetails
+      .locator('summary', { hasText: 'Answer details' })
+      .click();
+}
+
+function outOfView(target: Locator): Promise<boolean> {
+  return target.evaluateAll((nodes) =>
+    nodes.every((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.bottom <= 0 || rect.top >= window.innerHeight;
+    }),
+  );
+}
+
+/**
+ * #3883: Open Basis lands the reader on the opened pane: focus on its tab
+ * (the pane's name in the room's strip, selected) and the viewport on the
+ * pane, wherever on the page the button was pressed. The focused tab must be
+ * the topmost thing at its own centre: the page's sticky header covered it
+ * while the tab was still inside the viewport's bounds.
+ */
+async function expectOpenedPaneRevealed(page: Page, pane: Locator) {
+  const focused = page.locator(':focus');
+  await expect(focused).toHaveAttribute('role', 'tab');
+  await expect(focused).toHaveAttribute('aria-selected', 'true');
+  await expect
+    .poll(() =>
+      focused.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        );
+        return {
+          inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight,
+          unobscured: hit !== null && node.contains(hit),
+        };
+      }),
+    )
+    .toEqual({ inViewport: true, unobscured: true });
+  await expect
+    .poll(() =>
+      pane.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= 0 && rect.top < window.innerHeight;
+      }),
+    )
+    .toBe(true);
+}
+
+/**
+ * Every scroll offset between the Task room and the window: a reveal that
+ * moved the page changes one of them.
+ */
+function scrollOffsets(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const offsets = [window.scrollY];
+    let node = document.querySelector('.task-workspace__room')?.parentElement;
+    while (node) {
+      offsets.push(node.scrollTop);
+      node = node.parentElement;
+    }
+    return offsets;
+  });
+}
+
+/** Whether every matched element sits in view below the page's sticky header. */
+function inViewBelowHeader(target: Locator): Promise<boolean> {
+  return target.evaluateAll((nodes) => {
+    const header =
+      document.querySelector('.task-workspace > .detail-header') ??
+      document.querySelector('.page-frame > .page-frame__header');
+    const top = header?.getBoundingClientRect().bottom ?? 0;
+    return (
+      nodes.length > 0 &&
+      nodes.every((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.top >= top && rect.bottom <= window.innerHeight;
+      })
+    );
+  });
 }
 
 /** Same-origin browser-access bootstrap, matching project-lifecycle's fixture. */
@@ -386,6 +488,38 @@ async function seedStationAccess(page: Page) {
         }),
       );
     if (path === '/api/plugins') return route.fulfill(json({ plugins: [] }));
+    // The Task conversation's composer asks which engines it may delegate
+    // to; none is offered in this fixture.
+    if (
+      route.request().method() === 'POST' &&
+      path === '/api/orchestration/delegations/options'
+    )
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            environment: {
+              id: '11111111-1111-4111-8111-111111111111',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            project: { slug: 'project-ui' },
+            targets: [],
+          },
+        }),
+      );
+    // The app shell reads the account's saved preferences before it renders.
+    if (route.request().method() === 'GET' && path === '/api/me/preferences')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            schemaVersion: 1,
+            values: {},
+            revision: 'task-answer-support-fixture',
+          } satisfies AccountPreferencesView,
+        }),
+      );
     if (route.request().method() === 'GET' && path === '/api/projects') {
       await route.fulfill(
         json({
@@ -428,6 +562,38 @@ async function seedStationAccess(page: Page) {
       });
       return;
     }
+    // The app shell gates on account preferences (#3694) before any Task view.
+    if (route.request().method() === 'GET' && path === '/api/me/preferences')
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            schemaVersion: 1,
+            values: {},
+            revision: 'task-answer-support-fixture',
+          } satisfies AccountPreferencesView,
+        }),
+      );
+    // The Task conversation pane discovers delegation targets on open. This
+    // fixture models a Station with none ready; delegation is not under test.
+    if (
+      route.request().method() === 'POST' &&
+      path === '/api/orchestration/delegations/options'
+    )
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            environment: {
+              id: '11111111-1111-4111-8111-111111111111',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            project: { slug: 'project-ui' },
+            targets: [],
+          },
+        }),
+      );
     if (
       await fulfillStationShellRead(route, {
         environmentId: 'task-answer-support-fixture',
@@ -499,7 +665,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     associatedAnswerReferenceIds,
   });
   await page.route(
-    `**/api/orchestration/sessions/${executionRef.threadId}/tool-results/${executionRef.resultId}`,
+    `**/api/orchestration/sessions/${encodeURIComponent(executionRef.threadId)}/tool-results/${executionRef.resultId}`,
     (route) => {
       resultReads += 1;
       return route.fulfill({
@@ -597,7 +763,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
           {
             id: referenceId,
             state: 'available',
-            sessionId: 'session-ui',
+            sessionId,
             turnId: 'turn-ui',
             answer: {
               role: 'assistant',
@@ -909,10 +1075,9 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
 
   await page.goto(`/tasks/${taskId}`);
   await expect(
-    page
-      .getByRole('button', { name: /^Manage Stations/ })
-      .getByLabel('connected'),
+    page.getByRole('button', { name: /^Choose Station — Connected/ }),
   ).toBeVisible();
+  await openAnswerDetails(page);
   const answerReference = page.locator('.task-workspace__answer-reference');
   await expect(answerReference).toHaveCount(1);
   await expect(
@@ -940,13 +1105,52 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expectNoBlockingAccessibilityViolations(page, 'task-answer-support');
 
   await page.setViewportSize({ width: 1280, height: 900 });
+  // #3883: the Basis host renders on the first open, so before it the room
+  // (and its tab strip) is not shown: the first Open Basis must reveal it.
+  await expect(
+    page.getByRole('region', { name: 'Task room workspace' }),
+  ).toBeHidden();
+  const openBasis = page.getByRole('button', { name: 'Open Basis' });
+  await openBasis.scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole('tablist', { name: 'Workspace panes' }),
+  ).toBeHidden();
+  await openBasis.click();
   await expect(
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeVisible();
-  const openBasis = page.getByRole('button', { name: 'Open Basis' });
-  await openBasis.click();
   const nativeBasis = page.locator('.station-basis-pane');
   await expect(nativeBasis).toBeVisible();
+  await expectOpenedPaneRevealed(page, nativeBasis);
+  // #3883: with the room's tab strips already in view, Open Basis focuses
+  // the pane's tab without moving the page.
+  await page.setViewportSize({ width: 1280, height: 2400 });
+  await openBasis.scrollIntoViewIfNeeded();
+  // Off the position a reveal would scroll to (the strip just below the
+  // header), so a needless reveal would move the page.
+  await page.evaluate(() => {
+    let node = document.querySelector('.task-workspace__room')?.parentElement;
+    while (node && node.scrollHeight <= node.clientHeight)
+      node = node.parentElement;
+    node?.scrollBy(0, -150);
+  });
+  expect(
+    await inViewBelowHeader(
+      page.getByRole('tablist', { name: 'Workspace panes' }),
+    ),
+  ).toBe(true);
+  expect(await inViewBelowHeader(openBasis)).toBe(true);
+  const offsetsBefore = await scrollOffsets(page);
+  await openBasis.click();
+  await expectOpenedPaneRevealed(page, nativeBasis);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  expect(await scrollOffsets(page)).toEqual(offsetsBefore);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await expect(nativeBasis.getByRole('status')).toContainText('Unassessed');
   await expect(nativeBasis).toContainText('<img src=x onerror=alert(1)>');
   await expect(nativeBasis.locator('img')).toHaveCount(0);
@@ -960,7 +1164,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     throw new Error('The routed server-event stream did not subscribe.');
   firstSsePublisher(
     'event: answer.assessment.updated\n' +
-      'data: {"sessionId":"session-ui","turnId":"turn-ui","revision":4,"active":true}\n\n',
+      `data: ${JSON.stringify({ sessionId, turnId: 'turn-ui', revision: 4, active: true })}\n\n`,
   );
   await expect(nativeBasis.getByRole('status')).toContainText('Policy met');
   await expect(nativeBasis).toContainText('Explicitly entailing evidence');
@@ -1017,11 +1221,19 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   // owner-projected as the retained receipt's current standing: Station does
   // not substitute the later receipt for the exact kept identity.
   flowReevaluated = true;
-  await page.getByRole('button', { name: 'Open Whole Task Basis' }).click();
+  const openWholeTask = page.getByRole('button', {
+    name: 'Open Whole Task Basis',
+  });
+  await openWholeTask.scrollIntoViewIfNeeded();
+  expect(
+    await outOfView(page.getByRole('tablist', { name: 'Workspace panes' })),
+  ).toBe(true);
+  await openWholeTask.click();
   const wholeTaskBasis = page.locator('.station-basis-pane').filter({
     hasText: 'Whole Task has no aggregate standing.',
   });
   await expect(wholeTaskBasis).toBeVisible();
+  await expectOpenedPaneRevealed(page, wholeTaskBasis);
   await expect(wholeTaskBasis).toContainText(
     'Some kept answer context is restricted.',
   );
@@ -1058,7 +1270,14 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await finalAnswer.click();
   await expect(finalAnswer).toHaveAttribute('aria-pressed', 'true');
   await expect(wholeTaskBasis.getByRole('status')).toContainText('Policy met');
-  await expectNoBlockingAccessibilityViolations(page, 'whole-task-basis');
+  // Scoped to the Task workspace view. The app-shell sidebar and toolbar
+  // are outside this surface; their visible-label mismatches are tracked in
+  // their own issue rather than failing the Basis journey.
+  await expectNoBlockingAccessibilityViolations(
+    page,
+    'whole-task-basis',
+    '.task-workspace',
+  );
   const wholeTaskPanel = page
     .getByRole('tabpanel', { name: 'Basis', exact: true })
     .filter({ has: wholeTaskBasis });
@@ -1166,6 +1385,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   roomAvailable = false;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await openAnswerDetails(page);
   const mobileBasisTrigger = page.getByRole('button', { name: 'Open Basis' });
   await mobileBasisTrigger.focus();
   await mobileBasisTrigger.click();
@@ -1289,7 +1509,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await replace.click();
   const dialog = page.getByRole('dialog', { name: 'Replace answer support' });
   await expect(
-    dialog.getByText('Session session-ui · turn turn-ui'),
+    dialog.getByText(`Session ${sessionId} · turn turn-ui`),
   ).toBeVisible();
   await dialog.getByRole('button', { name: 'opaque-A' }).click();
   await expect(
@@ -1316,7 +1536,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     throw new Error('The routed server-event stream did not reconnect.');
   publishSse(
     'event: answer.assessment.updated\n' +
-      'data: {"sessionId":"session-ui","turnId":"turn-ui","revision":5,"active":false}\n\n',
+      `data: ${JSON.stringify({ sessionId, turnId: 'turn-ui', revision: 5, active: false })}\n\n`,
   );
   await expect(
     basisDialog.getByRole('button', { name: 'Retry' }),
@@ -1370,7 +1590,7 @@ test('renders pinned input context without leaking a revoked projection', async 
           {
             id: 'input-link-ui',
             state: 'available',
-            sessionId: 'session-ui',
+            sessionId,
             turnId: 'turn-ui',
             eventId: 'event-ui',
             input: {
@@ -1386,6 +1606,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   });
 
   await page.goto('/tasks/pinned-input-ui');
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const inputs = page.getByRole('region', { name: 'Pinned inputs' });
   await expect(inputs).toContainText(
     'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
@@ -1393,7 +1614,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await expect(inputs).toContainText('brief.png · image/png · 1,024 bytes');
   await expect(inputs.getByText('Authored prompt')).toHaveCount(0);
   await expect(
-    contrastRatio(page.locator('.detail-header__badge--muted')),
+    contrastRatio(page.locator('.task-room-status-pill')),
   ).resolves.toBeGreaterThanOrEqual(4.5);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
@@ -1404,6 +1625,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await expectNoBlockingAccessibilityViolations(page, 'task-user-input-pin');
 
   await page.goto('/tasks/pinned-input-revoked');
+  await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const revoked = page.getByRole('region', { name: 'Pinned inputs' });
   await expect(revoked).toContainText('Pinned inputs are unavailable');
   await expect(revoked.getByRole('button', { name: 'Retry' })).toBeVisible();

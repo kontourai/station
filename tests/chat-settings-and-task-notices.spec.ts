@@ -356,25 +356,24 @@ for (const [label, viewport] of [
           .evaluate((element) => getComputedStyle(element).color);
       expect(await colour(finished)).not.toBe(await colour(failed));
 
-      // The restating summary is folded away, so the title is read once.
-      for (const [notice, title] of [
-        [finished, finishedTitle],
-        [failed, failedTitle],
-      ] as const) {
-        const visible = await notice.evaluate(
-          (element) => (element as HTMLElement).innerText,
-        );
-        expect(visible.split(title)).toHaveLength(2);
-        await expect(notice.locator('details')).not.toHaveAttribute('open');
-      }
+      const visible = await finished.evaluate(
+        (element) => (element as HTMLElement).innerText,
+      );
+      expect(visible.split(finishedTitle)).toHaveLength(2);
+      await expect(finished.locator('details')).not.toHaveAttribute('open');
+      await expect(failed.locator('details')).toHaveCount(0);
+      await expect(
+        failed.getByText(
+          `Background command "${failedTitle}" failed with exit code 1`,
+        ),
+      ).toBeVisible();
       await expect(stopped).not.toContainText('⏹');
 
       await notices.last().scrollIntoViewIfNeeded();
       await evidence(page, `task-notices-${label}.png`, testInfo);
 
-      // The Details disclosure still reaches the exit code.
-      await failed.getByText('Details').click();
-      await expect(failed).toContainText('failed with exit code 1');
+      await finished.getByText('Details').click();
+      await expect(finished).toContainText('completed (exit code 0)');
       await evidence(page, `task-notices-${label}-details.png`, testInfo);
     });
   });

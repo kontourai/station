@@ -181,7 +181,10 @@ export const STATION_CONFINEMENT_RECORD_METADATA_KEY =
  *   is available to this start on this host (the message names it).
  * - `confinement_workspace_incompatible`: the only mechanisms for the level
  *   cannot work with the start's workspace isolation (for example a copied
- *   provider and a shared live checkout).
+ *   provider and a shared live checkout), or the workspace holds engine
+ *   configuration its repository does not account for, which would run
+ *   outside any confinement (#3800; refused whether or not the start
+ *   requires confinement).
  * - `confinement_not_observed`: the mechanism was engaged, but the started
  *   engine did not report it applied; the process was stopped.
  */

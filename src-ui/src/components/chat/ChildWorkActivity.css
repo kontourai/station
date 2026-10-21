@@ -1,0 +1,64 @@
+.child-work-activity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.child-work-activity__tool {
+  position: relative;
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  align-items: center;
+  gap: var(--k-space-1);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.child-work-activity__tool::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--k-text) 14%, transparent),
+    transparent
+  );
+  animation: child-work-activity-sweep var(--motion-status-breathe)
+    var(--ease-linear) infinite;
+}
+
+.child-work-activity__progress {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes child-work-activity-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+:root[data-page-hidden] .child-work-activity__tool::after {
+  animation-play-state: paused;
+}
+
+.child-work-activity__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.child-work-activity__tool > svg {
+  flex-shrink: 0;
+}

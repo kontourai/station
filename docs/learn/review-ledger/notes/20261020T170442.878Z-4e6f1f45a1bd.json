@@ -1,0 +1,7 @@
+{
+  "revision": "9f31b19022424aca4fd966533aa9c675c6be8a18",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Independent delta review on transplanted 9f31b190224: extracted plan preserves existing open, phone fold, explicit bottom and unavailable region semantics; preview refuses the special main conversion that first restores a phone layer. readPhoneLayer and readRegions supply committed state to guard admission. Existing model/phone suites passed unchanged in the 266-test focused set; phone-width actual browser child/reload/Back/Up checked. Existing placement prose remains accurate; no new public SDK claim.","inputs":["docs/design/placement.md","src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

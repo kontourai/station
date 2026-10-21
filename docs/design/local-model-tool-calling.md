@@ -5,7 +5,7 @@
 > belong to the investigated version. They are preserved as evidence, not current
 > setup instructions or a renewed model-compatibility claim. Use the
 > [Connections guide](../guides/connections.md#local-first-ollama-no-credentials)
-> and [Agent guide](../guides/agents.md#agent-configuration) for current setup.
+> and [Agent guide](../guides/agent-configuration.md#agent-configuration) for current setup.
 > Current model binding and Ollama catalog behavior are owned by
 > [runtime provider resolution](../../src-server/runtime/plugins/runtime-provider-resolution.ts)
 > and the [Ollama provider](../../src-server/providers/llm/ollama-provider.ts).

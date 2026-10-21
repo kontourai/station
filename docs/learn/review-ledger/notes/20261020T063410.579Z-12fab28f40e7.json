@@ -1,0 +1,7 @@
+{
+  "revision": "c9d92bc8fe3c0bf39b20e2b4e6e9733aafda7e24",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"#1706 delta: docs/guides/testing.md gained one paragraph on derived changed-test diagnostic completeness and provisional hosted fast-checks passes; fast-checks aggregate now warns on ci-fast/test-full deferral and refuses a completed shard for a deferred plan. This document only routes to those owners; its routing and claims remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

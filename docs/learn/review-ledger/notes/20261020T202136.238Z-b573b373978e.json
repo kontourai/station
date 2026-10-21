@@ -1,0 +1,7 @@
+{
+  "revision": "107c4cc2eb0d13160a51251564e9c35ffe319de4",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"#3800 round 7: only the linked approval-posture section on the Codex trusted-repository choice changed; this document makes no claim about it; no prose change needed.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

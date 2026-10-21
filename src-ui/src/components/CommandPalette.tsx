@@ -24,10 +24,12 @@ import {
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
+import { KERNEL_RESERVED_SHORTCUTS } from '../contexts/kernelReservedShortcuts';
 import { useNavigation } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
@@ -36,6 +38,7 @@ import {
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useShowSurfacePage } from '../contexts/useShowSurface';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -270,10 +273,23 @@ export function CommandPalette() {
     };
   }, [open, query, settingsCatalog]);
 
+  const developerFeatures = useDeveloperFeatures();
+  const { developerToolsEnabled } = useDeviceSettings();
   const settingsCommands = useMemo(
     () =>
-      settingsCatalog?.settingsPaletteCommands({ isMobile, isDesktop }) ?? [],
-    [isMobile, isDesktop, settingsCatalog],
+      settingsCatalog?.settingsPaletteCommands({
+        isMobile,
+        isDesktop,
+        developerToolsEnabled,
+        experimentalTrustEnabled: developerFeatures.trust,
+      }) ?? [],
+    [
+      isMobile,
+      isDesktop,
+      settingsCatalog,
+      developerToolsEnabled,
+      developerFeatures.trust,
+    ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
     settingsCatalog
@@ -524,9 +540,9 @@ export function CommandPalette() {
   }, []);
 
   useKeyboardShortcut(
-    'command-palette',
-    'k',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.id,
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.modifiers],
     'Open command palette',
     openPalette,
   );
@@ -859,7 +875,9 @@ export function CommandPalette() {
               : {
                   label: entry.descriptor.name,
                   stateLabel: presentation.stateLabel,
-                  reasonLabel: presentation.reasonLabel,
+                  reasonLabel: presentation.reviewExtensions
+                    ? 'Review extension access in this Project’s pane picker or the current Station’s details.'
+                    : presentation.reasonLabel,
                   actionLabel: presentation.actionLabel,
                 },
           );
