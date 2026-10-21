@@ -74,7 +74,6 @@ export function createEnsemblePreparationRoutes(
           {
             success: false,
             code: error.code,
-            error: error.message,
             ...(error.observation ? { observation: error.observation } : {}),
           },
           error.code === 'ensemble_preparation_authority_required' ? 403 : 422,

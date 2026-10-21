@@ -779,6 +779,7 @@ describe('production Ensemble preparation authentication', () => {
       const result = await f.send();
       expect(result.status).toBe(403);
       expect(result.body.code).toBe('ensemble_preparation_authority_required');
+      expect(result.body.error).toBeUndefined();
       expect(execFile.mock.calls.length).toBe(0);
       f.assertNoInvocations();
     },
