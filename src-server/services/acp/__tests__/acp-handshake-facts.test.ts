@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   acpRuntimeCatalogStatus,
   buildACPCapabilityInventory,
@@ -110,17 +110,10 @@ process.stdin.on('data', (chunk) => {
 });
 `;
 
-const directories: string[] = [];
-
-afterEach(() => {
-  for (const directory of directories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function fakeAgent(answers: { initialize: unknown; sessionNew?: unknown }) {
-  const directory = mkdtempSync(join(tmpdir(), 'station-acp-handshake-'));
-  directories.push(directory);
+  const directory = makeTempDir('station-acp-handshake-');
   const agentPath = join(directory, 'agent.cjs');
   const configPath = join(directory, 'answers.json');
   const capturePath = join(directory, 'requests.jsonl');
