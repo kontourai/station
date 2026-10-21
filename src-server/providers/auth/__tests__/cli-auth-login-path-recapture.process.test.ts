@@ -101,14 +101,18 @@ describe.skipIf(process.platform === 'win32')(
       expect(spawns()).toBe(2);
     });
 
-    test('recaptures during the startup capture join it rather than spawning', async () => {
+    test('recaptures during the startup capture share one run, past the rate limit', async () => {
       const cli = await import('../cli-auth.js');
       const startup = cli.resolveAugmentedPath();
+      // A clock far enough ahead that the rate limit cannot be what stops a
+      // second spawn: only the shared in-flight claim can.
+      const later = Date.now() + 60 * MIN_INTERVAL_MS;
       await Promise.all(
-        Array.from({ length: 5 }, () => cli.recaptureLoginShellPath()),
+        Array.from({ length: 5 }, () => cli.recaptureLoginShellPath(later)),
       );
       await startup;
-      expect(spawns()).toBe(1);
+      // The startup capture, then exactly one recapture for all five callers.
+      expect(spawns()).toBe(2);
     });
 
     test('a failed recapture keeps the PATH it already had', async () => {

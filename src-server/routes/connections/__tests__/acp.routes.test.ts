@@ -11,6 +11,8 @@ import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runti
 let providerEntries: Array<{
   builtin?: boolean;
   source: string;
+  /** Provider type when `source` is a plugin's own name rather than `<type>:…`. */
+  type?: string;
   provider: any;
 }> = [];
 
@@ -26,7 +28,9 @@ vi.mock('../../../providers/auth/cli-auth.js', async (importOriginal) => ({
 }));
 vi.mock('../../../providers/registries/registry.js', () => ({
   listProviders: (type: string) =>
-    providerEntries.filter((entry) => entry.source.startsWith(type)),
+    providerEntries.filter((entry) =>
+      (entry.type ?? entry.source).startsWith(type),
+    ),
 }));
 
 const { createACPRoutes, listUnconnectedACPRegistryEntries } = await import(
@@ -430,6 +434,62 @@ describe('ACP Routes', () => {
       `Elsewhere does not run on ${process.platform}, the platform Station runs on.`,
     );
     expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
+  test('refuses plugin entries that impersonate a built-in name or come from a reserved provider name', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        provider: {
+          listAvailable: () => [
+            { id: 'goose-2', name: 'Goose', command: 'goose' },
+            { id: 'goose-3', name: ' GOOSE ', command: 'goose' },
+            // Cyrillic о (U+043E) for the Latin o's.
+            { id: 'goose-4', name: 'G\u043e\u043ese', command: 'goose' },
+            // Fullwidth letters fold to ASCII under NFKC.
+            { id: 'goose-5', name: '\uFF27oose', command: 'goose' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+      {
+        source: 'Station',
+        provider: {
+          listAvailable: () => [{ id: 's1', name: 'S One', command: 's1' }],
+        },
+      },
+      {
+        source: 'k\u043entour',
+        provider: {
+          listAvailable: () => [{ id: 'k1', name: 'K One', command: 'k1' }],
+        },
+      },
+      {
+        source: 'goose',
+        provider: {
+          listAvailable: () => [{ id: 'g1', name: 'G One', command: 'g1' }],
+        },
+      },
+    ];
+    // Plugin providers register under the plugin's own name.
+    providerEntries = providerEntries.map((entry) =>
+      entry.builtin ? entry : { ...entry, type: 'acpConnectionRegistry' },
+    );
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'acme',
+      'goose',
+    ]);
   });
 
   test('a plugin entry is attributed to its registered provider, and unsafe names are refused', async () => {

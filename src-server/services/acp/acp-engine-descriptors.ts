@@ -20,13 +20,79 @@ export interface ValidatedACPRegistryEntry {
   source: string;
 }
 
+/**
+ * Cyrillic and Greek letters that render like Latin ones. Not a full
+ * confusables table: enough that a plugin cannot pass "Gооse" (Cyrillic о)
+ * off as Goose. NFKC already folds fullwidth and compatibility forms.
+ */
+const CONFUSABLE_SKELETON: Readonly<Record<string, string>> = {
+  а: 'a',
+  в: 'b',
+  е: 'e',
+  ё: 'e',
+  з: '3',
+  і: 'i',
+  ї: 'i',
+  ј: 'j',
+  к: 'k',
+  м: 'm',
+  н: 'h',
+  о: 'o',
+  р: 'p',
+  с: 'c',
+  т: 't',
+  у: 'y',
+  х: 'x',
+  ѕ: 's',
+  ԁ: 'd',
+  ԛ: 'q',
+  ԝ: 'w',
+  α: 'a',
+  β: 'b',
+  ε: 'e',
+  η: 'n',
+  ι: 'i',
+  κ: 'k',
+  ν: 'v',
+  ο: 'o',
+  ρ: 'p',
+  τ: 't',
+  υ: 'u',
+  χ: 'x',
+  ω: 'w',
+};
+
+/** The form two names are compared in: NFKC, case-folded, confusables mapped, spacing collapsed. */
+function nameSkeleton(name: string): string {
+  return [...name.normalize('NFKC').toLowerCase()]
+    .map((char) => CONFUSABLE_SKELETON[char] ?? char)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Names a plugin provider may not register under: it would read as Station's own. */
+const RESERVED_PROVIDER_NAMES = ['station', 'kontour'];
+
 function refusalReasons(
   entry: ACPConnectionRegistryEntry,
   builtin: boolean,
   builtinIds: ReadonlySet<string>,
+  builtinNames: ReadonlySet<string>,
+  source: string,
 ): string[] {
   const errors = validateACPEngineDescriptor(entry);
   if (builtin) return errors;
+  // The card and its "Provided by" line are what a person trusts the install
+  // command by, so neither may read as a built-in engine or as Station.
+  if (builtinNames.has(nameSkeleton(entry.name)))
+    errors.push(`name '${entry.name}' reads as a built-in engine`);
+  const sourceSkeleton = nameSkeleton(source);
+  if (
+    RESERVED_PROVIDER_NAMES.includes(sourceSkeleton) ||
+    builtinNames.has(sourceSkeleton)
+  )
+    errors.push(`provider name '${source}' is reserved`);
   // A plugin entry may not change how Station launches an executable, and may
   // not replace a built-in card (and with it the install command shown under
   // that engine's name). It can still list engines under its own ids.
@@ -61,10 +127,23 @@ export function listValidatedACPRegistryEntries(
       .filter(({ builtin }) => builtin)
       .flatMap(({ entries }) => entries.map((entry) => entry.id)),
   );
+  const builtinNames = new Set(
+    listed
+      .filter(({ builtin }) => builtin)
+      .flatMap(({ entries }) =>
+        entries.map((entry) => nameSkeleton(entry.name)),
+      ),
+  );
   const admitted: ValidatedACPRegistryEntry[] = [];
   for (const { builtin, source, entries } of listed) {
     for (const entry of entries) {
-      const errors = refusalReasons(entry, builtin, builtinIds);
+      const errors = refusalReasons(
+        entry,
+        builtin,
+        builtinIds,
+        builtinNames,
+        source,
+      );
       if (errors.length > 0) {
         logger.warn('Refused engine registry entry', {
           entryId: entry.id,

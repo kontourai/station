@@ -270,14 +270,27 @@ export async function recheckACPConnectionRegistry(): Promise<ACPConnectionRegis
   const response = await authenticatedFetch(`${apiBase}/acp/registry/recheck`, {
     method: 'POST',
   });
-  if (response.status === 403) return { status: 'not-permitted' };
-  const result = (await response.json()) as {
-    success: boolean;
+  const result = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
     data?: ACPConnectionRegistryEntry[];
-    error?: string;
+    error?: string | { code?: string };
   };
+  const code =
+    typeof result.error === 'object' ? result.error?.code : undefined;
+  // Only the runtime's scope gate answers "this credential may not"; an
+  // origin refusal or any other 403 is a failure the caller should see.
+  if (response.status === 403 && code === 'insufficient_scope') {
+    return { status: 'not-permitted' };
+  }
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to re-check engines'));
+    throw new Error(
+      code
+        ? `Failed to re-check engines (${code})`
+        : apiErrorMessage(
+            result as { error?: string },
+            'Failed to re-check engines',
+          ),
+    );
   }
   return { status: 'rechecked', entries: result.data ?? [] };
 }
