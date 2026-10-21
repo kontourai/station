@@ -1203,8 +1203,8 @@ Ctrl-C closes local observation and does not cancel the group. A transport failu
 remains an error. Server refusal, unknown usage, completion, and Flow acceptance
 must remain distinct. Package publication and real group execution are unverified.
 
-A member follow subscription stops explicitly after its 4,096-identity history
-bound, rather than forgetting earlier identities. Treat that as an observation
+A member follow subscription stops explicitly at 4,096 identities or 1 MiB of
+retained identity UTF-8 bytes, rather than forgetting earlier identities. Treat that as an observation
 limit, not completion or permission to repeat execution.
 
 Source: `packages/cli/src/commands/group.ts`; focused caller evidence:

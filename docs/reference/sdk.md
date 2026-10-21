@@ -5114,9 +5114,9 @@ checkpoints advance after caller delivery. Reconnect uses `Last-Event-ID` with
 separate group/member cursor domains. Close the handle or abort its signal to
 stop local observation; neither action cancels execution.
 
-One member subscription retains up to 4,096 distinct event identities across
-pages and reconnects. Reusing an identity at a different sequence or exceeding
-that history bound stops observation with a protocol error. The client does not
+One member subscription retains up to 4,096 distinct event identities and 1 MiB
+of their UTF-8 bytes across pages and reconnects. Reusing an identity at a
+different sequence or exceeding either bound stops observation with a protocol error. The client does not
 evict old identities and silently accept reuse. This bound is local to one
 subscription; it is not a durable group-event ledger or terminal group evidence.
 
