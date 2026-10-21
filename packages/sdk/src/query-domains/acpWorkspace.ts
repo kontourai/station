@@ -328,7 +328,7 @@ export async function recheckACPConnectionRegistry(): Promise<ACPConnectionRegis
   const response = await authenticatedFetch(`${apiBase}/acp/registry/recheck`, {
     method: 'POST',
   });
-  const result = (await response.json().catch(() => ({}))) as {
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
     success?: boolean;
     data?: ACPConnectionRegistryEntry[];
     error?: string | { code?: string };
@@ -643,3 +643,4 @@ export function useReconnectACPConnectionMutation(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';
