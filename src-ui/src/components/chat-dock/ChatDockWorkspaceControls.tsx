@@ -1,6 +1,4 @@
-import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { LazyBoundary } from '../LazyBoundary';
@@ -8,8 +6,6 @@ import { NewChatAction } from '../NewChatAction';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
-  refreshSessionInventoryHostExecution,
-  registerSessionInventoryHost,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
 
@@ -18,40 +14,14 @@ const loadSessionInventoryEntryPoint = () =>
     default: module.SessionInventoryEntryPoint,
   }));
 
-/** Authority-scoped registration and panel portal, mounted once by the chat pane. */
+/** Lazy panel portal; its registration belongs to the chat pane. */
 export function ChatDockSessionInventoryHost({
   sessionInventory: inventory,
 }: {
   sessionInventory: NonNullable<Controls['sessionInventory']>;
 }) {
-  const authority = useHostRequestAuthorityScope();
   const hostId = inventory.hostId;
-  const authorityKey = authority?.authorityKey;
-  const chatStoreId = inventory.chatStoreId;
-  const executionId = inventory.executionId;
-  const latestExecution = useRef(executionId);
-  latestExecution.current = executionId;
-  const available = Boolean(
-    hostId && authorityKey && chatStoreId && executionId,
-  );
   const occurrence = useSessionInventoryOccurrence(hostId);
-  useEffect(
-    () =>
-      registerSessionInventoryHost(
-        hostId,
-        available
-          ? {
-              authorityKey: authorityKey!,
-              chatStoreId,
-              executionId: latestExecution.current,
-            }
-          : null,
-      ),
-    [authorityKey, available, chatStoreId, hostId],
-  );
-  useEffect(() => {
-    refreshSessionInventoryHostExecution(hostId, executionId);
-  }, [hostId, executionId]);
   if (!occurrence || !inventory.mountRef.current) return null;
   return createPortal(
     <LazyBoundary

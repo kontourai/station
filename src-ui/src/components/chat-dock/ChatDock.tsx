@@ -184,6 +184,7 @@ import { useSessionContextCardFits } from './sessionContextCardModel';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
+  useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
@@ -2535,6 +2536,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isMobile,
         }
       : undefined;
+  useSessionInventoryHostRegistration(
+    sessionInventoryHostId,
+    requestAuthority?.authorityKey,
+    sessionInventoryControls?.chatStoreId,
+    sessionInventoryControls?.executionId,
+  );
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
   const conversationProjectDirectory = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)

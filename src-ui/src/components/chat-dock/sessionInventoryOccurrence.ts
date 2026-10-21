@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { SessionInventoryLaunch } from './SessionInventoryEntryPoint';
 
 type Registration = {
@@ -59,6 +59,29 @@ export function refreshSessionInventoryHostExecution(
 ) {
   const registration = registrations.get(hostId);
   if (registration) registration.executionId = executionId;
+}
+
+/** Keep registration with the pane, independently of lazy panel rendering. */
+export function useSessionInventoryHostRegistration(
+  hostId: string,
+  authorityKey: string | undefined,
+  chatStoreId: string | undefined,
+  executionId: string | undefined,
+) {
+  const latestExecution = useRef(executionId);
+  latestExecution.current = executionId;
+  const available = Boolean(authorityKey && chatStoreId && executionId);
+  useEffect(
+    () => registerSessionInventoryHost(hostId, available ? {
+      authorityKey: authorityKey!,
+      chatStoreId: chatStoreId!,
+      executionId: latestExecution.current!,
+    } : null),
+    [hostId, authorityKey, chatStoreId, available],
+  );
+  useEffect(() => {
+    if (executionId) refreshSessionInventoryHostExecution(hostId, executionId);
+  }, [hostId, executionId]);
 }
 
 export function closeSessionInventoryOccurrence(hostId?: string) {

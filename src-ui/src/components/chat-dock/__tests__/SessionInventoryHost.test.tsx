@@ -8,12 +8,12 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ChatDockSessionInventoryHost } from '../ChatDockWorkspaceControls';
 import {
   closeSessionInventoryOccurrence,
   openSessionInventoryOccurrence,
   readSessionInventoryHostRegistration,
   useSessionInventoryOccurrence,
+  useSessionInventoryHostRegistration,
 } from '../sessionInventoryOccurrence';
 
 const hooks = vi.hoisted(() => ({
@@ -105,8 +105,9 @@ describe('SessionInventoryHost', () => {
       dockMode: 'bottom' as const,
       fullscreen: false,
     };
-    const view = render(
-      <ChatDockSessionInventoryHost sessionInventory={input} />,
+    const view = renderHook(({ chatStoreId, executionId }) =>
+      useSessionInventoryHostRegistration('refresh-host', 'handoff-test', chatStoreId, executionId),
+      { initialProps: input },
     );
     const occurrence = renderHook(() =>
       useSessionInventoryOccurrence('refresh-host'),
@@ -128,11 +129,7 @@ describe('SessionInventoryHost', () => {
         }),
       ).toBe(true);
     });
-    view.rerender(
-      <ChatDockSessionInventoryHost
-        sessionInventory={{ ...input, executionId: 'execution-b' }}
-      />,
-    );
+    view.rerender({ ...input, executionId: 'execution-b' });
     expect(occurrence.result.current?.requestedScope).toEqual({
       kind: 'current-answer',
       sessionId: 'execution-a',
@@ -141,11 +138,7 @@ describe('SessionInventoryHost', () => {
     expect(
       readSessionInventoryHostRegistration('refresh-host')?.executionId,
     ).toBe('execution-b');
-    view.rerender(
-      <ChatDockSessionInventoryHost
-        sessionInventory={{ ...input, chatStoreId: 'another-chat' }}
-      />,
-    );
+    view.rerender({ ...input, chatStoreId: 'another-chat' });
     expect(occurrence.result.current).toBeNull();
     view.unmount();
     expect(
