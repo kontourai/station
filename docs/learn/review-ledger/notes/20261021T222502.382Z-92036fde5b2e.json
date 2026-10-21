@@ -1,0 +1,9 @@
+{
+  "revision": "d968beb1da7ab3021148c3626dceb753ce8e87cb",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed independent reserved-response composition report and7 unchanged source blobs plus browser receipt. No blocking composition findings; compiling waiter-refusal mutation times out as intended and exact restoration passes. Provider/registry and AccountingV1 acceptance remain unverified. Flow36de11b1 review and restarted required readiness remain running; no publication or activation claimed. Desktop/390px browser fixture passed2 cases at3669442358f; current UI/server/tests source trees match. Other stale records remain unreviewed.","inputs":["docs/plans/child-work-epic.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed the changed exact Flow Agents pin against root manifest and installed9.3.0 public authority/group exports. Nested Flow remains5.2.0, distinct from Station root5.2.1. Existing current reading routes and published-contract-only policy remain accurate. July/August tables are explicitly historical, not current imports or evidence for unpublished AccountingV1/rounds/v3 renewal APIs. No prose change or historical API compatibility claim is needed for this pin. Source inspection only; no provider, hosted, native or deployment acceptance.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}
