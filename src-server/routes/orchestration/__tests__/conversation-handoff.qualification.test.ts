@@ -76,6 +76,7 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
     readonly provider: 'claude' | 'codex',
     readonly nativeReturn = false,
     private readonly ownership?: NativeSessionOwnership,
+    private readonly turnOrdinalOffset = 0,
   ) {
     this.metadata = {
       displayName: provider === 'claude' ? 'Claude Code' : 'Codex',
@@ -179,7 +180,7 @@ class TerminalHandoffAdapter implements ProviderAdapterShape {
 
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
-    const ordinal = this.turns.length;
+    const ordinal = this.turns.length + this.turnOrdinalOffset;
     const turnId = `${this.provider}-handoff-turn-${ordinal}`;
     const base = {
       provider: this.provider,
@@ -306,32 +307,40 @@ function currentBinding(
 ): ExecutionSessionBinding | null {
   const current = store.conversationSessions(conversationId).at(-1);
   if (!current) return null;
+  const reservation = store.readSessionByThread(current.sessionId)
+    ? undefined
+    : store.conversationHandoffForSession(current.sessionId);
+  const bindingSessionId =
+    reservation?.predecessorSessionId ?? current.sessionId;
   const configured = store
-    .listEvents(current.sessionId)
+    .listEvents(bindingSessionId)
     .map((item) => item.payload)
     .reverse()
     .find((event) => event.method === 'session.configured');
   const metadata = configured?.metadata;
   const boundAgent =
-    typeof metadata?.agentId === 'string'
+    reservation?.targetAgentId ??
+    (typeof metadata?.agentId === 'string'
       ? metadata.agentId
       : typeof metadata?.targetId === 'string'
         ? metadata.targetId
-        : undefined;
+        : undefined);
   if (!metadata || typeof metadata.environmentId !== 'string' || !boundAgent)
     return null;
   const session = store
     .readSessions()
-    .find((item) => item.threadId === current.sessionId);
+    .find((item) => item.threadId === bindingSessionId);
+  const executionAgentId = reservation
+    ? reservation.targetExecutionAgentId
+    : metadata.executionAgentId;
+  const connectionId = reservation
+    ? reservation.targetConnectionId
+    : metadata.connectionId;
   return {
-    environmentId: metadata.environmentId,
+    environmentId: reservation?.targetEnvironmentId ?? metadata.environmentId,
     agentId: boundAgent,
-    ...(typeof metadata.executionAgentId === 'string'
-      ? { executionAgentId: metadata.executionAgentId }
-      : {}),
-    ...(typeof metadata.connectionId === 'string'
-      ? { connectionId: metadata.connectionId }
-      : {}),
+    ...(typeof executionAgentId === 'string' ? { executionAgentId } : {}),
+    ...(typeof connectionId === 'string' ? { connectionId } : {}),
     ...(typeof metadata.userId === 'string' ? { userId: metadata.userId } : {}),
     ...(typeof session?.cwd === 'string' ? { cwd: session.cwd } : {}),
   };
@@ -420,6 +429,14 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       preserveProfile: false,
       raceContextReservation: true,
     },
+    {
+      label: 'Codex native return retains its pin across a reservation restart',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      restartBeforeReturnStart: true,
+    },
   ])(
     '$label preserves one Conversation across an explicit, replay-safe Session handoff and an ordinary target turn',
     async ({
@@ -431,6 +448,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       repeatNativeReturn = false,
       oversizedCatchup = false,
       raceContextReservation = false,
+      restartBeforeReturnStart = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -463,25 +481,28 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         nativeReturn,
         ownership,
       );
-      let service = new OrchestrationService({
-        adapterRegistry: registry([sourceAdapter, targetAdapter]),
-        eventBus,
-        eventStore: store,
-        loadAgentExecutionConfig: async (slug) => ({
-          credentialProfileRef: `${slug}-account`,
-        }),
-        resolveSessionAgent: createSessionAgentResolver({
-          loadAgentSpec: async (slug) => ({
-            name: slug,
-            prompt: `Profile instructions for ${slug}`,
-            skills: [],
-            tools: { mcpServers: [] },
+      const createService = () =>
+        new OrchestrationService({
+          adapterRegistry: registry([sourceAdapter, targetAdapter]),
+          eventBus,
+          eventStore: store,
+          loadAgentExecutionConfig: async (slug) => ({
+            credentialProfileRef: `${slug}-account`,
           }),
-          resolveToolServer: async () => null,
-          resolveSkillDir: async () => null,
-        }),
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
+          resolveSessionAgent: createSessionAgentResolver({
+            loadAgentSpec: async (slug) => ({
+              name: slug,
+              prompt: `Profile instructions for ${slug}`,
+              skills: [],
+              tools: { mcpServers: [] },
+            }),
+            resolveToolServer: async () => null,
+            resolveSkillDir: async () => null,
+          }),
+          logger: { debug: vi.fn(), warn: vi.fn() },
+        });
+      let service = createService();
+      let reservationInterrupted = false;
       const conversationId = `conversation:handoff:${source.provider}-to-${target.provider}`;
 
       const pathFor = (id: AgentId): AgentPath =>
@@ -536,8 +557,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             INTERNAL_SESSION_READ_SCOPE,
             requested,
           ),
-        prepareConversationHandoff: async (_access, input) =>
-          service.prepareConversationHandoff(
+        prepareConversationHandoff: async (_access, input) => {
+          const prepared = await service.prepareConversationHandoff(
             input.conversationId,
             INTERNAL_SESSION_READ_SCOPE,
             {
@@ -554,7 +575,19 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               idempotencyKey: input.idempotencyKey,
               messageDigest: input.messageDigest,
             },
-          ),
+          );
+          if (
+            restartBeforeReturnStart &&
+            !reservationInterrupted &&
+            input.idempotencyKey === 'return-to-earlier-engine'
+          ) {
+            reservationInterrupted = true;
+            throw new Error(
+              'Qualification checkpoint after durable reservation.',
+            );
+          }
+          return prepared;
+        },
         readConversationHandoffEffect: async (_access, input) =>
           service.readConversationHandoffStatus(
             input.conversationId,
@@ -644,31 +677,38 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           },
           executionDeps,
         );
-      const routes = createOrchestrationRoutes(service, {
-        eventBus,
-        logger: { debug: vi.fn() },
-        getUserId: () => OWNER,
-        executeForegroundMessage: (input) =>
-          executeForegroundMessage({ ...input, userId: OWNER }, executionDeps),
-        handoffConversation: (input) =>
-          executeForegroundMessage(
-            {
-              ...input,
-              userId: OWNER,
-              handoffIntent: createConversationHandoffIntent(
-                input.idempotencyKey,
-              ),
-            },
-            executionDeps,
-          ),
-        continueForegroundMessage: (input) =>
-          execute(target, {
-            message: input.message,
-            conversationId: input.conversationId,
-          }),
-      });
-      const app = new Hono();
-      app.route('/api/orchestration', routes);
+      const createApp = () => {
+        const routes = createOrchestrationRoutes(service, {
+          eventBus,
+          logger: { debug: vi.fn() },
+          getUserId: () => OWNER,
+          executeForegroundMessage: (input) =>
+            executeForegroundMessage(
+              { ...input, userId: OWNER },
+              executionDeps,
+            ),
+          handoffConversation: (input) =>
+            executeForegroundMessage(
+              {
+                ...input,
+                userId: OWNER,
+                handoffIntent: createConversationHandoffIntent(
+                  input.idempotencyKey,
+                ),
+              },
+              executionDeps,
+            ),
+          continueForegroundMessage: (input) =>
+            execute(target, {
+              message: input.message,
+              conversationId: input.conversationId,
+            }),
+        });
+        const app = new Hono();
+        app.route('/api/orchestration', routes);
+        return app;
+      };
+      let app = createApp();
       const post = (path: string, body: unknown) =>
         app.request(path, {
           method: 'POST',
@@ -980,6 +1020,57 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           ).toBe(false);
         });
         sourceAdapter.failNextNativeReturn = failReturnSeed;
+        let reservedSeedDigest: string | undefined;
+        if (restartBeforeReturnStart) {
+          const interrupted = await post(
+            `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+            {
+              message:
+                'Recall the token after returning to your earlier engine.',
+              idempotencyKey: 'return-to-earlier-engine',
+              target: { environment: { kind: 'current' }, agent: source.agent },
+            },
+          );
+          expect(interrupted.status).toBe(409);
+          expect(await interrupted.text()).toContain(
+            'checkpoint after durable reservation',
+          );
+          const reserved = store.conversationHandoffByKey(
+            conversationId,
+            'return-to-earlier-engine',
+          );
+          expect(reserved?.contextSeed).toBeDefined();
+          expect(
+            store.readSessionByThread(reserved!.sessionId),
+          ).toBeUndefined();
+          reservedSeedDigest = reserved!.contextSeed!.seedDigest;
+          const sourceTurns = sourceAdapter.turns.length;
+          const targetTurns = targetAdapter.turns.length;
+          await service.shutdown();
+          store.close();
+          store = new EventStore(databasePath);
+          eventBus = new EventBus();
+          sourceAdapter = new TerminalHandoffAdapter(
+            source.provider,
+            true,
+            ownership,
+            sourceTurns,
+          );
+          targetAdapter = new TerminalHandoffAdapter(
+            target.provider,
+            true,
+            ownership,
+            targetTurns,
+          );
+          service = createService();
+          app = createApp();
+          expect(
+            store.conversationHandoffByKey(
+              conversationId,
+              'return-to-earlier-engine',
+            )?.contextSeed?.seedDigest,
+          ).toBe(reservedSeedDigest);
+        }
         const reserve = store.reserveConversationHandoff.bind(store);
         const reservationSpy = raceContextReservation
           ? vi
@@ -990,7 +1081,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                   method: 'session.configured',
                   provider: target.provider,
                   threadId: input.predecessorSessionId,
-                sessionId: input.predecessorSessionId,
+                  sessionId: input.predecessorSessionId,
                   createdAt: new Date().toISOString(),
                   metadata: {},
                 });
@@ -1029,7 +1120,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           data: { sessionId: string };
         };
         returnedSessionId = returnedBody.data.sessionId;
-        await eventually(() => expect(sourceAdapter.turns).toHaveLength(2));
+        await eventually(() =>
+          expect(sourceAdapter.turns).toHaveLength(
+            restartBeforeReturnStart ? 1 : 2,
+          ),
+        );
         expect(sourceAdapter.starts.at(-1)).toMatchObject({
           resumeCursor: {
             nativeSessionId: `${source.provider}:native:${conversationId}`,
@@ -1092,6 +1187,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         firstReturnSeedDigest = createHash('sha256')
           .update(sourceAdapter.turns.at(-1)!.ambientContext!)
           .digest('hex');
+        if (restartBeforeReturnStart)
+          expect(firstReturnSeedDigest).toBe(reservedSeedDigest);
         if (oversizedCatchup) {
           expect(
             status?.contextDelivery?.omission.omittedMessages,
@@ -1172,26 +1269,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       eventBus = new EventBus();
       sourceAdapter = new TerminalHandoffAdapter(source.provider);
       targetAdapter = new TerminalHandoffAdapter(target.provider);
-      service = new OrchestrationService({
-        adapterRegistry: registry([sourceAdapter, targetAdapter]),
-        loadAgentExecutionConfig: async (slug) => ({
-          credentialProfileRef: `${slug}-account`,
-        }),
-        resolveSessionAgent: createSessionAgentResolver({
-          loadAgentSpec: async (slug) => ({
-            name: slug,
-            prompt: `Profile instructions for ${slug}`,
-            skills: [],
-            tools: { mcpServers: [] },
-          }),
-          resolveToolServer: async () => null,
-          resolveSkillDir: async () => null,
-        }),
-
-        eventBus,
-        eventStore: store,
-        logger: { debug: vi.fn(), warn: vi.fn() },
-      });
+      service = createService();
       const restored = await service.readConversationEventWindow(
         conversationId,
         { authority: INTERNAL_SESSION_READ_SCOPE, turnLimit: 10 },
