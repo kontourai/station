@@ -70,6 +70,9 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
   let processes: FakeAcpProcess[];
   // Lets an engine re-establish its session (a credential-refusal restart).
   let loadSessionCapable = false;
+  // The agent's stall window; unset keeps the default.
+  let stallWindowMs: number | undefined;
+  let acp: AcpAdapter;
   let inbox: ThreadInboxDelivery;
   let wakeUps: AgentWakeUpDelivery;
   const clock = { now: Date.now() };
@@ -83,6 +86,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     bus = new EventBus();
     processes = [];
     loadSessionCapable = false;
+    stallWindowMs = undefined;
     const adapter = new AcpAdapter({
       getConnections: async () => [
         {
@@ -102,6 +106,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
         return child as unknown as ACPProcess;
       },
     });
+    acp = adapter;
     service = new OrchestrationService({
       adapterRegistry: {
         register() {},
@@ -114,6 +119,10 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
         ...input,
         agent: { slug: 'ops-bot' },
       }),
+      loadAgentExecutionConfig: async () =>
+        stallWindowMs === undefined
+          ? undefined
+          : { turnStallWindowMs: stallWindowMs },
       logger: { debug: vi.fn(), warn: vi.fn() },
     } as never);
     // The ports `createThreadInboxDelivery` gives production, minus the
@@ -290,7 +299,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     });
   });
 
-  const startChat = async () => {
+  const startChat = async (agentSlug?: string) => {
     await service.dispatch(
       {
         type: 'startSession',
@@ -298,7 +307,12 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
           threadId: THREAD,
           provider: 'acp',
           cwd: tmp,
-          metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+          metadata: {
+            connectionId: CONNECTION_ID,
+            userId: OWNER,
+            // Names the agent whose stall window the session runs under.
+            ...(agentSlug ? { agentSlug } : {}),
+          },
         },
       },
       { userId: OWNER },
@@ -456,5 +470,79 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       kind: 'found',
       fact: { terminalEventId: aborted!.eventId, retire: true },
     });
+  });
+
+  // The coordinator owns a stamped turn's events only when they name its
+  // send. A permission request that named none was not fed to the stall
+  // watch, so a question left open past the window read as a stall.
+  test('a permission request opened mid-turn pauses the stall watch until it is answered', async () => {
+    const windowMs = 1_000;
+    stallWindowMs = windowMs;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await startChat('ops-bot');
+      await service.dispatchWithReceipt(
+        { type: 'sendTurn', input: { threadId: THREAD, input: 'write it' } },
+        { userId: OWNER },
+      );
+      await waitFor(prompts, (seen) => seen.length === 1, 'the prompt');
+      const [turnStarted] = stored('turn.started');
+      expect(turnStarted?.invocationId).toBeDefined();
+      expect((await summary())?.turnProgress?.turnId).toBe(turnStarted!.turnId);
+
+      const answer = processes[0]!.client.requestPermission({
+        sessionId: processes[0]!.sessionId ?? 'native-kiro-cli',
+        toolCall: {
+          toolCallId: 'call-write',
+          title: 'Write file',
+          rawInput: { path: 'a.txt' },
+        },
+        options: [
+          { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+          { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+        ],
+      } as never);
+      const [opened] = await waitFor(
+        () => stored('request.opened'),
+        (seen) => seen.length === 1,
+        'request.opened',
+      );
+      expect(opened).toMatchObject({
+        turnId: turnStarted!.turnId,
+        invocationId: turnStarted!.invocationId,
+      });
+
+      // A person deciding is not a stall, however long it takes.
+      await vi.advanceTimersByTimeAsync(windowMs * 3);
+      expect((await summary())?.turnProgress?.progressSilence).toBeUndefined();
+
+      await acp.respondToRequest(
+        THREAD,
+        String((opened as { requestId: string }).requestId),
+        'accept',
+      );
+      await expect(answer).resolves.toMatchObject({
+        outcome: { outcome: 'selected', optionId: 'allow' },
+      });
+      await waitFor(
+        () => stored('request.resolved'),
+        (seen) => seen.length === 1,
+        'request.resolved',
+      );
+      // The answer resumes the watch: silence after it is observed again.
+      await vi.advanceTimersByTimeAsync(windowMs * 2);
+      expect((await summary())?.turnProgress?.progressSilence).toMatchObject({
+        windowMs,
+      });
+
+      processes[0]!.resolvePrompt('end_turn');
+      await waitFor(
+        methods,
+        (seen) => seen.includes('turn.completed'),
+        'the turn to end',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

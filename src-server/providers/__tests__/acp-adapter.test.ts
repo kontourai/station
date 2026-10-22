@@ -561,6 +561,35 @@ describe('AcpAdapter', () => {
     await adapter.stopAll();
   });
 
+  // The turn's engine name and the adapter's copy both come from the trimmed
+  // connection name, so the two cannot name the engine differently.
+  test.each([
+    ['  Kiro  ', 'Kiro'],
+    ['   ', undefined],
+  ])(
+    'a connection named %j stamps its turns with engine name %j',
+    async (name, expected) => {
+      const { adapter, processes } = createAdapter({
+        connectionOverrides: [{ id: 'kiro', name }],
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-padded-name',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      await adapter.sendTurn({ threadId: 'thread-padded-name', input: 'Hi' });
+      const started = await nextEvent(iterator, 'turn.started');
+      expect(started.metadata?.engineDisplayName).toBe(expected);
+      processes[0]!.resolvePrompt('end_turn');
+      await nextEvent(iterator, 'turn.completed');
+      await adapter.stopAll();
+    },
+  );
+
   test('starts a session, streams the canonical lifecycle (AC1), and round-trips a turn/approval/interrupt against a stubbed ACP process (AC2)', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -3909,6 +3938,112 @@ describe('AcpAdapter', () => {
     expect(await nextOf('content.text-delta')).not.toHaveProperty(
       'invocationId',
     );
+    await adapter.stopAll();
+  });
+
+  // The execution coordinator owns a stamped turn's events only when they name
+  // its send, and the stall watch pauses on a request it owns: a permission
+  // request that named no send left the watch timing a person's decision.
+  test('a permission request opened in a send’s turn names that turn and send on open and on every resolution', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-request-origin';
+    await adapter.startSession({
+      provider: 'acp',
+      threadId,
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const nextOf = async (method: string) => {
+      for (;;) {
+        const event = await nextEvent(iterator, method);
+        if (event.method === method) return event;
+      }
+    };
+    const proc = processes[0]!;
+    const send = async (input: string, invocationId?: string) => {
+      const turn = await adapter.sendTurn({
+        threadId,
+        input,
+        ...(invocationId ? { invocationId } : {}),
+      });
+      await nextOf('turn.started');
+      return invocationId ? { turnId: turn.turnId, invocationId } : undefined;
+    };
+
+    // Answered.
+    let own = await send('one', 'invocation-answered');
+    void requestPermission(proc.client, 'tool-answered', 'write');
+    let opened = await nextOf('request.opened');
+    expect(opened).toMatchObject(own!);
+    await adapter.respondToRequest(
+      threadId,
+      String(opened.requestId),
+      'accept',
+    );
+    expect(await nextOf('request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'approved',
+      ...own,
+    });
+
+    // Cancelled when the prompt ends without reading the answer.
+    void requestPermission(proc.client, 'tool-orphan', 'write');
+    opened = await nextOf('request.opened');
+    expect(opened).toMatchObject(own!);
+    proc.resolvePrompt('end_turn');
+    expect(await nextOf('request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+      ...own,
+    });
+    await nextOf('turn.completed');
+
+    // Cancelled by an interrupt.
+    own = await send('two', 'invocation-interrupted');
+    void requestPermission(proc.client, 'tool-interrupted', 'write');
+    opened = await nextOf('request.opened');
+    expect(opened).toMatchObject(own!);
+    await adapter.interruptTurn(threadId);
+    expect(await nextOf('request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+      ...own,
+    });
+    await nextOf('turn.aborted');
+    // The engine's answer to the cancelled prompt.
+    proc.resolvePrompt('cancelled');
+
+    // A send with no invocation names nothing on its requests.
+    expect(await send('three')).toBeUndefined();
+    void requestPermission(proc.client, 'tool-bare', 'write');
+    opened = await nextOf('request.opened');
+    expect(opened).not.toHaveProperty('invocationId');
+    expect(opened).not.toHaveProperty('turnId');
+    await adapter.respondToRequest(
+      threadId,
+      String(opened.requestId),
+      'decline',
+    );
+    const bare = await nextOf('request.resolved');
+    expect(bare).not.toHaveProperty('invocationId');
+    expect(bare).not.toHaveProperty('turnId');
+    proc.resolvePrompt('end_turn');
+    await nextOf('turn.completed');
+
+    // Cancelled by the session stopping.
+    own = await send('four', 'invocation-stopped');
+    void requestPermission(proc.client, 'tool-stopped', 'write');
+    opened = await nextOf('request.opened');
+    expect(opened).toMatchObject(own!);
+    await adapter.stopSession(threadId);
+    expect(await nextOf('request.resolved')).toMatchObject({
+      requestId: opened.requestId,
+      status: 'cancelled',
+      ...own,
+    });
     await adapter.stopAll();
   });
 

@@ -501,6 +501,13 @@ interface AcpPendingRequest {
    * which would let one reach an OpenCode configuration path unasked.
    */
   governedEdit?: true;
+  /**
+   * The stamped turn the request opened in, if any. Its `request.opened` and
+   * every `request.resolved` for it name this turn and send, so the
+   * execution coordinator owns them and the stall watch pauses while a
+   * person decides.
+   */
+  origin?: AcpTurnOrigin;
 }
 
 type AcpTurnOrigin = {
@@ -1149,7 +1156,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
-      ...(config.name ? { connectionName: config.name } : {}),
+      ...(config.name.trim() ? { connectionName: config.name.trim() } : {}),
       engineName: config.name.trim() || config.id,
       command: config.command,
       args: config.args,
@@ -2457,6 +2464,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId,
       createdAt: new Date().toISOString(),
+      ...pending.origin,
       requestId,
       method: 'request.resolved',
       status: mapAcpDecisionToApprovalStatus(decision),
@@ -2595,6 +2603,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         createdAt: new Date().toISOString(),
+        ...pending.origin,
         requestId,
         method: 'request.resolved',
         status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -2636,6 +2645,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           provider: this.provider,
           threadId,
           createdAt: new Date().toISOString(),
+          ...pending.origin,
           requestId,
           method: 'request.resolved',
           status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -2896,11 +2906,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
 
       const requestId = crypto.randomUUID();
+      const origin = this.requestOrigin(record);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
         threadId: record.session.threadId,
         createdAt: new Date().toISOString(),
+        ...origin,
         requestId,
         method: 'request.opened',
         requestType: 'approval',
@@ -2931,6 +2943,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ...(toolName ? { toolName } : {}),
           ...(needsPerson ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
+          ...(origin ? { origin } : {}),
         });
       });
 
@@ -3473,6 +3486,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         createdAt: new Date().toISOString(),
+        ...pending.origin,
         requestId,
         method: 'request.resolved',
         status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -3645,11 +3659,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (record.stopping) return Promise.resolve({ decision: 'cancel' });
     const requestId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
+    const origin = this.requestOrigin(record);
     this.publish({
       eventId,
       provider: this.provider,
       threadId: record.session.threadId,
       createdAt: new Date().toISOString(),
+      ...origin,
       requestId,
       method: 'request.opened',
       requestType: 'approval',
@@ -3668,6 +3684,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         needsPerson: true,
         eventId,
         inputRequest: request.form,
+        ...(origin ? { origin } : {}),
       });
     });
   }
@@ -3771,6 +3788,18 @@ export class AcpAdapter implements ProviderAdapterShape {
       throw new Error(`Unknown ACP session: ${threadId}`);
     }
     return record;
+  }
+
+  /**
+   * The stamped turn a request opening now belongs to: the active turn, when
+   * Station's send opened it. A request raised outside such a turn names no
+   * turn and no send.
+   */
+  private requestOrigin(record: AcpSessionRecord): AcpTurnOrigin | undefined {
+    const origin = record.activeTurnOrigin;
+    return origin && record.activeTurnId === origin.turnId
+      ? { turnId: origin.turnId, invocationId: origin.invocationId }
+      : undefined;
   }
 
   /** The send's invocation, for events of the exact turn it opened. */
