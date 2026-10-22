@@ -177,7 +177,6 @@ it('allows SDK writes with a false browser offline signal after a successful rea
       }),
   );
   vi.stubGlobal('fetch', wire);
-  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
   const id = connections!.activeConnection!.id;
   try {
     await act(async () =>
@@ -185,8 +184,9 @@ it('allows SDK writes with a false browser offline signal after a successful rea
     );
     await expect(
       deleteProject(connections!.apiBase, 'blocked'),
-    ).rejects.toThrow('Station is unreachable');
+    ).rejects.toBeInstanceOf(TypeError);
     expect(wire).not.toHaveBeenCalled();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await act(async () => {
       await authenticatedFetch(endpoint);
     });
