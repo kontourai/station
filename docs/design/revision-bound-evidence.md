@@ -113,7 +113,14 @@ digest, settled-state, topology, scope, and compatible authority attestation.
 Corrupt/unavailable recovery is explicit (`revision_unavailable`), never an
 empty healthy ledger. Capacity is the retention policy: it rejects new receipts
 without pruning an active room/history reference. There is no time-based
-expiry in this slice. A lost post-commit response and a peer witness race each
+expiry in this slice. The ledger is Station-wide and every Task room edit
+stores a receipt carrying its full snapshot, so a few hundred small edits, or a
+few edits of a large document, fill it. Room admission applies the same bounds
+inside its settle transaction and refuses such a write as
+`evidence-ledger-full` before writing it
+([#4007](https://github.com/kontourai/station/issues/4007)); room editing then
+stops Station-wide until receipts can be retired, which this slice does not
+provide. A lost post-commit response and a peer witness race each
 receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.
