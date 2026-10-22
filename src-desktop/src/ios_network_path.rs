@@ -71,11 +71,9 @@ impl PathState {
 }
 
 #[cfg(any(target_os = "ios", test))]
-pub(crate) fn window_event(event: &tauri::WindowEvent) {
-    if matches!(event, tauri::WindowEvent::Resumed) {
-        // Activation also follows alerts and Face ID; never abort an active send.
-        crate::native_http_transport::retire_idle_connections();
-    }
+pub(crate) fn resumed() {
+    // Activation also follows alerts and Face ID; never abort an active send.
+    crate::native_http_transport::retire_idle_connections();
 }
 
 #[cfg(any(target_os = "ios", test))]
@@ -303,9 +301,8 @@ mod tests {
             "first observation must retire startup connections"
         );
         state.update(wifi, false, false, |_| panic!("duplicate must not emit"));
-        window_event(&tauri::WindowEvent::Focused(true));
         assert!(station.get(&agent, "fixture").starts_with("2:"));
-        window_event(&tauri::WindowEvent::Resumed);
+        resumed();
         assert_eq!(
             crate::native_http_transport::network_epoch(),
             epoch,

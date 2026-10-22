@@ -418,7 +418,7 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(1));
         };
-        crate::ios_network_path::window_event(&tauri::WindowEvent::Resumed);
+        crate::ios_network_path::resumed();
         assert!(
             waits
                 .iter()
