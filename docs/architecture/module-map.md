@@ -49,6 +49,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
+| [CliSessionGroups](#clisessiongroups) | Retain bounded session-group membership while published Flow owns scheduling and joins. | `src-server/services/orchestration/cli-session-group.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
 | [SessionTurnBoundaryAuthority](#sessionturnboundaryauthority) | Persist the one-way provider invocation boundary that lifecycle completion must not cross. | `src-server/services/orchestration/session-turn-boundary.ts` |
 | [TurnDeduplicator](#turndeduplicator) | Give exactly one owner the right to create a client turn. | `src-server/services/orchestration/turn-deduplicator.ts` |
@@ -1782,6 +1783,34 @@ authority path. The transcript keeps one `input-request` record per request
 with no tool row, taking its outcome from `request.resolved`. This boundary
 does not redact engine history or establish engine acknowledgement.
 
+
+## CliSessionGroups
+
+[CliSessionGroups](../../src-server/services/orchestration/cli-session-group.ts)
+retains personal-host group definitions, seat launch intents, actual session and
+initial-turn identities, and bounded revision events in the isolated Station
+home. The [orchestration route](../../src-server/routes/orchestration/orchestration.ts)
+binds every operation to the current credential and reuses the single-task
+`dispatchAuthorizedDelegation` path. Group creation starts no engine. Run
+supervision calls published Flow Agents `orchestrateFlowMultiCursor`; Flow owns
+ready-frontier claims, leases and join evaluation. Station supplies observations
+of each exact initial turn, not semantic acceptance.
+
+A durable launch intent precedes dispatch. Ambiguous starts retain occupied
+capacity and cannot be resent automatically. Cancellation closes admission and
+requests interruption through the existing session owner; only terminal evidence
+establishes an outcome. The deadline needs active supervision to request
+interruption. Group views and revision events contain identifiers and state;
+raw outputs and form answers remain behind ordinary authorized member reads and
+request-response paths. The SDK's authenticated SSE reader resumes bounded
+revision pages and reports retained-history gaps.
+
+The [API contract](../reference/api.md#cli-session-groups) owns the supported
+operations, preset composition and limits. The initial path enforces dispatch
+count and occupied-seat concurrency under Station session authority. Dollar,
+token and physical-attempt caps are unavailable; portable Flow lineage is
+unbound and work acceptance is unassessed. The separate reserved direct-API
+source/tariff owners do not establish those guarantees for CLI sessions.
 
 ## SessionLifecycleModule
 
