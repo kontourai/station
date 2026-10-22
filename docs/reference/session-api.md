@@ -1231,6 +1231,29 @@ correct:
 | `GET /api/orchestration/sessions/:threadId/events` | JSON array, one-shot response | A point-in-time replay of everything persisted so far. Not a stream — call it again to see new events (or use `event-page` below to poll a cursor). |
 | `GET /api/orchestration/events` | `text/event-stream` (SSE), long-lived connection | The live feed. Optional `?threadId=<id>` query param narrows it to one session; omitted, it streams every session the caller can read. |
 
+### Bounded session detail
+
+`GET /api/orchestration/sessions/:threadId?view=window-v1&turnLimit=10`
+returns the existing `OrchestrationSessionEventWindow` protocol: `protocolVersion: 1`,
+the authoritative `session` summary, chronological `events: {sequence, event, elided?}[]`,
+`hasMore`, optional `nextCursor`, and `watermark`. Sequences are global stream
+sequences. The first page prioritizes the newest turns; pass `nextCursor` back
+as `cursor` to read older events. This is the same cursor scheme as
+`/event-window?direction=newest`, so turn-start anchors may repeat across pages.
+Merge by event identity and sequence rather than concatenating anchors.
+
+`turnLimit` is 1–20 (default 10). The existing 150-event and 64,000-byte response
+bounds apply, with explicit payload elision. Attachments retain blob references;
+fetch retained bytes through the authorized attachment route. Invalid view or
+query shapes return 400; absent and unauthorized Sessions return the same 404.
+A malformed opaque cursor is refused by the existing event-window reader.
+A page is partial when `hasMore` is true; it cannot establish lifetime usage.
+
+Omitting `view` keeps the legacy full-detail contract, and `/events` keeps full
+replay for existing clients. New detail readers can use the bounded view without
+fetching full history. Conversation windows also authorize each lineage member
+through summary facts, without materializing its transcript.
+
 ### Events replay (`GET /sessions/:threadId/events`)
 
 ```jsonc

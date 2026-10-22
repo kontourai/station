@@ -5965,6 +5965,28 @@ export function createOrchestrationRoutes(
   });
 
   app.get('/sessions/:threadId', async (c) => {
+    const view = c.req.query('view');
+    if (view !== undefined) {
+      if (view !== 'window-v1')
+        return c.json(
+          { success: false, error: 'Invalid session detail view' },
+          400,
+        );
+      const parsed = sessionEventWindowQuerySchema.safeParse({
+        direction: 'newest',
+        cursor: c.req.query('cursor'),
+        turnLimit: c.req.query('turnLimit'),
+      });
+      if (!parsed.success)
+        return c.json({ success: false, error: 'Invalid event window' }, 400);
+      const data = await orchestrationService.readSessionEventWindow(
+        param(c, 'threadId'),
+        { ...parsed.data, authority: readAuthorityFor(c) },
+      );
+      if (!data)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return c.json({ success: true, data });
+    }
     const data = await orchestrationService.readSession(
       param(c, 'threadId'),
       readAuthorityFor(c),

@@ -2408,7 +2408,7 @@ export class OrchestrationService {
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
-        this.readSession(threadId, authority),
+        this.readSession(threadId, authority, { eventMethods: [] }),
     });
     this.internalStops = new InternalStopSuppression({
       listActiveTurnFoldEventPayloads: (threadId) =>
@@ -4805,14 +4805,15 @@ export class OrchestrationService {
     options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
     this.initialize();
-    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
-    this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.sessionReadModel.get(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!options || (!persisted && !loaded)) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) {
       return null;
     }
