@@ -409,6 +409,17 @@ refuse; no complete native policy inventory, live provider, hostile-host or
 post-spawn continuity claim follows. Baseline proof, mutation/restore, final
 qualification and independent P2 disposition remain pending.
 
+Independent review of `14e4392293a` confirmed that the private carrier and actual
+launch comparisons materially repair the direct context gap, but found a residual
+P2: Claude's local `remote-settings.json` policy cache was omitted. The follow-up
+adds effective-config and default-home refusal/absence witnesses and refuses
+remote-policy environment overrides. On the pre-fix committed source, the new
+cache regressions fail four cases with 58 controls passing: a present cache was
+accepted before login, and a cache created inside lazy SDK startup reached the
+mocked spawn. The final executable-drift case now changes Claude's executable
+inside that same lazy callback, after profile resolution, to bind the final guard
+uniquely. Repair qualification and independent disposition remain pending.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

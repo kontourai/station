@@ -207,6 +207,8 @@ export async function observeNativeAuthenticationFiles(input: {
       'CLAUDE_CODE_USE_FOUNDRY',
       'CLAUDE_CODE_PROCESS_WRAPPER',
       'CLAUDE_CODE_API_KEY_HELPER',
+      'CLAUDE_CODE_REMOTE_SETTINGS_PATH',
+      'CLAUDE_CODE_MOCK_REMOTE_SETTINGS',
     ]) {
       if (input.env[key]) throw new Error('ensemble_auth_store_unsupported');
     }
@@ -306,6 +308,10 @@ export async function observeNativeAuthenticationFiles(input: {
       ),
     );
     add(join(config, 'settings.json'), { validate: validateSettings });
+    add(join(config, 'remote-settings.json'), { validate: refuseManaged });
+    add(join(home, '.claude', 'remote-settings.json'), {
+      validate: refuseManaged,
+    });
     add(join(config, '.claude.json'), {
       project: claudeAuthenticationMetadata,
     });

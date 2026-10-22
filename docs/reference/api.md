@@ -1696,7 +1696,10 @@ invalidate an unchanged authentication projection.
 These checks support local file/env authentication only. Implicit Claude macOS
 Keychain login, non-file Codex stores, credential/policy helpers, detected managed
 preferences or cloud-config cache, Windows registry stores and alternate cloud
-credential chains currently refuse. File witnesses are bounded observations,
+credential chains currently refuse. Claude's effective-config and default-home
+`remote-settings.json` caches are refusal/absence witnesses; remote-settings path
+or mock-payload environment overrides are unsupported. File witnesses are bounded
+observations,
 not atomic file handles or protection from a hostile host owner. Remote policy,
 provider revocation and credential rotation after spawn remain unverified.
 

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import {
   mkdir,
   realpath,
@@ -7,7 +8,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type {
   AgentExecutionConfig,
   AgentMetadata,
@@ -474,7 +475,61 @@ async function fixture(
   };
 }
 
+async function authenticateFixture(
+  f: Awaited<ReturnType<typeof fixture>>,
+  signal = new AbortController().signal,
+) {
+  return authenticateEnsembleSessionGroup(
+    {
+      groupId: 'native-spawn',
+      intentDigest: 'native-intent',
+      signal,
+      members: [
+        {
+          seatId: 'lead',
+          target: {
+            agent: agentId('coordinator'),
+            environment: { kind: 'current' },
+            expectedEngine: {
+              kind: 'connection',
+              connectionId: engineConnectionId(f.engine),
+            },
+            workspace: { kind: 'project', projectSlug: 'project' },
+            model: { override: f.preset.members[0].model, options: {} },
+          },
+        },
+      ],
+    },
+    f.inventory,
+    'fixture-principal',
+    () => {},
+  );
+}
+
 describe('production Ensemble preparation authentication', () => {
+  test.each(['effective', 'fallback'] as const)(
+    'refuses Claude %s remote policy cache before login status',
+    async (location) => {
+      const f = await fixture('claude');
+      const cache = join(
+        location === 'effective'
+          ? credentialProfileAppHomeDir('claude', 'selected', f.homeDir)
+          : join(f.root, '.claude'),
+        'remote-settings.json',
+      );
+      await mkdir(dirname(cache), { recursive: true });
+      await writeFile(cache, '{"apiKeyHelper":"remote-policy-helper"}');
+      await expect(authenticateFixture(f)).rejects.toThrow(
+        'ensemble_auth_store_unsupported',
+      );
+      expect(
+        execFile.mock.calls.filter((call) => call[1].includes('status')),
+      ).toHaveLength(0);
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      f.assertNoInvocations();
+    },
+  );
+
   test.each([
     ['codex', false],
     ['claude', false],
@@ -483,27 +538,7 @@ describe('production Ensemble preparation authentication', () => {
     '%s guards the actual spawn after login and receiver-resolution awaits (JavaScript: %s)',
     async (engine, javascript) => {
       const f = await fixture(engine, javascript);
-      const target: ExecutionTarget = {
-        agent: agentId('coordinator'),
-        environment: { kind: 'current' },
-        expectedEngine: {
-          kind: 'connection',
-          connectionId: engineConnectionId(engine),
-        },
-        workspace: { kind: 'project', projectSlug: 'project' },
-        model: { override: f.preset.members[0].model, options: {} },
-      };
-      const admission = await authenticateEnsembleSessionGroup(
-        {
-          groupId: 'native-spawn',
-          intentDigest: 'native-intent',
-          members: [{ seatId: 'lead', target }],
-          signal: new AbortController().signal,
-        },
-        f.inventory,
-        'fixture-principal',
-        () => {},
-      );
+      const admission = await authenticateFixture(f);
       const start = () =>
         admission.invokeDispatch!('lead', 'reserved-native', () =>
           f.adapter.startSession({
@@ -569,13 +604,43 @@ describe('production Ensemble preparation authentication', () => {
       );
       expect(nativeSpawn).not.toHaveBeenCalled();
       f.setProfileOverride('selected');
-      let changed = false;
-      f.setConnectionRead(async () => {
-        if (!changed) {
-          changed = true;
-          await writeFile(f.executable, 'changed during receiver resolution');
+      const sdkSpawn = nativeQuery.getMockImplementation();
+      if (!sdkSpawn) throw new Error('missing SDK spawn fixture');
+      if (engine === 'claude') {
+        for (const cache of [
+          join(
+            credentialProfileAppHomeDir('claude', 'selected', f.homeDir),
+            'remote-settings.json',
+          ),
+          join(f.root, '.claude', 'remote-settings.json'),
+        ]) {
+          await mkdir(dirname(cache), { recursive: true });
+          nativeQuery.mockImplementationOnce(({ options }) => {
+            writeFileSync(cache, '{"apiKeyHelper":"unwitnessed-cache-helper"}');
+            return sdkSpawn({ options });
+          });
+          await expect(start()).rejects.toThrow('ensemble_auth_file_changed');
+          expect(nativeSpawn).not.toHaveBeenCalled();
+          await rm(cache);
+          await expect(start()).rejects.toThrow('native_spawn_control');
+          expect(nativeSpawn).toHaveBeenCalledTimes(1);
+          nativeSpawn.mockClear();
         }
-      });
+      }
+      let changed = false;
+      if (engine === 'codex') {
+        f.setConnectionRead(async () => {
+          if (!changed) {
+            changed = true;
+            await writeFile(f.executable, 'changed during receiver resolution');
+          }
+        });
+      } else {
+        nativeQuery.mockImplementationOnce(({ options }) => {
+          writeFileSync(f.executable, 'changed after lazy SDK capture');
+          return sdkSpawn({ options });
+        });
+      }
       await expect(start()).rejects.toThrow(
         'Execution authentication executable changed',
       );
