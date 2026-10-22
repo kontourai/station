@@ -1,7 +1,5 @@
 import { copyFile } from 'node:fs/promises';
-import { buildStationTaskBasisMcpAppResource } from '@kontourai/station-basis-pane/task-basis-mcp-app';
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
-import { buildStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
 import { encodeTaskToolResultReference } from '@kontourai/station-contracts/task-graph';
 import {
   type BasisProjection,
@@ -987,108 +985,6 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
       }),
     );
   });
-  const portableResource = buildStationTaskBasisMcpAppResource();
-  await page.route(
-    '**/integrations/station-control/ui/get_task_basis',
-    (route) =>
-      route.fulfill(
-        json({
-          success: true,
-          data: {
-            status: 'success',
-            serverId: 'station-control',
-            toolName: 'get_task_basis',
-            ref: 'station-control/get_task_basis',
-            resourceUri: portableResource.uri,
-          },
-        }),
-      ),
-  );
-  await page.route(
-    '**/integrations/station-control/ui/get_task_basis/resource',
-    (route) => route.fulfill(json({ success: true, data: portableResource })),
-  );
-  const portableCollection = {
-    version: 'station.task-basis-collection/v4',
-    taskId,
-    answers: Array.from({ length: 9 }, (_, index) => ({
-      answerReferenceId: `portable-answer-${index}`,
-      projection: currentBasisProjection,
-    })),
-    unassociated: [
-      { kind: 'task-output', taskId, outputId: 'portable-output', kept: true },
-    ],
-    keptToolResults: [],
-    keptGateEvaluations: [
-      {
-        referenceId: 'portable-flow-evaluation',
-        kept: true,
-        evaluation: {
-          ref: {
-            runId: 'portable-flow-run',
-            gateId: 'verification',
-            evaluationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-          },
-          evaluatedAt: '2026-08-26T00:00:00.000Z',
-          originalVerdict: 'pass',
-          kind: 'recheck',
-          trigger: 'freshness',
-          currentStanding: 'superseded',
-          currentRun: { status: 'active', currentStep: 'verification' },
-          validityAsOf: '2026-08-26T00:00:00.000Z',
-          validityScope: 'retained-immutable-bundle',
-          externalRevocation: 'not-observed',
-          selectedEvidence: [
-            {
-              evidenceId: 'portable-selected-evidence',
-              standing: 'superseded',
-              freshness: 'stale',
-              revocationCodes: [],
-              authority: 'active',
-            },
-          ],
-        },
-      },
-    ],
-    gaps: [{ state: 'restricted', scope: 'process' }],
-  };
-  const portableOccurrence = 'fixture_occurrence_'.padEnd(32, 'o');
-  const portableToken = 'fixture_continuation_'.padEnd(32, 't');
-  let portableReads = 0;
-  let portableDisposals = 0;
-  await page.route(`**/api/tasks/${taskId}/basis/app-read`, (route) => {
-    const body = route.request().postDataJSON();
-    if (route.request().method() === 'DELETE') {
-      expect(body).toEqual({ occurrenceId: portableOccurrence });
-      portableDisposals += 1;
-      return route.fulfill(json({ success: true }));
-    }
-    const continuation = portableReads > 0;
-    expect(body).toEqual(
-      continuation
-        ? { occurrenceId: portableOccurrence, continuationToken: portableToken }
-        : {},
-    );
-    portableReads += 1;
-    const result = buildStationTaskBasisMcpPage(
-      portableCollection,
-      continuation ? { answerOffset: 8, unassociatedOffset: 0 } : {},
-    );
-    expect(result?.status).toBe('available');
-    return route.fulfill(
-      json({
-        success: true,
-        data: result,
-        meta: {
-          'station.task-basis-app/v1': {
-            occurrenceId: portableOccurrence,
-            ...(!continuation ? { continuationToken: portableToken } : {}),
-          },
-        },
-      }),
-    );
-  });
-
   await page.goto(`/tasks/${taskId}`);
   await expect(
     page.getByRole('button', { name: /^Choose Station — Connected/ }),
@@ -1287,51 +1183,11 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(finalAnswer).toHaveAttribute('aria-pressed', 'true');
   await expect(wholeTaskBasis.getByRole('status')).toContainText('Policy met');
   await expectNoBlockingAccessibilityViolations(page, 'whole-task-basis');
-  const wholeTaskPanel = page
-    .getByRole('tabpanel', { name: 'Basis', exact: true })
-    .filter({ has: wholeTaskBasis });
-  await wholeTaskPanel
-    .getByRole('button', { name: 'Open portable MCP App' })
-    .click();
-  const portableApp = page
-    .frameLocator('iframe[title="MCP tool UI: station-control/get_task_basis"]')
-    .frameLocator('iframe');
+  // The Task host is chromeless; portable App paging and revocation belong
+  // to basis-mcp-interop.spec.ts's independent real MCP/AppBridge boundary.
   await expect(
-    portableApp.getByRole('heading', { name: 'Whole Task Basis', exact: true }),
-  ).toBeVisible();
-  await expect(
-    portableApp.getByText('Some kept Process context is restricted.', {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await portableApp
-    .getByRole('button', { name: 'Next page', exact: true })
-    .click();
-  await expect(
-    portableApp.getByRole('button', { name: /^portable-answer-8/ }),
-  ).toBeVisible();
-  await expect(
-    portableApp.getByText('Task output portable-output', { exact: true }),
-  ).toBeVisible();
-  const portableProcess = portableApp.getByRole('region', {
-    name: 'Process kept gate evaluations',
-  });
-  await expect(portableProcess).toContainText(
-    'Gate verification — original verdict pass. At last check: superseded;',
-  );
-  await portableProcess
-    .getByText('Process receipt details', { exact: true })
-    .click();
-  await expect(portableProcess).toContainText('portable-selected-evidence');
-  await captureReviewScreenshot(
-    'portable-mcp-process-expanded',
-    portableProcess,
-  );
-  expect(portableReads).toBe(2);
-  await page
-    .getByRole('button', { name: 'Close Basis App', exact: true })
-    .click();
-  await expect.poll(() => portableDisposals).toBe(1);
+    page.getByRole('button', { name: 'Open portable MCP App' }),
+  ).toHaveCount(0);
   await page.getByRole('tab', { name: 'Basis', exact: true }).last().click();
   // Chromium's actual accessibility tree, not DOM containment: aria-owns
   // keeps visually adjacent close actions outside tablist ownership.

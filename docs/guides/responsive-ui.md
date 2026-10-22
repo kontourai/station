@@ -125,7 +125,9 @@ beside the transcript in it, such as an open Chat inventory aside) with a
 beside it, so opening the inventory folds the card behind its chip (#3882);
 while the inventory is open the aside gives way first, down to its 16rem
 minimum, so the transcript keeps 640px wherever the surface has room for
-both. The same answer hides
+both. In a narrow side dock, inventory instead covers the conversation surface
+and hides the transcript until Close; it does not squeeze the transcript into
+a second narrow column. The same answer hides
 the header items it repeats, which live outside the dock body, so a CSS
 container query on the body could not reach them. A phone never shows it
 inline; there it opens as a sheet from the Chat actions sheet, because the
