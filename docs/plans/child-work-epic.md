@@ -168,6 +168,23 @@ browser form carry the policy; the inspector labels reserved starts and
 exhaustion. This is a logical host count only. The fiscal, token and physical
 provider-attempt guarantees remain unavailable, and Flow owns joins/outcomes.
 
+Independent reviews accepted the scoped legacy-replay repair at `188131f4f4f`
+and reserved-start allowance at `fe5fc622b02` without blocking findings. The
+allowance review independently passed 48 cases and caught a compiling boundary
+mutation. At `fe5fc622b02`, the real registered CLI and browser form each saved
+and supervised zero-start groups: no seats were dispatched, the event-store
+count remained 238, replay retained exhaustion and an allowance increase under
+the same operation returned 409. The browser inventory disclosed exhaustion;
+repair `407c9f58139` also shows it directly in the form's returned run result.
+That UI repair has controlled regression/mutation evidence, not a new live run.
+Both test groups were canceled and the isolated runtime was stopped.
+
+The no-tools continuation gap remains open. A non-model OpenCode probe on this
+host found CLI 2.0.32 rejects the existing `debug agent` command and advertises
+`debug agents`; the latter returned an empty list under the process-local deny
+overlay. This is no resolved-policy or tool-enforcement proof. Shared engine
+configuration was unchanged, and no provider turn ran.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
