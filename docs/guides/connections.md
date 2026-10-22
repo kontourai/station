@@ -1213,7 +1213,10 @@ Provider OAuth, Project-scoped forge grants and collaboration onboarding are
 tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
 importing a repository does not grant an Agent remote credentials.
 Project Settings → Sources combines repository repair with knowledge-store
-registration, refresh and disconnect; see [knowledge sources](knowledge.md#project-settings--sources).
+registration, refresh and disconnect. A repository repair row offers the same
+acquisition and retained-checkout picker. **Use this checkout** fills the repair
+path; the separate bind action verifies the current declared resource before
+recording its location. Selection does not change the primary resource. See [knowledge sources](knowledge.md#project-settings--sources).
 See the [API contract](../reference/api.md#repository-acquisition).
 
 ## Developer services and computers
