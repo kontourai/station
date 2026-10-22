@@ -68,7 +68,6 @@ dependencies {
     implementation("androidx.core:core:1.17.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.firebase:firebase-messaging:25.0.1")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.3")
     implementation(project(":tauri-android"))
     testImplementation("junit:junit:4.13.2")
     // android.jar only stubs org.json; unit tests need the real parser.

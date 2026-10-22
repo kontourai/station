@@ -498,6 +498,41 @@ describe('fetchSSE', () => {
       expect(delays).toEqual([2000, 4000, 8000, 16_000]);
     });
 
+    it('staggers suspended stream retries and coalesces repeated browser wake signals', async () => {
+      vi.useFakeTimers();
+      const doc = visibilityDocument(true);
+      vi.stubGlobal('document', doc);
+      const fetchMock = vi.fn(async () => new Response('', { status: 503 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const streams = Array.from({ length: 3 }, () =>
+        fetchSSE('https://station.example.test/events', {
+          retryDelayMs: 1_000,
+          maxRetryDelayMs: 30_000,
+          onMessage: () => undefined,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(4_500);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+      const random = vi
+        .spyOn(Math, 'random')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0.5)
+        .mockReturnValue(0.9);
+      doc.show();
+      doc.show();
+      await vi.advanceTimersByTimeAsync(99);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(10);
+      await vi.advanceTimersByTimeAsync(450);
+      expect(fetchMock).toHaveBeenCalledTimes(11);
+      streams[2]?.close();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(fetchMock).toHaveBeenCalledTimes(11);
+      for (const stream of streams) stream.close();
+      random.mockRestore();
+    });
+
     it('an explicit retry() cuts a transient backoff short', async () => {
       vi.useFakeTimers();
       const attemptedAt: number[] = [];

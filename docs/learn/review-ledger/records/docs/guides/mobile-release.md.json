@@ -118,7 +118,13 @@
 
     "scripts/write-ios-build-manifest.mjs",
 
-    "scripts/ios-simulator-build.mjs"
+    "scripts/ios-simulator-build.mjs",
+
+    "src-desktop/src/ios_background_task.rs",
+
+    "src-ui/src/platform/networkCost.ts",
+
+    "src-ui/src/hooks/useNotificationOsAlerts.ts"
   ],
 
   "checks": [

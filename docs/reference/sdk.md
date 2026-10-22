@@ -122,6 +122,11 @@ and authorization limits. This export requires a published version containing it
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
 last event they applied for the same server authority.
+Browser visibility, focus and online signals can shorten a transient backoff
+once its minimum wait has elapsed. Those signals are coalesced per wait and
+spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
+`retry()` and cancellation remain immediate; cursor and authorization handling
+are unchanged.
 
 The session collections observed by `useOrchestrationSessionsQuery` and personal
 boards retain row identity by thread ID when only `answerability.observedAt` and
