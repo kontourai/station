@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-
+import { setImmediate as nextTask } from 'node:timers/promises';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 import {
   act,
@@ -8,7 +8,8 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   encodeDevicePairingPayload,
   loadPendingExchange,
@@ -27,6 +28,10 @@ vi.mock('../react/QRDisplay', () => ({
   ),
 }));
 
+beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+});
+
 function response(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -35,7 +40,15 @@ function response(body: unknown, status = 200) {
 }
 
 test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({
+    toFake: [
+      'Date',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+    ],
+  });
   let recovered = false;
   let unavailable = false;
   const request = vi.fn(async (input: RequestInfo | URL) =>
@@ -1066,9 +1079,7 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
 
     expect(
-      await screen.findByText(
-        'This device was paired, but the Station could not be saved here.',
-      ),
+      await screen.findByText('Pairing outcome needs review'),
     ).toBeTruthy();
     expect(
       screen.queryByText('Waiting for approval on this Station…'),
@@ -1797,7 +1808,10 @@ describe('device pairing panels', () => {
 
   async function tick(ms: number) {
     await act(async () => {
+      // IDB completion is a task boundary, not a timer or a microtask.
+      for (let task = 0; task < 20; task += 1) await nextTask();
       await vi.advanceTimersByTimeAsync(ms);
+      for (let task = 0; task < 20; task += 1) await nextTask();
     });
   }
 
@@ -1808,8 +1822,16 @@ describe('device pairing panels', () => {
    * host could approve and the phone would still come back to "Pairing failed.
    * Check the code and try again." with nothing left to resume.
    */
-  test('keeps the request alive across a dropped connection and pairs on retry', async () => {
-    vi.useFakeTimers();
+  test('holds a dropped exchange instead of replaying a one-time proof', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     directPairingFetch((attempt) => {
       // A suspended webview cannot complete a request: fetch rejects, and the
       // rejection carries no status at all.
@@ -1825,15 +1847,23 @@ describe('device pairing panels', () => {
     expect(
       screen.queryByText('Pairing failed. Check the code and try again.'),
     ).toBeNull();
-    expect(screen.getByText('Waiting to reach this Station…')).toBeTruthy();
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
 
     await tick(1_000);
-    expect(onPaired).toHaveBeenCalledTimes(1);
+    expect(onPaired).not.toHaveBeenCalled();
     view.unmount();
   });
 
-  test('returning to the foreground retries without waiting out the backoff', async () => {
-    vi.useFakeTimers();
+  test('foregrounding cannot replay an uncertain exchange', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     let exchanges = 0;
     directPairingFetch((attempt) => {
       exchanges = attempt;
@@ -1852,7 +1882,7 @@ describe('device pairing panels', () => {
       window.dispatchEvent(new Event('focus'));
       await vi.advanceTimersByTimeAsync(10);
     });
-    expect(onPaired).toHaveBeenCalledTimes(1);
+    expect(onPaired).not.toHaveBeenCalled();
     view.unmount();
   });
 
@@ -1862,7 +1892,15 @@ describe('device pairing panels', () => {
    * the same dead end this polling exists to avoid.
    */
   test('backs off a rate limit instead of failing the pairing', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     directPairingFetch((attempt) =>
       attempt === 1
         ? response({ error: 'rate_limited' }, 429)
@@ -1885,7 +1923,15 @@ describe('device pairing panels', () => {
    * that is what would trip the rate limit above.
    */
   test('does not start a second exchange while one is in flight', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     const held = deferred<Response>();
     let exchanges = 0;
     directPairingFetch((attempt) => {
@@ -1922,8 +1968,16 @@ describe('device pairing panels', () => {
    * without a request timeout the panel would wait on an answer that never
    * comes.
    */
-  test('times out a request that never answers and retries it', async () => {
-    vi.useFakeTimers();
+  test('holds an exchange timeout instead of replaying the proof', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     let exchanges = 0;
     directPairingFetch((attempt, signal) => {
       exchanges = attempt;
@@ -1944,7 +1998,7 @@ describe('device pairing panels', () => {
 
     // Past the 20s request timeout, plus the retry it schedules.
     await tick(22_000);
-    expect(onPaired).toHaveBeenCalledTimes(1);
+    expect(onPaired).not.toHaveBeenCalled();
     view.unmount();
   });
 
@@ -1955,12 +2009,20 @@ describe('device pairing panels', () => {
    * budget or the rate limiter ends a pairing the host would have approved.
    */
   test('stays inside the server request budget under a storm of foreground events', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     let exchanges = 0;
     directPairingFetch((attempt) => {
       exchanges = attempt;
       // The host has not approved yet — the ordinary waiting case.
-      return response({ error: 'request_pending' }, 409);
+      return response({ error: 'request_not_confirmed' }, 409);
     });
     const { view } = renderDirectJoin();
     await tick(600);
@@ -1983,7 +2045,15 @@ describe('device pairing panels', () => {
   });
 
   test('a foreground event cannot shorten the rate-limit backoff', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     let exchanges = 0;
     directPairingFetch((attempt) => {
       exchanges = attempt;
@@ -2007,23 +2077,28 @@ describe('device pairing panels', () => {
     view.unmount();
   });
 
-  test('stops blaming the connection once the Station answers', async () => {
-    vi.useFakeTimers();
+  test('keeps transport uncertainty visible until explicit review', async () => {
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     directPairingFetch((attempt) => {
       if (attempt === 1) throw new TypeError('Failed to fetch');
       // Reachable again, just not approved yet.
-      return response({ error: 'request_pending' }, 409);
+      return response({ error: 'request_not_confirmed' }, 409);
     });
     const { view } = renderDirectJoin();
     await tick(600);
     await tick(600);
-    expect(screen.getByText('Waiting to reach this Station…')).toBeTruthy();
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
 
-    await tick(1_000);
-    expect(screen.queryByText('Waiting to reach this Station…')).toBeNull();
-    expect(
-      screen.getByText('Waiting for approval on this Station…'),
-    ).toBeTruthy();
+    await tick(30_000);
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
     view.unmount();
   });
 
@@ -2032,7 +2107,15 @@ describe('device pairing panels', () => {
    * request the Station has already spent — and must not vanish silently.
    */
   test('reports a failure to store the connection instead of polling on', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     let exchanges = 0;
     directPairingFetch((attempt) => {
       exchanges = attempt;
@@ -2044,11 +2127,7 @@ describe('device pairing panels', () => {
     const { view } = renderDirectJoin(onPaired);
     await tick(600);
     await tick(600);
-    expect(
-      screen.getByText(
-        'This device was paired, but the Station could not be saved here.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
 
     await tick(30_000);
     expect(exchanges).toBe(1);
@@ -2056,7 +2135,15 @@ describe('device pairing panels', () => {
   });
 
   test('still fails loudly on a malformed success response', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     directPairingFetch(
       () =>
         new Response('not json', {
@@ -2067,26 +2154,38 @@ describe('device pairing panels', () => {
     const { view } = renderDirectJoin();
     await tick(600);
     await tick(600);
-    expect(
-      screen.getByText('Pairing failed. Check the code and try again.'),
-    ).toBeTruthy();
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
     view.unmount();
   });
 
   test('still reports a genuine server-side failure', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     directPairingFetch(() => response({ error: 'invalid_offer' }, 400));
     const { view } = renderDirectJoin();
     await tick(600);
     await tick(600);
-    expect(
-      screen.getByText('Pairing failed. Check the code and try again.'),
-    ).toBeTruthy();
+    expect(screen.getByText('Pairing outcome needs review')).toBeTruthy();
     view.unmount();
   });
 
   test('ignores an older refresh that completes after a newer inbox snapshot', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     const staleRequests = deferred<Response>();
     let requestReads = 0;
     const oldRequest = {
@@ -3042,7 +3141,15 @@ describe('device pairing panels', () => {
 });
 
 test('pending approval counts down from its saved expiry without announcing every tick', async () => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({
+    toFake: [
+      'Date',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+    ],
+  });
   vi.setSystemTime(new Date('2026-09-08T20:00:00Z'));
   vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(() => {}));
   savePendingExchange({
@@ -3348,4 +3455,44 @@ describe('explicit verified-person pairing consent', () => {
     ).toBeTruthy();
     expect(confirms).toBe(1);
   });
+});
+
+test('refuses an HTTP LAN pairing code before posting an offer and preserves explicit HTTPS entry', async () => {
+  const request = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? response({ error: 'unavailable' }, 503)
+        : response({ requests: [], devices: [] }),
+  );
+  render(
+    <HostDevicePairingPanel
+      apiBase="http://192.168.1.2:19441"
+      publicEndpoint="http://192.168.1.2:19441"
+      getCredential={() => undefined}
+      request={request}
+      onCancel={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('HTTPS');
+  expect(
+    request.mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
+    target: { value: 'https://computer.example.test/path' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
+  await waitFor(() =>
+    expect(
+      request.mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(1),
+  );
+  expect(
+    JSON.parse(
+      String(
+        request.mock.calls.find(([, init]) => init?.method === 'POST')?.[1]
+          ?.body,
+      ),
+    ).endpoint,
+  ).toBe('https://computer.example.test');
 });

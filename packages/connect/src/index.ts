@@ -29,9 +29,12 @@ export type {
   ConnectionCandidateProviderStatus,
 } from './core/connectionCandidates';
 export {
+  ConnectionCandidateProviderError,
   connectionCandidateProviderCount,
+  connectionCandidateProviderRevision,
   discoverConnectionCandidates,
   registerConnectionCandidateProvider,
+  subscribeConnectionCandidateProviders,
 } from './core/connectionCandidates';
 export {
   classifyConnectionFailure,
@@ -61,6 +64,7 @@ export {
   observePendingPairingApproval,
   requestCurrentStationAccess,
   requestDevicePairing,
+  retirePendingExchangeAfterReview,
   savePendingExchange,
   setNativePairingExchangeTransport,
 } from './core/devicePairing';
@@ -113,6 +117,7 @@ export type {
 } from './core/pendingPairingCompletion';
 export type { CompletePendingPairing } from './core/pendingPairingCompletionLoader';
 export { completePendingPairing } from './core/pendingPairingCompletionLoader';
+export { restoreHeldPairingExchanges } from './core/pendingPairingExchangeJournal';
 // KnownEnvironmentRegistry (station#1096 R2) is intentionally NOT re-exported
 // from this bare entry point — only from the dedicated
 // `@kontourai/station-connect/known-environment` subpath. This entry is

@@ -19,6 +19,8 @@ export type OpenConnectionsModalDetail = {
     | 'connect-station'
     | 'list'
     | 'pair-device'
+    | 'pair-code'
+    | 'discover'
     | 'request-access'
     | 'devices'
     | 'pair-host';

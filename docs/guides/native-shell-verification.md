@@ -710,3 +710,27 @@ from the signed candidate before replacing the installed app.
 
 Declarations enable the OS prompt; they do not grant consent. Physical camera
 frames, microphone capture, and persistence still require runtime acceptance.
+
+
+## Nearby Station discovery
+
+The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
+NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
+It returns resolved private host/port hints, never credentials or authenticated
+Station identity. Android requires API 34 for resolver cancellation; earlier
+versions report unavailable. iOS declares the exact Bonjour service and local
+network usage description. A fixed declared service does not require the
+multicast entitlement.
+
+Scans are bounded and cancelled on explicit cancellation, foreground loss and
+provider disposal. The adapter validates every result before passing it to the
+candidate registry. Selection enters the existing address review, explicit HTTP
+consent and host approval path. Discovery does not widen server binding or
+enable publication; the host's local-operator toggle owns publication.
+
+Unit checks cover adapter filtering, status mapping, late results and cancel
+identity. Qualification additionally requires an installed shell to browse a
+real host's actual bound listener, exercise local-network permission, cancel,
+background and foreground recovery, and complete the intended pairing journey.
+iOS simulator compilation and Android builds alone do not establish physical
+LAN or permission behavior.

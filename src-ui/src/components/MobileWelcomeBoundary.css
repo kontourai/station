@@ -4,8 +4,10 @@
   overflow-y: auto;
   display: grid;
   align-items: center;
-  padding: max(var(--k-space-6), env(safe-area-inset-top)) var(--k-space-5)
-    max(var(--k-space-6), env(safe-area-inset-bottom));
+  padding: max(var(--k-space-6), var(--safe-top, 0px))
+    max(var(--k-space-5), var(--safe-right, 0px))
+    max(var(--k-space-6), var(--safe-bottom, 0px))
+    max(var(--k-space-5), var(--safe-left, 0px));
   background: var(--k-bg);
   color: var(--k-text);
 }
@@ -69,4 +71,9 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
+}
+
+.mobile-welcome__alternatives {
+  display: grid;
+  gap: var(--k-space-2);
 }

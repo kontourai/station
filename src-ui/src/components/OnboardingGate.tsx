@@ -1,4 +1,5 @@
 import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
+import { PairingEndpointSuggestions } from './PairingEndpointSuggestions';
 import { StationExtensionsAccess } from './registry/StationExtensionsAccess';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
@@ -13,6 +14,7 @@ import {
   connectionFailureCopy,
   loadPendingExchange,
   type PendingPairingExchange,
+  restoreHeldPairingExchanges,
   retryLocalSelfProvisionAfterRejection,
   useConnectionStatus,
   useConnections,
@@ -85,6 +87,8 @@ import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 type ConnectionModalMode =
   | 'list'
   | 'pair-device'
+  | 'pair-code'
+  | 'discover'
   | 'request-access'
   | 'devices'
   | 'pair-host';
@@ -184,6 +188,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const [pendingExchange, setPendingExchange] =
     useState<PendingPairingExchange | null>(null);
   const [waitingForTransport, setWaitingForTransport] = useState(false);
+  useEffect(() => {
+    let disposed = false;
+    void restoreHeldPairingExchanges().then(({ status, held }) => {
+      if (!disposed && status !== 'available')
+        setPairingLinkError(
+          'Previous pairing attempts could not be fully recovered. Check paired devices on the computer before creating another invitation.',
+        );
+      if (!disposed && held[0])
+        setPendingExchange((current) => current ?? held[0]);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
   const [ignoredPendingRequestId, setIgnoredPendingRequestId] = useState<
     string | null
   >(null);
@@ -380,6 +399,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       // panel that is correct for every connection state.
       setConnectionModalMode(
         detail?.mode === 'pair-device' ||
+          detail?.mode === 'pair-code' ||
+          detail?.mode === 'discover' ||
           detail?.mode === 'request-access' ||
           detail?.mode === 'devices' ||
           detail?.mode === 'pair-host'
@@ -480,7 +501,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const pendingApproval = useMemo(
     () =>
       effectivePendingExchange &&
-      effectivePendingExchange.expiresAt > Date.now()
+      (effectivePendingExchange.exchangeAttempt ||
+        effectivePendingExchange.expiresAt > Date.now())
         ? {
             requestKind: effectivePendingExchange.requestKind,
             expiresAt: effectivePendingExchange.expiresAt,
@@ -499,6 +521,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // "the host" — a noun docs/glossary.md forbids introducing, and the wrong
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
+    if (effectivePendingExchange?.exchangeAttempt)
+      return `Pairing with ${serverLabel} needs review. Access may have been granted, but its reply was not saved. On that computer, review paired devices and revoke any access from this attempt before starting again. Station will not resend this request.`;
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The access request is still open and will resume automatically.`
       : pairingStateCopy(
@@ -508,7 +532,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           serverLabel,
         ).message;
     return `Preparing the connection to ${serverLabel}. ${waitMessage}`;
-  }, [pendingApproval, serverLabel, waitingForTransport]);
+  }, [
+    pendingApproval,
+    serverLabel,
+    waitingForTransport,
+    effectivePendingExchange?.exchangeAttempt,
+  ]);
 
   useEffect(() => {
     if (!pendingApprovalMessage) {
@@ -523,9 +552,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       message: pendingApprovalMessage,
       actions: [
         {
-          label: 'Cancel request',
+          label: effectivePendingExchange?.exchangeAttempt
+            ? 'Review connection'
+            : 'Cancel request',
           variant: 'secondary',
           onClick: () => {
+            if (effectivePendingExchange?.exchangeAttempt) {
+              setConnectionModalMode('request-access');
+              setShowModal(true);
+              return;
+            }
             clearPendingExchange(
               effectivePendingExchange?.endpoint ??
                 activeConnection?.url ??
@@ -555,6 +591,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     effectivePendingExchange?.endpoint,
     effectivePendingExchange?.requestId,
     effectivePendingExchange?.requestKind,
+    effectivePendingExchange?.exchangeAttempt,
   ]);
 
   // archive#1958: credential pairing chrome → BannerHost under Header.
@@ -847,6 +884,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             },
             onConnectionWaiting: () => setWaitingForTransport(true),
             onApprovalWaiting: () => setWaitingForTransport(false),
+            onIndeterminate: (held: PendingPairingExchange) => {
+              setWaitingForTransport(false);
+              setPendingExchange((current) =>
+                current?.exchangeAttempt ? current : held,
+              );
+            },
           }}
         />
       )}
@@ -940,6 +983,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
         }
+        renderPairingEndpointSuggestions={(input) => (
+          <PairingEndpointSuggestions {...input} />
+        )}
         onReconnectLocalService={
           profile.isDesktop ? reconnectLocalService : undefined
         }

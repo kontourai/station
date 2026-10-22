@@ -75,12 +75,32 @@ describe('fresh phone connection entry', () => {
         'Your work',
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Connect to a Station' }),
+        screen.getByRole('button', { name: 'Scan pairing QR code' }),
       );
       expect(onOpen).toHaveBeenCalledOnce();
       expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toEqual({
-        mode: 'list',
+        mode: 'pair-device',
       });
+    } finally {
+      window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
+    }
+  });
+
+  it.each([
+    ['Enter a pairing code', 'pair-code'],
+    ['Find nearby Stations', 'discover'],
+    ['Other ways to connect', 'list'],
+  ])('opens the existing %s fallback directly', (label, mode) => {
+    const onOpen = vi.fn();
+    window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
+    try {
+      render(
+        <MobileWelcomeBoundary>
+          <div>Workspace</div>
+        </MobileWelcomeBoundary>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toEqual({ mode });
     } finally {
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
     }
@@ -99,7 +119,7 @@ describe('fresh phone connection entry', () => {
       );
       expect(screen.getByText('Workspace recovery')).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Connect to a Station' }),
+        screen.queryByRole('button', { name: 'Scan pairing QR code' }),
       ).toBeNull();
     },
   );
@@ -125,7 +145,7 @@ describe('fresh phone connection entry', () => {
     );
     expect(screen.queryByText('Workspace')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Connect to a Station' }),
+      screen.getByRole('button', { name: 'Scan pairing QR code' }),
     ).toBeTruthy();
   });
 

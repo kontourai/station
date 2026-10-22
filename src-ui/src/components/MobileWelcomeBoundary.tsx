@@ -26,10 +26,24 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
         </p>
         <Button
           variant="primary"
-          onClick={() => openConnectionsModal({ mode: 'list' })}
+          onClick={() => openConnectionsModal({ mode: 'pair-device' })}
         >
-          Connect to a Station
+          Scan pairing QR code
         </Button>
+        <div className="mobile-welcome__alternatives">
+          <Button onClick={() => openConnectionsModal({ mode: 'discover' })}>
+            Find nearby Stations
+          </Button>
+          <Button onClick={() => openConnectionsModal({ mode: 'pair-code' })}>
+            Enter a pairing code
+          </Button>
+          <Button
+            variant="link"
+            onClick={() => openConnectionsModal({ mode: 'list' })}
+          >
+            Other ways to connect
+          </Button>
+        </div>
         <section className="mobile-welcome__steps" aria-label="How to connect">
           <h2>Start on your computer</h2>
           <ol>
