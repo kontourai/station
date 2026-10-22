@@ -546,7 +546,15 @@ export function AuthorityQueryProvider({
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
       } finally {
-        if (profile.isTauri && stillCurrent())
+        // Release the startup gate whenever this client is still live. Scope
+        // currency guards cache writes only: a scope that is briefly not
+        // current while the read settles would otherwise leave the gate shut,
+        // with nothing React observes to re-run this effect.
+        if (
+          profile.isTauri &&
+          !cancelled &&
+          activeRef.current?.queryClient === clientAtSeed
+        )
           setNativeBootFinished(clientAtSeed);
       }
     })();

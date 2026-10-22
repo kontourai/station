@@ -245,3 +245,47 @@ test('a refused native boot releases mounted queries to their individual reads',
     `${host.scope.apiBase}/api/projects`,
   ]);
 });
+
+test('a native boot that settles while the scope is briefly not current still releases the gate', async () => {
+  configureHost();
+  let current = true;
+  host.scope.isCurrent = () => current;
+  host.invoke.mockImplementation(async (command: string, args) => {
+    if (command !== 'station_native_http_request') return;
+    const channel = host.channels.at(-1)!;
+    if (args.request.url.endsWith('/api/boot')) {
+      current = false;
+      setTimeout(() => {
+        channel({ type: 'response', status: 503, headers: {}, bodyLength: 0 });
+        channel({ type: 'end' });
+        setTimeout(() => {
+          current = true;
+        }, 20);
+      }, 0);
+      return;
+    }
+    if (args.request.url.endsWith('/api/projects')) {
+      const bytes = new TextEncoder().encode(
+        JSON.stringify({ success: true, data: [{ id: 'after-blip' }] }),
+      );
+      const buffer = new ArrayBuffer(bytes.length);
+      new Uint8Array(buffer).set(bytes);
+      queueMicrotask(() => {
+        channel({
+          type: 'response',
+          status: 200,
+          headers: {},
+          bodyLength: bytes.length,
+        });
+        channel(buffer);
+        channel({ type: 'end' });
+      });
+      return;
+    }
+    throw new Error(`unexpected native request: ${args.request.url}`);
+  });
+  renderNative();
+  await waitFor(() =>
+    expect(screen.getByTestId('projects').textContent).toContain('after-blip'),
+  );
+});
