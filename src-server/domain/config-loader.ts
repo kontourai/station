@@ -112,8 +112,8 @@ const WATCHED_ROOT_NAMES = ['config', 'agents', 'integrations'] as const;
  * (issue archive#952). Measured on this repo: first-event latency ran to 4.8s even on
  * successful rounds, and archive#952 recorded 11.6s under load — so the last pass sits
  * well past that, and the passes stop entirely once the window has closed.
- * Steady-state correctness is the watcher's job; polling the whole config tree
- * forever would cost far more than the gap it closes.
+ * Steady-state config events use the watcher. App launchability also retains
+ * a slow signature poll to recover silent watchers and ctime-only changes.
  */
 const WATCHER_RECONCILE_BACKOFF_MS = [
   250, 500, 1000, 2000, 4000, 8000,
@@ -1141,13 +1141,13 @@ export class ConfigLoader {
     this.watcher.on('unlink', forward('remove'));
     this.watcher.on('ready', () => {
       this.scheduleWatcherReconciliation(0);
-      if (Object.keys(this.watcher?.getWatched() ?? {}).length === 0) {
-        this.startAppConfigFallbackPoll(appConfigPath);
-      }
+      this.startAppConfigFallbackPoll(appConfigPath);
     });
     this.watcher.on('error', () =>
       this.startAppConfigFallbackPoll(appConfigPath),
     );
+    // An armed watcher may stay silent (archive#970); ctime-only changes
+    // also need the full signature check, regardless of watcher health.
     if (process.env.STATION_CONFIG_WATCH_POLL === '1') {
       this.startAppConfigFallbackPoll(appConfigPath);
     }

@@ -47,7 +47,15 @@ function commandExists(command: unknown): Promise<boolean> {
     },
   ).then(
     () => true,
-    () => false,
+    (error: NodeJS.ErrnoException & { killed?: boolean; signal?: string }) => {
+      // which/where exit 1 means a completed negative lookup. A timeout,
+      // launch failure or other exit says nothing about binary presence.
+      if (Number(error.code) !== 1 || error.killed || error.signal) {
+        if (commandPresence.get(command)?.result === result)
+          commandPresence.delete(command);
+      }
+      return false;
+    },
   );
   if (commandPresence.size >= COMMAND_CACHE_MAX_ENTRIES) {
     commandPresence.delete(commandPresence.keys().next().value!);

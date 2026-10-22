@@ -4529,8 +4529,8 @@ export class StationRuntime {
       monitoringEvents: this.monitoringEvents,
       monitoringEmitter: this.monitoringEmitter,
       eventLogPath: this.eventLogPath,
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        this.eventLog.queryEvents(start, end, userId),
+      queryEventsFromDisk: (start, end, userId, options) =>
+        this.eventLog.queryEvents(start, end, userId, options ?? {}),
       checkOllamaAvailability,
       buildRuntimeContext: () => this.buildRuntimeContext(),
       getAgentConfigurationRevision: () =>

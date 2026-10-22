@@ -15321,7 +15321,7 @@ describe('OrchestrationService', () => {
         expect.objectContaining({ role: 'assistant' }),
       ],
     });
-    expect(replay).toHaveBeenCalledTimes(1);
+    expect(replay).not.toHaveBeenCalled();
     replay.mockRestore();
 
     await expect(
