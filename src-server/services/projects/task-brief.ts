@@ -28,8 +28,10 @@
  * "people outside Station (public tracker content)". No quoted line can equal
  * a line Station writes, so the brief's headings, its rules and its footer
  * cannot be forged, and one rule says quoted text is data, not instructions.
- * Station's own values (ids, refs, states, times, counts) and validated
- * identifiers (claimed paths) stay on Station's lines, after a fixed label.
+ * Station's own values (ids, states, times, counts, and a GitHub ref the
+ * Project's board offered) stay on Station's lines, after a fixed label;
+ * claimed paths and refs, and any other work-item ref with its provider
+ * word, are quoted, since agents and people wrote them.
  */
 import { createHash } from 'node:crypto';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
@@ -43,6 +45,7 @@ import {
 } from '@kontourai/station-contracts/task-memory';
 import { workClaimSubjectDetail } from '@kontourai/station-contracts/work-claims';
 import type { WorkItemObservationResult } from '@kontourai/station-contracts/work-item-provider';
+import { canonicalGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
 import {
   cutText,
   quotedLine,
@@ -169,6 +172,7 @@ export interface TaskBriefInput {
     | 'description'
     | 'sourceProvider'
     | 'workItemRef'
+    | 'workItemProvenance'
   >;
   /** The Task room document: the person-authored brief it was seeded with. */
   document:
@@ -274,7 +278,19 @@ function renderWorkItem(
   if (!task.workItemRef) return [];
   const lines = [
     '## Linked work item',
-    `Ref: ${cut(oneLine(task.workItemRef), 256)}${task.sourceProvider ? ` (${cut(oneLine(task.sourceProvider), 64)})` : ''}`,
+    // A board-checked GitHub ref is Station's own fact (review round 2,
+    // P3-3); any other ref, and the creator's provider word, is quoted.
+    ...(task.workItemProvenance === 'project-board' &&
+    canonicalGitHubWorkItemRef(task.workItemRef) !== null
+      ? [
+          `Ref: ${task.workItemRef} (GitHub, checked against the Project's board)`,
+        ]
+      : [
+          BY_TASK,
+          quotedLine(
+            `Ref: ${cut(oneLine(task.workItemRef), 256)}${task.sourceProvider ? ` (${cut(oneLine(task.sourceProvider), 64)})` : ''}`,
+          ),
+        ]),
   ];
   if (observation?.status !== 'observed') {
     const status = observation?.status ?? 'not-read';
@@ -447,8 +463,9 @@ function sessionLine(session: TaskBriefSessionFacts): string {
       `${oneLine(workClaimSubjectDetail(claim))} (until ${stamp(claim.expiresAt)})`,
   );
   // Its own line, so the Session line's cut never hides what it is on.
+  // Quoted: the claiming agent wrote the paths and the ref (P3-3).
   return claims.length
-    ? `${line}\n${cut(`  claimed: ${claims.join('; ')}`, SESSION_CLAIMS_LINE_MAX)}`
+    ? `${line}\n${quotedLine(`claimed: ${claims.join('; ')}`, SESSION_CLAIMS_LINE_MAX)}`
     : line;
 }
 

@@ -548,12 +548,12 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     );
     expect(firstLine).toBeGreaterThan(0);
     expect(lines[firstLine + 1]).toBe(
-      `  claimed: github:owner/repo#7, src/brief.ts (until ${held.expiresAt.replace(/\.\d+Z$/, 'Z')})`,
+      `> claimed: github:owner/repo#7, src/brief.ts (until ${held.expiresAt.replace(/\.\d+Z$/, 'Z')})`,
     );
     expect(sessions).not.toContain('src/gone.ts');
     expect(sessions).not.toContain('src/other-task.ts');
     // One Session holds claims, so there is one claims line.
-    expect(lines.filter((line) => line.startsWith('  claimed:'))).toHaveLength(
+    expect(lines.filter((line) => line.startsWith('> claimed:'))).toHaveLength(
       1,
     );
   });

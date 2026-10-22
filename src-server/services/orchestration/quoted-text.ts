@@ -51,8 +51,11 @@ export function quotedLines(
   );
 }
 
-/** One quoted line: `text` collapsed to a single line and prefixed `> `. */
+/**
+ * One quoted line: `text` collapsed to a single line and prefixed `> `. With
+ * `max`, the whole line, prefix included, is at most `max` long.
+ */
 export function quotedLine(text: string, max?: number): string {
   const line = singleLine(text);
-  return `> ${max === undefined ? line : cutText(line, max)}`;
+  return `> ${max === undefined ? line : cutText(line, Math.max(0, max - 2))}`;
 }
