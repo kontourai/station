@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-22T06:17:39Z | nightly-desktop | 0.1.11-nightly.2486.3 | `a6e8f37` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39727706028) |
 | 2026-10-22T06:17:37Z | nightly-android | 0.1.11-nightly.2486.3 | `a6e8f37` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39727706028) |
 | 2026-10-22T05:32:57Z | nightly-npm | 0.11.0-nightly.2486.39727706028 | `a6e8f37` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39727706028) |
 | 2026-10-22T00:24:08Z | nightly-npm | 0.11.0-nightly.2486.39698407325 | `8e86626` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39698407325) |
@@ -323,6 +324,35 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-22T06:17:39Z · nightly-desktop · 0.1.11-nightly.2486.3
+
+- Ship SHA: `a6e8f37663391132bae4e8e35772c2e9e8a53099`
+- Artifact built at: `2026-10-22T05:33:09.064Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 39727706028)
+
+### Changelog
+
+Commits since `71cb589` ([full sha](https://github.com/kontourai/station/commit/71cb589732f53b9372ce572fd701c873e5270129)):
+
+**Features**
+
+- [#4011](https://github.com/kontourai/station/pull/4011) feat(acp): answer Cursor's questions and plan reviews; keep mid-turn plans on the Plan pane
+- [#4006](https://github.com/kontourai/station/pull/4006) feat(acp): per-connection handshake facts, steer by declaration, session/set_model
+- [#4009](https://github.com/kontourai/station/pull/4009) feat(engines): engine descriptors, new built-in harnesses, and install hints
+- [#4014](https://github.com/kontourai/station/pull/4014) feat(tasks): recover drafts and uncertain requests across reloads
+- [#3991](https://github.com/kontourai/station/pull/3991) feat(integration): consolidate required backlog into one delivery head
+
+**Fixes**
+
+- [#4016](https://github.com/kontourai/station/pull/4016) fix(mobile): remove personal backend defaults from builds
+- [#3992](https://github.com/kontourai/station/pull/3992) fix(sdk): connect plugin hooks to core application services
+- [#4015](https://github.com/kontourai/station/pull/4015) fix(release): retry transient Apple staple ticket lookups once
+
+**Other**
+
+- [#4010](https://github.com/kontourai/station/pull/4010) test(install): read the verified installer command from Getting started
 
 ## 2026-10-22T06:17:37Z · nightly-android · 0.1.11-nightly.2486.3
 
