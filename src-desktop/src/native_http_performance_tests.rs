@@ -516,7 +516,12 @@ fn native_http_stale_pool_retries_only_safe_exchanges_on_a_fresh_connection() {
                 reader.get_mut().write_all(b"HTTP/1.1 ").unwrap();
             }
             // A NAT black hole stays open without returning even a status byte.
-            let _silent_peer = if silent { Some(reader) } else { None };
+            let _silent_peer = if silent {
+                Some(reader)
+            } else {
+                drop(reader);
+                None
+            };
             listener.set_nonblocking(true).unwrap();
             let deadline = Instant::now() + Duration::from_secs(if silent { 6 } else { 2 });
             let mut retried = false;
