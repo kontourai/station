@@ -211,6 +211,7 @@ test('mounted details share one host stream, hydrate before it opens, isolate th
       id: '103',
       data: JSON.stringify({ event: event('first', 'retired-authority') }),
     });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   });
   expect(detail.getByTestId('detail-events').textContent).toBe('a');
   detail.unmount();

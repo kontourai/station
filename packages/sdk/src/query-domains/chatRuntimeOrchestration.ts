@@ -1317,10 +1317,7 @@ export function useOrchestrationSessionsQuery(
     host.scope?.apiBase === scope?.apiBase &&
     host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
-    [
-      ...orchestrationQueries.sessions().queryKey,
-      ...(scope ? [scope.apiBase, scope.authorityKey] : []),
-    ],
+    orchestrationQueries.sessions(scope).queryKey,
     (signal) =>
       fetchOrchestrationSessions(scope?.apiBase, {
         signal,
