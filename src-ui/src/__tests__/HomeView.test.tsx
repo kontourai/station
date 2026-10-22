@@ -31,6 +31,23 @@ import { peerRecordSummary } from './fixtures/peer-delegation-record';
 // navigate to `{ type: 'activity' }` now reveals the region surface instead.
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
+const platformRef = vi.hoisted(() => ({ mobile: false }));
+beforeEach(() => {
+  platformRef.mobile = false;
+});
+vi.mock('../platform/PlatformProfileContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../platform/PlatformProfileContext')>();
+  return {
+    ...actual,
+    usePlatformProfile: () => ({
+      ...actual.usePlatformProfile(),
+      ...(platformRef.mobile
+        ? { isTauri: true, isMobile: true, target: 'android' as const }
+        : {}),
+    }),
+  };
+});
 const showSurface = vi.hoisted(() => vi.fn());
 const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
@@ -568,6 +585,18 @@ describe('HomeView', () => {
     const entry = screen.getByRole('button', {
       name: /New Project.*Repository, folder or blank workspace/i,
     });
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
+  });
+
+  test('a phone can open Project creation without advertising its unavailable folder picker', () => {
+    platformRef.mobile = true;
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository or blank workspace/i,
+    });
+    expect(entry.textContent).not.toContain('folder');
     fireEvent.click(entry);
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });

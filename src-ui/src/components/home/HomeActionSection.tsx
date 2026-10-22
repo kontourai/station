@@ -4,6 +4,8 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
 import type {
   HomeViewNavigation,
@@ -94,6 +96,8 @@ export function HomeActionSection({
   onNavigate,
   showPrimary = true,
 }: HomeActionSectionProps) {
+  const profile = usePlatformProfile();
+  const canChooseFolder = hasLocalStationForProfile(profile);
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const continuationSlug = continuation
@@ -118,7 +122,11 @@ export function HomeActionSection({
       <HomeActionCard
         label="Project"
         title="New Project"
-        detail="Repository, folder or blank workspace"
+        detail={
+          canChooseFolder
+            ? 'Repository, folder or blank workspace'
+            : 'Repository or blank workspace'
+        }
         onClick={() => onNavigate({ type: 'project-new' })}
       />
       {continuation && (
