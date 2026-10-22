@@ -1,9 +1,13 @@
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { followUpTargetMatchesBinding } from '../../../tools/station-control-delegation.js';
+import {
+  followUpTargetMatchesBinding,
+  observeDelegatedTask,
+} from '../../../tools/station-control-delegation.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -12,6 +16,7 @@ const makeTempDir = trackTempDirs();
 const stores: EventStore[] = [];
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   for (const store of stores.splice(0)) store.close();
 });
 const authority = (userId = 'owner') =>
@@ -45,6 +50,7 @@ function fixture() {
     metadata: {
       userId: 'owner',
       environmentId: 'local',
+      taskId: 'thread',
       targetKind: 'agent',
       targetId: 'helper',
       agentSlug: 'helper',
@@ -92,11 +98,11 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
   ).toHaveProperty('attachments.0.dataUrl');
   const blobs = vi.spyOn(store['attachmentBlobs'], 'read');
   const replay = vi.spyOn(store, 'listEvents');
-  expect(service.hasReadableSession('thread', authority())).toBe(true);
-  expect(service.hasReadableSession('missing', authority())).toBe(false);
-  expect(service.hasReadableSession('thread', authority('stranger'))).toBe(
-    false,
-  );
+  expect(await service.hasReadableSession('thread', authority())).toBe(true);
+  expect(await service.hasReadableSession('missing', authority())).toBe(false);
+  expect(
+    await service.hasReadableSession('thread', authority('stranger')),
+  ).toBe(false);
   const detail = await service.readSession('thread', authority(), {
     eventMethods: ['session.started', 'session.configured'],
   });
@@ -113,7 +119,7 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
     await followUpTargetMatchesBinding(
       service,
       'thread',
-      { agent: 'helper' },
+      { environment: { kind: 'current' }, agent: agentId('helper') },
       authority(),
     ),
   ).toBe(true);
@@ -239,4 +245,85 @@ test('hot global sequence reads compile once and retain fresh bindings', () => {
         sql === 'SELECT global_sequence FROM orchestration_events WHERE id = ?',
     ),
   ).toHaveLength(1);
+});
+
+test('existence reads discover provider sessions before authorizing them', async () => {
+  const { service, store } = fixture();
+  store.appendEvent({
+    eventId: 'discovered-owner',
+    method: 'session.started',
+    provider: 'claude',
+    threadId: 'discovered',
+    sessionId: 'discovered',
+    createdAt: '2026-10-22T00:00:00Z',
+    metadata: { userId: 'owner' },
+  });
+  expect(store.readSessionByThread('discovered')).toBeUndefined();
+  const adapter = {
+    provider: 'claude',
+    listSessions: async () => [
+      {
+        provider: 'claude',
+        threadId: 'discovered',
+        status: 'ready',
+        createdAt: '2026-10-22T00:00:00Z',
+        updatedAt: '2026-10-22T00:00:00Z',
+        metadata: { userId: 'owner' },
+      },
+    ],
+  };
+  vi.spyOn(service['options'].adapterRegistry, 'list').mockReturnValue([
+    adapter,
+  ] as never);
+  expect(await service.hasReadableSession('discovered', authority())).toBe(
+    true,
+  );
+  expect(
+    await service.hasReadableSession('discovered', authority('stranger')),
+  ).toBe(false);
+});
+
+test('hot statement survives cold dynamic query churn while the oldest cold query is evicted', () => {
+  const { store } = fixture();
+  const prepare = vi.spyOn(store['db'], 'prepare');
+  store.readGlobalSequence('event-1');
+  for (let count = 1; count <= 34; count++) {
+    store.listEventPayloads(
+      'thread',
+      Array.from({ length: count }, (_, n) => `method-${n}`),
+    );
+    expect(store.readGlobalSequence('event-1')).toBe(1);
+  }
+  expect(
+    prepare.mock.calls.filter(
+      ([sql]) =>
+        sql === 'SELECT global_sequence FROM orchestration_events WHERE id = ?',
+    ),
+  ).toHaveLength(1);
+  const before = prepare.mock.calls.length;
+  store.listEventPayloads('thread', ['method-0']);
+  expect(prepare.mock.calls.length).toBe(before + 1);
+});
+
+test('delegation status retains legacy runtime_error before a later unrelated event', async () => {
+  const { service, append } = fixture();
+  append({ method: 'turn.started', turnId: 'turn', prompt: 'work' });
+  append({
+    method: 'runtime_error',
+    code: 'turn-timeout',
+    turnId: 'turn',
+    message: 'legacy terminal failure',
+    severity: 'error',
+  });
+  append({ method: 'content.text-delta', turnId: 'turn', delta: 'later' });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ environmentId: 'local' })),
+  );
+  service.readCurrentConversationSession = undefined as never;
+  const snapshot = await observeDelegatedTask(
+    { taskId: 'thread', readAuthority: authority() },
+    service,
+  );
+  expect(snapshot.reason?.code).toBe('turn-timeout');
 });

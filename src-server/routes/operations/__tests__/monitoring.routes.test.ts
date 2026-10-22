@@ -513,14 +513,21 @@ describe('historical event slicing (station#3076)', () => {
     expect(body.data[0][K_TOOL]).toBe(expected);
   });
 
-  test('returns an explicit 413 from the real history reader when the collection budget is exceeded', async () => {
+  test('returns disclosed latest history from a busy window through the real bounded reader', async () => {
     const directory = makeHistoryTempDir('station-history-route-');
     await writeFile(
       join(directory, 'events-2026-09-06.ndjson'),
-      (
-        JSON.stringify({ timestamp: '2026-09-06T12:00:00Z', userId: 'alice' }) +
-        '\n'
-      ).repeat(10_001),
+      Array.from({ length: 10_001 }, (_, index) =>
+        JSON.stringify({
+          timestamp: new Date(
+            Date.parse('2026-09-06T12:00:00Z') + index,
+          ).toISOString(),
+          userId: 'alice',
+          index,
+        }),
+      )
+        .reverse()
+        .join('\n') + '\n',
     );
     const log = new RuntimeEventLog(directory, {
       debug: vi.fn(),
@@ -529,16 +536,21 @@ describe('historical event slicing (station#3076)', () => {
       error: vi.fn(),
     });
     const app = appWith([], {
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        log.queryEvents(start, end, userId),
+      queryEventsFromDisk: (
+        start: number,
+        end: number,
+        userId: string,
+        options: import('../../../runtime/conversation/runtime-event-log.js').RuntimeEventQueryOptions,
+      ) => log.queryEvents(start, end, userId, options),
     });
     const response = await app.request(
       '/events?start=0&end=9999999999999&userId=alice&limit=1',
     );
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      success: false,
-      code: 'event_history_limit_exceeded',
+      success: true,
+      truncated: true,
+      data: [{ index: 10_000 }],
     });
   });
 
