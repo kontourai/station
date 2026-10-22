@@ -458,6 +458,28 @@ were stopped afterward. This advances live answered-form evidence on that
 source, without establishing billing, fiscal/physical caps, portable authority,
 native/physical/hosted/release or whole-epic acceptance.
 
+At `27fafa8d48b6`, one fresh mixed group subscribed to authenticated SDK SSE
+before creation. The exact controlled question arrived on that live stream
+before the operator answer; its dependent was still pending. Foreign and
+duplicate replies returned 409, the exact reply returned 200 with the engine
+acknowledgement, and an invalid credential on the SSE endpoint returned 401.
+The stream carried `ELICIT_OK`, `CONTROL_OK` and `JOIN_OK`, each with one initial
+start and completion, and the Flow join completed after both predecessors.
+
+The initial probe incorrectly compared ACP streamed text with the optional
+terminal `outputText`, which those ACP events omit. Its failed receipt remains;
+read-only qualification compares the saved frames with the authored challenges.
+A second read-only assertion initially looked for acknowledgement under payload
+instead of its canonical top-level field; that failed derived receipt also
+remains. No provider rerun occurred. Failure cleanup canceled the already
+completed group; that later mutation is disclosed rather than hidden.
+
+Independent artifact review verified source/frame/archive hashes and temporal
+gates without making provider calls. The owned source server exited and its
+PID and four listeners were absent. Startup corrections and the pre-provider
+SDK import failure remain recorded. This is checkout-derived source evidence,
+not packaged identity, billing, portable authority or physical-device acceptance.
+
 At `1c682a5a2dd`, a read-only retained-session check observed the earlier mixed
 CLI group's completed tasks and closed, idle, resumable conversations. The real
 390px browser showed directory context and Operator/CLI provenance across
@@ -467,8 +489,7 @@ its own process identity and remains unexplained. Both screenshot attempts
 timed out. This is not a fresh running-to-ready journey, packaged desktop or
 second-device acceptance, and made no provider calls.
 
-This establishes only the exercised CLI paths. Live-at-question event streaming,
-second-device lifecycle, the remaining lineage/context/recovery obligations, final combined
+This establishes only the exercised CLI paths. Second-device lifecycle, the remaining lineage/context/recovery obligations, final combined
 review and full epic acceptance remain outstanding.
 
 Reuse the authenticated delegation route for caller resolution, permission

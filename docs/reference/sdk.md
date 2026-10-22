@@ -5230,9 +5230,12 @@ disclosures; they cannot silently become a hard fiscal authority. Group completi
 is distinct from work acceptance. Historical live session-group receipts are
 bound to the source revisions recorded in the [epic plan](../plans/child-work-epic.md);
 the `a39212fabf0` check includes a live exact-event MCP form answer and later
-authenticated member-event replay. These bounded receipts do not qualify the
-complete SDK/server surface, live-at-question stream delivery, billing or
-package publication.
+authenticated member-event replay. A fresh mixed group at `27fafa8d48b6`
+subscribed with `fetchSSE` before creation and received the exact open question
+before sending its answer. The stream retained all three authored outputs and
+one initial completion per member; an invalid SSE credential received 401.
+These bounded receipts do not qualify the complete SDK/server surface, billing
+or package publication.
 
 ## Delegation group transport
 

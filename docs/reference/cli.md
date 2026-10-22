@@ -1237,7 +1237,10 @@ OpenCode/GLM Flash and Codex group at `ca15aa85c11`, with overlapping independen
 turns and an exact-initial-turn dependency join. At `a39212fabf0`, another mixed
 group answered an exact-event MCP form through Station, refused a mismatched
 event and duplicate reply, and retained all three exact outputs. Its member SSE
-receipt is retrospective replay. These revision-bound source checks do not
+receipt is retrospective replay. At `27fafa8d48b6`, the SDK event stream was
+subscribed before a fresh mixed group started and delivered its question before
+the exact-event answer, then all three authored outputs and initial completions.
+An invalid credential on the SSE endpoint returned 401. These revision-bound source checks do not
 qualify every runtime, packaged identity, billing or a published client. The
 following legacy group transport commands remain separate.
 
