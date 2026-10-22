@@ -1383,6 +1383,55 @@ describe('AgentConnectionView', () => {
     expect(screen.getByRole('button', { name: 'Edit setup' })).toBeTruthy();
   });
 
+  test('a successful repair keeps its Ready result until Done despite runtime registration', async () => {
+    unregisteredConnections = [failedAdd];
+    const connected = {
+      ...failedAdd,
+      status: 'available',
+      lastError: undefined,
+    };
+    acpCheck.mockResolvedValue(connected);
+    const { rerender } = await render(
+      <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    await waitFor(() => expect(acpCheck).toHaveBeenCalledWith('lab'));
+
+    connectionQueryData = {
+      id: 'lab',
+      kind: 'agent',
+      type: 'acp',
+      name: 'Lab Engine',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [connectionQueryData];
+    acpBridgeConnections = [connected];
+    unregisteredConnections = [];
+    rerender(
+      <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
+    );
+
+    const setup = screen.getByRole('region', { name: 'Engine setup' });
+    await waitFor(() =>
+      expect(within(setup).getByRole('status').textContent).toContain('Ready'),
+    );
+    expect(
+      within(setup).getByRole('button', {
+        name: 'Start a chat with Lab Engine',
+      }),
+    ).toBeTruthy();
+    fireEvent.click(within(setup).getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('region', { name: 'Engine setup' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Check connection' }),
+    ).toBeTruthy();
+  });
+
   test('Add engine lists a saved engine that never connected, and Retry check runs in place', async () => {
     unregisteredConnections = [failedAdd];
     acpCheck.mockReturnValue(new Promise(() => {}));

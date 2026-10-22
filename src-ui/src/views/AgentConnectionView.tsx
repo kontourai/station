@@ -515,7 +515,7 @@ export function AgentConnectionView({
       unselectedDetailOpen={isAddRoute}
       searchPlaceholder="Search engines..."
     >
-      {form ? (
+      {form && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
           <DetailHeader
             title={form.name}
