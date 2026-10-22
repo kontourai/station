@@ -165,6 +165,37 @@ The approval chip shows the known mode, including **Full access**, **Auto** or
 Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session.
 
+## Read recent conversations offline
+
+In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+reading copies**. It starts off. Then open conversations while connected to save
+text from their most recent history read: at most 20 conversations, 10 recent
+turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
+after 24 hours or a build change. Tools, reasoning, attachments and provider
+recovery state are excluded. A running answer is captured after its history is
+read again; this is not a continuous backup.
+
+Message text can contain pasted secrets. These local IndexedDB copies have no
+additional encryption, and anyone using this browser profile can read them
+while offline. Enable this only on a device where that trade-off is acceptable.
+**Clear offline copies** deletes the saved text and turns saving off. Signing out,
+changing credential generation, or switching authority also clears the copies.
+
+An offline browser reload shows a separate, read-only reader with an **offline
+copy from** timestamp. If you lose connectivity in an already open workspace,
+choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+outbox available. Reconnecting leaves the reader, verifies live access and uses
+server data. Local copies never enter the live transcript or authorize actions.
+
+After one successful web-worker installation on HTTPS or localhost, the app
+shell can load offline. An initial visit without any cached shell still needs a
+network connection. Only the local text reader bypasses live access verification;
+ordinary protected query caches remain quarantined on a cold offline start. A
+small identifier-only session index is persisted under the normal 24-hour,
+build and authority rules, rather than caching provider recovery state or titles
+derived from prompts. Native shells already bundle their app assets; the browser
+service-worker cache is not installed there.
+
 ## Ways To Run Station Today
 
 Station is open source and under active development. Check the

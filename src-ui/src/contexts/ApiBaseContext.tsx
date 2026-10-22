@@ -420,6 +420,17 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         : undefined;
       return {
         credential,
+        mutationAllowed: () => {
+          if (
+            !profile.isTauri &&
+            typeof navigator !== 'undefined' &&
+            navigator.onLine === false
+          )
+            throw new Error(
+              'Station is offline. Reconnect before making changes.',
+            );
+          return true;
+        },
         origin: evidence?.origin ?? apiBase,
         // The host-supplied `managed-loopback` connection and every saved
         // desktop connection use native authenticated transport so bearer

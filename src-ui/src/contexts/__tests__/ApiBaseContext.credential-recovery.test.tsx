@@ -166,6 +166,30 @@ function fetchByPath(routes: Record<string, () => Promise<Response>> = {}) {
   );
 }
 
+it('fails a non-queued write before dispatch while the browser reports offline and permits recovery online', async () => {
+  await renderShell();
+  const endpoint = `${connections!.apiBase}/api/offline-write-fixture`;
+  const wire = vi.fn(
+    async () =>
+      new Response('{"success":true}', {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+  vi.stubGlobal('fetch', wire);
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  await expect(
+    authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
+  ).rejects.toThrow('Station is offline');
+  expect(wire).not.toHaveBeenCalled();
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  await expect(
+    authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
+  ).resolves.toHaveProperty('status', 200);
+  expect(wire).toHaveBeenCalledOnce();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 describe('the reconnect banner is retired by an authenticated 2xx — and only by a current one', () => {
   beforeEach(() => {
     navigate.mockClear();
