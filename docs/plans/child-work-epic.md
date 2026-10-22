@@ -51,6 +51,25 @@ An initial run stopped before tests because the invocation supplied DNT, which
 correctly refused its disclosure acknowledgement; the corrected run unsets DNT
 and keeps telemetry Off in its isolated runtime.
 
+At `6b2e933890b`, the canonical iOS simulator build passed its native artifact
+verification. The installed binary matched the built binary, and the simulator
+paired to an ordinary isolated Station reporting that same checkout revision.
+A registered CLI delegation through OpenCode GLM-5.3-Flash returned its exact
+challenge. Its task completed while the retained Session read `ready`; a CLI
+continuation used the same Session, visibly ran in the native client, then
+returned to idle. The native Home row labeled its directory separately from
+Project membership, and Activity showed the completed work under Just finished
+with CLI origin. A separate browser client showed the same item and origin
+before and after reload, without mocked routes.
+
+Native relaunch did not pass: Activity showed its unavailable boundary on two
+cold launches. One manual Retry after startup recovered the real list; the
+cause remains unestablished. This is an open #2868 qualification defect, not a
+successful persistence receipt. The physical phone remained unreachable, and
+the simulator does not establish physical-device lifecycle behavior. Generated
+Apple project changes were archived and restored; the isolated runtime and
+owned simulator were stopped after evidence capture.
+
 The compact roster, logos, animation, sender provenance, delegated result
 delivery, and phone transfer guards already contained in #3991 remain master
 work. Source containment is not final runtime/native/provider acceptance.
