@@ -343,6 +343,18 @@ before being reduced to 84 MiB. These limits remain part of the evidence. This
 does not close plugin/delegation/internal-effect coverage, real-provider sync,
 #205 restrictions, fiscal guarantees or full epic acceptance.
 
+A later owned native plugin control at `c88113b55f7` uses the same installed
+Claude/SDK pair and a deterministic loopback model. A plugin-owned MCP marker
+tool executes in ordinary and restored activations of one native conversation.
+During the restricted activation the wire has no tools, an injected call returns
+an error and no marker is written, while prior history remains. Removing only
+the wildcard deny in a separate harness makes the marker execute and the probe
+fail; the original harness passes again. The first strict-MCP fixture loaded no
+plugin server and is retained as failed prerequisite evidence, not denial proof.
+This is direct installed-runtime evidence, not production sync with plugins,
+real-provider sync, arbitrary plugin startup/hooks, delegation/internal effects
+or portable/fiscal authority. Independent artifact review remains pending.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
