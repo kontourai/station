@@ -1,0 +1,9 @@
+{
+  "revision": "db7ec3e9257d9d44ca544dc9038639248e82bced",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Correction to the preceding review note: the public-import probe establishes that validateTrustBundle and buildTrustReport resolve to functions; it does not invoke them or establish their behavior. The earlier phrase execute as functions was imprecise and is superseded by this narrower claim. Source-read bounds and the guide's explicit live/browser/sandbox limitations remain the reviewed scope. Independent source/evidence review found this wording issue; no independent execution is borrowed.","inputs":["examples/builder-delivery-viewer/README.md"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Correction to the preceding review note: the public-import probe establishes that buildSurveyTrustBundle,candidateReviewRecord,deriveReviewSessionApplyResultForSnapshot and mountReviewWorkbench resolve to functions; it does not invoke them or establish their behavior. The earlier phrase execute as functions was imprecise and is superseded by this narrower claim. The source-reviewed persistence/projection/transport limitations remain accurate. Independent source/evidence review found this wording issue; no independent execution is borrowed.","inputs":["examples/survey-review-workbench/README.md"]}
+  ]
+}

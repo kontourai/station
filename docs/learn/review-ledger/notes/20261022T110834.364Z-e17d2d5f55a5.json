@@ -1,0 +1,9 @@
+{
+  "revision": "db7ec3e9257d9d44ca544dc9038639248e82bced",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Read complete overview against the five canonical context owners, session-lifecycle contract, explicit Flow-policy attachment and changed module-map group/sync entries. The additions preserve Agent versus engine, direct chat versus Task, idle versus terminal close, metadata-selected Flow versus ordinary chat, and receipt versus verdict boundaries. Group/sync observations and experimental model durability do not widen the overview's execution or acceptance claims. Plugin declarations remain separate from grants; placement and state remain separate from runtime handles. No prose change required. High-level responsibility/caller review only, not a new audit or live qualification of every module, package, server/native surface or historical strategy.","inputs":["CONTEXT.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md","docs/contexts/evidence-governance/CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Read complete map and trace its five links and relationship edges to the corresponding context owners and current module-map entries. Agent-runtime additions describe retained group observations and restricted sync without assigning semantic gate authority to Station; evidence-governance additions retain assumed readiness and ACK-versus-acceptance distinctions. The map still explicitly requires caller-selected Flow binding and engine capability/grant delivery, and keeps rendering receipts separate from establishing them. No prose change required. Navigation/responsibility review only; no claim of renewed execution or semantic approval of all linked subsystems.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md","docs/contexts/evidence-governance/CONTEXT.md"]}
+  ]
+}
