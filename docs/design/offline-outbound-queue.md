@@ -106,12 +106,13 @@ resulting revision. Ambiguous response loss preserves the same operation for
 replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
-For every other config family, the SDK's authenticated mutation boundary checks the active
-connection's `lastError` through `mutationAllowed` and throws
-`StationReadOnlyError` before any non-GET request is issued. That is a
-fail-loud prevention rail, not config-edit durability. Any additional family
-must independently add an idempotency key and revision/conflict receipt before
-it can be queued.
+Offline reading adds no reachability veto to mutation dispatch and no foreground
+send deadline. Browser mutations retain their existing transport, authority and
+request timing behavior. The native broker credential owner retains its existing
+non-safe-method guard for the bounded read transport. Successful authenticated
+reads and health probes can still retire stale connection failure evidence.
+Additional queued mutation families must independently add an idempotency key and
+revision/conflict receipt.
 
 The broad `PUT /api/config/app` refuses any payload containing `logLevel`
 before mutating any sibling field. The web settings surface and live CLI both
@@ -142,3 +143,48 @@ becomes durable. The pending choice retains the account namespace that selected
 it. Unknown authority holds the choice for verification; a different verified
 account retires it. Replay under the same account retains the original choice.
 Explicit chat picks remain independent of inherited personal defaults.
+
+## Offline reading and the browser shell
+
+The [user guide](../user/getting-started.md#read-recent-conversations-offline)
+owns consent, limits and local-device disclosure. The implementation is separate
+from outbound intent: [offlineReading](../../src-ui/src/lib/offlineReading.ts)
+stores a closed user/assistant text projection from successful history windows.
+It retains one explicitly enabled authority shelf, binds it to the connection,
+origin, credential authority generation and credential state, fences delayed
+writes with an atomic revision,
+and clears it on authority changes and sign-out. The local reader is outside the
+live access gate; it does not hydrate a QueryClient, verify a person, expose live
+approvals, or reuse saved text as current online data. Other tabs hear committed
+changes through BroadcastChannel. IndexedDB failure is reported by the setting
+and reader; a failed best-effort history capture cannot fail the live read.
+
+Raw `orchestration-sessions` remain excluded from query persistence: they inherit
+`resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
+[OfflineSessionIndex](../../src-ui/src/components/OfflineSessionIndex.tsx) projects
+only identifiers, capped at 1,000 rows, into `offline-session-index`. The existing
+success-only whitelist, 24-hour maxAge, build buster and authority quarantine
+apply. This index is not an offline authority credential.
+
+The web build emits `offline-shell.json` before any listener injection. Its HTML
+contains external scripts only. The [worker](../../src-ui/public/sw.js) fetches
+that shell and its startup assets without credentials, constructs the fallback
+with a CSP admitting no inline scripts, and never stores a navigation response
+or its per-request nonce. A cached live index would replay its nonce and possibly
+its runtime bootstrap; the generated shell avoids both. Navigations use the
+network first, falling back on network failure or a 502/503/504 response. Auth refusals are
+passed through. The fallback marker opens the local reader even when the browser
+link stays online; **Retry connection** loads current server HTML. APIs, SSE, auth routes,
+query-bearing URLs, mutations and authorization-bearing requests are not cached.
+Hashed assets use cache-first storage after anonymous fetches. New build workers
+activate immediately and remove older shell caches; registration bypasses the
+HTTP worker cache and checks for updates at launch and on returning to the tab.
+An already open page offers **Reload to update** when its controller changes.
+A page loaded from the anonymous fallback reloads on reconnect to obtain the
+current runtime bootstrap. Ordinary navigations always request fresh HTML.
+
+Executed tests cover a real Chromium offline reload and IndexedDB bounds, a
+mounted history-reader capture, the safe query projection and survival of a real
+ConnectionStore reachability failure. They do not establish native offline reading, revoked access
+while disconnected, or a guarantee that local plaintext is safe on a shared
+browser profile.

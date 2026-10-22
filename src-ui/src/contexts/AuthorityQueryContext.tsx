@@ -124,6 +124,7 @@ import {
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { OfflineSessionIndex } from '../components/OfflineSessionIndex';
 import {
   isPluginCommandEffectCookieAuthEligible,
   notifyPluginCommandEffectAuthoritySwitch,
@@ -140,6 +141,10 @@ import {
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
+import {
+  clearOfflineReading,
+  discardForeignOfflineReading,
+} from '../lib/offlineReading';
 import { stationQueryDefaults } from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
@@ -348,6 +353,21 @@ export function AuthorityQueryProvider({
   const verifiedNamespace = liveObservation
     ? buildAuthorityNamespace(liveObservation)
     : null;
+  useEffect(() => {
+    if (verifiedNamespace)
+      void discardForeignOfflineReading(verifiedNamespace).catch(() => {});
+  }, [verifiedNamespace]);
+  const previousReadingScope = useRef<string | undefined>(undefined);
+  const readingScope = boundScope?.authorityKey;
+  useEffect(() => {
+    if (
+      previousReadingScope.current !== undefined &&
+      previousReadingScope.current !== readingScope
+    ) {
+      void clearOfflineReading().catch(() => {});
+    }
+    previousReadingScope.current = readingScope;
+  }, [readingScope]);
 
   const observationFailed =
     observationKey !== null && observationQuery.status === 'error';
@@ -612,6 +632,7 @@ export function AuthorityQueryProvider({
           persistOptions={persistOptions}
         >
           <AuthoritySwitchInvalidator />
+          <OfflineSessionIndex />
           <SessionReadModelProvider>{children}</SessionReadModelProvider>
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
