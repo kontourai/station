@@ -36,5 +36,5 @@
 
 .attribution-chip__pill--posture {
   background: var(--warning-bg, rgba(255, 165, 0, 0.1));
-  color: var(--warning-primary, orange);
+  color: var(--k-caution);
 }
