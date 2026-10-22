@@ -151,8 +151,11 @@ jobs:
       - name: Prepare unsigned Stable push extensions
         if: github.event_name == 'workflow_dispatch' && inputs.push_extensions
         run: |
-          node scripts/ensure-ios-agent-activity-extension.mjs src-desktop/gen/apple/project.yml --app-bundle-id io.kontourai.station --aps-environment production --info-plist src-desktop/gen/apple/station_iOS/Info.plist --notification-service
+          push_info_plist="$RUNNER_TEMP/station-ios-push-Info.plist"
+          cp src-desktop/gen/apple/station_iOS/Info.plist "$push_info_plist"
+          node scripts/ensure-ios-agent-activity-extension.mjs src-desktop/gen/apple/project.yml --app-bundle-id io.kontourai.station --aps-environment production --info-plist "$push_info_plist" --notification-service
           xcodegen generate --spec src-desktop/gen/apple/project.yml --project src-desktop/gen/apple
+          cp "$push_info_plist" src-desktop/gen/apple/station_iOS/Info.plist
       - working-directory: src-desktop
         if: github.event_name != 'workflow_dispatch' || !inputs.push_extensions
         run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json

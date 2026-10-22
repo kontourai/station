@@ -1,6 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
@@ -676,23 +682,43 @@ describe('Live Activity delivery review round (#2513 slice D)', () => {
         join(apple, path),
         readFileSync(join(root, 'src-desktop/gen/apple', path)),
       );
-    const commands = prepare
-      .run!.split('\n')
-      .filter((line) => line.startsWith('node '));
-    expect(commands).toHaveLength(1);
+    // XcodeGen regenerates Info.plist from project.yml's info properties;
+    // source plist edits made before generation are discarded (hosted run 39859409668).
+    const bin = join(directory, 'bin');
+    mkdirSync(bin);
+    const xcodegen = join(bin, 'xcodegen');
+    writeFileSync(
+      xcodegen,
+      `#!/bin/sh
+set -eu
+test "$*" = 'generate --spec src-desktop/gen/apple/project.yml --project src-desktop/gen/apple'
+printf '<plist><dict><key>LSRequiresIPhoneOS</key><true/></dict></plist>\\n' > src-desktop/gen/apple/station_iOS/Info.plist
+`,
+    );
+    chmodSync(xcodegen, 0o755);
     const prepared = await runBoundedFixture(
       'bash',
       [
         '-e',
         '-c',
-        commands[0].replace('node scripts/', 'node "$FIXTURE_REPO"/scripts/'),
+        prepare.run!.replace('node scripts/', 'node "$FIXTURE_REPO"/scripts/'),
       ],
       {
         cwd: directory,
-        env: { ...process.env, FIXTURE_REPO: root },
+        env: {
+          ...process.env,
+          FIXTURE_REPO: root,
+          RUNNER_TEMP: directory,
+          PATH: `${bin}:${process.env.PATH}`,
+        },
       },
     );
     expect(prepared.status, prepared.stderr).toBe(0);
+    const plist = readFileSync(join(apple, 'station_iOS/Info.plist'), 'utf8');
+    expect(plist).toMatch(/<key>NSSupportsLiveActivities<\/key>\s*<true\s*\/>/);
+    expect(plist).toMatch(
+      /<key>StationApsEnvironment<\/key>\s*<string>production<\/string>/,
+    );
     const project = load(readFileSync(join(apple, 'project.yml'), 'utf8')) as {
       targets: Record<
         string,
