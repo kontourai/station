@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
@@ -718,7 +718,7 @@ export function verificationPolicyErrors({
  */
 export function discoverTrackedVitestTestFiles({
   rootDir = root,
-  execFile = execFileSync,
+  execFile = execFileSyncBounded,
 } = {}) {
   const output = execFile('git', ['ls-files', '-z'], {
     cwd: rootDir,

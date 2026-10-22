@@ -139,7 +139,7 @@ describe('bounded synchronous capture (#2787)', () => {
     expect(requested).toBe(67_108_864);
   });
 
-  test('the ratchet family reads a tracked-file listing larger than 1 MiB whole', () => {
+  test('ratchets and verification policy read a tracked-file listing larger than 1 MiB whole', () => {
     const root = makeTempDir('station-ratchet-listing-');
     const git = (args: string[], input?: string) =>
       execFileSyncBounded('git', args, {
@@ -155,6 +155,8 @@ describe('bounded synchronous capture (#2787)', () => {
       { length: count },
       (_, index) => `pad/${'p'.repeat(200)}-${index}.txt`,
     );
+    const trackedTest = 'src-server/__tests__/last-after-large-listing.test.ts';
+    names.push(trackedTest);
     expect(Buffer.byteLength(names.join('\n'))).toBeGreaterThan(
       NODE_DEFAULT_MAX_BUFFER,
     );
@@ -177,6 +179,19 @@ describe('bounded synchronous capture (#2787)', () => {
       ],
       { cwd: root, encoding: 'utf8' },
     );
-    expect(Number(listed)).toBe(count);
+    expect(Number(listed)).toBe(names.length);
+    const policy = pathToFileURL(
+      resolve('scripts/verification-policy-gate.mjs'),
+    ).href;
+    const discovered = execFileSyncBounded(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { discoverTrackedVitestTestFiles } = await import(${JSON.stringify(policy)}); process.stdout.write(JSON.stringify(discoverTrackedVitestTestFiles({ rootDir: process.cwd() })));`,
+      ],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(JSON.parse(discovered)).toEqual([trackedTest]);
   });
 });
