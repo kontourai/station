@@ -35,7 +35,8 @@ the receipt boundary at the end of this guide.
 On iOS, Tauri's web-content termination callback reloads the page after
 WebKit loses its process. Recovery uses the state the application already
 persists; it does not promise recovery of unsaved text or resend an uncertain
-write. Finite native HTTP requests hold a UIKit background assertion until
+write. [Finite native HTTP requests](../../src-desktop/src/lib.rs) hold a
+[UIKit background assertion](../../src-desktop/src/ios_background_task.rs) until
 completion or expiration, so an in-flight send can use the OS's discretionary
 grace when the app leaves the foreground. UIKit can refuse or expire that
 assertion; it does not establish background execution, provider acceptance or

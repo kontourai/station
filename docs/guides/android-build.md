@@ -93,7 +93,7 @@ updater payloads; it is not the Android upload key.
 
 ### Renderer recovery and network cost
 
-The Cargo configuration supplies Wry 0.57's
+The [Cargo configuration](../../src-desktop/.cargo/config.toml) supplies Wry 0.57's
 `WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION` when it generates `RustWebViewClient`.
 On renderer termination, the handler removes and destroys the dead WebView,
 then recreates its activity. Wry restores the saved attributes and callbacks
@@ -104,7 +104,8 @@ device under memory pressure before claiming lifecycle qualification.
 
 The inset bridge exposes Android's explicit metered-network signal through
 `ConnectivityManager` and releases its callback when the WebView detaches.
-The shared UI signal also accepts browser `navigator.connection.saveData` or
+The [shared UI signal](../../src-ui/src/platform/networkCost.ts) also accepts
+browser `navigator.connection.saveData` or
 an explicit `metered` flag. Unknown connectivity keeps ordinary polling.
 Conversation inbox polling changes from 2 to 10 seconds on constrained
 networks; explicit sends, refreshes and cancellation retain their normal path.
