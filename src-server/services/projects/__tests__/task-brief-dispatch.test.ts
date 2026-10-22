@@ -39,6 +39,11 @@ import {
 } from '../task-brief-source.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import { TaskGraphService } from '../task-graph-service.js';
+import {
+  FIXTURE_TASK_AGENT,
+  fixtureAgentStartResolver,
+  fixtureTaskAgentSessionResolver,
+} from './task-dispatch-test-helpers.js';
 
 type EngineProvider = 'claude' | 'codex' | 'station-agent';
 
@@ -186,6 +191,8 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       eventBus: new EventBus(),
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
+      // #4005: a dispatched start runs as the Task's Agent.
+      resolveSessionAgent: fixtureTaskAgentSessionResolver,
     });
     const root = join(tmp, 'graph');
     mkdirSync(root, { recursive: true });
@@ -263,6 +270,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     }
     const dispatcher = composeTaskDispatcher(graph, {
       orchestrationService: service,
+      resolveAgentStart: fixtureAgentStartResolver(provider),
       // A namespaced workItemRef routes through dispatch-as-claim; stub the
       // claim so these tests observe the brief, not the claim gate.
       resolveProjectWorkspace: () => tmp,
@@ -303,6 +311,7 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
       }),
     });
     const outcome = await dispatcher.dispatch(task.id, {
+      agentId: FIXTURE_TASK_AGENT,
       ownerUserId: options.ownerUserId ?? 'human:local:operator',
       fullAccessGrant: null,
       runtimeConfig: { provider, cwd: tmp },

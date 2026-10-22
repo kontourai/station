@@ -1,0 +1,21 @@
+{
+  "revision": "881a90418f54151aac0c3358b3739cfc28e12437",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the TaskDispatcher section against the rejected-start change: its claims (indeterminate once a provider claim or start may have succeeded, seeded outcome, Agent-bound engine start) remain accurate; a rejected receipt is a confirmed pre-effect refusal, not a possible start.","inputs":["docs/architecture/module-map.md","src-server/services/projects/task-dispatcher.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked: TaskDispatcher still retains indeterminate provider starts; the #4005 change only reclassifies a session-service rejected receipt (no provider effect) as a definite failure, which this document does not describe otherwise.","inputs":["docs/design/channel-home-authority.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Added the rejected-start sentence and checked it against refuseDefiniteStartRejection (task-graph-service.ts), TaskDispatchStartRefusedError in the Dispatcher catch, and the session command module rejected/failed/indeterminate classification; only a rejected, non-indeterminate receipt restores the Task.","inputs":["docs/design/task-dispatcher.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/work-plane-composition.md","note":"Checked against the #4005 follow-up: a start the session service rejected before any provider effect now restores the Task (failed) instead of indeterminate, and the tests name the dispatch Agent. Searched this document for Task dispatch, indeterminate start and seeded Session claims; none change.","inputs":["docs/design/work-plane-composition.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked against the #4005 follow-up: a start the session service rejected before any provider effect now restores the Task (failed) instead of indeterminate, and the tests name the dispatch Agent. Searched this document for Task dispatch, indeterminate start and seeded Session claims; none change.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked against the #4005 follow-up: a start the session service rejected before any provider effect now restores the Task (failed) instead of indeterminate, and the tests name the dispatch Agent. Searched this document for Task dispatch, indeterminate start and seeded Session claims; none change.","inputs":["docs/reference/sdk.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked against the #4005 follow-up: a start the session service rejected before any provider effect now restores the Task (failed) instead of indeterminate, and the tests name the dispatch Agent. Searched this document for Task dispatch, indeterminate start and seeded Session claims; none change.","inputs":["docs/reference/station-docs.md","src-server/services/projects/task-dispatcher.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked against the #4005 follow-up: a start the session service rejected before any provider effect now restores the Task (failed) instead of indeterminate, and the tests name the dispatch Agent. Searched this document for Task dispatch, indeterminate start and seeded Session claims; none change.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}

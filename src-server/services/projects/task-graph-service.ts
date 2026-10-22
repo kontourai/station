@@ -70,7 +70,10 @@ import type {
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import {
+  OrchestrationCommandDispatchError,
+  type OrchestrationService,
+} from '../orchestration/orchestration-service.js';
 import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
@@ -81,7 +84,10 @@ import {
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
 import type { TaskBriefSource } from './task-brief-source.js';
-import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
+import type {
+  TaskDispatchAgentStart,
+  TaskDispatchExecutionAuthority,
+} from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
   type DispatchIntent,
@@ -89,6 +95,7 @@ import {
   type TaskDispatchClaims,
   type TaskDispatchGraphState,
   type TaskDispatchRemoteSessions,
+  TaskDispatchStartRefusedError,
   type TaskDispatchTelemetry,
 } from './task-dispatcher.js';
 
@@ -287,6 +294,27 @@ export interface TaskDispatchAdapterDeps {
    * attaches no brief.
    */
   taskBrief?: Pick<TaskBriefSource, 'forDispatch'>;
+  /**
+   * #4005: resolves the Agent an engine-started Task Session runs as, through
+   * the same resolver a foreground `/chat` start uses
+   * (`resolveTaskDispatchAgentStart`). A dispatch that names no provider
+   * starts the Agent's own engine. Absent, a dispatch that would start an
+   * engine is refused: an engine Session with no Agent binding can never
+   * take a turn. The seeded `task-dispatch` path does not need it.
+   */
+  /**
+   * #4005: whether this Station has the Agent a seeded (`task-dispatch`)
+   * dispatch records; throws when it does not. Absent, a seeded dispatch
+   * records the Agent unchecked.
+   */
+  assertAgentExists?: (agentId: string) => Promise<void>;
+  resolveAgentStart?: (input: {
+    agentId: string;
+    projectSlug: string;
+    cwd?: string;
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  }) => Promise<TaskDispatchAgentStart>;
 }
 
 /**
@@ -303,6 +331,33 @@ function canonicalInstant(value: string | undefined): string | undefined {
   return Number.isNaN(ms) || new Date(ms).toISOString() !== value
     ? undefined
     : value;
+}
+
+/** The engine a dispatch names, if it names one. */
+function requestedDispatchProvider(
+  input: TaskDispatchInput,
+): EngineId | undefined {
+  return input.runtimeConfig?.provider ?? input.provider ?? undefined;
+}
+
+/**
+ * #4005: a start the session service rejected before any provider effect
+ * (`receipt.status: 'rejected'`, not indeterminate) is a definite refusal,
+ * so the Dispatcher restores the Task rather than stranding it
+ * indeterminate. Every other failure keeps its possible-start meaning.
+ */
+async function refuseDefiniteStartRejection<T>(start: Promise<T>): Promise<T> {
+  try {
+    return await start;
+  } catch (error) {
+    if (
+      error instanceof OrchestrationCommandDispatchError &&
+      error.receipt.status === 'rejected' &&
+      error.outcome !== 'indeterminate'
+    )
+      throw new TaskDispatchStartRefusedError(error.message);
+    throw error;
+  }
 }
 
 function isNamespacedWorkItemRef(ref: string): boolean {
@@ -1826,6 +1881,19 @@ export class TaskGraphService {
     );
   }
 
+  /**
+   * The slug of the Project a Task names. A Task's `projectId` is the slug it
+   * was created with; a Project that cannot be read keeps that value, and the
+   * Agent resolution then refuses it.
+   */
+  private projectSlugFor(projectId: string): string {
+    try {
+      return this.projectService?.getProject(projectId)?.slug || projectId;
+    } catch {
+      return projectId;
+    }
+  }
+
   /** Whether two Project identities (ids or slugs) name one Project. */
   sameProject(a: string, b: string): boolean {
     if (a === b) return true;
@@ -2103,11 +2171,12 @@ export class TaskGraphService {
   /**
    * Task-lifecycle boundary release (review finding #2, following the S4
    * ship): `session.exited` (`releaseClaimForSession`) only ever fires for
-   * a REAL orchestrated session — the default `'task-dispatch'` seeded
-   * path (`OrchestrationService.seedSessionRecord`, verified against
-   * `orchestration-service.ts`) is a pure record write that emits NO
-   * session-level event at all, so a task dispatched through the default
-   * UI path would otherwise never release its claim until Station restarts
+   * a REAL orchestrated session — the seeded `'task-dispatch'` path (a
+   * dispatch with no Agent, or one that asks for `task-dispatch`, such as an
+   * external monitor; `OrchestrationService.seedSessionRecord`, verified
+   * against `orchestration-service.ts`) is a pure record write that emits NO
+   * session-level event at all, so a task dispatched that way
+   * would otherwise never release its claim until Station restarts
    * into a reconciliation sweep, and its own next dispatch would self-block
    * on the leaked claim. A task reaching `done`/`canceled` is a real,
    * always-reachable terminus for BOTH dispatch shapes, so every transition
@@ -3235,12 +3304,18 @@ export class TaskGraphService {
     const resolveProjectWorkspace =
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
     const taskBrief = deps.taskBrief;
+    const resolveAgentStart = deps.resolveAgentStart;
+    const assertAgentExists = deps.assertAgentExists;
     const graph: TaskDispatchGraphState = {
-      reserve: async (taskId, input) => {
+      reserve: async (taskId, input, agentStart) => {
         try {
           return {
             kind: 'reserved',
-            reservation: await this.reserveTaskDispatch(taskId, input),
+            reservation: await this.reserveTaskDispatch(
+              taskId,
+              input,
+              agentStart,
+            ),
           };
         } catch (error) {
           if (error instanceof TaskDispatchAdmissionError) {
@@ -3301,12 +3376,92 @@ export class TaskGraphService {
       mayHaveStarted: (reservation: DispatcherReservation) =>
         reservation.provider !== 'task-dispatch' &&
         orchestrationService !== undefined,
+      // #4005: the dispatch runs as the Task's Agent: the dispatch's
+      // `agentId`, else the Agent the Task records (the same fallback the
+      // association writes). Resolved before the reservation, any claim or
+      // any provider effect, so an unknown Agent, an engine that is not
+      // ready, a model that cannot launch, or a provider other than the
+      // Agent's refuses definitely and leaves the Task as it was, instead of
+      // starting a Session no turn can reach or stranding the Task
+      // indeterminate. A dispatch that names no provider starts the Agent's
+      // own engine (the UI's Dispatch sends only `agentId`); only a dispatch
+      // with no Agent at all, or one that asks for `task-dispatch`, seeds.
+      prepare: async (taskId: string, input: DispatchIntent) => {
+        const task = this.readTaskView(taskId);
+        // A missing Task is answered by the reservation (`not-found`).
+        if (!task) return { kind: 'ready' as const };
+        const agentId = normalizeText(input.agentId) || task.agentId;
+        const explicitProvider = requestedDispatchProvider(input);
+        if (
+          explicitProvider === 'task-dispatch' ||
+          (!explicitProvider && !agentId)
+        ) {
+          if (agentId && assertAgentExists) {
+            try {
+              await assertAgentExists(agentId);
+            } catch (error) {
+              return {
+                kind: 'refused' as const,
+                reason: `Agent '${agentId}' cannot be recorded on this Task: ${errorMessage(error)}`,
+              };
+            }
+          }
+          return { kind: 'ready' as const };
+        }
+        if (!agentId)
+          return {
+            kind: 'refused' as const,
+            reason:
+              'A Task dispatch that starts an engine needs an Agent: name agentId, or assign an Agent to the Task',
+          };
+        // An explicit engine with no orchestration yet is the retryable
+        // `unavailable` the readiness check answers after the reservation.
+        if (!orchestrationService && explicitProvider)
+          return { kind: 'ready' as const };
+        if (!orchestrationService || !resolveAgentStart)
+          return {
+            kind: 'refused' as const,
+            reason: 'Agent execution is unavailable for Task dispatch',
+          };
+        let agentStart: TaskDispatchAgentStart;
+        try {
+          agentStart = await resolveAgentStart({
+            agentId,
+            projectSlug: this.projectSlugFor(task.projectId),
+            ...(input.runtimeConfig?.cwd !== undefined
+              ? { cwd: input.runtimeConfig.cwd }
+              : {}),
+            ...(input.runtimeConfig?.modelId
+              ? { modelId: input.runtimeConfig.modelId }
+              : {}),
+            ...(input.runtimeConfig?.modelOptions
+              ? { modelOptions: input.runtimeConfig.modelOptions }
+              : {}),
+          });
+        } catch (error) {
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,
+          };
+        }
+        if (explicitProvider && agentStart.provider !== explicitProvider)
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' runs on ${agentStart.provider}, not ${explicitProvider}`,
+          };
+        return { kind: 'ready' as const, agentStart };
+      },
       startOrSeed: async (
         reservation: DispatcherReservation,
         input: DispatchIntent,
         admission?: SessionStartBoundaryClaim,
+        agentStart?: TaskDispatchAgentStart,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
+          // `prepare` resolved the Agent for every engine start; without it
+          // the Session would have no binding, so never start one.
+          if (!agentStart)
+            throw new Error('Task dispatch has no resolved Agent to start');
           const taskSlug = this.resolveDispatchTaskSlug(
             reservation.task,
             input.runtimeConfig?.cwd,
@@ -3337,53 +3492,75 @@ export class TaskGraphService {
           await this.assertDispatchReservationProviderStarting(
             reservation as TaskDispatchReservation,
           );
-          const session = (await orchestrationService.dispatch(
-            {
-              type: 'startSession',
-              input: {
-                threadId: reservation.sessionId,
-                provider: reservation.provider,
-                cwd: input.runtimeConfig?.cwd,
-                modelId: reservation.modelId,
-                modelOptions: input.runtimeConfig?.modelOptions,
-                metadata: {
-                  userId: input.ownerUserId,
-                  ...(taskSlug ? { taskSlug } : {}),
+          const session = (await refuseDefiniteStartRejection(
+            orchestrationService.dispatch(
+              {
+                type: 'startSession',
+                input: {
+                  threadId: reservation.sessionId,
+                  provider: reservation.provider,
+                  cwd: agentStart.cwd,
+                  ...(agentStart.modelId
+                    ? { modelId: agentStart.modelId }
+                    : {}),
+                  ...(agentStart.modelOptions
+                    ? { modelOptions: { ...agentStart.modelOptions } }
+                    : {}),
+                  workspaceIsolation: { mode: 'shared' },
+                  // #765 A1, as a foreground start: the Session is a durable
+                  // conversation whose later turns may resume its native
+                  // transcript, so the engine must keep it.
+                  persistSession: true,
+                  metadata: {
+                    // #4005: the Environment + Agent binding a continuation
+                    // verifies, and the Agent whose prompt, skills and tools
+                    // the start applies. The service strips and re-stamps
+                    // `environmentId`/`conversationId` from
+                    // `conversationIdentity` below.
+                    ...agentStart.metadata,
+                    userId: input.ownerUserId,
+                    ...(taskSlug ? { taskSlug } : {}),
+                  },
                 },
               },
-            },
-            // #2493: the dispatching request's grant, or none (a monitor, the
-            // board intent): the session runs `host` only with it. The owner
-            // attribution marks an unverified agent's or external sender's
-            // session to act for no one, at the service's start choke point.
-            // #1796: and the dispatching request's origin, so the start's
-            // receipt records who asked (the grant names its own grantor).
-            input.fullAccessGrant ||
-              input.ownerAttribution ||
-              input.clientOrigin
-              ? {
-                  ...(input.fullAccessGrant
-                    ? { fullAccessGrant: input.fullAccessGrant }
-                    : {}),
-                  ...(input.ownerAttribution
-                    ? { ownerAttribution: input.ownerAttribution }
-                    : {}),
-                  ...(input.clientOrigin
-                    ? { clientOrigin: input.clientOrigin }
-                    : {}),
-                }
-              : undefined,
-            {
-              roomExecutionBinding: {
-                projectId: reservation.task.projectId,
-                taskId: reservation.task.id,
+              // #2493: the dispatching request's grant, or none (a monitor, the
+              // board intent): the session runs `host` only with it. The owner
+              // attribution marks an unverified agent's or external sender's
+              // session to act for no one, at the service's start choke point.
+              // #1796: and the dispatching request's origin, so the start's
+              // receipt records who asked (the grant names its own grantor).
+              input.fullAccessGrant ||
+                input.ownerAttribution ||
+                input.clientOrigin
+                ? {
+                    ...(input.fullAccessGrant
+                      ? { fullAccessGrant: input.fullAccessGrant }
+                      : {}),
+                    ...(input.ownerAttribution
+                      ? { ownerAttribution: input.ownerAttribution }
+                      : {}),
+                    ...(input.clientOrigin
+                      ? { clientOrigin: input.clientOrigin }
+                      : {}),
+                  }
+                : undefined,
+              {
+                roomExecutionBinding: {
+                  projectId: reservation.task.projectId,
+                  taskId: reservation.task.id,
+                },
+                ...(brief ? { taskBrief: brief } : {}),
+                // The dispatched Session is the root of its own conversation.
+                conversationIdentity: {
+                  conversationId: reservation.sessionId,
+                  environmentId: agentStart.environmentId,
+                },
+                ...(admission ? { sessionStartAdmission: admission } : {}),
+                ...(taskSlug
+                  ? { workflowSidecarAttachMode: 'read-only-join' as const }
+                  : {}),
               },
-              ...(brief ? { taskBrief: brief } : {}),
-              ...(admission ? { sessionStartAdmission: admission } : {}),
-              ...(taskSlug
-                ? { workflowSidecarAttachMode: 'read-only-join' as const }
-                : {}),
-            },
+            ),
           )) as ProviderSession;
           return {
             session,
@@ -3469,6 +3646,7 @@ export class TaskGraphService {
   private async reserveTaskDispatch(
     taskId: string,
     input: TaskDispatchInput,
+    agentStart?: TaskDispatchAgentStart,
   ): Promise<TaskDispatchReservation> {
     return await this.mutateStore((data) => {
       const task = data.tasks.find((item) => item.id === taskId);
@@ -3498,10 +3676,25 @@ export class TaskGraphService {
         data.dispatches.filter((dispatch) => dispatch.taskId === taskId)
           .length + 1;
       const sessionId = createTaskSessionId(taskId, dispatchIndex);
+      // #4005: the Agent `prepare` resolved must still be the Task's Agent
+      // under this lock, or the start would run as an Agent nobody chose.
+      if (
+        agentStart &&
+        (normalizeText(input.agentId) || task.agentId) !== agentStart.agentId
+      ) {
+        throw new TaskDispatchAdmissionError(
+          'contended',
+          "The Task's Agent changed while it was being dispatched; dispatch it again",
+        );
+      }
       const provider =
-        input.runtimeConfig?.provider ?? input.provider ?? 'task-dispatch';
+        requestedDispatchProvider(input) ??
+        agentStart?.provider ??
+        'task-dispatch';
       const sourceSurface = normalizeText(input.sourceSurface) || 'api';
-      const modelId = input.runtimeConfig?.modelId;
+      const modelId = agentStart
+        ? agentStart.modelId
+        : input.runtimeConfig?.modelId;
       const reservedAt = new Date().toISOString();
       const reservation: PersistedTaskDispatchReservation = {
         generation: crypto.randomUUID(),
@@ -4100,7 +4293,7 @@ export class TaskGraphService {
   /**
    * Releases a task's AssignmentProvider claim on orchestration session end
    * or cancel (roadmap archive#584) — fires only for a REAL orchestrated session
-   * (`session.exited`); the default `'task-dispatch'` seeded path never
+   * (`session.exited`); the seeded `'task-dispatch'` path never
    * reaches this trigger at all (see `updateTaskStatus`'s doc comment) and
    * relies on `releaseClaimForTask` instead. Never throws; idempotent since
    * `session.exited` can fire more than once for the same thread.
