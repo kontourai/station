@@ -167,7 +167,9 @@ same-row arrowheads hidden by cards; gutter routing repairs that geometry.
 A controlled browser inventory exercises adjacent, skipped-column and upward
 edges in dark desktop and light 390px layouts, with keyboard-scrollable graph
 and table regions. Narrow preset hashes wrap without page overflow. This is
-component/SDK fixture evidence; independent repair review remains pending. This increment does not supply richer runtime tool/memory/routing
+component/SDK fixture evidence. Independent source review accepts the repair
+for same-row, skipped-column, upward, self and cyclic edges across 1–16 members;
+overlapping trunks remain possible and the table preserves exact dependencies. This increment does not supply richer runtime tool/memory/routing
 facts or complete #453/#600.
 
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
