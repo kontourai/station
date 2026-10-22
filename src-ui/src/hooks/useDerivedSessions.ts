@@ -339,13 +339,8 @@ type SessionCacheEntry = {
   derived: ChatSession;
 };
 
-// Hook to get all open tabs (with messages loaded from backend)
-export function useDerivedSessions(
-  _apiBase: string,
-  agentSlug: string | null,
-  projectSlug?: string | null,
-): ChatSession[] {
-  const agents = useAgents();
+/** Session metadata subscription; composer drafts and live text have their own readers. */
+export function useSessionChats() {
   const selection = useRef<{
     raw: ReturnType<typeof activeChatsStore.getSnapshot>;
     value: ReturnType<typeof activeChatsStore.getSnapshot>;
@@ -368,11 +363,17 @@ export function useDerivedSessions(
     selection.current = { raw, value };
     return value;
   }, []);
-  const allChats = useSyncExternalStore(
-    activeChatsStore.subscribe,
-    getChats,
-    getChats,
-  );
+  return useSyncExternalStore(activeChatsStore.subscribe, getChats, getChats);
+}
+
+// Hook to get all open tabs (with messages loaded from backend)
+export function useDerivedSessions(
+  _apiBase: string,
+  agentSlug: string | null,
+  projectSlug?: string | null,
+): ChatSession[] {
+  const agents = useAgents();
+  const allChats = useSessionChats();
 
   // Subscribe to conversations store for messages
   const conversationsSnapshot = useSyncExternalStore(
