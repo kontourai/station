@@ -144,7 +144,9 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-desktop/src/desktop_update.rs"
+    "src-desktop/src/desktop_update.rs",
+
+    "src-desktop/src/native_secure_entry.rs"
   ],
 
   "checks": [
