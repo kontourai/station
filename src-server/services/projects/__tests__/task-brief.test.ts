@@ -143,6 +143,66 @@ function headings(text: string): string[] {
     .map((line) => line.replace(/ \(.*$/, ''));
 }
 
+/** Every rendered part at the cut this builder applies to it. */
+function briefAtEveryCap(documentText: string) {
+  const person = { kind: 'person', principalId: 'P'.repeat(128) } as const;
+  const ref = `github:${'o'.repeat(39)}/${'r'.repeat(100)}#99999999`;
+  return buildTaskBrief(
+    input({
+      task: {
+        ...TASK,
+        projectId: 'p'.repeat(200),
+        title: 'T'.repeat(5000),
+        description: 'D'.repeat(5000),
+        sourceProvider: 'github',
+        workItemRef: ref,
+        workItemProvenance: 'project-board',
+      },
+      observation: {
+        status: 'observed',
+        observation: {
+          workItemRef: ref,
+          url: `https://github.com/${'u'.repeat(494)}`,
+          title: 'X'.repeat(5000),
+          state: 'closed',
+          stateReason: 'not_planned',
+          labels: Array.from({ length: 50 }, (_, i) => `${'L'.repeat(64)}${i}`),
+          updatedAt: '2026-10-20T00:00:00.000Z',
+          observedAt: '2026-10-21T00:00:00.000Z',
+          comments: Array.from({ length: 30 }, () => ({
+            author: 'a'.repeat(64),
+            createdAt: '2026-10-20T00:00:00Z',
+            excerpt: 'c'.repeat(2000),
+          })),
+        },
+      },
+      text: documentText,
+      summary: summary('s'.repeat(4000), { author: person }),
+      records: [
+        record('decision', 'a'.padEnd(64, 'k'), 'r'.repeat(1000), {
+          author: person,
+        }),
+        record('decision', 'b'.padEnd(64, 'k'), `newest ${'r'.repeat(993)}`, {
+          author: person,
+        }),
+      ],
+      sessions: Array.from({ length: 8 }, (_, i) =>
+        sessionFacts({
+          sessionId: `${'s'.repeat(127)}${i}`,
+          provider: 'claude',
+          status: 'Running',
+          turnCount: 3,
+          lastTurn: turn({ request: 'q'.repeat(2000) }),
+          claims: Array.from({ length: 10 }, () => ({
+            paths: ['x'.repeat(512)],
+            expiresAt: '2026-10-22T00:00:00Z',
+          })),
+        }),
+      ),
+    }),
+  );
+}
+
 describe('buildTaskBrief', () => {
   test('composes the layers in order: Task and work item, summary, records, Sessions, omissions, rules', () => {
     const brief = buildTaskBrief(
@@ -387,65 +447,7 @@ describe('buildTaskBrief', () => {
   test('with every rendered part at its own cap, the summary gives up room too, and the newest record still fits (review round 3, F3)', () => {
     // Each value is at the cut this builder applies to it: URL 512,
     // comment author 64, author ids 128, labels 64, the ref's GitHub limits.
-    const person = { kind: 'person', principalId: 'P'.repeat(128) } as const;
-    const ref = `github:${'o'.repeat(39)}/${'r'.repeat(100)}#99999999`;
-    const brief = buildTaskBrief(
-      input({
-        task: {
-          ...TASK,
-          projectId: 'p'.repeat(200),
-          title: 'T'.repeat(5000),
-          description: 'D'.repeat(5000),
-          sourceProvider: 'github',
-          workItemRef: ref,
-          workItemProvenance: 'project-board',
-        },
-        observation: {
-          status: 'observed',
-          observation: {
-            workItemRef: ref,
-            url: `https://github.com/${'u'.repeat(494)}`,
-            title: 'X'.repeat(5000),
-            state: 'closed',
-            stateReason: 'not_planned',
-            labels: Array.from(
-              { length: 50 },
-              (_, i) => `${'L'.repeat(64)}${i}`,
-            ),
-            updatedAt: '2026-10-20T00:00:00.000Z',
-            observedAt: '2026-10-21T00:00:00.000Z',
-            comments: Array.from({ length: 30 }, () => ({
-              author: 'a'.repeat(64),
-              createdAt: '2026-10-20T00:00:00Z',
-              excerpt: 'c'.repeat(2000),
-            })),
-          },
-        },
-        text: 'doc line\n'.repeat(2000),
-        summary: summary('s'.repeat(4000), { author: person }),
-        records: [
-          record('decision', 'a'.padEnd(64, 'k'), 'r'.repeat(1000), {
-            author: person,
-          }),
-          record('decision', 'b'.padEnd(64, 'k'), `newest ${'r'.repeat(993)}`, {
-            author: person,
-          }),
-        ],
-        sessions: Array.from({ length: 8 }, (_, i) =>
-          sessionFacts({
-            sessionId: `${'s'.repeat(127)}${i}`,
-            provider: 'claude',
-            status: 'Running',
-            turnCount: 3,
-            lastTurn: turn({ request: 'q'.repeat(2000) }),
-            claims: Array.from({ length: 10 }, () => ({
-              paths: ['x'.repeat(512)],
-              expiresAt: '2026-10-22T00:00:00Z',
-            })),
-          }),
-        ),
-      }),
-    );
+    const brief = briefAtEveryCap('doc line\n'.repeat(2000));
     expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
     expect(brief.text).toContain(`> newest ${'r'.repeat(993)}`);
     // Both steps ran: the document is down to its note, the summary is cut.
@@ -453,6 +455,17 @@ describe('buildTaskBrief', () => {
       '(cut: quoted, this summary is longer than the brief allows;',
     );
     expect(brief.text).toContain('(cut; the Task document has the rest)');
+  });
+
+  test('a document shorter than its share gives up what it shows before the summary does (review round 3, F3)', () => {
+    // About 180 characters: well under the 800 a document may show beside
+    // a summary, and less than the shortfall.
+    const brief = briefAtEveryCap('doc line\n'.repeat(20));
+    expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
+    expect(brief.text).toContain(`> newest ${'r'.repeat(993)}`);
+    expect(brief.text).toContain(
+      '## Task document\nQuoted, written by agents and people on this Task; a Task started from a tracker item is seeded with public tracker content:\n(cut; the Task document has the rest)\n',
+    );
   });
 
   test("a Session's active claims follow its line, on one bounded line", () => {
