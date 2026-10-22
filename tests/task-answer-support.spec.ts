@@ -1211,7 +1211,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
         node.role?.value === 'tablist' &&
         node.name?.value === 'Workspace panes',
     );
-    expect(tablists.length).toBeGreaterThanOrEqual(2);
+    expect(tablists).toHaveLength(1);
     for (const tablist of tablists) {
       const children = (tablist.childIds ?? []).map((id) => byId.get(id));
       expect(children.length).toBeGreaterThan(0);
