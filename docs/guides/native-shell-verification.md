@@ -264,9 +264,10 @@ The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
 Network.framework path monitor for the app process and cancels it at exit.
 The first callback establishes a baseline. Later changes to path satisfaction or
 the interface type set advance the broker's network epoch. Duplicate callbacks
-and cost-only changes leave it unchanged. This type-level identity cannot distinguish Wi-Fi access points or VPN routes
-with the same satisfaction and interface types. Existing in-flight requests retain the broker's
-send/revalidation rules; observation does not authorize a retry or replacement
+and cost-only changes leave it unchanged. This type-level identity cannot
+distinguish Wi-Fi access points or VPN routes with the same satisfaction and
+interface types. Existing in-flight requests retain the broker's send/revalidation
+rules; observation does not authorize a retry or replacement
 credential. The monitor sends only revision, constrained and expensive flags,
 with a retained snapshot for a WebView that subscribes after the first callback.
 The [UI adapter](../../src-ui/src/platform/native/iosNetworkCost.ts) validates
@@ -283,8 +284,7 @@ ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
 uncertainty and authority revalidation before replacing the broker transport.
 
 Rust tests cover material-change epoch publication, duplicate/cost-only
-non-invalidation and retained cost; mounted inbox
-tests cover actual polling cadence, validation and late-reply ordering. Neither
+non-invalidation and retained cost; mounted inbox tests cover actual polling cadence, validation and late-reply ordering. Neither
 proves delivery from Network.framework through real iOS IPC. Physical-device
 behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
 on Wi-Fi and cellular, verify optional polling slows and restores, then switch

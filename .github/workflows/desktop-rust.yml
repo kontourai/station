@@ -131,7 +131,7 @@ jobs:
           test = "ios_network_path::tests::only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained"
           command = ["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", test, "--", "--nocapture"]
           assert subprocess.run(command).returncode == 0, "path baseline failed"
-          landmark = "if current.as_ref().is_some_and(|path| path.identity != identity)"
+          landmark = "if current\n            .as_ref()\n            .is_some_and(|path| path.identity != identity)\n        "
           assert original.count(landmark) == 1
           for replacement in ["if true", "if false"]:
               mutated = original.replace(landmark, replacement)
