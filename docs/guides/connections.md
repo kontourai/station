@@ -744,10 +744,11 @@ opens on that entry's first step.
 1. Choose an engine. An engine that is **Not installed** offers only its
    install command and **Check again**; it can be connected once Station finds
    it, or through the custom option.
-2. Confirm. Every choice first says what connecting it changes and waits for
-   **Connect** (or **Add** for a native app). For custom setup, enter a name
-   and command instead. Command arguments, working directory, and other raw
-   setup details stay under **Advanced**.
+2. Confirm a new catalogue engine with **Connect** (or **Add** for a native
+   app) after reviewing what connecting changes. Choosing a saved engine that
+   is **Not connected yet** starts its retry directly. For custom setup, enter
+   a name and command instead. Command arguments, working directory, and other
+   raw setup details stay under **Advanced**.
 3. Stay on the page while Station shows **Checking**. An
    engine that is starting for the first time can take up to a minute; the
    page says so and keeps checking. If it has not finished after about 90
