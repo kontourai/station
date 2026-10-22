@@ -16,6 +16,7 @@ import {
 } from '@kontourai/flow-agents';
 import { canonicalJson } from '@kontourai/relay';
 import type {
+  CliSessionGroupEventPage,
   CliSessionGroupPresetIdentity,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
@@ -26,7 +27,7 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { z } from 'zod/v3';
 import { buildSyntheticTrustBundle } from '../evidence/trust-bundle.js';
-import { awaitWithAbort } from './delegation-group-transport.js';
+import { awaitWithAbort, pageByBytes } from './delegation-group-transport.js';
 
 const id = z
   .string()
@@ -45,6 +46,39 @@ const terminalEventSchema = z
     turnId: z.string().min(1).max(512),
   })
   .strict();
+const memberViewSchema = z.object({
+  seatId: id,
+  needs: z.array(id).max(32),
+  state: z.enum(['pending', 'launch-intent', 'started', 'terminal']),
+  claimId: z.string().max(512).optional(),
+  reservedSessionId: z.string().max(512).optional(),
+  initialClientTurnId: z.string().max(512).optional(),
+  handle: handleSchema.optional(),
+  outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
+  terminalEvent: terminalEventSchema.optional(),
+  dispatchFailure: z
+    .object({
+      status: z.number().int().min(400).max(599),
+      code: z.string().max(128),
+    })
+    .strict()
+    .optional(),
+});
+const scheduleEventSchema = z
+  .object({
+    kind: z.string().max(32),
+    stepId: id,
+    claimId: z.string().max(512),
+  })
+  .strict();
+const groupEventSchema = z
+  .object({
+    revision: z.number().int().positive().safe(),
+    members: z.array(memberViewSchema).max(32),
+    cancelled: z.boolean().optional(),
+    schedule: z.array(scheduleEventSchema).max(32),
+  })
+  .strict();
 const recordSchema = z
   .object({
     version: z.literal(1),
@@ -52,6 +86,8 @@ const recordSchema = z
     ownerKey: z.string().length(64),
     intentDigest: z.string().length(64),
     revision: z.number().int().nonnegative(),
+    eventHistoryStart: z.number().int().positive().safe().optional(),
+    events: z.array(groupEventSchema).max(4096).optional(),
     maxConcurrent: z.number().int().min(1).max(32),
     deadlineAt: z.number().int().positive(),
     cancelled: z.boolean(),
@@ -96,17 +132,7 @@ const recordSchema = z
       )
       .min(1)
       .max(32),
-    scheduleEvents: z
-      .array(
-        z
-          .object({
-            kind: z.string().max(32),
-            stepId: id,
-            claimId: z.string().max(512),
-          })
-          .strict(),
-      )
-      .max(4096),
+    scheduleEvents: z.array(scheduleEventSchema).max(4096),
   })
   .strict();
 type GroupRecord = z.infer<typeof recordSchema>;
@@ -155,6 +181,7 @@ export interface CliSessionGroupHost<T> {
 export class CliSessionGroups<T> {
   private readonly root: string;
   private readonly active = new Map<string, AbortController>();
+  private readonly listeners = new Map<string, Set<() => void>>();
 
   constructor(
     home: string,
@@ -211,6 +238,18 @@ export class CliSessionGroups<T> {
         ))
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
+    if (
+      (record.events === undefined) !==
+        (record.eventHistoryStart === undefined) ||
+      (record.events !== undefined &&
+        (record.events.some(
+          (event, index) =>
+            event.revision !== (record.eventHistoryStart ?? 1) + index,
+        ) ||
+          (record.events.at(-1)?.revision ??
+            (record.eventHistoryStart ?? 1) - 1) !== record.revision))
+    )
+      throw new CliSessionGroupUnavailable('group_storage_unavailable');
     return record;
   }
 
@@ -223,10 +262,56 @@ export class CliSessionGroups<T> {
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {
       const record = this.read(groupId, owner);
+      const before = new Map(
+        record.seats.map((seat) => [
+          seat.seatId,
+          canonicalJson(memberViewSchema.parse(seat)),
+        ]),
+      );
+      const cancelled = record.cancelled;
+      const scheduleCount = record.scheduleEvents.length;
+      record.eventHistoryStart ??= record.revision + 1;
+      record.events ??= [];
       const result = work(record);
       record.revision += 1;
+      record.events.push(
+        groupEventSchema.parse({
+          revision: record.revision,
+          members: record.seats
+            .map((seat) => memberViewSchema.parse(seat))
+            .filter((seat) => canonicalJson(seat) !== before.get(seat.seatId)),
+          ...(cancelled !== record.cancelled
+            ? { cancelled: record.cancelled }
+            : {}),
+          schedule: record.scheduleEvents.slice(scheduleCount),
+        }),
+      );
+      let bytes = Buffer.byteLength(JSON.stringify(record)) + 32;
+      let dropped = 0;
+      while (
+        dropped < record.events.length &&
+        (record.events.length - dropped > 4096 || bytes > MAX_BYTES)
+      ) {
+        bytes -= Buffer.byteLength(JSON.stringify(record.events[dropped])) + 1;
+        dropped++;
+      }
+      if (dropped) {
+        record.events = record.events.slice(dropped);
+        record.eventHistoryStart =
+          record.events[0]?.revision ?? record.revision + 1;
+      }
       recordSchema.parse(record);
-      await publishJsonFileWithOwnedLock(path, record, { maxBytes: MAX_BYTES });
+      await publishJsonFileWithOwnedLock(path, record, {
+        maxBytes: MAX_BYTES,
+        indent: null,
+      });
+      for (const listener of this.listeners.get(groupId) ?? []) {
+        try {
+          listener();
+        } catch {
+          this.logger.warn?.('CLI session group observer failed', { groupId });
+        }
+      }
       return result;
     } finally {
       await release();
@@ -279,6 +364,8 @@ export class CliSessionGroups<T> {
         ownerKey: digest(owner),
         intentDigest,
         revision: 0,
+        eventHistoryStart: 1,
+        events: [],
         maxConcurrent: input.maxConcurrent,
         deadlineAt: input.deadlineAt,
         cancelled: false,
@@ -352,6 +439,65 @@ export class CliSessionGroups<T> {
       await release();
     }
     return this.view(groupId, owner);
+  }
+
+  subscribe(groupId: string, listener: () => void): () => void {
+    const listeners = this.listeners.get(groupId) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.listeners.set(groupId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size && this.listeners.get(groupId) === listeners)
+        this.listeners.delete(groupId);
+    };
+  }
+
+  async events(
+    groupId: string,
+    owner: string,
+    afterRevision: number,
+    authorizeInspection?: () => void,
+  ): Promise<CliSessionGroupEventPage> {
+    const record = this.read(groupId, owner, authorizeInspection);
+    if (
+      !Number.isSafeInteger(afterRevision) ||
+      afterRevision < 0 ||
+      afterRevision > record.revision
+    )
+      throw new CliSessionGroupUnavailable('group_stream_cursor_invalid');
+    const availableFromRevision =
+      record.eventHistoryStart ?? record.revision + 1;
+    const after = Math.max(afterRevision, availableFromRevision - 1);
+    const rows = (record.events ?? [])
+      .filter((event) => event.revision > after)
+      .map((value) => ({ cursor: value.revision, value }));
+    const gap =
+      afterRevision < availableFromRevision - 1
+        ? { availableFromRevision }
+        : undefined;
+    const page = pageByBytes({
+      rows,
+      after,
+      hasMore: false,
+      maxItems: 64,
+      maxBytes: 262_144,
+      format: (
+        events,
+        unavailable,
+        cursor,
+        hasMore,
+      ): CliSessionGroupEventPage => ({
+        groupId,
+        afterRevision,
+        nextRevision: cursor,
+        events,
+        hasMore,
+        ...(gap ? { gap } : {}),
+        unavailable,
+      }),
+    });
+    authorizeInspection?.();
+    return page;
   }
 
   async list(

@@ -13,10 +13,12 @@ import {
   listDelegationGroups,
   parseCliSessionGroupInput,
   parseEnsembleCliSessionGroupInput,
+  readCliSessionGroupEvents,
   readDelegationGroupEvents,
   readDelegationGroupMemberEvents,
   readDelegationGroupMemberOutput,
   runCliSessionGroup,
+  subscribeCliSessionGroupEvents,
   subscribeDelegationGroupEvents,
   subscribeDelegationGroupMemberEvents,
 } from '@kontourai/station-sdk/client';
@@ -180,6 +182,7 @@ async function runSessionGroupCommand(
       'session-from-ensemble',
       'session-list',
       'session-get',
+      'session-events',
       'session-run',
       'session-cancel',
     ].includes(action ?? '') ||
@@ -198,12 +201,45 @@ async function runSessionGroupCommand(
         'credential',
         ...(create ? ['file'] : []),
         ...(list ? ['after-group'] : []),
+        ...(action === 'session-events' ? ['after-revision', 'follow'] : []),
       ].includes(flag) ||
       (parsed.repeatedFlags[flag]?.length ?? 0) > 1
     )
       throw new Error(`Unsupported or repeated session-group flag --${flag}.`);
   }
   let result: unknown;
+  if (action === 'session-events' && parsed.flags.follow !== undefined) {
+    if (parsed.flags.follow !== true)
+      throw new Error('--follow is a boolean option.');
+    const stop = new AbortController();
+    const interrupt = () => stop.abort();
+    process.once('SIGINT', interrupt);
+    let failure: unknown;
+    const stream = subscribeCliSessionGroupEvents(
+      apiBase,
+      groupId!,
+      cursor(parsed, 'after-revision') ?? 0,
+      {
+        onPage(page) {
+          console.log(
+            terminalSafeJson(page).split('\n').map(terminalSafeText).join('\n'),
+          );
+        },
+        onTerminal(error) {
+          failure = error;
+        },
+      },
+      { signal: stop.signal },
+    );
+    try {
+      await stream.completed;
+      if (failure) throw failure;
+    } finally {
+      stream.close();
+      process.removeListener('SIGINT', interrupt);
+    }
+    return;
+  }
   if (create) {
     const descriptor = openSync(
       resolve(required(parsed, 'file')),
@@ -248,6 +284,12 @@ async function runSessionGroupCommand(
     result = await listCliSessionGroups(apiBase, {
       afterGroupId: optionalValueFlag(parsed, 'after-group'),
     });
+  else if (action === 'session-events')
+    result = await readCliSessionGroupEvents(
+      apiBase,
+      groupId!,
+      cursor(parsed, 'after-revision') ?? 0,
+    );
   else if (action === 'session-get')
     result = await getCliSessionGroup(apiBase, groupId!);
   else if (action === 'session-cancel')

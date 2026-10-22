@@ -207,3 +207,51 @@ export type CliSessionGroupListPage = {
   nextGroupId: string | null;
   hasMore: boolean;
 };
+
+/** Durable observations of group writes, not another source of scheduling decisions. */
+export type CliSessionGroupEvent = {
+  revision: number;
+  members: CliSessionGroupView['members'];
+  cancelled?: boolean;
+  schedule: { kind: string; stepId: string; claimId: string }[];
+};
+export type CliSessionGroupEventPage = {
+  groupId: string;
+  afterRevision: number;
+  nextRevision: number;
+  events: CliSessionGroupEvent[];
+  hasMore: boolean;
+  gap?: { availableFromRevision: number };
+  unavailable: { cursor: number; code: 'item_too_large' }[];
+};
+
+export function cliSessionGroupStreamCursor(
+  groupId: string,
+  revision: number,
+): string {
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(groupId) ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0
+  )
+    throw new Error('group_stream_cursor_invalid');
+  return `cli-group:${encodeURIComponent(groupId)}:${revision}`;
+}
+export function readCliSessionGroupStreamCursor(
+  groupId: string,
+  initial = 0,
+  lastEventId?: string,
+): number {
+  const prefix = cliSessionGroupStreamCursor(groupId, 0).slice(0, -1);
+  cliSessionGroupStreamCursor(groupId, initial);
+  if (lastEventId === undefined) return initial;
+  if (!lastEventId.startsWith(prefix))
+    throw new Error('group_stream_cursor_invalid');
+  const suffix = lastEventId.slice(prefix.length);
+  if (!/^(0|[1-9][0-9]{0,15})$/.test(suffix))
+    throw new Error('group_stream_cursor_invalid');
+  const revision = Number(suffix);
+  cliSessionGroupStreamCursor(groupId, revision);
+  if (revision < initial) throw new Error('group_stream_cursor_invalid');
+  return revision;
+}

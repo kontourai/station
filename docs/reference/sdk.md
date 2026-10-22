@@ -5140,6 +5140,16 @@ name, exact source hash and Stationmaster member ID. Older records omit it.
 The value describes the source saved with the group, not a fresh file read or
 an execution-authority receipt.
 
+`readCliSessionGroupEvents(apiBase, groupId, afterRevision?, options?)` reads one
+bounded journal page. `subscribeCliSessionGroupEvents(apiBase, groupId,
+afterRevision, callbacks, options?)` delivers `onPage` observations and returns
+the ordinary SSE connection with `close()` and `completed`. It validates the
+group-bound checkpoint, contiguous revisions and explicit gaps/omissions before
+retaining a cursor. Duplicate pages cannot duplicate member events. Normal stream
+rotation reconnects read-only; malformed protocol and authority refusals stop it.
+The journal contains membership and Flow scheduling observations, not raw output
+or another acceptance verdict.
+
 The root SDK exports `useCreateEnsembleCliSessionGroup(scope)`,
 `useRunCliSessionGroup(scope)` and `useCancelCliSessionGroup(scope)` for these
 explicit actions. They use the captured request scope and recheck its currency

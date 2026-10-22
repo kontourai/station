@@ -1668,6 +1668,8 @@ partial page or disclose which group was unreadable.
 - `POST /api/orchestration/session-groups/from-ensemble`: create from a preset and explicit receiver bindings.
 - `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list credential-owned groups in bounded pages.
 - `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
+- `GET /api/orchestration/session-groups/:groupId/events?afterRevision=0`: read retained group revision deltas.
+- `GET /api/orchestration/session-groups/:groupId/events/stream?afterRevision=0`: stream those deltas with resumable SSE checkpoints.
 - `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
 - `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
 
@@ -1709,6 +1711,29 @@ neither the host path nor raw preset JSON is included in the view. Exact source
 identity participates in operation replay, so changed bytes conflict even when
 they parse to the same roster. Older groups have no recorded preset identity;
 the server does not reconstruct it from prompt text.
+
+Group event pages carry changed public member records and the scheduler events
+reported by published Flow. They contain no briefs or model output. Use the group
+view as the membership baseline and ordinary member session/delegation endpoints
+for raw output, input requests and responses. The journal observes writes; it does
+not evaluate readiness, joins or work acceptance.
+
+Each page has `afterRevision`, `nextRevision`, `events`, `hasMore` and explicit
+`unavailable` entries for oversized rows. Pages hold at most 64 revisions and
+256 KiB; the private group record retains at most 4096 journal revisions within
+its existing 1 MiB bound. Oldest observations are evicted to keep those bounds;
+history capacity never blocks cancellation by itself. Older records and evicted
+history report `gap.availableFromRevision` when prior observations are absent;
+the server never reconstructs them from
+current state. A cursor ahead of the durable record is refused.
+
+The SSE event is `cli-group-events`; its ID binds the group and revision as
+`cli-group:<encoded-group-id>:<revision>`. A matching `Last-Event-ID` resumes
+after the acknowledged page. Other-group or backward checkpoints are refused.
+Streams rotate after 60 seconds. Same-process writes wake observers; a 15-second
+refresh also observes other processes and rechecks authority. Authority is checked
+again before publication. Stream failure reports an opaque `unavailable` frame;
+it never authorizes a launch, retry or cancellation.
 
 The authenticated credential/caller binding owns group mutations. The current
 in-person local operator may also inspect a group from another credential, but

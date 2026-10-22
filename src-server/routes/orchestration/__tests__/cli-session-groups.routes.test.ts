@@ -1,7 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupEventPage,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -238,7 +241,161 @@ test('three seats follow real Flow claims and joins, supervise member completion
   expect(JSON.stringify(final)).not.toContain('private brief');
   await f.request(`/session-groups/${group.groupId}/run`, {});
   expect(f.calls).toHaveLength(3);
+  const historyResponse = await f.request(
+    `/session-groups/${group.groupId}/events?afterRevision=0`,
+  );
+  const history = (
+    (await historyResponse.json()) as { data: CliSessionGroupEventPage }
+  ).data;
+  expect(JSON.stringify(history)).not.toContain('private brief');
+  expect(
+    history.events
+      .flatMap((event) => event.members)
+      .filter((member) => member.outcome === 'completed'),
+  ).toHaveLength(3);
+  const reopened = fixture(f.home);
+  const replay = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=0`,
+  );
+  expect(
+    ((await replay.json()) as { data: CliSessionGroupEventPage }).data,
+  ).toEqual(history);
+  const empty = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=${history.nextRevision}`,
+  );
+  expect(
+    ((await empty.json()) as { data: CliSessionGroupEventPage }).data.events,
+  ).toEqual([]);
+  expect(reopened.calls).toHaveLength(0);
 }, 30_000);
+
+test('legacy journals disclose a history gap, reject foreign cursors and cannot invent past events', async () => {
+  const f = fixture();
+  const { group } = await f.create([member('first')], 1);
+  await f.request(`/session-groups/${group.groupId}/run`, {});
+  const path = join(
+    f.home,
+    'runtime',
+    'cli-session-groups',
+    `${group.groupId}.json`,
+  );
+  const legacy = JSON.parse(readFileSync(path, 'utf8'));
+  delete legacy.events;
+  delete legacy.eventHistoryStart;
+  writeFileSync(path, JSON.stringify(legacy));
+  const reopened = fixture(f.home);
+  const response = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=0`,
+  );
+  const page = ((await response.json()) as { data: CliSessionGroupEventPage })
+    .data;
+  expect(page.events).toEqual([]);
+  expect(page.nextRevision).toBe(legacy.revision);
+  expect(page.gap).toEqual({ availableFromRevision: legacy.revision + 1 });
+  const foreign = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=0`,
+    undefined,
+    { headers: { 'fixture-binding': 'another-credential' } },
+  );
+  expect(foreign.status).toBe(404);
+  const future = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=${legacy.revision + 1}`,
+  );
+  expect(future.status).toBe(409);
+  const wrongDomain = await reopened.request(
+    `/session-groups/${group.groupId}/events/stream`,
+    undefined,
+    { headers: { 'Last-Event-ID': 'cli-group:another-group:0' } },
+  );
+  expect(wrongDomain.status).toBe(409);
+  expect(reopened.calls).toHaveLength(0);
+});
+
+test('a group stream stops on current-authority loss before publishing another retained revision', async () => {
+  const f = fixture();
+  const { group } = await f.create([member('first')], 1);
+  const stop = new AbortController();
+  const response = await f.request(
+    `/session-groups/${group.groupId}/events/stream`,
+    undefined,
+    { signal: stop.signal },
+  );
+  expect(response.status).toBe(200);
+  const reader = response.body!.getReader();
+  let initial = '';
+  const decoder = new TextDecoder();
+  while (!initial.includes('\n\n')) {
+    const chunk = await reader.read();
+    if (chunk.done)
+      throw new Error('Stream ended before its initial observation');
+    initial += decoder.decode(chunk.value, { stream: true });
+  }
+  expect(initial).toContain('cli-group-events');
+  f.revoke();
+  const otherInstance = fixture(f.home);
+  const cancelled = await otherInstance.request(
+    `/session-groups/${group.groupId}/cancel`,
+    {},
+  );
+  expect(cancelled.status).toBe(200);
+  let tail = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      tail += decoder.decode(chunk.value, { stream: true });
+    }
+    expect(tail).toContain('event: unavailable');
+    expect(tail).not.toContain('"revision":1');
+  } finally {
+    stop.abort();
+    await reader.cancel();
+  }
+  expect(f.calls).toHaveLength(0);
+}, 20_000);
+
+test('a full retained journal cannot block cancellation and evicts with an explicit cursor gap', async () => {
+  const f = fixture();
+  const { group } = await f.create([member('first')], 1);
+  const path = join(
+    f.home,
+    'runtime',
+    'cli-session-groups',
+    `${group.groupId}.json`,
+  );
+  const record = JSON.parse(readFileSync(path, 'utf8'));
+  record.revision = 4096;
+  record.cancelled = true;
+  record.events = Array.from({ length: 4096 }, (_, index) => ({
+    revision: index + 1,
+    members: [],
+    schedule: [],
+    ...(index === 0 ? { cancelled: true } : {}),
+  }));
+  writeFileSync(path, JSON.stringify(record));
+  const reopened = fixture(f.home);
+  const cancelled = await reopened.request(
+    `/session-groups/${group.groupId}/cancel`,
+    {},
+  );
+  expect(cancelled.status, await cancelled.clone().text()).toBe(200);
+  const bytes = readFileSync(path);
+  const retained = JSON.parse(bytes.toString('utf8'));
+  expect(retained.events).toHaveLength(4096);
+  expect(retained.eventHistoryStart).toBe(2);
+  expect(retained.revision).toBe(4097);
+  expect(bytes.byteLength).toBeLessThanOrEqual(1024 * 1024);
+  const response = await reopened.request(
+    `/session-groups/${group.groupId}/events?afterRevision=0`,
+  );
+  const page = ((await response.json()) as { data: CliSessionGroupEventPage })
+    .data;
+  expect(page.gap).toEqual({ availableFromRevision: 2 });
+  expect(page.events).toHaveLength(64);
+  expect(page.events[0].revision).toBe(2);
+  expect(page.hasMore).toBe(true);
+  expect(reopened.calls).toHaveLength(0);
+});
 
 test('an ambiguous start stays occupied across reopen and never authorizes another launch', async () => {
   const f = fixture();

@@ -224,6 +224,7 @@ import {
   refuseUngrantedPick,
   requestedApprovalMode,
 } from './approval-authority.js';
+import { createCliSessionGroupEventRoutes } from './cli-session-group-events.js';
 import {
   dispatchCwdRefusalFor,
   foregroundDispatchTarget,
@@ -4357,6 +4358,64 @@ export function createOrchestrationRoutes(
       groupResponseSchema.parse(await response.json());
     },
   });
+  const sessionGroupFailure = (c: Context, error: unknown) => {
+    const code =
+      error instanceof CliSessionGroupUnavailable
+        ? error.code
+        : error instanceof z.ZodError ||
+            error instanceof SyntaxError ||
+            (error instanceof Error &&
+              error.message === 'group_stream_cursor_invalid')
+          ? 'group_invalid'
+          : 'group_unavailable';
+    return c.json(
+      { success: false, code },
+      code === 'group_authority_required'
+        ? 403
+        : code === 'group_not_found'
+          ? 404
+          : 409,
+    );
+  };
+  app.route(
+    '/session-groups',
+    createCliSessionGroupEventRoutes({
+      failure: sessionGroupFailure,
+      bind(c, groupId) {
+        if (!cliGroups)
+          throw new CliSessionGroupUnavailable('group_unavailable');
+        const authority = groupAuthority(c);
+        let observedGroup:
+          | import('@kontourai/station-contracts/delegation-group').CliSessionGroupView
+          | undefined;
+        const assertCurrent = () => {
+          authority.assertCurrent();
+          if (observedGroup) authority.assertReadable(observedGroup);
+        };
+        return {
+          assertCurrent,
+          subscribe: (listener) => cliGroups.subscribe(groupId, listener),
+          read: async (afterRevision) => {
+            authority.assertCurrent();
+            const page = await cliGroups.events(
+              groupId,
+              authority.owner,
+              afterRevision,
+              authority.authorizeInspection,
+            );
+            const group = await cliGroups.view(
+              groupId,
+              authority.owner,
+              authority.authorizeInspection,
+            );
+            observedGroup = group;
+            assertCurrent();
+            return page;
+          },
+        };
+      },
+    }),
+  );
   const respondSessionGroup = async (
     c: Context,
     operation: (
@@ -4373,20 +4432,7 @@ export function createOrchestrationRoutes(
       authority.assertCurrent();
       return c.json({ success: true, data });
     } catch (error) {
-      const code =
-        error instanceof CliSessionGroupUnavailable
-          ? error.code
-          : error instanceof z.ZodError || error instanceof SyntaxError
-            ? 'group_invalid'
-            : 'group_unavailable';
-      return c.json(
-        { success: false, code },
-        code === 'group_authority_required'
-          ? 403
-          : code === 'group_not_found'
-            ? 404
-            : 409,
-      );
+      return sessionGroupFailure(c, error);
     }
   };
   app.post('/session-groups', (c) =>

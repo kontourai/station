@@ -116,50 +116,53 @@ test('CLI group write carries explicit operation and revision and never invents 
   }
 });
 
-test('CLI follow closes its stream and SIGINT listener after interruption', async () => {
-  const original = globalThis.fetch;
-  const log = console.log;
-  const listeners = process.listenerCount('SIGINT');
-  let cancelled = false;
-  let emitted!: () => void;
-  const printed = new Promise<void>((resolve) => {
-    emitted = resolve;
-  });
-  console.log = () => {
-    emitted();
-  };
-  globalThis.fetch = async () =>
-    new Response(
-      new ReadableStream({
-        start(controller) {
-          controller.enqueue(
-            new TextEncoder().encode(
-              `event: group-events\nid: group:g:1\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, events: [], hasMore: false, unavailable: [] })}\n\n`,
-            ),
-          );
-        },
-        cancel() {
-          cancelled = true;
-        },
-      }),
-      { headers: { 'Content-Type': 'text/event-stream' } },
-    );
-  try {
-    const running = runGroupCommand(
-      'https://station.test',
-      parseCoreArgs(['events', 'g', '--follow', '--json']),
-    );
-    await printed;
-    assert.equal(process.listenerCount('SIGINT'), listeners + 1);
-    process.emit('SIGINT');
-    await running;
-    assert.equal(cancelled, true);
-    assert.equal(process.listenerCount('SIGINT'), listeners);
-  } finally {
-    globalThis.fetch = original;
-    console.log = log;
-  }
-});
+test.each(['events', 'session-events'])(
+  'CLI %s follow closes its stream and SIGINT listener after interruption',
+  async (action) => {
+    const original = globalThis.fetch;
+    const log = console.log;
+    const listeners = process.listenerCount('SIGINT');
+    let cancelled = false;
+    let emitted!: () => void;
+    const printed = new Promise<void>((resolve) => {
+      emitted = resolve;
+    });
+    console.log = () => {
+      emitted();
+    };
+    globalThis.fetch = async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode(
+                `event: ${action === 'events' ? 'group-events' : 'cli-group-events'}\nid: ${action === 'events' ? 'group:g:1' : 'cli-group:g:1'}\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, events: action === 'events' ? [] : [{ revision: 1, members: [], schedule: [] }], hasMore: false, unavailable: [] })}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    try {
+      const running = runGroupCommand(
+        'https://station.test',
+        parseCoreArgs([action, 'g', '--follow', '--json']),
+      );
+      await printed;
+      assert.equal(process.listenerCount('SIGINT'), listeners + 1);
+      process.emit('SIGINT');
+      await running;
+      assert.equal(cancelled, true);
+      assert.equal(process.listenerCount('SIGINT'), listeners);
+    } finally {
+      globalThis.fetch = original;
+      console.log = log;
+    }
+  },
+);
 
 function groupView() {
   return {

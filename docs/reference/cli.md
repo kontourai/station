@@ -1186,6 +1186,8 @@ station group session-create --file=local-group.json --json
 station group session-from-ensemble --file=ensemble-group.json --json
 station group session-list --json
 station group session-get <group-id> --json
+station group session-events <group-id> --after-revision=0 --json
+station group session-events <group-id> --after-revision=0 --follow --json
 station group session-run <group-id> --json
 station group session-cancel <group-id> --json
 ```
@@ -1205,6 +1207,12 @@ Ctrl-C disconnects that supervision and requests interruption; it is not proof o
 physical termination. Inspect the same group after an uncertain response; never
 create a replacement merely because the response was lost. Member handles use
 ordinary `station delegate` status/events/respond/interrupt/continuation commands.
+
+`session-events` reads bounded durable group deltas; `--follow` reconnects the
+read stream with its accepted checkpoint. It never runs the group. SIGINT closes
+this observation stream without cancelling members. Historical gaps and oversized
+entries remain explicit in the JSON pages; inspect the ordinary member endpoints
+for raw output and elicitation details.
 
 Output explicitly reports unbound portable Flow lineage and unavailable dollar,
 token and physical-attempt caps. Unknown cost is not free. These commands have

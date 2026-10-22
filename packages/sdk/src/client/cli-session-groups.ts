@@ -4,16 +4,23 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CliSessionGroupCreateInput,
+  CliSessionGroupEventPage,
   CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
+import { cliSessionGroupStreamCursor } from '@kontourai/station-contracts/delegation-group';
 import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import { z } from 'zod/v3';
 import {
   type ClientRequestOptions,
+  type FetchSseConnection,
+  fetchSSE,
   getJson,
   mutateJson,
   readEnvelopeOrThrow,
+  StationHttpError,
+  StationRequestAuthorityError,
+  StationSseProtocolError,
 } from './http';
 
 export type {
@@ -87,7 +94,7 @@ const inputSchema = z
       .max(32),
   })
   .strict();
-const viewSchema: z.ZodType<CliSessionGroupView> = z
+const viewSchema = z
   .object({
     version: z.literal('station.cli-session-group/v1'),
     groupId: seatId,
@@ -169,6 +176,91 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
   })
   .strict();
 
+const revisionSchema = z.number().int().nonnegative().safe();
+const eventPageSchema: z.ZodType<CliSessionGroupEventPage> = z
+  .object({
+    groupId: seatId,
+    afterRevision: revisionSchema,
+    nextRevision: revisionSchema,
+    events: z
+      .array(
+        z
+          .object({
+            revision: revisionSchema,
+            members: z.array(viewSchema.shape.members.element).max(32),
+            cancelled: z.boolean().optional(),
+            schedule: z
+              .array(
+                z
+                  .object({
+                    kind: z.string().max(32),
+                    stepId: seatId,
+                    claimId: z.string().max(512),
+                  })
+                  .strict(),
+              )
+              .max(32),
+          })
+          .strict(),
+      )
+      .max(64),
+    hasMore: z.boolean(),
+    gap: z
+      .object({ availableFromRevision: revisionSchema })
+      .strict()
+      .optional(),
+    unavailable: z
+      .array(
+        z
+          .object({ cursor: revisionSchema, code: z.literal('item_too_large') })
+          .strict(),
+      )
+      .max(64),
+  })
+  .strict();
+class CliSessionGroupProtocolError extends Error {}
+function eventPage(value: unknown, groupId: string): CliSessionGroupEventPage {
+  const page = eventPageSchema.parse(value);
+  if (
+    page.events.length + page.unavailable.length > 64 ||
+    page.events.some(
+      (event, index) =>
+        index > 0 && event.revision <= page.events[index - 1].revision,
+    ) ||
+    page.unavailable.some(
+      (entry, index) =>
+        index > 0 && entry.cursor <= page.unavailable[index - 1].cursor,
+    )
+  )
+    throw new CliSessionGroupProtocolError(
+      'Invalid session group event order.',
+    );
+  if (
+    page.groupId !== groupId ||
+    page.nextRevision < page.afterRevision ||
+    (page.gap && page.gap.availableFromRevision <= page.afterRevision + 1)
+  )
+    throw new CliSessionGroupProtocolError('Invalid session group event page.');
+  let expected = Math.max(
+    page.afterRevision,
+    (page.gap?.availableFromRevision ?? 1) - 1,
+  );
+  for (const cursor of [
+    ...page.events.map((event) => event.revision),
+    ...page.unavailable.map((entry) => entry.cursor),
+  ].sort((a, b) => a - b)) {
+    if (cursor !== ++expected)
+      throw new CliSessionGroupProtocolError(
+        'Invalid session group event sequence.',
+      );
+  }
+  if (expected !== page.nextRevision)
+    throw new CliSessionGroupProtocolError(
+      'Invalid session group event cursor.',
+    );
+  return page;
+}
+
 const ensembleInputSchema = inputSchema
   .omit({ members: true })
   .extend({
@@ -218,6 +310,100 @@ export function parseCliSessionGroupInput(
 const root = (apiBase: string) => `${apiBase}/api/orchestration/session-groups`;
 const groupPath = (apiBase: string, groupId: string) =>
   `${root(apiBase)}/${encodeURIComponent(seatId.parse(groupId))}`;
+export async function readCliSessionGroupEvents(
+  apiBase: string,
+  groupId: string,
+  afterRevision = 0,
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupEventPage> {
+  revisionSchema.parse(afterRevision);
+  const response = await getJson(
+    `${groupPath(apiBase, groupId)}/events?afterRevision=${afterRevision}`,
+    { ...options, maxResponseBytes: 262_144 },
+  );
+  const page = eventPage(await readEnvelopeOrThrow<unknown>(response), groupId);
+  if (page.afterRevision !== afterRevision)
+    throw new CliSessionGroupProtocolError(
+      'Unexpected session group event cursor.',
+    );
+  return page;
+}
+
+export function subscribeCliSessionGroupEvents(
+  apiBase: string,
+  groupId: string,
+  afterRevision: number,
+  callbacks: {
+    onPage(page: CliSessionGroupEventPage): void;
+    onError?(error: unknown): void;
+    onOpen?(): void;
+    onTerminal?(error: unknown): void;
+  },
+  options?: ClientRequestOptions,
+): FetchSseConnection {
+  let cursor = revisionSchema.parse(afterRevision);
+  return fetchSSE(
+    `${groupPath(apiBase, groupId)}/events/stream?afterRevision=${cursor}`,
+    {
+      ...options,
+      maxFrameBytes: 262_144,
+      onOpen: callbacks.onOpen,
+      onError: callbacks.onError,
+      onTerminal: callbacks.onTerminal,
+      stopOnError: (error) =>
+        error instanceof CliSessionGroupProtocolError ||
+        error instanceof z.ZodError ||
+        error instanceof StationSseProtocolError ||
+        error instanceof StationRequestAuthorityError ||
+        (error instanceof StationHttpError &&
+          error.status >= 400 &&
+          error.status < 500 &&
+          error.status !== 408 &&
+          error.status !== 429),
+      validateCheckpoint(checkpoint) {
+        if (
+          checkpoint.id !== undefined &&
+          checkpoint.id !== cliSessionGroupStreamCursor(groupId, cursor)
+        )
+          throw new CliSessionGroupProtocolError(
+            'Invalid session group checkpoint.',
+          );
+      },
+      onMessage(message) {
+        if (message.event === 'unavailable')
+          throw new CliSessionGroupProtocolError(
+            'Session group stream unavailable.',
+          );
+        if (message.event !== 'cli-group-events') return false;
+        let value: unknown;
+        try {
+          value = JSON.parse(message.data);
+        } catch {
+          throw new CliSessionGroupProtocolError(
+            'Invalid session group event JSON.',
+          );
+        }
+        const page = eventPage(value, groupId);
+        if (
+          message.id !==
+            cliSessionGroupStreamCursor(groupId, page.nextRevision) ||
+          page.nextRevision < cursor ||
+          page.afterRevision > cursor
+        )
+          throw new CliSessionGroupProtocolError(
+            'Invalid session group stream cursor.',
+          );
+        if (page.nextRevision === cursor && page.events.length > 0)
+          return false;
+        if (page.nextRevision > cursor && page.afterRevision !== cursor)
+          throw new CliSessionGroupProtocolError('Session group event gap.');
+        callbacks.onPage(page);
+        cursor = page.nextRevision;
+        return true;
+      },
+    },
+  );
+}
 async function command(
   url: string,
   input: unknown,

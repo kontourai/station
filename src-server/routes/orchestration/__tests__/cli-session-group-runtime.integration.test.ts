@@ -7,7 +7,10 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupEventPage,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
   ProviderSendTurnInput,
@@ -18,6 +21,7 @@ import {
   createEnsembleCliSessionGroup,
   parseCliSessionGroupInput,
   setClientCredentialResolver,
+  subscribeCliSessionGroupEvents,
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -378,6 +382,22 @@ test('registered CLI and SDK create three real orchestration sessions and initia
   expect(inventory.groups.map((value) => value.groupId)).toEqual([
     group.groupId,
   ]);
+  const pages: CliSessionGroupEventPage[] = [];
+  const streamErrors: unknown[] = [];
+  const stream = subscribeCliSessionGroupEvents(
+    f.apiBase,
+    group.groupId,
+    0,
+    {
+      onPage: (page) => pages.push(page),
+      onTerminal: (error) => streamErrors.push(error),
+    },
+    { credential: 'group-test', credentialOrigin: f.apiBase },
+  );
+  cleanup.push(async () => {
+    stream.close();
+    await stream.completed;
+  });
   const running = runCli([
     'group',
     'session-run',
@@ -434,6 +454,41 @@ test('registered CLI and SDK create three real orchestration sessions and initia
     await running;
   }
   const final: CliSessionGroupView = JSON.parse(output.join('\n'));
+  await vi.waitFor(() =>
+    expect(
+      new Set(
+        pages
+          .flatMap((page) => page.events)
+          .flatMap((event) => event.members)
+          .filter((member) => member.outcome === 'completed')
+          .map((member) => member.seatId),
+      ).size,
+    ).toBe(3),
+  );
+  expect(streamErrors).toEqual([]);
+  stream.close();
+  await stream.completed;
+  const revisions = pages.flatMap((page) =>
+    page.events.map((event) => event.revision),
+  );
+  expect(new Set(revisions).size).toBe(revisions.length);
+  expect(JSON.stringify(pages)).not.toContain('Review part');
+  output.length = 0;
+  await runCli([
+    'group',
+    'session-events',
+    group.groupId,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  const history: CliSessionGroupEventPage = JSON.parse(output.join('\n'));
+  expect(
+    history.events
+      .flatMap((event) => event.members)
+      .filter((member) => member.outcome === 'completed'),
+  ).toHaveLength(3);
+  expect(history.nextRevision).toBe(final.revision);
   expect(f.adapter.starts).toHaveLength(3);
   expect(f.adapter.turns).toHaveLength(3);
   expect(final.flow?.status).toBe('completed');
