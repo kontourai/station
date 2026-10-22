@@ -125,4 +125,75 @@ ${command}
       expect(result.stdout).toContain('configured-resources-present');
     },
   );
+  it.skipIf(process.platform !== 'win32')(
+    'requires the exact Credential Manager test to execute once and pass',
+    () => {
+      const workflow = load(
+        readFileSync(
+          new URL(
+            '../../.github/workflows/windows-pr-verification.yml',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      ) as {
+        jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }>;
+      };
+      const step = workflow.jobs['windows-pr-portable'].steps.find(
+        (step) =>
+          step.name === 'Verify recovery against Windows Credential Manager',
+      );
+      if (!step?.run)
+        throw new Error('Credential Manager verification step is missing');
+      const root = makeTempDir('station-windows-keyring-step-');
+      for (const [name, exit, result, accepted] of [
+        [
+          'one-pass',
+          0,
+          'test result: ok. 1 passed; 0 failed; 0 ignored; 597 filtered out;',
+          true,
+        ],
+        [
+          'empty-selection',
+          0,
+          'test result: ok. 0 passed; 0 failed; 0 ignored; 598 filtered out;',
+          false,
+        ],
+        [
+          'test-failure',
+          101,
+          'test result: FAILED. 0 passed; 1 failed;',
+          false,
+        ],
+      ] as const) {
+        const script = join(root, `${name}.ps1`);
+        writeFileSync(
+          script,
+          `$ErrorActionPreference = 'Stop'
+function cargo {
+  if (($args -join ' ') -ne 'test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_real_dotted_credential_targets_refuse_creation -- --exact --nocapture') { throw 'Incorrect native test selection' }
+  $global:LASTEXITCODE = ${exit}
+  Write-Output '${result}'
+}
+${step.run}
+`,
+        );
+        const run = spawnSyncBounded(
+          'pwsh',
+          ['-NoProfile', '-NonInteractive', '-File', script],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 10_000,
+            maxBuffer: 256 * 1024,
+          },
+        );
+        expect(run.error).toBeUndefined();
+        expect(run.status === 0, `${name}: ${run.stdout}\n${run.stderr}`).toBe(
+          accepted,
+        );
+      }
+    },
+  );
 });

@@ -2222,8 +2222,8 @@ fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
     }
     #[cfg(target_os = "linux")]
     {
-        // Secret Service unlocks matched items. Never query the entire store:
-        // unrelated browser and network collections must remain untouched.
+        // Secret Service searches collections but unlocks only matched items.
+        // Limit the filter so unrelated secrets are never unlocked.
         return profile_store_linux_credentials_are_absent(|service| {
             keyring_core::Entry::search(&std::collections::HashMap::from([("service", service)]))
                 .map(|entries| entries.is_empty())
@@ -2315,7 +2315,7 @@ fn offer_legacy_profile_store_recovery(app: &AppHandle, root: PathBuf) {
                 })();
                 match result {
                     Ok(()) => handle.restart(),
-                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); let (title, message) = desktop_home_preparation_failure_copy(&error); handle.dialog().message(format!("{message}\n\nDetails: {error}")).title(title).buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
+                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); let (title, message) = desktop_recovery_failure_copy(&error); handle.dialog().message(desktop_failure_body(message, &error)).title(title).buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
                 }
             });
         });
@@ -9358,8 +9358,17 @@ fn invoke_registry_bridge(
     input: serde_json::Value,
 ) -> Result<Vec<u8>, RegistryBridgeFailure> {
     let shell_path = resolve_login_shell_path();
-    let mut command = build_registry_bridge_command(resource_dir, operation, &shell_path)
+    let command = build_registry_bridge_command(resource_dir, operation, &shell_path)
         .map_err(|_| RegistryBridgeFailure::Invocation)?;
+    execute_registry_bridge_command(command, operation, input)
+}
+
+#[cfg(not(mobile))]
+fn execute_registry_bridge_command(
+    mut command: Command,
+    operation: &str,
+    input: serde_json::Value,
+) -> Result<Vec<u8>, RegistryBridgeFailure> {
     let mut child = command
         .spawn()
         .map_err(|_| RegistryBridgeFailure::Invocation)?;
@@ -9573,17 +9582,41 @@ fn command_station_script_path(resource_dir: &Path) -> PathBuf {
 }
 
 #[cfg(not(mobile))]
-fn desktop_node_executable(app_executable: &Path, development: bool) -> PathBuf {
+fn desktop_node_executable(app_executable: &Path, development: bool) -> std::io::Result<PathBuf> {
     if development {
-        return PathBuf::from("node");
+        return Ok(PathBuf::from("node"));
     }
-    let executable = dunce::canonicalize(app_executable)
-        .unwrap_or_else(|_| dunce::simplified(app_executable).to_path_buf());
-    executable.with_file_name(if cfg!(windows) {
+    if !app_executable.is_absolute() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "desktop executable must be absolute",
+        ));
+    }
+    let executable = match dunce::canonicalize(app_executable) {
+        Ok(path) => path,
+        Err(error) => {
+            if std::fs::symlink_metadata(app_executable)
+                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            {
+                return Err(error);
+            }
+            // An upgraded Linux executable can be unlinked while running.
+            // Resolve its existing parent, never a relative or dangling launcher.
+            dunce::canonicalize(app_executable.parent().ok_or(error)?)?.join(
+                app_executable.file_name().ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "desktop executable has no filename",
+                    )
+                })?,
+            )
+        }
+    };
+    Ok(executable.with_file_name(if cfg!(windows) {
         "station-node.exe"
     } else {
         "station-node"
-    })
+    }))
 }
 
 #[cfg(not(mobile))]
@@ -9591,7 +9624,7 @@ fn desktop_node_command(shell_path: &str) -> std::io::Result<Command> {
     let executable = if cfg!(debug_assertions) {
         PathBuf::from("node")
     } else {
-        desktop_node_executable(&std::env::current_exe()?, false)
+        desktop_node_executable(&std::env::current_exe()?, false)?
     };
     let mut command = Command::new(&executable);
     command.env("PATH", shell_path);
@@ -11834,6 +11867,24 @@ fn runtime_bridge_failure_detail(error: &RegistryBridgeFailure) -> &'static str 
 }
 
 #[cfg(not(mobile))]
+fn desktop_recovery_failure_copy(detail: &str) -> (&'static str, &'static str) {
+    if detail.contains(NODE_RUNTIME_FAILURE) || detail.contains(NODE_BRIDGE_TIMEOUT) {
+        desktop_home_preparation_failure_copy(detail)
+    } else {
+        ("Station recovery could not complete", "Recovery stopped because saved state changed or could not be verified. Keep your Station folder intact and review the details before retrying.")
+    }
+}
+
+#[cfg(not(mobile))]
+fn desktop_failure_body(message: &str, detail: &str) -> String {
+    if message == detail {
+        message.to_owned()
+    } else {
+        format!("{message}\n\nDetails: {detail}")
+    }
+}
+
+#[cfg(not(mobile))]
 fn desktop_home_preparation_failure_copy(detail: &str) -> (&'static str, &'static str) {
     if detail.contains(NODE_RUNTIME_FAILURE) {
         ("Station’s built-in Node component could not start", "Reinstall Station to repair its built-in Node component. Your Station data was not changed.")
@@ -11859,7 +11910,8 @@ fn exit_desktop_home_preparation_failure(
     let app_handle = app.clone();
     app.dialog()
         .message(format!(
-            "{message}\n\nNo local backend was started.\n\nDetails: {detail}"
+            "No local backend was started.\n\n{}",
+            desktop_failure_body(message, detail)
         ))
         .title(title)
         .kind(MessageDialogKind::Warning)
@@ -12726,6 +12778,20 @@ fn apply_supervisor_input(
 }
 
 #[cfg(not(mobile))]
+fn sidecar_spawn_failure_detail(error: std::io::Error) -> String {
+    let unavailable = !(cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33)))
+        && (matches!(
+            error.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+        ) || error.raw_os_error() == Some(if cfg!(windows) { 193 } else { 8 }));
+    if unavailable {
+        format!("{NODE_RUNTIME_FAILURE} Details: {error}")
+    } else {
+        format!("launch Station sidecar: {error}")
+    }
+}
+
+#[cfg(not(mobile))]
 fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String), String> {
     let boot_id = fresh_sidecar_boot_id();
     // The ambient read lives at the edge so the builder stays a pure function
@@ -12733,9 +12799,9 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // developer's own STATION_ROOT.
     let mut child =
         build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .map_err(|error| format!("{NODE_RUNTIME_FAILURE} Details: {error}"))?
+            .map_err(sidecar_spawn_failure_detail)?
             .spawn()
-            .map_err(|error| format!("{NODE_RUNTIME_FAILURE} Details: {error}"))?;
+            .map_err(sidecar_spawn_failure_detail)?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -12948,7 +13014,7 @@ fn run_sidecar_supervisor(
                 true
             }
             Err(error) => {
-                if error.contains(NODE_RUNTIME_FAILURE) {
+                if generation == 1 && error.contains(NODE_RUNTIME_FAILURE) {
                     let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
@@ -21829,8 +21895,72 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn profile_store_linux_service_queries_cover_native_secret_writers() {
+        use syn::visit::Visit;
+        fn test_only(attributes: &[syn::Attribute]) -> bool {
+            attributes.iter().any(|attribute| {
+                attribute.path().is_ident("test")
+                    || (attribute.path().is_ident("cfg")
+                        && attribute
+                            .parse_args::<syn::Path>()
+                            .is_ok_and(|path| path.is_ident("test")))
+            })
+        }
+        #[derive(Default)]
+        struct Writers(std::collections::BTreeSet<String>);
+        impl<'ast> Visit<'ast> for Writers {
+            fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+                if !test_only(&item.attrs) {
+                    syn::visit::visit_item_mod(self, item);
+                }
+            }
+            fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+                if !test_only(&item.attrs) {
+                    syn::visit::visit_item_fn(self, item);
+                }
+            }
+            fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+                if !test_only(&item.attrs) {
+                    syn::visit::visit_item_impl(self, item);
+                }
+            }
+            fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
+                if test_only(&item.attrs) {
+                    return;
+                }
+                let name = item.ident.to_string();
+                if name == "SERVICE" || name.ends_with("_SERVICE") {
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(value),
+                        ..
+                    }) = item.expr.as_ref()
+                    {
+                        self.0.insert(value.value());
+                    }
+                }
+                syn::visit::visit_item_const(self, item);
+            }
+            fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+                if let syn::Expr::Path(path) = call.func.as_ref() {
+                    let mut parts = path.path.segments.iter().rev();
+                    if parts.next().is_some_and(|part| part.ident == "new")
+                        && parts
+                            .next()
+                            .is_some_and(|part| part.ident == "NativeSecureEntry")
+                    {
+                        if let Some(syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Str(value),
+                            ..
+                        })) = call.args.first()
+                        {
+                            self.0.insert(value.value());
+                        }
+                    }
+                }
+                syn::visit::visit_expr_call(self, call);
+            }
+        }
+        let mut writers = Writers::default();
         let mut pending = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
-        let mut checked = std::collections::BTreeSet::new();
         while let Some(directory) = pending.pop() {
             for entry in std::fs::read_dir(directory).unwrap() {
                 let path = entry.unwrap().path();
@@ -21841,41 +21971,23 @@ mod tests {
                 if path.extension().is_none_or(|ext| ext != "rs") {
                     continue;
                 }
-                let text = std::fs::read_to_string(&path).unwrap();
-                // Identify service declarations by their role, not their value's
-                // namespace, so an out-of-prefix new service also fails here.
-                let production = text.split("#[cfg(test)]").next().unwrap();
-                for statement in production.split(';') {
-                    if let Some(declaration) = statement.rsplit("const ").next() {
-                        if let Some((name, value)) = declaration.split_once(": &str =") {
-                            if name.trim() == "SERVICE" || name.trim().ends_with("_SERVICE") {
-                                if let Some(value) = value
-                                    .trim()
-                                    .strip_prefix('"')
-                                    .and_then(|value| value.split('"').next())
-                                {
-                                    if name.trim() != "NODE_RUNTIME_FAILURE" {
-                                        checked.insert(value.to_owned());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                for call in production.split("NativeSecureEntry::new(").skip(1) {
-                    if let Some(value) = call.trim_start().strip_prefix('"') {
-                        checked.insert(value.split('"').next().unwrap().to_owned());
-                    }
-                }
+                writers.visit_file(
+                    &syn::parse_file(&std::fs::read_to_string(&path).unwrap()).unwrap(),
+                );
             }
         }
-        assert!(checked.contains("io.kontourai.station.native-enrollment-recipient"));
-        for service in checked {
-            assert!(
-                STATION_KEYRING_SERVICES.contains(&service.as_str()),
-                "Linux recovery omits service {service}"
-            );
-        }
+        assert_eq!(
+            writers.0.len(),
+            9,
+            "native credential writer inventory changed"
+        );
+        assert_eq!(
+            writers.0,
+            STATION_KEYRING_SERVICES
+                .iter()
+                .map(|service| (*service).to_owned())
+                .collect()
+        );
     }
 
     #[cfg(all(not(mobile), windows))]
@@ -21947,6 +22059,41 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
+    fn profile_recovery_runtime_copy_keeps_transient_spawn_failures_retryable() {
+        for kind in [
+            std::io::ErrorKind::WouldBlock,
+            std::io::ErrorKind::OutOfMemory,
+            std::io::ErrorKind::Other,
+        ] {
+            let detail = sidecar_spawn_failure_detail(std::io::Error::from(kind));
+            assert!(!detail.contains(NODE_RUNTIME_FAILURE));
+        }
+        #[cfg(windows)]
+        for code in [32, 33] {
+            assert!(
+                !sidecar_spawn_failure_detail(std::io::Error::from_raw_os_error(code))
+                    .contains(NODE_RUNTIME_FAILURE)
+            );
+        }
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            assert!(sidecar_spawn_failure_detail(std::io::Error::from(kind))
+                .contains(NODE_RUNTIME_FAILURE));
+        }
+        let (title, message) =
+            desktop_recovery_failure_copy("Saved credentials appeared during recovery");
+        assert_eq!(title, "Station recovery could not complete");
+        assert!(!message.contains("folder problem"));
+        assert_eq!(
+            desktop_failure_body(NODE_BRIDGE_TIMEOUT, NODE_BRIDGE_TIMEOUT),
+            NODE_BRIDGE_TIMEOUT
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
     fn profile_bridge_silent_failure_reaches_node_repair_copy() {
         let resources = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
@@ -21956,18 +22103,42 @@ mod tests {
             "process.exit(1)",
         )
         .unwrap();
-        for result in [
-            supervisor_birth_bridge(resources.path(), home.path()),
-            profile_lock_birth_bridge(resources.path(), std::process::id()),
-        ] {
-            let error = result.unwrap_err();
-            assert_eq!(error, RegistryBridgeFailure::Invocation);
-            let detail = runtime_bridge_failure_detail(&error);
-            let (title, message) = desktop_home_preparation_failure_copy(detail);
-            assert_eq!(title, "Station’s built-in Node component could not start");
-            assert!(message.contains("Reinstall Station"));
-            assert!(!message.contains("folder problem"));
-        }
+        let binaries = std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with("station-node-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            binaries.len(),
+            1,
+            "prepare the host's pinned Node before Cargo tests"
+        );
+        let mut command = Command::new(&binaries[0]);
+        command
+            .arg(registry_bridge_script_path(resources.path()))
+            .arg("processIdentity")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let error = execute_registry_bridge_command(
+            command,
+            "processIdentity",
+            serde_json::json!({"pid": std::process::id()}),
+        )
+        .unwrap_err();
+        assert_eq!(error, RegistryBridgeFailure::Invocation);
+        let detail = profile_lock_birth_observation(std::process::id(), Err(error)).unwrap_err();
+        let (title, message) = desktop_home_preparation_failure_copy(&detail);
+        assert_eq!(title, "Station’s built-in Node component could not start");
+        assert!(message.contains("Reinstall Station"));
+        assert!(!message.contains("folder problem"));
         let (title, message) = desktop_home_preparation_failure_copy(
             runtime_bridge_failure_detail(&RegistryBridgeFailure::Timeout),
         );
@@ -21978,15 +22149,22 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn desktop_node_release_path_is_private_and_never_uses_path() {
-        let executable = Path::new("/application/station");
+        assert!(desktop_node_executable(Path::new("relative/station"), false).is_err());
+        let directory = tempfile::tempdir().unwrap();
+        let executable = dunce::canonicalize(directory.path())
+            .unwrap()
+            .join("station");
         let expected = executable.with_file_name(if cfg!(windows) {
             "station-node.exe"
         } else {
             "station-node"
         });
-        assert_eq!(desktop_node_executable(executable, false), expected);
         assert_eq!(
-            desktop_node_executable(executable, true),
+            desktop_node_executable(&executable, false).unwrap(),
+            expected
+        );
+        assert_eq!(
+            desktop_node_executable(&executable, true).unwrap(),
             PathBuf::from("node")
         );
         assert!(
@@ -21994,11 +22172,13 @@ mod tests {
             "missing sidecar must still resolve to the private path"
         );
         let temporary = tempfile::tempdir().unwrap();
-        let removed = temporary.path().join("station");
+        let removed = dunce::canonicalize(temporary.path())
+            .unwrap()
+            .join("station");
         std::fs::write(&removed, "app").unwrap();
         std::fs::remove_file(&removed).unwrap();
         assert_eq!(
-            desktop_node_executable(&removed, false),
+            desktop_node_executable(&removed, false).unwrap(),
             removed.with_file_name(if cfg!(windows) {
                 "station-node.exe"
             } else {
@@ -22013,17 +22193,20 @@ mod tests {
             let launcher = temporary.path().join("launcher");
             std::os::unix::fs::symlink(real.join("station"), &launcher).unwrap();
             assert_eq!(
-                desktop_node_executable(&launcher, false),
+                desktop_node_executable(&launcher, false).unwrap(),
                 dunce::canonicalize(&real).unwrap().join("station-node")
             );
             assert_eq!(
-                desktop_node_executable(&launcher, true),
+                desktop_node_executable(&launcher, true).unwrap(),
                 PathBuf::from("node")
             );
+            std::fs::remove_file(real.join("station")).unwrap();
+            assert!(desktop_node_executable(&launcher, false).is_err());
         }
         #[cfg(windows)]
         assert!(
             !desktop_node_executable(&std::env::current_exe().unwrap(), false)
+                .unwrap()
                 .to_string_lossy()
                 .starts_with(r"\\?\")
         );
